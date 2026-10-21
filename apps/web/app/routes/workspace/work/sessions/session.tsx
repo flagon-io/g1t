@@ -1,13 +1,15 @@
-import { ArrowLeft, Bot, ChevronRight, ExternalLink, GitBranch, GitCommitHorizontal, Pencil, Sparkles, Square } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { ArrowLeft, Bot, ChevronRight, ExternalLink, GitBranch, Pencil, Sparkles, Square } from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Form, Link } from "react-router";
 
-import type { Pull, SessionLink, SessionTouch, State, TouchKind, WorkSession } from "@g1t/contracts";
+import type { Pull, SessionLink, SessionTouch, State, Thread, TouchKind, WorkSession } from "@g1t/contracts";
 
 import type { Route } from "./+types/session";
 import { page } from "../../../../lib/meta";
 import { Actor, CoordinationFeed, EndSessionDialog, HarnessBadge, SessionStateBadge } from "../../../../components/coordination";
-import { SessionEntries } from "../../../../components/session-entries";
+import { Unavailable } from "../../../../components/boundary";
+import { SessionEntries, entryAnchor } from "../../../../components/session-entries";
+import { ActivityBars, AskedBubble, Deliverables, FileNames, Highlights, SessionAnswer, StatTile, WorkedFor } from "../../../../components/session-story";
 import { EmptyState, Input, SubmitButton, TimeAgo } from "../../../../components/ui";
 import { Alert } from "../../../../components/ui/alert";
 import { Badge } from "../../../../components/ui/badge";
@@ -34,7 +36,10 @@ import {
   touchedByKind,
   viaLabel,
 } from "../../../../lib/coordination";
+import { repoAt } from "../../../../lib/markdown-plugins";
 import { notFound } from "../../../../lib/not-found.server";
+import { isFailed, part } from "../../../../lib/partial";
+import { activity, deliverables, filesTouched, highlights, sessionAnswer } from "../../../../lib/session-story";
 import { sessionCost } from "../../../../lib/sessions";
 import { repoPages } from "../../../../lib/repo-live";
 import { agentSessions, work } from "../../../../lib/services.server";
@@ -104,8 +109,16 @@ export async function loader({ params, context }: Route.LoaderArgs) {
           .then((linked) => (linked.ok ? linked.value : null))
           .catch(() => null)
       : null;
+  // The decisions kept on what it worked on, for its highlights: a part, so
+  // the page stands without them and says they could not be read.
+  const threads = (found.value.links ?? [])
+    .slice(0, 6)
+    .map((link): Thread => (link.kind === "pull" ? { repo: path, number: link.number } : { workspace, number: link.number }));
+  const decided = await part(Promise.all(threads.map((thread) => work.listDecisions(thread, viewer))), "Decisions");
+  const decisions = isFailed(decided) ? null : decided.flatMap((result) => (result.ok ? result.value : []));
   return {
     ...found.value,
+    decisions,
     workspace,
     repoId: session.repoId,
     signedIn: viewer != null,
@@ -199,19 +212,6 @@ function SessionHeading({ session, name, canTitle }: { session: WorkSession; nam
         </Hint>
       )}
     </h2>
-  );
-}
-
-/** A part of the page under a heading. */
-function Section({ title, aside, children }: { title: ReactNode; aside?: ReactNode; children: ReactNode }) {
-  return (
-    <section className="mt-10">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-medium">{title}</h3>
-        {aside && <span className="text-xs text-muted">{aside}</span>}
-      </div>
-      <div className="mt-3">{children}</div>
-    </section>
   );
 }
 
@@ -376,7 +376,26 @@ function SubagentTree({ nodes, base, touched, now }: { nodes: SessionNode[]; bas
   );
 }
 
-/** One harness session: who ran it, where, what it worked on, its subagents, what it touched and what it recorded. */
+/** The page's own sections: a heading, then what it holds. */
+function Part({ title, aside, children }: { title: ReactNode; aside?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="mt-12">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-[0.9375rem] font-semibold text-fg">{title}</h2>
+        {aside && <span className="text-xs text-faint">{aside}</span>}
+      </div>
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
+
+/**
+ * One harness session, told as an answer: what it was asked, how long it
+ * worked, what it came to, a few figures, the highlights with where each
+ * comes from, and what it delivered; then its subagents, skills and what it
+ * touched; and the transcript, folded under "Worked for" once there is an
+ * answer above it, open while it is still the whole story.
+ */
 export default function WorkSessionPage({ loaderData, actionData }: Route.ComponentProps) {
   const {
     session,
@@ -387,6 +406,7 @@ export default function WorkSessionPage({ loaderData, actionData }: Route.Compon
     links = [],
     skills = [],
     root,
+    decisions,
     canStop,
     canEnd,
     consoleUrl,
@@ -401,25 +421,54 @@ export default function WorkSessionPage({ loaderData, actionData }: Route.Compon
   useLive({ match: repoPages.session(), repos: [{ id: loaderData.repoId, path: repo }], signedIn: loaderData.signedIn });
 
   const tools = entries.filter((entry) => entry.kind === "tool_call").length;
-  const firstPrompt = entries.find((entry) => entry.kind === "prompt")?.text;
+  const prompt = entries.find((entry) => entry.kind === "prompt");
+  const firstPrompt = prompt?.text;
   const isSubagent = Boolean(session.parentId);
   const parent = isSubagent && root?.id === session.parentId ? root : null;
   // Its own subagents: those whose parent is in this tree (children lists every descendant).
   const tree = sessionTree([session, ...children]).find((node) => node.session.id === session.id)?.children ?? [];
   const managed = session.harness === MANAGED || root?.harness === MANAGED;
   const cost = sessionCost(session);
+  const live = session.state !== "ended";
+
+  const answer = limited ? null : sessionAnswer(session, entries);
+  // The transcript is folded under an answer, and open while it is the whole story, or when a citation points into it.
+  const [transcript, setTranscript] = useState(() => answer == null || (typeof location !== "undefined" && location.hash.startsWith("#entry-")));
+  // A citation into the transcript: unfold it, then, once it is drawn, go to the entry and let the address say so.
+  const [cited, setCited] = useState<number | null>(null);
+  const cite = (seq: number) => {
+    setTranscript(true);
+    setCited(seq);
+  };
+  useEffect(() => {
+    if (cited == null) return;
+    const anchor = entryAnchor(cited);
+    history.replaceState(history.state, "", `#${anchor}`);
+    const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document.getElementById(anchor)?.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
+    setCited(null);
+  }, [cited]);
 
   // The skills, summed by name across the tree.
   const skillUses = new Map<string, number>();
   for (const skill of skills) skillUses.set(skill.name, (skillUses.get(skill.name) ?? 0) + skill.uses);
 
-  const pulls = links.filter((link) => link.kind === "pull");
-  const groups = touchedByKind(touched);
-  const commits = groups.find((group) => group.kind === "commit")?.values ?? [];
+  const ids = new Set([session.id, ...children.map((child) => child.id)]);
+  const told = limited
+    ? []
+    : highlights(decisions ?? [], entries, ids, (decision) =>
+        decision.pull != null ? `${base}/pull/${decision.pull}` : decision.item != null ? itemPath(workspace, decision.item) : null,
+      );
+  const delivered = deliverables(links, touched);
+  const bars = limited ? [] : activity(entries, session.startedAt, session.endedAt, now);
+  const files = filesTouched(touched);
+  const commits = delivered.find((item) => item.kind === "commits")?.shas.length ?? 0;
+  const pulls = links.filter((link) => link.kind === "pull").length;
   const where: TouchKind[] = ["file", "branch", "item"];
+  const groups = touchedByKind(touched);
 
   return (
-    <div className="max-w-4xl">
+    <div className="mx-auto max-w-3xl pb-16">
       {isSubagent ? (
         <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
           <Link to={sessionPath(workspace, session.parentId!)} className="inline-flex items-center gap-1.5 hover:text-fg">
@@ -442,14 +491,56 @@ export default function WorkSessionPage({ loaderData, actionData }: Route.Compon
         </Link>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <Actor username={session.actor.username} harness={session.harness} size={24} />
+      {/* Its name, and what can be done with it. */}
+      <div className="mt-5 flex flex-wrap items-start gap-x-3 gap-y-2">
         <SessionHeading session={session} name={sessionName(session, firstPrompt)} canTitle={canEnd && !isSubagent} />
-        {isSubagent && session.agentType && (
-          <Badge tone="accent">
-            <Bot size={11} />
-            {session.agentType}
-          </Badge>
+        <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
+          <SessionStateBadge state={session.state} />
+          {canStop && (
+            <Form method="post">
+              <input type="hidden" name="action" value="stop" />
+              <SubmitButton variant="destructive" size="xs" match={{ action: "stop" }} pending="Stopping…">
+                <Square size={12} />
+                Stop
+              </SubmitButton>
+            </Form>
+          )}
+          {canEnd && (
+            <>
+              <Button variant="outline" size="xs" onClick={() => setEnding(true)}>
+                <Square size={12} />
+                End session
+              </Button>
+              <EndSessionDialog session={session} base={base} open={ending} onOpenChange={setEnding} />
+            </>
+          )}
+          {consoleUrl && (
+            <Button asChild variant="outline" size="xs">
+              <a href={consoleUrl} target="_blank" rel="noreferrer">
+                <ExternalLink size={12} />
+                Claude Console
+              </a>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Who ran it, where, and when. */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted">
+        <Actor username={session.actor.username} harness={session.harness} size={18} />
+        <PersonLink name={session.actor.username} className="font-medium text-fg hover:underline" />
+        <span className="text-faint">in</span>
+        <Link to={base} className="font-mono text-xs hover:text-fg">
+          {repo}
+        </Link>
+        <span className="text-faint">·</span>
+        <TimeAgo at={session.startedAt} />
+        {session.state === "ended" && session.endReason && <span className="text-faint">· {endReasonText(session.endReason)}</span>}
+        {session.branch && (
+          <Link to={`${base}/tree/${session.branch}`} className="inline-flex items-center gap-1 font-mono text-xs hover:text-fg">
+            <GitBranch size={12} />
+            {session.branch}
+          </Link>
         )}
         <HarnessBadge harness={session.harness} />
         {session.model && (
@@ -457,68 +548,13 @@ export default function WorkSessionPage({ loaderData, actionData }: Route.Compon
             {session.model}
           </Badge>
         )}
-        <SessionStateBadge state={session.state} />
-        {canStop && (
-          <Form method="post">
-            <input type="hidden" name="action" value="stop" />
-            <SubmitButton variant="destructive" size="xs" match={{ action: "stop" }} pending="Stopping…">
-              <Square size={12} />
-              Stop
-            </SubmitButton>
-          </Form>
-        )}
-        {canEnd && (
-          <>
-            <Button variant="outline" size="xs" onClick={() => setEnding(true)}>
-              <Square size={12} />
-              End session
-            </Button>
-            <EndSessionDialog session={session} base={base} open={ending} onOpenChange={setEnding} />
-          </>
-        )}
-        {consoleUrl && (
-          <Button asChild variant="outline" size="xs">
-            <a href={consoleUrl} target="_blank" rel="noreferrer">
-              <ExternalLink size={12} />
-              Open in Claude Console
-            </a>
-          </Button>
+        {isSubagent && session.agentType && (
+          <Badge tone="accent">
+            <Bot size={11} />
+            {session.agentType}
+          </Badge>
         )}
       </div>
-
-      <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
-        <PersonLink name={session.actor.username} className="font-medium text-fg hover:underline" />
-        <Link to={base} className="font-mono text-xs hover:text-fg">
-          in {repo}
-        </Link>
-        <span>
-          started <TimeAgo at={session.startedAt} />
-        </span>
-        <span suppressHydrationWarning>
-          · {session.state === "ended" ? "ran" : "running for"} {duration(session, now)}
-        </span>
-        <span>
-          · {session.state === "ended" ? "ended" : "last heard from"} <TimeAgo at={session.endedAt ?? session.lastSeenAt} />
-          {session.endReason && ` (${endReasonText(session.endReason)})`}
-        </span>
-        {cost && (
-          <Hint label="Estimated from the tokens its transcript recorded, at Anthropic's list price. Its subagents count on their own sessions.">
-            <span className="tabular-nums">· {cost}</span>
-          </Hint>
-        )}
-        {session.branch && (
-          <Link to={`${base}/tree/${session.branch}`} className="inline-flex items-center gap-1 font-mono text-xs hover:text-fg">
-            · <GitBranch size={12} />
-            {session.branch}
-          </Link>
-        )}
-        {session.headCommit && (
-          <Link to={`${base}/commit/${session.headCommit}`} className="inline-flex items-center gap-1 font-mono text-xs hover:text-fg">
-            · <GitCommitHorizontal size={12} />
-            {session.headCommit.slice(0, 7)}
-          </Link>
-        )}
-      </p>
 
       {links.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
@@ -533,54 +569,82 @@ export default function WorkSessionPage({ loaderData, actionData }: Route.Compon
           {actionData.error}
         </Alert>
       )}
-      {managed && session.state !== "ended" && (
-        <Alert tone="info" className="mt-4">
+
+      {/* The story: what it was asked, how long it worked, and what it came to. */}
+      <div className="mt-8 space-y-5">
+        {prompt && !prompt.withheld && prompt.text.trim() && <AskedBubble text={prompt.text} repo={repoAt(base)} />}
+        {isSubagent && session.prompt && !prompt && <AskedBubble text={session.prompt} repo={repoAt(base)} />}
+        <WorkedFor live={live} span={duration(session, now)} tools={tools} open={transcript} onToggle={() => setTranscript((open) => !open)} />
+        {answer ? (
+          <SessionAnswer text={answer} repo={repoAt(base)} />
+        ) : (
+          !limited && (
+            <p className="text-[0.9375rem] text-muted">
+              {live ? "It has not reported back yet: what it has done so far is in the transcript below." : "It ended without reporting back."}
+            </p>
+          )
+        )}
+      </div>
+
+      {!limited && (
+        <div className="mt-8 grid gap-3 sm:grid-cols-3">
+          <StatTile
+            label={live ? "Working for" : "Worked for"}
+            value={<span suppressHydrationWarning>{duration(session, now)}</span>}
+            detail={tools === 1 ? "1 tool call" : `${tools} tool calls`}
+          >
+            {bars.length > 0 && <ActivityBars bars={bars} />}
+          </StatTile>
+          <StatTile
+            label="Changed"
+            value={files.length === 1 ? "1 file" : `${files.length} files`}
+            detail={[commits === 1 ? "1 commit" : `${commits} commits`, pulls === 1 ? "1 pull request" : `${pulls} pull requests`].join(" · ")}
+          >
+            <FileNames paths={files} />
+          </StatTile>
+          <StatTile
+            label="Model cost"
+            value={session.costUsd != null && Number.isFinite(session.costUsd) ? `$${session.costUsd.toFixed(2)}` : "—"}
+            detail={
+              cost ? (
+                <Hint label="Estimated from the tokens its transcript recorded, at the provider's list price. Its subagents count on their own sessions.">
+                  <span>{managed ? "Billed by Anthropic to the workspace" : "Billed by the provider to whoever ran it"}</span>
+                </Hint>
+              ) : (
+                "Its harness reported no usage"
+              )
+            }
+          />
+        </div>
+      )}
+
+      {(told.length > 0 || decisions == null) && (
+        <Part title="Highlights">
+          {decisions == null && <Unavailable what="The decisions it kept" compact />}
+          {told.length > 0 && <Highlights items={told} onCite={cite} />}
+        </Part>
+      )}
+
+      {delivered.length > 0 && (
+        <Part title="Deliverables">
+          <Deliverables items={delivered} base={base} workspace={workspace} />
+        </Part>
+      )}
+
+      {managed && live && (
+        <Alert tone="info" className="mt-8">
           It runs on the workspace's Anthropic account, with Claude Managed Agents. What it does shows here as it goes.
         </Alert>
       )}
-      <p className="mt-3 text-xs text-faint">
-        {managed
-          ? "Started by g1t on the workspace's Anthropic account, for whoever started it."
-          : `Run by ${session.actor.username}'s token in ${harnessName(session.harness)}, as the harness declared.`}{" "}
-        What it records is its own account; the commits, checks and merges are the record.
-      </p>
-
-      {isSubagent && (session.prompt || session.result) && (
-        <Card className="mt-6 space-y-4 p-4">
-          {session.prompt && (
-            <div>
-              <p className="text-xs font-medium text-muted">What it was asked</p>
-              <div className="mt-1">
-                <LongText text={session.prompt} />
-              </div>
-            </div>
-          )}
-          {session.result && (
-            <div>
-              <p className="text-xs font-medium text-muted">What it reported</p>
-              <div className="mt-1">
-                <LongText text={session.result} />
-              </div>
-            </div>
-          )}
-        </Card>
-      )}
-      {!isSubagent && session.result && (
-        <Section title="What it reported">
-          <Card className="p-4">
-            <LongText text={session.result} />
-          </Card>
-        </Section>
-      )}
 
       {tree.length > 0 && (
-        <Section title="Subagents" aside={children.length > tree.length ? `${children.length} in all` : undefined}>
+        <Part title="Subagents" aside={children.length > tree.length ? `${children.length} in all` : undefined}>
           <SubagentTree nodes={tree} base={base} touched={touched} now={now} />
-        </Section>
+        </Part>
       )}
 
       {skillUses.size > 0 && (
-        <Section title="Skills used">
+        <Part title="Skills used">
           <div className="flex flex-wrap gap-2">
             {[...skillUses].map(([name, uses]) => (
               <Badge key={name} size="md" shape="tag">
@@ -590,64 +654,61 @@ export default function WorkSessionPage({ loaderData, actionData }: Route.Compon
               </Badge>
             ))}
           </div>
-        </Section>
+        </Part>
       )}
 
       {groups.some((group) => where.includes(group.kind)) && (
-        <Section title="What it touched" aside={tree.length > 0 ? "With its subagents" : undefined}>
+        <Part title="What it touched" aside={tree.length > 0 ? "With its subagents" : undefined}>
           <Card className="p-4">
             <Touched touched={touched} base={base} kinds={where} />
           </Card>
-        </Section>
-      )}
-
-      {(pulls.length > 0 || commits.length > 0) && (
-        <Section title="Commits and pull requests">
-          <Card asChild divided>
-            <ul>
-              {pulls.map((link) => (
-                <li key={link.number} className="flex items-center gap-2.5 px-4 py-2.5 text-sm">
-                  <PullIcon status={(["open", "draft", "merged", "closed"].includes(link.state) ? link.state : "open") as Pull["status"]} size={14} />
-                  <Link to={`${base}/pull/${link.number}`} prefetch="intent" className="min-w-0 grow truncate hover:text-accent">
-                    {link.title} <span className="text-faint">#{link.number}</span>
-                  </Link>
-                  <span className="shrink-0 text-xs text-faint">{link.via.map(viaLabel).join(", ")}</span>
-                </li>
-              ))}
-              {commits.map((sha) => (
-                <li key={sha} className="flex items-center gap-2.5 px-4 py-2.5 text-sm">
-                  <GitCommitHorizontal size={14} className="shrink-0 text-faint" />
-                  <Link to={`${base}/commit/${sha}`} className="font-mono text-xs hover:text-accent">
-                    {sha.slice(0, 7)}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </Section>
+        </Part>
       )}
 
       {updates.length > 0 && (
-        <Section title="Awaiting agent acknowledgement" aside={`${updates.length}${updates.length === 100 ? "+" : ""} pending`}>
+        <Part title="Awaiting agent acknowledgement" aside={`${updates.length}${updates.length === 100 ? "+" : ""} pending`}>
           <p className="mb-3 text-sm text-muted">
             What others did that concerns this session, which its agent has not said it considered yet. Acknowledging records that it was considered, not that
             anything was resolved.
           </p>
           <CoordinationFeed lines={pendingLines(updates)} base={base} />
-        </Section>
+        </Part>
       )}
-      <Section title="What it recorded" aside={limited ? undefined : `${entries.length} entries, ${tools} tool calls`}>
-        {limited ? (
-          <EmptyState title="Shown to the workspace's members">
-            What a session records is the work of whoever runs it, as it happens. Members of {workspace} see it; anyone else sees that it runs, who runs it and
-            what it is tied to.
-          </EmptyState>
-        ) : entries.length === 0 ? (
-          <EmptyState title="Nothing recorded yet">Prompts, messages, tool calls, skills and notes show here as the session records them.</EmptyState>
-        ) : (
-          <SessionEntries entries={entries} base={base} />
+
+      <section id="transcript" className="mt-12 scroll-mt-[calc(var(--topbar-h)+1rem)]">
+        <button
+          type="button"
+          onClick={() => setTranscript((open) => !open)}
+          aria-expanded={transcript}
+          className="flex w-full items-baseline justify-between gap-2 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <h2 className="flex items-center gap-1.5 text-[0.9375rem] font-semibold text-fg">
+            <ChevronRight size={15} className={`text-faint transition-transform ${transcript ? "rotate-90" : ""}`} />
+            Transcript
+          </h2>
+          {!limited && <span className="text-xs text-faint">{`${entries.length} entries, ${tools} tool calls`}</span>}
+        </button>
+        {transcript && (
+          <div className="mt-4">
+            {limited ? (
+              <EmptyState title="Shown to the workspace's members">
+                What a session records is the work of whoever runs it, as it happens. Members of {workspace} see it; anyone else sees that it runs, who runs it
+                and what it is tied to.
+              </EmptyState>
+            ) : entries.length === 0 ? (
+              <EmptyState title="Nothing recorded yet">Prompts, messages, tool calls, skills and notes show here as the session records them.</EmptyState>
+            ) : (
+              <SessionEntries entries={entries} base={base} />
+            )}
+          </div>
         )}
-      </Section>
+        <p className="mt-4 text-xs text-faint">
+          {managed
+            ? "Started by g1t on the workspace's Anthropic account, for whoever started it."
+            : `Run by ${session.actor.username}'s token in ${harnessName(session.harness)}, as the harness declared.`}{" "}
+          What it records is its own account; the commits, checks and merges are the record.
+        </p>
+      </section>
     </div>
   );
 }
