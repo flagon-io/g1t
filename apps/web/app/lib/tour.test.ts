@@ -37,13 +37,13 @@ test("Home's #431 opens the pull request, and the cursor stays out of its way un
   assert.equal(frameAt(BEAT.merged - 1).cursorShown, false);
   assert.equal(frameAt(BEAT.sessionClick).cursor, "pr-session");
   assert.equal(frameAt(BEAT.sessionClick).click, true);
-  assert.equal(frameAt(BEAT.railChatClick).cursor, "rail-chat");
-  assert.equal(frameAt(BEAT.railChatClick).click, true);
+  assert.equal(frameAt(BEAT.chatTabClick).cursor, "tab-chat");
+  assert.equal(frameAt(BEAT.chatTabClick).click, true);
 });
 
 test("the session plays back in full before the tour moves on to Chat", () => {
   assert.equal(frameAt(BEAT.session - 1).entries, 0);
-  assert.equal(frameAt(BEAT.railChatClick - 1).entries, SESSION.length);
+  assert.equal(frameAt(BEAT.chatTabClick - 1).entries, SESSION.length);
   assert.equal(SESSION[0].kind, "prompt");
 });
 

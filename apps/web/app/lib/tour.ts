@@ -16,8 +16,8 @@
 
 export type Scene = "home" | "code" | "session" | "chat";
 
-/** Where the soft cursor points: an element marked `data-tour="<target>"`. */
-export type CursorTarget = "home-summarize" | "home-pr" | "pr-session" | "rail-code" | "rail-chat" | "idle";
+/** Where the soft cursor points: an element marked `data-tour="<target>"` (`tab-…` are the app bar's tabs). */
+export type CursorTarget = "home-summarize" | "home-pr" | "pr-session" | "tab-code" | "tab-chat" | "idle";
 
 export type Frame = {
   scene: Scene;
@@ -105,7 +105,8 @@ export const BEAT = {
   session: 15100,
   entry0: 15350,
   entryGap: 450,
-  railChatClick: 18000,
+  /** Chat's tab in the app bar, pressed once the session has played back. */
+  chatTabClick: 18000,
   chat: 18150,
   shipped: 19000,
   told: 20200,
@@ -157,12 +158,12 @@ function cursorAt(t: number): { cursor: CursorTarget; click: boolean } {
     [SUMMARIZED + 300, "home-pr"],
     [BEAT.code + 400, "idle"],
     [BEAT.merged + 300, "pr-session"],
-    [BEAT.railChatClick - 900, "rail-chat"],
+    [BEAT.chatTabClick - 900, "tab-chat"],
     [BEAT.chat + 500, "idle"],
   ];
   let cursor: CursorTarget = "idle";
   for (const [at, target] of moves) if (t >= at) cursor = target;
-  const click = press(BEAT.summarizeClick) || press(BEAT.prClick) || press(BEAT.sessionClick) || press(BEAT.railChatClick);
+  const click = press(BEAT.summarizeClick) || press(BEAT.prClick) || press(BEAT.sessionClick) || press(BEAT.chatTabClick);
   return { cursor, click };
 }
 
@@ -197,7 +198,7 @@ export function frameAt(time: number): Frame {
 export const STILLS: Record<Scene, number> = {
   home: SUMMARIZED + 400,
   code: BEAT.approved + 200,
-  session: BEAT.railChatClick - 400,
+  session: BEAT.chatTabClick - 400,
   chat: BEAT.told + 400,
 };
 

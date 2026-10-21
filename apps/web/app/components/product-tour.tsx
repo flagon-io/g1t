@@ -1,6 +1,6 @@
 /**
  * The landing page's product tour: g1t browsing itself. A faithful app
- * frame (rail, sidebars, the real colours) plays one story on a loop, with
+ * frame (app bar, sidebars, the real colours) plays one story on a loop, with
  * a soft cursor that moves and clicks: Home as its author starts her day
  * (what settled by itself, what still needs her, and What changed in plain
  * English), her pull request going green and merging, the session her
@@ -13,11 +13,14 @@
  * Motion is transforms and opacity only. Reduced motion gets a still frame
  * per step, chosen with the pills.
  *
- * It is an honest miniature of the app: the same rail (the workspace on
- * the top bar's line, then Home, Explore, Work, Chat, Code and Artifacts, with names),
- * each mode's sidebar with its real sections and words, the same top bar
- * (where you are, Explore, Docs, the inbox and +), which Chat gives up to
- * the conversation's own header as the app does, and the app's own cards.
+ * It is an honest miniature of the app: the same app bar across the top
+ * (g1t's mark and the workspace, then Home, Work, Chat, Code, Artifacts and
+ * Routines as named tabs, the pinned apps, Apps and Explore, and at its end
+ * search, Ask, the bell, + and you), so the cursor opens Chat by its tab;
+ * under it each mode's sidebar from the frame's edge, with its real
+ * sections and words; the page's own slim bar (the sidebar's toggle and
+ * where you are), with a conversation's header under it in Chat as the app
+ * has it; and the app's own cards.
  * The coding agent is one people bring: its commits carry its mark, as
  * components/coding-agent.tsx draws it, and its session is the pull
  * request's Session tab.
@@ -29,14 +32,13 @@ import {
   AtSign,
   BarChart3,
   Bell,
+  BellOff,
   Bot,
   Box,
-  Building2,
   Check,
   CheckCheck,
   ChevronDown,
   ChevronLeft,
-  CircleHelp,
   Ellipsis,
   Code2,
   Compass,
@@ -47,13 +49,16 @@ import {
   GitPullRequest,
   Hash,
   House,
+  LayoutGrid,
   ListTodo,
   Loader,
   MessageSquare,
   MessagesSquare,
+  PanelLeft,
   Paperclip,
   PlayCircle,
   Plus,
+  Repeat,
   Rocket,
   RotateCcw,
   Search,
@@ -70,6 +75,7 @@ import { type CSSProperties, Fragment, type ReactNode, useCallback, useEffect, u
 
 import { codingAgentById } from "@g1t/contracts/coding-agents";
 
+import { brandIcon } from "../lib/brand-icons";
 import { cn } from "../lib/cn";
 import { WORK_KINDS, WORK_LABEL, type WorkKind } from "../lib/home";
 import {
@@ -244,13 +250,10 @@ function WithAgent() {
 }
 
 /** A person's presence, as the app shows it on their avatar: active, or away. */
-function PresenceDot({ away, ring = "var(--tour-side)" }: { away?: boolean; ring?: string }) {
+function PresenceDot({ away, ring = "var(--color-sidebar)" }: { away?: boolean; ring?: string }) {
   return (
     <span
-      className={cn(
-        "absolute -right-0.5 -bottom-0.5 size-1.75 rounded-full",
-        away ? "bg-(--tour-side) shadow-[inset_0_0_0_1.5px_var(--color-faint)]" : "bg-success",
-      )}
+      className={cn("absolute -right-0.5 -bottom-0.5 size-1.75 rounded-full", away ? "bg-sidebar shadow-[inset_0_0_0_1.5px_var(--color-faint)]" : "bg-success")}
       style={{ boxShadow: `0 0 0 1.5px ${ring}${away ? ", inset 0 0 0 1.5px var(--color-faint)" : ""}` }}
     />
   );
@@ -293,119 +296,158 @@ function Message({ who, time, children, enter }: { who: string; time: string; ch
 /* The app frame                                                       */
 /* ------------------------------------------------------------------ */
 
-/** The rail's modes, in the app's order (components/rail.tsx), with its icons. */
-const RAIL: { key: string; icon: ReactNode; label: string; target?: CursorTarget; scenes?: Scene[]; badge?: number }[] = [
-  { key: "home", icon: <House size={15} />, label: "Home", scenes: ["home"] },
-  { key: "explore", icon: <Compass size={15} />, label: "Explore" },
-  { key: "work", icon: <ListTodo size={15} />, label: "Work" },
-  { key: "chat", icon: <MessagesSquare size={15} />, label: "Chat", target: "rail-chat", scenes: ["chat"], badge: 3 },
-  { key: "code", icon: <Code2 size={15} />, label: "Code", target: "rail-code", scenes: ["code", "session"] },
-  { key: "artifacts", icon: <Shapes size={15} />, label: "Artifacts" },
-  { key: "inbox", icon: <Bell size={15} />, label: "Notifications" },
+/** The app bar's tabs, in the app's order (lib/apps.ts BAR_APPS), with their icons (components/apps.tsx). */
+const APP_TABS: { key: string; icon: ReactNode; label: string; target?: CursorTarget; scenes?: Scene[]; badge?: number }[] = [
+  { key: "home", icon: <House size={14} />, label: "Home", scenes: ["home"] },
+  { key: "work", icon: <ListTodo size={14} />, label: "Work" },
+  // Unread in #support, none of it a mention: the quiet count, as the app gives it.
+  { key: "chat", icon: <MessagesSquare size={14} />, label: "Chat", target: "tab-chat", scenes: ["chat"], badge: 3 },
+  { key: "code", icon: <Code2 size={14} />, label: "Code", target: "tab-code", scenes: ["code", "session"] },
+  { key: "artifacts", icon: <Shapes size={14} />, label: "Artifacts" },
+  { key: "routines", icon: <Repeat size={14} />, label: "Routines" },
 ];
 
-/** One rail item: the square behind its icon, filled for the mode you are in, and its name under it. */
-function RailItem({ icon, label, on, target, badge }: { icon: ReactNode; label: string; on: boolean; target?: CursorTarget; badge?: number }) {
+/** One tab of the app bar: a rounded pill, filled for the app you are in. */
+const TAB = "relative flex h-7 shrink-0 items-center gap-1.5 rounded-lg text-[11.5px] transition-colors duration-500";
+
+/** An installed app's mark, as the app bar shows a pinned one (components/connectors.tsx MarkTile): its brand on a tile of its colour. */
+function AppMark({ id }: { id: string }) {
+  const brand = brandIcon(id);
+  const tint = brand?.color ?? "var(--color-fg)";
   return (
-    <span className="flex w-full flex-col items-center gap-0.75 py-0.5">
-      <span
-        data-tour={target}
-        className={cn(
-          "relative flex size-7 items-center justify-center rounded-lg transition-colors duration-500",
-          on ? "bg-[#2c2c33] text-[#ededef] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]" : "text-muted",
-        )}
-      >
-        {icon}
-        {badge ? (
-          <span className="absolute -top-1 -right-1.5 min-w-3.5 rounded-full bg-accent px-0.75 text-center text-[8px] leading-3.5 font-bold text-bg tabular-nums ring-[1.5px] ring-[#0b0b0d]">
-            {badge}
-          </span>
-        ) : null}
-      </span>
-      <span className={cn("text-[9px] leading-none font-medium transition-colors duration-500", on ? "text-[#ededef]" : "text-faint")}>{label}</span>
+    <span
+      className="flex size-4 items-center justify-center rounded-[4.5px]"
+      style={{
+        background: `color-mix(in srgb, ${tint} ${brand?.color ? 16 : 8}%, transparent)`,
+        color: brand?.color ? `color-mix(in srgb, ${brand.color} 60%, var(--color-fg))` : "var(--color-fg)",
+        boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${tint} ${brand?.color ? 30 : 14}%, transparent)`,
+      }}
+    >
+      {brand && (
+        <svg viewBox="0 0 24 24" width={9} height={9} fill="currentColor">
+          <path d={brand.path} />
+        </svg>
+      )}
     </span>
   );
 }
 
+/** A divider between the app bar's groups. */
+function BarRule() {
+  return <span className="mx-1 h-4 w-px shrink-0 bg-sidebar-border" />;
+}
+
 /**
- * The rail, as the app has it: the workspace on the top bar's line (its
- * switcher), the modes with their names, then the workspace's own pages,
- * help, and you, with the dot that says how others see you.
+ * The app bar, as the app has it (components/app-bar.tsx): g1t's mark and
+ * the workspace with its menu; the apps as named tabs, the one you are in
+ * on a filled pill and Chat with what is unread; the apps Priya pinned
+ * (Sentry, Linear), Apps and Explore; then, at its end, search, Ask, the
+ * bell, + and Priya, with the dot that says how others see her. The bell
+ * counts the two failures on Home, and loses them as they settle.
  */
-function Rail({ frame }: { frame: Frame }) {
-  const scene = frame.scene;
-  // Notifications still unread: the two that settle on Home leave the count as they do.
+function AppBar({ frame }: { frame: Frame }) {
   const unread = SETTLED.length - frame.settled;
   return (
-    <nav aria-hidden="true" className="flex w-16 shrink-0 flex-col items-center bg-[#0b0b0d] pb-2.5 shadow-[inset_-1px_0_0_var(--color-line)]">
-      <div className="flex h-11 w-full shrink-0 items-center justify-center border-b border-line bg-bg shadow-[inset_-1px_0_0_var(--color-line)]">
-        <Avatar name="acme" size={28} square />
-      </div>
-      <div className="mt-2.5 flex w-full flex-col items-center gap-1.5 px-1">
-        {RAIL.map((item) => (
-          <RailItem
-            key={item.key}
-            icon={item.icon}
-            label={item.label}
-            on={!!item.scenes?.includes(scene)}
-            target={item.target}
-            badge={item.key === "inbox" ? unread : item.badge}
-          />
-        ))}
-      </div>
-      <div className="mt-auto flex w-full flex-col items-center gap-1.5 px-1">
-        <RailItem icon={<Building2 size={15} />} label="Workspace" on={false} />
-        <RailItem icon={<CircleHelp size={15} />} label="Help" on={false} />
-        <span className="relative mt-1">
-          <Avatar name="priya" image={null} size={26} />
-          <PresenceDot ring="#0b0b0d" />
+    <header aria-hidden="true" className="relative z-10 flex h-11 shrink-0 items-center gap-1 border-b border-sidebar-border bg-sidebar pr-2.5 pl-2">
+      <span className={cn(TAB, "w-7 justify-center text-fg")}>
+        <MarkGlyph className="h-3.75" />
+      </span>
+      <span className="flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-1">
+        <Avatar name="acme" size={19} square />
+        <span className="text-[12px] font-semibold text-fg">Acme</span>
+        <ChevronDown size={12} className="text-faint" />
+      </span>
+      <BarRule />
+      <nav className="flex min-w-0 grow items-center gap-0.5">
+        {APP_TABS.map((tab) => {
+          const on = !!tab.scenes?.includes(frame.scene);
+          return (
+            <span key={tab.key} data-tour={tab.target} className={cn(TAB, "px-1.75", on ? "bg-sidebar-accent text-fg" : "text-muted")}>
+              {tab.icon}
+              {tab.label}
+              {tab.badge ? (
+                <span className="min-w-3.75 rounded-full bg-line-strong px-1 text-center text-[8.5px] leading-3.75 font-bold text-fg tabular-nums">
+                  {tab.badge}
+                </span>
+              ) : null}
+            </span>
+          );
+        })}
+        <BarRule />
+        <span className={cn(TAB, "w-7 justify-center")}>
+          <AppMark id="sentry" />
         </span>
-      </div>
-    </nav>
+        <span className={cn(TAB, "w-7 justify-center")}>
+          <AppMark id="linear" />
+        </span>
+        <span className={cn(TAB, "w-7 justify-center text-muted")}>
+          <LayoutGrid size={14} />
+        </span>
+        <span className={cn(TAB, "w-7 justify-center text-muted")}>
+          <Compass size={14} />
+        </span>
+      </nav>
+      <span className="flex shrink-0 items-center gap-1">
+        <span className="mr-0.5 ml-2 flex h-6.5 w-30 items-center gap-1.5 rounded-md border border-line bg-bg px-2 text-[10.5px] text-faint">
+          <Search size={11} className="shrink-0" />
+          <span className="grow">Search</span>
+          <span className="rounded bg-raised px-1 font-mono text-[8.5px] whitespace-nowrap text-muted ring-1 ring-line">Ctrl K</span>
+        </span>
+        <span className="flex h-6.5 items-center gap-1.5 rounded-md bg-accent/10 px-2 text-[11px] text-fg ring-1 ring-accent/20 ring-inset">
+          <MarkGlyph className="h-2.75" />
+          Ask
+        </span>
+        <span className="mx-0.5 h-4 w-px bg-line" />
+        <span className="relative flex size-6.5 items-center justify-center text-muted">
+          <Bell size={14} />
+          {unread > 0 && (
+            <span
+              key={unread}
+              className="tour-pop absolute -top-0.5 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-danger px-0.75 text-[8.5px] font-semibold text-bg tabular-nums ring-[1.5px] ring-sidebar"
+            >
+              {unread}
+            </span>
+          )}
+        </span>
+        <span className="flex h-6.5 items-center gap-0.5 px-1 text-fg/90">
+          <Plus size={14} />
+          <ChevronDown size={10} className="text-faint" />
+        </span>
+        <span className="relative ml-0.5 flex">
+          <Avatar name="priya" image={null} size={22} />
+          <PresenceDot ring="var(--color-sidebar)" />
+        </span>
+      </span>
+    </header>
   );
 }
 
 /**
- * The top bar, as the app has it (components/shell.tsx): where you are,
- * then Explore, Docs, the inbox and the + menu. Chat has none on a
- * computer: the conversation's header takes its line.
+ * The page's own bar under the app bar, as the app has it (components/shell.tsx):
+ * a slim line with the sidebar's toggle when there is a sidebar, then where you
+ * are, the workspace left out (the app bar names it).
  */
-function TopBar({ crumbs }: { crumbs: { label: string; mono?: boolean }[] }) {
+function PageBar({ crumbs, toggle }: { crumbs: { label: string; mono?: boolean }[]; toggle: boolean }) {
   return (
-    <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line bg-bg px-4">
-      <span className="flex min-w-0 items-center gap-1.5 text-[12.5px]">
+    <div className="flex h-10 shrink-0 items-center gap-1 border-b border-line bg-bg px-2.5">
+      {toggle && (
+        <>
+          <span className="flex size-6.5 items-center justify-center text-faint">
+            <PanelLeft size={14} />
+          </span>
+          <span className="mx-1 h-3.5 w-px bg-line" />
+        </>
+      )}
+      <span className={cn("flex min-w-0 items-center gap-1.5 text-[12px]", !toggle && "pl-1")}>
         {crumbs.map((crumb, index) => (
           <Fragment key={crumb.label}>
             {index > 0 && <span className="text-line-strong">/</span>}
-            <span className={cn("truncate", index === crumbs.length - 1 ? "font-medium text-fg" : "text-muted", crumb.mono && "font-mono text-[12px]")}>
+            <span className={cn("truncate", index === crumbs.length - 1 ? "font-medium text-fg" : "text-muted", crumb.mono && "font-mono text-[11.5px]")}>
               {crumb.label}
             </span>
           </Fragment>
         ))}
       </span>
-      <span className="ml-auto flex items-center gap-1 text-[12px]">
-        <span className="px-1.5 text-muted">Explore</span>
-        <span className="px-1.5 text-muted">Docs</span>
-        <span className="relative flex size-7 items-center justify-center text-muted">
-          <Bell size={14} />
-          <span className="absolute top-1 right-1 size-1.5 rounded-full bg-accent" />
-        </span>
-        <span className="mx-1 h-4 w-px bg-line" />
-        <span className="flex h-7 items-center gap-0.5 rounded-md border border-line px-1.5 text-fg/90">
-          <Plus size={13} />
-          <ChevronDown size={11} className="text-muted" />
-        </span>
-      </span>
-    </div>
-  );
-}
-
-/** A mode's sidebar heading (ModeHeader): on the top bar's line, with what it makes. */
-function SideHead({ children, action }: { children: ReactNode; action?: ReactNode }) {
-  return (
-    <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-line pr-2 pl-3.5">
-      <span className="flex items-center gap-2 text-[13px] font-semibold text-fg">{children}</span>
-      {action && <span className="flex size-6 items-center justify-center text-faint">{action}</span>}
     </div>
   );
 }
@@ -425,7 +467,7 @@ function SideRow({ on, children, bold }: { on?: boolean; children: ReactNode; bo
     <div
       className={cn(
         "flex h-7 items-center gap-2 rounded-md px-2 text-[12px]",
-        on ? "bg-raised text-fg" : bold ? "text-fg" : "text-muted",
+        on ? "bg-sidebar-accent font-medium text-fg" : bold ? "text-fg" : "text-muted",
         bold && "font-semibold",
       )}
     >
@@ -434,13 +476,12 @@ function SideRow({ on, children, bold }: { on?: boolean; children: ReactNode; bo
   );
 }
 
-/** The search at the top of a sidebar. */
-function SideSearch({ children, keys }: { children: ReactNode; keys?: boolean }) {
+/** The search at the top of Chat's sidebar, for its own list (the app bar's search is for everything). */
+function SideSearch({ children }: { children: ReactNode }) {
   return (
     <span className="flex h-7 items-center gap-2 rounded-md bg-surface px-2 text-[11px] text-faint ring-1 ring-line">
       <Search size={12} className="shrink-0" />
       <span className="grow truncate">{children}</span>
-      {keys && <span className="rounded bg-raised px-1 font-mono text-[9px] text-muted ring-1 ring-line">Ctrl K</span>}
     </span>
   );
 }
@@ -452,8 +493,19 @@ function ChatSide() {
   const dms: { who: string; away?: boolean; status?: string }[] = [{ who: "Dana" }, { who: "Jordan" }, { who: "Alex", away: true, status: "🗓️" }];
   return (
     <>
-      <SideHead action={<SquarePen size={14} />}>Chat</SideHead>
-      <div className="space-y-2 px-2 pt-2.5">
+      {/* Chat's own heading row (components/chat/sidebar.tsx): its name, quiet, then Do not disturb and New message. */}
+      <div className="flex h-8 shrink-0 items-center justify-between pt-1 pr-1.5 pl-3">
+        <span className="text-[9.5px] font-medium tracking-wide text-faint uppercase">Chat</span>
+        <span className="flex items-center gap-1 text-faint">
+          <span className="flex size-5.5 items-center justify-center">
+            <BellOff size={12} />
+          </span>
+          <span className="flex size-5.5 items-center justify-center">
+            <SquarePen size={13} />
+          </span>
+        </span>
+      </div>
+      <div className="space-y-2 px-2 pt-1.5">
         <SideSearch>Jump to channel or person</SideSearch>
         <span className="grid grid-cols-3 rounded-md bg-surface p-0.5 text-center text-[10px] font-medium ring-1 ring-line">
           <span className="rounded-sm bg-raised py-0.5 text-fg ring-1 ring-line-strong">All</span>
@@ -573,10 +625,9 @@ function CodeSide() {
   );
   return (
     <>
-      <SideHead>Code</SideHead>
-      <div className="px-2 pt-2.5">
-        <SideSearch keys>Search or jump to…</SideSearch>
-        <div className="mt-2.5 flex h-7 items-center gap-1 px-1 text-[12px] font-medium text-fg">
+      {/* Under the app bar, Code's name is lit on its tab, so the sidebar opens straight on the project. */}
+      <div className="px-2 pt-2">
+        <div className="flex h-7 items-center gap-1 px-1 text-[12px] font-medium text-fg">
           <ChevronLeft size={14} className="text-faint" />
           All projects
         </div>
@@ -1276,16 +1327,13 @@ const SIDES: Record<Scene, ((props: { frame: Frame }) => ReactNode) | null> = {
   chat: ChatSide,
 };
 
-/** Where each page is, as the top bar's trail says it; Chat has no top bar on a computer. */
-const CRUMBS: Record<Scene, { label: string; mono?: boolean }[] | null> = {
-  chat: null,
-  code: [{ label: "acme", mono: true }, { label: "web", mono: true }, { label: "Pull request #431" }],
-  session: [{ label: "acme", mono: true }, { label: "web", mono: true }, { label: "Pull request #431" }],
-  home: [{ label: "acme", mono: true }, { label: "Home" }],
+/** Where each page is, as the page's bar says it: the trail starts after the workspace, which the app bar names. */
+const CRUMBS: Record<Scene, { label: string; mono?: boolean }[]> = {
+  chat: [{ label: "Chat" }],
+  code: [{ label: "web", mono: true }, { label: "Pull request #431" }],
+  session: [{ label: "web", mono: true }, { label: "Pull request #431" }],
+  home: [{ label: "Home" }],
 };
-
-/** The sidebar's colour, a shade lighter than the page (shell.tsx, SIDEBAR_BOX). */
-const SIDE_BG = "color-mix(in srgb, var(--color-surface) 70%, var(--color-bg))";
 
 function Desktop({ frame, reduced }: { frame: Frame; reduced: boolean }) {
   const outer = useRef<HTMLDivElement | null>(null);
@@ -1316,11 +1364,12 @@ function Desktop({ frame, reduced }: { frame: Frame; reduced: boolean }) {
     >
       <div
         ref={canvas}
-        className="absolute top-0 left-0 flex origin-top-left bg-bg text-left"
-        style={{ width: W, height: H, transform: scale === 1 ? undefined : `scale(${scale})`, ["--tour-side" as string]: SIDE_BG } as CSSProperties}
+        className="absolute top-0 left-0 flex origin-top-left flex-col bg-bg text-left"
+        style={{ width: W, height: H, transform: scale === 1 ? undefined : `scale(${scale})` } as CSSProperties}
       >
-        <Rail frame={frame} />
-        <div className="relative min-w-0 flex-1">
+        {/* The app bar stays as the scenes change under it, so only its filled tab moves. */}
+        <AppBar frame={frame} />
+        <div className="relative min-h-0 flex-1">
           {scenes.map((scene) => {
             const Side = SIDES[scene];
             const on = frame.scene === scene;
@@ -1335,12 +1384,12 @@ function Desktop({ frame, reduced }: { frame: Frame; reduced: boolean }) {
                 )}
               >
                 {Side && (
-                  <div className="flex w-52 shrink-0 flex-col overflow-hidden border-r border-line" style={{ background: SIDE_BG }}>
+                  <div className="flex w-52 shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar">
                     <Side frame={frame} />
                   </div>
                 )}
                 <div className="flex min-w-0 flex-1 flex-col">
-                  {crumbs && <TopBar crumbs={crumbs} />}
+                  <PageBar crumbs={crumbs} toggle={!!Side} />
                   <div className="min-h-0 flex-1">{mains[scene]}</div>
                 </div>
               </div>
