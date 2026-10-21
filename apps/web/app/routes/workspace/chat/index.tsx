@@ -4,7 +4,7 @@ import { usePageNavigation } from "../../../lib/use-page-navigation";
 
 import type { Route } from "./+types/index";
 import type { Route as HomeRoute } from "../+types/home";
-import Home, { loader as homeLoader } from "../home";
+import { HomePage, loader as homeLoader } from "../home";
 import { ChatUnavailable, NoChannels } from "../../../components/chat/empty";
 import { ChatSidebar } from "../../../components/chat/sidebar";
 import { NewMessageButton } from "../../../components/chat/actions";
@@ -51,7 +51,7 @@ export async function loader(args: Route.LoaderArgs) {
   return { home: null, unavailable: false, phone, to };
 }
 
-export default function ChatIndex({ loaderData, params, ...props }: Route.ComponentProps) {
+export default function ChatIndex({ loaderData, params }: Route.ComponentProps) {
   const { navigate } = usePageNavigation();
   const { to, home } = loaderData;
   const slug = params.owner.toLowerCase();
@@ -59,7 +59,8 @@ export default function ChatIndex({ loaderData, params, ...props }: Route.Compon
   useEffect(() => {
     if (!home && window.matchMedia("(min-width: 768px)").matches) navigate(to ?? `/${slug}/-/home`, { replace: true });
   }, [home, to, slug, navigate]);
-  if (home) return <Home {...(props as unknown as HomeRoute.ComponentProps)} params={params} loaderData={home} />;
+  // Home drawn here takes its data as a prop: its route's own export would read this route's data instead.
+  if (home) return <HomePage data={home} />;
   return (
     <>
       {/* A phone: the list of conversations, full screen. */}
