@@ -646,6 +646,7 @@ pub async fn run(op: CoordinationOp, services: &Services, viewer: &Viewer, input
                 title: text(input, "title"),
                 body: text(input, "body"),
                 instruction: text(input, "instruction"),
+                prompt: None,
                 mode,
                 handoff,
             };

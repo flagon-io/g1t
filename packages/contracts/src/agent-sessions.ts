@@ -3,8 +3,8 @@
  * Mirrors `crates/contracts/src/agent_sessions.rs` (the integrations
  * service's `start_agent_session`, `agent_sessions_setup`,
  * `sync_agent_session`, `agent_session_link`, `stop_agent_session`,
- * `agent_session_approvals`, `answer_agent_session` and
- * `message_agent_session`).
+ * `agent_session_approvals`, `answer_agent_session`,
+ * `message_agent_session` and `follow_agent_session`).
  */
 import type { ServiceBinding } from "./clients";
 import type { User, Viewer } from "./identity";
@@ -23,7 +23,7 @@ export const AGENT_MODES: { mode: AgentMode; label: string; hint: string }[] = [
 
 /** What `start_agent_session` started, or the hand-off to run. */
 export type AgentSessionStarted = {
-  /** The work item it works on, by number in the workspace: for a pull request with none, its number. */
+  /** The work item it works on, by number in the workspace: for a pull request with none, its number; 0 for one asked from Chat, on none. */
   item: number;
   /** The pull request it carries on with, when it was started on one. */
   pull?: number | null;
@@ -45,12 +45,18 @@ export type AgentSessionsSetup = {
   problem: string | null;
 };
 
-/** What to start: a work item, or a new one from a title and body. */
+/** What to start: a work item, a new one from a title and body, or what someone asked in Chat. */
 export type StartAgentSessionInput = {
   item?: number;
   title?: string;
   body?: string;
   instruction?: string;
+  /**
+   * Without `item` or `title`: what someone asked in Chat's New, as they
+   * wrote it. The session works in the repository on that, tied to no
+   * work item, and none is opened for it. At most `MAX_PROMPT_CHARS`.
+   */
+  prompt?: string;
   mode?: AgentMode;
   /** true: the Claude Code hand-off only; false: a session on the workspace's account, or a refusal. */
   handoff?: boolean;
@@ -64,6 +70,24 @@ export const APPROVAL_WAIT_MS = 10 * 60 * 1000;
 
 /** The most characters of a message sent to a running session. */
 export const MAX_SESSION_MESSAGE_CHARS = 4000;
+
+/** The most characters of what someone asks a new session in Chat (`MAX_PROMPT_CHARS` in the Rust contracts). */
+export const MAX_PROMPT_CHARS = 8000;
+
+/**
+ * The least time between two reads of a running hosted session from
+ * Anthropic for the pages following it, however many there are
+ * (`FOLLOW_EVERY_MS` in the Rust contracts).
+ */
+export const FOLLOW_EVERY_MS = 2000;
+
+/** Where a hosted session stands for a page following it (`follow_agent_session`). */
+export type AgentSessionFollowed = {
+  /** Whether it still goes. */
+  running: boolean;
+  /** How far it was read: changes whenever anything new was read, or it ended. */
+  mark: string;
+};
 
 /** Where a call that waited for approval stands. */
 export type ApprovalStatus = "waiting" | "allowed" | "denied" | "expired" | "ended";
@@ -101,6 +125,12 @@ export interface AgentSessionsApi {
   start(actor: User, repo: RepoPath, input: StartAgentSessionInput): Promise<Result<AgentSessionStarted>>;
   /** Reads the session now (it is otherwise followed every minute). Whether it is still going. */
   sync(repo: RepoPath, id: string, viewer: Viewer): Promise<Result<boolean>>;
+  /**
+   * For a page following a running session: reads it from Anthropic when
+   * nobody did in the last `FOLLOW_EVERY_MS`, and says whether it goes and
+   * how far it was read.
+   */
+  follow(repo: RepoPath, id: string, viewer: Viewer): Promise<Result<AgentSessionFollowed>>;
   /** Where it opens on the Claude Console. Only whoever started it is told. */
   link(actor: User, repo: RepoPath, id: string): Promise<Result<string>>;
   /** Interrupts it and ends its record. Only whoever started it. */
@@ -145,10 +175,12 @@ export function agentSessionsClient(service: ServiceBinding): AgentSessionsApi {
         title: input.title ?? null,
         body: input.body ?? null,
         instruction: input.instruction ?? null,
+        prompt: input.prompt ?? null,
         mode: input.mode ?? null,
         handoff: input.handoff ?? null,
       }),
     sync: (repo, id, viewer) => call("sync_agent_session", { repo, id, viewer }),
+    follow: (repo, id, viewer) => call("follow_agent_session", { repo, id, viewer }),
     link: (actor, repo, id) => call("agent_session_link", { actor, repo, id }),
     stop: (actor, repo, id) => call("stop_agent_session", { actor, repo, id }),
     approvals: (viewer, workspace, session) => call("agent_session_approvals", { viewer, workspace, session: session ?? null }),

@@ -62,9 +62,13 @@ pub struct Asked {
     pub url: String,
 }
 
+/// The most characters of a request a session is started with from Chat
+/// ([`StartAgentSessionArgs::prompt`]).
+pub const MAX_PROMPT_CHARS: usize = 8_000;
+
 /// `start_agent_session`: work on `item` (or a new work item from `title` and
-/// `body`), or carry on with pull request `pull`, as `actor`. Returns
-/// `Outcome<AgentSessionStarted>`.
+/// `body`), carry on with pull request `pull`, or do what `prompt` asks in
+/// the repository, as `actor`. Returns `Outcome<AgentSessionStarted>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StartAgentSessionArgs {
     pub actor: User,
@@ -85,6 +89,12 @@ pub struct StartAgentSessionArgs {
     /// What to do beyond what the work item says.
     #[serde(default)]
     pub instruction: Option<String>,
+    /// Without `item`, `pull` or `title`: what someone asked in Chat's New,
+    /// as they wrote it. The session works in the repository on that, tied
+    /// to no work item, and no work item is opened for it. At most
+    /// [`MAX_PROMPT_CHARS`].
+    #[serde(default)]
+    pub prompt: Option<String>,
     #[serde(default)]
     pub mode: Option<AgentMode>,
     /// `true`: a hand-off to run in Claude Code, never a session started
@@ -99,7 +109,8 @@ pub struct StartAgentSessionArgs {
 #[serde(rename_all = "camelCase")]
 pub struct AgentSessionStarted {
     /// The work item it works on, by number in the workspace: for a pull
-    /// request with none, the pull request's number.
+    /// request with none, the pull request's number; 0 for a session
+    /// started from a `prompt`, which works on none.
     pub item: u32,
     /// The pull request it carries on with, when it was started on one.
     #[serde(default)]
@@ -161,6 +172,28 @@ pub struct SyncAgentSessionArgs {
     pub repo: RepoPath,
     /// The g1t session (`ses_…`).
     pub id: String,
+}
+
+/// `follow_agent_session`: what an open session page asks every few
+/// seconds while a Managed Agents session runs. It reads the session from
+/// Anthropic when nobody did in the last [`FOLLOW_EVERY_MS`] (however many
+/// pages ask, one read per session in that time), and says whether it
+/// still goes and how far it was read. Returns `Outcome<AgentSessionFollowed>`.
+pub type FollowAgentSessionArgs = SyncAgentSessionArgs;
+
+/// The least time between two reads of a running session from Anthropic
+/// for the pages following it.
+pub const FOLLOW_EVERY_MS: u64 = 2_000;
+
+/// Where a session stands for a page following it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentSessionFollowed {
+    /// Whether it still goes.
+    pub running: bool,
+    /// How far it was read: changes whenever anything new was read from
+    /// it, or it ended. A page reads the session again when it changes.
+    pub mark: String,
 }
 
 /// `agent_session_link`: where whoever started a Managed Agents session
