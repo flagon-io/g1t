@@ -73,6 +73,10 @@ export const READS = [
   ["README.md", ["g1t"]],
   // The sandbox's image, built into the runner.
   ["deploy/sandbox/", ["g1t-runner"]],
+  // The merge queue's tests check that the runner's sweep builds a queue
+  // waiting on a refusal again, every five minutes.
+  ["services/runner/src/index.ts", ["g1t-work"]],
+  ["services/runner/wrangler.jsonc", ["g1t-work"]],
   // Code scanning's tests read the scanner's fixtures.
   ["crates/scan/fixtures/", ["g1t-security"]],
 ];

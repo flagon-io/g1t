@@ -770,7 +770,9 @@ impl Work {
                     report.conflicts = paths;
                     break;
                 }
-                Built::Failed(message) => {
+                // A probe that cannot be built, for now or at all, stops:
+                // it narrows nothing down either way.
+                Built::Failed(message) | Built::Unavailable(message) => {
                     report.error = Some(message);
                     break;
                 }

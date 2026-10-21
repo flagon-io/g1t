@@ -1246,6 +1246,12 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    * entry; empty while a batch is being tested or nothing waits.
    */
   queueBuild(repoId: string): Promise<QueueJob[]>;
+  /**
+   * Ids of the repositories whose merge queue waits on a refusal for now
+   * (one being copied into a fork takes no writes), for the runner's sweep
+   * to build again.
+   */
+  waitingQueues(): Promise<string[]>;
   /** Reports that a combined state could not be built or checked. */
   failQueue(entryId: string, token: string, error: string): Promise<Result<QueueState>>;
   /** Takes a pull request out of the merge queue. Members only. */

@@ -1340,6 +1340,7 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
   /** A sweep, for steps whose trigger was missed or whose sandbox died, and the nightly backups. */
   async scheduled(): Promise<void> {
     await this.advanceAll();
+    await this.buildWaitingQueues().catch((error: unknown) => console.log("waiting queues not built", String(error)));
     await this.startBackups().catch((error: unknown) => console.log("backups not started", String(error)));
   }
 
@@ -1367,6 +1368,17 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
       } catch (error) {
         await repos.failBackup(claim.jobId, claim.token, `The sandbox could not start: ${String(error)}`).catch(() => null);
       }
+    }
+  }
+
+  /**
+   * Builds again each merge queue that waits on a refusal for now (a
+   * repository being copied into a fork takes no writes): no event says the
+   * refusal has ended, so the sweep tries, at its pace, never faster.
+   */
+  private async buildWaitingQueues(): Promise<void> {
+    for (const repoId of await workClient(this.env.WORK).waitingQueues()) {
+      await this.buildQueue(repoId).catch((error: unknown) => console.log("queue not built", repoId, String(error)));
     }
   }
 
