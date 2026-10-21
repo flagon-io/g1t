@@ -1807,6 +1807,235 @@ pub struct RepoRedirect {
     pub created_at: String,
 }
 
+// --- Staff only (sudo.g1t.sh): public storage holds ---
+//
+// A write reserves public storage capacity before it reaches the git
+// store, and a native fork locks its source while it copies. One that is
+// interrupted keeps its hold, which refuses later writes. These list the
+// holds, inspect each with the store's state, release only what is
+// provably abandoned (with an audit row), and measure what the store
+// holds against what g1t counted. services/repos/src/storage_holds.rs.
+
+/// What holds capacity: `reservation` (a row of the ledger), `unledgered`
+/// (bytes reserved by code older than the ledger, by repository) or
+/// `copy_lock` (a native fork's lock on its source, by source).
+pub const HOLD_KINDS: [&str; 3] = ["reservation", "unledgered", "copy_lock"];
+
+/// `admin_storage_holds`: every hold, oldest first. Returns `StorageHolds`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminStorageHoldsArgs {
+    #[serde(default)]
+    pub limit: Option<u32>,
+}
+
+/// `admin_inspect_storage_hold`: one hold and the store's state. Returns
+/// `Outcome<StorageHoldInspection>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminStorageHoldArgs {
+    /// One of [`HOLD_KINDS`].
+    pub kind: String,
+    /// A reservation's id; the repository's id for `unledgered`; the
+    /// source's id for `copy_lock`.
+    pub id: String,
+}
+
+/// `admin_release_storage_hold`: releases one hold if it is provably
+/// abandoned, inspecting it again first, and records who and why. Returns
+/// `Outcome<StorageRecovery>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminReleaseStorageHoldArgs {
+    pub kind: String,
+    pub id: String,
+    /// The staff member, as sudo knows them.
+    pub staff: String,
+    pub reason: String,
+}
+
+/// `admin_storage_recoveries`: holds released, newest first. Returns
+/// `Vec<StorageRecovery>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminStorageRecoveriesArgs {
+    #[serde(default)]
+    pub limit: Option<u32>,
+}
+
+/// `admin_storage_drift`: a sample of repositories measured in the store
+/// against `stored_bytes`. Reads only. Returns `StorageDrift`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminStorageDriftArgs {
+    /// How many repositories, at most 20 (5 when unset).
+    #[serde(default)]
+    pub sample: Option<u32>,
+    /// Repositories g1t counts as larger than this are passed over (200 MB
+    /// when unset), so one call stays within a Worker's time.
+    #[serde(default)]
+    pub max_bytes: Option<u64>,
+    /// Particular repositories, by id, instead of a random sample.
+    #[serde(default)]
+    pub repo_ids: Vec<String>,
+}
+
+/// A repository named by a hold.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageHoldRepo {
+    pub id: String,
+    /// `workspace/name`; `None` once its row is gone.
+    pub path: Option<String>,
+    pub private: bool,
+    /// Deleted and not yet purged.
+    pub deleted: bool,
+}
+
+/// One hold, with whether it is provably abandoned.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageHold {
+    /// One of [`HOLD_KINDS`].
+    pub kind: String,
+    /// What [`AdminStorageHoldArgs::id`] takes for it.
+    pub id: String,
+    /// The repository charged; a copy lock's source.
+    pub repo: StorageHoldRepo,
+    /// The repository written; a copy lock's destination.
+    pub target: Option<StorageHoldRepo>,
+    /// `push`, `commit`, `merge`, `queue`, `update`, `land`, `sync`,
+    /// `import` or `fork`; `None` for unledgered bytes.
+    pub operation: Option<String>,
+    /// Who asked, by user id, when known.
+    pub actor: Option<String>,
+    /// `held` while it may run, `ended` once it stopped without knowing
+    /// whether the store took it; `None` for unledgered bytes and locks.
+    pub state: Option<String>,
+    pub bytes: u64,
+    /// RFC 3339; for unledgered bytes, `None`: they predate the ledger.
+    pub since: Option<String>,
+    pub age_seconds: Option<u64>,
+    /// RFC 3339: when it stops (stopped) sending to the store.
+    pub lease_until: Option<String>,
+    /// How an ended one ended.
+    pub outcome: Option<String>,
+    pub abandoned: bool,
+    /// Why it is abandoned, or why not yet, in a sentence.
+    pub why: String,
+    /// RFC 3339: when it will be provably abandoned if nothing changes.
+    pub releasable_at: Option<String>,
+}
+
+/// Every hold, as `admin_storage_holds` answers.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageHolds {
+    /// RFC 3339.
+    pub now: String,
+    /// RFC 3339: when the ledger began. Unledgered bytes are older.
+    pub ledger_since: Option<String>,
+    pub holds: Vec<StorageHold>,
+    /// Holds past `limit`, not listed.
+    pub more: u32,
+}
+
+/// A ref a write asked the store to move, and where the store has it now.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AskedRef {
+    pub name: String,
+    pub asked: String,
+    /// `None` when the store does not have the ref.
+    pub now: Option<String>,
+}
+
+/// What the git store says about one repository a hold names.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpstreamState {
+    /// `charged` (the repository charged), `written` (the one written) or
+    /// `source` (where a fork was copied from).
+    pub role: String,
+    pub repo: StorageHoldRepo,
+    /// Whether the store answered.
+    pub read: bool,
+    /// Why it did not, or that it holds no such repository.
+    pub error: Option<String>,
+    /// Refs it lists: branches, tags and pull requests' heads.
+    pub refs: u32,
+    /// The default branch's commit.
+    pub head: Option<String>,
+    /// For a write that ended, each ref it asked for.
+    pub asked: Vec<AskedRef>,
+    /// What g1t counts for it: measured and reserved bytes, and how much of
+    /// the reservation the ledger accounts for.
+    pub stored_bytes: Option<u64>,
+    pub reserved_bytes: Option<u64>,
+    pub ledger_bytes: Option<u64>,
+}
+
+/// One hold looked at closely, as `admin_inspect_storage_hold` answers.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageHoldInspection {
+    pub hold: StorageHold,
+    pub upstream: Vec<UpstreamState>,
+    /// Whether `admin_release_storage_hold` would release it now.
+    pub releasable: bool,
+    /// Why not, when it would not.
+    pub refusal: Option<String>,
+}
+
+/// A hold staff released, as recorded.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageRecovery {
+    pub id: String,
+    pub kind: String,
+    pub repo_id: String,
+    pub target_id: Option<String>,
+    pub reservation_id: Option<String>,
+    pub operation: Option<String>,
+    pub actor: Option<String>,
+    pub bytes: u64,
+    /// RFC 3339.
+    pub held_since: Option<String>,
+    /// What the inspection found when it was released: the hold and the
+    /// store's state ([`StorageHoldInspection`]).
+    pub evidence: serde_json::Value,
+    pub staff: String,
+    pub reason: String,
+    /// RFC 3339.
+    pub released_at: String,
+}
+
+/// One repository measured in the store.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoDrift {
+    pub repo: StorageHoldRepo,
+    /// What g1t counts (`stored_bytes`), its working copies' included.
+    pub stored_bytes: u64,
+    /// The pack the store sends for every ref, plus what each of its pull
+    /// requests' working copies holds beyond it. `None` when not measured.
+    pub store_bytes: Option<u64>,
+    /// `store_bytes - stored_bytes`: above zero, g1t counts less than the
+    /// store holds.
+    pub drift_bytes: Option<i64>,
+    pub working_copies: u32,
+    /// Why it was not measured, or what failed.
+    pub note: Option<String>,
+}
+
+/// What `admin_storage_drift` measured.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageDrift {
+    /// RFC 3339.
+    pub measured_at: String,
+    pub repos: Vec<RepoDrift>,
+    /// Over the repositories measured.
+    pub stored_bytes: u64,
+    pub store_bytes: u64,
+}
+
 #[cfg(test)]
 mod topic_tests {
     use super::*;

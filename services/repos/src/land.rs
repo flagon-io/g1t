@@ -237,7 +237,9 @@ pub(crate) async fn fast_forward(
                 Error::RustError(why)
             })?;
             if let Some(quota) = quota {
-                if !quota.registry.reserve_public(&quota.repo, pack.len() as u64, quota.cap).await? {
+                // Refused past the copy's lease too: cut short, the push
+                // is refused whole (public_storage.rs).
+                if !quota.grow(pack.len() as u64).await? {
                     let why = "Public repository storage is full. Make room before adding more data.".to_owned();
                     *failure.borrow_mut() = Some(why.clone());
                     return Err(Error::RustError(why));
@@ -265,18 +267,61 @@ pub(crate) async fn fast_forward(
         .filter(|chunk| futures_util::future::ready(!matches!(chunk, Ok(bytes) if bytes.is_empty())));
     let pushed = send(target, "git-receive-pack", crate::git_http::stream_body(body)?, 0).await;
     if let Some(why) = failure.borrow_mut().take() {
+        // The pack was cut short before its end, so the store refused the
+        // push whole, as a push over a limit is (git_http.rs): nothing of
+        // it was kept.
+        if let Some(quota) = &quota {
+            quota.release().await?;
+        }
         return Err(Error::RustError(why));
     }
-    let report = pushed?.bytes().await?;
+    let report = match pushed {
+        Ok(mut pushed) => pushed.bytes().await,
+        Err(error) => Err(error),
+    };
+    let report = match report {
+        Ok(report) => report,
+        Err(error) => {
+            // Whether the store kept any of it is not known: the
+            // reservation stays, ended, for staff (storage_holds.rs).
+            if let Some(quota) = quota {
+                quota.end(&error.to_string()).await;
+            }
+            return Err(error);
+        }
+    };
     let moved = demux.borrow().pack_bytes;
     if let Some(quota) = quota {
-        quota.registry.finish_public(&quota.repo, moved, moved).await?;
+        quota.finish(moved).await?;
     }
     if let (Some(from), Some(to)) = (crate::store::key_from_remote(&source.remote), crate::store::key_from_remote(&target.remote)) {
         meters::record_bytes("internal.git.fetch", &from, 0, moved);
         meters::record_bytes("internal.git.receive_pack", &to, moved, 0);
     }
     Ok(reported(&report, &reference, true))
+}
+
+/// The size of the pack `source` sends for everything `wants` reaches that
+/// `haves` do not, counted as it streams past and never held (storage
+/// drift, storage_holds.rs). What a mirror clone downloads: the store's
+/// own measure of what it keeps, as near as git can ask for it.
+pub(crate) async fn pack_size(source: &GitAccess, wants: &[String], haves: &[String]) -> Result<u64> {
+    if wants.is_empty() {
+        return Ok(0);
+    }
+    let request = crate::copy::upload_request(wants, haves);
+    let sent = request.len() as u64;
+    let mut fetched = send(source, "git-upload-pack", Uint8Array::from(request.as_slice()).into(), sent).await?;
+    let mut demux = Sideband::default();
+    let mut stream = fetched.stream()?;
+    while let Some(chunk) = stream.next().await {
+        demux.feed(&chunk?).map_err(Error::RustError)?;
+    }
+    demux.finish().map_err(Error::RustError)?;
+    if let Some(key) = crate::store::key_from_remote(&source.remote) {
+        meters::record_bytes("internal.git.fetch", &key, 0, demux.pack_bytes);
+    }
+    Ok(demux.pack_bytes)
 }
 
 /// The commands at the start of a receive-pack request for many refs:

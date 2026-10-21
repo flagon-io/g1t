@@ -53,6 +53,7 @@ mod shards;
 mod shared;
 mod signatures;
 mod stats;
+mod storage_holds;
 mod store;
 mod test_merge;
 mod transfer;
@@ -719,16 +720,34 @@ impl<S: GitStore> Repos<S> {
                 .access(Scope::Write)
                 .await?;
             let target = copy::Endpoint::bearer(&access.remote, &access.token);
+            let held = std::cell::RefCell::new(None);
             let copied = copy::copy(&copy::Endpoint::anonymous(&url), &target,
-                |bytes| self.registry.reserve_public(&repo, bytes, self.free_public_bytes)).await?;
+                |bytes| self.hold_into(&held, &repo, bytes, public_storage::Operation::Import, Some(&a.owner.id))).await;
+            let held = held.into_inner();
+            let copied = match copied {
+                Ok(copied) => copied,
+                Err(error) => {
+                    if let Some(reservation) = &held {
+                        self.registry.end_public(reservation, &error.to_string(), &[]).await;
+                    }
+                    return Err(error);
+                }
+            };
             self.refs_moved(&repo.id).await;
             match copied {
                 Ok(copied) => {
-                    self.registry.finish_public(&repo, copied.pack_bytes, copied.pack_bytes).await?;
+                    if let Some(reservation) = &held {
+                        self.registry.finish_public(reservation, copied.pack_bytes).await?;
+                    }
                     pushed = copy::import_pushes(&copied.updated, &repo.default_branch);
                 }
                 Err(reason) => {
                     self.store.delete(&store_key(&repo)).await?;
+                    // Its copy in the store is gone, so nothing it reserved
+                    // for is kept.
+                    if let Some(reservation) = &held {
+                        self.registry.release_public(reservation).await?;
+                    }
                     self.registry.remove(&repo.id).await?;
                     // A source that is down is a 503, one that refused a 409.
                     return Ok(Outcome::fail(reason.code(), format!("The repository could not be stored: {reason}")));
@@ -743,16 +762,34 @@ impl<S: GitStore> Repos<S> {
                 .access(Scope::Write)
                 .await?;
             let target = copy::Endpoint::bearer(&access.remote, &access.token);
+            let held = std::cell::RefCell::new(None);
             let copied = copy::copy(&source, &target,
-                |bytes| self.registry.reserve_public(&repo, bytes, self.free_public_bytes)).await?;
+                |bytes| self.hold_into(&held, &repo, bytes, public_storage::Operation::Import, Some(&a.owner.id))).await;
+            let held = held.into_inner();
+            let copied = match copied {
+                Ok(copied) => copied,
+                Err(error) => {
+                    if let Some(reservation) = &held {
+                        self.registry.end_public(reservation, &error.to_string(), &[]).await;
+                    }
+                    return Err(error);
+                }
+            };
             self.refs_moved(&repo.id).await;
             match copied {
                 Ok(copied) => {
-                    self.registry.finish_public(&repo, copied.pack_bytes, copied.pack_bytes).await?;
+                    if let Some(reservation) = &held {
+                        self.registry.finish_public(reservation, copied.pack_bytes).await?;
+                    }
                     pushed = copy::import_pushes(&copied.updated, &repo.default_branch);
                 }
                 Err(reason) => {
                     self.store.delete(&store_key(&repo)).await?;
+                    // Its copy in the store is gone, so nothing it reserved
+                    // for is kept.
+                    if let Some(reservation) = &held {
+                        self.registry.release_public(reservation).await?;
+                    }
                     self.registry.remove(&repo.id).await?;
                     // A source that is down is a 503, one that refused a 409.
                     return Ok(Outcome::fail(reason.code(), format!("The repository could not be copied: {reason}")));
@@ -1767,7 +1804,7 @@ impl<S: GitStore> Repos<S> {
         let source_access = source_git.access(Scope::Read).await?;
         let target_access = target_git.access(Scope::Write).await?;
         let pushed =
-            land::fast_forward(&source_access, &target_access, branch, old.as_deref(), &new, self.public_quota(&target))
+            land::fast_forward(&source_access, &target_access, branch, old.as_deref(), &new, self.public_quota(&target, public_storage::Operation::Land, Some(&a.actor.id)))
                 .await?;
         self.refs_moved(&target.id).await;
         if let Err(reason) = pushed {
@@ -2267,12 +2304,18 @@ impl<S: GitStore> Repos<S> {
                 .and_then(|v| v.parse::<u64>().ok())
                 .unwrap_or(pack_limits::PLATFORM_BODY_LIMIT_BYTES)
                 .min(pack_limits::PLATFORM_BODY_LIMIT_BYTES);
-            if !self.registry.reserve_public(&repo, requested, self.free_public_bytes).await? {
+            let pusher = viewer.as_ref().map(|viewer| viewer.id.as_str());
+            let Some(reservation) = self.registry
+                .reserve_public(&repo, requested, self.free_public_bytes, public_storage::Operation::Push, pusher).await?
+            else {
                 return git_ops::public_storage_full_response(&repo.namespace,
                     self.registry.public_bytes(&repo.namespace).await?, self.free_public_bytes);
-            }
+            };
             limits.repo_limit = limits.repo_limit.min(limits.held.saturating_add(requested));
-            Some(requested)
+            // A push still streaming at the lease is cut short, so the store
+            // refuses it whole and nothing of it arrives after.
+            limits.deadline_ms = Some(reservation.lease_until_ms);
+            Some(reservation)
         } else { None };
         // The store's credential, when the store is asked: kept for the git
         // edge too, which catches up with the store using it.
@@ -2341,18 +2384,21 @@ impl<S: GitStore> Repos<S> {
             match outcome {
                 git_http::Push::Forwarded(forwarded) => forwarded,
                 git_http::Push::Refused(response) => {
-                    if let Some(reserved) = public_reserved { self.registry.release_public(&repo, reserved).await?; }
+                    if let Some(reserved) = &public_reserved { self.registry.release_public(reserved).await?; }
                     after.ended(403, Some("The push was declined by rules.".to_owned()));
                     after.spawn(env, ctx);
                     return Ok(response);
                 }
                 git_http::Push::Blocked(response) => {
-                    if let Some(reserved) = public_reserved { self.registry.release_public(&repo, reserved).await?; }
+                    if let Some(reserved) = &public_reserved { self.registry.release_public(reserved).await?; }
                     after.ended(403, Some("The push adds a secret.".to_owned()));
                     after.spawn(env, ctx);
                     return Ok(response);
                 }
                 git_http::Push::Declined(response, reason) => {
+                    // Refused before the store was asked, or cut short so
+                    // the store refused it whole: nothing of it is kept.
+                    if let Some(reserved) = &public_reserved { self.registry.release_public(reserved).await?; }
                     after.ended(403, Some(format!("The push was declined: {reason}.")));
                     after.spawn(env, ctx);
                     return Ok(response);
@@ -2370,11 +2416,17 @@ impl<S: GitStore> Repos<S> {
         timing.mark("store");
         let mut response = forwarded.response;
         let status = response.status_code();
-        if let Some(reserved) = public_reserved {
-            // Retain the whole reservation on ambiguous upstream failure.
+        if let Some(reserved) = &public_reserved {
             // Successful uploads replace it with the actual admitted pack.
+            // On any other answer the store may have kept the push, so the
+            // whole reservation stays, ended, with the refs it asked for:
+            // staff release it once they have looked (storage_holds.rs).
             if status == 200 {
-                self.registry.finish_public(&repo, reserved, forwarded.pack_bytes).await?;
+                self.registry.finish_public(reserved, forwarded.pack_bytes).await?;
+            } else {
+                let refs: Vec<(String, String)> =
+                    forwarded.pushed.iter().map(|pushed| (pushed.git_ref.clone(), pushed.after.clone())).collect();
+                self.registry.end_public(reserved, &format!("The store answered the push with {status}."), &refs).await;
             }
         }
         if write && !get {
@@ -3172,6 +3224,14 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         // moving a repository between them (namespaces.rs, moves.rs).
         "namespaces" => reply(&repos.standings().await?),
         "move_repository" => reply(&repos.move_repository(args(body)?).await?),
+        // Staff only, from sudo: public storage holds that outlived their
+        // write, released only when provably abandoned (storage_holds.rs),
+        // and what the store holds against what g1t counted.
+        "admin_storage_holds" => reply(&repos.admin_storage_holds(args(body)?).await?),
+        "admin_inspect_storage_hold" => reply(&repos.admin_inspect_storage_hold(args(body)?).await?),
+        "admin_release_storage_hold" => reply(&repos.admin_release_storage_hold(args(body)?).await?),
+        "admin_storage_recoveries" => reply(&repos.admin_storage_recoveries(args(body)?).await?),
+        "admin_storage_drift" => reply(&repos.admin_storage_drift(args(body)?).await?),
         "repository_moves" => {
             let a: moves::ListMovesArgs = args(body)?;
             reply(&repos.registry.moves(a.limit.unwrap_or(50)).await?)

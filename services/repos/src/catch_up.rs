@@ -29,6 +29,7 @@ use g1t_kit::now_ms;
 use g1t_scan::pack::{ObjectKind, TreeItem, encode_tree, extend_pack, object_id, write_pack};
 use worker::Result;
 
+use crate::public_storage::Operation;
 use crate::registry::{can_read, can_write, store_key};
 use crate::store::{GitRepo, GitStore, Scope};
 use crate::merge_methods::{Applied, Reader, apply};
@@ -599,12 +600,12 @@ impl<S: GitStore> Repos<S> {
     ) -> Result<Outcome<PullBranchUpdate>> {
         let branch = update.branch;
         let source_access = source_git.access(Scope::Write).await?;
-        if !self.registry.reserve_public(source, pack.len() as u64, self.free_public_bytes).await? {
+        let Some(pushed) = self
+            .push_reserved(source, Operation::Update, Some(&actor.id), &source_access, branch, Some(update.head), update.commit, pack)
+            .await?
+        else {
             return Ok(Outcome::fail(FailureCode::Forbidden, "Public repository storage is full. Make room before adding more data."));
-        }
-        let bytes = pack.len() as u64;
-        let pushed = land::push_pack(&source_access, branch, Some(update.head), update.commit, pack).await?;
-        self.registry.finish_public(source, bytes, bytes).await?;
+        };
         self.refs_moved(&source.id).await;
         let git_ref = format!("refs/heads/{branch}");
         let path = RepoPath {

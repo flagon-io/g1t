@@ -603,6 +603,9 @@ pub struct PushLimits {
     pub scan_cap: usize,
     /// What happens to a larger one.
     pub large: LargePushes,
+    /// When a push streamed to the store is cut short, in milliseconds:
+    /// its storage reservation's lease (public_storage.rs).
+    pub deadline_ms: Option<u64>,
 }
 
 impl Default for PushLimits {
@@ -613,6 +616,7 @@ impl Default for PushLimits {
             repo_limit: crate::pack_limits::DEFAULT_REPO_LIMIT_BYTES,
             scan_cap: crate::secret_scan::MAX_SCANNED_PUSH,
             large: LargePushes::Refuse,
+            deadline_ms: None,
         }
     }
 }
@@ -645,6 +649,8 @@ pub enum SizeViolation {
     Object { size: u64 },
     Repository { held: u64, incoming: u64, limit: u64 },
     Unscannable { size: u64, cap: usize },
+    /// Still streaming at its deadline ([`PushLimits::deadline_ms`]).
+    Overdue { minutes: u64 },
 }
 
 /// Why a push is declined for its size, as git shows it: the `ng` reason,
@@ -689,6 +695,14 @@ pub fn size_refusal(violation: &SizeViolation) -> (String, Vec<String>) {
                 "  git rev-list --reverse HEAD | awk 'NR % 500 == 0' | xargs -I{} git push origin {}:refs/heads/main".to_owned(),
                 format!("A push over {} is refused by the network before it reaches g1t (HTTP 413).", megabytes(PLATFORM_BODY_LIMIT_BYTES)),
                 "See https://docs.g1t.sh/guides/git/#size-limits. Nothing was pushed.".to_owned(),
+            ],
+        ),
+        SizeViolation::Overdue { minutes } => (
+            "the push took too long".to_owned(),
+            vec![
+                format!("g1t takes a push for up to {minutes} minutes; this one was still arriving."),
+                "Push again from a faster connection, or in parts: https://docs.g1t.sh/guides/git/#size-limits.".to_owned(),
+                "Nothing was pushed.".to_owned(),
             ],
         ),
     }
@@ -1273,6 +1287,13 @@ async fn push(
                 let chunk = chunk?;
                 let mut walked = walked.borrow_mut();
                 walked.1 += chunk.len() as u64;
+                if let Some(deadline) = limits.deadline_ms
+                    && g1t_kit::now_ms() > deadline
+                {
+                    let minutes = crate::public_storage::LEASE_MS / 60_000;
+                    *found.borrow_mut() = Some(SizeViolation::Overdue { minutes });
+                    return Err(worker::Error::RustError("push past its deadline".into()));
+                }
                 if let Some(violation) = check_size(&mut walked.0, &chunk, &limits) {
                     *found.borrow_mut() = Some(violation);
                     return Err(worker::Error::RustError("push over the size limit".into()));

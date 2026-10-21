@@ -354,6 +354,8 @@ mod tests {
             "land::fast_forward(",
             "land::push_ref(",
             "copy::copy(",
+            // public_storage.rs: land::push_pack under a reservation.
+            "push_reserved(",
         ];
         let sources = [
             ("lib.rs", include_str!("lib.rs")),
