@@ -86,11 +86,12 @@ export function movedSessionsPath(pathname: string, search = ""): string | null 
   return match ? `/${match[1]!.toLowerCase()}/-/chat/sessions${match[2] ?? ""}${search}` : null;
 }
 
-/** A new work item, started from a repository (its origin) when `repo` is given, and as a sub-item of `parent`. */
-export function newItemPath(workspace: string, repo?: string | null, parent?: number | null): string {
+/** A new work item, started from a repository (its origin) when `repo` is given, as a sub-item of `parent`, and in `project` (a slug). */
+export function newItemPath(workspace: string, repo?: string | null, parent?: number | null, project?: string | null): string {
   const query = new URLSearchParams();
   if (repo) query.set("repo", repo);
   if (parent) query.set("parent", String(parent));
+  if (project) query.set("project", project);
   const text = query.toString();
   return `${workPath(workspace, "new")}${text ? `?${text}` : ""}`;
 }
@@ -134,6 +135,8 @@ export type WorkFilters = {
   role: LinkRole | null;
   /** Only the sub-items of the work item of this number. */
   parent: number | null;
+  /** Only those in the project of this slug. */
+  project: string;
 };
 
 /**
@@ -152,6 +155,7 @@ export function workFilters(query: URLSearchParams): WorkFilters {
   let repo = query.get("repo") ?? "";
   let role = roleOf(query.get("role"));
   let parent = itemNumberOf(query.get("parent")) ?? null;
+  let project = query.get("project") ?? "";
   for (const [, key, quoted, plain] of (query.get("q") ?? "").matchAll(/(\w+):(?:"([^"]*)"|(\S+))/g)) {
     const value = quoted ?? plain ?? "";
     if (key === "label") label = value;
@@ -163,6 +167,7 @@ export function workFilters(query: URLSearchParams): WorkFilters {
     else if (key === "repo") repo = value;
     else if (key === "role") role = roleOf(value);
     else if (key === "parent") parent = itemNumberOf(value) ?? null;
+    else if (key === "project") project = value;
   }
   return {
     state: horizon ? "open" : state,
@@ -174,6 +179,7 @@ export function workFilters(query: URLSearchParams): WorkFilters {
     // A role says how a repository is linked: without one it means nothing.
     role: repo.trim() ? role : null,
     parent,
+    project: project.trim().toLowerCase(),
   };
 }
 
@@ -193,7 +199,7 @@ function horizonOf(value: string | null | undefined): Horizon | null {
  * there are none in this state.
  */
 export function emptyListTitle(filters: WorkFilters, repoName: string | null): string {
-  const others = filters.label || filters.milestone || filters.assignee;
+  const others = filters.label || filters.milestone || filters.assignee || filters.project;
   if (filters.horizon && !filters.repo && !others && !filters.parent) return `Nothing in ${HORIZON_LABELS[filters.horizon]}`;
   if (repoName && !filters.horizon && !others && !filters.parent) return `No ${filters.state} work items linked to ${repoName}`;
   if (filters.parent && !filters.horizon && !filters.repo && !others) return `No ${filters.state} sub-items of #${filters.parent}`;
@@ -203,12 +209,12 @@ export function emptyListTitle(filters: WorkFilters, repoName: string | null): s
 
 /** Whether any filter but the state is set. */
 export function filtered(filters: WorkFilters): boolean {
-  return Boolean(filters.horizon || filters.label || filters.milestone || filters.assignee || filters.repo || filters.parent);
+  return Boolean(filters.horizon || filters.label || filters.milestone || filters.assignee || filters.repo || filters.parent || filters.project);
 }
 
 /** How many filters but the state are set: the phone's Filters button shows it. */
 export function filterCount(filters: WorkFilters): number {
-  return [filters.horizon, filters.label, filters.milestone, filters.assignee, filters.repo, filters.parent].filter(Boolean).length;
+  return [filters.horizon, filters.label, filters.milestone, filters.assignee, filters.repo, filters.parent, filters.project].filter(Boolean).length;
 }
 
 /** The filters as an address's query, in a steady order, leaving out what is unset. */
@@ -222,6 +228,7 @@ export function workQuery(filters: Partial<WorkFilters>): string {
   if (filters.milestone) params.set("milestone", String(filters.milestone));
   if (filters.assignee) params.set("assignee", filters.assignee);
   if (filters.parent) params.set("parent", String(filters.parent));
+  if (filters.project) params.set("project", filters.project);
   return params.toString();
 }
 

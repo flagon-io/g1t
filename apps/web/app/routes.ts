@@ -274,6 +274,13 @@ export default [
       route("-/work/labels", "routes/workspace/work/labels.tsx"),
       route("-/work/milestones", "routes/workspace/work/milestones.tsx"),
       route("-/work/milestones/:number", "routes/workspace/work/milestone.tsx"),
+      // Projects: homes for bodies of work, each with its brief, people and
+      // items. The list (and making one), the live ones for the sidebar,
+      // and each project's Overview and Items.
+      route("-/work/projects", "routes/workspace/work/projects.tsx"),
+      route("-/work/projects.json", "routes/workspace/work/projects-json.ts"),
+      route("-/work/projects/:slug", "routes/workspace/work/project.tsx"),
+      route("-/work/projects/:slug/items", "routes/workspace/work/project-items.tsx"),
       route("-/work/ref/:number", "routes/workspace/work/ref.ts"),
       route("-/work/:number", "routes/workspace/work/item.tsx"),
       route("-/today", "routes/workspace/moved.ts", { id: "routes/workspace/moved-today" }),

@@ -11,6 +11,7 @@ import {
   Building2,
   ChartLine,
   Flag,
+  FolderKanban,
   MessagesSquare,
   Bell,
   BookMarked,
@@ -85,6 +86,7 @@ import {
   type Membership,
   type Spike,
   type User,
+  type WorkProject,
   hasCodeAccess,
   mayCreateTeams,
   shownUsername,
@@ -170,6 +172,8 @@ import { useLiveBadges } from "../lib/notify-client";
 import { OwnPresenceDot, OwnPresenceItems, StatusDialog } from "./presence";
 import { THEME_COMMANDS, ThemeMenuSwitch } from "./theme-switch";
 import { newItemPath, repoWorkPath, sessionsPath, workPath } from "../lib/work-items";
+import { HEALTH_LABELS, projectPath, projectsJsonPath, projectsPath } from "../lib/projects";
+import { HealthDot, ProjectMark } from "./projects";
 
 /**
  * What the sidebar needs, worked out by the root loader. For a visitor who
@@ -1566,7 +1570,8 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
  * work item first, then its work items: the plan, the board of them as they
  * move, Triage, the views of all of them people keep coming back to, saved
  * in the address (open, yours, closed), and the workspace's labels and
- * milestones. Sessions, the work agents do on them, are Chat's.
+ * milestones; then its live projects. Sessions, the work agents do on
+ * them, are Chat's.
  */
 function WorkSidebar({ slug, username }: { slug: string; username: string }) {
   const { pathname: path, search } = useSidebarLocation();
@@ -1612,8 +1617,71 @@ function WorkSidebar({ slug, username }: { slug: string; username: string }) {
             Milestones
           </SidebarLink>
         </NavRows>
+        <Rule />
+        <WorkProjectsGroup slug={slug} />
       </nav>
     </div>
+  );
+}
+
+/** A project as Work's sidebar lists it (routes/workspace/work/projects-json.ts). */
+type SidebarProject = Pick<WorkProject, "slug" | "name" | "color" | "icon" | "health" | "state">;
+
+/**
+ * Work's Projects: the workspace's live projects, active first, each with
+ * its health as a dot, then New project. Read by the sidebar itself, once
+ * per workspace, and again after any form on the site is sent (a project
+ * made or changed), so no page has to carry it.
+ */
+function WorkProjectsGroup({ slug }: { slug: string }) {
+  const { pathname: path } = useSidebarLocation();
+  const fetcher = useFetcher<{ projects: SidebarProject[] | null }>({ key: `work-projects:${slug}` });
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data === undefined) fetcher.load(projectsJsonPath(slug));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug]);
+  const projects = fetcher.data?.projects;
+  const all = projectsPath(slug);
+  return (
+    <NavGroup
+      title="Projects"
+      action={
+        <Hint label="New project">
+          <SidebarGroupAction asChild className="relative top-auto right-auto">
+            <Link to={projectsPath(slug, "new=1")} aria-label="New project">
+              <Plus />
+            </Link>
+          </SidebarGroupAction>
+        </Hint>
+      }
+    >
+      <SidebarLink to={all} end icon={<FolderKanban size={15} />} current={path === all}>
+        All projects
+      </SidebarLink>
+      {projects === undefined ? (
+        <SidebarMenuItem>
+          <Skeleton className="mx-2 my-1.5 h-4 w-28" />
+        </SidebarMenuItem>
+      ) : projects === null ? (
+        <SidebarMenuItem>
+          <p className="px-2 py-1.5 text-xs text-faint">Projects could not be loaded just now.</p>
+        </SidebarMenuItem>
+      ) : (
+        projects.map((project) => (
+          <SidebarLink key={project.slug} to={projectPath(slug, project.slug)} icon={<ProjectMark project={project} size={16} className="rounded text-[0.625rem]" />}>
+            <span className="flex min-w-0 items-center justify-between gap-2">
+              <span className="truncate">{project.name}</span>
+              <span className="mr-0.5 inline-flex" aria-label={project.health ? HEALTH_LABELS[project.health] : undefined}>
+                <HealthDot health={project.health} className={project.health ? undefined : "opacity-0"} />
+              </span>
+            </span>
+          </SidebarLink>
+        ))
+      )}
+      <SidebarLink to={projectsPath(slug, "new=1")} icon={<Plus size={15} />} current={false}>
+        <span className="text-muted">New project</span>
+      </SidebarLink>
+    </NavGroup>
   );
 }
 

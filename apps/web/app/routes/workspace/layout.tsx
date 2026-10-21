@@ -139,6 +139,10 @@ const PAGES: Record<string, { title: string; about: string }> = {
     title: "Labels",
     about: "The workspace's labels, shared by every work item and pull request in it.",
   },
+  "work/projects": {
+    title: "Projects",
+    about: "Homes for bodies of work: each with its brief, its lead and people, its work items, the repositories it lands in, and how it is going.",
+  },
   "work/milestones": {
     title: "Milestones",
     about: "Goals with a due date, that work items and pull requests from every repository of the workspace are gathered under.",
