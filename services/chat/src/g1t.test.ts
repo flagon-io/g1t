@@ -20,6 +20,8 @@ import {
   shownAnswer,
   startsAnswer,
   withProposalState,
+  startedSessionCard,
+  startedSessionText,
   type SaidRow,
 } from "./g1t.ts";
 
@@ -111,6 +113,33 @@ test("the conversation leaves out failed answers, the set-up note, the answer be
     row("m7", G1T_KEY, "", { answer: { state: "thinking" } }),
   ];
   assert.deepEqual(conversation(rows), [{ role: "user", content: "First\n\nSecond" }]);
+});
+
+test("a session started from the conversation is g1t's card, linked to its page, and g1t reads back that it started it", () => {
+  const card = startedSessionCard("Acme", { id: "ses_01abc", title: "Why is CI slow?", repo: "acme/web" })!;
+  assert.equal(card.kind, "session");
+  assert.equal(card.href, "/acme/-/chat/sessions/ses_01abc");
+  assert.equal(card.ref, "ses_01abc");
+  assert.equal(card.state, "Working");
+  assert.deepEqual(card.fields, [{ label: "Repository", value: "acme/web" }]);
+  // Never a session id g1t did not make, nor a repository of another workspace.
+  assert.equal(startedSessionCard("acme", { id: "ses_1/../x", title: "t", repo: "acme/web" }), null);
+  assert.equal(startedSessionCard("acme", { id: "ses_1", title: "t", repo: "other/web" }), null);
+  assert.equal(startedSessionCard("acme", { id: "ses_1", title: "  ", repo: "acme/web" })?.title, "Hosted session");
+  const text = startedSessionText(card);
+  assert.match(text, /in acme\/web/);
+  assert.match(text, /\/acme\/-\/chat\/sessions\/ses_01abc/);
+  const rows = [
+    row("m1", ana, "Why is CI slow?"),
+    row("m2", G1T_KEY, text, { session: "ses_01abc" }, { kind: "card" }),
+    row("m3", G1T_KEY, "an old agent's card", null, { kind: "card" }),
+    row("m4", ana, "And is it fixed?"),
+  ];
+  assert.deepEqual(conversation(rows), [
+    { role: "user", content: "Why is CI slow?" },
+    { role: "assistant", content: text },
+    { role: "user", content: "And is it fixed?" },
+  ]);
 });
 
 test("the answer being written, read with the conversation, changes nothing the answer reads", () => {
