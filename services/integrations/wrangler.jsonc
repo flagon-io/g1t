@@ -25,7 +25,10 @@
     // Where a transferred repository is now, for moving its links.
     { "binding": "REPOS", "service": "g1t-repos" },
     // An imported repository's project takes GitHub's description.
-    { "binding": "PROJECTS", "service": "g1t-projects" }
+    { "binding": "PROJECTS", "service": "g1t-projects" },
+    // A hosted session's call that waits for approval, published for its
+    // starter's inbox, and settled once it is answered (src/agent_sessions.rs).
+    { "binding": "EVENTS", "service": "g1t-events" }
   ],
   // Work starting on, and finishing, what an outside system is waiting on.
   // Every minute: sessions started on workspaces' Anthropic accounts are

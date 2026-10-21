@@ -329,9 +329,103 @@ pub struct MessageAgentSessionArgs {
     pub text: String,
 }
 
+// --- Telling whoever started a session that a call waits -------------------
+//
+// When g1t first sees a call of a Managed Agents session waiting for
+// approval, the integrations service publishes [`APPROVAL_REQUESTED`], and
+// the events service's inbox gives whoever started the session an item
+// about it (warning, reason `agent`), under Needs you. Once the call is
+// answered, declined for want of an answer, or its session ends,
+// [`APPROVAL_SETTLED`] marks that item done. Each call is its own thread
+// ([`approval_thread`]), so a session waiting on two calls is two items.
+
+/// A call of a hosted session started waiting: see [`ApprovalRequested`].
+pub const APPROVAL_REQUESTED: &str = "agent_session.approval_requested";
+/// A call stopped waiting: see [`ApprovalSettled`].
+pub const APPROVAL_SETTLED: &str = "agent_session.approval_settled";
+
+/// The inbox thread of one call waiting for approval.
+pub fn approval_thread(session_id: &str, tool_use_id: &str) -> String {
+    format!("agent-session:{session_id}/approval/{tool_use_id}")
+}
+
+/// Every call of a session, as a GLOB pattern over inbox threads; none for
+/// an id that is not one g1t made (it would match more than its own).
+pub fn approval_threads(session_id: &str) -> Option<String> {
+    let clean = !session_id.is_empty() && session_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    clean.then(|| format!("agent-session:{session_id}/approval/*"))
+}
+
+/// Where a call is answered: its session's page, at its card (`#approval-…`,
+/// which the site also reads to show the call once in Needs attention).
+pub fn approval_link(workspace: &str, session_id: &str, tool_use_id: &str) -> String {
+    format!("/{}/-/chat/sessions/{session_id}#approval-{tool_use_id}", workspace.to_lowercase())
+}
+
+/// What whoever started a session is told when one of its calls first
+/// waits: the session (its work item, else its repository), the tool and
+/// what the call does in one line (secrets already hidden).
+pub fn approval_notice(repo: &str, item: Option<u32>, tool: &str, summary: &str) -> (String, String) {
+    let session = match item {
+        Some(number) => format!("Your hosted session on #{number}"),
+        None => format!("Your hosted session in {repo}"),
+    };
+    // As the site names a tool: `g1t:work_item` is work_item (g1t).
+    let tool = match tool.split_once(':') {
+        Some((server, name)) => format!("{name} ({server})"),
+        None => tool.to_owned(),
+    };
+    (format!("{session} waits for your approval to use {tool}"), summary.to_owned())
+}
+
+/// [`APPROVAL_REQUESTED`]'s data, in the shape the inbox reads a
+/// workspace's own notices in: who to tell (`notify`, usernames), what to
+/// say, where it links, and its thread.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApprovalRequested {
+    pub workspace: String,
+    pub session_id: String,
+    pub tool_use_id: String,
+    pub thread: String,
+    pub notify: Vec<String>,
+    pub title: String,
+    pub body: String,
+    pub link: String,
+}
+
+/// [`APPROVAL_SETTLED`]'s data: one call of a session, or with no
+/// `tool_use_id` every call of it (it ended), and why, in a few words.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApprovalSettled {
+    pub workspace: String,
+    pub session_id: String,
+    #[serde(default)]
+    pub tool_use_id: Option<String>,
+    pub why: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_waiting_call_is_a_thread_of_its_own_that_links_to_its_card() {
+        assert_eq!(approval_thread("ses_1", "sevt_3"), "agent-session:ses_1/approval/sevt_3");
+        assert_eq!(approval_threads("ses_1").as_deref(), Some("agent-session:ses_1/approval/*"));
+        assert_eq!(approval_threads("ses_*"), None, "never a pattern wider than one session");
+        assert_eq!(approval_threads(""), None);
+        assert_eq!(approval_link("Acme", "ses_1", "sevt_3"), "/acme/-/chat/sessions/ses_1#approval-sevt_3");
+        assert_eq!(
+            approval_notice("acme/web", Some(4), "bash", "bash: npm install"),
+            ("Your hosted session on #4 waits for your approval to use bash".to_owned(), "bash: npm install".to_owned())
+        );
+        assert_eq!(approval_notice("acme/web", None, "bash", "x").0, "Your hosted session in acme/web waits for your approval to use bash");
+        assert!(approval_notice("acme/web", None, "g1t:work_item", "x").0.ends_with("to use work_item (g1t)"));
+        let data = serde_json::to_value(ApprovalSettled { workspace: "acme".into(), session_id: "ses_1".into(), tool_use_id: None, why: "Ended".into() }).unwrap();
+        assert_eq!(data["sessionId"], "ses_1");
+    }
 
     fn person(id: &str) -> User {
         User { id: id.into(), username: id.into(), verified: true, ..Default::default() }

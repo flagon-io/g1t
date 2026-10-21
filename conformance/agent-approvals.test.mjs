@@ -22,16 +22,18 @@ function database() {
 /** A time on one morning, by minute past noon, in g1t's RFC 3339. */
 const at = (minute) => `2026-10-21T12:${String(minute).padStart(2, "0")}:00.000Z`;
 const keep = (db, session, call, minute, workspace = "acme") =>
-  db.prepare(sql("KEEP_WAITING")).run(session, call, workspace, `${workspace}/web`, 4, "usr_a", "ada", "bash", "bash: npm install", at(minute));
+  db.prepare(sql("KEEP_WAITING")).get(session, call, workspace, `${workspace}/web`, 4, "usr_a", "ada", "bash", "bash: npm install", at(minute));
 /** An answer at `minute`; `cutoff` is ten minutes before then, as the service passes it. */
 const answer = (db, session, call, status, minute, cutoff) => db.prepare(sql("TAKE_ANSWER")).get(status, "bea", at(minute), session, call, at(cutoff));
 const status = (db, session, call) => db.prepare(sql("APPROVAL")).get(session, call)?.status;
 
 test("a call is kept once, and seeing it again changes nothing, answered or not", () => {
   const db = database();
-  keep(db, "ses_1", "sevt_1", 5);
+  // It names the call only when kept just now: its starter is told once.
+  assert.deepEqual({ ...keep(db, "ses_1", "sevt_1", 5) }, { tool_use_id: "sevt_1" });
+  assert.equal(keep(db, "ses_1", "sevt_1", 6), undefined, "seen again: nobody is told again");
   assert.equal(answer(db, "ses_1", "sevt_1", "allowed", 6, 0).status, "allowed");
-  keep(db, "ses_1", "sevt_1", 9);
+  assert.equal(keep(db, "ses_1", "sevt_1", 9), undefined);
   const row = db.prepare(sql("APPROVAL")).get("ses_1", "sevt_1");
   assert.deepEqual([row.status, row.answered_by, row.asked_at], ["allowed", "bea", at(5)]);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM agent_approvals").get().n, 1);
@@ -87,8 +89,19 @@ test("a session that ends leaves nothing waiting", () => {
   const db = database();
   keep(db, "ses_1", "sevt_1", 5);
   keep(db, "ses_2", "sevt_2", 5);
-  db.prepare(sql("END_WAITING")).run(at(6), "ses_1");
+  keep(db, "ses_1", "sevt_3", 5);
+  answer(db, "ses_1", "sevt_3", "allowed", 5, 0);
+  // It names what it ended, so whoever started the session is told it no longer waits.
+  assert.deepEqual(
+    db
+      .prepare(sql("END_WAITING"))
+      .all(at(6), "ses_1")
+      .map((row) => row.tool_use_id),
+    ["sevt_1"],
+  );
   assert.equal(status(db, "ses_1", "sevt_1"), "ended");
+  assert.equal(status(db, "ses_1", "sevt_3"), "allowed");
+  assert.deepEqual(db.prepare(sql("END_WAITING")).all(at(7), "ses_1"), [], "nothing is ended twice");
   assert.equal(status(db, "ses_2", "sevt_2"), "waiting");
   assert.equal(answer(db, "ses_1", "sevt_1", "allowed", 7, 0), undefined);
   db.close();

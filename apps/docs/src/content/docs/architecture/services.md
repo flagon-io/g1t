@@ -38,7 +38,7 @@ and fails if this table and the bindings disagree.
 | `services/notify` | TypeScript | core | Notifications, live pages, presence, browser and phone push | A Durable Object per person, per workspace and per repository | `identity` |
 | `services/telemetry` | TypeScript | core | Logs, traces, metrics and errors for projects, at `otel.g1t.sh` | A Durable Object per project | `billing` |
 | `services/billing` | Rust | core | Usage, holds and settlements, limits, Stripe | D1 `g1t-billing` | `identity`, `packages`, `repos` |
-| `services/integrations` | Rust | core | The workspace's AI providers and Ask g1t, alert sources, issue trackers, the GitHub App | D1 `g1t-integrations` | `identity`, `projects`, `repos`, `work` |
+| `services/integrations` | Rust | core | The workspace's AI providers and Ask g1t, alert sources, issue trackers, the GitHub App | D1 `g1t-integrations` | `events`, `identity`, `projects`, `repos`, `work` |
 | `services/webhooks` | Rust | core | Webhook subscriptions and signed deliveries with retries | D1 `g1t-webhooks` | `identity`, `repos` |
 | `services/og` | TypeScript | core | Social cards and page screenshots, at `og.g1t.sh` | The screenshots bucket | `billing`, `identity`, `projects`, `repos`, `work` |
 

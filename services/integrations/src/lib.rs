@@ -194,6 +194,10 @@ pub(crate) struct Integrations {
     pub(crate) identity: Fetcher,
     pub(crate) work: Fetcher,
     pub(crate) repos: Fetcher,
+    /// The events service: a hosted session's call that starts waiting is
+    /// published to it, for its starter's inbox (agent_sessions.rs). None
+    /// where it is not bound: nobody is told, and everything else works.
+    pub(crate) events: Option<Fetcher>,
     /// Where the API is, for connections' webhook addresses.
     api_url: String,
     /// Where the site is, for links back to work items and pull requests.
@@ -211,6 +215,7 @@ impl Integrations {
             identity: env.service("IDENTITY")?,
             work: env.service("WORK")?,
             repos: env.service("REPOS")?,
+            events: env.service("EVENTS").ok(),
             api_url: var("API_URL", "https://api.g1t.sh"),
             site_url: var("SITE_URL", "https://g1t.sh"),
             mcp_url: var("MCP_URL", "https://mcp.g1t.sh"),
