@@ -7,9 +7,16 @@
  */
 import type { MessageCard } from "@g1t/contracts";
 
-/** A kept card as it goes out: its links kept, actions nobody answers any more dropped. */
+/**
+ * A kept card as it goes out: its links kept, actions nobody answers any
+ * more dropped. g1t's own card for a hosted session started from a
+ * conversation with it (src/g1t.ts `startedSessionCard`: no owner, linked
+ * to the session's page) keeps its session id, which the site follows live.
+ */
 export function shownCard(card: MessageCard): MessageCard {
-  const { owner: _owner, ref: _ref, actions, ...rest } = card;
+  const { owner, ref, actions, ...rest } = card;
   const links = (actions ?? []).filter((action) => !!action?.href);
-  return links.length ? { ...rest, actions: links } : rest;
+  const followed = !owner && card.kind === "session" && /^ses_[0-9a-z]+$/.test(ref ?? "") && /^\/[^/]+\/-\/chat\/sessions\//.test(card.href ?? "");
+  const shown: MessageCard = followed ? { ...rest, ref } : rest;
+  return links.length ? { ...shown, actions: links } : shown;
 }

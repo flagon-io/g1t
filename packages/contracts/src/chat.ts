@@ -696,6 +696,22 @@ export type ChatApi = {
    * clearing again is harmless. Refused for any other conversation.
    */
   g1tClear(workspace: string, channelId: string, viewer: User): Promise<Result<{ cleared: number }>>;
+  /**
+   * Records a hosted session the viewer started from their conversation
+   * with @g1t (Chat's New with a repository), once it has started: what
+   * they asked, as their message, then g1t's card for the session, linked
+   * to its page (`-/chat/sessions/:id`). Neither starts an answer. Their
+   * own direct message with g1t only.
+   */
+  g1tSession(workspace: string, channelId: string, viewer: User, input: G1tSessionInput): Promise<Result<{ asked: ChatMessage; card: ChatMessage }>>;
+};
+
+/** A hosted session started from a conversation with @g1t, and what was asked. */
+export type G1tSessionInput = {
+  /** What the person asked, as they wrote it. */
+  body: string;
+  /** The g1t session (`ses_…`), its title and its repository (`owner/name`, in the workspace). */
+  session: { id: string; title: string; repo: string };
 };
 
 /**
@@ -791,5 +807,7 @@ export function chatClient(service: ServiceBinding): ChatApi {
     g1tProposal: (workspace, channelId, viewer, messageId, state) =>
       call("g1t_proposal", { workspace, channel_id: channelId, viewer, message_id: messageId, state }),
     g1tClear: (workspace, channelId, viewer) => call("g1t_clear", { workspace, channel_id: channelId, viewer }),
+    g1tSession: (workspace, channelId, viewer, input) =>
+      call("g1t_session", { workspace, channel_id: channelId, viewer, body: input.body, session: input.session }),
   };
 }

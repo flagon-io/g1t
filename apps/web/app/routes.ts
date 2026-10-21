@@ -172,8 +172,8 @@ export default [
       // trackers (lib/integration-sections).
       route("-/integrations", "routes/workspace/integrations-directory.tsx"),
       route("-/integrations/:section", "routes/workspace/integrations.tsx"),
-      // Ask g1t, from the top bar: what it answers with, and each answer,
-      // streamed (components/ask-composer).
+      // Ask g1t: what it answers with (Chat's New with no repository), and
+      // starting a session it proposed (components/chat/agent-composer).
       route("-/ask", "routes/workspace/ask.ts"),
       route("-/webhooks", "routes/workspace/webhooks.tsx"),
       // The workspace's own emoji, for chat (components/emoji).
@@ -199,6 +199,11 @@ export default [
       // Ahead of the channels, and `sessions` is no channel's name.
       route("-/chat/sessions", "routes/workspace/work/sessions/list.tsx"),
       route("-/chat/sessions/:id", "routes/workspace/work/sessions/session.tsx"),
+      // What a running hosted session's page asks every few seconds, so it streams.
+      route("-/chat/sessions/:id/follow", "routes/workspace/chat/session-follow.ts"),
+      // What Chat's New needs to start an agent conversation, and starting it
+      // (under `api`, which no channel may be named).
+      route("-/chat/api/agent", "routes/workspace/chat/agent.ts"),
       // The hosted sessions' calls waiting on the viewer's approval, for Needs attention.
       route("-/approvals.json", "routes/workspace/approvals-json.ts"),
       // Allowing or denying one of them from its Needs attention card, on any page.

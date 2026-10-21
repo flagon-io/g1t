@@ -32,6 +32,7 @@ export function Combobox({
   emptyText = "Nothing matches.",
   id,
   className,
+  variant = "field",
   "aria-label": ariaLabel,
 }: {
   options: ComboboxOption[];
@@ -45,6 +46,8 @@ export function Combobox({
   emptyText?: string;
   id?: string;
   className?: string;
+  /** `field`, a form's select; `pill`, a compact chip in a composer's toolbar (components/chat/agent-composer.tsx). */
+  variant?: "field" | "pill";
   "aria-label"?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -68,20 +71,34 @@ export function Combobox({
           aria-label={ariaLabel}
           disabled={disabled}
           className={cn(
-            "group/combobox flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-line bg-bg px-3 text-left text-sm text-fg outline-none transition-colors",
-            "hover:border-line-strong focus-visible:border-accent-dim focus-visible:ring-2 focus-visible:ring-accent/25 focus-visible:outline-none",
-            "data-[state=open]:border-accent-dim data-[state=open]:ring-2 data-[state=open]:ring-accent/25 disabled:cursor-not-allowed disabled:opacity-50",
+            variant === "pill"
+              ? [
+                  "group/combobox flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full px-2.5 text-left text-xs font-medium text-muted outline-none transition-colors",
+                  "hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent/40 data-[state=open]:bg-raised data-[state=open]:text-fg",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
+                ]
+              : [
+                  "group/combobox flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-line bg-bg px-3 text-left text-sm text-fg outline-none transition-colors",
+                  "hover:border-line-strong focus-visible:border-accent-dim focus-visible:ring-2 focus-visible:ring-accent/25 focus-visible:outline-none",
+                  "data-[state=open]:border-accent-dim data-[state=open]:ring-2 data-[state=open]:ring-accent/25 disabled:cursor-not-allowed disabled:opacity-50",
+                ],
             className,
           )}
         >
-          <span className={cn("flex min-w-0 items-center gap-2 truncate [&_svg]:size-4 [&_svg]:shrink-0", !chosen && "text-faint")}>
+          <span
+            className={cn(
+              "flex min-w-0 items-center truncate [&_svg]:shrink-0",
+              variant === "pill" ? "gap-1.5 [&_svg]:size-3.5" : "gap-2 [&_svg]:size-4",
+              !chosen && "text-faint",
+            )}
+          >
             {chosen?.icon}
             <span className="truncate">{chosen ? chosen.label : placeholder}</span>
           </span>
-          <ChevronsUpDown size={14} className="shrink-0 text-faint" />
+          <ChevronsUpDown size={variant === "pill" ? 12 : 14} className="shrink-0 text-faint" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-(--radix-popover-trigger-width) min-w-60 p-0">
+      <PopoverContent align="start" className={cn("min-w-60 p-0", variant === "pill" ? "w-80 max-w-[calc(100vw-2rem)]" : "w-(--radix-popover-trigger-width)")}>
         <Command>
           <CommandInput placeholder={searchPlaceholder} />
           <CommandList>

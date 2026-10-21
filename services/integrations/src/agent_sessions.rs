@@ -107,7 +107,7 @@ const G1T_SKILLS: [(&str, &str); 3] = [
 const RETIRED_SKILLS: [&str; 1] = ["work-on-issue"];
 
 /// The methods this module answers.
-pub const METHODS: [&str; 9] = [
+pub const METHODS: [&str; 10] = [
     "start_agent_session",
     "agent_sessions_setup",
     "sync_agent_session",
@@ -117,6 +117,7 @@ pub const METHODS: [&str; 9] = [
     "agent_session_approvals",
     "answer_agent_session",
     "message_agent_session",
+    "follow_agent_session",
 ];
 
 // --- Requests, built without calling anything ------------------------------
@@ -223,13 +224,18 @@ pub fn token_credential(token: &str, hosts: &[String]) -> Value {
     })
 }
 
+/// A session's body. `item` 0 is a session on no work item (asked from Chat).
 pub fn session_body(agent_id: &str, version: u32, environment_id: &str, vault_id: &str, title: &str, repo: &str, item: u32) -> Value {
+    let mut metadata = json!({ "g1t_repo": repo });
+    if item > 0 {
+        metadata["g1t_item"] = json!(item.to_string());
+    }
     json!({
         "agent": { "type": "agent", "id": agent_id, "version": version },
         "environment_id": environment_id,
         "vault_ids": [vault_id],
         "title": title,
-        "metadata": { "g1t_repo": repo, "g1t_item": item.to_string() },
+        "metadata": metadata,
     })
 }
 
@@ -430,6 +436,9 @@ pub struct Kickoff<'a> {
     pub body: &'a str,
     pub mode: AgentMode,
     pub instruction: Option<&'a str>,
+    /// What someone asked in Chat, in place of a work item (`item` is 0):
+    /// the session does that, in the repository.
+    pub prompt: Option<&'a str>,
     /// The g1t session, once there is one: its trailer.
     pub session_id: Option<&'a str>,
     /// For a session g1t starts: how to reach the repository.
@@ -447,8 +456,52 @@ fn cut(text: &str, max: usize) -> String {
     format!("{}…", kept.trim_end())
 }
 
+/// What separates what someone asked in Chat from what g1t adds to it, in
+/// a session's first message: the site shows what comes before it as what
+/// they asked.
+pub const ASKED_SEPARATOR: &str = "\n\n---\n\n";
+
+/// A session's first message for a request from Chat: what was asked, as
+/// written, then where it works and how to set up.
+fn prompt_kickoff(k: &Kickoff, prompt: &str) -> String {
+    let repo = format!("{}/{}", k.repo.namespace, k.repo.name);
+    let site = k.site.trim_end_matches('/');
+    let mut text = cut(prompt, MAX_PROMPT_CHARS);
+    text.push_str(ASKED_SEPARATOR);
+    text.push_str(&format!(
+        "This was asked from Chat on g1t, in {repo} ({site}/{repo}). It is tied to no work item: answer it, or do it, here. \
+         Your messages show in Chat as you go, and whoever asked can send you more while you work. \
+         If it turns into work worth tracking, open a work item for it with g1t's work_item tool. \
+         If you change code, do it on a branch and open a draft pull request, unless you are asked otherwise.\n"
+    ));
+    if let Some(instruction) = k.instruction.map(str::trim).filter(|text| !text.is_empty()) {
+        text.push_str(&format!("\nAlso: {}\n", cut(instruction, MAX_INSTRUCTION_CHARS)));
+    }
+    if k.managed {
+        text.push_str(&format!("\nSet up first, as one command:\n\n```sh\n{}\n```\n", setup_command(site, &repo, &k.repo.name, k.session_id, k.author)));
+        text.push_str(&format!(
+            "\nIf /usr/local/bin cannot be written, install without G1T_INSTALL_DIR and run ~/.local/bin/g1t. Then work in /workspace/{}.\n",
+            k.repo.name
+        ));
+    }
+    if let Some(id) = k.session_id {
+        text.push_str(&format!("\nThis is g1t session {id}: put `G1t-Session: {id}` on your commits.\n"));
+    }
+    text.trim_end().to_owned()
+}
+
+/// What a session asked from Chat is called: the first line of what was
+/// asked, cut short.
+pub fn prompt_title(prompt: &str) -> String {
+    let line = prompt.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or("Chat");
+    cut(line, 80)
+}
+
 /// The first message of a session, or the prompt of a hand-off.
 pub fn kickoff(k: &Kickoff) -> String {
+    if let Some(prompt) = k.prompt.map(str::trim).filter(|prompt| !prompt.is_empty() && k.pull.is_none()) {
+        return prompt_kickoff(k, prompt);
+    }
     let repo = format!("{}/{}", k.repo.namespace, k.repo.name);
     let workspace = k.repo.namespace.to_lowercase();
     let site = k.site.trim_end_matches('/');
@@ -826,6 +879,11 @@ pub(crate) struct RunRow {
 }
 
 impl RunRow {
+    /// The work item it works on; none for a session asked from Chat (kept as 0).
+    fn item(&self) -> Option<u32> {
+        self.item.filter(|number| *number > 0)
+    }
+
     fn actor(&self) -> User {
         serde_json::from_str(&self.actor).unwrap_or_default()
     }
@@ -899,6 +957,9 @@ const UNTAKE_ANSWER: &str = "UPDATE agent_approvals SET status = 'waiting', answ
 /// A session ended: what still waits has nobody left to answer it. Names the calls it ended.
 const END_WAITING: &str = "UPDATE agent_approvals SET status = 'ended', answered_at = ?1 WHERE session_id = ?2 AND status = 'waiting'
   RETURNING tool_use_id";
+/// Claims the next read of a running run for the pages following it: moves
+/// `synced_at` on to ?1 only if it is at or before ?3, and gives the run when it did.
+const CLAIM_READ: &str = "UPDATE agent_runs SET synced_at = ?1 WHERE session_id = ?2 AND status = 'running' AND synced_at <= ?3 RETURNING *";
 /// One call.
 const APPROVAL: &str = "SELECT * FROM agent_approvals WHERE session_id = ?1 AND tool_use_id = ?2";
 /// A workspace's calls still waiting and asked after ?2, newest first.
@@ -1139,6 +1200,10 @@ impl Integrations {
     /// actor may see them, or the work item named, or a new one opened from
     /// `title` and `body`.
     async fn agent_subject(&self, actor: &User, repo: &RepoPath, a: &StartAgentSessionArgs) -> Result<Outcome<Subject>> {
+        // A request from Chat: no work item, and none opened for it.
+        if let Some(prompt) = asked_prompt(a) {
+            return Ok(Outcome::Ok(Subject { number: 0, title: prompt_title(prompt), body: String::new(), pull: None }));
+        }
         if let Some(number) = a.pull {
             let view = ViewArgs { repo: repo.clone(), number, viewer: Some(actor.clone()), after_seq: 0 };
             let found: Outcome<PullDetail> = g1t_kit::call(&self.work, "get_pull", &view).await?;
@@ -1207,6 +1272,13 @@ impl Integrations {
             return Ok(Outcome::fail(FailureCode::Unauthenticated, "Sign in to start a session."));
         }
         let mode = a.mode.unwrap_or_default();
+        let prompt = asked_prompt(&a);
+        if prompt.is_some_and(|prompt| prompt.chars().count() > MAX_PROMPT_CHARS) {
+            return Ok(Outcome::fail(FailureCode::Invalid, format!("What you ask is at most {MAX_PROMPT_CHARS} characters.")));
+        }
+        if prompt.is_some() && a.handoff == Some(true) {
+            return Ok(Outcome::fail(FailureCode::Invalid, "A request from Chat runs on the workspace's Anthropic account, not as a hand-off."));
+        }
         let (setup, connection) = if a.handoff == Some(true) { (AgentSessionsSetup::default(), None) } else { self.anthropic_connection(&workspace).await? };
         if a.handoff == Some(false) && connection.is_none() {
             return Ok(Outcome::fail(FailureCode::Conflict, setup.problem.unwrap_or_else(|| "Sessions cannot start on this workspace's Anthropic account.".to_owned())));
@@ -1231,6 +1303,7 @@ impl Integrations {
                 body: &subject.body,
                 mode,
                 instruction: a.instruction.as_deref(),
+                prompt,
                 session_id,
                 managed,
                 author: managed.then_some((actor.username.as_str(), author_email.as_str())),
@@ -1259,6 +1332,7 @@ impl Integrations {
         let repo_name = format!("{}/{}", repo.namespace, repo.name);
         let title = match &subject.pull {
             Some((number, title, _)) => format!("#{number} {}", title.trim()),
+            None if subject.number == 0 => subject.title.trim().to_owned(),
             None => format!("#{} {}", subject.number, subject.title.trim()),
         };
         // The token the session holds: g1t acting for this person, in this
@@ -1283,7 +1357,7 @@ impl Integrations {
             let _: Result<()> = g1t_kit::call(&self.identity, "remove_access_token", &RemoveArgs { user: actor.clone(), id: created.info.id.clone() }).await;
         };
         // The vault that holds it, on the account.
-        let pending_id = format!("{repo_name}#{}", subject.number);
+        let pending_id = if subject.number == 0 { repo_name.clone() } else { format!("{repo_name}#{}", subject.number) };
         let vault = match self.call_anthropic(&key, Method::Post, "/v1/vaults", Some(vault_body(&pending_id))).await? {
             Ok(vault) => vault["id"].as_str().unwrap_or_default().to_owned(),
             Err(problem) => {
@@ -1321,14 +1395,14 @@ impl Integrations {
                 harness: Harness::ClaudeManagedAgents,
                 harness_session_id: Some(provider_session.clone()),
                 // A pull request without a work item is only the pull request.
-                item: Some(subject.number).filter(|number| Some(*number) != pull_number),
+                item: Some(subject.number).filter(|number| *number > 0 && Some(*number) != pull_number),
                 pull: pull_number,
                 branch: subject.pull.as_ref().and_then(|(_, _, branch)| branch.clone()),
                 title: Some(title.clone()),
                 head_commit: None,
                 parent_id: None,
                 agent_type: None,
-                task: Some(mode.as_str().to_owned()),
+                task: prompt.is_none().then(|| mode.as_str().to_owned()),
                 prompt: None,
                 model: Some(model.clone()),
             },
@@ -1693,6 +1767,35 @@ impl Integrations {
         Ok(Outcome::Ok(self.sync_run(run).await?))
     }
 
+    /// `follow_agent_session`: see [`FollowAgentSessionArgs`]. The read is
+    /// claimed first (`synced_at` moved on only if it is older than
+    /// [`FOLLOW_EVERY_MS`]), so pages asking at once read it once.
+    pub(crate) async fn follow_agent_session(&self, a: FollowAgentSessionArgs) -> Result<Outcome<AgentSessionFollowed>> {
+        let missing = || Outcome::fail(FailureCode::NotFound, "No session g1t started has that id.");
+        let Some(run) = self.run_row(a.id.trim()).await? else { return Ok(missing()) };
+        let repo = format!("{}/{}", a.repo.namespace, a.repo.name).to_lowercase();
+        if run.repo.to_lowercase() != repo || a.viewer.is_none() {
+            return Ok(missing());
+        }
+        if run.status != "running" {
+            return Ok(Outcome::Ok(followed(&run)));
+        }
+        let now = now_ms();
+        let claimed = self
+            .db
+            .prepare(CLAIM_READ)
+            .bind(&[rfc3339(now).into(), run.session_id.as_str().into(), rfc3339(now.saturating_sub(FOLLOW_EVERY_MS)).into()])?
+            .first::<RunRow>(None)
+            .await?;
+        // Read a moment ago, by this page or another: as it stands.
+        let Some(claimed) = claimed else { return Ok(Outcome::Ok(followed(&run))) };
+        self.sync_run(claimed).await?;
+        Ok(Outcome::Ok(match self.run_row(&run.session_id).await? {
+            Some(now_is) => followed(&now_is),
+            None => followed(&run),
+        }))
+    }
+
     /// `agent_session_link`: the session on the Claude Console, for
     /// whoever started it and no one else. Anyone else, or another
     /// repository, is told there is no such session, not that it is theirs.
@@ -1742,7 +1845,7 @@ impl Integrations {
                 tool_use_id.into(),
                 run.workspace.as_str().into(),
                 run.repo.as_str().into(),
-                run.item.map_or(JsValue::NULL, JsValue::from),
+                run.item().map_or(JsValue::NULL, JsValue::from),
                 actor.id.as_str().into(),
                 actor.username.as_str().into(),
                 tool.into(),
@@ -1752,7 +1855,7 @@ impl Integrations {
             .first::<Value>(None)
             .await?;
         if kept.is_some() && !actor.username.is_empty() {
-            let (title, body) = approval_notice(&run.repo, run.item, tool, summary);
+            let (title, body) = approval_notice(&run.repo, run.item(), tool, summary);
             let data = ApprovalRequested {
                 workspace: run.workspace.clone(),
                 session_id: run.session_id.clone(),
@@ -2051,6 +2154,24 @@ pub fn finished(events: &[Value], spoke_before: bool) -> bool {
     !events[idle + 1..].iter().any(running) && (spoke_before || events[..idle].iter().any(running))
 }
 
+/// What a page following a run is told: whether it goes, and how far it was read.
+fn followed(run: &RunRow) -> AgentSessionFollowed {
+    let running = run.status == "running";
+    AgentSessionFollowed { running, mark: follow_mark(running, run.last_event_id.as_deref()) }
+}
+
+/// How far a run was read, as a page compares it: changes with each new event read, and when it ends.
+pub fn follow_mark(running: bool, last_event_id: Option<&str>) -> String {
+    format!("{}:{}", if running { "running" } else { "ended" }, last_event_id.unwrap_or(""))
+}
+
+/// The request from Chat a session is started with, when it is started
+/// with one: in place of a work item, a pull request or a new work item's title.
+fn asked_prompt(a: &StartAgentSessionArgs) -> Option<&str> {
+    let named = a.item.is_some() || a.pull.is_some() || a.title.as_deref().is_some_and(|title| !title.trim().is_empty());
+    a.prompt.as_deref().map(str::trim).filter(|prompt| !prompt.is_empty() && !named)
+}
+
 /// An entry keyed by the event it came from, so reading again records it once.
 fn keyed(event_id: &str, at: usize, kind: SessionEntryKind, text: String, tool: Option<String>) -> KeyedSessionEntry {
     KeyedSessionEntry { entry: NewSessionEntry { kind, text, tool, commit: None }, key: Some(format!("{event_id}#{at}")) }
@@ -2076,6 +2197,7 @@ pub async fn route(service: &Integrations, method: &str, body: Value) -> Result<
         "agent_session_approvals" => reply(&service.agent_session_approvals(args(body)?).await?),
         "answer_agent_session" => reply(&service.answer_agent_session(args(body)?).await?),
         "message_agent_session" => reply(&service.message_agent_session(args(body)?).await?),
+        "follow_agent_session" => reply(&service.follow_agent_session(args(body)?).await?),
         _ => worker::Response::error("Unknown method", 404),
     }
 }
@@ -2149,6 +2271,7 @@ mod tests {
             body: "Say hello.",
             mode: AgentMode::Implement,
             instruction: Some("Keep it short."),
+            prompt: None,
             session_id: Some("ses_1"),
             managed: true,
             author: Some(("ada", "6c1d0efg+ada@users.noreply.g1t.sh")),
@@ -2173,6 +2296,71 @@ mod tests {
         assert_eq!(environment["config"]["networking"], json!({ "type": "unrestricted" }));
     }
 
+    fn start_args(item: Option<u32>, title: Option<&str>, prompt: Option<&str>) -> StartAgentSessionArgs {
+        StartAgentSessionArgs {
+            actor: User::default(),
+            repo: repo(),
+            item,
+            pull: None,
+            asked: None,
+            title: title.map(str::to_owned),
+            body: None,
+            instruction: None,
+            prompt: prompt.map(str::to_owned),
+            mode: None,
+            handoff: None,
+        }
+    }
+
+    #[test]
+    fn a_request_from_chat_works_in_the_repository_on_no_work_item() {
+        // A prompt counts only without a work item, a pull request or a new one's title.
+        assert_eq!(asked_prompt(&start_args(None, None, Some("  Why is CI slow?  "))), Some("Why is CI slow?"));
+        assert_eq!(asked_prompt(&start_args(Some(4), None, Some("Why?"))), None);
+        assert_eq!(asked_prompt(&start_args(None, Some("New"), Some("Why?"))), None);
+        assert_eq!(asked_prompt(&start_args(None, Some("  "), Some("Why?"))), Some("Why?"));
+        assert_eq!(asked_prompt(&start_args(None, None, Some("   "))), None);
+        assert_eq!(prompt_title("\n  Fix the flaky login test\nIt fails on Fridays."), "Fix the flaky login test");
+        assert!(prompt_title(&"a".repeat(200)).chars().count() <= 80);
+
+        let prompt = kickoff(&Kickoff {
+            site: "https://g1t.sh/",
+            repo: &repo(),
+            item: 0,
+            pull: None,
+            asked: None,
+            title: "Why is CI slow?",
+            body: "",
+            mode: AgentMode::Implement,
+            instruction: None,
+            prompt: Some("Why is CI slow?\nLook at the last week."),
+            session_id: Some("ses_9"),
+            managed: true,
+            author: Some(("ada", "ada@users.noreply.g1t.sh")),
+        });
+        // What was asked comes first, as written, then what g1t adds.
+        let (asked, added) = prompt.split_once(ASKED_SEPARATOR).expect("the separator the site reads");
+        assert_eq!(asked, "Why is CI slow?\nLook at the last week.");
+        assert!(added.contains("in acme/web (https://g1t.sh/acme/web)"));
+        assert!(added.contains("tied to no work item"));
+        assert!(added.contains("git clone https://g1t.sh/acme/web.git /workspace/web"));
+        assert!(added.contains("G1t-Session: ses_9"));
+        assert!(!prompt.contains("work-on-item skill"), "no work item to start the skill on");
+        assert!(!prompt.contains("#0"));
+
+        // Its session names no work item.
+        let session = session_body("agent_1", 3, "env_1", "vlt_1", "Why is CI slow?", "acme/web", 0);
+        assert_eq!(session["metadata"], json!({ "g1t_repo": "acme/web" }));
+    }
+
+    #[test]
+    fn a_followed_session_says_how_far_it_was_read() {
+        assert_eq!(follow_mark(true, Some("sevt_3")), "running:sevt_3");
+        assert_ne!(follow_mark(true, Some("sevt_3")), follow_mark(true, Some("sevt_4")), "a new event changes it");
+        assert_ne!(follow_mark(true, Some("sevt_3")), follow_mark(false, Some("sevt_3")), "so does ending");
+        assert_eq!(follow_mark(true, None), "running:");
+    }
+
     #[test]
     fn modes_ask_for_different_work_and_a_handoff_is_a_command() {
         let prompt = |mode| {
@@ -2186,6 +2374,7 @@ mod tests {
                 body: "",
                 mode,
                 instruction: None,
+                prompt: None,
                 session_id: None,
                 managed: false,
                 author: None,

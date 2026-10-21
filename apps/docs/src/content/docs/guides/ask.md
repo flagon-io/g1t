@@ -1,12 +1,15 @@
 ---
 title: Ask g1t
-description: Ask g1t about your work from the top bar of any page. It answers with your workspace's own AI provider and key, reads g1t as you with read-only access, and shows each step it takes and the pages it drew on.
+description: Ask g1t about your work from the top bar of any page or Chat's New. It answers in your direct message with it, with your workspace's own AI provider and key, reads g1t as you with read-only access, and shows each step it takes and the pages it drew on.
 ---
 
-**Ask**, in the top bar, opens a conversation with g1t beside the page
-you are on. Ask about the work item you are reading, the pull request you are
-reviewing, or anything else about your work, and the answer streams in as
-it is written.
+**Ask**, in the top bar, opens [Chat's New](/guides/chat/#start-a-conversation-with-g1t)
+over the page you are on: a new conversation with g1t. Ask about the work
+item you are reading, the pull request you are reviewing, or anything else
+about your work. Sending opens the conversation in Chat, where the answer
+streams in as it is written. Choose a repository in the box instead, and
+g1t starts agent work there and links it in the conversation (see
+[Start agent work from the conversation](#start-agent-work-from-the-conversation)).
 
 Ask answers with **your workspace's own AI provider**, on your workspace's
 own key: one of [your AI providers](/guides/ai/),
@@ -75,7 +78,7 @@ production telemetry, and what happened across your workspace. Every read
 goes through the same permission checks as your own, so it never sees a
 repository, work item or log you could not open yourself.
 
-Each question asked from the panel is sent with a short note saying that
+Each question asked from a page (Ask, over it) is sent with a short note saying that
 this is Ask in your workspace and which page you are on (a question
 written in Chat says you are in Chat): the repository, and the work item or
 pull request number, when there is one. On a work item or a pull request,
@@ -137,7 +140,7 @@ check.
 
 ### Steps and sources
 
-While Ask works, the panel shows each step as it runs, such as **Read
+While Ask works, the answer shows each step as it runs, such as **Read
 activity in acme since 2026-10-12** or **Read pull request #7 in
 acme/web**, with what it found and a link to the page it read. A step that
 was refused, or that failed, says why. Once the answer is written the steps
@@ -205,37 +208,61 @@ Ask itself still changes nothing: your click on the card does. For a
 repository that already exists, deployments are turned on in its
 **Settings → Deployments**.
 
+### Start agent work from the conversation
+
+In Chat's New (or Ask), the box has a repository picker under it. It
+starts on **No repository**, where g1t answers as above. Choose one of the
+workspace's repositories (the page's own, and the one its sessions ran in
+most, are listed first; New remembers the last one you started work in),
+and optionally an open work item and what to do with it (implement, plan
+or review). Sending then:
+
+1. Starts a [hosted session](/guides/sessions/#start-a-session-on-your-anthropic-account)
+   in that repository, on the workspace's own Anthropic key. Without a work
+   item it works on what you wrote, tied to no work item, and none is
+   opened for it.
+2. Opens a new conversation with g1t in Chat, with what you asked and
+   g1t's card for the session. The card shows whether the session is
+   **Working** or **Done**, and opens the session's page, where it
+   streams and you steer it, stop it or follow it up.
+
+The session is not the conversation: it runs on its own, and the
+conversation links to it. When g1t next answers there, it reads that it
+started the session and where.
+
+When the workspace has no Anthropic connection, the box says so: owners
+get a link to connect it in **AI models**, and anyone else is told to ask
+an owner. Hosted sessions cost nothing on g1t; what the model uses is on
+the workspace's Anthropic bill.
+
 ## Ask from Home
 
 [Home](/guides/home/#ask-from-home) asks g1t for you in three places, all
-in the same conversation as the panel:
+in your conversation with g1t:
 
 - **The box at the top**, under **What are we building today?**, and its
   starters (**What needs me first?**, **What shipped today?**, **Who's
-  working on what?**). What you send there opens the Ask panel and is
-  sent as if you had typed it in the panel.
+  working on what?**). What you send there is asked in your direct message
+  with g1t, which opens in Chat with the answer coming.
 - **Explain**, on each row of **Landed**, asks what that one change did,
-  why, and whether it is live, in the panel.
+  why, and whether it is live, the same way.
 - **Summarize**, on **What changed**, writes g1t's plain-English summary
-  of the span on Home itself, rather than in the panel. **Ask a
-  follow-up** under it opens the panel on the same conversation.
+  of the span on Home itself. **Ask a follow-up** under it opens the same
+  conversation in Chat.
 
-When Ask is not set up yet, or g1t is still answering an earlier
-question, the panel opens with the question in its box instead of
-sending it; send it once it can be answered.
+When the question can't be sent, Chat's New opens with it in its box, to
+send again.
 
 ## One conversation, in Ask and in Chat
 
 Ask is your **direct message with @g1t** in [Chat](/guides/chat/#talk-with-g1t).
-What you ask in the panel is posted there, and g1t's answer is written
-there as it streams, so it shows in both places at once: start a question
-on a work item's page, and read the answer later in Chat, on your phone, or
-in the desktop app. **Open in Chat** at the top of the panel takes you to
-it. Nobody else can read it, and it stays until you delete it or
-[clear it](#clear-the-conversation).
+What you ask is posted there, and g1t's answer is written there as it
+streams: start a question on a work item's page, and read the answer in
+Chat, on your phone, or in the desktop app. Nobody else can read it, and
+it stays until you delete it or [clear it](#clear-the-conversation).
 
-An answer you watched is read wherever you watched it. While the Ask panel
-is open, or [Home's summary](/guides/home/#what-changed) is in view, g1t's
+An answer you watched is read wherever you watched it. While
+[Home's summary](/guides/home/#what-changed) is in view, g1t's
 answer counts as read once it is finished: it is not left unread in Chat's
 sidebar, the Chat badge or the tab's title, on your other tabs, in the
 desktop app or on your phone. Nor does it pop up, sound or show a desktop
@@ -244,9 +271,9 @@ reads nothing, so an answer that finished while you were away waits for you
 as unread.
 
 - **New conversation** leaves a mark in the direct message. From then on,
-  g1t reads only what comes after it, and the panel shows only that; what
-  came before stays in Chat to read.
-- **Clear conversation…**, in the panel's **⋯** menu, deletes the whole
+  g1t reads only what comes after it; what
+  came before stays above it to read. Chat's New always starts one.
+- **Clear conversation…**, in the conversation's **⋯** menu, deletes the whole
   conversation for good. Typing `/clear` and pressing **Enter** does the
   same. See [Clear the conversation](#clear-the-conversation).
 - **Stop**, or **Esc** while an answer is coming, ends the answer; what had
@@ -264,9 +291,9 @@ open their title and state when you hover over them. Links to
 [artifacts](/guides/artifacts/) show their card. Pictures show only from
 g1t itself; any other picture is a link.
 
-In the panel, **Enter** sends, **Shift+Enter** starts a new line, and
+In the box, **Enter** sends, **Shift+Enter** starts a new line, and
 **/** puts you back in the box. On an empty conversation,
-the panel suggests a few questions for the page you are on.
+g1t suggests a few questions to start with.
 
 ## Clear the conversation
 
@@ -274,14 +301,14 @@ the panel suggests a few questions for the page you are on.
 the mark is still kept, and still in Chat. To delete it, clear the
 conversation:
 
-1. Open **Ask** in the top bar, or your direct message with **g1t** in
+1. Open your direct message with **g1t** in
    Chat.
 2. Choose **⋯ → Clear conversation…**, or type `/clear` in the box and
    press **Enter**.
 3. Choose **Clear conversation** to confirm.
 
-Everything in your direct message with g1t is deleted for good, in Ask
-and in Chat, on every device. It can't be undone, and g1t remembers none
+Everything in your direct message with g1t is deleted for good
+on every device. It can't be undone, and g1t remembers none
 of it: the next question starts with nothing before it.
 
 | Deleted                                                                                 | Kept                                                                                                                     |

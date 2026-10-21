@@ -1,7 +1,7 @@
 /**
  * @g1t's side of chat, as the site shows it: the direct message every
- * member has with g1t, which the top bar's Ask (components/ask-composer)
- * and Chat both show. Pure, so it is tested on its own (g1t-chat.test.ts).
+ * member has with g1t, where the top bar's Ask and Home's questions
+ * go (lib/ask-in-chat.ts). Pure, so it is tested on its own (g1t-chat.test.ts).
  */
 import type { AskPage, ChatAnswer, ChatLiveEvent, ChatMessage } from "@g1t/contracts";
 

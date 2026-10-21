@@ -1,82 +1,66 @@
 /**
- * The top bar's Ask: the lavender pixel 1 beside its words. The panel it
- * opens (components/ask-composer.tsx: the direct message with @g1t, its
- * answers drawn with Markdown, code and tool steps) is loaded the first
- * time it is wanted, starting when the pointer comes near, so no page
- * carries it until then. Kept mounted once loaded, so the conversation
- * stays while the panel is closed.
+ * The top bar's Ask: the lavender pixel 1 beside its words. It opens
+ * Chat's New over the page you are on (components/chat/actions.tsx), on
+ * its agent composer: a hosted session in a repository, or with no
+ * repository g1t's answer in your direct message with it. The composer
+ * starts on the page's repository and work item, and g1t is told the page.
+ *
+ * A page that asks g1t a question itself (Home's box, Summarize, Explain:
+ * lib/ask.ts askG1t) sends it to your direct message with g1t and opens it
+ * in Chat, where the answer streams; one that only opens Ask (openAsk)
+ * opens that conversation.
  */
-import { Suspense, lazy, useEffect, useState } from "react";
-import { useLocation } from "react-router";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
 
-import { ASK_EVENT } from "../lib/ask";
+import { ASK_EVENT, askPage } from "../lib/ask";
+import { askInChat } from "../lib/ask-in-chat";
+import { NewChatDialog } from "./chat/actions";
 import { MarkGlyph } from "./logo";
 import { Button } from "./ui/button";
 import { Hint } from "./ui/hint";
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "./ui/sheet";
-import { Skeleton } from "./ui/skeleton";
-
-const load = () => import("./ask-composer");
-const AskSheet = lazy(() => load().then((module) => ({ default: module.AskSheet })));
 
 export function AskButton({ slug }: { slug: string }) {
   const [open, setOpen] = useState(false);
-  const [wanted, setWanted] = useState(false);
-  // A question a page asked (lib/ask.ts askG1t), until the panel sends it.
-  const [queued, setQueued] = useState<{ text: string; at: number } | null>(null);
+  // A question a page asked that could not be sent: in the box when New opens.
+  const [draft, setDraft] = useState<string | undefined>(undefined);
   const location = useLocation();
-  // Any completed navigation, including answer citations and the current DM,
-  // reveals its destination. Revalidation and links opened in another tab do not.
+  const navigate = useNavigate();
+  // Any completed navigation closes it: what it opened is the page now.
   useEffect(() => setOpen(false), [location.key]);
   useEffect(() => {
     const onAsk = (event: Event) => {
       const text = (event as CustomEvent<{ text?: string }>).detail?.text?.trim();
-      if (text) setQueued({ text, at: Date.now() });
-      setWanted(true);
-      setOpen(true);
+      void askInChat(slug, { text, page: askPage(window.location.pathname) }).then((asked) => {
+        // Not sent: New opens with the question in its box, to send again or set up.
+        if ("error" in asked) {
+          setDraft(text);
+          return setOpen(true);
+        }
+        navigate(asked.to);
+      });
     };
     window.addEventListener(ASK_EVENT, onAsk);
     return () => window.removeEventListener(ASK_EVENT, onAsk);
-  }, []);
-  const change = (next: boolean) => {
-    if (next) setWanted(true);
-    setOpen(next);
-  };
+  }, [slug, navigate]);
   return (
-    <Sheet open={open} onOpenChange={change}>
-      <Hint label="Ask g1t about your work">
-        <SheetTrigger asChild>
-          <Button
-            variant="soft"
-            size="bar"
-            aria-label="Ask g1t"
-            className="gap-2 max-md:ring-0 lg:px-3"
-            onPointerEnter={() => void load()}
-            onFocus={() => void load()}
-          >
-            <MarkGlyph className="h-3.5" />
-            <span className="max-lg:hidden">Ask</span>
-          </Button>
-        </SheetTrigger>
+    <>
+      <Hint label="Ask g1t, or start an agent">
+        <Button variant="soft" size="bar" aria-label="Ask g1t" className="gap-2 max-md:ring-0 lg:px-3" onClick={() => setOpen(true)}>
+          <MarkGlyph className="h-3.5" />
+          <span className="max-lg:hidden">Ask</span>
+        </Button>
       </Hint>
-      {wanted && (
-        <Suspense fallback={<Loading />}>
-          <AskSheet slug={slug} open={open} queued={queued} onQueuedTaken={() => setQueued(null)} />
-        </Suspense>
-      )}
-    </Sheet>
-  );
-}
-
-/** The panel's frame while it loads. */
-function Loading() {
-  return (
-    <SheetContent side="right" className="sm:max-w-xl">
-      <SheetTitle className="sr-only">Ask g1t</SheetTitle>
-      <div className="flex flex-col gap-3 p-5" aria-busy="true">
-        <Skeleton className="h-5 w-32" />
-        <Skeleton className="h-4 w-56" />
-      </div>
-    </SheetContent>
+      <NewChatDialog
+        slug={slug}
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) setDraft(undefined);
+        }}
+        page={open ? askPage(location.pathname) : null}
+        text={draft}
+      />
+    </>
   );
 }

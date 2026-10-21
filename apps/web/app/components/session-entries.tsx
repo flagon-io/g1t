@@ -17,6 +17,7 @@ import { Card } from "./ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import { Hint } from "./ui/hint";
 import { repoAt } from "../lib/markdown-plugins";
+import { askedPart } from "../lib/agent-chat";
 import { type ToolCall, type ToolStep, quotedBlocks, readToolCall, transcript } from "../lib/session-entries";
 
 /** Runs of more tool calls than this fold into one line. */
@@ -247,10 +248,101 @@ function Entry({ entry, base }: { entry: SessionEntry; base?: string }) {
 }
 
 /**
- * A session's entries in a card, oldest first. `base`, the repository's
- * path (`/acme/web`), links `#12` and the like in what it wrote.
+ * What someone sent the session, as a chat shows it: their words in a
+ * bubble on the right. The first message's own part (where it works, how
+ * to set up, which g1t added: `ASKED_SEPARATOR`) folds under it.
  */
-export function SessionEntries({ entries, base }: { entries: SessionEntry[]; base?: string }) {
+function ChatPrompt({ entry, base }: { entry: SessionEntry; base?: string }) {
+  const [open, setOpen] = useState(false);
+  if (entry.withheld) {
+    return (
+      <li id={entryAnchor(entry.seq)} className={`flex justify-end ${ANCHORED}`}>
+        <span className="rounded-2xl bg-raised px-4 py-2.5 text-xs text-faint">A prompt that shows only to whoever typed it.</span>
+      </li>
+    );
+  }
+  const { asked, added } = askedPart(entry.text);
+  return (
+    <li id={entryAnchor(entry.seq)} className={`flex flex-col items-end gap-1 ${ANCHORED}`}>
+      <div className="max-w-[85%] rounded-2xl rounded-br-md bg-raised px-4 py-2.5 text-[0.9375rem] wrap-break-word">
+        <Markdown source={quotedBlocks(asked)} repo={repoAt(base)} />
+      </div>
+      {added && (
+        <Collapsible open={open} onOpenChange={setOpen} className="flex max-w-[85%] flex-col items-end">
+          <CollapsibleTrigger className="text-xs text-faint">
+            {open ? "Hide what g1t added" : "What g1t added"}
+            <ChevronRight size={12} />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <Card tone="bg" radius="lg" className="mt-1.5 max-h-96 overflow-auto p-3 text-xs">
+              <Markdown source={quotedBlocks(added)} repo={repoAt(base)} />
+            </Card>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+    </li>
+  );
+}
+
+/** One entry as a chat shows it: prompts on the right, what the agent wrote as plain text, the rest quiet. */
+function ChatEntry({ entry, base }: { entry: SessionEntry; base?: string }) {
+  if (entry.kind === "prompt") return <ChatPrompt entry={entry} base={base} />;
+  if (entry.kind === "message") {
+    return (
+      <li id={entryAnchor(entry.seq)} className={`text-[0.9375rem] leading-relaxed ${ANCHORED}`}>
+        <Markdown source={entry.text} repo={repoAt(base)} />
+      </li>
+    );
+  }
+  const skill = entry.kind === "skill";
+  return (
+    <li id={entryAnchor(entry.seq)} className={`flex items-start gap-2 text-xs text-muted ${ANCHORED}`}>
+      {skill ? <Sparkles size={13} className="mt-0.5 shrink-0 text-accent" /> : <StickyNote size={13} className="mt-0.5 shrink-0 text-faint" />}
+      <span className="min-w-0 grow">
+        {skill ? (
+          <>
+            Used skill{" "}
+            <Badge shape="tag" className="font-mono">
+              {entry.text}
+            </Badge>
+          </>
+        ) : (
+          entry.text
+        )}
+      </span>
+      <At at={entry.at} />
+    </li>
+  );
+}
+
+/**
+ * A session's entries, oldest first. `base`, the repository's path
+ * (`/acme/web`), links `#12` and the like in what it wrote. `card` (the
+ * default) lists them in a card, as a transcript; `chat` draws them as a
+ * conversation, for a hosted session someone is talking to on its page:
+ * what was sent on the right, what it wrote as text, its tool calls in
+ * quiet runs between.
+ */
+export function SessionEntries({ entries, base, variant = "card" }: { entries: SessionEntry[]; base?: string; variant?: "card" | "chat" }) {
+  if (variant === "chat") {
+    return (
+      <ol className="space-y-5">
+        {transcript(entries).map((item) =>
+          item.kind === "tools" ? (
+            <li key={item.first.seq}>
+              <Card asChild tone="plain" radius="lg" className="-mx-1 border-dashed">
+                <ol>
+                  <ToolRun steps={item.steps} />
+                </ol>
+              </Card>
+            </li>
+          ) : (
+            <ChatEntry key={item.entry.seq} entry={item.entry} base={base} />
+          ),
+        )}
+      </ol>
+    );
+  }
   return (
     <Card asChild divided>
       <ol>

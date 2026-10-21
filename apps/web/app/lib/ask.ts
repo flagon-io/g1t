@@ -1,5 +1,5 @@
 /**
- * Ask g1t (components/ask-composer): where the person is when they ask,
+ * Ask g1t (lib/ask-in-chat.ts): where the person is when they ask,
  * which goes with each question to their direct message with @g1t, so g1t
  * is told the page and reads the work item or pull request on it. Pure, so it
  * is tested on its own.
@@ -53,13 +53,13 @@ export function askPage(pathname: string): AskPage {
   return page;
 }
 
-/** The window event a page sends to have the top bar's Ask open and ask a question (components/ask-button.tsx). */
+/** The window event a page sends to ask g1t a question, which the top bar's Ask sends to Chat (components/ask-button.tsx). */
 export const ASK_EVENT = "g1t:ask";
 
 /**
- * Opens the top bar's Ask panel and asks g1t this, as if it were typed
- * there: Home's box, its Summarize and Explain buttons. Where Ask is not
- * set up, the panel opens with the question in its box.
+ * Asks g1t this in your direct message with it, and opens it in Chat:
+ * Home's box, its Summarize and Explain buttons. Where it cannot be sent,
+ * Chat's New opens with the question in its box.
  */
 export function askG1t(text: string) {
   const question = text.trim();
@@ -67,7 +67,7 @@ export function askG1t(text: string) {
   window.dispatchEvent(new CustomEvent<{ text: string }>(ASK_EVENT, { detail: { text: question } }));
 }
 
-/** Opens the top bar's Ask panel on the conversation as it is: a follow-up to an answer shown on a page. */
+/** Opens your direct message with g1t in Chat as it is: a follow-up to an answer shown on a page. */
 export function openAsk() {
   window.dispatchEvent(new CustomEvent<{ text: string }>(ASK_EVENT, { detail: { text: "" } }));
 }

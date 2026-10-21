@@ -95,6 +95,9 @@ import {
   shownAnswer,
   startsAnswer,
   withProposalState,
+  startedSessionCard,
+  startedSessionText,
+  type StartedSession,
 } from "./g1t.ts";
 import { clearConversation, mayClear } from "./clear.ts";
 import { internalAnswer } from "./internal.ts";
@@ -1839,6 +1842,40 @@ class Chat {
     return ok(merged.state);
   }
 
+  /**
+   * Records a hosted session the viewer started from their conversation
+   * with @g1t (Chat's New with a repository; the site calls this once the
+   * integrations service has started it): what they asked, as their
+   * message, then g1t's card for the session, linking to its page. Neither
+   * starts an answer: the session does the work. Only in the viewer's own
+   * direct message with g1t.
+   */
+  async g1tSession(a: {
+    workspace: string;
+    channel_id: string;
+    viewer: Viewer;
+    body: string;
+    session: StartedSession;
+  }): Promise<Result<{ asked: ChatMessage; card: ChatMessage }>> {
+    const found = await this.g1tPlace(a.workspace, a.channel_id, a.viewer);
+    if (!found.ok) return found;
+    const place = found.value;
+    const body = messageBody(a.body);
+    if (!body.ok) return fail("invalid", body.message);
+    const card = startedSessionCard(place.slug, a.session);
+    if (!card) return fail("invalid", "That is not a session of this workspace.");
+    const asked = await this.write(place, userKey(a.viewer!), { body: body.body, card: null, thread_root: null });
+    if (!asked.ok) return asked;
+    const written = await this.write(
+      place,
+      G1T_KEY,
+      { body: startedSessionText(card), card, thread_root: null },
+      { meta: { session: card.ref! }, notify: false },
+    );
+    if (!written.ok) return written;
+    return ok({ asked: asked.value, card: written.value });
+  }
+
   async g1tStop(a: { workspace: string; channel_id: string; viewer: Viewer }): Promise<Result<null>> {
     const found = await this.g1tPlace(a.workspace, a.channel_id, a.viewer);
     if (!found.ok) return found;
@@ -2306,6 +2343,8 @@ async function answer(service: Chat, method: string, args: any): Promise<Respons
       return Response.json(await service.g1tProposal(args));
     case "g1t_stop":
       return Response.json(await service.g1tStop(args));
+    case "g1t_session":
+      return Response.json(await service.g1tSession(args));
     case "g1t_clear":
       return Response.json(await service.g1tClear(args));
     default:

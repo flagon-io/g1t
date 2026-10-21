@@ -35,6 +35,19 @@ test("answers, messages and approvals reach the integrations service as its Rust
   ]);
 });
 
+test("a request from Chat and a page following a session reach the service as its Rust args read them", async () => {
+  const { calls, client } = recording();
+  await client.start(ada, repo, { prompt: "Why is CI slow?" });
+  await client.follow(repo, "ses_1", ada);
+  assert.deepEqual(calls, [
+    {
+      method: "start_agent_session",
+      body: { actor: ada, repo, item: null, title: null, body: null, instruction: null, prompt: "Why is CI slow?", mode: null, handoff: null },
+    },
+    { method: "follow_agent_session", body: { repo, id: "ses_1", viewer: ada } },
+  ]);
+});
+
 test("a call waits ten minutes for an answer, as the service does", () => {
   assert.equal(APPROVAL_WAIT_MS, 600_000);
 });

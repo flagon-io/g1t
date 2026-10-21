@@ -269,6 +269,7 @@ impl Integrations {
                 title: None,
                 body: None,
                 instruction: None,
+                prompt: None,
                 mode: Some(AgentMode::Implement),
                 handoff: Some(false),
             })

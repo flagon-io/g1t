@@ -214,7 +214,7 @@ test("a desktop notification shows only when wanted, allowed, out of front, and 
   assert.ok(!wantsDesktopToast({ ...base, notification: { kind: "inbox" } }));
 });
 
-test("an answer shown outside Chat (Home's Summarize, the Ask panel) is silent and shows no desktop notification while watched", () => {
+test("an answer shown outside Chat (Home's Summarize) is silent and shows no desktop notification while watched", () => {
   const watching = { visible: true, focused: true, viewingChannel: null, shown: new Set(["chn_dm"]) };
   assert.equal(cueFor(feed(notification()), ctx({ focus: watching })), null);
   assert.equal(cueFor(chat(message({ channel_id: "chn_dm" }), "dm"), ctx({ focus: watching })), null);

@@ -1,8 +1,8 @@
-import { ArrowLeft, Bot, ChevronRight, ExternalLink, GitBranch, GitCommitHorizontal, Pencil, Sparkles, Square } from "lucide-react";
+import { ArrowLeft, Bot, ChevronRight, ExternalLink, GitBranch, GitCommitHorizontal, LoaderCircle, Pencil, ShieldAlert, Sparkles, Square } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
-import { Form, Link } from "react-router";
+import { Form, Link, redirect } from "react-router";
 
-import type { Pull, SessionLink, SessionTouch, State, Thread, TouchKind, WorkSession } from "@g1t/contracts";
+import { MAX_PROMPT_CHARS, type Pull, type SessionLink, type SessionTouch, type State, type Thread, type TouchKind, type WorkSession } from "@g1t/contracts";
 
 import type { Route } from "./+types/session";
 import { page } from "../../../../lib/meta";
@@ -47,6 +47,8 @@ import { agentSessions, work } from "../../../../lib/services.server";
 import { readAnswer, readMessage } from "../../../../lib/session-approvals";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../../../lib/session.server";
 import { useLive } from "../../../../lib/use-repo-live";
+import { useSessionFollow } from "../../../../lib/use-session-follow";
+import { continuation } from "../../../../lib/agent-chat";
 import { sessionPath, sessionsPath } from "../../../../lib/work-items";
 
 const MANAGED = "claude_managed_agents";
@@ -90,12 +92,16 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const path = repoPath(repo);
   const access = await accessTo(context, { owner: path.namespace, repo: path.name });
   // A session on the workspace's Anthropic account is followed every
-  // minute; while it goes, it is read now, through the top of its tree.
+  // minute; while it goes, it is read now, through the top of its tree
+  // (at most once every couple of seconds, however many pages ask), and
+  // the page keeps following it from there (lib/use-session-follow.ts).
   const top = found.value.root ?? found.value.session;
+  let followMark: string | null = null;
   if (top.harness === MANAGED && top.state !== "ended") {
     // Reading it fresh is a nicety: without it, the page shows it as last recorded.
-    const synced = await agentSessions.sync(path, top.id, viewer).catch(() => null);
-    if (synced?.ok) {
+    const followed = await agentSessions.follow(path, top.id, viewer).catch(() => null);
+    if (followed?.ok) {
+      followMark = followed.value.mark;
       const again = await read().catch(() => null);
       if (again?.ok) found = again;
     }
@@ -145,6 +151,17 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     // Null when they could not be read: the page says so where they would be.
     approvals: isFailed(waiting) ? null : waiting,
     canMessage: mayMessage,
+    // Once it has ended, the same people may follow it up: a new session carries on from it.
+    canContinue:
+      top.harness === MANAGED &&
+      top.state === "ended" &&
+      !session.parentId &&
+      viewer != null &&
+      roleIn(viewer, workspace) != null &&
+      (viewer.id === top.actor.id || access.can.push),
+    followMark,
+    // A running hosted session is followed every few seconds by a member's page in view.
+    follow: top.harness === MANAGED && top.state !== "ended" && viewer != null && roleIn(viewer, workspace) != null,
   };
 }
 
@@ -188,7 +205,22 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     if (!sent) return { error: "The message could not be sent. Try again in a moment." };
     return sent.ok ? { sent: true } : { error: sent.error.message };
   }
-  if (form.get("action") !== "stop") return { error: "There is nothing to do here but stop, end, name or answer the session." };
+  // A follow-up to a hosted session that ended: a new session that carries on from it
+  // (its branch, pull requests and report), on its work item if it had one; then its page.
+  if (form.get("action") === "continue") {
+    const read = readMessage(form, MAX_PROMPT_CHARS);
+    if ("error" in read) return { error: read.error };
+    const ended = found.value.root ?? found.value.session;
+    if (ended.harness !== MANAGED || ended.state !== "ended") return { error: "Only a hosted session that has ended is continued in a new one." };
+    const url = new URL(sessionPath(params.owner, ended.id), request.url).href;
+    const next = continuation({ text: read.text, session: ended, links: found.value.links ?? [], url });
+    const started = await agentSessions.start(user, path, { ...next, handoff: false }).catch(() => null);
+    if (!started) return { error: "The new session could not be started. Try again in a moment." };
+    if (!started.ok) return { error: started.error.message };
+    if (!started.value.session) return { error: "No session was started." };
+    throw redirect(sessionPath(params.owner, started.value.session.id));
+  }
+  if (form.get("action") !== "stop") return { error: "There is nothing to do here but stop, end, name, answer or follow up the session." };
   const result = await agentSessions.stop(user, path, params.id).catch(() => null);
   if (!result) return { error: "The session could not be stopped. Try again in a moment." };
   return result.ok ? null : { error: result.error.message };
@@ -456,12 +488,36 @@ function SessionPage({ loaderData, actionData }: Route.ComponentProps) {
     repo,
     approvals,
     canMessage,
+    canContinue,
+    followMark,
+    follow,
   } = loaderData;
   const base = `/${repo}`;
   const [ending, setEnding] = useState(false);
   const now = Date.now();
   // Any session, claim or overlap in its repository: a change names no session.
   useLive({ match: repoPages.session(), repos: [{ id: loaderData.repoId, path: repo }], signedIn: loaderData.signedIn });
+  // A running hosted session streams in: the page asks every few seconds while in view (lib/use-session-follow.ts).
+  const topId = root?.id ?? session.id;
+  useSessionFollow({
+    url: `/${workspace}/-/chat/sessions/${encodeURIComponent(topId)}/follow?repo=${encodeURIComponent(repo)}`,
+    running: follow,
+    mark: followMark,
+    enabled: follow,
+  });
+  // Talking to it: the page reads as a chat while it runs, for whoever may answer it.
+  const conversation = canMessage && !session.parentId && session.state !== "ended";
+  // A reader at the bottom of the conversation stays there as it goes.
+  const count = entries.length + (approvals?.length ?? 0);
+  useEffect(() => {
+    if (!conversation) return;
+    const near = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 240;
+    if (near) window.scrollTo({ top: document.documentElement.scrollHeight });
+  }, [conversation, count]);
+  useEffect(() => {
+    if (conversation && !location.hash) window.scrollTo({ top: document.documentElement.scrollHeight });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on opening it
+  }, []);
 
   const tools = entries.filter((entry) => entry.kind === "tool_call").length;
   const prompt = entries.find((entry) => entry.kind === "prompt");
@@ -515,6 +571,88 @@ function SessionPage({ loaderData, actionData }: Route.ComponentProps) {
   // Every commit is listed here, each linked: the Deliverables card links the first.
   const where: TouchKind[] = ["file", "branch", "commit", "item"];
   const groups = touchedByKind(touched);
+
+  if (conversation) {
+    const waitingOn = (approvals?.length ?? 0) > 0;
+    return (
+      <div className="mx-auto flex min-h-(--page-h) max-w-3xl flex-col">
+        <Link to={sessionsPath(workspace)} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
+          <ArrowLeft size={14} />
+          Sessions
+        </Link>
+        <div className="mt-4 flex flex-wrap items-start gap-x-3 gap-y-2">
+          <SessionHeading session={session} name={sessionName(session, firstPrompt)} canTitle={canEnd} />
+          <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
+            <SessionStateBadge state={session.state} />
+            {consoleUrl && (
+              <Button asChild variant="outline" size="xs">
+                <a href={consoleUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink size={12} />
+                  Claude Console
+                </a>
+              </Button>
+            )}
+          </div>
+        </div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-muted">
+          <Actor username={session.actor.username} harness={session.harness} size={16} />
+          <PersonLink name={session.actor.username} className="font-medium text-fg-soft hover:underline" />
+          <span className="text-faint">in</span>
+          <Link to={base} className="font-mono hover:text-fg">
+            {repo}
+          </Link>
+          {session.branch && (
+            <Link to={`${base}/tree/${session.branch}`} className="inline-flex items-center gap-1 font-mono hover:text-fg">
+              <GitBranch size={11} />
+              {session.branch}
+            </Link>
+          )}
+          {session.model && <span className="font-mono text-faint">{session.model}</span>}
+          <span className="text-faint" suppressHydrationWarning>
+            · working for {duration(session, now)}
+          </span>
+        </div>
+        {links.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {links.map((link) => (
+              <LinkChip key={`${link.kind}-${link.number}`} link={link} base={base} />
+            ))}
+          </div>
+        )}
+        {actionData?.error && (
+          <Alert tone="danger" className="mt-4">
+            {actionData.error}
+          </Alert>
+        )}
+        <div className="mt-8 grow space-y-5">
+          {entries.length === 0 ? (
+            <p className="text-[0.9375rem] text-muted">It is setting up its sandbox: what it says and does shows here as it goes.</p>
+          ) : (
+            <SessionEntries entries={entries} base={base} variant="chat" />
+          )}
+          {approvals == null ? (
+            <Unavailable what="Calls waiting for approval" compact />
+          ) : (
+            approvals.map((approval) => <ApprovalCard key={approval.toolUseId} approval={approval} now={now} />)
+          )}
+          <p className="flex items-center gap-2 text-sm text-muted" aria-live="polite">
+            {waitingOn ? (
+              <>
+                <ShieldAlert size={14} className="text-warn" />
+                Waiting for an answer to the call above.
+              </>
+            ) : (
+              <>
+                <LoaderCircle size={14} className="animate-spin text-accent motion-reduce:animate-none" />
+                Working…
+              </>
+            )}
+          </p>
+        </div>
+        <SessionMessageBox canStop={canStop} />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-3xl pb-16">
@@ -663,7 +801,7 @@ function SessionPage({ loaderData, actionData }: Route.ComponentProps) {
           )
         )}
       </div>
-      {canMessage && <SessionMessageBox />}
+      {canMessage && <SessionMessageBox canStop={canStop} />}
 
       {!limited && (
         <div className="mt-8 grid gap-3 sm:grid-cols-3">
@@ -806,6 +944,8 @@ function SessionPage({ loaderData, actionData }: Route.ComponentProps) {
           What it records is its own account; the commits, checks and merges are the record.
         </p>
       </section>
+      {/* Once it has ended, a follow-up starts a new session that carries on from it. */}
+      {canContinue && <SessionMessageBox mode="continue" />}
     </div>
   );
 }

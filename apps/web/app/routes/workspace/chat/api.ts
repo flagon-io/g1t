@@ -79,7 +79,7 @@ export async function action({ params, context, request }: Route.ActionArgs) {
         const page = sent.page && typeof sent.page === "object" ? (sent.page as AskPage) : null;
         return chat.post(slug, channel, viewer, { body, thread_root: sent.thread_root ?? null, page });
       }
-      // @g1t: the viewer's direct message with g1t, and what Ask's panel and Chat do in it.
+      // @g1t: the viewer's direct message with g1t, and what Ask and Chat do in it.
       case "g1t_dm": {
         const opened = await chat.g1tDm(slug, viewer);
         return opened.ok ? { ok: true, value: { channel: opened.value, to: channelPath(slug, opened.value) } } : opened;

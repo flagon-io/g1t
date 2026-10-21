@@ -11,7 +11,7 @@
  * src/index.ts writes the messages.
  */
 // The modules themselves, not the package's index, so the tests load them.
-import { G1T_KEY, type AskProposalState, type ChatAnswer, type MemberProfile } from "@g1t/contracts/chat";
+import { G1T_KEY, type AskProposalState, type ChatAnswer, type MemberProfile, type MessageCard } from "@g1t/contracts/chat";
 import { ASK_MAX_MESSAGES, ASK_MAX_MESSAGE_CHARS, ASK_MAX_TOTAL_CHARS, type AskMessage, type AskPage } from "@g1t/contracts/ai";
 
 /** How @g1t shows in chat: the g1t mark, never a person. */
@@ -34,7 +34,49 @@ const MAX_STEP_BYTES = 8_192;
 export const ANSWERS_PER_MINUTE = 20;
 
 /** What the `meta` column keeps (migration 0005): on an answer, a question from a page, or a new-conversation mark. */
-export type MessageMeta = { answer?: ChatAnswer; page?: AskPage; reset?: true };
+export type MessageMeta = {
+  answer?: ChatAnswer;
+  page?: AskPage;
+  reset?: true;
+  /** On g1t's card for a hosted session started from the conversation: its g1t session id. */
+  session?: string;
+};
+
+/** A hosted session started from a conversation with g1t (Chat's New with a repository). */
+export type StartedSession = { id: string; title: string; repo: string };
+
+/**
+ * g1t's card for a hosted session started from its conversation: what it
+ * works on, in which repository, linked to its page, where it streams. Its
+ * state is where it started (Working); the site shows it live. Null for a
+ * session id g1t did not make, or a repository outside the workspace.
+ */
+export function startedSessionCard(workspace: string, session: StartedSession): MessageCard | null {
+  const id = String(session?.id ?? "");
+  const repo = String(session?.repo ?? "").trim();
+  const [namespace, name, extra] = repo.split("/");
+  const slug = workspace.toLowerCase();
+  if (!/^ses_[0-9a-z]+$/.test(id) || !namespace || !name || extra !== undefined || namespace.toLowerCase() !== slug) return null;
+  const title =
+    String(session.title ?? "")
+      .trim()
+      .slice(0, 200) || "Hosted session";
+  return {
+    kind: "session",
+    title,
+    detail: "Hosted session",
+    state: "Working",
+    href: `/${slug}/-/chat/sessions/${id}`,
+    fields: [{ label: "Repository", value: repo }],
+    ref: id,
+  };
+}
+
+/** What g1t's card for a started session says as text: in notifications, search, and to g1t when it reads the conversation back. */
+export function startedSessionText(card: MessageCard): string {
+  const repo = card.fields?.find((field) => field.label === "Repository")?.value ?? "the repository";
+  return `I started a hosted session on this in ${repo}: “${card.title}”. It works there on its own; follow it, steer it or stop it at ${card.href}.`;
+}
 
 export function parseMeta(text: string | null | undefined): MessageMeta {
   if (!text) return {};
@@ -153,11 +195,16 @@ export function conversation(rows: readonly SaidRow[], answering: string | null 
   });
   const turns: AskMessage[] = [];
   for (const row of rows.slice(start)) {
-    if (row.deleted_at || row.kind !== "text" || row.id === answering) continue;
+    if (row.deleted_at || row.id === answering) continue;
+    // Of cards, only g1t's for a session started here: g1t reads back that it started it.
+    const startedHere = row.kind === "card" && row.author === G1T_KEY && Boolean(parseMeta(row.meta).session);
+    if (row.kind !== "text" && !startedHere) continue;
     let text = row.body.trim();
     if (!text) continue;
     let role: AskMessage["role"];
-    if (row.author === G1T_KEY) {
+    if (startedHere) {
+      role = "assistant";
+    } else if (row.author === G1T_KEY) {
       const answer = parseMeta(row.meta).answer;
       if (!answer || answer.setup || answer.state === "error" || answer.state === "thinking" || answer.state === "streaming") continue;
       role = "assistant";
