@@ -44,7 +44,7 @@ export function ProjectDangerZone({
   error: (intent: LifecycleIntent) => string | null;
 }) {
   return (
-    <div id="danger-zone" className="mt-10 scroll-mt-20 border-t border-line pt-8">
+    <div id="danger-zone" className="mt-10 scroll-mt-[calc(var(--topbar-h)+1rem)] border-t border-line pt-8">
       <DangerZone>
         <ArchiveAction full={full} archived={archived} error={error("archive")} />
         {remove && <TransferAction repo={full} destinations={destinations} error={error("transfer")} />}

@@ -225,7 +225,7 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
       />
 
       {isFailed(loaderData.withoutTwoFactor) || isFailed(loaderData.ownTwoFactor) ? (
-        <section id="two-factor" className="scroll-mt-20">
+        <section id="two-factor" className="scroll-mt-[calc(var(--topbar-h)+1rem)]">
           <h2 className="font-medium">Authentication security</h2>
           <div className="mt-5">
             <Unavailable what="Two-factor authentication" />
@@ -312,7 +312,7 @@ function TwoFactorRequirementSection({
   const navigation = useNavigation();
   const saving = navigation.state !== "idle" && navigation.formData?.get("intent") === "two-factor-requirement";
   return (
-    <section id="two-factor" className="scroll-mt-20">
+    <section id="two-factor" className="scroll-mt-[calc(var(--topbar-h)+1rem)]">
       <h2 className="font-medium">Authentication security</h2>
       <p className="mt-1.5 text-xs text-faint">
         With two-factor authentication required, members and outside collaborators without it keep their place but cannot use {slug} until they turn it on. They

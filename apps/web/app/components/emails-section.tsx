@@ -118,7 +118,7 @@ export function EmailsSection({
   const backup = data.emails.find((email) => email.backup);
   const full = data.emails.length >= data.limit;
   return (
-    <section id="emails" className="scroll-mt-20">
+    <section id="emails" className="scroll-mt-[calc(var(--topbar-h)+1rem)]">
       {actionData?.reauth && (
         <div className="mb-4">
           <ConfirmItIsYou pending={actionData.reauth} hasPassword={hasPassword} />
@@ -227,7 +227,7 @@ export function EmailsSection({
 /** What happened to the account's security, newest first. */
 export function SecurityLogSection({ log }: { log: SecurityEvent[] }) {
   return (
-    <section id="security-log" className="scroll-mt-20">
+    <section id="security-log" className="scroll-mt-[calc(var(--topbar-h)+1rem)]">
       {log.length === 0 ? (
         <p className="text-sm text-faint">Nothing yet.</p>
       ) : (

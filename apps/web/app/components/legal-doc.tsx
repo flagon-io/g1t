@@ -40,12 +40,12 @@ export function PolicyText({ source }: { source: string }) {
         remarkPlugins={[remarkGfm]}
         components={{
           h2: ({ children }) => (
-            <h2 id={anchor(children)} className="scroll-mt-20">
+            <h2 id={anchor(children)} className="scroll-mt-[calc(var(--topbar-h)+1rem)]">
               {children}
             </h2>
           ),
           h3: ({ children }) => (
-            <h3 id={anchor(children)} className="scroll-mt-20">
+            <h3 id={anchor(children)} className="scroll-mt-[calc(var(--topbar-h)+1rem)]">
               {children}
             </h3>
           ),

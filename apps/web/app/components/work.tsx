@@ -279,7 +279,7 @@ export function TimelineItem({
 }) {
   const face = (size: number) => (agent ? <Avatar name={agent.ref.displayName} agent size={size} /> : <Avatar name={author} size={size} agent={bot} />);
   return (
-    <div id={id} className="flex scroll-mt-20 gap-3">
+    <div id={id} className="flex scroll-mt-[calc(var(--topbar-h)+1rem)] gap-3">
       <span className="mt-1 hidden shrink-0 sm:block">
         {agent || bot ? (
           face(32)

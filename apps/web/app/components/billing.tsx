@@ -69,7 +69,7 @@ export function Card({
     danger: "border-danger/40 bg-danger/5",
   };
   return (
-    <section id={id} className={`mb-6 scroll-mt-20 rounded-xl border p-5 ${tones[tone]}`}>
+    <section id={id} className={`mb-6 scroll-mt-[calc(var(--topbar-h)+1rem)] rounded-xl border p-5 ${tones[tone]}`}>
       <div className="flex flex-wrap items-start justify-between gap-3 sm:flex-nowrap">
         <div className="min-w-0 basis-full sm:basis-0 sm:flex-1">
           <h2 className="flex flex-wrap items-center gap-2 font-medium">

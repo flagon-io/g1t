@@ -24,6 +24,14 @@ const OPEN_RUN = 3;
 /** What a tool was called with, longer than this, has the rest to unfold. */
 const LONG_DETAIL = 90;
 
+/** Where an entry is on the page, for a highlight that cites it: `#entry-12`. */
+export function entryAnchor(seq: number): string {
+  return `entry-${seq}`;
+}
+
+/** An entry cited and gone to: clear of the top bars, and lit for a moment. */
+const ANCHORED = "scroll-mt-[calc(var(--topbar-h)+1rem)] target:animate-arrive";
+
 function At({ at }: { at: string }) {
   return (
     <span className="shrink-0 text-xs text-faint">
@@ -35,7 +43,7 @@ function At({ at }: { at: string }) {
 /** A prompt someone else typed: that there was one, not what it said. */
 function KeptPrompt({ entry }: { entry: SessionEntry }) {
   return (
-    <li className="flex items-center gap-2 px-4 py-3">
+    <li id={entryAnchor(entry.seq)} className={`flex items-center gap-2 px-4 py-3 ${ANCHORED}`}>
       <Terminal size={14} className="shrink-0 text-faint" />
       <span className="shrink-0 font-medium text-fg-soft">Prompt</span>
       <span className="min-w-0 grow truncate text-xs text-faint">Shows only to whoever typed it.</span>
@@ -49,7 +57,7 @@ function Prompt({ entry, base }: { entry: SessionEntry; base?: string }) {
   const [open, setOpen] = useState(false);
   const first = entry.text.split("\n").find((line) => line.trim()) ?? "";
   return (
-    <li className="px-4 py-3">
+    <li id={entryAnchor(entry.seq)} className={`px-4 py-3 ${ANCHORED}`}>
       <Collapsible open={open} onOpenChange={setOpen}>
         <div className="flex items-center gap-2">
           <Terminal size={14} className="shrink-0 text-accent" />
@@ -166,6 +174,8 @@ function toolNames(steps: ToolStep[]): string {
 
 /** Tool calls one after another: a few in a tight list, more folded into one line that opens to it. */
 function ToolRun({ steps }: { steps: ToolStep[] }) {
+  const first = steps[0]!;
+  const id = entryAnchor(first.call?.seq ?? first.results[0]?.seq ?? 0);
   const [open, setOpen] = useState(false);
   const calls = steps.filter((step) => step.call).length;
   const list = (
@@ -175,9 +185,14 @@ function ToolRun({ steps }: { steps: ToolStep[] }) {
       ))}
     </ol>
   );
-  if (steps.length <= OPEN_RUN) return <li className="px-4 py-2">{list}</li>;
+  if (steps.length <= OPEN_RUN)
+    return (
+      <li id={id} className={`px-4 py-2 ${ANCHORED}`}>
+        {list}
+      </li>
+    );
   return (
-    <li className="px-4 py-2">
+    <li id={id} className={`px-4 py-2 ${ANCHORED}`}>
       <Collapsible open={open} onOpenChange={setOpen}>
         <div className="flex items-center gap-2 text-xs">
           <span className="flex w-4 shrink-0 justify-center">
@@ -199,7 +214,7 @@ function Entry({ entry, base }: { entry: SessionEntry; base?: string }) {
   if (entry.kind === "prompt") return entry.withheld ? <KeptPrompt entry={entry} /> : <Prompt entry={entry} base={base} />;
   if (entry.kind === "message") {
     return (
-      <li className="flex gap-2.5 px-4 py-3 text-sm">
+      <li id={entryAnchor(entry.seq)} className={`flex gap-2.5 px-4 py-3 text-sm ${ANCHORED}`}>
         <MessageSquare size={14} className="mt-1 shrink-0 text-faint" />
         <div className="min-w-0 grow">
           <Markdown source={entry.text} repo={repoAt(base)} />
@@ -210,7 +225,7 @@ function Entry({ entry, base }: { entry: SessionEntry; base?: string }) {
   }
   if (entry.kind === "skill") {
     return (
-      <li className="flex items-center gap-2.5 px-4 py-2 text-xs text-muted">
+      <li id={entryAnchor(entry.seq)} className={`flex items-center gap-2.5 px-4 py-2 text-xs text-muted ${ANCHORED}`}>
         <Sparkles size={13} className="shrink-0 text-accent" />
         <span className="min-w-0 grow">
           Used skill{" "}
@@ -223,7 +238,7 @@ function Entry({ entry, base }: { entry: SessionEntry; base?: string }) {
     );
   }
   return (
-    <li className="flex gap-2.5 px-4 py-2.5 text-xs text-muted">
+    <li id={entryAnchor(entry.seq)} className={`flex gap-2.5 px-4 py-2.5 text-xs text-muted ${ANCHORED}`}>
       <StickyNote size={13} className="mt-0.5 shrink-0 text-faint" />
       <span className="min-w-0 grow">{entry.text}</span>
       <At at={entry.at} />

@@ -402,7 +402,7 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
         )}
 
         {owner && (visibility || repo.parentId) ? (
-          <div id="danger-zone" className="scroll-mt-20 border-t border-line pt-8">
+          <div id="danger-zone" className="scroll-mt-[calc(var(--topbar-h)+1rem)] border-t border-line pt-8">
             <DangerZone>
               {visibility && <VisibilityAction full={full} isPrivate={repo.isPrivate} fork={Boolean(repo.parentId)} error={errorFor("visibility")} />}
               {repo.parentId && <DetachAction full={full} parent={repo.parent ?? null} error={errorFor("detach")} />}

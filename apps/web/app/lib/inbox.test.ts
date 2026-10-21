@@ -16,6 +16,7 @@ import {
   inboxTab,
   inboxView,
   markFromForm,
+  needsAttention,
   needsYou,
   severityOf,
   snoozeUntil,
@@ -127,6 +128,47 @@ test("what needs you puts what waits on you before a failure, and leaves out the
     ["waiting-new", "waiting-old"],
   );
   assert.equal(needs.total, 3);
+});
+
+test("needs attention is what waits on you in this workspace, newest first, until it is done, snoozed or dismissed", () => {
+  const item = (id: string, fields: Partial<InboxItem> = {}): InboxItem => ({
+    id,
+    reason: "review_requested",
+    severity: "warning",
+    title: id,
+    body: "",
+    repo: "acme/rocket",
+    workspace: "acme",
+    subject: "pull",
+    number: 1,
+    url: "/acme/rocket/pull/1",
+    actor: null,
+    createdAt: "2026-10-07T09:00:00.000Z",
+    updatedAt: "2026-10-07T09:00:00.000Z",
+    event: null,
+    count: 1,
+    readAt: null,
+    doneAt: null,
+    saved: false,
+    snoozedUntil: null,
+    ...fields,
+  });
+  const items = [
+    item("older"),
+    item("newer", { updatedAt: "2026-10-07T11:00:00.000Z" }),
+    item("read-still-waits", { readAt: "2026-10-07T10:00:00.000Z" }),
+    item("failed", { severity: "error" }),
+    item("done", { doneAt: "2026-10-07T10:00:00.000Z" }),
+    item("snoozed", { snoozedUntil: "2026-10-08T09:00:00.000Z" }),
+    item("snooze-over", { snoozedUntil: "2026-10-07T10:00:00.000Z" }),
+    item("elsewhere", { workspace: "other", repo: "other/x" }),
+    item("by-repo", { workspace: null, repo: "ACME/api" }),
+    item("dismissed"),
+  ];
+  assert.deepEqual(
+    needsAttention(items, "acme", NOW, new Set(["dismissed"])).map((entry) => entry.id),
+    ["newer", "older", "read-still-waits", "snooze-over", "by-repo"],
+  );
 });
 
 test("every tab says something when it is empty", () => {

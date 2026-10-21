@@ -668,7 +668,7 @@ export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem] xl:grid-cols-[minmax(0,1fr)_23rem]">
-        <Card asChild className="min-w-0 scroll-mt-20 self-start overflow-hidden">
+        <Card asChild className="min-w-0 scroll-mt-[calc(var(--topbar-h)+1rem)] self-start overflow-hidden">
           <section id="work">
             <div className="flex items-center gap-2 border-b border-line px-2 sm:px-3">
               <nav className="-mb-px flex min-w-0 grow gap-1 overflow-x-auto scrollbar-none" aria-label="Overview">
@@ -800,7 +800,7 @@ export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
             </section>
           </Card>
 
-          <Card asChild className="scroll-mt-20 p-5">
+          <Card asChild className="scroll-mt-[calc(var(--topbar-h)+1rem)] p-5">
             <section id="activity">
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-semibold tracking-tight">Activity</h2>

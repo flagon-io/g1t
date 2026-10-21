@@ -241,7 +241,7 @@ function MemberMenu({ member, self, owners, slug }: { member: Member; self: bool
 function LeaveSection({ slug, soleOwner, error }: { slug: string; soleOwner: boolean; error: string | null }) {
   const [open, setOpen] = useState(false);
   return (
-    <section id="leave" className="mt-10 scroll-mt-20 border-t border-line pt-8">
+    <section id="leave" className="mt-10 scroll-mt-[calc(var(--topbar-h)+1rem)] border-t border-line pt-8">
       <h2 className="font-medium">Leave {slug}</h2>
       <p className="mt-1 text-sm text-muted">
         {soleOwner

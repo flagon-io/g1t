@@ -19,6 +19,7 @@ export function Hint({
   side,
   align,
   disabled,
+  contentClassName,
   onClick,
   onPointerDown,
   ...props
@@ -33,6 +34,8 @@ export function Hint({
    * hint hangs on a focusable span around it instead, as when it says why.
    */
   disabled?: boolean;
+  /** The hint's own classes: `xl:hidden` for a hint that only an icon without its words needs. */
+  contentClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const touch = useRef(false);
@@ -71,7 +74,7 @@ export function Hint({
       >
         {trigger}
       </TooltipTrigger>
-      <TooltipContent side={side} align={align}>
+      <TooltipContent side={side} align={align} className={contentClassName}>
         {label}
       </TooltipContent>
     </Tooltip>

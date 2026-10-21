@@ -1082,7 +1082,7 @@ function ArtifactsList({
   if (isFailed(artifacts)) {
     // Its heading stays, so the run's count links somewhere that says why.
     return (
-      <Card asChild className="scroll-mt-20 p-4">
+      <Card asChild className="scroll-mt-[calc(var(--topbar-h)+1rem)] p-4">
         <section id="artifacts">
           <h3 className="flex items-center gap-2 text-sm font-medium">
             <Package size={14} className="text-muted" />
@@ -1097,7 +1097,7 @@ function ArtifactsList({
   }
   if (artifacts.length === 0) return null;
   return (
-    <Card asChild className="scroll-mt-20 p-4">
+    <Card asChild className="scroll-mt-[calc(var(--topbar-h)+1rem)] p-4">
       <section id="artifacts">
         <h3 className="flex items-center gap-2 text-sm font-medium">
           <Package size={14} className="text-muted" />

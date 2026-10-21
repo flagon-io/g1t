@@ -75,7 +75,7 @@ import {
   Webhook,
   X,
 } from "lucide-react";
-import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
 import {
@@ -91,6 +91,8 @@ import {
 } from "@g1t/contracts";
 
 import { InMain } from "./landmark";
+import { NeedsAttention } from "./needs-attention";
+import { cn } from "../lib/cn";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
 import { AskButton } from "./ask-button";
 import { NotificationsBell } from "./inbox";
@@ -148,7 +150,7 @@ import { useSidebarLocation } from "../lib/use-sidebar-location";
 import { setupPath } from "../lib/onboarding";
 import { ChatSidebar } from "./chat/sidebar";
 import { FoliosSidebar } from "./folios/sidebar";
-import { Rail, ShortcutsDialog, WorkspaceSwitcher, sidebarKeyLabel } from "./rail";
+import { AppBar, ShortcutsDialog, WorkspaceSwitcher, sidebarKeyLabel } from "./app-bar";
 import { BottomBar, isConversation, useVisualViewport } from "./mobile";
 import { useChatSidebar } from "./chat/actions";
 import { unreadTotals } from "../lib/chat";
@@ -296,6 +298,29 @@ function SidebarLink({
 }
 
 /**
+ * What a mode's sidebar makes first (New work item): a white pill on the
+ * sidebar's grey, above its lists, lit like any row on its own page.
+ */
+function PrimaryLink({ to, icon, current, children }: { to: string; icon: ReactNode; current: boolean; children: ReactNode }) {
+  const { pending } = useRowState(to, { current });
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        asChild
+        isActive={current}
+        isPending={pending}
+        className="rounded-full bg-bg font-medium text-fg shadow-xs ring-1 ring-sidebar-border hover:bg-bg hover:ring-line-strong data-[active=true]:bg-bg data-[active=true]:ring-line-strong [&>svg]:text-fg"
+      >
+        <Link to={to} prefetch="intent" aria-current={current ? "page" : undefined}>
+          {icon}
+          <span className="min-w-0 grow truncate">{children}</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
+/**
  * A page that is coming, as a link to its roadmap page: faint, with Soon,
  * and marked current on any of its section's Soon pages.
  */
@@ -430,12 +455,13 @@ function StatusSummary({ open }: { open: boolean }) {
 const MENU_ROW = "h-9 gap-2.5 px-2.5 text-[0.8125rem]";
 
 /**
- * Your account, at the foot of the rail (or in the header, before you have
- * a workspace): who you are and your status, your profile and settings,
- * and help: the documentation, support, status and the keyboard's
- * shortcuts; then signing out and the fine print.
+ * Your account, at the end of the app bar (or of the page's top bar, before
+ * you have a workspace): who you are and your status, your profile and
+ * settings, and help: the documentation, support, status and the
+ * keyboard's shortcuts; then signing out and the fine print. `on` is the
+ * surface it sits on, which rings its presence dot.
  */
-function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "bottom" }) {
+function AccountMenu({ user, on = "page" }: { user: User; on?: "bar" | "page" }) {
   const submit = useSubmit();
   const [open, setOpen] = useState(false);
   const [keys, setKeys] = useState(false);
@@ -461,26 +487,18 @@ function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "b
     <>
       <DropdownMenu open={open} onOpenChange={setOpen}>
         {/* The avatar alone, with a dot that says how others see you (components/presence.tsx). */}
-        <Hint label={side === "right" ? "Your account" : undefined} side="right">
+        <Hint label={on === "bar" ? "Your account" : undefined} side="bottom">
           <DropdownMenuTrigger
             aria-label={`Account menu for ${shownUsername(user)}`}
             onPointerEnter={prefetch}
             onFocus={prefetch}
-            className={
-              side === "right"
-                ? // At the foot of the rail: a 40px rounded square, as the rail's icons are.
-                  "relative flex size-10 items-center justify-center rounded-[10px] outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-sidebar-accent"
-                : "relative flex rounded-full outline-none transition-transform hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:ring-2 data-[state=open]:ring-line-strong"
-            }
+            className="relative ml-0.5 flex rounded-full outline-none transition-transform hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:ring-2 data-[state=open]:ring-line-strong"
           >
-            <Avatar name={user.username} image={user.avatar} size={side === "right" ? 40 : 28} square={side === "right"} />
-            <OwnPresenceDot
-              ring={side === "right" ? "var(--color-rail)" : "var(--color-bg)"}
-              className={side === "right" ? "absolute -right-1 -bottom-1" : "absolute -right-0.5 -bottom-0.5"}
-            />
+            <Avatar name={user.username} image={user.avatar} size={28} />
+            <OwnPresenceDot ring={on === "bar" ? "var(--color-sidebar)" : "var(--color-bg)"} className="absolute -right-0.5 -bottom-0.5" />
           </DropdownMenuTrigger>
         </Hint>
-        <DropdownMenuContent align="end" side={side} sideOffset={side === "right" ? 14 : 6} collisionPadding={8} className="w-70 p-1.5">
+        <DropdownMenuContent align="end" side="bottom" sideOffset={8} collisionPadding={8} className="w-70 p-1.5">
           {/* Who is signed in, and a way to their profile. */}
           <DropdownMenuItem asChild className="gap-3 px-2 py-2">
             <Link to={profile} aria-label={`${me?.name ?? shownUsername(user)} (@${shownUsername(user)}), your profile`}>
@@ -1219,7 +1237,7 @@ function CodeSidebar({
           <Rule />
         </>
       )}
-      <ModeHeader title={browsing?.owner?.kind === "workspace" ? "Workspace" : browsing ? "Explore" : "Code"} />
+      <ModeHeader title={browsing?.owner?.kind === "workspace" ? "Workspace" : browsing ? "Explore" : "Code"} tabbed={!browsing} />
       <Drill trail={trail} />
     </div>
   );
@@ -1367,12 +1385,14 @@ function BrowseMenu({ user, owner }: { user: User; owner: BrowsedOwner | null })
 }
 
 /**
- * A mode's sidebar heading: its name, quiet, under the workspace's
- * switcher, with what it makes at the end.
+ * A mode's sidebar heading: its name, quiet, with what it makes at the end.
+ * A mode that is a tab of the app bar (`tabbed`: Work, Code) has its name
+ * lit there already, so beside the page it says nothing; in the drawer,
+ * which covers the bar, it still does.
  */
-export function ModeHeader({ title, action }: { title: ReactNode; action?: ReactNode }) {
+export function ModeHeader({ title, action, tabbed = false }: { title: ReactNode; action?: ReactNode; tabbed?: boolean }) {
   return (
-    <div className="flex h-8 shrink-0 items-center gap-1 pr-2 pl-3">
+    <div className={cn("flex h-8 shrink-0 items-center gap-1 pr-2 pl-3", tabbed && !action && "[[data-slot=app-bar]~[data-slot=sidebar]_&]:hidden")}>
       <SidebarGroupLabel asChild className="min-w-0 grow truncate px-1">
         <h2>{title}</h2>
       </SidebarGroupLabel>
@@ -1560,8 +1580,14 @@ function WorkSidebar({ slug, username }: { slug: string; username: string }) {
   const at = (page: string) => path === workPath(slug, page) || path.startsWith(`${workPath(slug, page)}/`);
   return (
     <div className="flex h-full flex-col">
-      <ModeHeader title="Work" />
+      <ModeHeader title="Work" tabbed />
       <nav aria-label="Work" className={PANEL}>
+        <NavRows>
+          <PrimaryLink to={newItemPath(slug)} icon={<Plus size={15} />} current={at("new")}>
+            New work item
+          </PrimaryLink>
+        </NavRows>
+        <NeedsAttention slug={slug} className="my-2" />
         <NavRows>
           <SidebarLink to={workPath(slug)} icon={<ListOrdered size={15} />} current={path === workPath(slug)}>
             Plan
@@ -1580,9 +1606,6 @@ function WorkSidebar({ slug, username }: { slug: string; username: string }) {
           </SidebarLink>
           <SidebarLink to={`${list}?state=closed`} icon={<Check size={15} />} current={view({ state: "closed" })}>
             Closed
-          </SidebarLink>
-          <SidebarLink to={newItemPath(slug)} icon={<Plus size={15} />} current={at("new")}>
-            New work item
           </SidebarLink>
           <SidebarLink to={workPath(slug, "labels")} icon={<Ticket size={15} />} current={at("labels")}>
             Labels
@@ -2168,7 +2191,7 @@ function useSidebarShortcut(toggle: () => void) {
  * Search or jump to: the command palette. On a computer it looks like the
  * field it opens, with its shortcut; on a phone, a magnifier.
  */
-function SearchButton({ onClick, place }: { onClick: () => void; place: "bar" | "sidebar" }) {
+function SearchButton({ onClick, place }: { onClick: () => void; place: "bar" | "sidebar" | "appbar" }) {
   const field = (
     <Button
       variant="outline"
@@ -2178,22 +2201,44 @@ function SearchButton({ onClick, place }: { onClick: () => void; place: "bar" | 
       className={
         place === "sidebar"
           ? "w-full justify-start bg-bg font-normal text-faint hover:bg-bg hover:text-muted"
-          : "mr-1 w-[min(18rem,26vw)] justify-start bg-surface font-normal text-faint hover:bg-surface hover:text-muted max-md:hidden"
+          : place === "appbar"
+            ? // The field from 1024px, the magnifier before; it narrows to its shortcut before the tabs give way.
+              "mr-1 w-64 min-w-34 shrink justify-start bg-bg font-normal text-faint @container hover:bg-bg hover:text-muted max-lg:hidden"
+            : "mr-1 w-[min(18rem,26vw)] justify-start bg-surface font-normal text-faint hover:bg-surface hover:text-muted max-md:hidden"
       }
     >
       <Search size={15} />
-      <span className="grow truncate text-left">Search or jump to</span>
+      {/* Narrowed in the app bar, it says Search alone rather than half of it. */}
+      <span className="grow truncate text-left">
+        Search<span className="@max-[13rem]:hidden"> or jump to</span>
+      </span>
       <PaletteKey className="px-1.5 text-[0.625rem] leading-4 text-muted" />
     </Button>
   );
   if (place === "sidebar") return field;
   return (
     <>
-      <Button variant="ghost" size="icon-bar" aria-label="Search or jump to" onClick={onClick} className="md:hidden">
+      <Button variant="ghost" size="icon-bar" aria-label="Search or jump to" onClick={onClick} className={place === "appbar" ? "lg:hidden" : "md:hidden"}>
         <Search size={18} />
       </Button>
       {field}
     </>
+  );
+}
+
+/** Whether the window matches `query`: null on the server and until the page hydrates, so both draw the same. */
+function useMedia(query: string): boolean | null {
+  return useSyncExternalStore(
+    useCallback(
+      (change: () => void) => {
+        const media = window.matchMedia(query);
+        media.addEventListener("change", change);
+        return () => media.removeEventListener("change", change);
+      },
+      [query],
+    ),
+    () => window.matchMedia(query).matches,
+    () => null,
   );
 }
 
@@ -2311,11 +2356,17 @@ export function AppShell({
     }
   };
   const sidebarKey = useSidebarKey();
-  // Search or jump to sits at the top of the sidebar, except in Chat and
-  // Artifacts, whose sidebars search their own lists: there it stays in the bar.
+  const wide = useMedia("(min-width: 768px)");
+  // The sidebar beside the page from 1024px, the drawer before: what the page's toggle says it does.
+  const desk = useMedia("(min-width: 1024px)");
+  const shownSidebar = desk === false ? drawer : inline;
+  // Without a workspace there is no app bar, and search or jump to sits at the
+  // top of the sidebar (Notifications', your account's).
   const sidebarSearch = panel != null && panel !== "chat" && panel !== "artifacts";
-  // The sidebar's head: the workspace and its switcher, the way to fold the
-  // sidebar or close the drawer, and search, which opens the palette.
+  // The drawer's head, and the sidebar's without a workspace: the workspace
+  // and its switcher, the way to fold the sidebar or close the drawer, and
+  // search, which opens the palette. Under the app bar the sidebar has no
+  // head: the workspace and search are in the bar, its toggle in the page's.
   const sidebarTop = (inDrawer: boolean) => (
     <SidebarHeader className="gap-1 px-2 pt-0 pb-2">
       <div className="flex h-14 shrink-0 items-center gap-1">
@@ -2340,26 +2391,60 @@ export function AppShell({
 
   // On a phone (below 768px): the bottom bar, and a conversation full screen.
   const conversation = isConversation(target);
-  // Where the page panel starts: 8px past the rail (56px), or 8px past the sidebar (56 + 240px) when it is open.
-  // The page starts where the rail (3.5rem) and, open, the sidebar (15rem) end.
-  const pad = ws ? (inline ? "md:pl-14 lg:pl-74" : "md:pl-14") : inline ? "lg:pl-60" : "";
+  // The page starts where the sidebar (15rem), when it is open, ends.
+  const pad = inline ? "lg:pl-60" : "";
+  // Search, Ask, the bell and Create new: at the app bar's end from 768px,
+  // and in the page's top bar on a phone or without a workspace. Ask and the
+  // bell hold state of their own, so each is drawn in one place only: until
+  // the page knows the window's width, both are drawn and CSS shows one.
+  const barred = ws != null;
+  // Without a workspace there is no app bar: the page's bar is their only place.
+  const here = (place: "appbar" | "bar") => (!barred ? place === "bar" : wide == null || (place === "appbar") === wide);
+  const actions = (place: "appbar" | "bar") => (
+    <>
+      {!titleSearch && (
+        <span className={`flex ${place === "appbar" ? "min-w-0 shrink" : ""} ${place === "bar" && !barred && inline && sidebarSearch ? "lg:hidden" : ""}`}>
+          <SearchButton place={place} onClick={() => setPalette(true)} />
+        </span>
+      )}
+      {ws && here(place) && <AskButton key={ws.slug} slug={ws.slug} />}
+      <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-5 max-md:hidden" />
+      {/* On a phone, Notifications is in the bottom bar. */}
+      {here(place) && (
+        <span className="flex max-md:hidden">
+          <NotificationsBell counts={shell.inbox ? { ...shell.inbox, unread: notificationsUnread } : null} />
+        </span>
+      )}
+      <CreateMenu shell={shell} />
+    </>
+  );
 
   return (
     <SidebarProvider open={!closed} onOpenChange={(open) => setClosed(!open)} openMobile={drawer} onOpenMobileChange={setDrawer} toggleSidebar={toggleSidebar}>
       <Progress />
       {ws && (
-        <div className="fixed top-(--frame-top) bottom-0 left-0 z-40 hidden md:block">
-          <Rail workspace={ws} mode={mode} pins={shell.pins ?? []} unread={unread} account={<AccountMenu user={user} />} />
-        </div>
+        <AppBar
+          user={user}
+          workspace={ws}
+          mode={mode}
+          pins={shell.pins ?? []}
+          unread={unread}
+          end={
+            <>
+              {actions("appbar")}
+              <AccountMenu user={user} on="bar" />
+            </>
+          }
+        />
       )}
       {panel && (
         <Sidebar
           role="complementary"
           aria-label={`${MODE_MENU[panel]} sidebar`}
-          className={`fixed top-(--frame-top) bottom-0 z-40 max-lg:hidden ${ws ? "left-14" : "left-0"}`}
+          className="fixed top-[calc(var(--frame-top)+var(--appbar-h))] bottom-0 left-0 z-30 max-lg:hidden"
         >
-          {sidebarTop(false)}
-          <div className="min-h-0 grow">{sidebarNode()}</div>
+          {!barred && sidebarTop(false)}
+          <div className={`min-h-0 grow ${barred ? "pt-2" : ""}`}>{sidebarNode()}</div>
         </Sidebar>
       )}
       {/* The drawer is a sheet: a dialog that holds focus, closes on Escape or
@@ -2371,47 +2456,37 @@ export function AppShell({
         </SidebarMobile>
       )}
 
-      <div className={`min-h-dvh pt-(--frame-top) pb-(--tabbar-h) ${pad}`}>
+      <div className={`min-h-dvh pt-[calc(var(--frame-top)+var(--appbar-h))] pb-(--tabbar-h) ${pad}`}>
         {/* The top bar always has its line, so a page's own header (data-page-head: a conversation's, a project's,
             a sticky one under an open artifact) sits under it as its own band. */}
-        <div className="flex min-h-[calc(100dvh-var(--frame-top)-var(--tabbar-h))] min-w-0 flex-col bg-bg">
+        <div className="flex min-h-[calc(100dvh-var(--frame-top)-var(--appbar-h)-var(--tabbar-h))] min-w-0 flex-col bg-bg">
           <header
-            className={`sticky top-(--frame-top) z-30 flex h-14 items-center gap-1 border-b border-line bg-bg pr-2 pl-2 sm:pr-3 ${inline ? "lg:pl-3.5" : ""} ${conversation ? "max-md:hidden" : ""}`}
+            className={`sticky top-[calc(var(--frame-top)+var(--appbar-h))] z-30 flex h-14 items-center gap-1 border-b border-line bg-bg pr-2 pl-2 sm:pr-3 ${barred ? "md:h-12 md:pl-3" : inline ? "lg:pl-3.5" : ""} ${conversation ? "max-md:hidden" : ""}`}
           >
             {panel && (
               <SidebarTrigger
-                hint={`Show the sidebar (${sidebarKey})`}
-                aria-label={drawer ? "Hide the sidebar" : "Show the sidebar"}
-                aria-expanded={drawer}
-                className={`max-md:size-11 ${inline ? "lg:hidden" : ""}`}
+                hint={`${shownSidebar ? "Hide" : "Show"} the sidebar (${sidebarKey})`}
+                aria-label={shownSidebar ? "Hide the sidebar" : "Show the sidebar"}
+                aria-expanded={shownSidebar}
+                className={`text-faint max-md:size-11 ${inline && !barred ? "lg:hidden" : ""}`}
               />
             )}
+            {/* The workspace is the app bar's from 768px; on a phone it starts the trail. */}
             {ws && (
-              <span className={`flex min-w-0 shrink items-center gap-1.5 ${inline ? "lg:hidden" : ""}`}>
-                <WorkspaceSwitcher user={user} workspace={ws} compact />
+              <span className="flex min-w-0 shrink items-center gap-1.5 md:hidden">
+                <WorkspaceSwitcher user={user} workspace={ws} variant="compact" />
                 <span aria-hidden="true" className="text-line-strong">
                   /
                 </span>
               </span>
             )}
+            {panel && barred && <span aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-line max-md:hidden" />}
             <Breadcrumbs pathname={pathname} missing={missing} repo={shell.repo} workspace={ws?.slug ?? null} />
-            {/* Search, Ask, then the bell and Create new: one height, one rhythm. */}
-            <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-1.5">
-              {/* With the sidebar open, search is at its top. */}
-              {!titleSearch && (
-                <span className={`flex ${inline && sidebarSearch ? "lg:hidden" : ""}`}>
-                  <SearchButton place="bar" onClick={() => setPalette(true)} />
-                </span>
-              )}
-              {ws && <AskButton key={ws.slug} slug={ws.slug} />}
-              <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-5 max-md:hidden" />
-              {/* On a phone, Notifications is in the bottom bar. */}
-              <span className="flex max-md:hidden">
-                <NotificationsBell counts={shell.inbox ? { ...shell.inbox, unread: notificationsUnread } : null} />
-              </span>
-              <CreateMenu shell={shell} />
-              {/* Without a workspace there is no rail: the account is here. */}
-              {!ws && <AccountMenu user={user} side="bottom" />}
+            {/* Search, Ask, then the bell and Create new: one height, one rhythm. In a workspace, the app bar's from 768px. */}
+            <div className={`ml-auto flex shrink-0 items-center gap-1 md:gap-1.5 ${barred ? "md:hidden" : ""}`}>
+              {actions("bar")}
+              {/* Without a workspace there is no app bar: the account is here. */}
+              {!ws && <AccountMenu user={user} />}
             </div>
           </header>
           {banner}

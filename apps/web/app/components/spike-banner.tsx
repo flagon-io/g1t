@@ -34,7 +34,7 @@ export function SpikeBanner({
       className={
         compact
           ? "flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-b border-danger/30 bg-danger/10 px-4 py-2 text-sm"
-          : "mb-6 scroll-mt-20 rounded-xl border border-danger/40 bg-danger/5 p-5"
+          : "mb-6 scroll-mt-[calc(var(--topbar-h)+1rem)] rounded-xl border border-danger/40 bg-danger/5 p-5"
       }
     >
       <p className={compact ? "flex items-center gap-2" : "flex gap-2.5 text-sm"}>

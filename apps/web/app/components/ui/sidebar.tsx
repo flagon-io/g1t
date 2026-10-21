@@ -10,16 +10,17 @@ import { Input } from "./input";
 import { Separator } from "./separator";
 import { Sheet, SheetContent, SheetTitle } from "./sheet";
 
-// shadcn/ui's sidebar, styled with g1t's tokens: the frame of the rail and
-// the mode sidebar down the left of the app (components/shell.tsx,
-// components/rail.tsx), and of the drawer that stands in for them on a
+// shadcn/ui's sidebar, styled with g1t's tokens: the frame of the mode
+// sidebar down the left of the app, under the app bar (components/shell.tsx,
+// components/app-bar.tsx), and of the drawer that stands in for it on a
 // phone. A provider holds whether it is open; `Sidebar` draws the column;
 // header, content and footer stack inside it; groups hold a label and a
-// menu of rows; `SidebarMenuButton` is one row, or one icon of the rail.
+// menu of rows; `SidebarMenuButton` is one row.
 //
 // The colours are the sidebar's own tokens (app.css): `sidebar` for its
-// surface, `sidebar-accent` for the current row, `sidebar-border` for the
-// hairlines, and `rail` for the rail's surface.
+// surface, which the app bar shares, `sidebar-accent` for the current row
+// or tab, `sidebar-border` for the hairlines, and `rail` for a phone's
+// bottom bar.
 //
 // Unlike shadcn's, the provider does not read the viewport: the page is
 // drawn on the server, so the desktop column and the phone's drawer are
