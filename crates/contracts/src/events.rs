@@ -295,7 +295,8 @@ pub struct EventLabel {
 /// `pull.review_requested` and `pull.review_request_removed` (reviewers
 /// asked, or no longer), `pull.labeled` and `pull.unlabeled`,
 /// `pull.milestoned` and `pull.demilestoned`, `pull.base_changed` (the
-/// branch it merges into changed), `pull.stalled` (g1t stopped seeing it
+/// branch it merges into changed), `pull.edited` (its title, description
+/// or work item changed), `pull.stalled` (g1t stopped seeing it
 /// through until a person steps in) and `pull.resumed` (it picked back
 /// up); each uses the fields that apply to it.
 #[derive(Debug, Default, Serialize)]
@@ -362,6 +363,12 @@ pub struct PullEvent {
     /// On `pull.opened` and `pull.base_changed`: the branch it merges into.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base: Option<String>,
+    /// On `pull.edited`: what changed and what it was, as GitHub gives
+    /// it: `{"title": {"from": "…"}, "body": {"from": "…"}, "item":
+    /// {"from": 12}}`, with only what changed (`from` is null for a
+    /// description or work item it did not have).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub changes: Option<serde_json::Value>,
 }
 
 /// A team asked to review a pull request.

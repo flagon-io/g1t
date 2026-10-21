@@ -10647,7 +10647,8 @@
   },
   "update_pull_request": {
     "request": {
-      "base": "release/1.x",
+      "title": "Greeting names the caller",
+      "body": "Reads a name from the first argument.\n\nFixes #12",
       "labels": ["bug"]
     },
     "response": {
@@ -10655,8 +10656,8 @@
       "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
       "number": 14,
       "item": 12,
-      "title": "Greeting should name the caller",
-      "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+      "title": "Greeting names the caller",
+      "body": "Reads a name from the first argument.\n\nFixes #12",
       "agent": "claude-code",
       "runtime": "external",
       "status": "open",
@@ -10696,7 +10697,7 @@
       "created_at": "2026-10-01T18:20:02.117Z",
       "updated_at": "2026-10-01T18:35:44.902Z"
     },
-    "notes": "A new base takes it out of the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base."
+    "notes": "Only the fields given change; one it does not take is refused with 422. A new title or body is read again for the work items it closes and is part of. A merged or closed pull request takes only title and body, and a merged one keeps what it landed. A new base takes it out of the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base."
   },
   "list_repo_rulesets": {
     "params": {

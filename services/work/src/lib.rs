@@ -29,6 +29,7 @@ mod merge_message;
 mod mergeability;
 mod merging;
 mod prefetch;
+mod pull_edits;
 mod pushed;
 mod queue;
 mod reactions;
@@ -1479,7 +1480,21 @@ impl Work {
     }
 
     async fn update_pull(&self, a: UpdatePullArgs) -> Result<Outcome<Pull>> {
-        let pull = check!(self.manageable_pull(&a.actor, &a.repo, a.number).await?);
+        let edit = match pull_edits::Edit::asked(a.title.as_deref(), a.body.as_deref(), a.item) {
+            Ok(edit) => edit,
+            Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
+        };
+        let others = a.assignees.is_some() || a.reviewers.is_some() || a.labels.is_some() || a.milestone.is_some() || a.base.is_some();
+        // A merged or closed pull request's title and description can still
+        // be corrected (pull_edits.rs); everything else needs it active.
+        let pull = if !others && !edit.is_empty() && edit.text_only() {
+            check!(self.managed_pull(&a.actor, &a.repo, a.number).await?)
+        } else {
+            check!(self.manageable_pull(&a.actor, &a.repo, a.number).await?)
+        };
+        // Its title, description and work item checked first, like the
+        // rest: anything refused, and nothing changes.
+        let edit = check!(self.ready_pull_edit(&a.actor, &a.repo, &pull, edit).await?);
         // The branch it merges into, its milestone and its labels first:
         // each can be refused, and then nothing else changes.
         if a.base.is_some() || a.milestone.is_some() || a.labels.is_some() {
@@ -1520,6 +1535,9 @@ impl Work {
             }
             None => None,
         };
+        if let Some(edit) = edit {
+            self.make_pull_edit(&a.actor, &pull, edit).await?;
+        }
         self.db
             .prepare(
                 "UPDATE pulls

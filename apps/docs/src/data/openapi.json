@@ -72462,6 +72462,7 @@
                         "pull.milestoned",
                         "pull.demilestoned",
                         "pull.base_changed",
+                        "pull.edited",
                         "pull.auto_merge_enabled",
                         "pull.auto_merge_disabled",
                         "pull.head_branch_deleted",
@@ -72821,6 +72822,7 @@
                         "pull.milestoned",
                         "pull.demilestoned",
                         "pull.base_changed",
+                        "pull.edited",
                         "pull.auto_merge_enabled",
                         "pull.auto_merge_disabled",
                         "pull.head_branch_deleted",
@@ -74095,6 +74097,7 @@
                         "pull.milestoned",
                         "pull.demilestoned",
                         "pull.base_changed",
+                        "pull.edited",
                         "pull.auto_merge_enabled",
                         "pull.auto_merge_disabled",
                         "pull.head_branch_deleted",
@@ -74440,6 +74443,7 @@
                         "pull.milestoned",
                         "pull.demilestoned",
                         "pull.base_changed",
+                        "pull.edited",
                         "pull.auto_merge_enabled",
                         "pull.auto_merge_disabled",
                         "pull.head_branch_deleted",
@@ -93300,7 +93304,7 @@
           "Pull requests"
         ],
         "summary": "Update a pull request",
-        "description": "Change an open pull request: base, the branch it merges into (an existing branch; needs the Write role or higher); its labels (the workspace's labels, replacing the set); its milestone (a number, or null or 0 for none; needs the Triage role); and assignees and reviewers (each replacing the set). Only the fields given change. Its author, or whoever asked g1t for it, may change it; anyone else needs the Triage role or higher. A new base is a pull.base_changed event: it leaves the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base. state open reopens a closed pull request, as reopen_pull_request does, before anything else changes; state closed closes it, as close_pull_request does, after.\n\nA new base takes it out of the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base.",
+        "description": "Change a pull request: its title and body (its description; empty takes it away); item, the number of its own work item in the repository's workspace (null or 0 takes it away); base, the branch it merges into (an existing branch; needs the Write role or higher); its labels (the workspace's labels, replacing the set); its milestone (a number, or null or 0 for none; needs the Triage role); and assignees and reviewers (each replacing the set). Only the fields given change, and a field this action does not take is refused with `422` rather than ignored. Its author, or whoever asked g1t for it, may change it; anyone else needs the Triage role or higher, and the Write role for its title, body or item. A new title or body is read again for the work items it closes (Fixes #12) and is part of (Part of #12), as when it opened: those it no longer names are dropped, those it newly names are added if both you and its author may see them, and its own work item stays first. Its item changes only if you can see both the work item it had and the one it gets, which must be open. A merged or closed pull request's title and body can still change, and nothing else: a merged one keeps the work items it landed. A change to its title, body or item is a pull.edited event, with changes saying what each was. A new base is a pull.base_changed event: it leaves the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base. state open reopens a closed pull request, as reopen_pull_request does, before anything else changes; state closed closes it, as close_pull_request does, after.\n\nOnly the fields given change; one it does not take is refused with 422. A new title or body is read again for the work items it closes and is part of. A merged or closed pull request takes only title and body, and a merged one keeps what it landed. A new base takes it out of the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base.",
         "x-operation": "update_pull_request",
         "x-mcp-tool": "pull_request",
         "x-mcp-action": "update",
@@ -93358,8 +93362,8 @@
                   "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "number": 14,
                   "item": 12,
-                  "title": "Greeting should name the caller",
-                  "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+                  "title": "Greeting names the caller",
+                  "body": "Reads a name from the first argument.\n\nFixes #12",
                   "agent": "claude-code",
                   "runtime": "external",
                   "status": "open",
@@ -93515,6 +93519,21 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "Its title. The work items it closes and is part of are read again."
+                  },
+                  "body": {
+                    "type": "string",
+                    "description": "Its description, in Markdown; empty takes it away. Read again as title is."
+                  },
+                  "item": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "description": "The number of its own work item, in the repository's workspace; null or 0 takes it away. Only while it is open or a draft."
+                  },
                   "state": {
                     "type": "string",
                     "enum": [
@@ -93558,7 +93577,8 @@
                 }
               },
               "example": {
-                "base": "release/1.x",
+                "title": "Greeting names the caller",
+                "body": "Reads a name from the first argument.\n\nFixes #12",
                 "labels": [
                   "bug"
                 ]

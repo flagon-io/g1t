@@ -1464,15 +1464,24 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
   pullsForRepos(repoIds: string[], viewer: Viewer, limit: number): Promise<RepoPulls[]>;
   getPull(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<PullDetail>>;
   /**
-   * Changes who a pull request is assigned to and whose review is asked
-   * for; each list given replaces the whole set. Asking for `g1t`'s
-   * review does not by itself start one: the runner's `review` does.
+   * Changes a pull request's title, description and work item, who it is
+   * assigned to and whose review is asked for; each list given replaces
+   * the whole set. Asking for `g1t`'s review does not by itself start one:
+   * the runner's `review` does. A new title or description is read again
+   * for the work items it closes and is part of. A merged or closed one
+   * takes only `title` and `body`.
    */
   updatePull(
     actor: User,
     repo: RepoPath,
     number: number,
     changes: {
+      /** Its author, or someone with the Write role. */
+      title?: string;
+      /** Empty takes it away. */
+      body?: string;
+      /** Its own work item's number; 0 takes it away. */
+      item?: number;
       assignees?: string[];
       reviewers?: string[];
       labels?: string[];

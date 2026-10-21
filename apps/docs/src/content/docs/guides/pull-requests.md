@@ -1,6 +1,6 @@
 ---
 title: Pull requests and checks
-description: What the merge box shows before a pull request can merge, the checks your workflows report and which ones a merge needs, reviewers, sessions, how a large change's files load, drafts, closing and reopening, editing and deleting comments, merge methods, commit messages, auto-merge, merging by pushing, closing work items, deleting branches, comments on commits, conflicts, and keeping a branch up to date.
+description: What the merge box shows before a pull request can merge, the checks your workflows report and which ones a merge needs, reviewers, sessions, how a large change's files load, drafts, closing and reopening, editing a pull request, editing and deleting comments, merge methods, commit messages, auto-merge, merging by pushing, closing work items, deleting branches, comments on commits, conflicts, and keeping a branch up to date.
 ---
 
 At the foot of an open pull request's conversation, the **merge box** says
@@ -297,6 +297,48 @@ Each answers with the pull request as it is now. Converting publishes
 head commit in `commit`; both reach [webhooks](/guides/webhooks/) and can
 start [workflows](/guides/actions/).
 
+## Edit a pull request
+
+A pull request's title, description and work item can change after it
+opens. Its author, whoever asked g1t for it, and anyone with the Write
+[role](/guides/access-and-roles/) or higher can change them.
+
+- To change the title or description, select **Edit** beside the title,
+  change them and select **Save**.
+- To change the work item it is for, use the API, the MCP server or the
+  CLI. You must be able to see both the work item it had and the one it
+  gets, which must be open. Give `0` (or `null`) to take it off its work
+  item.
+
+After an edit, its title and description are read again for the work
+items it closes (`Fixes #12`) and is part of (`Part of #12`), as when it
+opened. A work item it no longer names is dropped from its `closes` and
+`parts`; one it newly names is added when both you and its author may see
+it. Its own work item stays first. So a `Closes #12` added after a pull
+request opened counts once it merges.
+
+A merged or closed pull request's title and description can still be
+corrected, and nothing else. A merged one keeps the work items it landed
+when it merged: editing its description later never changes them. To
+change a closed one's work item, reopen it first.
+
+A new title is noted in the conversation ("changed the title from …"), as
+is a new work item, which the work items it left and joined note too. Any
+change to its title, description or work item publishes `pull.edited` to
+[webhooks](/guides/webhooks/) and starts workflows on `pull_request`
+`edited`, with what each was before in `changes` (`changes.title.from`,
+`changes.body.from`, `changes.item.from`).
+
+| From    | How                                                                               |
+| ------- | --------------------------------------------------------------------------------- |
+| The API | `PATCH /repos/{owner}/{name}/pulls/{number}` with `title`, `body` or `item`       |
+| MCP     | `pull_request` with `"action": "update"` and `title`, `body` or `item`            |
+| The CLI | `g1t pr edit 12 --title "…"`, `--body "…"` or `--body-file FILE`, and `--item 40` |
+
+Only the fields given change. A field the call does not take is refused
+with `422`, never ignored, so a call that would have changed nothing does
+not seem to work.
+
 ## Editing and deleting comments
 
 You can edit and delete your own comments on work items and pull requests.
@@ -552,7 +594,8 @@ without landing anything. Commits pushed to the default branch land work
 items the same way.
 
 The pull request's `closes` lists the work items it will land on, in the
-order named, and `parts` the ones it is part of. Merging into any other
+order named, and `parts` the ones it is part of. Both are read again when
+its title or description is [edited](#edit-a-pull-request). Merging into any other
 branch lands nothing, and a repository can turn this off with
 `auto_close_items`. [Closing work items](/work/closing/) has the whole of
 it: the keywords, landing target by target, commits, closing by hand or

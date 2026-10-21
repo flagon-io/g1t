@@ -2068,11 +2068,14 @@ pub enum CommitMessageDefault {
     Custom,
 }
 
-/// `update_pull`: changes who a pull request is assigned to, whose review
-/// is asked for, its labels, its milestone and the branch it merges into.
-/// Each list given replaces the whole set. Whoever opened it, or someone
-/// with the Triage role, may; changing the base needs the Write role.
-/// Returns `Outcome<Pull>`.
+/// `update_pull`: changes a pull request's title, description and work
+/// item, who it is assigned to, whose review is asked for, its labels, its
+/// milestone and the branch it merges into. Each list given replaces the
+/// whole set. Whoever opened it, or someone with the Triage role, may;
+/// changing the base, and anyone else changing its title, description or
+/// work item, needs the Write role. A merged or closed pull request's title
+/// and description can still change, and nothing else; a merged one's
+/// landings stay as they were. Returns `Outcome<Pull>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdatePullArgs {
     pub actor: User,
@@ -2097,6 +2100,18 @@ pub struct UpdatePullArgs {
     /// Needs the Write role.
     #[serde(default)]
     pub base: Option<String>,
+    /// Its title. The work items it closes and is part of are read again
+    /// from its title and description.
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Its description; empty takes it away. Read again as `title` is.
+    #[serde(default)]
+    pub body: Option<String>,
+    /// The number of its own work item in the workspace; 0 takes it away.
+    /// Whoever changes it must be able to see the work item it had and the
+    /// one it gets, which must be open.
+    #[serde(default)]
+    pub item: Option<u32>,
 }
 
 /// `report_checks`: what a sandbox says about its run. With no results and

@@ -60,6 +60,7 @@ import { Markdown } from "../../components/markdown";
 import { ButtonLink, CopyLine, EmptyState, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { AttachImages } from "../../components/attach-images";
 import { MentionTextarea } from "../../components/mention-textarea";
+import { EditPullDialog } from "../../components/pull-edit";
 import { Avatar } from "../../components/ui/avatar";
 import { Card } from "../../components/ui/card";
 import { CheckboxOption } from "../../components/ui/checkbox";
@@ -277,6 +278,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // Triage and up manage anyone's pull request; its author, their own,
     // and whoever asked g1t for one, that one.
     canManage: can.triage || (viewer != null && viewer.id === workOwner(pull).id),
+    // Its title and description: whoever it is for, or Write and up; a
+    // merged or closed one's too.
+    canEdit: can.push || viewerOwns,
     // Maintain and up edit and delete anyone's comments; everyone, their own.
     canModerate: can.manage_settings,
     // A catch-up is pushed as the viewer: a working copy takes pushes only
@@ -456,6 +460,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   if (action === "labels") {
     const set = await work.setLabels(user, { repo: path, number }, form.getAll("label").map(String));
     return set.ok ? null : { error: set.error.message, action };
+  }
+  // Its title and description; work reads what it closes again.
+  if (action === "edit") {
+    const edited = await work.updatePull(user, path, number, { title: String(form.get("title") ?? ""), body: String(form.get("body") ?? "") });
+    return edited.ok ? null : { error: edited.error.message, action };
   }
   if (action === "milestone" || action === "base") {
     const changed = await work.updatePull(
@@ -738,6 +747,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     viewer,
     canMerge,
     canManage,
+    canEdit,
     canModerate,
     defaultBranch: repoDefault,
     choices: settledChoices,
@@ -888,9 +898,20 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
         {/* The title and the tabs run the full width; what is happening on
             the pull request sits at the top of Conversation. */}
         <header>
-          <h2 className="text-xl font-semibold tracking-tight text-balance wrap-break-word sm:text-2xl">
-            {pull.title} <span className="font-normal text-faint">#{pull.number}</span>
-          </h2>
+          <div className="flex items-start gap-3">
+            <h2 className="min-w-0 flex-1 text-xl font-semibold tracking-tight text-balance wrap-break-word sm:text-2xl">
+              {pull.title} <span className="font-normal text-faint">#{pull.number}</span>
+            </h2>
+            {canEdit && (
+              <EditPullDialog
+                key={`${pull.title}\n${pull.body ?? ""}`}
+                title={pull.title}
+                body={pull.body}
+                merged={pull.status === "merged"}
+                error={actionData?.action === "edit" ? actionData.error : null}
+              />
+            )}
+          </div>
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted">
             <PullState status={pull.status} />
             <span className="flex items-center gap-2">
@@ -1165,18 +1186,6 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       <p className="text-sm text-muted">
                         {working ? "No description yet. It is written when the pull request is marked ready for review." : "No description."}
                       </p>
-                    )}
-                    {canManage && pull.status === "open" && (
-                      <details className="mt-3 border-t border-line pt-3 text-sm">
-                        <summary className="cursor-pointer text-xs text-faint hover:text-fg">Edit description</summary>
-                        <Form method="post" className="mt-3 space-y-2">
-                          <input type="hidden" name="action" value="describe" />
-                          <MentionTextarea name="summary" rows={6} placeholder="What changed and why" defaultValue={pull.body ?? ""} />
-                          <SubmitButton match={{ action: "describe" }} pending="Saving…">
-                            Save
-                          </SubmitButton>
-                        </Form>
-                      </details>
                     )}
                   </TimelineItem>
 
@@ -1488,6 +1497,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       "assign",
                       "edit-comment",
                       "delete-comment",
+                      "edit",
                       "auto-merge-on",
                       "auto-merge-off",
                       "delete-branch",

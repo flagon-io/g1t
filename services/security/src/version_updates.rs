@@ -973,6 +973,9 @@ impl Security {
                 labels: (!labels.is_empty()).then_some(labels),
                 milestone: None,
                 base: None,
+                title: None,
+                body: None,
+                item: None,
             },
         )
         .await?;
@@ -990,6 +993,9 @@ impl Security {
                     labels: None,
                     milestone,
                     base: None,
+                    title: None,
+                    body: None,
+                    item: None,
                 },
             )
             .await?;

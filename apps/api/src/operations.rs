@@ -551,6 +551,14 @@ pub(crate) fn repo_path(input: &Value) -> Option<RepoPath> {
     }
 }
 
+/// The operations that refuse a field they do not take instead of
+/// ignoring it, so a caller is never told a change was made that was not.
+/// Every field one reads must be in its input schema, and so must every
+/// field its REST routes add (from the path and the query): an operation
+/// joins once that is checked (rest.rs,
+/// `strict_operations_take_what_their_routes_give`).
+pub(crate) const STRICT: &[Op] = &[Op::UpdatePullRequest];
+
 /// An object schema. `required` names the properties that must be given.
 fn object(properties: Value, required: &[&str]) -> Value {
     let mut schema = json!({ "type": "object", "properties": properties });
@@ -2007,7 +2015,7 @@ impl Op {
                 "Start a change. Opens a draft pull request with its own fork of the repository and returns the fork's git remote. Clone it, commit your work there, push, record your session as you go, then call mark_pull_request_ready. Give item, the number of the work item it is for in the repository's workspace, whenever there is one; this repository is then linked to it as touched, if it was not a target already. If the change is already on a branch pushed to the repository, give that branch instead: no fork is made and the pull request is ready for review at once. It merges into the default branch unless base names another existing branch; leave base out unless you were asked for another."
             }
             Op::UpdatePullRequest => {
-                "Change an open pull request: base, the branch it merges into (an existing branch; needs the Write role or higher); its labels (the workspace's labels, replacing the set); its milestone (a number, or null or 0 for none; needs the Triage role); and assignees and reviewers (each replacing the set). Only the fields given change. Its author, or whoever asked g1t for it, may change it; anyone else needs the Triage role or higher. A new base is a pull.base_changed event: it leaves the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base. state open reopens a closed pull request, as reopen_pull_request does, before anything else changes; state closed closes it, as close_pull_request does, after."
+                "Change a pull request: its title and body (its description; empty takes it away); item, the number of its own work item in the repository's workspace (null or 0 takes it away); base, the branch it merges into (an existing branch; needs the Write role or higher); its labels (the workspace's labels, replacing the set); its milestone (a number, or null or 0 for none; needs the Triage role); and assignees and reviewers (each replacing the set). Only the fields given change, and a field this action does not take is refused with `422` rather than ignored. Its author, or whoever asked g1t for it, may change it; anyone else needs the Triage role or higher, and the Write role for its title, body or item. A new title or body is read again for the work items it closes (Fixes #12) and is part of (Part of #12), as when it opened: those it no longer names are dropped, those it newly names are added if both you and its author may see them, and its own work item stays first. Its item changes only if you can see both the work item it had and the one it gets, which must be open. A merged or closed pull request's title and body can still change, and nothing else: a merged one keeps the work items it landed. A change to its title, body or item is a pull.edited event, with changes saying what each was. A new base is a pull.base_changed event: it leaves the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base. state open reopens a closed pull request, as reopen_pull_request does, before anything else changes; state closed closes it, as close_pull_request does, after."
             }
             Op::RecordSession => {
                 "Append entries to a pull request's session: the task you were given, public decision summaries and evidence, and the tools you ran. Never record private chain-of-thought or credentials. This is how people later see why a change was made, so record as you work, not only at the end."
@@ -3389,6 +3397,12 @@ impl Op {
             ),
             Op::UpdatePullRequest => object(
                 numbered(json!({
+                    "title": { "type": "string", "description": "Its title. The work items it closes and is part of are read again." },
+                    "body": { "type": "string", "description": "Its description, in Markdown; empty takes it away. Read again as title is." },
+                    "item": {
+                        "type": ["integer", "null"],
+                        "description": "The number of its own work item, in the repository's workspace; null or 0 takes it away. Only while it is open or a draft.",
+                    },
                     "state": {
                         "type": "string",
                         "enum": ["open", "closed"],
@@ -4356,6 +4370,26 @@ impl Op {
         }
     }
 
+    /// Why `input` is refused for naming a field this operation does not
+    /// take, when it is one of those that refuse rather than ignore them
+    /// ([`STRICT`]). `action`, which names an MCP tool's action, is never
+    /// one.
+    pub(crate) fn unknown_fields(self, input: &Value) -> Option<String> {
+        if !STRICT.contains(&self) {
+            return None;
+        }
+        let known = self.properties();
+        let mut unknown: Vec<&str> =
+            input.as_object()?.keys().map(String::as_str).filter(|key| *key != "action" && !known.contains_key(*key)).collect();
+        if unknown.is_empty() {
+            return None;
+        }
+        unknown.sort_unstable();
+        let mut takes: Vec<&str> = known.keys().map(String::as_str).collect();
+        takes.sort_unstable();
+        Some(format!("{} does not take {}. It takes {}.", self.name(), unknown.join(", "), takes.join(", ")))
+    }
+
     /// Fields of its answer that are keyed by data and so are sent as they
     /// are, beside those every answer keeps (`g1t_kit::wire::USER_KEYED`).
     pub(crate) fn as_given(self) -> &'static [&'static str] {
@@ -4785,6 +4819,10 @@ impl Op {
                     &format!("A run's token works in the {} workspace only.", scope.repo.namespace),
                 );
             }
+        }
+        // A field it does not take is refused, never silently ignored.
+        if let Some(problem) = self.unknown_fields(input) {
+            return failed(FailureCode::Invalid, &problem);
         }
         // Checked above for every operation that uses it.
         let actor = || viewer.clone().unwrap_or_default();
@@ -6184,9 +6222,20 @@ impl Op {
                         failure => return Ok(failure),
                     }
                 }
-                let changes = ["assignees", "reviewers", "labels", "milestone", "base"]
+                let changes = ["assignees", "reviewers", "labels", "milestone", "base", "title", "body", "item"]
                     .iter()
                     .any(|key| input.get(*key).is_some());
+                // `item`: a number, or null or 0 for none.
+                let item = match input.get("item") {
+                    None => None,
+                    Some(_) => match item_ref(input, "item") {
+                        Ok(number) => Some(number.unwrap_or(0)),
+                        Err(problem) => return failed(FailureCode::Invalid, &problem),
+                    },
+                };
+                if input.get("title").is_some_and(|title| !title.is_string()) || input.get("body").is_some_and(|body| !body.is_string() && !body.is_null()) {
+                    return failed(FailureCode::Invalid, "title and body are text.");
+                }
                 if changes || wanted.is_none() {
                     let updated = pass(
                         work,
@@ -6200,6 +6249,10 @@ impl Op {
                             labels: strings(input, "labels"),
                             milestone: milestone_input(input),
                             base: optional_text(input, "base"),
+                            title: input["title"].as_str().map(str::to_owned),
+                            // null takes it away, as "" does.
+                            body: input.get("body").map(|body| body.as_str().unwrap_or_default().to_owned()),
+                            item,
                         },
                     )
                     .await?;
@@ -7376,7 +7429,7 @@ impl Op {
                 pass(
                     work,
                     "update_pull",
-                    &UpdatePullArgs { actor: actor(), repo: repo.clone(), number, assignees: None, reviewers: Some(reviewers), labels: None, milestone: None, base: None },
+                    &UpdatePullArgs { actor: actor(), repo: repo.clone(), number, assignees: None, reviewers: Some(reviewers), labels: None, milestone: None, base: None, title: None, body: None, item: None },
                 )
                 .await
             }
@@ -7689,6 +7742,18 @@ mod tests {
             assert_eq!(Op::by_name(op.name()), Some(op));
         }
         assert_eq!(Op::by_name("start_attempt"), None);
+    }
+
+    #[test]
+    fn updating_a_pull_request_refuses_a_field_it_does_not_take() {
+        let op = Op::UpdatePullRequest;
+        let asked = json!({ "action": "update", "repo": "acme/web", "number": 9, "title": "Better", "body": "Fixes #3", "item": 3 });
+        assert_eq!(op.unknown_fields(&asked), None);
+        let refused = op.unknown_fields(&json!({ "repo": "acme/web", "number": 9, "summary": "Better", "body_file": "x" })).unwrap();
+        assert!(refused.starts_with("update_pull_request does not take body_file, summary. It takes "), "{refused}");
+        assert!(refused.contains("title") && refused.contains("item"), "{refused}");
+        // The others still ignore what they do not read.
+        assert_eq!(Op::GetPullRequest.unknown_fields(&json!({ "repo": "acme/web", "number": 9, "nonsense": 1 })), None);
     }
 
     #[test]

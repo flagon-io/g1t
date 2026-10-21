@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use crate::cli::{
     CommentArgs, PrCheckoutArgs, PrChecksArgs, PrCommand, PrCreateArgs, PrDiffArgs, PrListArgs,
-    PrMergeArgs, PrReadyArgs, PrReviewArgs, PrSelect, PrState, PrUpdateBranchArgs, PrViewArgs, TaskCheckArgs,
+    PrEditArgs, PrMergeArgs, PrReadyArgs, PrReviewArgs, PrSelect, PrState, PrUpdateBranchArgs, PrViewArgs, TaskCheckArgs,
 };
 use crate::client::Client;
 use crate::context::Ctx;
@@ -28,6 +28,7 @@ pub fn run(ctx: &Ctx, command: PrCommand) -> Result<()> {
         PrCommand::Merge(args) => merge(ctx, args),
         PrCommand::UpdateBranch(args) => update_branch(ctx, args),
         PrCommand::Ready(args) => ready(ctx, args),
+        PrCommand::Edit(args) => edit(ctx, args),
         PrCommand::Comment(args) => comment(ctx, args),
         PrCommand::Check(args) => check(ctx, args),
         PrCommand::Close(args) => close(ctx, args, true),
@@ -1035,6 +1036,30 @@ fn comment(ctx: &Ctx, args: CommentArgs) -> Result<()> {
     let made = client.op("add_comment").repo(&repo).arg("number", n).field("body", body).send()?;
     let id = s(&made, "id").to_owned();
     super::done(ctx, &made, &format!("Commented on {repo}#{n}"), &format!("{url}#{id}"))
+}
+
+/// Changes its title, description or work item. The API refuses a field it
+/// does not take, so nothing asked for is dropped silently.
+fn edit(ctx: &Ctx, args: PrEditArgs) -> Result<()> {
+    let (repo, client) = ctx.repo_client()?;
+    let n = number(ctx, &client, &repo, args.number)?;
+    if args.body.body.is_some() && args.body.body_file.is_some() {
+        return Err(Error::usage("Give --body or --body-file, not both."));
+    }
+    // An empty one takes the description away, so it is sent as given.
+    let body = prompt::body(args.body.body, args.body.body_file.as_deref(), false)?;
+    if args.title.is_none() && body.is_none() && args.item.is_none() {
+        return Err(Error::usage("Nothing to change: pass --title, --body, --body-file or --item."));
+    }
+    let edited = client
+        .op("update_pull_request")
+        .repo(&repo)
+        .arg("number", n)
+        .field_opt("title", args.title)
+        .field_opt("body", body)
+        .field_opt("item", args.item)
+        .send()?;
+    super::done(ctx, &edited, &format!("Edited {repo}#{n}"), &pull_url(&client.host.site, &repo, n))
 }
 
 /// Ticks a box of its description's task list, as `g1t work check` does.

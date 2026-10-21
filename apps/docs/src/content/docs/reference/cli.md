@@ -434,6 +434,33 @@ g1t pr ready [OPTIONS] [NUMBER]
 
 Calls [`mark_pull_request_ready`](/reference/api/pull-requests/mark-pull-request-ready/), [`convert_pull_request_to_draft`](/reference/api/pull-requests/convert-pull-request-to-draft/), [`upload_attachment`](/reference/api/work-items/upload-attachment/).
 
+### g1t pr edit
+
+Change a pull request's title, description or work item.
+
+```text
+g1t pr edit [OPTIONS] [NUMBER]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `[NUMBER]` | The number; the current branch's when left out. |
+| `-t, --title <TITLE>` |  |
+| `-b, --body <BODY>` | The text. Markdown. |
+| `-F, --body-file <FILE>` | Read the text from a file, or - for stdin. |
+| `-i, --item <ITEM>` | The work item it is for, by its number in the workspace; 0 takes it off its work item. |
+
+```text
+What it closes (Fixes #12) and is part of (Part of #12) is read again from the new title and
+description. A merged or closed pull request takes only --title and --body; a merged one keeps the
+work items it landed. --item 0 takes it off its work item.
+Examples:
+  g1t pr edit 338 --body-file notes.md
+  g1t pr edit --title "Cache tidy deletes replaced entries" --item 339
+```
+
+Calls [`update_pull_request`](/reference/api/pull-requests/update-pull-request/).
+
 ### g1t pr comment
 
 Comment on a pull request.
