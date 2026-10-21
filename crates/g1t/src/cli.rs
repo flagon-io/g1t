@@ -389,6 +389,14 @@ pub enum PrCommand {
     UpdateBranch(PrUpdateBranchArgs),
     /// Mark a draft ready for review, or turn it back into a draft.
     Ready(PrReadyArgs),
+    /// Change a pull request's title, description or work item.
+    #[command(after_help = "\nWhat it closes (Fixes #12) and is part of (Part of #12) is read again from the new title and
+description. A merged or closed pull request takes only --title and --body; a merged one keeps the
+work items it landed. --item 0 takes it off its work item.
+Examples:
+  g1t pr edit 338 --body-file notes.md
+  g1t pr edit --title \"Cache tidy deletes replaced entries\" --item 339")]
+    Edit(PrEditArgs),
     /// Comment on a pull request.
     Comment(CommentArgs),
     /// Tick a box of a pull request's task list, or untick it with --uncheck.
@@ -584,6 +592,20 @@ pub struct PrUpdateBranchArgs {
     /// Rebase its commits onto the base instead of merging the base in. Rewrites its branch.
     #[arg(long)]
     pub rebase: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct PrEditArgs {
+    /// The number; the current branch's when left out.
+    pub number: Option<u64>,
+    #[arg(short, long)]
+    pub title: Option<String>,
+    /// The description; an empty one takes it away.
+    #[command(flatten)]
+    pub body: BodyArgs,
+    /// The work item it is for, by its number in the workspace; 0 takes it off its work item.
+    #[arg(short, long)]
+    pub item: Option<u64>,
 }
 
 #[derive(Debug, Args)]

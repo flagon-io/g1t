@@ -198,7 +198,7 @@ pub const TOOLS: &[Tool] = &[
             a("get", Op::GetPullRequest, "Status, checks and required checks, reviews, overlaps, whether it is behind"),
             a("changes", Op::GetPullRequestChanges, "Files and line-by-line diff"),
             a("create", Op::CreatePullRequest, "Start a draft with its own fork to push to, or open one from a pushed branch"),
-            a("update", Op::UpdatePullRequest, "Change its base branch, labels, milestone, assignees or reviewers"),
+            a("update", Op::UpdatePullRequest, "Change its title, body, work item, base branch, labels, milestone, assignees or reviewers"),
             a("record_session", Op::RecordSession, "Append user-facing decision summaries and tool activity to its session"),
             a("read_session", Op::ReadSession, "Its recorded session"),
             a("record_decision", Op::RecordDecision, "Record why: a proposal, claim, fix or note, kept as claimed"),

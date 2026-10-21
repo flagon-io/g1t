@@ -3780,10 +3780,13 @@ pub static OPERATIONS: &[Operation] = &[
         body: &[
             Field { name: "assignees", kind: "array", required: false, values: &[] },
             Field { name: "base", kind: "string", required: false, values: &[] },
+            Field { name: "body", kind: "string", required: false, values: &[] },
+            Field { name: "item", kind: "integer", required: false, values: &[] },
             Field { name: "labels", kind: "array", required: false, values: &[] },
             Field { name: "milestone", kind: "integer", required: false, values: &[] },
             Field { name: "reviewers", kind: "array", required: false, values: &[] },
             Field { name: "state", kind: "string", required: false, values: &["open", "closed"] },
+            Field { name: "title", kind: "string", required: false, values: &[] },
         ],
     },
     Operation {

@@ -1387,6 +1387,26 @@ mod tests {
 
     use super::*;
 
+    /// An operation that refuses fields it does not take (operations.rs
+    /// `STRICT`) takes every one its routes add from the path and query.
+    #[test]
+    fn strict_operations_take_what_their_routes_give() {
+        for route in ROUTES.iter().filter(|route| crate::operations::STRICT.contains(&route.op)) {
+            let path: String = route
+                .path
+                .split('/')
+                .map(|part| match part.strip_prefix(':') {
+                    Some(_) => "7".to_owned(),
+                    None => part.to_owned(),
+                })
+                .collect::<Vec<_>>()
+                .join("/");
+            let query: Vec<(String, String)> = route.query.iter().map(|(name, _)| ((*name).to_owned(), "7".to_owned())).collect();
+            let (_, input) = resolve(route.method, &path, &query, json!({})).unwrap();
+            assert_eq!(route.op.unknown_fields(&input), None, "{} {}", route.method, route.path);
+        }
+    }
+
     /// Every name a route's path gives reaches the operation: a name left
     /// off the lists above is dropped, and the operation answers that it
     /// was not given (the project routes were, until this test).

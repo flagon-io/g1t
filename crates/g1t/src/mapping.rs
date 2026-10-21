@@ -129,6 +129,10 @@ pub static COMMANDS: &[Mapping] = &[
         ops: &["update_pull_request_branch"],
     },
     Mapping {
+        command: "pr edit",
+        ops: &["update_pull_request"],
+    },
+    Mapping {
         command: "pr ready",
         ops: &["mark_pull_request_ready", "convert_pull_request_to_draft", "upload_attachment"],
     },

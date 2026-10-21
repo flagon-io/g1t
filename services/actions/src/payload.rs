@@ -461,6 +461,10 @@ pub fn changed(repo: &Repo, payload: &mut Value, data: &Value) {
             None => json!({ "number": found["number"], "title": found["title"] }),
         };
     }
+    // `edited`: what its title or description was before.
+    if let Some(changes) = data.get("changes").filter(|changes| changes.is_object()) {
+        payload["changes"] = changes.clone();
+    }
 }
 
 /// The branch a pull request comes from, or a name for its fork.
@@ -1232,5 +1236,15 @@ mod github_shapes {
         assert_eq!(event["head"]["ref"], "changes");
         assert_eq!(event["head"]["label"], "ana:changes");
         assert_eq!(event["base"]["repo"]["id"], json!(github_id(&repo().id)));
+    }
+
+    #[test]
+    fn an_edited_pull_request_says_what_its_title_was() {
+        let mut edited = json!({ "action": "edited", "number": 2 });
+        changed(&repo(), &mut edited, &json!({ "changes": { "title": { "from": "Tidy" } } }));
+        assert_eq!(edited["changes"], json!({ "title": { "from": "Tidy" } }));
+        let mut other = json!({ "action": "labeled" });
+        changed(&repo(), &mut other, &json!({ "label": { "name": "bug", "color": "d73a4a" } }));
+        assert!(other.get("changes").is_none());
     }
 }

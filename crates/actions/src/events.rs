@@ -27,7 +27,7 @@ pub fn github_events(kind: &str) -> Vec<(&'static str, Option<&'static str>)> {
         "pull.unlabeled" => pull("unlabeled"),
         "pull.milestoned" => pull("milestoned"),
         "pull.demilestoned" => pull("demilestoned"),
-        "pull.base_changed" => pull("edited"),
+        "pull.base_changed" | "pull.edited" => pull("edited"),
         "work_item.opened" => vec![("work_item", Some("opened"))],
         "work_item.updated" => vec![("work_item", Some("edited"))],
         "work_item.closed" => vec![("work_item", Some("closed"))],
@@ -326,6 +326,7 @@ mod tests {
         assert_eq!(github_events("pull.unlabeled")[0], ("pull_request", Some("unlabeled")));
         assert_eq!(github_events("pull.milestoned")[1], ("pull_request_target", Some("milestoned")));
         assert_eq!(github_events("pull.base_changed")[0], ("pull_request", Some("edited")));
+        assert_eq!(github_events("pull.edited")[0], ("pull_request", Some("edited")));
         assert_eq!(github_events("pull.reopened")[0], ("pull_request", Some("reopened")));
         assert_eq!(github_events("pull.converted_to_draft")[1], ("pull_request_target", Some("converted_to_draft")));
         assert_eq!(github_events("comment.edited"), [("work_item_comment", Some("edited"))]);

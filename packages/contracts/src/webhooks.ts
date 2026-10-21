@@ -78,6 +78,7 @@ export const EVENT_TYPES = [
   "pull.milestoned",
   "pull.demilestoned",
   "pull.base_changed",
+  "pull.edited",
   "pull.auto_merge_enabled",
   "pull.auto_merge_disabled",
   "pull.head_branch_deleted",
