@@ -203,6 +203,12 @@ export function replaced(entries, now = Date.now()) {
   );
 }
 
+/** A caches API answer's JSON, or null when it has none: a deleted entry answers 204 with an empty body. */
+export async function answer(response) {
+  const text = await response.text();
+  return text.trim() ? JSON.parse(text) : null;
+}
+
 async function tidy(args) {
   const dryRun = args.includes("--dry-run");
   const api = process.env.GITHUB_API_URL;
@@ -215,7 +221,7 @@ async function tidy(args) {
       headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json" },
     });
     if (!response.ok) throw new Error(`${method} caches${path}: ${response.status} ${await response.text()}`);
-    return response.json();
+    return answer(response);
   };
   const entries = [];
   for (let page = 1; ; page++) {
