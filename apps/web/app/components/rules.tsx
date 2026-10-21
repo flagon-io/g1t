@@ -562,7 +562,7 @@ function Parameters({ entry, onChange, seen, disabled }: { entry: RuleEntry; onC
         <PatternList
           label="Environments"
           values={entry.parameters.environments}
-          placeholder="preview, or a project's slug"
+          placeholder="preview, or a repository's slug"
           quick={[{ value: "preview", label: "preview" }]}
           disabled={disabled}
           onChange={(environments) => set({ environments })}

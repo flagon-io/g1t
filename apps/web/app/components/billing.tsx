@@ -388,7 +388,7 @@ export function RaiseCard({ requests, owner, error }: { requests: LimitRequest[]
               name="reason"
               rows={2}
               maxLength={2000}
-              placeholder="A launch next week: builds and previews across three projects."
+              placeholder="A launch next week: builds and previews across three repositories."
               className={`${CONTROL} w-full`}
             />
           </label>

@@ -89,7 +89,7 @@ export default function WorkspaceAudit({ loaderData }: Route.ComponentProps) {
         whether it was allowed. Refusals name the rule that refused them.
         {role === "owner"
           ? " As an owner you see the whole workspace."
-          : " As a member you see what was done to the workspace's projects, and what was done by you or on your behalf."}
+          : " As a member you see what was done to the workspace's repositories, and what was done by you or on your behalf."}
         {retention != null && ` The log goes back ${retention} days, and exports the same; older entries are deleted each day.`}
       </p>
 
@@ -98,7 +98,7 @@ export default function WorkspaceAudit({ loaderData }: Route.ComponentProps) {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <FilterField label="Actor" name="actor" value={filters.actor} placeholder="A person, or whom an app worked for" />
             <FilterField label="Action" name="action" value={filters.action} placeholder="git.push" list="audit-actions" />
-            <FilterField label="Project" name="project" value={filters.project} placeholder="Any" list="audit-projects" />
+            <FilterField label="Repository" name="project" value={filters.project} placeholder="Any" list="audit-projects" />
             <Field label="Outcome">
               <SelectField
                 key={`outcome-${filters.outcome}`}

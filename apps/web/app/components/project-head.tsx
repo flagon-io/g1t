@@ -312,7 +312,7 @@ export function OtherHead({ project, base, canChange }: Omit<Head, "canDeploy">)
           <Link to={`${base}/settings#links`} className="text-accent hover:underline">
             Add a homepage, docs or others
           </Link>{" "}
-          and they show here, on its card and in its workspace's Projects.
+          and they show here, on its card and in its workspace's Repositories.
         </p>
       ) : (
         <p className="mt-2 text-sm text-muted">No homepage given.</p>

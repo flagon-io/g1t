@@ -149,7 +149,7 @@ function shortcuts(palette: string, keys: string, sidebar: string): [string, str
     ["Shift Enter", "A new line in a message"],
     ["@", "Mention a person or a team"],
     ["↑ ↓ then Tab", "Choose a suggestion"],
-    ["Alt ↑ ↓", "Move a pinned project in Code's sidebar"],
+    ["Alt ↑ ↓", "Move a pinned repository in Code's sidebar"],
   ];
 }
 

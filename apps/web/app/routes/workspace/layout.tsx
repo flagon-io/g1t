@@ -42,7 +42,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   if (!role) {
     // The workspace is what the frame is about; its projects only fill the
     // sidebar, which goes without them rather than take every page down.
-    const listed = await part(workspaceProjects(workspace.slug, viewer), "Projects");
+    const listed = await part(workspaceProjects(workspace.slug, viewer), "Repositories");
     return { workspace, role, welcome: false, projects: !isFailed(listed) && listed.ok ? listed.value.map(shortcutOf) : [] };
   }
   const secure = new URL(request.url).protocol === "https:";
@@ -100,8 +100,8 @@ const PAGES: Record<string, { title: string; about: string }> = {
     title: "Permissions",
     about: "Who may do what in the workspace, part by part: repositories, teams, chat, artifacts, deployments and packages. Owners only.",
   },
-  projects: {
-    title: "Projects",
+  "code/repositories": {
+    title: "Repositories",
     about: "Everything the workspace builds and runs. Search, filter and sort them, and pin the ones you use most to keep them in your sidebar.",
   },
   teams: {
@@ -148,7 +148,7 @@ const PAGES: Record<string, { title: string; about: string }> = {
     about: "Goals with a due date, that work items and pull requests from every repository of the workspace are gathered under.",
   },
   insights: { title: "Insights", about: "Delivery, review times, work in progress and costs across your workspace." },
-  usage: { title: "Usage", about: "What the workspace used and what it cost, by product, project and day." },
+  usage: { title: "Usage", about: "What the workspace used and what it cost, by product, repository and day." },
   billing: { title: "Billing and plans", about: "The g1t plan, the trial, your spend limit, prepaying, and every charge." },
   audit: {
     title: "Audit log",
@@ -156,7 +156,7 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   guardrails: {
     title: "Guardrails",
-    about: "How long every project's runs may take. Each project can override these under its settings.",
+    about: "How long every repository's runs may take. Each repository can override these under its settings.",
   },
   webhooks: {
     title: "Webhooks",
@@ -169,7 +169,7 @@ const PAGES: Record<string, { title: string; about: string }> = {
   security: {
     title: "Security",
     about:
-      "Open alerts in every project: secrets found in pushes and history, and vulnerable dependencies. Each project's Security page has the details and the security update g1t opened for each.",
+      "Open alerts in every repository: secrets found in pushes and history, and vulnerable dependencies. Each repository's Security page has the details and the security update g1t opened for each.",
   },
   integrations: {
     title: "Integrations",
@@ -216,7 +216,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
   if (parts[0] === "chat" && parts[1] !== "sessions" && !next) return <Outlet />;
   // Code's Overview lays itself out, as Mission control did.
   if (parts[0] === "overview" && parts.length === 1 && !next) return <Outlet />;
-  // An open artifact, or a project's doc, fills the panel: its header runs edge to edge right under
+  // An open artifact, or a repository's doc, fills the panel: its header runs edge to edge right under
   // the top bar (components/folios/shell.tsx), and its page sets its own width.
   if (isArtifactPage(parts) && !next) {
     return (
@@ -248,7 +248,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
         <div className="mx-auto max-w-7xl px-4 py-8">
           {welcome && (
             <div className="mb-6">
-              <WelcomeBanner title={`You're in ${workspace.name}`}>You joined as a {role}. Its projects, work and people are all here.</WelcomeBanner>
+              <WelcomeBanner title={`You're in ${workspace.name}`}>You joined as a {role}. Its repositories, work and people are all here.</WelcomeBanner>
             </div>
           )}
           <div className="flex flex-wrap items-center gap-4">
@@ -264,7 +264,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
             {role ? (
               <ButtonLink to={`/new?workspace=${workspace.slug}`}>
                 <Plus size={15} />
-                New project
+                New repository
               </ButtonLink>
             ) : (
               <ButtonLink to={`/${workspace.slug}/-/packages`} variant="outline" prefetch="intent">

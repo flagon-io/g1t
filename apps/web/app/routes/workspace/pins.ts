@@ -12,10 +12,11 @@ import type { Route } from "./+types/pins";
 import { pinFromForm } from "../../lib/pins";
 import { projects } from "../../lib/services.server";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
+import { repositoriesPath } from "../../lib/workspace-nav";
 
 /** Nothing to see here: the workspace's projects are. */
 export function loader({ params }: Route.LoaderArgs) {
-  return redirect(`/${params.owner}/-/projects`);
+  return redirect(repositoriesPath(params.owner));
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {

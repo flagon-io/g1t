@@ -155,7 +155,7 @@ export default function DomainSettings({ loaderData, actionData, params }: Route
       {!settings.enabled && (
         <Card asChild radius="lg" className="mb-6 px-4 py-3 text-sm text-muted">
           <p>
-            Deployments are off for this project, so a domain added now shows that nothing is deployed until they are on.{" "}
+            Deployments are off for this repository, so a domain added now shows that nothing is deployed until they are on.{" "}
             <Link to={`${base}/settings/deployments`} className="text-fg hover:underline">
               Turn on deployments
             </Link>
@@ -331,8 +331,8 @@ function RemoveDomain({ domain }: { domain: Domain }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Remove {domain.hostname}?</AlertDialogTitle>
             <AlertDialogDescription>
-              It stops serving this project at once, and its certificate is given up. Any domain redirecting to it is removed too. You can add it again later;
-              its DNS records stay as you set them.
+              It stops serving this repository at once, and its certificate is given up. Any domain redirecting to it is removed too. You can add it again
+              later; its DNS records stay as you set them.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

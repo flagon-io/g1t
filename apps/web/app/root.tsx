@@ -224,7 +224,7 @@ async function shellFor(
     // the person's pinned and recent ones (lib/pins.ts).
     // Each of these is one part of the sidebar: one that fails leaves only
     // itself out (logged by `part`), never the rest of the sidebar with it.
-    workspace ? part(workspaceProjects(workspace.slug, user), "Projects").then((value) => orElse(value, null)) : Promise.resolve(null),
+    workspace ? part(workspaceProjects(workspace.slug, user), "Repositories").then((value) => orElse(value, null)) : Promise.resolve(null),
     path ? part(countsFor(context, params), "Open counts").then((value) => orElse(value, null)) : Promise.resolve(null),
     // Whether billing is on, without reading the account: that asks the
     // card processor about the workspace's cards, too slow for every page.

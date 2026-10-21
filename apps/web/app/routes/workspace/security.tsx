@@ -117,7 +117,7 @@ export default function WorkspaceSecurity({ loaderData, params }: Route.Componen
           </div>
           {projects.length === 0 ? (
             <Card asChild tone="plain" className="border-dashed px-4 py-6 text-sm text-muted">
-              <p>No project has been scanned yet. Each one is scanned on its next push to its default branch, or when its Security page is first opened.</p>
+              <p>No repository has been scanned yet. Each one is scanned on its next push to its default branch, or when its Security page is first opened.</p>
             </Card>
           ) : (
             <Card asChild divided className="overflow-hidden">

@@ -18,7 +18,7 @@ Coordinate: session start once per run of your harness (harness_session_id makes
 Record public summaries only, never private chain-of-thought, credentials or secrets. As you work, pull_request record_session appends user-facing decisions, evidence and tool activity to the pull request's session, so reviewers see why the change is what it is; pull_request read_session reads it back. pull_request record_decision keeps a decision (why the change is made this way, or what fixed a failure) and list_decisions reads them; repository why says why a line of code is the way it is.
 Merge queue: when your pull request fails combined with the ones ahead of it, g1t says which of them it breaks with and the check that failed (on the pull request, its work item and its session, and as integration.failed). Fix it and push: once its checks pass, it rejoins the queue by itself.
 Security: security code_alerts, vulnerability_alerts and secret_alerts show what to fix; fix it in your pull request, which the Code scanning and Dependency review checks judge.
-Production: observability overview and errors show what a project's running software did; follow a request or trace to its logs.";
+Production: observability overview and errors show what a repository's running software did; follow a request or trace to its logs.";
 
 fn result(id: &Value, value: Value) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "result": value })

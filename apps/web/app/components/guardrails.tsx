@@ -87,7 +87,9 @@ export function GuardrailsForm({
         </div>
       ) : (
         <p className="text-sm text-muted">
-          {level === "workspace" ? "Only the workspace's owners can change its defaults." : "Only members of the workspace can change a project's guardrails."}
+          {level === "workspace"
+            ? "Only the workspace's owners can change its defaults."
+            : "Only members of the workspace can change a repository's guardrails."}
         </p>
       )}
     </Form>

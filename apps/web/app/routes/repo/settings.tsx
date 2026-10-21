@@ -157,7 +157,7 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
         <section className="space-y-4">
           <h2 className="flex items-center gap-2 text-sm font-medium">
             <Box size={15} className="text-accent" />
-            Project
+            Name and description
           </h2>
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Name" hint={`Its address stays g1t.sh/${project.workspace}/${project.slug}.`}>
@@ -197,7 +197,7 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
               </div>
             </Card>
           )}
-          <Field label="Root directory" hint="Where in the repository this project lives, such as apps/web. Builds run there. Empty for the whole repository.">
+          <Field label="Root directory" hint="Where in the repository its code lives, such as apps/web. Builds run there. Empty for the whole repository.">
             <Input name="rootDir" defaultValue={source?.rootDir ?? ""} placeholder="apps/web" className="font-mono" />
           </Field>
         </section>
@@ -231,7 +231,7 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
             Links
           </h2>
           <p className="max-w-2xl text-xs text-muted">
-            Shown on its overview, its card, and its workspace's Projects. Each is an http or https address; https:// is added when you leave it out.
+            Shown on its overview, its card, and its workspace's Repositories. Each is an http or https address; https:// is added when you leave it out.
           </p>
           <LinkFields links={project.links} />
         </section>

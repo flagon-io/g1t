@@ -105,7 +105,7 @@ fn show(ctx: &Ctx, found: &Value) -> Result<()> {
         ("Production:", format!("{} at {}", on("production"), s(found, "production_url"))),
         ("Previews:", on("previews").to_owned()),
         ("Build as:", text("build_as", "auto")),
-        ("Build command:", text("build_command", "the project's own")),
+        ("Build command:", text("build_command", "the repository's own")),
         ("Output dir:", text("output_dir", "found by itself")),
         ("Dockerfile:", text("dockerfile", "Dockerfile or Containerfile")),
         ("Container size:", text("instance_type", "lite")),

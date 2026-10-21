@@ -431,7 +431,7 @@ export function RunnerSettingsForm({ data, manage, scope }: { data: RunnersData;
   return (
     <Form method="post" className="space-y-4">
       {scope === "project" && settings.inherited && (
-        <p className="text-sm text-muted">These are the workspace&apos;s settings. Saving here gives this project its own.</p>
+        <p className="text-sm text-muted">These are the workspace&apos;s settings. Saving here gives this repository its own.</p>
       )}
       <Card asChild className="flex items-start justify-between gap-4 p-4">
         <label>
@@ -544,7 +544,7 @@ export function RunnersPanel({
       <Section
         icon={<Cpu size={15} className="text-muted" />}
         title="Where work runs"
-        about={scope === "workspace" ? "For every project in the workspace, unless a project says otherwise." : "For this project."}
+        about={scope === "workspace" ? "For every repository in the workspace, unless a repository says otherwise." : "For this repository."}
       >
         {/* Keyed to what is saved, so following the workspace again shows its settings, not the switches as they were. */}
         <RunnerSettingsForm

@@ -107,7 +107,7 @@ fn project_of(client: &Client, repo: &Repo) -> Result<(String, String)> {
     match pick {
         Some(p) => Ok((here.owner.clone(), s(p, "slug").to_owned())),
         None => Err(Error::failed(format!(
-            "{here} has no project. Name one with --project WORKSPACE/SLUG."
+            "{here} has no deployments or logs of its own. Name a repository with --project WORKSPACE/NAME."
         ))),
     }
 }

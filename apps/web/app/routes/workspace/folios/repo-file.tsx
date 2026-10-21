@@ -16,7 +16,7 @@ import { requireUser, roleIn } from "../../../lib/session.server";
 
 export function meta({ loaderData: loaded, params, ...args }: Route.MetaArgs) {
   const file = loaded?.found.file;
-  return pageMeta(args, { title: `${file?.title ?? "Project docs"} · ${params.repoOwner}/${params.repoName} · ${params.owner} · g1t` });
+  return pageMeta(args, { title: `${file?.title ?? "Repository docs"} · ${params.repoOwner}/${params.repoName} · ${params.owner} · g1t` });
 }
 
 export async function loader({ params, context, request }: Route.LoaderArgs): Promise<{ found: DocRepoPage }> {

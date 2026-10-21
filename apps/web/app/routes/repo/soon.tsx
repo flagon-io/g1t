@@ -67,7 +67,7 @@ export function SoonView({
       {/* A project's tabs already say where this is; the workspace's need saying. */}
       {inWorkspace && (
         <p className="mb-4 flex items-center gap-2 text-sm text-muted">
-          <span>Across projects</span>
+          <span>Across repositories</span>
           <span className="text-line-strong">/</span>
           <span className="text-fg">{item.title}</span>
         </p>
@@ -99,7 +99,7 @@ export function SoonView({
       {item.today && inProjects && (
         <Card asChild tone="plain" className="mt-4 px-5 py-4">
           <section>
-            <span className="block text-xs text-faint">Until then: {item.today.label.toLowerCase()} in each project</span>
+            <span className="block text-xs text-faint">Until then: {item.today.label.toLowerCase()} in each repository</span>
             {inProjects.length > 0 ? (
               <ul className="mt-2 divide-y divide-line">
                 {inProjects.map((project) => (
@@ -116,7 +116,7 @@ export function SoonView({
             ) : (
               <Link to={newProject ?? "/new"} className="group mt-2 flex items-center justify-between gap-4 text-sm">
                 <span>
-                  <span className="font-medium">Create a project</span>
+                  <span className="font-medium">Create a repository</span>
                   <span className="text-muted"> to plan {item.today.label.toLowerCase()} in it.</span>
                 </span>
                 <ArrowRight size={16} className="text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-fg" />
@@ -142,7 +142,7 @@ export function SoonView({
       {siblings.length > 0 && (
         <section className="mt-10">
           <h2 className="text-sm font-medium text-muted">
-            Also coming {inWorkspace ? "across projects" : item.section === "Project" ? "to every project" : `to ${item.section}`}
+            Also coming {inWorkspace ? "across repositories" : item.section === "Repository" ? "to every repository" : `to ${item.section}`}
           </h2>
           <ul className="mt-3 grid gap-3 sm:grid-cols-2">
             {siblings.map((other) => (
@@ -161,7 +161,7 @@ export function SoonView({
       )}
 
       <p className="mt-10 text-xs text-faint">
-        {ROADMAP.length} things are on the way to every project. Want this one sooner, or something else?{" "}
+        {ROADMAP.length} things are on the way to every repository. Want this one sooner, or something else?{" "}
         <a href="https://g1t.sh/flagon-io/-/work/new?repo=g1t" className="text-muted hover:text-fg">
           Tell us
         </a>

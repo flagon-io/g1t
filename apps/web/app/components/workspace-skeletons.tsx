@@ -45,10 +45,10 @@ export function ProjectRowsSkeleton({ rows = 8 }: { rows?: number }) {
   );
 }
 
-/** The Projects page: its search and filters, then rows. */
+/** Code's Repositories page: its search and filters, then rows. */
 export function ProjectsSkeleton() {
   return (
-    <div aria-busy="true" aria-label="Loading projects" className="space-y-4">
+    <div aria-busy="true" aria-label="Loading repositories" className="space-y-4">
       <div className="flex flex-wrap gap-2">
         <Skeleton className="h-9 w-full rounded-md sm:w-72" />
         <Skeleton className="h-9 w-28 rounded-md" />
@@ -89,7 +89,7 @@ export function OverviewSkeleton() {
 /** Whichever page is on its way. */
 export function WorkspacePageSkeleton({ page }: { page: WorkspacePageKey }) {
   if (page === "overview") return <OverviewSkeleton />;
-  if (page === "projects") return <ProjectsSkeleton />;
+  if (page === "code/repositories") return <ProjectsSkeleton />;
   if (page === "insights")
     return (
       <div aria-busy="true" aria-label="Loading insights" className="space-y-6">

@@ -34,7 +34,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const period = PERIODS.some((p) => p.value === query.get("period")) ? query.get("period")! : "30d";
   const { from, until } = resolveRange(period, {});
   const listed = await workspaceProjects(slug, viewer);
-  if (!listed.ok) throw data("Projects could not be loaded. Please try again.", { status: 503 });
+  if (!listed.ok) throw data("Repositories could not be loaded. Please try again.", { status: 503 });
   const selected = query.get("project") ?? "";
   if (selected && !listed.value.some((p) => p.slug === selected)) throw data(null, { status: 404 });
   // Billing counts usage by repository (`owner/name`), as Usage filters it.
@@ -120,8 +120,8 @@ export default function Insights({ loaderData: d }: Route.ComponentProps) {
           afterChange={submit}
           size="sm"
           className="w-auto max-w-64"
-          aria-label="Project"
-          options={[{ value: "", label: "All projects" }, ...d.choices]}
+          aria-label="Repository"
+          options={[{ value: "", label: "All repositories" }, ...d.choices]}
         />
         <ButtonLink to={usageHref} variant="link" size="inline" className="ml-auto text-sm">
           Explore costs →
@@ -132,7 +132,7 @@ export default function Insights({ loaderData: d }: Route.ComponentProps) {
       </p>
       {!delivery && (
         <Alert tone="warn" role="status">
-          Delivery could not be read for some projects, so its numbers are hidden. Reload the page to try again.
+          Delivery could not be read for some repositories, so its numbers are hidden. Reload the page to try again.
         </Alert>
       )}
       {delivery && d.checksUnavailable && (
@@ -147,10 +147,10 @@ export default function Insights({ loaderData: d }: Route.ComponentProps) {
       )}
       {!d.projects.length ? (
         <Card className="p-8 text-center">
-          <h2 className="font-medium">No projects yet</h2>
+          <h2 className="font-medium">No repositories yet</h2>
           <p className="mt-2 text-sm text-muted">Delivery and cost insights will appear as your workspace starts working.</p>
           <ButtonLink to={`/new?workspace=${d.slug}`} variant="link" size="inline" className="mt-4">
-            Create a project
+            Create a repository
           </ButtonLink>
         </Card>
       ) : (
@@ -217,7 +217,7 @@ export default function Insights({ loaderData: d }: Route.ComponentProps) {
             </div>
           </section>
           <section>
-            <h2 className="mb-3 font-medium">By project</h2>
+            <h2 className="mb-3 font-medium">By repository</h2>
             <Card className="overflow-hidden">
               <Table>
                 <TableCaption className="sr-only">
@@ -225,7 +225,7 @@ export default function Insights({ loaderData: d }: Route.ComponentProps) {
                 </TableCaption>
                 <TableHeader>
                   <TableRow>
-                    {["Project", "Opened", "Merged", "Open now", "Avg. lead time", "Avg. first review", "Cost", "Cost / merge"].map((h) => (
+                    {["Repository", "Opened", "Merged", "Open now", "Avg. lead time", "Avg. first review", "Cost", "Cost / merge"].map((h) => (
                       <TableHead key={h} scope="col">
                         {h}
                       </TableHead>

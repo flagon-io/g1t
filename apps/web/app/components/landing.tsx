@@ -223,7 +223,7 @@ const RAILS: { icon: ReactNode; title: string; about: string; to: string }[] = [
   {
     icon: <Eye size={18} />,
     title: "Guardrails",
-    about: "How long a project's checks and merge queue may run, enforced in g1t's sandboxes.",
+    about: "How long a repository's checks and merge queue may run, enforced in g1t's sandboxes.",
     to: `${DOCS}/guides/guardrails/`,
   },
   {

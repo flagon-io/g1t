@@ -390,7 +390,7 @@ export function TreeView({
     return (
       <Card className="mx-auto max-w-2xl p-8">
         <h2 className="text-lg font-semibold tracking-tight">This repository is empty</h2>
-        <p className="mt-1 text-sm text-muted">Push an existing project to it. Use an access token as the password.</p>
+        <p className="mt-1 text-sm text-muted">Push an existing repository to it. Use an access token as the password.</p>
         <div className="mt-5 space-y-2">
           <CopyLine prompt text={`git remote add g1t ${cloneUrl}`} />
           <CopyLine prompt text={`git push -u g1t ${ref}`} />

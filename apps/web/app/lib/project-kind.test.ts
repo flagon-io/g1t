@@ -71,12 +71,12 @@ test("each choice sets a kind and where it runs, and reads back", () => {
   assert.equal(choiceOf({ kind: "app", runs: null }), null);
 });
 
-test("a project's badge says what it is and where it runs", () => {
+test("a repository's badge says what it is and where it runs", () => {
   assert.equal(kindLabel({ kind: "app", runs: "elsewhere" }), "App, deploys itself");
   assert.equal(kindLabel({ kind: "app", runs: "g1t" }), "App on g1t.page");
   assert.equal(kindLabel({ kind: "app", runs: null }), "App");
   assert.equal(kindLabel({ kind: "tool", runs: null }), "Tool");
-  assert.equal(kindLabel({ kind: "other", runs: null }), "Project");
+  assert.equal(kindLabel({ kind: "other", runs: null }), "Other");
 });
 
 test("links show homepage, docs, then the rest, never twice", () => {

@@ -916,14 +916,14 @@ pub enum Switch {
 
 #[derive(Debug, Args)]
 pub struct DeployProjectArgs {
-    /// The project, as SLUG or WORKSPACE/SLUG; the current repository's when left out.
+    /// The repository, as NAME or WORKSPACE/NAME; the current one's when left out.
     #[arg(short, long)]
     pub project: Option<String>,
 }
 
 #[derive(Debug, Args)]
 pub struct DeploySettingsArgs {
-    /// The project, as SLUG or WORKSPACE/SLUG; the current repository's when left out.
+    /// The repository, as NAME or WORKSPACE/NAME; the current one's when left out.
     #[arg(short, long)]
     pub project: Option<String>,
     /// Deploy the default branch on every push.
@@ -935,7 +935,7 @@ pub struct DeploySettingsArgs {
     /// auto, static, workers or docker.
     #[arg(long, value_name = "KIND")]
     pub build_as: Option<String>,
-    /// Runs instead of the project's own build script; "" for its own.
+    /// Runs instead of the repository's own build script; "" for its own.
     #[arg(long, value_name = "COMMAND")]
     pub build_command: Option<String>,
     /// What a static site serves; "" to find it by itself.
@@ -980,7 +980,7 @@ pub struct DeployViewArgs {
 
 #[derive(Debug, Args)]
 pub struct LogsArgs {
-    /// The project; the current repository's when left out.
+    /// The repository, as NAME or WORKSPACE/NAME; the current one's when left out.
     #[arg(short, long)]
     pub project: Option<String>,
     /// Grouped errors instead of log lines.

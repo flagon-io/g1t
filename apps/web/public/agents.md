@@ -464,7 +464,7 @@ lack the role for answers `403` naming the role needed. A coding agent
 works with the role of the person whose token it uses, narrowed by that
 token's scopes. Who can do what elsewhere: deployments are seen with
 `read` (on a public repository, by anyone, build logs included), deployed
-with `write`, configured (settings, domains) with `admin`; project settings
+with `write`, configured (settings, domains) with `admin`; General settings
 and dependencies need `maintain`; repository webhooks, secrets and
 variables need `admin`, seeing them included; security alerts need
 `write` (dismissing a dependency alert too), dismissing or reopening a
@@ -515,7 +515,7 @@ stays taken until then, or until `POST {repo}/purge`. Maintain changes
 branch URL-encoded); only admin renames the default branch. An archived
 repository is read-only: pushes and merges are refused, its pull
 requests and the work items filed in it are locked, and workflows do not run on it. A repository has no
-description of its own: its project's shows, changed with
+description of its own in the API: its project's shows, changed with
 `PATCH /workspaces/{workspace}/projects/{project}` (MCP: `workspace`
 `update_project`).
 
@@ -599,14 +599,15 @@ repository's own); MCP: the `workflow` tool's `list_runners`,
 (`runners:read`/`runners:admin`). Pull requests from forks never run on them
 unless allowed. Guide: https://docs.g1t.sh/guides/self-hosted-runners/
 
-## Projects
+## Repositories
 
-A project is what a workspace builds and runs; every repository is a
-project of its own name (`g1t.sh/<owner>/<project>` opens its overview; its
-code is under `/code`; every repository address still works). Deployments,
-secrets and variables belong to the project; branches, pull requests,
-review and merge rules to its repository (Settings → Repository). Guide:
-https://docs.g1t.sh/guides/projects/
+A repository is what a workspace builds and runs (`g1t.sh/<owner>/<repo>`
+opens its overview; its code is under `/code`). Its General settings hold
+its name, description, what it is and its links; Settings → Repository
+holds branches, pull requests, review and merge rules. The API and MCP
+call the running side of a repository a project (`/workspaces/{workspace}/projects`,
+MCP `workspace` `list_projects`); Work's projects are something else.
+Guide: https://docs.g1t.sh/guides/repositories/
 
 ## Security
 
@@ -677,19 +678,19 @@ https://docs.g1t.sh/guides/security/supply-chain/
 ## Deployments
 
 Part of the g1t plan ($21 a month per workspace, started by an owner
-under the workspace's Billing). No quotas: unlimited projects and
+under the workspace's Billing). No quotas: unlimited repositories and
 previews (never charged); builds by the second, requests ($0.36/M), CPU
 ($0.024/M ms) and custom domains ($0.12 a month each) metered from the
 first at cost + 20%, from the plan's $10 first. The trial
 never covers deployments. Then someone with admin on the repository
-turns deployments on for a project (Settings → Deployments, or Deploy on
+turns deployments on for a repository (Settings → Deployments, or Deploy on
 its overview). Production deploys from the default branch to
 `https://<project>-<owner>.g1t.page` on each push; every branch with an
 open pull request gets a preview at
 `https://<project>-git-<branch>-<owner>.g1t.page` (a fork's pull request is
 `pr-<n>`), shown on it as the check `g1t / deploy` (`g1t / deploy (<project>)`
-for a workspace's other projects). Builds and running apps
-read the project's secrets and variables available to Deployments, each
+for a repository's other apps). Builds and running apps
+read the repository's secrets and variables available to Deployments, each
 key's Production or Preview row. Workers projects (`wrangler.jsonc`) and
 static sites build without configuration. Previews come down when the pull
 request closes and after idle days.
@@ -737,7 +738,7 @@ characters or more; vendored directories, lockfiles, binaries and files
 over 512 KB are not indexed. Results give `counts` per type and each hit's
 `snippet` or code `lines` as parts with `highlight`. On the site:
 `https://g1t.sh/search?q=`, ⌘K, and `https://g1t.sh/explore` for public
-projects by activity, language (`?language=`) and topic (`?topic=`).
+repositories by activity, language (`?language=`) and topic (`?topic=`).
 Guide:
 https://docs.g1t.sh/guides/search/
 
@@ -833,11 +834,11 @@ Coding agents:
 - [Recording sessions](https://docs.g1t.sh/guides/sessions/)
 - [Sessions and why-blame](https://docs.g1t.sh/guides/why-blame/)
 
-Chat and projects:
+Chat and repositories:
 
 - [Chat](https://docs.g1t.sh/guides/chat/)
 - [Artifacts](https://docs.g1t.sh/guides/artifacts/)
-- [Projects](https://docs.g1t.sh/guides/projects/)
+- [Repositories](https://docs.g1t.sh/guides/repositories/)
 - [Deployments](https://docs.g1t.sh/guides/deployments/)
 - [Deployments API](https://docs.g1t.sh/guides/deployments-api/)
 - [Observability](https://docs.g1t.sh/guides/observability/)

@@ -72,8 +72,8 @@ export function SecretsPanel({
           <p className="mt-1 max-w-2xl text-sm text-muted">
             Secrets and configuration for workflows and deployments, scoped by environment.
             {scope === "workspace"
-              ? " Share values with every project or only the projects you choose."
-              : " Project keys override workspace keys of the same type for each shared reader."}{" "}
+              ? " Share values with every repository or only the repositories you choose."
+              : " Repository keys override workspace keys of the same type for each shared reader."}{" "}
             <a href="https://docs.g1t.sh/guides/secrets-and-variables/" className="text-fg hover:underline">
               How they are read
             </a>
@@ -149,13 +149,13 @@ export function SecretsPanel({
           const rows = shown.filter((r) => r.scope === section);
           const total = data.rows.filter((r) => r.scope === section).length;
           return (
-            <section key={section} aria-label={`${section === "project" ? "Project" : "Workspace"} secrets and variables`}>
+            <section key={section} aria-label={`${section === "project" ? "Repository" : "Workspace"} secrets and variables`}>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="text-sm font-semibold">{section === "project" ? "Project secrets and variables" : "Workspace secrets and variables"}</h2>
                   {scope === "project" && section === "workspace" && (
                     <p className="mt-1 text-xs text-muted">
-                      Inherited values shared with this project. A project key replaces the workspace value for its readers, even outside its selected
+                      Inherited values shared with this repository. A repository key replaces the workspace value for its readers, even outside its selected
                       environments.
                     </p>
                   )}
@@ -172,7 +172,7 @@ export function SecretsPanel({
                     total > 0
                       ? "Nothing matches these filters"
                       : section === "project"
-                        ? "No project secrets or variables"
+                        ? "No repository secrets or variables"
                         : "No workspace secrets or variables"
                   }
                 />
@@ -271,7 +271,7 @@ function Row({ row, inherited, manage, override }: { row: Setting; inherited: bo
               {row.projects.length > 0 && (
                 <Hint label={row.projects.join(", ")}>
                   <span className="mr-1 text-xs text-faint">
-                    {row.projects.length} {row.projects.length === 1 ? "project" : "projects"}
+                    {row.projects.length} {row.projects.length === 1 ? "repository" : "repositories"}
                     <span className="sr-only">: {row.projects.join(", ")}</span>
                   </span>
                 </Hint>
@@ -476,10 +476,10 @@ function Drawer({ row, scope, projects, error }: { row: Setting | undefined; sco
 
           {scope === "workspace" && (
             <fieldset>
-              <legend className="mb-2 text-sm font-medium text-muted">Projects</legend>
+              <legend className="mb-2 text-sm font-medium text-muted">Repositories</legend>
               <div className="space-y-2 text-sm">
-                <RadioGroup name="reach" value={reach} onValueChange={(value) => setReach(value as typeof reach)} aria-label="Projects">
-                  <RadioOption value="all" label="Every project" />
+                <RadioGroup name="reach" value={reach} onValueChange={(value) => setReach(value as typeof reach)} aria-label="Repositories">
+                  <RadioOption value="all" label="Every repository" />
                   <RadioOption value="some" label="Only these" />
                 </RadioGroup>
                 {reach === "some" && (

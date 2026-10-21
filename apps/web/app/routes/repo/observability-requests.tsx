@@ -48,7 +48,7 @@ export default function Requests({ loaderData, params }: Route.ComponentProps) {
     <div className="mx-auto max-w-7xl">
       <ObservabilityHeader
         title="Requests"
-        about="Each request the project's software answered, newest first, with what it wrote under it. Search the address or the error."
+        about="Each request the repository's software answered, newest first, with what it wrote under it. Search the address or the error."
       />
       <FilterBar
         path={path}

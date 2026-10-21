@@ -49,7 +49,7 @@ export const FEATURES = [
     id: "security",
     title: "See what needs attention",
     description:
-      "Review secret scanning, code scanning and dependency findings where you review code. Inspect a project's requests, logs, traces and errors through observability.",
+      "Review secret scanning, code scanning and dependency findings where you review code. Inspect a repository's requests, logs, traces and errors through observability.",
     links: [
       { label: "Secret protection", href: "https://docs.g1t.sh/guides/security/secret-protection/" },
       { label: "Observability", href: "https://docs.g1t.sh/guides/observability/" },

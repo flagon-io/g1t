@@ -164,8 +164,8 @@ export default function Fork({ loaderData, actionData }: Route.ComponentProps) {
 
           <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted">
             <li>
-              Its code is copied, and its project starts with this one's description. Its settings, secrets, variables, rules, webhooks, deployments, work items
-              and pull requests are not.
+              Its code is copied, and it starts with this one's description. Its settings, secrets, variables, rules, webhooks, deployments, work items and pull
+              requests are not.
             </li>
             <li>Workflows do not run in the fork until you turn Actions on, and filing work items from it starts off.</li>
             <li>Its size counts toward the storage of the workspace it goes in.{source.isPrivate ? " A free workspace may not have room for it." : ""}</li>

@@ -31,7 +31,7 @@ export const QUIET_ROWS = 4;
 export type Groups = { groups: Group[]; by: "team" | "project" } | null;
 
 export function shapeGround(found: SignalData, groups: Groups, now: number) {
-  const name = (id: string) => found.repos[id]?.name ?? "a project";
+  const name = (id: string) => found.repos[id]?.name ?? "a repository";
   const path = (id: string) => (found.repos[id] ? `/${found.repos[id]!.namespace}/${found.repos[id]!.name}` : null);
   const quarter = quarterSpend({ repos: found.repos, signals: found.signals, quarterUsage: found.quarterUsage, quarter: found.range.quarter });
   // Practices catching on in each team (else across the workspace), the newest first.

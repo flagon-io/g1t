@@ -193,7 +193,7 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
           title="Details"
           about={
             <>
-              Its website and topics, for its page, search and Explore. Its description is its project's, on{" "}
+              Its website and topics, for its page, search and Explore. Its description is on{" "}
               <Link to={`${base}/settings`} className="text-accent hover:underline">
                 General
               </Link>
@@ -430,7 +430,7 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
 function LifecycleNote({ base }: { base: string }) {
   return (
     <p className="mt-4 text-sm text-muted">
-      Archiving, transferring and deleting it are the project's, at the end of{" "}
+      Archiving, transferring and deleting it are at the end of{" "}
       <Link to={`${base}/settings#danger-zone`} className="text-accent hover:underline">
         General
       </Link>
@@ -730,7 +730,7 @@ function VisibilityAction({ full, isPrivate, fork, error }: { full: string; isPr
         <>
           <li>Anyone can see its code, work items and pull requests, and clone it, without signing in.</li>
           <li>It shows in search and on Explore.</li>
-          <li>Links to it show a preview card with its name and its project's description where they are shared.</li>
+          <li>Links to it show a preview card with its name and its description where they are shared.</li>
         </>
       ) : (
         <>

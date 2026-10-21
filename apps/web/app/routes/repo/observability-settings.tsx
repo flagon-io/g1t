@@ -119,7 +119,7 @@ export default function ObservabilitySettings({ loaderData, actionData }: Route.
 
   return (
     <div className="max-w-4xl">
-      <ObservabilityHeader title="Observability settings" about="Where the project's telemetry comes from, how long it is kept, and where else it goes." />
+      <ObservabilityHeader title="Observability settings" about="Where the repository's telemetry comes from, how long it is kept, and where else it goes." />
       <div className="mt-4 min-h-5">
         {actionData && "notice" in actionData && <p className="text-sm text-success">{actionData.notice}</p>}
         <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
@@ -150,8 +150,8 @@ export default function ObservabilitySettings({ loaderData, actionData }: Route.
               defaultChecked={settings.deployments}
               onCheckedChange={(on) => submit({ intent: "deployments", deployments: on ? "on" : "" }, { method: "post", preventScrollReset: true })}
             >
-              Each request the project's apps answer, with their logs and exceptions, arrives on its own; their OpenTelemetry SDKs are given the endpoint and
-              the project's deployments token. Off keeps what is here and stops what is new.
+              Each request the repository's apps answer, with their logs and exceptions, arrives on its own; their OpenTelemetry SDKs are given the endpoint and
+              the repository's deployments token. Off keeps what is here and stops what is new.
             </SwitchCard>
           </Form>
         )}
@@ -165,8 +165,8 @@ export default function ObservabilitySettings({ loaderData, actionData }: Route.
           <NewToken />
         </div>
         <p className="mt-1 text-sm text-muted">
-          For software running anywhere other than g1t.page: a token lets it send to this project and do nothing else. Each is shown once, when it is made. Apps
-          on g1t.page need none; g1t gives them their own.
+          For software running anywhere other than g1t.page: a token lets it send to this repository and do nothing else. Each is shown once, when it is made.
+          Apps on g1t.page need none; g1t gives them their own.
         </p>
         {isFailed(tokens) ? (
           <div className="mt-3">

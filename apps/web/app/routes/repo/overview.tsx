@@ -1019,7 +1019,7 @@ function Overview({
                 {plan === "elsewhere" ? (
                   "Production is deployed by its own pipeline."
                 ) : loaderData.settings?.enabled === false ? (
-                  "Deployments are not enabled for this project."
+                  "Deployments are not enabled for this repository."
                 ) : (
                   <>
                     Push to <span className="font-mono text-fg-soft">{defaultBranch ?? "the default branch"}</span> to update production.

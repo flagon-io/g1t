@@ -113,7 +113,7 @@ const DEFAULT_PLAN: FeaturePlan = {
   includes: [
     "$10 of usage each month, used first: runner minutes at their flat rate, everything else g1t runs at cost plus 20%",
     "Everyone in the workspace at one price, never per person",
-    "Unlimited projects, previews and repositories",
+    "Unlimited repositories and previews",
     "Checks, workflows, the merge queue, deployments, semantic search, and Security and quality on private repositories",
     "Usage past $10 is charged the same way, up to your spend limit",
   ],
@@ -225,7 +225,7 @@ function rows(tier: Required<FreeTier>): Row[] {
       plan: "From the plan's included usage, then by the runner minute, at a fixed rate for each machine",
     },
     {
-      what: "Projects and previews",
+      what: "Repositories and previews",
       free: "Not available: deployments run on g1t's machines",
       plan: "Unlimited, and never charged for. An app no one visits costs nothing.",
     },
@@ -377,8 +377,8 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           <div>
             <p className="font-medium">No quotas</p>
             <p className="mt-1 text-muted">
-              No count of projects, previews, builds, requests or git operations ever stops a workspace on the plan. Past the $10, usage is charged at the same
-              prices, and only your spend limit stops it. Unused included usage does not roll over.
+              No count of repositories, previews, builds, requests or git operations ever stops a workspace on the plan. Past the $10, usage is charged at the
+              same prices, and only your spend limit stops it. Unused included usage does not roll over.
             </p>
           </div>
         </div>
@@ -622,7 +622,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             </tr>
             <tr>
               <td className="px-4 py-3">
-                <p className="font-medium">Projects, previews and apps</p>
+                <p className="font-medium">Repositories, previews and apps</p>
                 <p className="text-xs text-faint">Having them. An app's requests and CPU time are charged below.</p>
               </td>
               <td className="px-4 py-3 text-muted">Next to nothing</td>

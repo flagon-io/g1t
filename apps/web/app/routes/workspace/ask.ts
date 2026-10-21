@@ -175,7 +175,7 @@ async function newRepository(
   if (!wanted.deploy) return built;
   const saved = await deployments.updateSettings(user, { workspace: repo.namespace, slug: repo.name }, { enabled: true }).catch(() => null);
   if (saved?.ok) built.production_url = saved.value.productionUrl;
-  else built.deploy_error = saved ? saved.error.message : "Deployments could not be turned on. Try again from the project's Settings → Deployments.";
+  else built.deploy_error = saved ? saved.error.message : "Deployments could not be turned on. Try again from the repository's Settings → Deployments.";
   return built;
 }
 

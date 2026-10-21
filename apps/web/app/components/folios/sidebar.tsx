@@ -673,14 +673,14 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
               )}
             </div>
             <Section
-              title="Projects' docs"
+              title="Repositories' docs"
               open={(sidebar.repos ?? []).length > 0}
               action={
-                <Hint label="Show a project's docs">
+                <Hint label="Show a repository's docs">
                   <Button
                     type="button"
                     onClick={() => setAddingRepo(true)}
-                    aria-label="Show a project's docs"
+                    aria-label="Show a repository's docs"
                     variant="ghost"
                     size="icon"
                     className="size-6 rounded text-faint"

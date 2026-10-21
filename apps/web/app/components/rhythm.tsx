@@ -222,7 +222,7 @@ export function Rhythm({ rows, by }: { rows: RhythmRow[]; by: "team" | "project"
         <table className="mt-3 w-full text-left tabular-nums">
           <thead className="text-faint">
             <tr>
-              <th className="py-1 font-normal">{by === "team" ? "Team" : "Project"}</th>
+              <th className="py-1 font-normal">{by === "team" ? "Team" : "Repository"}</th>
               <th className="py-1 font-normal">Opened</th>
               <th className="py-1 font-normal">Merged</th>
               <th className="py-1 font-normal">Pushed by agents</th>

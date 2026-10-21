@@ -21,6 +21,7 @@ import { type AiConnection, type AiProvider, type OnboardingStep, AI_PROVIDERS }
 import { AI_PROVIDER_GROUPS, AI_PROVIDER_LOOKS, aiProvidersIn } from "../lib/ai-providers";
 import { autoOffered, defaultModel, modelOptions } from "../lib/ask-model";
 import { cn } from "../lib/cn";
+import { repositoriesPath } from "../lib/workspace-nav";
 import { type OnboardingStepView, type OnboardingView, STEP_ORDER, finished, firstOpenStep, opensByItself, progressOf } from "../lib/onboarding";
 import { AgentSetup } from "./agent-setup";
 import { AiProviderMark } from "./connectors";
@@ -52,15 +53,15 @@ const ABOUT: Record<OnboardingStep, { icon: ReactNode; lead: string }> = {
   },
   code: {
     icon: <Code2 size={16} />,
-    lead: "Start a project with a new repository, or bring repositories you already have across from GitHub. Work items, pull requests, checks and deployments live beside the code.",
+    lead: "Start a new repository, or bring the ones you already have across from GitHub. Work items, pull requests, checks and deployments live beside the code.",
   },
   harness: {
     icon: <Laptop size={16} />,
-    lead: "Connect your AI client to work with g1t projects through MCP. Choose a coding agent or chat app and sign in through your browser. For local coding, install the g1t CLI too.",
+    lead: "Connect your AI client to work with g1t through MCP. Choose a coding agent or chat app and sign in through your browser. For local coding, install the g1t CLI too.",
   },
   people: {
     icon: <Users size={16} />,
-    lead: "Bring your team in: they get the workspace's projects, chat and artifacts, with the roles you give them.",
+    lead: "Bring your team in: they get the workspace's repositories, chat and artifacts, with the roles you give them.",
   },
   runner: {
     icon: <Rocket size={16} />,
@@ -667,18 +668,18 @@ function CodeStep({ view }: { view: OnboardingView }) {
   return (
     <div className="space-y-4">
       {(projects ?? 0) > 0 && (
-        <ButtonLink to={`/${view.slug}/-/projects`} variant="outline" size="sm">
-          See its projects
+        <ButtonLink to={repositoriesPath(view.slug)} variant="outline" size="sm">
+          See its repositories
           <ArrowRight size={14} />
         </ButtonLink>
       )}
       <div className="grid gap-3 sm:grid-cols-2">
         <Choice
           icon={<Plus size={15} />}
-          title="Start a new project"
+          title="Start a new repository"
           action={
             <ButtonLink to={`/new?workspace=${view.slug}`} variant="accent" size="sm">
-              New project
+              New repository
             </ButtonLink>
           }
         >

@@ -56,7 +56,10 @@ export default function Metrics({ loaderData, params }: Route.ComponentProps) {
 
   return (
     <div className="mx-auto max-w-7xl">
-      <ObservabilityHeader title="Metrics" about="Every metric the project's software sends with OpenTelemetry: counters, gauges and histograms, over time." />
+      <ObservabilityHeader
+        title="Metrics"
+        about="Every metric the repository's software sends with OpenTelemetry: counters, gauges and histograms, over time."
+      />
       <FilterBar path={path} view={view} environments={facets?.environments ?? []} services={facets?.services ?? []} />
 
       <div className={cn("mt-4 transition-opacity", loading && "opacity-60")}>

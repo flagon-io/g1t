@@ -122,8 +122,11 @@ export default [
     // Its pages fail inside its frame (routes/page-boundary.tsx).
     layout("routes/page-boundary.tsx", { id: "routes/page-boundary/workspace" }, [
       index("routes/workspace/overview.tsx"),
-      // Its pages, each in the sidebar: Overview (above), Projects, People, Insights; Teams and Packages below.
-      route("-/projects", "routes/workspace/projects.tsx"),
+      // Its pages, each in the sidebar: Overview (above), People, Insights; Teams and Packages below.
+      // Code's Repositories: every repository of the workspace the viewer can see.
+      route("-/code/repositories", "routes/workspace/code-repositories.tsx"),
+      // Where Code's Repositories were, as Projects, before Work's projects took the word.
+      route("-/projects", "routes/workspace/code-moved.ts"),
       // People mode: the directory of people and each one's profile.
       route("-/people", "routes/workspace/people.tsx"),
       route("-/people/:username", "routes/workspace/people/person.tsx"),
@@ -134,7 +137,7 @@ export default [
       // Single sign-on through the workspace's own identity provider.
       route("-/sso", "routes/workspace/sso.tsx"),
       route("-/insights", "routes/workspace/insights.tsx"),
-      // Pinning its projects, for the person signed in.
+      // Pinning its repositories, for the person signed in.
       route("-/pins", "routes/workspace/pins.ts"),
       // Getting started, for its owners: the guide's state, and dismissing
       // it or skipping a step (components/onboarding.tsx).
@@ -305,7 +308,7 @@ export default [
       route("-/rules", "routes/workspace/rules.tsx"),
       route("-/rules/insights", "routes/workspace/rules.tsx", { id: "routes/workspace/rules-insights" }),
       route("-/rules/:id", "routes/workspace/ruleset.tsx"),
-      // What the workspace will have across its projects.
+      // What the workspace will have across its repositories.
       route("-/soon/:feature", "routes/workspace/soon.tsx"),
     ]),
   ]),

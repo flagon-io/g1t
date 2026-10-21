@@ -3,7 +3,7 @@
  * person pins to their rail.
  *
  * Built-in apps (Home, Work, Chat, Notifications, Code, Artifacts, Routines,
- * People and Workspace) are always in the rail; their own pages (Projects, Usage,
+ * People and Workspace) are always in the rail; their own pages (Repositories, Usage,
  * Teams and the rest) are in their sidebars. Apps are the integrations
  * the workspace connected, each opening where it is looked after. Each
  * person pins the ones they want.

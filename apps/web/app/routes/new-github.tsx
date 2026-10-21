@@ -110,7 +110,7 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
   return (
     <main className="mx-auto max-w-2xl px-4 py-12">
       <Link to="/new" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
-        <ArrowLeft size={14} /> New project
+        <ArrowLeft size={14} /> New repository
       </Link>
       <span className="mt-6 flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent ring-1 ring-accent/30">
         <GithubMark className="size-4.5" />

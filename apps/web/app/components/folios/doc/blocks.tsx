@@ -299,7 +299,7 @@ export const Embed = createReactBlockSpec(
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => e.stopPropagation()}
-              placeholder="Paste the address of a work item, pull request, channel, project or artifact"
+              placeholder="Paste the address of a work item, pull request, channel, repository or artifact"
               className="min-w-0 grow bg-transparent px-1.5 text-sm text-fg outline-none placeholder:text-faint"
             />
             <Button type="submit" variant="secondary" size="inline" className="px-2.5 py-1 text-xs">

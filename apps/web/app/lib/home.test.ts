@@ -459,7 +459,7 @@ const quietRepo = (repo_id: string): RepoDigest => ({
 });
 
 /**
- * A day on a busy workspace: 3 people pushed 41 commits to 4 projects,
+ * A day on a busy workspace: 3 people pushed 41 commits to 4 repositories,
  * merged 5 pull requests and opened 2; older agent rows (g1t and Margo)
  * pushed 6, opened 3 pull requests and reviewed 2, and are not people;
  * 2 production deploys went out; 120 messages were sent, 15 of them
@@ -581,7 +581,7 @@ test("the digest: what was done, by kind with counts, and who, agents marked", (
   assert.deepEqual(
     digest.people.lines.map((line) => [line.key, line.text, line.to]),
     [
-      ["pushes", "47 commits to 4 projects", "/acme/-/repositories"],
+      ["pushes", "47 commits to 4 repositories", "/acme/-/repositories"],
       ["pulls", "5 opened, 5 merged, 4 reviewed", "/acme/-/repositories"],
       ["items", "2 opened, 2 closed, 7 comments", "/acme/-/work/all?repo=web"],
       ["shipped", "2 deploys, 1 release, 1 package version", "/acme/web/deployments"],
@@ -695,7 +695,7 @@ test("the digest says which part didn't answer, and counts what could be read", 
   });
   assert.deepEqual(
     imported.people.lines.map((line) => [line.text, line.to]),
-    [["7 commits to 1 project", "/acme/web/activity"]],
+    [["7 commits to 1 repository", "/acme/web/activity"]],
   );
   assert.equal(imported.summary.people, 0);
 });

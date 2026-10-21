@@ -77,7 +77,7 @@ export function GroundTruth({ slug, ground }: { slug: string; ground: Ground }) 
       <Boundary what="The past week">
         <PulseStrip tiles={ground.tiles} />
       </Boundary>
-      {!ground.complete && <p className="text-xs text-faint">Some projects didn&apos;t answer, so what follows leaves them out.</p>}
+      {!ground.complete && <p className="text-xs text-faint">Some repositories didn&apos;t answer, so what follows leaves them out.</p>}
       <Section
         id="spend"
         eyebrow="Spend, threaded to the work"
@@ -88,7 +88,7 @@ export function GroundTruth({ slug, ground }: { slug: string; ground: Ground }) 
         }
         hint={
           ground.sized === "spend"
-            ? `Each milestone, its work items, their change set in each project and its pull requests, sized by what agents cost on them${ground.sessionSpend > 0 ? ` (g1t's metered usage, and ${dollars(ground.sessionSpend)} of harness sessions estimated at list price)` : ""} and shaded by how much was an agent's. Choose a box to open what is under it.`
+            ? `Each milestone, its work items, their change set in each repository and its pull requests, sized by what agents cost on them${ground.sessionSpend > 0 ? ` (g1t's metered usage, and ${dollars(ground.sessionSpend)} of harness sessions estimated at list price)` : ""} and shaded by how much was an agent's. Choose a box to open what is under it.`
             : "Usage isn't known for this quarter, so each box is sized by its pull requests and shaded by how many were an agent's. Choose a box to open what is under it."
         }
       >
@@ -101,7 +101,7 @@ export function GroundTruth({ slug, ground }: { slug: string; ground: Ground }) 
       <Section
         id="rhythm"
         eyebrow="What's moving and what's waiting"
-        title={ground.rhythm?.by === "project" ? "Each project's last two weeks" : "Each team's last two weeks"}
+        title={ground.rhythm?.by === "project" ? "Each repository's last two weeks" : "Each team's last two weeks"}
         hint="Pull requests and agent sessions above the line; reviews, comments and requests for changes below it. Each row is drawn to its own scale: point at a day for its numbers."
       >
         <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_18rem]">
@@ -147,15 +147,15 @@ export function GroundTruth({ slug, ground }: { slug: string; ground: Ground }) 
         <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-4">
           <QuietList
             title="Knowledge silos"
-            hint="Projects where one person has done most of the last 90 days' work"
+            hint="Repositories where one person has done most of the last 90 days' work"
             rows={ground.silos}
-            empty="No project rests on one person right now."
+            empty="No repository rests on one person right now."
           />
           <QuietList
             title="New ground"
-            hint="People who merged to a project for the first time in the last two weeks"
+            hint="People who merged to a repository for the first time in the last two weeks"
             rows={ground.newGround}
-            empty="No one has moved into a new project in the last two weeks."
+            empty="No one has moved into a new repository in the last two weeks."
           />
           <QuietList
             title="Spreading"
