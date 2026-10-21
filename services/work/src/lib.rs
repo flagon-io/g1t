@@ -2071,8 +2071,10 @@ impl Work {
                         ));
                     }
                     // Only those who can push where its branch is can catch
-                    // it up; anyone may merge it another way.
-                    Outcome::Fail(failure) if failure.code == FailureCode::Forbidden => {
+                    // it up; anyone may merge it another way. A refusal of
+                    // room, or of a repository being copied into a fork,
+                    // says so as it came.
+                    Outcome::Fail(failure) if merging::refused_the_pusher(&failure) => {
                         self.forget_landing(&pull.id).await?;
                         let source = pull.source_path(&a.repo);
                         return Ok(Outcome::fail(

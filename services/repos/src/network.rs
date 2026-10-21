@@ -220,7 +220,7 @@ impl<S: GitStore> Repos<S> {
             let bytes = measured.saturating_add(pending);
             self.registry.claim_store_key(&fork, Some(&source_namespace), &default).await?;
             self.registry.insert(&fork).await?;
-            let Some(reservation) =
+            let Ok(reservation) =
                 self.registry.reserve_public(&fork, bytes, self.free_public_bytes, Operation::Fork, Some(&a.actor.id)).await?
             else {
                 self.registry.remove(&fork.id).await?;
@@ -277,7 +277,14 @@ impl<S: GitStore> Repos<S> {
             let copied = if a.default_branch_only {
                 let head = self.store.open(&store_key(&source)).await?.log(&source.default_branch, 1).await?;
                 match head.first() {
-                    Some(head) => land::fast_forward(&from, &to, &fork.default_branch, None, &head.hash, self.public_quota(&fork, Operation::Fork, Some(&a.actor.id))).await?,
+                    Some(head) => {
+                        match land::fast_forward(&from, &to, &fork.default_branch, None, &head.hash, self.public_quota(&fork, Operation::Fork, Some(&a.actor.id))).await? {
+                            Ok(moved) => moved,
+                            // Refused a reservation: said as a full copy's
+                            // refusal is (copy.rs `Problem::Refused`).
+                            Err(refusal) => Err(refusal.message()),
+                        }
+                    }
                     None => Ok(()),
                 }
             } else {
@@ -466,6 +473,12 @@ impl<S: GitStore> Repos<S> {
             let to = fork_git.access(Scope::Write).await?;
             let moved = land::fast_forward(&from, &to, &branch, Some(&head.hash), &their_head.hash, self.public_quota(&fork, Operation::Sync, Some(&a.actor.id))).await?;
             self.refs_moved(&fork.id).await;
+            let moved = match moved {
+                Ok(moved) => moved,
+                // Refused a reservation on the way: said as every write
+                // from the site says it (public_storage.rs `Refusal`).
+                Err(refusal) => return Ok(refusal.outcome()),
+            };
             if moved.is_err() {
                 return Ok(Outcome::fail(FailureCode::Conflict, format!("{branch} moved while it was being synced. Nothing was lost; try again.")));
             }

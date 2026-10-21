@@ -122,6 +122,21 @@ function hold(db, { root, id, bytes, now = 0, target = root, operation = "push",
   ]);
   return made !== undefined;
 }
+/**
+ * public_storage.rs `grant` with `refusal`: the row, the sum, and whether
+ * a copy lock holds the root, in one batch; why it was refused, if it was.
+ */
+function grant(db, { root, id, bytes, now = 0, lease = now + LEASE_MS, cap = CAP }) {
+  const made = `grt_${++grants}`;
+  const [held, , locked] = batch(db, [
+    ["HOLD", [root, bytes, cap, id, root, "push", null, made, new Date(now).toISOString(), now, lease], "get"],
+    ["HOLD_SUM", [root, bytes, id, made]],
+    ["COPY_LOCKED", [root], "get"],
+  ]);
+  if (held !== undefined) return "granted";
+  if (locked.locked) return "locked";
+  return now > lease ? "overdue" : "full";
+}
 /** public_storage.rs `settle`. */
 const settle = (db, root, id, measured) =>
   batch(db, [
@@ -193,6 +208,31 @@ test("a streamed copy grows one row, and only while its lease lasts", () => {
   end(db, "srv_copy", HOUR);
   assert.equal(hold(db, { root: "fork", id: "srv_copy", bytes: 5, now: HOUR, lease: LEASE_MS }), false, "an ended write takes no more");
   assert.deepEqual(sums(db, "fork"), { stored: 0, reserved: 25, ledger: 25 });
+  db.close();
+});
+
+test("a write to a repository being copied into a fork is refused for the lock, and one with no room for the cap", () => {
+  const db = database();
+  repo(db, "private", 100, "team", 1);
+  repo(db, "public", 100);
+  repo(db, "fork", 0);
+  repo(db, "elsewhere", 4_999_999_000, "full");
+  for (const source of ["private", "public"]) db.prepare(sql("LOCK_COPY")).get(source, "fork", "2026-10-21T00:00:00Z", 0, LEASE_MS);
+  // A push or a commit from the site, to a private repository or a public
+  // one with room: refused, and the lock says why.
+  assert.equal(grant(db, { root: "private", id: "srv_private", bytes: 10 }), "locked");
+  assert.equal(grant(db, { root: "public", id: "srv_public", bytes: 10 }), "locked");
+  // To a public one whose workspace is really full: the cap.
+  assert.equal(grant(db, { root: "elsewhere", id: "srv_full", bytes: 10_000 }), "full");
+  assert.equal(grant(db, { root: "elsewhere", id: "srv_fits", bytes: 1_000 }), "granted");
+  // A streamed copy past its lease, with no lock: neither.
+  assert.equal(grant(db, { root: "fork", id: "srv_late", bytes: 1, now: LEASE_MS + 1, lease: LEASE_MS }), "overdue");
+  assert.deepEqual(sums(db, "private"), { stored: 100, reserved: 0, ledger: 0 }, "a refusal reserves nothing");
+  assert.deepEqual(sums(db, "public"), { stored: 100, reserved: 0, ledger: 0 });
+  // Once the copy ends, both take writes again.
+  db.exec("DELETE FROM storage_copy_locks");
+  assert.equal(grant(db, { root: "private", id: "srv_private", bytes: 10 }), "granted");
+  assert.equal(grant(db, { root: "public", id: "srv_public", bytes: 10 }), "granted");
   db.close();
 });
 

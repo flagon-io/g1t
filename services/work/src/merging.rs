@@ -243,6 +243,14 @@ pub(crate) fn cannot_fast_forward(base: &str, source: &str) -> String {
     )
 }
 
+/// Whether a catch-up repos refused is one [`cannot_fast_forward`] says:
+/// refused for who may push to the branch. One its workspace's public
+/// storage refused says so itself, as one to a repository being copied
+/// into a fork does (an `Unavailable`).
+pub(crate) fn refused_the_pusher(failure: &g1t_contracts::Failure) -> bool {
+    failure.code == FailureCode::Forbidden && failure.message != g1t_contracts::repos::PUBLIC_STORAGE_FULL
+}
+
 /// Who a squash commit is by: the person the pull request is theirs (who
 /// asked g1t for it, or its author). The merger, for an agent's or g1t's
 /// own, and for any other method.
@@ -768,6 +776,26 @@ mod tests {
         assert_eq!(when_behind(MergeMethod::FastForward, true, false, "main"), WhenBehind::CatchUpFirst);
         assert_eq!(when_behind(MergeMethod::FastForward, false, false, "main"), WhenBehind::Land);
         assert!(matches!(when_behind(MergeMethod::FastForward, true, true, "main"), WhenBehind::Refuse(_)));
+    }
+
+    #[test]
+    fn a_catch_up_refused_for_room_or_a_copy_says_so_not_that_it_cannot_fast_forward() {
+        let failure = |code, message: &str| g1t_contracts::Failure { code, message: message.to_owned() };
+        // Refused for who may push: merge it another way.
+        assert!(refused_the_pusher(&failure(FailureCode::Forbidden, "Only whoever opened this pull request can update it.")));
+        // Refused for the workspace's public storage: said as it came.
+        assert!(!refused_the_pusher(&failure(
+            FailureCode::Forbidden,
+            "Public repository storage is full. Make room before adding more data."
+        )));
+        // A repository being copied into a fork: also as it came.
+        assert!(!refused_the_pusher(&failure(
+            FailureCode::Unavailable,
+            "This repository is being copied into a fork. Try again in a few minutes; if it lasts more than an hour, g1t staff release it."
+        )));
+        assert_eq!(g1t_contracts::repos::PUBLIC_STORAGE_FULL, "Public repository storage is full. Make room before adding more data.");
+        let source = include_str!("lib.rs");
+        assert!(source.contains("Outcome::Fail(failure) if merging::refused_the_pusher(&failure) =>"));
     }
 
     fn repo() -> Repo {

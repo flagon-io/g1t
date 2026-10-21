@@ -881,11 +881,12 @@ impl<S: GitStore> Repos<S> {
             };
             let pack = pack_for(held, source_git, &new, &merge_base, &objects).await?;
             let target_access = target_git.access(Scope::Write).await?;
-            let Some(pushed) = self
+            let pushed = match self
                 .push_reserved(target, Operation::Merge, Some(&a.actor.id), &target_access, branch, Some(&base.hash), &made.commit, pack)
                 .await?
-            else {
-                return Ok(Outcome::fail(FailureCode::Forbidden, "Public repository storage is full. Make room before adding more data."));
+            {
+                Ok(pushed) => pushed,
+                Err(refusal) => return Ok(refusal.outcome()),
             };
             self.refs_moved(&target.id).await;
             match pushed {
@@ -976,11 +977,12 @@ impl<S: GitStore> Repos<S> {
         };
         let old = target_git.log(&a.push_branch, 1).await?.into_iter().next().map(|commit| commit.hash);
         let target_access = target_git.access(Scope::Write).await?;
-        let Some(pushed) = self
+        let pushed = match self
             .push_reserved(&target, Operation::Queue, Some(&a.actor.id), &target_access, &a.push_branch, old.as_deref(), &commit, pack)
             .await?
-        else {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Public repository storage is full. Make room before adding more data."));
+        {
+            Ok(pushed) => pushed,
+            Err(refusal) => return Ok(refusal.outcome()),
         };
         self.refs_moved(&target.id).await;
         Ok(match pushed {

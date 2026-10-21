@@ -16,6 +16,7 @@ use worker::{Fetch, Headers, Method, Request, RequestInit, Result};
 use g1t_contracts::FailureCode;
 
 use crate::land::{read_pkt_lines, unpack_sideband};
+use crate::public_storage::Refusal;
 
 const ZERO_ID: &str = "0000000000000000000000000000000000000000";
 /// The most a pack may hold. A Worker holds it in memory while relaying it.
@@ -374,7 +375,7 @@ async fn fetch_pack(source: &Endpoint, wants: &[String], haves: &[String]) -> Re
 /// Makes `target`'s branches and tags match `source`'s. `Err` in the inner
 /// result is a reason to show a person.
 pub async fn copy<F, Fut>(source: &Endpoint, target: &Endpoint, admit: F) -> Result<std::result::Result<Copied, Problem>>
-where F: FnOnce(u64) -> Fut, Fut: std::future::Future<Output = Result<bool>> {
+where F: FnOnce(u64) -> Fut, Fut: std::future::Future<Output = Result<std::result::Result<(), Refusal>>> {
     let theirs = match advertise(source, "git-upload-pack").await? {
         Ok(refs) => refs,
         Err(problem) => return Ok(Err(problem)),
@@ -423,7 +424,7 @@ async fn transfer<F, Fut>(
     commands: &[Command],
     admit: F,
 ) -> Result<std::result::Result<(Vec<(String, Option<String>)>, u64), Problem>>
-where F: FnOnce(u64) -> Fut, Fut: std::future::Future<Output = Result<bool>> {
+where F: FnOnce(u64) -> Fut, Fut: std::future::Future<Output = Result<std::result::Result<(), Refusal>>> {
     let have: HashSet<&String> = held.refs.values().collect();
     let mut wants: Vec<String> = commands
         .iter()
@@ -443,8 +444,8 @@ where F: FnOnce(u64) -> Fut, Fut: std::future::Future<Output = Result<bool>> {
         }
     };
     let pack_bytes = pack.as_ref().map_or(0, |p| p.len() as u64);
-    if !admit(pack_bytes).await? {
-        return Ok(Err(Problem::Refused("Public repository storage is full. Make room before adding more data.".to_owned())));
+    if let Err(refusal) = admit(pack_bytes).await? {
+        return Ok(Err(Problem::Refused(refusal.message())));
     }
     let body = receive_request(commands, pack);
     let url = format!("{}/git-receive-pack", target.url);

@@ -1101,6 +1101,19 @@ mod tests {
     }
 
     #[test]
+    fn a_merge_g1t_makes_on_a_repository_being_copied_into_a_fork_stalls_saying_so() {
+        // repos answers the copy lock as Unavailable (public_storage.rs
+        // `Refusal::outcome`): only a conflict is let go for the next look,
+        // and the lock's end publishes nothing that would look again.
+        let source = include_str!("lifecycle.rs");
+        let start = source.find("async fn merge_by_policy(").unwrap();
+        let body = &source[start..start + source[start..].find("\n    }\n").unwrap()];
+        assert!(body.contains("Outcome::Fail(failure) if failure.code == FailureCode::Conflict =>"));
+        assert!(!body.contains("FailureCode::Unavailable"));
+        assert!(body.contains("reason: format!(\"g1t could not merge this: {}\", failure.message)"));
+    }
+
+    #[test]
     fn a_landing_asked_for_before_it_carried_ignore_checks_still_reads() {
         let old: LandRequest = serde_json::from_value(serde_json::json!({
             "actor": serde_json::to_value(User::default()).unwrap(),

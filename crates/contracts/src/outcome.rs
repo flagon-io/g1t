@@ -28,7 +28,9 @@ pub enum FailureCode {
     /// A sensitive change needs the person to prove it is them again: a
     /// recent sign-in, or their password. See `identity::Reauth`.
     ReauthRequired,
-    /// Another host g1t depends on for this did not answer.
+    /// Another host g1t depends on for this did not answer, or what it
+    /// writes to takes no writes for now (a repository being copied into a
+    /// fork). Trying again later may work.
     Unavailable,
     /// What was sent is larger than this takes, such as an attachment over 10 MB.
     TooLarge,

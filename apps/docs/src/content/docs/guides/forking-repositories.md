@@ -80,6 +80,21 @@ the workflows it copied until someone turns them on (see
 [Turn on workflows](#turn-on-workflows)). Deployments stay off until you set
 up the fork's own project.
 
+While a fork is being copied, the repository it is copied from takes no
+writes, whatever room its workspace has. A commit from the site, a merge or a
+pull request update is refused with **This repository is being copied into a
+fork. Try again in a few minutes; if it lasts more than an hour, g1t staff
+release it.** A push is refused before any data is sent, and git prints,
+before it stops with a `403`:
+
+```text
+remote: acme/rocket is being copied into a fork, and takes no pushes until the copy ends. Nothing was pushed; try again in a few minutes. If it lasts more than an hour, g1t staff release it: https://docs.g1t.sh/guides/git/#size-limits
+```
+
+A copy ordinarily ends within a few minutes, and writes are taken again. A
+fork whose copy timed out may still be copying, so it holds the repository
+until its lease of an hour has passed; g1t staff release it then.
+
 ### When forking is refused
 
 | Response               | Why                                                                                                                                | What to do                                                            |

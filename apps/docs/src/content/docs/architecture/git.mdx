@@ -133,10 +133,20 @@ it on any ordinary connection. What the lease cuts depends on the write:
 | A native fork                                                                                                                                                        | Not cut: it is one call to the store, which g1t cannot stop; the lease takes it as answered by then                               |
 
 A native fork locks its source while it takes the source's size
-(`storage_copy_locks`); the lock has the same lease. A fork whose call
-timed out or met a server error may still be copying, so it keeps its
-lock until the lease and grace have passed; one the store refused unlocks
-at once. A fork that finishes after staff released its lock leaves its
+(`storage_copy_locks`); the lock has the same lease. While it is held, the
+source is refused every reservation, private or public and whatever room
+its workspace has. The batch that asks for a reservation also reads the
+lock, so a refused write says which refused it: a push is told, when it
+begins, that the repository is being copied into a fork and to try again
+in a few minutes, or that g1t staff release the lock if it lasts more than
+an hour, as is a commit from the site, a merge, the merge queue, a pull
+request update, a landing or a sync. Only a write the cap refused says
+public storage is full. The lock is `unavailable` rather than a conflict,
+since its end starts nothing that would try again: a pull request g1t
+merges by itself stalls with the message, and a person's automatic merge
+turns off with it. A fork whose call timed out or met a server error may
+still be copying, so it keeps its lock until the lease and grace have
+passed, and staff release it; one the store refused unlocks at once. A fork that finishes after staff released its lock leaves its
 reservation ended, for staff to look at.
 
 Rows and locks that outlive their write are for staff, in sudo's Storage
