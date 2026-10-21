@@ -10,6 +10,7 @@
 
 mod blobs;
 mod broker;
+mod checkout;
 mod containers;
 mod files;
 mod glob;
@@ -66,6 +67,9 @@ pub(crate) enum PostRun {
     Node { action_dir: PathBuf, script: String, using: String },
     /// A Docker action's `post-entrypoint`.
     Docker(containers::DockerRun),
+    /// The runner's own `actions/checkout`'s: the credential it left in
+    /// the repository at `path`, for `server`, removed (checkout.rs).
+    Checkout { path: PathBuf, server: String },
 }
 
 pub(crate) struct Job {
@@ -1180,6 +1184,7 @@ fn run_job(job: &mut Job) {
         let ok = match &post.run {
             PostRun::Node { action_dir, script, using } => job.run_node(action_dir, script, &post.env, using),
             PostRun::Docker(run) => job.run_docker(run).0,
+            PostRun::Checkout { path, server } => job.checkout_post(path, server),
         };
         job.log.step_state(number, &post.name, "completed", Some(if ok { "success" } else { "failure" }));
         if !ok {

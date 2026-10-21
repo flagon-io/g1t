@@ -8,6 +8,8 @@
  *   be given brokered secrets sends its HTTP and HTTPS through `egress`
  *   below, which fills them in and sends everything on, to any host.
  * - A sandbox's report that it stopped itself for mining comes to `abuse`.
+ * - A workflow job's git at `GIT_HOST` comes to `git` (or `egress`), which
+ *   hands it to the repos service over its binding (internal-git.ts).
  */
 import type { OutboundHandlerContext } from "@cloudflare/containers";
 
@@ -16,6 +18,7 @@ import { type RepoPath, type RunKind, type ServiceBinding, guardrailsClient } fr
 import { ABUSE_HOST, type RunGuard, sandboxNamespace } from "./egress";
 import { type BrokeredParams, brokered } from "./broker-egress.ts";
 import { forward } from "./forward.ts";
+import { internalGit, isGitHost } from "./internal-git.ts";
 
 export {
   ABUSE_EXIT_CODE,
@@ -60,16 +63,18 @@ export function buildGuard(minutes: number): RunGuard {
  * The outbound handler of a sandbox whose HTTP and HTTPS pass the Worker
  * (a workflow job that may be given brokered secrets): every request it
  * makes, to any host. Its brokered secrets are filled in first, if it has
- * any, and the request is sent on with `forward`'s retries.
+ * any, and the request is sent on with `forward`'s retries. Its git at
+ * `GIT_HOST` goes to the repos service, as `git` sends it.
  */
 export async function egress(
   request: Request,
-  env: { SANDBOX: DurableObjectNamespace; ACTIONS?: ServiceBinding },
+  env: { SANDBOX: DurableObjectNamespace; ACTIONS?: ServiceBinding; REPOS?: ServiceBinding },
   ctx: OutboundHandlerContext<EgressParams>,
 ): Promise<Response> {
   const host = new URL(request.url).host;
   // A sandbox reporting that it stopped itself for mining.
   if (host === ABUSE_HOST) return abuse(request, env, ctx);
+  if (isGitHost(host)) return internalGit(request, env);
   return (await brokered(request, env, ctx)) ?? forward(request);
 }
 
@@ -96,6 +101,14 @@ export async function abuse(request: Request, env: { SANDBOX: DurableObjectNames
     console.log("abuse report not handled", String(error));
   }
   return new Response("noted\n");
+}
+
+/**
+ * The outbound handler for `GIT_HOST` on a workflow job whose other
+ * requests go straight out: its git, to the repos service.
+ */
+export async function git(request: Request, env: { REPOS?: ServiceBinding }): Promise<Response> {
+  return internalGit(request, env);
 }
 
 /** Adds a step to a run, with its token. Never fails the caller. */

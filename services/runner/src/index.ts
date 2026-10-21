@@ -48,6 +48,7 @@ import {
   buildGuard,
   dockerFor,
   egress,
+  git,
   guardFor,
   harnessEnv,
   reportRun,
@@ -57,6 +58,7 @@ import {
   timeCapMessage,
   withPlanLimits,
 } from "./guard";
+import { GIT_HOST, GIT_INTERNAL_ENV } from "./internal-git";
 import { newlyMisdirected } from "./broker";
 import { relay, relayDeps } from "./broker-relay";
 import { forward } from "./forward";
@@ -314,7 +316,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     // Assigned, not declared: a class field would hide the setter that
     // registers the handler with the containers library. Which one a
     // sandbox uses is chosen as it starts (`run`).
-    AttemptSandbox.outboundHandlers = { egress, abuse };
+    AttemptSandbox.outboundHandlers = { egress, abuse, git };
   }
 
   async run(request: RunRequest): Promise<void> {
@@ -386,13 +388,28 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       // stopped itself for mining. Both are chosen here, as it starts: hosts
       // named on the class up front (`outboundByHost` in a static block)
       // left sandboxes that never picked up their jobs (rolled back
-      // 2026-10-13).
+      // 2026-10-13). A workflow job's git at `GIT_HOST` goes to the repos
+      // service over its binding (internal-git.ts), through `egress` or a
+      // handler of its own; the runner is told so (`GIT_INTERNAL_ENV`), and
+      // its native `actions/checkout` fetches that way rather than from
+      // g1t.sh over the internet.
       const brokering = run.kind === "actions" && throughWorker(build, this.env.EGRESS);
       this.enableInternet = true;
+      let internalGit = false;
       if (brokering && run.kind === "actions") {
         await this.setOutboundHandler("egress", { job: { id: run.jobId, token: run.token } });
+        internalGit = true;
       } else if (this.env.EGRESS?.trim().toLowerCase() !== "off") {
         await this.setOutboundByHost(ABUSE_HOST, "abuse").catch((error: unknown) => console.log("abuse reports not routed", String(error)));
+        if (run.kind === "actions") {
+          internalGit = await this.setOutboundByHost(GIT_HOST, "git").then(
+            () => true,
+            (error: unknown) => {
+              console.log("internal git not routed", String(error));
+              return false;
+            },
+          );
+        }
       }
       const harness = guard && !build ? harnessEnv(guard, vars) : {};
       // Once any of its traffic is intercepted, Cloudflare passes all of it
@@ -403,7 +420,8 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       const intercepted = brokering || this.env.EGRESS?.trim().toLowerCase() !== "off";
       const trust = intercepted ? EGRESS_ENV : {};
       const watch: Record<string, string> = this.env.ABUSE_WATCH === "off" ? { G1T_ABUSE: "off" } : {};
-      await this.start({ envVars: { ...vars, ...harness, ...trust, ...watch }, enableInternet: true });
+      const gitPath = internalGit ? GIT_INTERNAL_ENV : {};
+      await this.start({ envVars: { ...vars, ...harness, ...trust, ...watch, ...gitPath }, enableInternet: true });
       // A backup has no guardrails, but still a time cap.
       const cap = guard?.minutes ?? (run.kind === "backup" ? BACKUP_MINUTES : null);
       if (cap) {
@@ -816,12 +834,12 @@ function notAdmitted(admitted: Exclude<Admitted, Granted>): Result<never> {
  */
 export class Sandbox2Core extends AttemptSandbox {
   static {
-    Sandbox2Core.outboundHandlers = { egress, abuse };
+    Sandbox2Core.outboundHandlers = { egress, abuse, git };
   }
 }
 export class Sandbox4Core extends AttemptSandbox {
   static {
-    Sandbox4Core.outboundHandlers = { egress, abuse };
+    Sandbox4Core.outboundHandlers = { egress, abuse, git };
   }
 }
 

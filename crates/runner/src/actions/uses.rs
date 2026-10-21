@@ -17,6 +17,7 @@ use g1t_actions::expr;
 use g1t_actions::workflow::yaml_to_json;
 use serde_json::{Map, Value, json};
 
+use super::checkout;
 use super::containers::{self, DockerRun};
 use super::files::StepFiles;
 use super::process::{self, Commands, Ended};
@@ -261,6 +262,20 @@ impl Job {
         }
     }
 
+    /// The repository and ref of the action a step fetches from another
+    /// repository (`remote_action`). A checkout the runner does itself
+    /// fetches none, unless an input only known when it runs may ask for
+    /// the action (checkout.rs).
+    fn action_to_fetch(&self, step: &Map<String, Value>) -> Option<(String, String, String)> {
+        let uses = step.get("uses").map(|u| expr::to_text(u).trim().to_owned())?;
+        let found = remote_action(&uses, self.docker_hosted)?;
+        let name = uses.split('@').next().unwrap_or_default();
+        if name.eq_ignore_ascii_case(checkout::ACTION) && !self.checkout_needs_action(&found.2, &checkout::raw_with(step)) {
+            return None;
+        }
+        Some(found)
+    }
+
     /// Downloads every action the job's steps fetch from other
     /// repositories, before the first step runs, as GitHub's runner does in
     /// "Set up job". False when one could not be: the job fails before
@@ -269,7 +284,7 @@ impl Job {
     pub(crate) fn prepare_actions(&mut self, steps: &[Map<String, Value>]) -> bool {
         let mut wanted: Vec<(String, String, String)> = Vec::new();
         for step in steps {
-            if let Some(found) = step.get("uses").and_then(Value::as_str).and_then(|uses| remote_action(uses, self.docker_hosted))
+            if let Some(found) = self.action_to_fetch(step)
                 && !wanted.contains(&found)
             {
                 wanted.push(found);
@@ -356,13 +371,24 @@ impl Job {
         let uses = uses.trim();
         let (name, git_ref) = uses.split_once('@').unwrap_or((uses, ""));
         let lower = name.to_ascii_lowercase();
+        // `actions/checkout` by the runner, unless something it is asked
+        // for needs the action itself (checkout.rs).
+        let checkout_by_runner = if lower == checkout::ACTION { self.checkout_fallback(git_ref, with) } else { Some(String::new()) };
         // The step opens as GitHub's do: `Run` and the action, its inputs
         // and variables, folded. An action fetched from a repository lists
         // its inputs as they are read, its defaults among them.
-        let fetched = !uses.starts_with("docker://") && !native(&lower, self.docker_hosted);
+        let fetched = !uses.starts_with("docker://") && !native(&lower, self.docker_hosted) && checkout_by_runner.is_some();
         if !fetched {
             self.log_header(uses, with, env);
         }
+        let Some(not_by_runner) = checkout_by_runner else {
+            let declared: Vec<String> = checkout::INPUTS.iter().map(|&i| i.to_owned()).collect();
+            if let Some(warning) = unexpected_inputs(&declared, &with.keys().cloned().collect::<Vec<_>>(), false) {
+                self.log.line(&format!("##[warning]{warning}"));
+            }
+            let internal = std::env::var("G1T_GIT_INTERNAL").ok().filter(|base| !base.trim().is_empty());
+            return self.checkout(with, title, internal.map(|base| base.trim().trim_end_matches('/').to_owned()));
+        };
         if let Some(image) = uses.strip_prefix("docker://") {
             // `with.args` and `with.entrypoint` are the container's; every
             // input is also an `INPUT_` variable, as on GitHub.
@@ -400,6 +426,9 @@ impl Job {
         let contexts = self.contexts_for(frame, &env_context);
         let inputs = self.action_inputs(action, with, &contexts, true);
         self.log_header(uses, &inputs, env);
+        if !not_by_runner.is_empty() {
+            self.log.line(&format!("The action runs itself rather than the runner's checkout: {not_by_runner}."));
+        }
 
         let runs = action.get("runs").cloned().unwrap_or(Value::Null);
         let using = runs.get("using").map(expr::to_text).unwrap_or_default().to_ascii_lowercase();
@@ -690,7 +719,7 @@ impl Job {
             let Some(uses) = step.get("uses").map(|u| expr::to_text(u).trim().to_owned()) else { continue };
             // Only another repository's action, which `prepare_actions` has
             // already downloaded.
-            if remote_action(&uses, self.docker_hosted).is_none() {
+            if self.action_to_fetch(step).is_none() {
                 continue;
             }
             let Some(found) = self.resolve_action(&uses) else { continue };
@@ -796,6 +825,30 @@ mod tests {
         assert_eq!(found("docker://alpine:3"), None);
         assert_eq!(found("actions/setup-node"), None);
         assert_eq!(found("setup-node@v4"), None);
+    }
+
+    /// A checkout the runner does itself is not downloaded with the job's
+    /// actions; one that needs the action, or may once its inputs are
+    /// read, is.
+    #[test]
+    fn a_checkout_the_runner_does_is_not_downloaded() {
+        if Command::new("git").arg("--version").output().is_err() {
+            return;
+        }
+        let root = std::env::temp_dir().join(format!("g1t-uses-checkout-{}", std::process::id()));
+        let spec = json!({ "github": { "server_url": "https://g1t.sh" }, "variables": {}, "contexts": {} });
+        let mut job = super::super::setup_in(spec, super::super::report::Api::offline(), root.join("work"), root.join("temp")).unwrap();
+        let step = |uses: &str, with: Value| -> Map<String, Value> { json!({ "uses": uses, "with": with }).as_object().unwrap().clone() };
+        let fetched = |job: &Job, uses: &str, with: Value| job.action_to_fetch(&step(uses, with)).map(|(owner, repo, git_ref)| format!("{owner}/{repo}@{git_ref}"));
+        assert_eq!(fetched(&job, "actions/checkout@v5", json!({ "fetch-depth": 0 })), None);
+        assert_eq!(fetched(&job, "Actions/Checkout@v4.2.2", json!({})), None);
+        assert_eq!(fetched(&job, "actions/checkout@v6", json!({})).as_deref(), Some("actions/checkout@v6"));
+        assert_eq!(fetched(&job, "actions/checkout@v5", json!({ "lfs": true })).as_deref(), Some("actions/checkout@v5"));
+        assert_eq!(fetched(&job, "actions/checkout@v5", json!({ "lfs": "${{ inputs.lfs }}" })).as_deref(), Some("actions/checkout@v5"));
+        assert_eq!(fetched(&job, "actions/setup-node@v4", json!({})).as_deref(), Some("actions/setup-node@v4"));
+        job.spec["variables"]["RUNNER_ENVIRONMENT"] = json!("self-hosted");
+        assert_eq!(fetched(&job, "actions/checkout@v5", json!({})).as_deref(), Some("actions/checkout@v5"));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
