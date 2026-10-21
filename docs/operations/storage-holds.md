@@ -85,8 +85,8 @@ same batch that releases.
    default branch's commit) and what g1t counts (stored, reserved, how much
    of it the ledger accounts for). For a push that ended, each ref it asked
    for says **landed** when the store has it: the push may have been stored
-   though its answer was an error, or a later push may have set the same
-   ref.
+   though its answer was an error (a 500, or a 200 with a fatal error,
+   whose outcome quotes it), or a later push may have set the same ref.
 3. **Release it**, with a reason that says what you saw ("ended with a 500;
    main is not at the commit it asked for"). The reason and the inspection
    are kept in the audit row, listed under **Released**. The release is
@@ -116,7 +116,8 @@ over 200 MB passed over) from the store: the pack it sends for every ref,
 plus what each pull request's working copy holds beyond it, beside
 `stored_bytes`. It reads only. Above zero, g1t counts less than the store
 holds: pushes made with a credential straight to the store (sandboxes'
-`git_access`), and ended pushes that landed, are not counted. Below zero,
+`git_access`), ended pushes that landed, and g1t's own refs (a pull
+request's test merge, `refs/pull/N/merge`) are not counted. Below zero,
 g1t counted objects that a later push made unreachable (a force push), or
 packs that sent objects the store already had: g1t asks for whole packs.
 Before #307, g1t also counted writes the store refused (a merge or update

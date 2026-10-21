@@ -335,6 +335,11 @@ impl<S: GitStore> Repos<S> {
             let fork_read = self.store.open(&store_key(fork)).await?.access(Scope::Read).await?;
             land::fetch_pack(&fork_read, head, base.as_deref()).await?
         };
+        // Not reserved or counted (`stored_bytes`): the pack holds only the
+        // working copy's commits, which were counted to this parent (the
+        // working copy's root, registry.rs `add_stored_bytes`) when they
+        // were pushed to it, and stay counted after its git data goes.
+        // Counting them again here would count them twice.
         let parent_write = parent_git.access(Scope::Write).await?;
         let kept = land::push_ref(&parent_write, &reference, existing.as_deref(), head, Some(pack)).await;
         self.refs_moved(&parent.id).await;
@@ -361,6 +366,9 @@ impl<S: GitStore> Repos<S> {
         let git = self.store.open(&key).await?;
         let current = git.log(&fork.default_branch, 1).await?.into_iter().next().map(|commit| commit.hash);
         if current.as_deref() != Some(head.as_str()) {
+            // Not reserved or counted (`stored_bytes`): the pack is the
+            // parent's own objects (the head `keep_head` kept), already
+            // counted to the parent, which is this working copy's root too.
             let pack = land::fetch_pack(&parent_git.access(Scope::Read).await?, &head, current.as_deref()).await?;
             let moved = land::push_ref(
                 &git.access(Scope::Write).await?,

@@ -116,10 +116,23 @@ its row with the bytes it measured. One the store refused gives the row
 back and counts nothing: refused before the store took any of it, or in
 the store's report (an `ng` for its ref, most often because the branch
 moved meanwhile, or a failed unpack; for a push over git, every ref it
-reports on refused). Only bytes the store took reach `stored_bytes`.
+reports on refused). Only bytes the store took reach `stored_bytes`. A
+push and a write of one ref read the store's report the same way, one
+parser for both (`land.rs` `read_answer`, report-status v1 or v2), and a
+push records only the refs its report says moved: a ref the store refused
+starts no event, webhook or workflow, and a push refused whole records
+nothing.
+
+g1t's own copies are not reserved or counted: a pull request's test merge
+(`refs/pull/N/merge`, a merge commit g1t makes), its head copied in from
+the working copy, the head kept when a working copy is removed and the
+branch a removed working copy is made again with. What they hold was
+counted when it was pushed, to the repository that is the working copy's
+root, or was written by g1t.
 
 A write that stops without knowing whether the store kept it (the store
-answered with an error, stopped answering, or answered a write of one ref
+answered with an error, stopped answering, answered a push with a fatal
+error, on side-band channel 3 or as `ERR`, or answered a write of one ref
 without saying whether it moved) marks its row `ended`, with the refs it
 asked for. A row also carries a lease, an hour from when it
 was taken (`LEASE_MS`): a push is at most 100 MB, which uploads well within
