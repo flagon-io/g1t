@@ -174,10 +174,14 @@ pub(crate) const RELEASE_LOCK_ROW: &str = "DELETE FROM storage_copy_locks
 pub(crate) const RELEASE_AUDIT: &str = "INSERT INTO storage_recovery_audits (recovery_id, workspace, account, action, detail, by, created_at)
     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7 WHERE EXISTS (SELECT 1 FROM storage_recoveries WHERE id = ?1)";
 
-/// Lines billing has not confirmed, oldest first. ?1 limit, ?2 one
-/// recovery or null for all.
+/// Lines billing has not confirmed: those never tried first, then those
+/// tried longest ago, so lines billing keeps refusing cannot keep newer
+/// ones from being sent. ?1 limit, ?2 one recovery or null for all.
 pub(crate) const AUDITS_UNSENT: &str = "SELECT recovery_id, workspace, account, action, detail, by FROM storage_recovery_audits
-    WHERE sent_at IS NULL AND (?2 IS NULL OR recovery_id = ?2) ORDER BY created_at LIMIT ?1";
+    WHERE sent_at IS NULL AND (?2 IS NULL OR recovery_id = ?2) ORDER BY tried_at IS NOT NULL, tried_at, created_at LIMIT ?1";
+
+/// Where one line stands. ?1 recovery.
+pub(crate) const AUDIT_STATE: &str = "SELECT sent_at, attempts, error FROM storage_recovery_audits WHERE recovery_id = ?1";
 
 /// Billing confirmed it. ?1 recovery, ?2 now.
 pub(crate) const AUDIT_SENT: &str = "UPDATE storage_recovery_audits SET sent_at = ?2, tried_at = ?2, attempts = attempts + 1, error = NULL
@@ -227,16 +231,17 @@ fn kind_label(kind: &str) -> &str {
 
 /// Bytes in the decimal units the storage limits use, as sudo shows them:
 /// `1.5 GB`, `320 MB`, `12.3 kB`, `7 bytes`.
+/// Rounded half up in integers, as sudo's `formatBytes` rounds
+/// (`toFixed`, `Math.round`), so the audit line says what the page does.
 pub fn format_bytes(bytes: u64) -> String {
-    for (scale, unit) in [(1e9, "GB"), (1e6, "MB"), (1e3, "kB")] {
-        let size = bytes as f64;
+    let size = u128::from(bytes);
+    for (scale, unit) in [(1_000_000_000u128, "GB"), (1_000_000, "MB"), (1_000, "kB")] {
         if size >= scale {
-            let value = size / scale;
-            let shown = if value >= 100.0 {
-                format!("{}", value.round())
+            let shown = if size >= 100 * scale {
+                format!("{}", (size + scale / 2) / scale)
             } else {
-                let fixed = format!("{value:.1}");
-                fixed.strip_suffix(".0").map(str::to_owned).unwrap_or(fixed)
+                let tenths = (size * 10 + scale / 2) / scale;
+                if tenths % 10 == 0 { format!("{}", tenths / 10) } else { format!("{}.{}", tenths / 10, tenths % 10) }
             };
             return format!("{shown} {unit}");
         }
@@ -834,8 +839,17 @@ impl<S: GitStore> Repos<S> {
         let audit_state = match sent.as_deref() {
             Ok([(_, Ok(()))]) => StorageRecoveryAudit { sent_at: Some(at(now_ms())), attempts: 1, error: None },
             Ok([(_, Err(error))]) => StorageRecoveryAudit { sent_at: None, attempts: 1, error: Some(error.clone()) },
-            Ok(_) => StorageRecoveryAudit { sent_at: None, attempts: 0, error: None },
-            Err(error) => StorageRecoveryAudit { sent_at: None, attempts: 0, error: Some(error.to_string()) },
+            // Nothing unsent: the sweep sent it between the batch and now.
+            // Say where it really stands.
+            Ok(_) => match self.recovery_audit(&audit).await {
+                Ok(Some(state)) => state,
+                Ok(None) => StorageRecoveryAudit { sent_at: None, attempts: 0, error: None },
+                Err(error) => StorageRecoveryAudit { sent_at: None, attempts: 0, error: Some(error.to_string()) },
+            },
+            Err(error) => {
+                worker::console_error!("{}", serde_json::json!({ "storage_release_unaudited": audit, "error": error.to_string() }));
+                StorageRecoveryAudit { sent_at: None, attempts: 0, error: Some(error.to_string()) }
+            }
         };
         Ok(Outcome::Ok(StorageRecovery {
             id: audit,
@@ -898,6 +912,18 @@ impl<S: GitStore> Repos<S> {
             Ok(false) => Err("Billing did not confirm it.".to_owned()),
             Err(error) => Err(error.to_string().chars().take(500).collect()),
         }
+    }
+
+    /// Where one release's line stands, as its outbox row says.
+    async fn recovery_audit(&self, recovery_id: &str) -> Result<Option<StorageRecoveryAudit>> {
+        #[derive(Deserialize)]
+        struct Row {
+            sent_at: Option<String>,
+            attempts: f64,
+            error: Option<String>,
+        }
+        let row = self.registry.db.prepare(AUDIT_STATE).bind(&[recovery_id.into()])?.first::<Row>(None).await?;
+        Ok(row.map(|row| StorageRecoveryAudit { sent_at: row.sent_at, attempts: row.attempts.max(0.0) as u32, error: row.error }))
     }
 
     /// The hourly sweep's part: lines a release could not send at once.
@@ -1151,6 +1177,11 @@ mod tests {
         assert_eq!(format_bytes(100_000_000), "100 MB");
         assert_eq!(format_bytes(320_000_000), "320 MB");
         assert_eq!(format_bytes(12_345), "12.3 kB");
+        // A tie rounds up, as sudo's toFixed does.
+        assert_eq!(format_bytes(1_250), "1.3 kB");
+        assert_eq!(format_bytes(99_950_000), "100 MB");
+        assert_eq!(format_bytes(150_500_000), "151 MB");
+        assert_eq!(format_bytes(u64::MAX), "18446744074 GB");
         assert_eq!(format_bytes(1), "1 byte");
         assert_eq!(format_bytes(0), "0 bytes");
     }

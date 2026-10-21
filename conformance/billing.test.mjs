@@ -349,3 +349,21 @@ test("a keyed admin_log line is written once however often it is sent", () => {
   assert.equal(rows[0].by, "staff@g1t.sh");
   db.close();
 });
+
+test("a key that already holds another kind of change is refused, and its line is left as it was", () => {
+  const db = database();
+  const once = db.prepare(constant("accounts", "ADMIN_LOG_ONCE"));
+  const kept = db.prepare(constant("accounts", "ADMIN_LOG_KEPT"));
+  once.run("admk_srr_2", "ws_acme", "storage_released", "the release", "staff@g1t.sh", at);
+  assert.ok(kept.get("admk_srr_2", "storage_released"), "the same kind of change: written, or already there");
+  once.run("admk_srr_2", "ws_acme", "workspace_restored", "another change", "staff@g1t.sh", at);
+  assert.equal(kept.get("admk_srr_2", "workspace_restored"), undefined, "audit_once refuses it");
+  assert.deepEqual(
+    db
+      .prepare("SELECT action, detail FROM admin_actions WHERE id = 'admk_srr_2'")
+      .all()
+      .map((row) => [row.action, row.detail]),
+    [["storage_released", "the release"]],
+  );
+  db.close();
+});

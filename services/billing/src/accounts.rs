@@ -155,6 +155,10 @@ pub(crate) fn admin_log_id(a: &AdminLogArgs) -> std::result::Result<Option<Strin
 pub(crate) const ADMIN_LOG_ONCE: &str = "INSERT INTO admin_actions (id, account, action, detail, by, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
     ON CONFLICT (id) DO NOTHING";
 
+/// Whether the keyed line is there as this kind of change: none means the
+/// key already holds another, and the call is refused. ?1 id, ?2 action.
+pub(crate) const ADMIN_LOG_KEPT: &str = "SELECT 1 AS kept FROM admin_actions WHERE id = ?1 AND action = ?2";
+
 fn kind_text(kind: TermsKind) -> &'static str {
     match kind {
         TermsKind::Standard => "standard",
@@ -318,17 +322,17 @@ impl Billing {
     pub(crate) async fn audit_once(&self, id: &str, account: &str, action: &str, detail: &str, by: &str) -> Result<()> {
         #[derive(Deserialize)]
         struct Kept {
-            action: String,
+            #[serde(rename = "kept")]
+            _kept: f64,
         }
         self.db
             .prepare(ADMIN_LOG_ONCE)
             .bind(&[id.into(), account.into(), action.into(), detail.into(), by.into(), rfc3339(now_ms()).into()])?
             .run()
             .await?;
-        let kept = self.db.prepare("SELECT action FROM admin_actions WHERE id = ?").bind(&[id.into()])?.first::<Kept>(None).await?;
-        match kept {
-            Some(kept) if kept.action == action => Ok(()),
-            _ => Err(worker::Error::RustError(format!("admin_log key {id} already names another change"))),
+        match self.db.prepare(ADMIN_LOG_KEPT).bind(&[id.into(), action.into()])?.first::<Kept>(None).await? {
+            Some(_) => Ok(()),
+            None => Err(worker::Error::RustError(format!("admin_log key {id} already names another change"))),
         }
     }
 

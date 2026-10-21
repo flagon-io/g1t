@@ -157,8 +157,10 @@ roadmap.
   writes nothing itself. While billing has not confirmed it, the page and
   the row under **Released** say so. (Against a repos service from before
   it wrote the line, sudo writes it, keyed the same way, and says if that
-  failed.) Provably abandoned means: the write
-  recorded that it ended; or its one-hour lease passed 15 minutes ago; or,
+  failed. While a deploy has the new repos service but sudo from before
+  it, a release can be in the audit log twice, since that sudo still writes
+  its own line, unkeyed; it is never missing.) Provably abandoned means: the
+  write recorded that it ended; or its one-hour lease passed 15 minutes ago; or,
   for bytes reserved before the ledger began and locks without a lease,
   24 hours have passed since it began. A release never changes
   `stored_bytes`, which is billed. **Drift** (`admin_storage_drift`) streams

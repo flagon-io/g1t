@@ -516,7 +516,7 @@ test("an audit line is sent until billing confirms it, then never again", () => 
   assert.deepEqual(unsent("srr_b"), ["srr_b"]);
   // Billing's answer was lost: tried, kept to send again.
   db.prepare(sql("AUDIT_UNSENT")).run("srr_a", "admin_log failed with status 500", "2026-10-21T13:00:00Z");
-  assert.deepEqual(unsent(), ["srr_a", "srr_b"]);
+  assert.deepEqual(unsent(), ["srr_b", "srr_a"], "kept to send again, after the one never tried");
   db.prepare(sql("AUDIT_SENT")).run("srr_a", "2026-10-21T14:00:00Z");
   assert.deepEqual(unsent(), ["srr_b"]);
   // A late answer from an earlier try changes nothing once it is sent.
@@ -546,5 +546,29 @@ test("the released listing says where each release's audit line stands", () => {
     ],
   );
   assert.equal(listed[0].staff, "staff@g1t.sh");
+  db.close();
+});
+
+test("lines billing keeps refusing cannot keep a newer one from being sent", () => {
+  const db = database();
+  const insert = db.prepare(
+    "INSERT INTO storage_recovery_audits (recovery_id, workspace, action, detail, by, created_at) VALUES (?, 'team', 'storage_released', 'd', 'staff@g1t.sh', ?)",
+  );
+  for (let i = 0; i < 50; i++) insert.run(`srr_old_${String(i).padStart(2, "0")}`, `2026-10-21T10:${String(i).padStart(2, "0")}:00Z`);
+  // A sweep just tried every one of them, and billing refused each.
+  for (let i = 0; i < 50; i++)
+    db.prepare(sql("AUDIT_UNSENT")).run(`srr_old_${String(i).padStart(2, "0")}`, "refused", `2026-10-21T12:00:${String(i).padStart(2, "0")}Z`);
+  insert.run("srr_new", "2026-10-21T11:00:00Z");
+  const picked = db
+    .prepare(sql("AUDITS_UNSENT"))
+    .all(50, null)
+    .map((row) => row.recovery_id);
+  assert.equal(picked.length, 50);
+  assert.equal(picked[0], "srr_new", "never tried, so first");
+  assert.equal(picked[1], "srr_old_00", "then the one tried longest ago");
+  assert.ok(!picked.includes("srr_old_49"), "the one tried last waits for the next sweep");
+  // Where one line stands, for a release whose line the sweep already sent.
+  db.prepare(sql("AUDIT_SENT")).run("srr_new", "2026-10-21T12:30:00Z");
+  assert.deepEqual({ ...db.prepare(sql("AUDIT_STATE")).get("srr_new") }, { sent_at: "2026-10-21T12:30:00Z", attempts: 1, error: null });
   db.close();
 });
