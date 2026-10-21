@@ -7,6 +7,7 @@ import { type AskSetup, type ChatLiveEvent, type ChatMessage, type Result } from
 import { askPage, askWhere } from "../lib/ask";
 import { modelLabel } from "../lib/ask-model";
 import { newestFinished } from "../lib/read-when-shown";
+import { PALETTE_KEY } from "../lib/shortcut";
 import { browserTimeZone } from "../lib/time-zone";
 import { useReadWhenShown } from "../lib/use-read-when-shown";
 import { anyAnswering, applyLive, fromG1t, isClearCommand, suggestions } from "../lib/g1t-chat";
@@ -17,6 +18,7 @@ import { Suggestion, Suggestions } from "./ai-elements/suggestion";
 import { AskedFrom, G1tAnswer } from "./chat/answer";
 import { ClearG1tDialog } from "./chat/clear-g1t";
 import { useChatLive } from "./chat/live";
+import { inTextField } from "./command-palette";
 import { MarkGlyph } from "./logo";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -298,11 +300,11 @@ function AskPanel({
     if (open) requestAnimationFrame(() => input.current?.focus());
   }, [open]);
 
-  // ⌘K or Ctrl+K, while the panel is open, goes to its box rather than the command palette.
+  // /, while the panel is open, goes to its box rather than the search palette.
   useEffect(() => {
     if (!open) return;
     const onKey = (event: globalThis.KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if (event.key === PALETTE_KEY && !event.ctrlKey && !event.metaKey && !event.altKey && !inTextField(event.target)) {
         event.preventDefault();
         event.stopImmediatePropagation();
         input.current?.focus();

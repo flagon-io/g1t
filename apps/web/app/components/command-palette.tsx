@@ -2,12 +2,12 @@ import { type ReactNode, Suspense, lazy, useEffect, useRef, useState, useSyncExt
 
 import { cn } from "../lib/cn";
 import { Kbd } from "./ui/kbd";
-import { paletteKeyLabel } from "../lib/shortcut";
+import { PALETTE_KEY, shortcutsKeyLabel } from "../lib/shortcut";
 
 /*
- * The ⌘K palette. The dialog itself, with its search and its dependencies,
- * loads the first time it is opened, so pages that never open it do not
- * carry it.
+ * The search palette, opened with /. The dialog itself, with its search and
+ * its dependencies, loads the first time it is opened, so pages that never
+ * open it do not carry it.
  */
 const Dialog = lazy(() => import("./command-palette-dialog"));
 
@@ -17,16 +17,42 @@ const Dialog = lazy(() => import("./command-palette-dialog"));
  */
 export type PaletteCommand = { label: string; hint?: string; icon: ReactNode } & ({ to: string; run?: undefined } | { run: () => void; to?: undefined });
 
-/** Opens and closes the palette on ⌘K or Ctrl-K, from anywhere on the page. */
+/** Whether a key press happened in something you type into, where / and Ctrl K are the field's own. */
+export function inTextField(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || target.closest("input, textarea, select, [contenteditable=''], [contenteditable='true'], [role='textbox']") != null;
+}
+
+/** Opens the palette on /, from anywhere on the page but a text field. */
 export function usePaletteShortcut(toggle: () => void) {
   const latest = useRef(toggle);
   latest.current = toggle;
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        latest.current();
-      }
+      if (event.key !== PALETTE_KEY || event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented || inTextField(event.target)) return;
+      event.preventDefault();
+      latest.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+}
+
+/**
+ * Opens the keyboard's shortcuts on ⌘K or Ctrl K, and on ?, from anywhere
+ * but a text field, where Ctrl K is the field's own (a link, in an editor).
+ */
+export function useShortcutsKey(open: () => void) {
+  const latest = useRef(open);
+  latest.current = open;
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || inTextField(event.target)) return;
+      const mod = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k";
+      const help = event.key === "?" && !event.ctrlKey && !event.metaKey;
+      if (!mod && !help) return;
+      event.preventDefault();
+      latest.current();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -40,22 +66,24 @@ function platform(): string {
   return nav.userAgentData?.platform || nav.platform || nav.userAgent;
 }
 
-/**
- * The palette's shortcut as this computer writes it: ⌘K on a Mac, Ctrl K
- * elsewhere. Not shown on a touch screen, which has no keyboard to press it.
- */
+/** Search's key, /. Not shown on a touch screen, which has no keyboard to press it. */
 export function PaletteKey({ className }: { className?: string }) {
+  return <Kbd className={cn(className, "pointer-coarse:hidden")}>{PALETTE_KEY}</Kbd>;
+}
+
+/** The keyboard's shortcuts' key as this computer writes it: ⌘K on a Mac, Ctrl K elsewhere. */
+export function ShortcutsKey({ className }: { className?: string }) {
   // The server cannot know the computer: it says ⌘K, and the browser corrects it.
   const label = useSyncExternalStore(
     never,
-    () => paletteKeyLabel(platform()),
+    () => shortcutsKeyLabel(platform()),
     () => "⌘K",
   );
   return <Kbd className={cn(className, "pointer-coarse:hidden")}>{label}</Kbd>;
 }
 
 /**
- * ⌘K: pages and actions from what the page already knows, and, as someone
+ * The palette (/): pages and actions from what the page already knows, and, as someone
  * types, repositories, work items, pull requests and people from search
  * (command-palette-dialog.tsx).
  */
