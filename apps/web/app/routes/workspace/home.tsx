@@ -363,7 +363,18 @@ function useMarkSeen(slug: string, loadedAt: number) {
   }, [slug, loadedAt]);
 }
 
+/** Home's page, from its loader's data: its own route draws it, and so does Chat's first page (routes/workspace/chat/index.tsx). */
 export default function Home({ loaderData }: Route.ComponentProps) {
+  return <HomePage data={loaderData} />;
+}
+
+/**
+ * Home itself, taking its data as a prop. The route's default export is
+ * wrapped by the router, which hands it the data of the route it is drawn
+ * in: drawn inside another route (Chat's first page), that would be the
+ * other route's data, so that route draws this instead.
+ */
+export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loaderData"] }) {
   const { slug, now, tz, span, digest, happened, attention: waiting, away, running: runningNow, live, head, spend, signal } = loaderData;
   useMarkSeen(slug, now);
   useHomeLive(slug, useWatched(loaderData.watch));
