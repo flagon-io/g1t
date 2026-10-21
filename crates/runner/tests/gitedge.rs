@@ -405,3 +405,71 @@ fn a_fetch_for_what_the_mirror_lacks_is_behind() {
     assert_ok(&edge_git(&root, 2, &["clone", "--quiet", "--depth", "1", &edge.url("/git"), clone.to_str().unwrap()]), "a clone after the sync");
     assert_eq!(git(&clone, &["rev-parse", "HEAD"]), new);
 }
+
+/// A clone's fetch whose capabilities came from Artifacts, which offers
+/// `sideband-all`, answered by the edge: a clone is several requests, and
+/// the repos service asks the edge or Artifacts each one on its own, so
+/// right after a ref change the capabilities come from Artifacts (the edge
+/// is behind) and the fetch from the edge (it has caught up). Upload-pack
+/// died on the line it was not allowed (`unexpected line:
+/// 'sideband-all'`) after `git http-backend` had sent its headers: a `200`
+/// with nothing in it (#260).
+#[test]
+fn a_fetch_with_the_stores_capabilities_is_answered() {
+    let root = scratch("sideband");
+    let work = root.join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    git(&work, &["init", "--quiet", "--initial-branch=main"]);
+    commit(&work, "a.txt", "one\n");
+    let origin = root.join("origin.git");
+    git(&root, &["clone", "--bare", "--quiet", work.to_str().unwrap(), origin.to_str().unwrap()]);
+    let edge = Edge::start(&root.join("edge"));
+    edge.sync(&file_url(&origin), 1);
+    assert_eq!(edge.settled(), json!(1));
+    let want = git(&work, &["rev-parse", "HEAD"]);
+
+    // As git 2.39 sends a blobless clone's fetch after Artifacts' `fetch=shallow filter sideband-all`.
+    let pkt = |line: &str| format!("{:04x}{line}", line.len() + 4);
+    let body = [
+        pkt("command=fetch\n"),
+        pkt("agent=git/2.39.5\n"),
+        pkt("object-format=sha1\n"),
+        "0001".to_owned(),
+        pkt("thin-pack\n"),
+        pkt("sideband-all\n"),
+        pkt("filter blob:none\n"),
+        pkt("ofs-delta\n"),
+        pkt(&format!("want {want}\n")),
+        pkt("done\n"),
+        "0000".to_owned(),
+    ]
+    .concat();
+    let response = ureq::post(&edge.url("/git/git-upload-pack"))
+        .set("x-g1t-edge-version", "1")
+        .set("git-protocol", "version=2")
+        .set("content-type", "application/x-git-upload-pack-request")
+        .send_string(&body)
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let mut answer = Vec::new();
+    std::io::Read::read_to_end(&mut response.into_reader(), &mut answer).unwrap();
+    // The packfile section, on band 1 as sideband-all has it.
+    assert!(answer.starts_with(b"000e\x01packfile\n"), "the answer starts {:?}\n{}", String::from_utf8_lossy(&answer[..answer.len().min(64)]), edge.log());
+    assert!(!edge.log().contains("unexpected line"), "{}", edge.log());
+
+    // And the real client, which now has `sideband-all` from the edge itself.
+    let trace = root.join("trace.txt");
+    let clone = root.join("clone.git");
+    let header = "http.extraHeader=x-g1t-edge-version: 1";
+    let url = edge.url("/git");
+    let cloned = try_git(
+        &root,
+        &["-c", header, "-c", "protocol.version=2", "clone", "--bare", "--quiet", "--filter=blob:none", &url, clone.to_str().unwrap()],
+        &[("GIT_TRACE_PACKET", trace.to_str().unwrap())],
+    );
+    assert_ok(&cloned, "a blobless clone");
+    assert!(std::fs::read_to_string(&trace).unwrap().contains("> sideband-all"), "the clone did not send sideband-all");
+    assert_eq!(git(&clone, &["rev-parse", "HEAD"]), want);
+    drop(edge);
+    let _ = std::fs::remove_dir_all(&root);
+}

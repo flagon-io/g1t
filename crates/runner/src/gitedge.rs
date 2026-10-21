@@ -35,7 +35,9 @@
 //!   mirror is at exactly that version (and no sync is changing its refs),
 //!   or when a fetch wants an object or ref the mirror does not have (the
 //!   version asked for can trail the repository's for a moment); else
-//!   `git http-backend`'s answer, streamed both ways.
+//!   `git http-backend`'s answer, streamed both ways. Upload-pack takes
+//!   every fetch argument Artifacts offers (`UPLOAD_PACK_CONFIG`): a client
+//!   may have had its capabilities from Artifacts.
 //! - Anything else, receive-pack included: `403`.
 //!
 //! The Artifacts token is given to git in its environment, never on a
@@ -88,6 +90,20 @@ const MAX_SYNC_BODY: u64 = 64 * 1024;
 /// request, so this is never a pack.
 const HELD_CHUNKS: usize = 64;
 const CHUNK: usize = 64 * 1024;
+
+/// How upload-pack answers, given to every `git http-backend` in its
+/// environment (so a mirror restored from a snapshot made before a setting
+/// was added has it too). A clone over HTTP is several requests, and the
+/// repos service asks the edge or Artifacts each one on its own: the
+/// capabilities (`info/refs`) can come from Artifacts while the edge is
+/// behind and the fetch that follows from the edge once it has caught up.
+/// The client sends what the capabilities offered, so the edge must take
+/// every fetch argument Artifacts offers. Artifacts offers `sideband-all`,
+/// which upload-pack refuses unless allowed: it dies on the line
+/// (`unexpected line: 'sideband-all'`) after `git http-backend` has sent
+/// its headers, a `200` with nothing in it (#260).
+const UPLOAD_PACK_CONFIG: [(&str, &str); 3] =
+    [("uploadpack.allowFilter", "true"), ("uploadpack.allowReachableSHA1InWant", "true"), ("uploadpack.allowSidebandAll", "true")];
 
 /// A sync, as `POST /sync` asks for it. Not `Debug`: it holds the token.
 #[derive(Deserialize)]
@@ -222,8 +238,6 @@ fn init(mirror: &Path, root: &Path) -> Result<()> {
         ("gc.auto", "0"),
         // Never pushed to over HTTP (the server refuses receive-pack too).
         ("http.receivepack", "false"),
-        ("uploadpack.allowFilter", "true"),
-        ("uploadpack.allowReachableSHA1InWant", "true"),
         ("pack.useBitmaps", "true"),
         ("repack.writeBitmaps", "true"),
         // Every fetch is kept as a pack, never exploded into loose objects
@@ -787,7 +801,11 @@ fn backend(edge: &Edge, mut request: Request, endpoint: &str, query: &str, body:
         .env("SERVER_PROTOCOL", "HTTP/1.1")
         .env("REQUEST_METHOD", if post { "POST" } else { "GET" })
         .env("PATH_INFO", format!("/{MIRROR}/{endpoint}"))
-        .env("QUERY_STRING", query);
+        .env("QUERY_STRING", query)
+        .env("GIT_CONFIG_COUNT", UPLOAD_PACK_CONFIG.len().to_string());
+    for (n, (key, value)) in UPLOAD_PACK_CONFIG.iter().enumerate() {
+        command.env(format!("GIT_CONFIG_KEY_{n}"), key).env(format!("GIT_CONFIG_VALUE_{n}"), value);
+    }
     for (name, variable) in [("content-type", "CONTENT_TYPE"), ("git-protocol", "GIT_PROTOCOL"), ("content-encoding", "HTTP_CONTENT_ENCODING")] {
         if let Some(value) = header(&request, name) {
             command.env(variable, value);
