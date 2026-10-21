@@ -722,10 +722,8 @@ impl<S: GitStore> Repos<S> {
                 Err(reason) => {
                     self.store.delete(&store_key(&repo)).await?;
                     self.registry.remove(&repo.id).await?;
-                    return Ok(Outcome::fail(
-                        FailureCode::Invalid,
-                        format!("The repository could not be stored: {reason}"),
-                    ));
+                    // A source that is down is a 503, one that refused a 409.
+                    return Ok(Outcome::fail(reason.code(), format!("The repository could not be stored: {reason}")));
                 }
             }
         }
@@ -748,10 +746,8 @@ impl<S: GitStore> Repos<S> {
                 Err(reason) => {
                     self.store.delete(&store_key(&repo)).await?;
                     self.registry.remove(&repo.id).await?;
-                    return Ok(Outcome::fail(
-                        FailureCode::Invalid,
-                        format!("The repository could not be copied: {reason}"),
-                    ));
+                    // A source that is down is a 503, one that refused a 409.
+                    return Ok(Outcome::fail(reason.code(), format!("The repository could not be copied: {reason}")));
                 }
             }
         }

@@ -36,7 +36,7 @@ use g1t_contracts::audit::Surface;
 use g1t_contracts::events::{NewEvent, Publish};
 use g1t_contracts::identity::{AccessToken, CreatedAccessToken};
 use g1t_contracts::repos::RepoPath;
-use g1t_contracts::scopes::{RepositorySelection, Scope, TokenReach, permissions_of, resolve_permissions, scopes_text};
+use g1t_contracts::scopes::{RepositorySelection, Scope, TokenReach, resolve_permissions, scopes_text};
 use g1t_contracts::time::{parse_rfc3339, rfc3339};
 use g1t_contracts::tokens::*;
 use g1t_contracts::{FailureCode, Outcome, Role, User, Viewer};
@@ -1269,6 +1269,7 @@ fn describe_policy(policy: &TokenPolicy) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use g1t_contracts::scopes::permissions_of;
     use std::collections::BTreeMap;
 
     const DAY: u64 = 86_400_000;

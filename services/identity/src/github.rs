@@ -26,7 +26,7 @@ use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry,
 use g1t_contracts::github::*;
 use g1t_contracts::identity::{SignedIn, UserArgs};
 use g1t_contracts::time::{SQL_NOW, rfc3339, sql_after};
-use g1t_contracts::{FailureCode, Outcome, User, claimable_username, is_action_owner_name, is_claimable_name, is_reserved_name, is_valid_namespace, new_id};
+use g1t_contracts::{FailureCode, Outcome, User, claimable_username, is_action_owner_name, is_claimable_name, is_reserved_name, new_id};
 use g1t_kit::now_ms;
 use g1t_secrets::Sealer;
 use serde::{Deserialize, Serialize};
@@ -982,6 +982,7 @@ async fn revoke_grant(client: &Client, access_token: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use g1t_contracts::is_valid_namespace;
 
     #[test]
     fn the_challenge_is_rfc_7636s() {

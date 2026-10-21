@@ -42,6 +42,7 @@ pub enum CoordinationOp {
 impl CoordinationOp {
     /// Every one: `Op::ALL` lists each as `Op::Coordination(…)`, which a
     /// test checks against this.
+    #[cfg(test)]
     pub const ALL: [CoordinationOp; 14] = [
         CoordinationOp::StartSession,
         CoordinationOp::UpdateSession,

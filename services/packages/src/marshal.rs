@@ -22,8 +22,6 @@ pub enum Value {
     Int(i32),
     /// A UTF-8 string.
     Str(String),
-    /// A binary (ASCII-8BIT) string.
-    Bytes(Vec<u8>),
     Symbol(String),
     Array(Vec<Value>),
     Hash(Vec<(Value, Value)>),
@@ -121,10 +119,6 @@ impl Writer {
                 self.symbol("E");
                 self.out.push(b'T');
             }
-            Value::Bytes(bytes) => {
-                self.out.push(b'"');
-                self.bytes(bytes);
-            }
             Value::Symbol(name) => self.symbol(name),
             Value::Array(items) => {
                 self.out.push(b'[');
@@ -182,7 +176,6 @@ mod tests {
         assert_eq!(dump(&Value::Int(-256)), b"\x04\x08i\xff\x00");
         assert_eq!(dump(&Value::Int(-257)), b"\x04\x08i\xfe\xff\xfe");
         assert_eq!(dump(&Value::str("hi")), b"\x04\x08I\"\x07hi\x06:\x06ET");
-        assert_eq!(dump(&Value::Bytes(b"hi".to_vec())), b"\x04\x08\"\x07hi");
         // The second `:a` is a link to the first.
         assert_eq!(
             dump(&Value::Array(vec![Value::Symbol("a".into()), Value::Symbol("a".into())])),

@@ -80,7 +80,9 @@ pub fn limit_for(default: u32, granted: i64) -> u32 {
 
 /// Whether an invite in this state uses up one of an allowance: pending
 /// and used ones do; a revoked or expired one never used gives it back.
-/// [`USED`] says the same in SQL.
+/// [`USED`] says it in SQL, which is what runs; the tests check the two
+/// agree.
+#[cfg(test)]
 pub fn counts_against_allowance(status: InviteStatus, used: bool) -> bool {
     used || status == InviteStatus::Pending
 }
