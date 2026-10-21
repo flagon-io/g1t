@@ -99,7 +99,7 @@ which has Node, Python, Go, Rust, Java, .NET, Ruby and Docker, with the
 
 `runner` has one more Container class, `GitEdge`, which is not a machine
 and no job can ask for it. Every repository has one, named by its id and
-started when the repository is read, on `standard-2` (1 vCPU, 6 GiB
+started when the repository is cloned again within the hour, on `standard-2` (1 vCPU, 6 GiB
 memory, 12 GB disk): the same image,
 with the `g1t-runner` binary started as an HTTP server (`MODE=gitedge`)
 that keeps a mirror of the repository, fetched from Artifacts and repacked
@@ -108,7 +108,7 @@ only for a mirror at the repository's current refs version; while it is
 cold, behind or failing, `repos` answers from Artifacts as it would
 without it, and asks it to catch up. It only makes clones smaller and
 faster: pushes go to Artifacts, which stays the source of truth, and an
-edge left idle for half an hour stops, its disk with it. Once a sync has
+edge left idle for ten minutes stops, its disk with it. Once a sync has
 ended, the packed mirror is kept in the packs bucket
 (`packs/edge/<repo_id>/mirror.tar`, at most every ten minutes), and a
 container that starts again restores it before its first sync, which then
@@ -117,12 +117,14 @@ a repository nobody has cloned since. Its requests go straight out, not
 through the outbound handler below.
 
 A cold edge never makes a read wait: it answers at once that it is cold
-and starts in the background, Artifacts answers the read, and that
+and, if its repository was also cloned in the hour before, starts in the
+background; Artifacts answers the read, and that
 isolate of `repos` sends the repository's reads straight to Artifacts for
 the next 30 seconds while the edge starts. A push catches a running edge
-up; one asleep is woken by a push only if its repository was read in the
-last day, so a repository nobody clones starts no container. At most 50
-edges run at once (`max_instances`); past that, an edge that cannot start
+up; one asleep is woken by a push only if its repository was cloned twice
+in the last day. An edge costs a container while it is awake, so a
+repository cloned once, or rarely, starts none. At most 10 edges run at
+once, which bounds what they cost (`max_instances`); past that, an edge that cannot start
 waits two minutes before it tries again, and its repository is read from
 Artifacts meanwhile. `repos`' `GIT_EDGE` variable is `on`; `off` turns the
 edge off everywhere, for an incident, and `-owner/name` entries leave

@@ -99,26 +99,56 @@ export type EdgeBox = {
   background(work: Promise<unknown>): void;
   /** Keeps a snapshot of the mirror once the sync to `version` has ended. */
   keep?: (repoId: string, version: number) => Promise<void>;
-  /** Notes that the repository was read now (`readLately`). */
-  noteRead?: () => void;
-  /** When the repository was last read, as `noteRead` noted it, if ever. */
-  readAt?: () => Promise<number | null>;
+  /** Notes that the repository is being cloned now, and gives its clones as noted (`noteClone`). */
+  noteClone?: () => Promise<Clones>;
+  /** The repository's last two clones, as noted. */
+  clones?: () => Promise<Clones>;
   now?: () => number;
   log?: (...data: unknown[]) => void;
 };
 
 /**
- * How long after a repository was last read a push still wakes its edge
- * when it is asleep: a repository read lately is likely read again after a
- * push (a CI run's clones), and one nobody reads starts no container for
- * each push. Every repository is served by its edge, so most edges are of
- * repositories pushed to far more often than they are cloned.
+ * When a repository's last two clones were (fetches count too), the
+ * earlier first; null where there was none. A clone is noted at its
+ * `info/refs`, and one within `SAME_CLONE_MS` of the last is the same
+ * clone (a blobless checkout's lazy fetches), not another.
+ */
+export type Clones = { earlier: number | null; latest: number | null };
+export const NO_CLONES: Clones = { earlier: null, latest: null };
+export const SAME_CLONE_MS = 60 * 1000;
+export const CLONES = "gitedge:clones";
+
+/**
+ * An edge costs a container for as long as it is awake, so a repository
+ * cloned once (a drive-by clone, a mirror's poll) never starts one: the
+ * store answers it, as it did before the edge. A cold edge starts when
+ * its repository is cloned again within this long of the clone before.
+ */
+export const START_IF_CLONED_WITHIN_MS = 60 * 60 * 1000;
+
+/**
+ * How long after a repository's clone before last a push still wakes its
+ * edge when it is asleep: a repository cloned again and again (a CI run's
+ * clones) is likely cloned after a push, and one nobody clones starts no
+ * container for each push.
  */
 export const WAKE_AFTER_READ_MS = 24 * 60 * 60 * 1000;
 
-/** How often, at most, a read is noted in the object's storage, and under which key. */
-export const NOTE_READ_EVERY_MS = 10 * 60 * 1000;
-export const READ_AT = "gitedge:readAt";
+/** `clones` with a clone at `now` noted. */
+export function noteClone(clones: Clones, now: number): Clones {
+  if (clones.latest !== null && now - clones.latest < SAME_CLONE_MS) return clones;
+  return { earlier: clones.latest, latest: now };
+}
+
+/** Whether a cold edge starts for a read, its repository's clones (this one noted) being `clones`. */
+export function startsOnRead(clones: Clones, now: number): boolean {
+  return clones.earlier !== null && now - clones.earlier < START_IF_CLONED_WITHIN_MS;
+}
+
+/** Whether a push wakes an edge asleep whose repository's clones are `clones`. */
+export function readLately(clones: Clones, now: number): boolean {
+  return clones.earlier !== null && now - clones.earlier < WAKE_AFTER_READ_MS;
+}
 
 /**
  * How long an edge that could not start (every one of the class's
@@ -128,24 +158,20 @@ export const READ_AT = "gitedge:readAt";
  */
 export const START_REST_MS = 2 * 60 * 1000;
 
-/** Whether a push wakes an edge asleep whose repository was last read at `readAt`. */
-export function readLately(readAt: number | null, now: number): boolean {
-  return readAt !== null && now - readAt < WAKE_AFTER_READ_MS;
-}
-
 /**
  * A `GitEdge` object's answer to a request routed to it (`routeToEdge`):
  *
  * - `sync` starts the container if it is not running, waits for it, and
  *   passes the request to its `/sync`, answering what it answers (202).
- *   A sync after a push (`"push": true`) of an edge that is not running
- *   starts it only when the repository was read in the last
- *   `WAKE_AFTER_READ_MS`; otherwise it is a `204` with `x-g1t-edge: asleep`,
- *   and the next read finds it cold.
+ *   An edge that is not running is started only for a repository cloned
+ *   twice lately: after a push (`"push": true`), `readLately`; after a
+ *   read it missed, `startsOnRead`. Otherwise the answer is a `204` with
+ *   `x-g1t-edge: asleep`, and the next read finds it cold.
  * - `info/refs` and `git-upload-pack` never wait for a container to start:
- *   a cold one is started in the background and the answer is a `503`
- *   with `x-g1t-edge: cold` at once, so the repos service answers from
- *   Artifacts and asks for a sync. A running one is sent the request at
+ *   the answer of a cold one is a `503` with `x-g1t-edge: cold` at once,
+ *   so the repos service answers from Artifacts and asks for a sync, and
+ *   it is started in the background when `startsOnRead`. `info/refs`
+ *   notes the clone. A running one is sent the request at
  *   `/git/<endpoint>`, with its query string, headers and body as they
  *   came, and its answer is streamed back; a pack is never held whole.
  * - `state` is the container's `/state`, or `{"version":null,"cold":true}`
@@ -160,9 +186,10 @@ export async function answerEdge(request: Request, box: EdgeBox): Promise<Respon
     case "sync": {
       // A few hundred bytes: read, for the version it syncs to, and sent on.
       const body = await request.text();
-      if (afterPush(body) && box.readAt && !(await box.ready())) {
+      if (box.clones && !(await box.ready())) {
         const now = (box.now ?? Date.now)();
-        if (!readLately(await box.readAt(), now)) {
+        const clones = await box.clones();
+        if (!(afterPush(body) ? readLately(clones, now) : startsOnRead(clones, now))) {
           return new Response(null, { status: 204, headers: { "x-g1t-edge": "asleep" } });
         }
       }
@@ -185,9 +212,11 @@ export async function answerEdge(request: Request, box: EdgeBox): Promise<Respon
     }
     case "info/refs":
     case "git-upload-pack": {
-      box.noteRead?.();
+      const clones = route.endpoint === "info/refs" ? await box.noteClone?.() : await box.clones?.();
       if (!(await box.ready())) {
-        // Started for the next clone, which this one makes no slower.
+        // Started for the next clone, which this one makes no slower; not
+        // for a repository cloned once.
+        if (clones && !startsOnRead(clones, (box.now ?? Date.now)())) return edgeMiss(503, "cold", "The git edge is asleep.\n");
         box.background(box.start(route.repoId).catch((error: unknown) => log("git edge not started", route.repoId, String(error))));
         return edgeMiss(503, "cold", "The git edge is starting.\n");
       }
