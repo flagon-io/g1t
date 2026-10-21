@@ -216,12 +216,13 @@ fn decode_base64(input: &str) -> Option<String> {
 }
 
 /// The response for a refused git request. Anonymous callers are asked to
-/// authenticate, which is what makes git prompt for credentials.
+/// authenticate, which is what makes git prompt for credentials. In plain
+/// text, which git prints as the reason (git_ops.rs `plain_refusal`).
 pub fn refuse<T>(outcome: Outcome<T>) -> Result<Response> {
     let Outcome::Fail(failure) = outcome else {
-        return Response::error("Not found", 404);
+        return crate::git_ops::plain_refusal("Not found", 404);
     };
-    let mut response = Response::error(failure.message, failure.code.http_status())?;
+    let mut response = crate::git_ops::plain_refusal(failure.message, failure.code.http_status())?;
     if failure.code == FailureCode::Unauthenticated {
         response
             .headers_mut()
@@ -746,7 +747,7 @@ where
 /// What git is told when the store is busy: 429 or 503, with when to try
 /// again (resilience.rs).
 pub fn busy_response(busy: Busy) -> Result<Response> {
-    let response = Response::error(busy.message(), busy.status())?;
+    let response = crate::git_ops::plain_refusal(busy.message(), busy.status())?;
     response.headers().set("retry-after", &busy.retry_after.to_string())?;
     Ok(response)
 }

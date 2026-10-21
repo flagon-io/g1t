@@ -98,7 +98,10 @@ copy has taken longer than it should or did not finish cleanly, writes are
 refused with **This repository is being copied into a fork, and the copy
 has taken longer than it should, or did not finish cleanly, so it takes no
 writes until it ends or g1t staff have checked it. That can take a few
-hours. Try again later.**, and git prints the same.
+hours. Try again later.**, and git prints the same. The merge queue
+waits either out: its entries stay queued, saying why, and are
+[tried again](/guides/merge-queue/#when-the-repository-takes-no-writes-for-now)
+once writes are taken again.
 
 ### When forking is refused
 

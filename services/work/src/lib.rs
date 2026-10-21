@@ -2680,6 +2680,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "managed_pulls" => reply(&work.managed_pulls(args(body)?).await?),
         "queue" => reply(&work.queue(args(body)?).await?),
         "queue_build" => reply(&work.queue_build(args(body)?).await?),
+        "waiting_queues" => reply(&work.waiting_queues().await?),
         "report_queue" => reply(&work.report_queue(args(body)?).await?),
         "remove_from_queue" => reply(&work.remove_from_queue(args(body)?).await?),
         "locate_pull" => reply(&work.locate_pull(args(body)?).await?),

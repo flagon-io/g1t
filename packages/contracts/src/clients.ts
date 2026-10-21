@@ -515,6 +515,7 @@ export function workClient(service: ServiceBinding): WorkApi {
     managedPulls: (repoId) => call("managed_pulls", { repoId }),
     queue: (repo, viewer) => call("queue", { repo, viewer }),
     queueBuild: (repoId) => call("queue_build", { repoId }),
+    waitingQueues: () => call("waiting_queues", {}),
     failQueue: (entryId, token, error) => call("report_queue", { entryId, token, error }),
     removeFromQueue: (actor, repo, number) => call("remove_from_queue", { actor, repo, number }),
     getSettings: (repo, viewer) => call("get_settings", { repo, viewer }),

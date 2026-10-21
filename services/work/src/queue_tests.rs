@@ -3,8 +3,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use super::{
     ABANDON_LANDING, ACCEPT_BUILD, BEGIN_LANDING, CLAIM_BUILD, ENQUEUE, FINISH_CHECKS,
-    FINISH_LANDING, LEAVE, PUBLISHING, REPORT_BUILD, RETEST, RETESTED, STILL_LANDING,
-    attempt_branch,
+    FINISH_LANDING, LANDING_WAITS, LEAVE, PUBLISHING, REPORT_BUILD, RETEST, RETESTED, STILL_LANDING,
+    FINISH_LANDED, WAIT_UNAVAILABLE, WAITING_QUEUES, attempt_branch, removed_by, tell_waiting,
 };
 use crate::integration::{FINISH_PROBE, REPORT_PROBE, RESOLVE_HELD};
 
@@ -634,4 +634,179 @@ fn a_clash_names_the_nearest_entry_ahead_that_changed_the_same_file() {
     assert_eq!(super::clashed_with(&ahead, &["a.rs".to_owned()]), Some(1));
     // With the default branch itself.
     assert_eq!(super::clashed_with(&ahead, &["d.rs".to_owned()]), None);
+}
+
+/// What repos answers a write to a repository being copied into a fork.
+const LOCKED: &str =
+    "This repository is being copied into a fork. Try again in a few minutes; if it lasts more than an hour, g1t staff release it.";
+
+fn waiting_queues(db: &Connection) -> Vec<String> {
+    let mut statement = db.prepare(WAITING_QUEUES).unwrap();
+    statement.query_map([], |row| row.get::<_, String>(0)).unwrap().map(Result::unwrap).collect()
+}
+
+/// The entry's state, error, token and landing intent.
+fn entry(db: &Connection) -> (String, Option<String>, Option<String>, Option<String>) {
+    db.query_row("SELECT state, error, token_hash, landing_commit FROM queue_entries WHERE id = 'entry'", [], |row| {
+        Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+    })
+    .unwrap()
+}
+
+#[test]
+fn an_entry_whose_state_cannot_be_pushed_for_now_waits_with_the_reason_for_a_later_pass() {
+    let db = database();
+    assert!(waiting_queues(&db).is_empty(), "a queue waiting its turn is not one waiting on a refusal");
+    assert!(claim(&db, "attempt"));
+    // Only the attempt that claimed it may put it back.
+    assert!(!exists(&db, WAIT_UNAVAILABLE, params!["entry", "other", LOCKED]));
+    assert!(exists(&db, WAIT_UNAVAILABLE, params!["entry", "attempt", LOCKED]));
+    let (state, error, token, _) = entry(&db);
+    assert_eq!((state.as_str(), error.as_deref(), token), ("waiting", Some(LOCKED), None));
+    // Still queued, not finished: it shows why on the queue.
+    assert!(exists(&db, "SELECT 1 FROM queue_entries WHERE id = 'entry' AND finished_at IS NULL", []));
+    assert!(!exists(&db, WAIT_UNAVAILABLE, params!["entry", "attempt", LOCKED]), "once");
+    // The sweep passes over it again, and a later pass claims it as any
+    // waiting entry, which clears the reason.
+    assert_eq!(waiting_queues(&db), vec!["repo".to_owned()]);
+    assert!(claim(&db, "later"));
+    assert_eq!(entry(&db).1, None);
+    assert!(waiting_queues(&db).is_empty());
+    // A state that was built is never put back: it was pushed.
+    assert!(report(&db, "later", "tested"));
+    assert!(!exists(&db, WAIT_UNAVAILABLE, params!["entry", "later", LOCKED]));
+}
+
+#[test]
+fn a_landing_refused_for_now_keeps_its_tested_state_and_lands_on_a_later_pass() {
+    let db = database();
+    assert!(claim(&db, "attempt"));
+    assert!(report(&db, "attempt", "tested"));
+    assert!(finish(&db, "tested"));
+    assert!(exists(&db, BEGIN_LANDING, params!["entry", "tested", "attempt"]));
+    // Only the holder of the intent gives it up, once.
+    assert!(!exists(&db, LANDING_WAITS, params!["entry", "other", LOCKED]));
+    assert!(exists(&db, LANDING_WAITS, params!["entry", "tested", LOCKED]));
+    assert!(!exists(&db, LANDING_WAITS, params!["entry", "tested", LOCKED]));
+    let (state, error, _, landing) = entry(&db);
+    assert_eq!((state.as_str(), error.as_deref(), landing), ("passed", Some(LOCKED), None));
+    // It can be taken out meanwhile: it is not being published.
+    assert!(!exists(&db, PUBLISHING, params!["pull"]));
+    assert_eq!(waiting_queues(&db), vec!["repo".to_owned()]);
+    // A later pass lands it as tested, and the reason goes with it.
+    assert!(exists(&db, BEGIN_LANDING, params!["entry", "tested", "attempt"]));
+    assert_eq!(db.execute(FINISH_LANDING, params!["now", "entry"]).unwrap(), 1);
+    let (state, error, _, _) = entry(&db);
+    assert_eq!((state.as_str(), error), ("landed", None));
+    assert!(waiting_queues(&db).is_empty());
+}
+
+#[test]
+fn a_build_that_failed_still_leaves_the_queue() {
+    let db = database();
+    assert!(claim(&db, "attempt"));
+    assert!(exists(&db, ACCEPT_BUILD, params![None::<String>, "entry", "attempt"]));
+    assert!(exists(
+        &db,
+        REPORT_BUILD,
+        params!["failed", None::<String>, "[]", "It conflicts.", None::<String>, 0, "failed", "now", "entry", "attempt", None::<String>]
+    ));
+    let (state, error, _, _) = entry(&db);
+    assert_eq!((state.as_str(), error.as_deref()), ("failed", Some("It conflicts.")));
+    assert!(waiting_queues(&db).is_empty(), "nothing tries a failed entry again");
+}
+
+/// The lines of `fn name` in queue.rs, to the end of its body.
+fn body_of(name: &str) -> &'static str {
+    let source = include_str!("queue.rs");
+    let start = source.find(&format!("fn {name}(")).unwrap_or_else(|| panic!("no fn {name}"));
+    let end = source[start..].find("\n    }\n").map_or(source.len(), |at| start + at);
+    &source[start..end]
+}
+
+#[test]
+fn only_an_unavailable_refusal_waits_and_it_waits_for_the_sweep() {
+    // repos answers a write to a repository being copied into a fork as
+    // Unavailable (public_storage.rs `Refusal::outcome`); any other
+    // refusal is a failure of the entry, as before.
+    let step = body_of("build_step");
+    let unavailable = step
+        .find("Outcome::Fail(failure) if failure.code == FailureCode::Unavailable => Built::Unavailable(failure.message),")
+        .expect("Unavailable waits");
+    assert!(unavailable < step.find("Outcome::Fail(failure) => Built::Failed(failure.message),").unwrap());
+    // Put back without a report, which would fail and eject it.
+    let batch = body_of("queue_batch");
+    let waits = &batch[batch.find("Built::Unavailable(message) => {").unwrap()..];
+    let waits = &waits[..waits.find("self.report_queue(report)").unwrap()];
+    assert!(waits.contains(".prepare(WAIT_UNAVAILABLE)") && waits.contains("break;"), "{waits}");
+    // A landing waits, rather than give up its state and test again.
+    let settle = body_of("settle");
+    let lands = &settle[settle.find("Outcome::Fail(failure) if failure.code == FailureCode::Unavailable => {").unwrap()..];
+    let lands = &lands[..lands.find("Outcome::Fail(_) => {").unwrap()];
+    assert!(lands.contains(".prepare(LANDING_WAITS)") && lands.contains("return Ok(());"), "{lands}");
+    assert!(!lands.contains("retest") && !lands.contains("ABANDON_LANDING"), "{lands}");
+    assert!(settle.contains("if matches!(&landed, Outcome::Fail(failure) if failure.code != FailureCode::Unavailable) {"));
+    // Never hot: each queue.changed has the runner build the queue at
+    // once, so one is published only for a new reason; after that, the
+    // runner's sweep tries it every five minutes.
+    for arm in [waits, lands] {
+        assert_eq!(arm.matches("self.changed(").count(), 1, "{arm}");
+        assert!(arm.contains("waits.is_some() && tell_waiting(row.error.as_deref(), &"), "{arm}");
+    }
+    assert!(tell_waiting(None, LOCKED));
+    assert!(tell_waiting(Some("Something else."), LOCKED));
+    assert!(!tell_waiting(Some(LOCKED), LOCKED));
+    let runner = include_str!("../../runner/src/index.ts");
+    let sweep = &runner[runner.find("async scheduled(): Promise<void> {").unwrap()..];
+    assert!(sweep[..sweep.find("\n  }\n").unwrap()].contains("await this.buildWaitingQueues()"));
+    assert!(runner.contains("for (const repoId of await workClient(this.env.WORK).waitingQueues()) {"));
+    assert!(include_str!("../../runner/wrangler.jsonc").contains(r#""crons": ["*/5 * * * *"]"#));
+}
+
+#[test]
+fn a_landing_that_went_through_while_another_request_waited_is_landed_not_closed() {
+    let db = database();
+    assert!(claim(&db, "attempt"));
+    assert!(report(&db, "attempt", "tested"));
+    assert!(finish(&db, "tested"));
+    // Request A takes the intent and pushes. A fork locks the repository,
+    // and request B, admitted to the same intent, is refused and waits.
+    assert!(exists(&db, BEGIN_LANDING, params!["entry", "tested", "attempt"]));
+    assert!(exists(&db, BEGIN_LANDING, params!["entry", "tested", "attempt"]));
+    assert!(exists(&db, LANDING_WAITS, params!["entry", "tested", LOCKED]));
+    // A's push had gone through: it records the merge, but its finish finds
+    // no intent to finish.
+    db.execute("UPDATE pulls SET status = 'merged', merge_commit = 'tested' WHERE id = 'pull'", []).unwrap();
+    assert_eq!(db.execute(FINISH_LANDING, params!["now", "entry"]).unwrap(), 0);
+    // The next pass finds it merged at the tested commit: landed.
+    assert!(!exists(&db, FINISH_LANDED, params!["now", "entry", "other"]), "only at the tested commit");
+    assert!(exists(&db, FINISH_LANDED, params!["now", "entry", "tested"]));
+    let (state, error, _, _) = entry(&db);
+    assert_eq!((state.as_str(), error), ("landed", None));
+    assert!(!exists(&db, FINISH_LANDED, params!["now", "entry", "tested"]), "once");
+    assert!(!exists(&db, LEAVE, params!["removed", "It was closed.", "now", "entry"]), "never also closed");
+    assert!(waiting_queues(&db).is_empty());
+    // settle asks this before it would call it closed.
+    let settle = body_of("settle");
+    let landed = settle.find("self.finish_landed(&row).await?;").expect("finished as landed");
+    let closed = settle.find("Some(\"It was closed.\")").unwrap();
+    assert!(landed < closed);
+    assert!(settle.contains("pull.status == PullStatus::Merged"));
+    assert!(settle.contains("pull.merge_commit == row.combined_commit"));
+}
+
+#[test]
+fn an_entry_taken_out_while_waiting_says_who_took_it_out_not_why_it_waited() {
+    let db = database();
+    assert!(claim(&db, "attempt"));
+    assert!(exists(&db, WAIT_UNAVAILABLE, params!["entry", "attempt", LOCKED]));
+    let why = removed_by("ada");
+    assert_eq!(why, "@ada removed it from the queue.");
+    assert!(exists(&db, LEAVE, params!["removed", why, "now", "entry"]));
+    let (state, error, _, _) = entry(&db);
+    assert_eq!((state.as_str(), error.as_deref()), ("removed", Some("@ada removed it from the queue.")));
+    assert!(waiting_queues(&db).is_empty());
+    let removal = body_of("remove_from_queue");
+    assert!(removal.contains("let why = removed_by(&a.actor.username);"));
+    assert!(removal.contains(".leave(&repo.id, &pull, QueueState::Removed, Some(&why))"));
 }

@@ -109,7 +109,7 @@ fn rebuilt(request: &Request, body: &[u8]) -> Result<Request> {
 }
 
 fn refusal(decision: &Decision) -> Result<Response> {
-    Response::error(
+    crate::git_ops::plain_refusal(
         decision
             .reason
             .clone()

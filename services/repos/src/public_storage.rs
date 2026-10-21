@@ -1013,7 +1013,8 @@ mod tests {
         assert!(message.contains(&format!("If it lasts more than {}, g1t staff release it", lease_words())), "{message}");
         // git prints an error's body only when it is plain text.
         let response = body_of(include_str!("git_ops.rs"), "copy_locked_response");
-        assert!(response.contains(r#"set("content-type", "text/plain; charset=utf-8")"#), "{response}");
+        assert!(response.contains("plain_refusal(copy_locked_message(namespace, name, refusal), 403)"), "{response}");
+        assert_eq!(crate::git_ops::PLAIN_TEXT, "text/plain; charset=utf-8");
         assert!(message.ends_with('\n') && !message.contains("full"));
         let stalled = crate::git_ops::copy_locked_message("acme", "rocket", Refusal::Stalled);
         assert!(stalled.starts_with("acme/rocket is being copied into a fork, and the copy has taken longer than it should, or did not finish cleanly"), "{stalled}");

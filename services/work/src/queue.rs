@@ -15,7 +15,10 @@
 //! exactly the commits that were tested, each built as its method makes
 //! them. One that fails leaves
 //! the queue with a failed check run; the entries behind it are tested
-//! again without it. Which entry answers for a failure, which entries
+//! again without it. One the repository refuses for now (`Unavailable`:
+//! it takes no writes while it is copied into a fork) is not a failure: it
+//! waits, saying why, and the runner's sweep tries it again every few
+//! minutes (`waiting_queues`). Which entry answers for a failure, which entries
 //! ahead it breaks with, who is told and how it rejoins: integration.rs.
 
 use futures_util::future::try_join_all;
@@ -90,8 +93,41 @@ const STILL_LANDING: &str = "SELECT id AS value FROM queue_entries
 const ABANDON_LANDING: &str = "UPDATE queue_entries SET landing_commit = NULL
     WHERE id = ?1 AND state = 'passed' AND landing_commit = ?2 RETURNING id AS value";
 
-const FINISH_LANDING: &str = "UPDATE queue_entries SET state = 'landed', finished_at = ?1
+const FINISH_LANDING: &str = "UPDATE queue_entries SET state = 'landed', finished_at = ?1, error = NULL
     WHERE id = ?2 AND state = 'passed' AND landing_commit = combined_commit";
+
+// The repository takes no writes for now (it is being copied into a fork:
+// repos answers `Unavailable`), so the attempt could not push its state.
+// Not a failure of the entry: it waits again, saying why, for a later pass
+// to build it (`waiting_queues`). Only the attempt that claimed it may.
+const WAIT_UNAVAILABLE: &str = "UPDATE queue_entries
+    SET state = 'waiting', token_hash = NULL, combined_commit = NULL, results = NULL, error = ?3,
+        ahead = NULL, held = NULL, dispatching = 0, workflow_runs = 0
+    WHERE id = ?1 AND state = 'testing' AND token_hash = ?2 AND combined_commit IS NULL
+    RETURNING id AS value";
+
+// Its landing was refused for now, for the same reason: the intent is given
+// up as ABANDON_LANDING does, and the tested state kept, saying why, to land
+// on a later pass. Nothing moved, so nothing is tested again.
+const LANDING_WAITS: &str = "UPDATE queue_entries SET landing_commit = NULL, error = ?3
+    WHERE id = ?1 AND state = 'passed' AND landing_commit = ?2 RETURNING id AS value";
+
+// Repositories whose queue waits on a refusal for now: an entry waiting or
+// passed with a reason is one WAIT_UNAVAILABLE or LANDING_WAITS left (a
+// claim, a retest and a landing each clear it). The runner's sweep passes
+// over each again.
+const WAITING_QUEUES: &str = "SELECT DISTINCT repo_id AS value FROM queue_entries
+    WHERE state IN ('waiting', 'passed') AND error IS NOT NULL ORDER BY repo_id LIMIT 100";
+
+// A landing that went through while another request gave up its intent:
+// a request that found the repository taking no writes (LANDING_WAITS) can
+// clear the intent of one whose push was already on its way, and that one's
+// FINISH_LANDING then matches nothing. Its pull request merged at exactly
+// the tested commit, so the entry landed; only an entry still passed, at
+// that commit, moves.
+const FINISH_LANDED: &str = "UPDATE queue_entries SET state = 'landed', finished_at = ?1, error = NULL, landing_commit = combined_commit
+    WHERE id = ?2 AND state = 'passed' AND combined_commit = ?3 AND finished_at IS NULL
+    RETURNING id AS value";
 
 const LEAVE: &str =
     "UPDATE queue_entries SET state = ?1, error = COALESCE(?2, error), finished_at = ?3
@@ -233,6 +269,17 @@ pub(crate) enum Built {
     Conflict { message: String, paths: Vec<String> },
     /// It could not be built, and why.
     Failed(String),
+    /// It could not be built for now, and why: the repository takes no
+    /// writes until something ends (a copy into a fork). It waits.
+    Unavailable(String),
+}
+
+/// Whether an entry that waits on a refusal should say so with
+/// `queue.changed`: only when its reason is new. Each `queue.changed` makes
+/// the runner pass over the queue at once, so saying it every time would
+/// try it again as fast as it is refused; the sweep tries it after that.
+pub(crate) fn tell_waiting(before: Option<&str>, reason: &str) -> bool {
+    before != Some(reason)
 }
 
 /// The nearest entry ahead (each with the files its pull request changes)
@@ -243,6 +290,11 @@ pub(crate) fn clashed_with(ahead: &[(QueueStackItem, Vec<String>)], paths: &[Str
         .rev()
         .find(|(_, files)| paths.iter().any(|path| files.contains(path)))
         .map(|(item, _)| item.number)
+}
+
+/// Why an entry a person took out left the queue.
+pub(crate) fn removed_by(username: &str) -> String {
+    format!("@{username} removed it from the queue.")
 }
 
 /// Why an entry left because what it would build is gone.
@@ -425,8 +477,10 @@ impl Work {
         ) {
             return Ok(Outcome::Fail(failure));
         }
+        // Said as why it left, in place of a reason it was waiting for.
+        let why = removed_by(&a.actor.username);
         if self
-            .leave(&repo.id, &pull, QueueState::Removed, None)
+            .leave(&repo.id, &pull, QueueState::Removed, Some(&why))
             .await?
         {
             let who = (a.actor.id.as_str(), a.actor.username.as_str());
@@ -789,6 +843,19 @@ impl Work {
                     report.error = Some(message);
                     None
                 }
+                Built::Unavailable(message) => {
+                    // It and those behind it wait for a later pass.
+                    let waits = self
+                        .db
+                        .prepare(WAIT_UNAVAILABLE)
+                        .bind(&[row.id.as_str().into(), hash(&report.token).into(), message.as_str().into()])?
+                        .first::<crate::rows::ValueRow>(None)
+                        .await?;
+                    if waits.is_some() && tell_waiting(row.error.as_deref(), &message) {
+                        self.changed(&repo.id).await?;
+                    }
+                    break;
+                }
             };
             self.report_queue(report).await?;
             // One that could not be built leaves; those behind it are built
@@ -841,6 +908,8 @@ impl Work {
             Outcome::Ok(QueueStep::Built { commit, .. }) => Built::State(commit),
             Outcome::Ok(QueueStep::Conflict { message, paths }) => Built::Conflict { message, paths },
             Outcome::Ok(QueueStep::Refused { message }) => Built::Failed(message),
+            // Refused for now: trying again later may work.
+            Outcome::Fail(failure) if failure.code == FailureCode::Unavailable => Built::Unavailable(failure.message),
             Outcome::Fail(failure) => Built::Failed(failure.message),
         })
     }
@@ -1347,6 +1416,15 @@ impl Work {
                 continue;
             }
             if row.landing_commit.is_none() {
+                // Landed by a request whose intent another gave up (see
+                // FINISH_LANDED): landed, not closed.
+                if pull.status == PullStatus::Merged
+                    && row.combined_commit.is_some()
+                    && pull.merge_commit == row.combined_commit
+                {
+                    self.finish_landed(&row).await?;
+                    continue;
+                }
                 // Pushed to since it was tested: test it again as it is now.
                 if pull.status != PullStatus::Open {
                     self.leave(repo_id, &pull, QueueState::Removed, Some("It was closed."))
@@ -1440,7 +1518,7 @@ impl Work {
                 pull: Some(pull.number),
             };
             let mut landed: Outcome<Landed> = g1t_kit::call(&self.repos, "land", &land).await?;
-            if matches!(landed, Outcome::Fail(_)) {
+            if matches!(&landed, Outcome::Fail(failure) if failure.code != FailureCode::Unavailable) {
                 // BEGIN_LANDING lets a crashed publication resume, so another
                 // request may be publishing this same commit: its push makes
                 // ours lose Git's compare-and-swap, and its bookkeeping may
@@ -1454,6 +1532,24 @@ impl Work {
             let landed = match landed {
                 // Recorded as the method it was built by.
                 Outcome::Ok(landed) => Landed { method: row.method(), ..landed },
+                // The repository takes no writes for now (it is being
+                // copied into a fork): it lands on a later pass, as tested.
+                Outcome::Fail(failure) if failure.code == FailureCode::Unavailable => {
+                    let waits = self
+                        .db
+                        .prepare(LANDING_WAITS)
+                        .bind(&[
+                            row.id.as_str().into(),
+                            row.combined_commit.as_deref().map_or(JsValue::NULL, JsValue::from),
+                            failure.message.as_str().into(),
+                        ])?
+                        .first::<crate::rows::ValueRow>(None)
+                        .await?;
+                    if waits.is_some() && tell_waiting(row.error.as_deref(), &failure.message) {
+                        self.changed(repo_id).await?;
+                    }
+                    return Ok(());
+                }
                 Outcome::Fail(_) => {
                     let abandoned = self
                         .db
@@ -1486,6 +1582,33 @@ impl Work {
             if merged.status == PullStatus::Merged {
                 self.delete_branch_after_merge(&repo, &merged, &actor, None, head).await?;
             }
+        }
+        Ok(())
+    }
+
+    /// The repositories whose merge queue waits on a refusal for now, for
+    /// the runner's sweep to pass over again (`queue_build`): at its pace,
+    /// every few minutes, never as fast as it is refused.
+    pub(crate) async fn waiting_queues(&self) -> Result<Vec<String>> {
+        let rows = self.db.prepare(WAITING_QUEUES).all().await?.results::<crate::rows::ValueRow>()?;
+        Ok(rows.into_iter().map(|row| row.value).collect())
+    }
+
+    /// Records an entry as landed whose pull request merged at its tested
+    /// commit after its landing intent was given up (FINISH_LANDED).
+    async fn finish_landed(&self, row: &EntryRow) -> Result<()> {
+        let finished = self
+            .db
+            .prepare(FINISH_LANDED)
+            .bind(&[
+                rfc3339(now_ms()).into(),
+                row.id.as_str().into(),
+                row.combined_commit.as_deref().map_or(JsValue::NULL, JsValue::from),
+            ])?
+            .first::<crate::rows::ValueRow>(None)
+            .await?;
+        if finished.is_some() {
+            self.drop_branch(row).await;
         }
         Ok(())
     }

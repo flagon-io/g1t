@@ -161,6 +161,18 @@ Before landing, g1t checks that nothing has changed underneath:
 - If `main` moved outside the queue, every entry is tested again on the new
   `main`.
 
+### When the repository takes no writes for now
+
+While a repository is [being copied into a fork](/guides/forking-repositories/#what-the-fork-gets),
+it takes no writes, and neither building an entry's state nor landing it
+can go ahead. That is not the entry's failure, so it stays in the queue, in
+its place, and the Merge queue page shows why, such as **This repository
+is being copied into a fork. Try again in a few minutes; if it lasts more
+than an hour, g1t staff release it.** g1t tries it again every five minutes, and
+whenever the queue next moves. An entry that had passed keeps its tested
+state and lands as tested once the copy ends. The entries behind it wait
+with it. To stop waiting, remove it from the queue.
+
 A pull request that is already known to conflict with `main` is not added
 to the queue: [its merge box](/guides/pull-requests/#conflicts) says which
 files conflict and how to resolve them first. One that is only behind `main`
@@ -320,6 +332,7 @@ Each shows:
 | Checks    | How its state's checks stand, linked to the `merge_group` workflow run on the tested commit (each run by name when there are several). |
 | Who       | The person or coding agent who made the pull request, and who queued it.                                                               |
 | Commit    | The tested state's commit.                                                                                                             |
+| Why       | **Waiting:** and the reason, not as a failure, when the repository takes no writes for now, such as while it is copied into a fork.    |
 
 **Recently** lists the last 20 that left the queue: **Landed**, **Failed**
 or **Removed**. A failed entry shows why.
