@@ -14,7 +14,10 @@
 //! - A key is written once in its scope and version. In each scope in
 //!   turn, a restore finds its key exactly, else the newest entry whose key
 //!   starts with its key, else with each of its restore keys in order
-//!   (`prefixes`), as GitHub's cache does.
+//!   (`prefixes`), as GitHub's cache does. An upload holds its key while
+//!   its job runs, for at most `PENDING_MS`: a job that ends lets go of
+//!   what it did not finish (`release_cache`), and the next job to save
+//!   the key takes it over (`RESERVE`).
 //! - An entry is at most `CACHE_MAX_ENTRY_BYTES`. A repository's entries
 //!   hold at most `CACHE_REPO_QUOTA_BYTES` together: saving past it evicts
 //!   the entries restored longest ago.
@@ -53,8 +56,17 @@ use worker::wasm_bindgen::JsValue;
 use crate::{Actions, check, fail};
 
 const DAY_MS: u64 = 24 * 60 * 60 * 1000;
-/// An upload not finished after this long is given up.
+/// An upload not finished after this long is given up, whether or not its
+/// job is still running.
 const PENDING_MS: u64 = 6 * 60 * 60 * 1000;
+/// When an entry was last restored is written down at most this often: a
+/// tool that restores an entry per compiled file (sccache) would otherwise
+/// write a row on every read, for an order that eviction needs only
+/// roughly.
+const TOUCH_MS: u64 = 60 * 60 * 1000;
+/// Rows deleted or marked by id in one statement: D1 binds at most 100
+/// values to one.
+const IDS_PER_STATEMENT: usize = 50;
 /// A GB, as storage is billed.
 const GB: f64 = 1_000_000_000.0;
 
@@ -65,6 +77,78 @@ struct EntryRow {
     object: String,
     size: f64,
     created_at: String,
+    last_used_at: String,
+}
+
+/// Reserves a key in its scope and version for a job (`?10`). A key is
+/// written once there, never into another ref's scope: a reservation takes
+/// the row of an earlier one only when that one expired, was left
+/// unfinished before `?11`, or was made by a job that is no longer running
+/// (it finished, failed or was cancelled before it saved). Gives the
+/// entry's number, or nothing when the key is taken.
+pub(crate) const RESERVE: &str = "INSERT INTO cache_entries (id, repo_id, namespace, key, object, size, status, created_at, last_used_at, version, scope, job_id)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', ?7, ?7, ?8, ?9, ?10)
+     ON CONFLICT (repo_id, scope, key, version) DO UPDATE SET
+       id = ?1, object = ?5, size = ?6, status = 'pending', created_at = ?7, last_used_at = ?7, version = ?8, upload = NULL, job_id = ?10
+     WHERE cache_entries.status = 'expired'
+        OR (cache_entries.status = 'pending' AND (
+              cache_entries.created_at < ?11
+              OR (cache_entries.job_id IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.id = cache_entries.job_id AND jobs.status = 'in_progress'))))
+     RETURNING rowid AS number";
+
+/// A job's uploads it never finished, once it has ended: their keys are
+/// free for the next job at once, and the sweep deletes whatever bytes
+/// they had sent.
+pub(crate) const RELEASE: &str = "UPDATE cache_entries SET status = 'expired' WHERE job_id = ? AND status = 'pending'";
+
+/// The least text after every key that starts with `prefix`: its last
+/// character, one higher. Keys compare byte by byte, and UTF-8 keeps the
+/// order of characters, so `key >= prefix AND key < end` is exactly the
+/// keys that start with `prefix`, whatever they hold (`%`, `_` and `/`
+/// included), and the index on keys finds them. None when there is no such
+/// text (a prefix of only the highest character).
+pub(crate) fn prefix_end(prefix: &str) -> Option<String> {
+    let mut chars: Vec<char> = prefix.chars().collect();
+    while let Some(last) = chars.pop() {
+        // Surrogates are not characters: the one after U+D7FF is U+E000.
+        let next = if last == '\u{D7FF}' { Some('\u{E000}') } else { char::from_u32(u32::from(last) + 1) };
+        if let Some(next) = next {
+            chars.push(next);
+            return Some(chars.into_iter().collect());
+        }
+    }
+    None
+}
+
+/// The condition that a key starts with `prefix`, and the values it binds:
+/// a range the index serves (`prefix_end`), or, without an end, by its
+/// first characters.
+pub(crate) fn key_prefix(prefix: &str) -> (&'static str, [String; 2]) {
+    match prefix_end(prefix) {
+        Some(end) => ("key >= ? AND key < ?", [prefix.to_owned(), end]),
+        None => ("substr(key, 1, length(?)) = ?", [prefix.to_owned(), prefix.to_owned()]),
+    }
+}
+
+/// A restore's lookup of the newest entry whose key starts with a prefix,
+/// around its condition on keys (`key_prefix`): the repository, scope,
+/// prefix, version and the oldest an entry may be saved, bound in order.
+const PREFIX_LOOKUP_START: &str = "SELECT id, key, object, size, created_at, last_used_at FROM cache_entries
+     WHERE repo_id = ? AND scope = ? AND ";
+const PREFIX_LOOKUP_END: &str = " AND version = ? AND +status = 'ready' AND +created_at > ?
+     ORDER BY created_at DESC LIMIT 1";
+
+/// Whether an entry last restored at `last_used_at` is written down as
+/// restored again at `now`: not when it was within `TOUCH_MS`.
+pub(crate) fn touch_due(last_used_at: &str, now: u64) -> bool {
+    last_used_at < rfc3339(now.saturating_sub(TOUCH_MS)).as_str()
+}
+
+/// `{statement} (?, ?, …)` for each run of at most `IDS_PER_STATEMENT` ids:
+/// the statements and the ids each binds.
+pub(crate) fn by_ids<'a>(statement: &str, ids: &'a [String]) -> Vec<(String, &'a [String])> {
+    ids.chunks(IDS_PER_STATEMENT).map(|chunk| (format!("{statement} ({})", vec!["?"; chunk.len()].join(", ")), chunk)).collect()
 }
 
 /// The longest key: GitHub's limit.
@@ -196,29 +280,50 @@ pub(crate) fn scopes(git_ref: &str, base_ref: Option<&str>, default_branch: &str
     (restore, own)
 }
 
-impl Actions {
-    /// Where a job's entries are found and saved (`scopes`), for g1t's own
-    /// `actions/cache` and the toolkit's protocols alike.
-    pub(crate) async fn cache_scope(&self, job: &crate::plan::JobRow) -> Result<CacheScope> {
-        let (restore, save) = match self.run_row(&job.run_id).await? {
-            Some(run) => {
-                let info = run.info();
-                scopes(&run.git_ref, info.base_ref.as_deref(), &info.default_branch, run.trusted != 0)
-            }
-            None => (Vec::new(), format!("untrusted:{}", job.run_id)),
-        };
-        Ok(CacheScope { repo_id: job.repo_id.clone(), restore, save })
-    }
+/// Where a job's entries are found and saved (`scopes`), for g1t's own
+/// `actions/cache` and the toolkit's protocols alike, from its run.
+fn cache_scope(job: &crate::plan::JobRow, run: Option<&crate::plan::RunRow>) -> CacheScope {
+    let (restore, save) = match run {
+        Some(run) => {
+            let info = run.info();
+            scopes(&run.git_ref, info.base_ref.as_deref(), &info.default_branch, run.trusted != 0)
+        }
+        None => (Vec::new(), format!("untrusted:{}", job.run_id)),
+    };
+    CacheScope { repo_id: job.repo_id.clone(), restore, save }
+}
 
+impl Actions {
     /// A job by its own token or its runtime token (runtime.rs).
     async fn cache_job(&self, job: &str, token: &str) -> Result<Outcome<crate::plan::JobRow>> {
         self.job_for_credential(job, token).await
     }
 
+    /// A job by its credential, as `cache_job`, and where its entries are.
+    /// A runtime token names its run, which is read alongside the job
+    /// rather than after it; it is used only once the token is checked and
+    /// the job's row names the same run.
+    async fn cache_job_scope(&self, job: &str, token: &str) -> Result<Outcome<(crate::plan::JobRow, CacheScope)>> {
+        let claimed = crate::runtime::runtime_run(token);
+        let claimed_run = async {
+            match &claimed {
+                Some(run) => self.run_row(run).await,
+                None => Ok(None),
+            }
+        };
+        let (checked, claimed_run) = futures_util::future::join(self.cache_job(job, token), claimed_run).await;
+        let job = check!(checked?);
+        let run = match claimed_run? {
+            Some(run) if run.id == job.run_id => Some(run),
+            _ => self.run_row(&job.run_id).await?,
+        };
+        let scope = cache_scope(&job, run.as_ref());
+        Ok(Outcome::Ok((job, scope)))
+    }
+
     /// `cache_lookup`.
     pub async fn cache_lookup(&self, a: CacheLookupArgs) -> Result<Outcome<Option<CacheHit>>> {
-        let job = check!(self.cache_job(&a.job, &a.token).await?);
-        let scope = self.cache_scope(&job).await?;
+        let (_, scope) = check!(self.cache_job_scope(&a.job, &a.token).await?);
         let now = now_ms();
         let fresh = rfc3339(now.saturating_sub(CACHE_MAX_AGE_DAYS * DAY_MS));
         // Found only by the same version: runners from before it was sent
@@ -229,7 +334,7 @@ impl Actions {
             found = self
                 .db
                 .prepare(
-                    "SELECT id, key, object, size, created_at FROM cache_entries
+                    "SELECT id, key, object, size, created_at, last_used_at FROM cache_entries
                      WHERE repo_id = ? AND scope = ? AND key = ? AND version = ? AND status = 'ready' AND created_at > ?",
                 )
                 .bind(&[
@@ -245,20 +350,21 @@ impl Actions {
                 break;
             }
             for prefix in prefixes(&a.key, &a.restore) {
+                let (starts, bounds) = key_prefix(prefix);
+                // `+` keeps SQLite from reading these through the index by
+                // scope and time, which holds every entry of the scope:
+                // the range of keys, through the index on keys, is far
+                // narrower.
                 found = self
                     .db
-                    .prepare(
-                        "SELECT id, key, object, size, created_at FROM cache_entries
-                         WHERE repo_id = ?1 AND scope = ?5 AND version = ?4 AND status = 'ready' AND created_at > ?3
-                           AND substr(key, 1, length(?2)) = ?2
-                         ORDER BY created_at DESC LIMIT 1",
-                    )
+                    .prepare(format!("{PREFIX_LOOKUP_START}{starts}{PREFIX_LOOKUP_END}"))
                     .bind(&[
                         scope.repo_id.as_str().into(),
-                        prefix.into(),
-                        fresh.as_str().into(),
-                        version.as_str().into(),
                         ref_scope.as_str().into(),
+                        bounds[0].as_str().into(),
+                        bounds[1].as_str().into(),
+                        version.as_str().into(),
+                        fresh.as_str().into(),
                     ])?
                     .first::<EntryRow>(None)
                     .await?;
@@ -268,19 +374,19 @@ impl Actions {
             }
         }
         let Some(entry) = found else { return Ok(Outcome::Ok(None)) };
-        self.db
-            .prepare("UPDATE cache_entries SET last_used_at = ? WHERE id = ?")
-            .bind(&[rfc3339(now).into(), entry.id.as_str().into()])?
-            .run()
-            .await?;
+        if touch_due(&entry.last_used_at, now) {
+            self.db
+                .prepare("UPDATE cache_entries SET last_used_at = ? WHERE id = ?")
+                .bind(&[rfc3339(now).into(), entry.id.as_str().into()])?
+                .run()
+                .await?;
+        }
         let blob = a.version.as_ref().and_then(|_| self.download_token("cache", &entry.id, &entry.object, crate::runtime::DOWNLOAD_SECONDS));
         Ok(Outcome::Ok(Some(CacheHit { key: entry.key, object: entry.object, size: entry.size as u64, created_at: entry.created_at, blob })))
     }
 
     /// `cache_upload`.
     pub async fn cache_upload(&self, a: CacheUploadArgs) -> Result<Outcome<CacheReservation>> {
-        let job = check!(self.cache_job(&a.job, &a.token).await?);
-        let scope = self.cache_scope(&job).await?;
         #[derive(Deserialize)]
         struct Pending {
             id: String,
@@ -289,22 +395,29 @@ impl Actions {
             upload: Option<String>,
         }
         let columns = "SELECT id, object, rowid AS number, upload FROM cache_entries";
+        // By number, only the job's repository is needed; by key, its
+        // scope too.
         let pending = match (a.number, a.key.as_deref()) {
             (Some(number), _) => {
+                let job = check!(self.cache_job(&a.job, &a.token).await?);
                 self.db
                     .prepare(format!("{columns} WHERE rowid = ? AND repo_id = ? AND status = 'pending'"))
-                    .bind(&[(number as f64).into(), scope.repo_id.as_str().into()])?
+                    .bind(&[(number as f64).into(), job.repo_id.as_str().into()])?
                     .first::<Pending>(None)
                     .await?
             }
             (None, Some(key)) => {
+                let (_, scope) = check!(self.cache_job_scope(&a.job, &a.token).await?);
                 self.db
                     .prepare(format!("{columns} WHERE repo_id = ? AND scope = ? AND key = ? AND version = ? AND status = 'pending'"))
                     .bind(&[scope.repo_id.as_str().into(), scope.save.as_str().into(), key.into(), a.version.clone().unwrap_or_default().into()])?
                     .first::<Pending>(None)
                     .await?
             }
-            (None, None) => None,
+            (None, None) => {
+                check!(self.cache_job(&a.job, &a.token).await?);
+                None
+            }
         };
         let Some(pending) = pending else {
             return Ok(fail(FailureCode::NotFound, "No upload of that entry is in progress."));
@@ -321,8 +434,7 @@ impl Actions {
 
     /// `cache_reserve`.
     pub async fn cache_reserve(&self, a: CacheReserveArgs) -> Result<Outcome<CacheReservation>> {
-        let job = check!(self.cache_job(&a.job, &a.token).await?);
-        let scope = self.cache_scope(&job).await?;
+        let (job, scope) = check!(self.cache_job_scope(&a.job, &a.token).await?);
         if !valid_key(&a.key) {
             return Ok(fail(FailureCode::Invalid, format!("A cache key is 1 to {MAX_KEY_CHARS} characters, without commas.")));
         }
@@ -338,39 +450,15 @@ impl Actions {
         let now = now_ms();
         let at = rfc3339(now);
         let version = a.version.clone().unwrap_or_default();
-        // An upload left unfinished long ago no longer holds its key.
-        self.db
-            .prepare(
-                "UPDATE cache_entries SET status = 'expired'
-                 WHERE repo_id = ? AND scope = ? AND key = ? AND version = ? AND status = 'pending' AND created_at < ?",
-            )
-            .bind(&[
-                scope.repo_id.as_str().into(),
-                scope.save.as_str().into(),
-                a.key.as_str().into(),
-                version.as_str().into(),
-                rfc3339(now.saturating_sub(PENDING_MS)).into(),
-            ])?
-            .run()
-            .await?;
         let id = new_id("cache", now);
         let object = format!("c/{}/{id}", scope.repo_id);
         #[derive(Deserialize)]
         struct Inserted {
             number: f64,
         }
-        // A key is written once in its scope and version, never into
-        // another ref's scope.
         let inserted = self
             .db
-            .prepare(
-                "INSERT INTO cache_entries (id, repo_id, namespace, key, object, size, status, created_at, last_used_at, version, scope)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', ?7, ?7, ?8, ?9)
-                 ON CONFLICT (repo_id, scope, key, version) DO UPDATE SET
-                   id = ?1, object = ?5, size = ?6, status = 'pending', created_at = ?7, last_used_at = ?7, version = ?8, upload = NULL
-                 WHERE cache_entries.status = 'expired'
-                 RETURNING rowid AS number",
-            )
+            .prepare(RESERVE)
             .bind(&[
                 id.as_str().into(),
                 scope.repo_id.as_str().into(),
@@ -381,13 +469,19 @@ impl Actions {
                 at.as_str().into(),
                 version.as_str().into(),
                 scope.save.as_str().into(),
+                job.id.as_str().into(),
+                rfc3339(now.saturating_sub(PENDING_MS)).into(),
             ])?
             .first::<Inserted>(None)
             .await?;
         let Some(inserted) = inserted else {
             return Ok(fail(FailureCode::Conflict, "That key is already cached."));
         };
-        Ok(Outcome::Ok(CacheReservation { id, object, number: inserted.number as u64, upload: None, blob: None }))
+        // A token for its upload, whose R2 upload is not started yet: the
+        // API puts an entry sent in one request whole, and starts one only
+        // for an entry sent in blocks (runtime.rs `blob_start`).
+        let blob = self.upload_token("cache", &id, &object, "");
+        Ok(Outcome::Ok(CacheReservation { id, object, number: inserted.number as u64, upload: None, blob }))
     }
 
     /// `cache_commit`: the entry is ready; entries past the quota are
@@ -397,31 +491,38 @@ impl Actions {
         if a.size > CACHE_MAX_ENTRY_BYTES {
             return Ok(fail(FailureCode::Invalid, "That entry is larger than a cache entry may be."));
         }
-        let ready = self
-            .db
-            .prepare("UPDATE cache_entries SET status = 'ready', size = ?, last_used_at = ? WHERE id = ? AND repo_id = ? AND status = 'pending' RETURNING id")
-            .bind(&[(a.size as f64).into(), rfc3339(now_ms()).into(), a.id.as_str().into(), job.repo_id.as_str().into()])?
-            .first::<Value>(None)
-            .await?;
-        if ready.is_none() {
-            return Ok(fail(FailureCode::NotFound, "No upload of that entry is in progress."));
-        }
-        // What the repository holds, summed: only past the quota are its
-        // entries listed to choose what to evict. A tool that saves an
-        // entry per compiled file (sccache) commits thousands of small
-        // entries a build, and listing them all on each was quadratic.
+        // The entry is ready, and what the repository holds is summed, in
+        // one round trip: only past the quota are its entries listed to
+        // choose what to evict. A tool that saves an entry per compiled
+        // file (sccache) commits thousands of small entries a build, and
+        // listing them all on each was quadratic.
         #[derive(Deserialize)]
         struct Total {
             bytes: Option<f64>,
         }
-        let total = self
+        let mut results = self
             .db
-            .prepare("SELECT SUM(size) AS bytes FROM cache_entries WHERE repo_id = ? AND status = 'ready'")
-            .bind(&[job.repo_id.as_str().into()])?
-            .first::<Total>(None)
+            .batch(vec![
+                self.db
+                    .prepare("UPDATE cache_entries SET status = 'ready', size = ?, last_used_at = ? WHERE id = ? AND repo_id = ? AND status = 'pending' RETURNING id")
+                    .bind(&[(a.size as f64).into(), rfc3339(now_ms()).into(), a.id.as_str().into(), job.repo_id.as_str().into()])?,
+                self.db
+                    .prepare("SELECT SUM(size) AS bytes FROM cache_entries WHERE repo_id = ? AND status = 'ready'")
+                    .bind(&[job.repo_id.as_str().into()])?,
+            ])
             .await?
-            .and_then(|t| t.bytes)
-            .unwrap_or(0.0);
+            .into_iter();
+        let ready = match results.next() {
+            Some(ready) => ready.results::<Value>()?,
+            None => Vec::new(),
+        };
+        if ready.is_empty() {
+            return Ok(fail(FailureCode::NotFound, "No upload of that entry is in progress."));
+        }
+        let total = match results.next() {
+            Some(total) => total.results::<Total>()?.into_iter().next().and_then(|t| t.bytes).unwrap_or(0.0),
+            None => 0.0,
+        };
         if !over_quota(total as u64, CACHE_REPO_QUOTA_BYTES) {
             return Ok(Outcome::Ok(CacheCommitted { evicted: Vec::new() }));
         }
@@ -440,13 +541,8 @@ impl Actions {
             .results::<Held>()?;
         let sizes: Vec<(String, u64)> = held.iter().map(|h| (h.id.clone(), h.size as u64)).collect();
         let evict = to_evict(&sizes, &a.id, CACHE_REPO_QUOTA_BYTES);
-        let mut evicted = Vec::new();
-        for id in &evict {
-            if let Some(entry) = held.iter().find(|h| &h.id == id) {
-                self.db.prepare("DELETE FROM cache_entries WHERE id = ?").bind(&[id.as_str().into()])?.run().await?;
-                evicted.push(entry.object.clone());
-            }
-        }
+        self.delete_entries(&evict).await?;
+        let evicted = evict.iter().filter_map(|id| held.iter().find(|h| &h.id == id)).map(|entry| entry.object.clone()).collect();
         Ok(Outcome::Ok(CacheCommitted { evicted }))
     }
 
@@ -461,6 +557,36 @@ impl Actions {
         Ok(Outcome::Ok(true))
     }
 
+    /// When a job ends: the uploads it reserved and never finished let go
+    /// of their keys (`RELEASE`). A failure is logged: a reservation whose
+    /// job is no longer running gives way to the next one anyway.
+    pub(crate) async fn release_cache(&self, job_id: &str) {
+        let released = async { self.db.prepare(RELEASE).bind(&[job_id.into()])?.run().await };
+        if let Err(error) = released.await {
+            worker::console_error!("actions: the cache uploads of job {job_id} were not released: {error}");
+        }
+    }
+
+    /// Deletes entries' rows by id, in as few statements as D1 takes and
+    /// one round trip.
+    async fn delete_entries(&self, ids: &[String]) -> Result<()> {
+        self.by_ids("DELETE FROM cache_entries WHERE id IN", ids).await
+    }
+
+    /// Runs `statement (?, …)` over `ids`, in one batch.
+    async fn by_ids(&self, statement: &str, ids: &[String]) -> Result<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let mut statements = Vec::new();
+        for (sql, chunk) in by_ids(statement, ids) {
+            let values: Vec<JsValue> = chunk.iter().map(|id| id.as_str().into()).collect();
+            statements.push(self.db.prepare(sql).bind(&values)?);
+        }
+        self.db.batch(statements).await?;
+        Ok(())
+    }
+
     /// `caches`.
     pub async fn caches(&self, a: CachesArgs) -> Result<Outcome<CacheList>> {
         let Some(repo) = self.visible_repo(&a.repo, &a.viewer).await? else {
@@ -472,9 +598,10 @@ impl Actions {
         let mut filter = "repo_id = ? AND status = 'ready'".to_owned();
         let mut values: Vec<JsValue> = vec![repo.id.as_str().into()];
         if let Some(key) = a.key.as_deref().filter(|k| !k.is_empty()) {
-            filter.push_str(" AND substr(key, 1, length(?)) = ?");
-            values.push(key.into());
-            values.push(key.into());
+            let (starts, bounds) = key_prefix(key);
+            filter.push_str(" AND ");
+            filter.push_str(starts);
+            values.extend(bounds.iter().map(|bound| JsValue::from(bound.as_str())));
         }
         if let Some(git_ref) = a.git_ref.as_deref().map(str::trim).filter(|r| !r.is_empty()) {
             filter.push_str(" AND scope = ?");
@@ -554,9 +681,8 @@ impl Actions {
         if rows.is_empty() {
             return Ok(fail(FailureCode::NotFound, "No cache entry matches."));
         }
-        for row in &rows {
-            self.db.prepare("UPDATE cache_entries SET status = 'expired' WHERE id = ?").bind(&[row.id.as_str().into()])?.run().await?;
-        }
+        let ids: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
+        self.by_ids("UPDATE cache_entries SET status = 'expired' WHERE id IN", &ids).await?;
         let gone: Vec<(String, String)> = rows.iter().map(|r| (r.id.clone(), r.object.clone())).collect();
         self.forget_cache(&gone).await?;
         Ok(Outcome::Ok(CacheList { total_count: rows.len() as u64, actions_caches: rows.iter().map(ListedRow::view).collect() }))
@@ -571,9 +697,8 @@ impl Actions {
                 worker::console_error!("actions: cache objects not deleted: {error}");
                 return Ok(false);
             }
-            for (id, _) in chunk {
-                self.db.prepare("DELETE FROM cache_entries WHERE id = ?").bind(&[id.as_str().into()])?.run().await?;
-            }
+            let ids: Vec<String> = chunk.iter().map(|(id, _)| id.clone()).collect();
+            self.delete_entries(&ids).await?;
         }
         Ok(true)
     }
@@ -782,6 +907,77 @@ mod tests {
     }
 
     #[test]
+    fn a_prefix_is_a_range_of_keys() {
+        let keys = [
+            "cargo-Linux-abc",
+            "cargo-Linux-abd",
+            "cargo-Linux-ab",
+            "cargo-Linux-abc/deps",
+            "cargo-Linux-abc%",
+            "cargo-Linux-ab_c",
+            "cargo_Linux-abc",
+            "cargo%Linux-abc",
+            "cargo-",
+            "cargo-\u{D7FF}x",
+            "cargo-\u{E000}",
+            "cargo-\u{10FFFF}",
+            "cargo-\u{10FFFF}\u{10FFFF}z",
+            "cargo.",
+            "sccache/1/ab/cdef",
+            "sccache/1/ab0",
+            "sccache/10/ab",
+            "",
+        ];
+        let prefixes = [
+            "cargo-Linux-ab",
+            "cargo-Linux-abc",
+            "cargo-",
+            "cargo_",
+            "cargo%",
+            "cargo-Linux-ab_",
+            "cargo-Linux-abc%",
+            "cargo-\u{D7FF}",
+            "cargo-\u{10FFFF}",
+            "sccache/1/",
+            "sccache/1/ab/",
+            "\u{10FFFF}",
+        ];
+        for prefix in prefixes {
+            for key in keys {
+                // `%`, `_` and `/` are only characters: nothing in a key or a
+                // prefix is a pattern.
+                let in_range = key >= prefix && prefix_end(prefix).is_none_or(|end| key < end.as_str());
+                assert_eq!(in_range, key.starts_with(prefix), "{key:?} against {prefix:?}");
+            }
+        }
+        assert_eq!(prefix_end("cargo-").as_deref(), Some("cargo."));
+        assert_eq!(prefix_end("a\u{D7FF}").as_deref(), Some("a\u{E000}"));
+        assert_eq!(prefix_end("a\u{10FFFF}").as_deref(), Some("b"));
+        assert_eq!(prefix_end("\u{10FFFF}"), None);
+        assert_eq!(key_prefix("\u{10FFFF}").0, "substr(key, 1, length(?)) = ?");
+    }
+
+    #[test]
+    fn a_restore_is_written_down_once_an_hour() {
+        let now = 1_760_000_000_000;
+        assert!(!touch_due(&rfc3339(now - 10 * 60 * 1000), now));
+        assert!(touch_due(&rfc3339(now - 2 * 60 * 60 * 1000), now));
+    }
+
+    #[test]
+    fn rows_are_deleted_by_id_fifty_at_a_time() {
+        let ids: Vec<String> = (0..120).map(|n| format!("cache_{n}")).collect();
+        let statements = by_ids("DELETE FROM cache_entries WHERE id IN", &ids);
+        let sizes: Vec<usize> = statements.iter().map(|(_, chunk)| chunk.len()).collect();
+        assert_eq!(sizes, [50, 50, 20]);
+        for (sql, chunk) in &statements {
+            assert_eq!(sql.matches('?').count(), chunk.len());
+        }
+        assert_eq!(statements[2].0, format!("DELETE FROM cache_entries WHERE id IN ({})", vec!["?"; 20].join(", ")));
+        assert!(by_ids("DELETE FROM cache_entries WHERE id IN", &[]).is_empty());
+    }
+
+    #[test]
     fn storage_is_charged_by_the_gb_month_at_r2s_price() {
         // 10 GB held for 30 days is 10 GB-months: $0.15.
         let month = vec![10_000_000_000u64; 30];
@@ -790,5 +986,156 @@ mod tests {
         // A day of 1 GB: a thirtieth of a GB-month, rounded up.
         assert_eq!(storage_cost(gb_months(&[1_000_000_000])), 500);
         assert_eq!(storage_cost(0.0), 0);
+    }
+}
+
+#[cfg(test)]
+mod database {
+    use rusqlite::{Connection, OptionalExtension, params};
+
+    use super::{PREFIX_LOOKUP_END, PREFIX_LOOKUP_START, RELEASE, RESERVE, by_ids, key_prefix};
+
+    const CUTOFF: &str = "2026-10-20T06:00:00.000Z";
+
+    fn database() -> Connection {
+        let db = Connection::open_in_memory().unwrap();
+        let mut names: Vec<_> = std::fs::read_dir(format!("{}/migrations", env!("CARGO_MANIFEST_DIR")))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "sql"))
+            .collect();
+        names.sort();
+        for path in names {
+            db.execute_batch(&std::fs::read_to_string(&path).unwrap()).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+        }
+        for (job, status) in [("job_1", "in_progress"), ("job_2", "in_progress"), ("job_done", "completed"), ("job_requeued", "queued")] {
+            db.execute(
+                "INSERT INTO jobs (id, run_id, repo_id, namespace, key, name, status) VALUES (?1, 'run_1', 'repo_1', 'acme', ?1, ?1, ?2)",
+                params![job, status],
+            )
+            .unwrap();
+        }
+        db
+    }
+
+    /// Reserves `key` for `job` at `at`: the entry's number, or None when the
+    /// key is taken.
+    fn reserve(db: &Connection, id: &str, key: &str, job: &str, at: &str) -> Option<i64> {
+        db.query_row(
+            RESERVE,
+            params![id, "repo_1", "acme", key, format!("c/repo_1/{id}"), 0, at, "v1", "refs/heads/main", job, CUTOFF],
+            |row| row.get(0),
+        )
+        .optional()
+        .unwrap()
+    }
+
+    fn entry(db: &Connection, key: &str) -> (String, String, Option<String>) {
+        db.query_row("SELECT id, status, job_id FROM cache_entries WHERE key = ?", [key], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).unwrap()
+    }
+
+    #[test]
+    fn a_key_is_reserved_once_while_its_job_runs() {
+        let db = database();
+        let now = "2026-10-20T10:00:00.000Z";
+        let number = reserve(&db, "cache_a", "k", "job_1", now).unwrap();
+        // Another job, while the first still runs: taken.
+        assert_eq!(reserve(&db, "cache_b", "k", "job_2", now), None);
+        assert_eq!(entry(&db, "k").0, "cache_a");
+        // Saved, it is never written again.
+        db.execute("UPDATE cache_entries SET status = 'ready' WHERE id = 'cache_a'", []).unwrap();
+        db.execute("UPDATE jobs SET status = 'completed' WHERE id = 'job_1'", []).unwrap();
+        assert_eq!(reserve(&db, "cache_c", "k", "job_2", now), None);
+        assert!(number > 0);
+    }
+
+    #[test]
+    fn a_finished_job_s_reservation_is_taken_over() {
+        let db = database();
+        let now = "2026-10-20T10:00:00.000Z";
+        let number = reserve(&db, "cache_a", "k", "job_1", now).unwrap();
+        // Its job ends without saving (it failed, or was cancelled).
+        db.execute("UPDATE jobs SET status = 'completed' WHERE id = 'job_1'", []).unwrap();
+        assert_eq!(reserve(&db, "cache_b", "k", "job_2", now), Some(number));
+        assert_eq!(entry(&db, "k"), ("cache_b".into(), "pending".into(), Some("job_2".into())));
+        // A job sent back to the queue is not running either.
+        reserve(&db, "cache_c", "q", "job_requeued", now).unwrap();
+        assert!(reserve(&db, "cache_d", "q", "job_1", now).is_some());
+        // A reservation from before jobs were written down waits out its
+        // six hours.
+        db.execute(
+            "INSERT INTO cache_entries (id, repo_id, namespace, key, object, size, status, created_at, last_used_at, version, scope)
+             VALUES ('cache_old', 'repo_1', 'acme', 'old', 'c/repo_1/cache_old', 0, 'pending', ?1, ?1, 'v1', 'refs/heads/main')",
+            [now],
+        )
+        .unwrap();
+        assert_eq!(reserve(&db, "cache_e", "old", "job_2", now), None);
+        db.execute("UPDATE cache_entries SET created_at = '2026-10-20T05:00:00.000Z' WHERE id = 'cache_old'", []).unwrap();
+        assert!(reserve(&db, "cache_e", "old", "job_2", now).is_some());
+        // So does one whose job still runs.
+        reserve(&db, "cache_f", "slow", "job_1", "2026-10-20T05:00:00.000Z");
+        db.execute("UPDATE jobs SET status = 'in_progress' WHERE id = 'job_1'", []).unwrap();
+        assert!(reserve(&db, "cache_g", "slow", "job_2", now).is_some());
+    }
+
+    #[test]
+    fn a_job_that_ends_lets_go_of_what_it_did_not_save() {
+        let db = database();
+        let now = "2026-10-20T10:00:00.000Z";
+        reserve(&db, "cache_a", "a", "job_1", now).unwrap();
+        reserve(&db, "cache_b", "b", "job_1", now).unwrap();
+        reserve(&db, "cache_c", "c", "job_2", now).unwrap();
+        db.execute("UPDATE cache_entries SET status = 'ready' WHERE id = 'cache_b'", []).unwrap();
+        db.execute(RELEASE, ["job_1"]).unwrap();
+        assert_eq!(entry(&db, "a").1, "expired");
+        assert_eq!(entry(&db, "b").1, "ready");
+        assert_eq!(entry(&db, "c").1, "pending");
+        // The key is free at once, for any job.
+        assert!(reserve(&db, "cache_d", "a", "job_2", now).is_some());
+    }
+
+    #[test]
+    fn a_prefix_is_found_through_the_index() {
+        let db = database();
+        let now = "2026-10-20T10:00:00.000Z";
+        for (id, key) in [("cache_1", "cargo-Linux-abc"), ("cache_2", "cargo_Linux-abc"), ("cache_3", "cargo-Linux-%"), ("cache_4", "sccache/1/ab"), ("cache_5", "cargo-")] {
+            reserve(&db, id, key, "job_1", now).unwrap();
+        }
+        let found = |prefix: &str| -> Vec<String> {
+            let (starts, bounds) = key_prefix(prefix);
+            let sql = format!("SELECT key FROM cache_entries WHERE repo_id = 'repo_1' AND scope = 'refs/heads/main' AND {starts} ORDER BY key");
+            let mut statement = db.prepare(&sql).unwrap();
+            statement.query_map(params![bounds[0], bounds[1]], |row| row.get(0)).unwrap().map(Result::unwrap).collect()
+        };
+        assert_eq!(found("cargo-"), ["cargo-", "cargo-Linux-%", "cargo-Linux-abc"]);
+        assert_eq!(found("cargo_"), ["cargo_Linux-abc"]);
+        assert_eq!(found("cargo-Linux-%"), ["cargo-Linux-%"]);
+        assert_eq!(found("sccache/"), ["sccache/1/ab"]);
+        // A restore's lookup reads the range through the index on (repo,
+        // scope, key, version).
+        let (starts, bounds) = key_prefix("cargo-");
+        let plan: String = db
+            .query_row(
+                &format!("EXPLAIN QUERY PLAN {PREFIX_LOOKUP_START}{starts}{PREFIX_LOOKUP_END}"),
+                params!["repo_1", "refs/heads/main", bounds[0], bounds[1], "v1", "2026-09-01"],
+                |row| row.get(3),
+            )
+            .unwrap();
+        assert!(plan.contains("key>? AND key<?"), "{plan}");
+    }
+
+    #[test]
+    fn evicted_rows_go_in_a_statement_per_fifty() {
+        let db = database();
+        let now = "2026-10-20T10:00:00.000Z";
+        let ids: Vec<String> = (0..120).map(|n| format!("cache_{n:03}")).collect();
+        for id in &ids {
+            reserve(&db, id, id, "job_1", now).unwrap();
+        }
+        for (sql, chunk) in by_ids("DELETE FROM cache_entries WHERE id IN", &ids[..110]) {
+            db.execute(&sql, rusqlite::params_from_iter(chunk.iter())).unwrap();
+        }
+        let left: Vec<String> = db.prepare("SELECT id FROM cache_entries ORDER BY id").unwrap().query_map([], |row| row.get(0)).unwrap().map(Result::unwrap).collect();
+        assert_eq!(left, ids[110..]);
     }
 }

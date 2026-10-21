@@ -1784,6 +1784,11 @@ impl Actions {
         self.tell_live(&job.repo_id, &job.run_id, None, None).await;
         // Its G1T_TOKEN stops working with it.
         self.revoke_job_tokens(&job.id).await;
+        // Cache entries it started saving and never finished are free for
+        // the next job to save.
+        if job.started_at.is_some() {
+            self.release_cache(&job.id).await;
+        }
         // A g1t.page build it opened and did not finish fails now, not at
         // the deployments sweep. Only a job that ran can have opened one.
         if job.started_at.is_some() {
@@ -1884,6 +1889,7 @@ impl Actions {
         if stopped.as_ref().is_some_and(|row| row.started_at.is_some()) {
             self.revoke_job_tokens(&job.id).await;
             self.end_job_builds(&job.id, "cancelled").await;
+            self.release_cache(&job.id).await;
         }
         if let Some(stopped) = stopped.filter(|row| row.runner_id.is_some()) {
             self.released(&stopped).await?;

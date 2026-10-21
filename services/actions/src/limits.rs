@@ -117,38 +117,80 @@ pub fn storage_refusal(held: u64, adding: u64, cap: u64) -> Option<String> {
     })
 }
 
+/// How long the isolate keeps a workspace's answer to whether it has the
+/// plan (`has_plan`).
+const PLAN_KEPT_MS: u64 = 5 * 60 * 1000;
+
+thread_local! {
+    /// Whether each workspace has the plan, and when billing said so.
+    static PLANS: std::cell::RefCell<std::collections::HashMap<String, (bool, u64)>> = Default::default();
+}
+
+/// What billing last said about whether `workspace` has the plan, while it
+/// is kept.
+fn kept_plan(workspace: &str, now: u64) -> Option<bool> {
+    PLANS.with(|kept| kept.borrow().get(workspace).filter(|(_, at)| now.saturating_sub(*at) < PLAN_KEPT_MS).map(|(plan, _)| *plan))
+}
+
+fn keep_plan(workspace: &str, plan: bool, now: u64) {
+    PLANS.with(|kept| {
+        let mut kept = kept.borrow_mut();
+        if kept.len() > 1000 {
+            kept.clear();
+        }
+        kept.insert(workspace.to_owned(), (plan, now));
+    });
+}
+
 impl crate::Actions {
+    /// Whether a workspace has the plan, as billing says, kept in the
+    /// isolate for a few minutes so a build's burst of uploads asks once.
+    /// None when billing does not answer.
+    async fn has_plan(&self, workspace: &str) -> Option<bool> {
+        let now = g1t_kit::now_ms();
+        let workspace = workspace.to_lowercase();
+        if let Some(plan) = kept_plan(&workspace, now) {
+            return Some(plan);
+        }
+        let plan = self.standing(&workspace).await?.has_plan;
+        keep_plan(&workspace, plan, now);
+        Some(plan)
+    }
+
     /// Why an upload of `adding` bytes to the workspace's artifacts or
     /// cache is refused: only past FREE_ACTIONS_STORAGE_BYTES, and only
-    /// without the plan. Billing is asked only once the workspace is past
-    /// the cap, and when it does not answer the upload goes ahead.
+    /// without the plan. A workspace billing has lately said has the plan
+    /// is not summed at all; otherwise what it holds is summed while
+    /// billing is asked, and when billing does not answer the upload goes
+    /// ahead.
     pub(crate) async fn storage_refused(&self, namespace: &str, adding: u64) -> worker::Result<Option<String>> {
         let cap = self.limits.free_actions_storage_bytes;
         if cap == 0 {
+            return Ok(None);
+        }
+        if kept_plan(&namespace.to_lowercase(), g1t_kit::now_ms()) == Some(true) {
             return Ok(None);
         }
         #[derive(serde::Deserialize)]
         struct Held {
             bytes: Option<f64>,
         }
-        let held = self
-            .db
-            .prepare(
-                "SELECT SUM(size) AS bytes FROM (
-                   SELECT size FROM cache_entries WHERE namespace = ?1 AND status IN ('ready', 'pending')
-                   UNION ALL SELECT size FROM artifacts WHERE namespace = ?1 AND status IN ('ready', 'pending')
-                 )",
-            )
-            .bind(&[namespace.into()])?
-            .first::<Held>(None)
-            .await?
-            .and_then(|held| held.bytes)
-            .unwrap_or(0.0) as u64;
-        let Some(why) = storage_refusal(held, adding, cap) else {
-            return Ok(None);
+        let held = async {
+            self.db
+                .prepare(
+                    "SELECT SUM(size) AS bytes FROM (
+                       SELECT size FROM cache_entries WHERE namespace = ?1 AND status IN ('ready', 'pending')
+                       UNION ALL SELECT size FROM artifacts WHERE namespace = ?1 AND status IN ('ready', 'pending')
+                     )",
+                )
+                .bind(&[namespace.into()])?
+                .first::<Held>(None)
+                .await
         };
-        Ok(match self.standing(namespace).await {
-            Some(standing) if !standing.has_plan => Some(why),
+        let (held, plan) = futures_util::future::join(held, self.has_plan(namespace)).await;
+        let held = held?.and_then(|held| held.bytes).unwrap_or(0.0) as u64;
+        Ok(match plan {
+            Some(false) => storage_refusal(held, adding, cap),
             _ => None,
         })
     }

@@ -580,10 +580,8 @@ async fn commit(bucket: &Bucket, services: &Services, job: &str, token: &str, id
         &CacheCommitArgs { job: job.to_owned(), token: token.to_owned(), id: id.to_owned(), size },
     )
     .await?;
-    if let Outcome::Ok(committed) = committed
-        && !committed.evicted.is_empty()
-    {
-        bucket.delete_multiple(committed.evicted.iter().map(String::as_str).collect()).await?;
+    if let Outcome::Ok(committed) = committed {
+        crate::toolkit::delete_objects(bucket, &committed.evicted).await?;
     }
     Ok(())
 }
