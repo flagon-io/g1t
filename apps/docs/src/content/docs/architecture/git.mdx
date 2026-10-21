@@ -111,13 +111,17 @@ a merge, a commit from the site or a pull request update reserves its
 pack, and a fork reserves what its source holds. Each reservation is a
 row of `storage_reservations` in `g1t-repos`, and the sum admission adds
 up, `repos.storage_reserved_bytes`, moves with it in one batch
-(`services/repos/src/public_storage.rs`). A write that lands replaces its
-row with the bytes it measured; one refused before the store took it
-gives the row back.
+(`services/repos/src/public_storage.rs`). A write the store took replaces
+its row with the bytes it measured. One the store refused gives the row
+back and counts nothing: refused before the store took any of it, or in
+the store's report (an `ng` for its ref, most often because the branch
+moved meanwhile, or a failed unpack; for a push over git, every ref it
+reports on refused). Only bytes the store took reach `stored_bytes`.
 
 A write that stops without knowing whether the store kept it (the store
-answered with an error, or stopped answering) marks its row `ended`, with
-the refs it asked for. A row also carries a lease, an hour from when it
+answered with an error, stopped answering, or answered a write of one ref
+without saying whether it moved) marks its row `ended`, with the refs it
+asked for. A row also carries a lease, an hour from when it
 was taken (`LEASE_MS`): a push is at most 100 MB, which uploads well within
 it on any ordinary connection. What the lease cuts depends on the write:
 

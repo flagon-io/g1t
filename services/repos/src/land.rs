@@ -184,17 +184,93 @@ fn command(reference: &str, old: Option<&str>, new: &str, sends_pack: bool) -> V
     body
 }
 
-/// Whether a report-status says `reference` moved.
-fn reported(report: &[u8], reference: &str, sent_pack: bool) -> std::result::Result<(), String> {
-    let (lines, _) = read_pkt_lines(report);
-    let lines: Vec<String> = lines
-        .into_iter()
-        .map(|line| String::from_utf8_lossy(line).trim_end().to_owned())
-        .collect();
+/// What the store's report-status says of a write to one ref.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Verdict {
+    /// The ref moved: the store took the pack.
+    Moved,
+    /// The store said no: its unpack failed, or it answered `ng` for the
+    /// ref (most often because the ref was no longer at `old`).
+    Refused(String),
+    /// The report says neither: whether the store took the pack is not
+    /// known.
+    Unclear(String),
+}
+
+impl Verdict {
+    /// As the callers of [`push_ref`] read it: anything but a move is the
+    /// reason the ref did not move.
+    pub(crate) fn into_result(self) -> std::result::Result<(), String> {
+        match self {
+            Verdict::Moved => Ok(()),
+            Verdict::Refused(reason) | Verdict::Unclear(reason) => Err(reason),
+        }
+    }
+
+    /// Why the ref did not move: empty when it did.
+    pub(crate) fn reason(&self) -> &str {
+        match self {
+            Verdict::Moved => "",
+            Verdict::Refused(reason) | Verdict::Unclear(reason) => reason,
+        }
+    }
+}
+
+/// The lines of a receive-pack report-status, plain or inside side-band
+/// channel 1, as the store sends either. `None` when the answer is not a
+/// report this can read, or carries a fatal error (channel 3).
+pub(crate) fn report_lines(answer: &[u8]) -> Option<Vec<String>> {
+    let (packets, _) = read_pkt_lines(answer);
+    let banded = packets.first().is_some_and(|packet| matches!(packet.first(), Some(1..=3)));
+    let status = if banded {
+        let mut status = Vec::new();
+        for packet in &packets {
+            match packet.first() {
+                Some(1) => status.extend_from_slice(&packet[1..]),
+                Some(2) => {}
+                _ => return None,
+            }
+        }
+        status
+    } else {
+        answer.to_vec()
+    };
+    let (lines, _) = read_pkt_lines(&status);
+    let lines: Vec<String> = lines.into_iter().map(|line| String::from_utf8_lossy(line).trim_end().to_owned()).collect();
+    (!lines.is_empty()).then_some(lines)
+}
+
+/// What a report-status says of `reference`.
+pub(crate) fn verdict(report: &[u8], reference: &str, sent_pack: bool) -> Verdict {
+    // What was unclear, said whole: it is the outcome staff read on an
+    // ended reservation.
+    let unclear = |said: &str| {
+        let said = if said.is_empty() { "it said nothing" } else { said };
+        Verdict::Unclear(format!("The store's answer said neither that {reference} moved nor that it was refused: {said}"))
+    };
+    let Some(lines) = report_lines(report) else {
+        return unclear(String::from_utf8_lossy(report).trim());
+    };
+    let reason = lines.join("; ");
+    if lines.iter().any(|line| line.starts_with("unpack ") && line != "unpack ok") {
+        return Verdict::Refused(reason);
+    }
     // With nothing to unpack a server may not say so.
     let unpacked = !sent_pack || lines.iter().any(|line| line == "unpack ok");
-    let updated = lines.iter().any(|line| *line == format!("ok {reference}"));
-    if unpacked && updated { Ok(()) } else { Err(lines.join("; ")) }
+    if unpacked && lines.iter().any(|line| *line == format!("ok {reference}")) {
+        return Verdict::Moved;
+    }
+    let ng = format!("ng {reference}");
+    if lines.iter().any(|line| *line == ng || line.starts_with(&format!("{ng} "))) {
+        return Verdict::Refused(reason);
+    }
+    unclear(&reason)
+}
+
+/// Whether a report-status says `reference` moved.
+#[cfg(test)]
+fn reported(report: &[u8], reference: &str, sent_pack: bool) -> std::result::Result<(), String> {
+    verdict(report, reference, sent_pack).into_result()
 }
 
 /// Moves one ref (`refs/heads/main`, `refs/pull/<id>/head`) on the target
@@ -206,13 +282,36 @@ pub(crate) async fn push_ref(
     new: &str,
     pack: Option<Vec<u8>>,
 ) -> Result<std::result::Result<(), String>> {
+    Ok(push_ref_judged(target, reference, old, new, pack).await?.into_result())
+}
+
+/// [`push_pack`], with the store's [`Verdict`]: whether it took the pack,
+/// refused it, or answered neither, for a write that settles a storage
+/// reservation by it (public_storage.rs `push_reserved`).
+pub(crate) async fn push_pack_judged(
+    target: &GitAccess,
+    branch: &str,
+    old: Option<&str>,
+    new: &str,
+    pack: Vec<u8>,
+) -> Result<Verdict> {
+    push_ref_judged(target, &format!("refs/heads/{branch}"), old, new, Some(pack)).await
+}
+
+async fn push_ref_judged(
+    target: &GitAccess,
+    reference: &str,
+    old: Option<&str>,
+    new: &str,
+    pack: Option<Vec<u8>>,
+) -> Result<Verdict> {
     let sends_pack = pack.is_some();
     let mut body = command(reference, old, new, sends_pack);
     if let Some(pack) = pack {
         body.extend(pack);
     }
     let response = post(target, "git-receive-pack", body).await?;
-    Ok(reported(&response, reference, sends_pack))
+    Ok(verdict(&response, reference, sends_pack))
 }
 
 /// Moves `branch` on `target` from `old` to `new`, a commit that exists in
@@ -308,14 +407,17 @@ pub(crate) async fn fast_forward(
         }
     };
     let moved = demux.borrow().pack_bytes;
+    let verdict = verdict(&report, &reference, true);
     if let Some(quota) = quota {
-        quota.finish(moved).await?;
+        // Counted only when the branch moved (public_storage.rs
+        // `write_settlement`).
+        quota.settle(&verdict, moved, (&reference, new)).await?;
     }
     if let (Some(from), Some(to)) = (crate::store::key_from_remote(&source.remote), crate::store::key_from_remote(&target.remote)) {
         meters::record_bytes("internal.git.fetch", &from, 0, moved);
         meters::record_bytes("internal.git.receive_pack", &to, moved, 0);
     }
-    Ok(reported(&report, &reference, true))
+    Ok(verdict.into_result())
 }
 
 /// The size of the pack `source` sends for everything `wants` reaches that
@@ -546,6 +648,46 @@ mod tests {
         let bare = [pkt_line("ok refs/heads/main\n"), FLUSH.to_vec()].concat();
         assert_eq!(reported(&bare, "refs/heads/main", false), Ok(()));
         assert!(reported(&bare, "refs/heads/main", true).is_err());
+    }
+
+    #[test]
+    fn a_report_tells_a_refusal_from_an_answer_that_says_neither() {
+        let lines = |lines: &[&str]| {
+            let mut report: Vec<u8> = lines.iter().flat_map(|line| pkt_line(&format!("{line}\n"))).collect();
+            report.extend_from_slice(FLUSH);
+            report
+        };
+        let main = "refs/heads/main";
+        assert_eq!(verdict(&lines(&["unpack ok", "ok refs/heads/main"]), main, true), Verdict::Moved);
+        assert!(matches!(verdict(&lines(&["unpack ok", "ng refs/heads/main non-fast-forward"]), main, true), Verdict::Refused(_)));
+        assert!(matches!(verdict(&lines(&["unpack ok", "ng refs/heads/main"]), main, true), Verdict::Refused(_)));
+        assert!(matches!(verdict(&lines(&["unpack error: bad pack", "ng refs/heads/main unpacker error"]), main, true), Verdict::Refused(_)));
+        // A failed unpack is a refusal even where the ref says ok.
+        assert!(matches!(verdict(&lines(&["unpack error: bad pack", "ok refs/heads/main"]), main, true), Verdict::Refused(_)));
+        // Another ref's refusal, or none at all, says nothing of this one.
+        assert!(matches!(verdict(&lines(&["unpack ok", "ng refs/heads/main2 x"]), main, true), Verdict::Unclear(_)));
+        assert!(matches!(verdict(&lines(&["unpack ok"]), main, true), Verdict::Unclear(_)));
+        assert_eq!(
+            verdict(b"", main, true),
+            Verdict::Unclear("The store's answer said neither that refs/heads/main moved nor that it was refused: it said nothing".to_owned())
+        );
+        assert_eq!(
+            verdict(&lines(&["unpack ok"]), main, true).reason(),
+            "The store's answer said neither that refs/heads/main moved nor that it was refused: unpack ok"
+        );
+        assert!(matches!(verdict(b"garbage", main, true), Verdict::Unclear(_)));
+        // The same report inside side-band channel 1 reads the same.
+        let mut banded = pkt_line("\u{2}remote: working\n");
+        for chunk in lines(&["unpack ok", "ng refs/heads/main fetch first"]).chunks(5) {
+            let mut packet = vec![1u8];
+            packet.extend_from_slice(chunk);
+            banded.extend(format!("{:04x}", packet.len() + 4).into_bytes());
+            banded.extend(packet);
+        }
+        banded.extend_from_slice(FLUSH);
+        assert!(matches!(verdict(&banded, main, true), Verdict::Refused(reason) if reason.contains("fetch first")));
+        assert_eq!(Verdict::Refused("no".into()).into_result(), Err("no".to_owned()));
+        assert_eq!(Verdict::Moved.reason(), "");
     }
 
     #[test]
