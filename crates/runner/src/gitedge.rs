@@ -33,7 +33,9 @@
 //!   `POST /git/git-upload-pack`, with the version the caller expects in
 //!   `x-g1t-edge-version`: `409` with `x-g1t-edge: behind` unless the
 //!   mirror is at exactly that version (and no sync is changing its refs),
-//!   else `git http-backend`'s answer, streamed both ways.
+//!   or when a fetch wants an object or ref the mirror does not have (the
+//!   version asked for can trail the repository's for a moment); else
+//!   `git http-backend`'s answer, streamed both ways.
 //! - Anything else, receive-pack included: `403`.
 //!
 //! The Artifacts token is given to git in its environment, never on a
@@ -631,12 +633,38 @@ fn serve_git(edge: &Edge, request: Request, endpoint: &str, query: &str) -> (u16
         let state = edge.state();
         if state.changing { None } else { state.version }
     };
-    if expected.is_none() || expected != current {
+    let behind = |request: Request| {
         let behind = Header::from_bytes(EDGE_HEADER.as_bytes(), &b"behind"[..]).expect("a valid header");
         respond(request, Response::empty(409).with_header(behind));
-        return (409, 0);
+        (409, 0)
+    };
+    if expected.is_none() || expected != current {
+        return behind(request);
     }
-    match backend(edge, request, endpoint, query) {
+    // A fetch is answered only when the mirror has every object and ref it
+    // wants. The version the repos service asks for is the one it has in
+    // hand, which can trail the repository's for a moment after a merge (an
+    // isolate's copy, a read replica): the mirror is then at that older
+    // version too, without the new commit, and upload-pack would die on the
+    // want (git says `expected 'packfile'`). Behind, the fetch goes to
+    // Artifacts, and the edge is told to catch up.
+    let mut request = request;
+    let body = if endpoint == "git-upload-pack" {
+        match read_fetch(&mut request) {
+            Some(body) => {
+                if let Some(missing) = missing_wants(&edge.mirror(), &body, header(&request, "content-encoding")) {
+                    eprintln!("g1t-runner: gitedge: behind its version: the mirror has no {missing}");
+                    return behind(request);
+                }
+                Some(body)
+            }
+            // Too large, or cut short: the store answers it.
+            None => return behind(request),
+        }
+    } else {
+        None
+    };
+    match backend(edge, request, endpoint, query, body) {
         Ok(served) => served,
         Err(error) => {
             eprintln!("g1t-runner: gitedge: git http-backend failed: {error:#}");
@@ -645,10 +673,91 @@ fn serve_git(edge: &Edge, request: Request, endpoint: &str, query: &str) -> (u16
     }
 }
 
-/// Runs `git http-backend` as CGI for one request: its body is streamed to
-/// the backend while the backend's answer is read, and the answer streamed
-/// back with the CGI headers as HTTP headers. Nothing is held whole.
-fn backend(edge: &Edge, mut request: Request, endpoint: &str, query: &str) -> Result<(u16, u64)> {
+/// The most a fetch's request may be for the edge to read it and check its
+/// wants. Haves make a fetch's request grow; past this, the store answers.
+const MAX_FETCH_BODY: u64 = 16 * 1024 * 1024;
+
+/// A fetch's request body, read whole (as sent: gzip stays gzip), or None
+/// when it is larger than `MAX_FETCH_BODY` or cannot be read.
+fn read_fetch(request: &mut Request) -> Option<Vec<u8>> {
+    let mut body = Vec::new();
+    request.as_reader().take(MAX_FETCH_BODY + 1).read_to_end(&mut body).ok()?;
+    (body.len() as u64 <= MAX_FETCH_BODY).then_some(body)
+}
+
+/// The objects (`want <oid>`) and refs (`want-ref <ref>`) a fetch's request
+/// wants, in protocol v0 or v2, from its pkt-lines. `encoding` is the
+/// request's Content-Encoding: git compresses a large request with gzip.
+pub(crate) fn wants(body: &[u8], encoding: Option<&str>) -> Option<(Vec<String>, Vec<String>)> {
+    let decoded;
+    let body = if encoding.is_some_and(|encoding| encoding.trim().eq_ignore_ascii_case("gzip") || encoding.trim().eq_ignore_ascii_case("x-gzip")) {
+        let mut out = Vec::new();
+        flate2::read::GzDecoder::new(body).take(4 * MAX_FETCH_BODY).read_to_end(&mut out).ok()?;
+        decoded = out;
+        decoded.as_slice()
+    } else {
+        body
+    };
+    let (mut objects, mut refs) = (Vec::new(), Vec::new());
+    let mut at = 0;
+    while at + 4 <= body.len() {
+        let length = usize::from_str_radix(std::str::from_utf8(&body[at..at + 4]).ok()?, 16).ok()?;
+        // Flush, delimiter and response-end packets carry nothing.
+        if length < 4 {
+            at += 4;
+            continue;
+        }
+        let line = std::str::from_utf8(body.get(at + 4..at + length)?).ok()?.trim_end_matches('\n');
+        at += length;
+        if let Some(rest) = line.strip_prefix("want-ref ") {
+            refs.push(rest.trim().to_owned());
+        } else if let Some(rest) = line.strip_prefix("want ") {
+            // In v0 the first want carries the capabilities after its id.
+            objects.push(rest.split_whitespace().next()?.to_owned());
+        }
+    }
+    Some((objects, refs))
+}
+
+/// What the mirror lacks of what a fetch wants (`a1b2c3…` or `refs/…`), or
+/// None when it has all of it. A request that cannot be read is answered
+/// by upload-pack, which says why.
+fn missing_wants(mirror: &Path, body: &[u8], encoding: Option<&str>) -> Option<String> {
+    let (objects, refs) = wants(body, encoding)?;
+    if !objects.is_empty() {
+        let checked = Command::new("git")
+            .current_dir(mirror)
+            .args(["cat-file", "--batch-check=%(objectname)"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .and_then(|mut child| {
+                let mut stdin = child.stdin.take().expect("piped");
+                // Written from a thread, so a long list cannot fill both pipes.
+                let list = objects.join("\n") + "\n";
+                let writer = std::thread::spawn(move || io::Write::write_all(&mut stdin, list.as_bytes()));
+                let output = child.wait_with_output()?;
+                let _ = writer.join();
+                Ok(output)
+            });
+        match checked {
+            Ok(output) => {
+                if let Some(line) = String::from_utf8_lossy(&output.stdout).lines().find(|line| line.ends_with(" missing")) {
+                    return Some(line.trim_end_matches(" missing").to_owned());
+                }
+            }
+            Err(error) => return Some(format!("way to check what it has ({error})")),
+        }
+    }
+    refs.into_iter().find(|name| git_with(mirror, &["show-ref", "--verify", "--quiet", name], &[]).is_err())
+}
+
+/// Runs `git http-backend` as CGI for one request: its body (`body`, when
+/// it was read already to check its wants) is passed to the backend while
+/// the backend's answer is read, and the answer streamed back with the CGI
+/// headers as HTTP headers. No pack is ever held whole.
+fn backend(edge: &Edge, mut request: Request, endpoint: &str, query: &str, body: Option<Vec<u8>>) -> Result<(u16, u64)> {
     let post = *request.method() == Method::Post;
     let mut command = Command::new("git");
     command.arg("http-backend").current_dir(&edge.root);
@@ -673,7 +782,7 @@ fn backend(edge: &Edge, mut request: Request, endpoint: &str, query: &str) -> Re
             command.env(variable, value);
         }
     }
-    if let Some(length) = request.body_length() {
+    if let Some(length) = body.as_ref().map(Vec::len).or_else(|| request.body_length()) {
         command.env("CONTENT_LENGTH", length.to_string());
     }
     if let Some(address) = request.remote_addr() {
@@ -703,7 +812,11 @@ fn backend(edge: &Edge, mut request: Request, endpoint: &str, query: &str) -> Re
     if let Some(mut stdin) = child.stdin.take() {
         // The backend may stop reading early (a bad request): what it
         // answers is still read below.
-        if let Err(error) = io::copy(request.as_reader(), &mut stdin)
+        let passed = match &body {
+            Some(body) => io::Write::write_all(&mut stdin, body),
+            None => io::copy(request.as_reader(), &mut stdin).map(|_| ()),
+        };
+        if let Err(error) = passed
             && error.kind() != io::ErrorKind::BrokenPipe
         {
             eprintln!("g1t-runner: gitedge: could not pass the request's body on: {error}");
@@ -803,6 +916,39 @@ mod tests {
         assert_eq!(cgi_status("200"), Some(200));
         assert_eq!(cgi_status("nope"), None);
         assert_eq!(cgi_status("999 Whatever"), None);
+    }
+
+    fn pkt(line: &str) -> String {
+        format!("{:04x}{line}", line.len() + 4)
+    }
+
+    #[test]
+    fn a_fetch_says_what_it_wants() {
+        let a = "a".repeat(40);
+        let b = "b".repeat(40);
+        // Protocol v2: capabilities, a delimiter, the arguments.
+        let v2 = [pkt("command=fetch
+"), pkt("object-format=sha1
+"), "0001".to_owned(), pkt("thin-pack
+"), pkt("deepen 1
+"), pkt(&format!("want {a}
+")), pkt("want-ref refs/heads/main
+"), pkt(&format!("have {b}
+")), pkt("done
+"), "0000".to_owned()].concat();
+        assert_eq!(wants(v2.as_bytes(), None), Some((vec![a.clone()], vec!["refs/heads/main".to_owned()])));
+        // Protocol v0: the first want carries the capabilities.
+        let v0 = [pkt(&format!("want {a} multi_ack_detailed side-band-64k thin-pack ofs-delta agent=git/2.39.5
+")), pkt(&format!("want {b}
+")), "0000".to_owned(), pkt("done
+")].concat();
+        assert_eq!(wants(v0.as_bytes(), None), Some((vec![a.clone(), b.clone()], vec![])));
+        // Gzipped, as git sends a large request.
+        let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        std::io::Write::write_all(&mut gzip, v2.as_bytes()).unwrap();
+        assert_eq!(wants(&gzip.finish().unwrap(), Some("gzip")).map(|(objects, _)| objects), Some(vec![a]));
+        // Not pkt-lines.
+        assert_eq!(wants(b"zzzz", None), None);
     }
 
     #[test]

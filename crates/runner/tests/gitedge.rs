@@ -355,3 +355,53 @@ fn a_snapshot_restores_an_empty_edge_to_its_version() {
     assert_eq!(put(&third, "x", &snapshot), 400);
     assert!(!first.log().contains(TOKEN) && !second.log().contains(TOKEN));
 }
+
+/// A protocol v2 fetch of `want` at depth 1, as raw pkt-lines.
+fn fetch_body(want: &str) -> Vec<u8> {
+    let pkt = |line: &str| format!("{:04x}{line}", line.len() + 4);
+    [pkt("command=fetch\n"), pkt("object-format=sha1\n"), "0001".to_owned(), pkt("deepen 1\n"), pkt(&format!("want {want}\n")), pkt("done\n"), "0000".to_owned()]
+        .concat()
+        .into_bytes()
+}
+
+#[test]
+fn a_fetch_for_what_the_mirror_lacks_is_behind() {
+    let root = scratch("wants");
+    let work = root.join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    git(&work, &["init", "--quiet", "--initial-branch=main"]);
+    commit(&work, "a.txt", "one\n");
+    let origin = root.join("origin.git");
+    git(&root, &["clone", "--bare", "--quiet", work.to_str().unwrap(), origin.to_str().unwrap()]);
+    git(&work, &["remote", "add", "origin", origin.to_str().unwrap()]);
+    let edge = Edge::start(&root.join("edge"));
+    edge.sync(&file_url(&origin), 1);
+    assert_eq!(edge.settled(), json!(1));
+    let had = git(&work, &["rev-parse", "HEAD"]);
+    // A commit the store has and the mirror does not, as right after a
+    // merge when the version asked for trails the repository's.
+    commit(&work, "b.txt", "two\n");
+    git(&work, &["push", "--quiet", "origin", "main"]);
+    let new = git(&work, &["rev-parse", "HEAD"]);
+    let fetch = |want: &str| {
+        match ureq::post(&edge.url("/git/git-upload-pack"))
+            .set("x-g1t-edge-version", "1")
+            .set("git-protocol", "version=2")
+            .set("content-type", "application/x-git-upload-pack-request")
+            .send_bytes(&fetch_body(want))
+        {
+            Ok(response) => (response.status(), response.header("x-g1t-edge").map(str::to_owned)),
+            Err(ureq::Error::Status(status, response)) => (status, response.header("x-g1t-edge").map(str::to_owned)),
+            Err(error) => panic!("{error}"),
+        }
+    };
+    assert_eq!(fetch(&had), (200, None));
+    assert_eq!(fetch(&new), (409, Some("behind".to_owned())));
+    assert!(edge.log().contains(&format!("the mirror has no {new}")), "{}", edge.log());
+    // Once it has caught up, it answers.
+    edge.sync(&file_url(&origin), 2);
+    assert_eq!(edge.settled(), json!(2));
+    let clone = root.join("clone");
+    assert_ok(&edge_git(&root, 2, &["clone", "--quiet", "--depth", "1", &edge.url("/git"), clone.to_str().unwrap()]), "a clone after the sync");
+    assert_eq!(git(&clone, &["rev-parse", "HEAD"]), new);
+}
