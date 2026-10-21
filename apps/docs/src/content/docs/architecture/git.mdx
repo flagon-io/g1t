@@ -118,8 +118,8 @@ gives the row back.
 A write that stops without knowing whether the store kept it (the store
 answered with an error, or stopped answering) marks its row `ended`, with
 the refs it asked for. A row also carries a lease, an hour from when it
-was taken (`LEASE_MS`): a 950 MB repository, the largest allowed, uploads
-well within it on any ordinary connection. What the lease cuts depends on the write:
+was taken (`LEASE_MS`): a push is at most 100 MB, which uploads well within
+it on any ordinary connection. What the lease cuts depends on the write:
 
 | Write                                                                                                                                                                | At its lease                                                                                                                      |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |

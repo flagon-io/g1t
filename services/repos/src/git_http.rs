@@ -704,7 +704,7 @@ pub fn size_refusal(violation: &SizeViolation) -> (String, Vec<String>) {
             "the push took too long".to_owned(),
             vec![
                 format!(
-                    "g1t takes a push for up to {}; this one was still arriving. A 950 MB repository, the largest g1t holds, uploads well within that on any ordinary connection.",
+                    "g1t takes a push for up to {}; this one was still arriving. A push is at most 100 MB, which uploads well within that on any ordinary connection.",
                     crate::public_storage::lease_words()
                 ),
                 "Push again from a faster connection, or in parts: https://docs.g1t.sh/guides/git/#size-limits.".to_owned(),

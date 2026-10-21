@@ -35,9 +35,9 @@ use crate::registry::Registry;
 /// whole, and one read whole after it is declined (git_http.rs); a branch
 /// copied chunk by chunk is refused its next chunk (land.rs). Writes of one
 /// pack in memory, and a native fork's one call to the store, are not cut:
-/// the lease assumes they have been answered by then. An hour: a 950 MB
-/// repository, the largest g1t holds (pack_limits.rs), uploads well within
-/// it on any ordinary connection. The copy lock's lease, the grants a
+/// the lease assumes they have been answered by then. An hour: a push is at most
+/// 100 MB (pack_limits.rs), which uploads well within it on any ordinary
+/// connection. The copy lock's lease, the grants a
 /// streamed copy may still take (`HOLD`) and a push's deadline all come
 /// from this one figure.
 pub const LEASE_MS: u64 = 60 * 60 * 1000;
