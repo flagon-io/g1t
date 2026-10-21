@@ -22,7 +22,9 @@
 //! and with what (never what they returned), what it touched, and each
 //! subagent thread as a session of its own under it, with the task it was
 //! given and what it reported. A call that waits for someone's approval is
-//! kept (`agent_approvals`) and shown on the session's page and in Needs
+//! kept (`agent_approvals`), its starter is told once in their inbox
+//! ([`APPROVAL_REQUESTED`], settled by [`APPROVAL_SETTLED`] when it stops
+//! waiting), and it is shown on the session's page and in Needs
 //! attention, where whoever started the session, or a workspace member with
 //! write access to its repository, allows or denies it
 //! (`answer_agent_session`); nobody answering within
@@ -42,6 +44,7 @@ use std::collections::BTreeMap;
 
 use g1t_contracts::agent_sessions::*;
 use g1t_contracts::credentials::{CreateRunCredentialArgs, CredentialUse, GitGrant, RunCredentialKind};
+use g1t_contracts::events::{NewEvent, Publish};
 use g1t_contracts::identity::{CreatedAccessToken, RemoveArgs};
 use g1t_contracts::access::{self, Capability};
 use g1t_contracts::ai::AiProvider;
@@ -880,9 +883,10 @@ impl ApprovalRow {
 // they compare as text.
 
 /// Keeps a call seen waiting, once: reading its event again changes nothing.
+/// It names the call only when it kept it just now, so its starter is told once.
 const KEEP_WAITING: &str = "INSERT OR IGNORE INTO agent_approvals
   (session_id, tool_use_id, workspace, repo, item, started_by, started_by_name, tool, summary, asked_at)
-  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)";
+  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) RETURNING tool_use_id";
 /// Takes a session's calls asked at or before ?3 from waiting, as declined for want of an answer.
 const TAKE_UNANSWERED: &str = "UPDATE agent_approvals SET status = 'expired', answered_at = ?1
   WHERE session_id = ?2 AND status = 'waiting' AND asked_at <= ?3 RETURNING *";
@@ -892,8 +896,9 @@ const TAKE_ANSWER: &str = "UPDATE agent_approvals SET status = ?1, answered_by =
 /// Puts back a call whose answer did not reach the session, so it waits again.
 const UNTAKE_ANSWER: &str = "UPDATE agent_approvals SET status = 'waiting', answered_by = NULL, answered_at = NULL
   WHERE session_id = ?1 AND tool_use_id = ?2 AND status IN ('allowed', 'denied')";
-/// A session ended: what still waits has nobody left to answer it.
-const END_WAITING: &str = "UPDATE agent_approvals SET status = 'ended', answered_at = ?1 WHERE session_id = ?2 AND status = 'waiting'";
+/// A session ended: what still waits has nobody left to answer it. Names the calls it ended.
+const END_WAITING: &str = "UPDATE agent_approvals SET status = 'ended', answered_at = ?1 WHERE session_id = ?2 AND status = 'waiting'
+  RETURNING tool_use_id";
 /// One call.
 const APPROVAL: &str = "SELECT * FROM agent_approvals WHERE session_id = ?1 AND tool_use_id = ?2";
 /// A workspace's calls still waiting and asked after ?2, newest first.
@@ -1642,12 +1647,17 @@ impl Integrations {
             self.end_run_session(run, &state.session, "done", None).await?;
         }
         self.end_run_session(run, &run.session_id, reason, run.result.clone()).await?;
-        // A call still waiting has nobody left to answer it.
-        self.db
+        // A call still waiting has nobody left to answer it, and its starter's item about it is done.
+        let ended = self
+            .db
             .prepare(END_WAITING)
             .bind(&[rfc3339(now_ms()).into(), run.session_id.as_str().into()])?
-            .run()
-            .await?;
+            .all()
+            .await?
+            .results::<Value>()?;
+        if !ended.is_empty() {
+            self.tell_settled(run, None, None, "The session ended while it waited").await;
+        }
         if let (Some(key), Some(vault)) = (key, &run.vault_id) {
             self.forget_vault(key, vault).await;
         }
@@ -1719,10 +1729,12 @@ impl Integrations {
 
     /// Keeps a call that waits for approval, once: reading the same event
     /// again leaves it as it is, answered or not. Its time starts when g1t
-    /// sees it, which is when anyone can be shown it.
+    /// sees it, which is when anyone can be shown it. Whoever started the
+    /// session is told the first time only, however often it is read.
     async fn keep_waiting(&self, run: &RunRow, tool_use_id: &str, tool: &str, summary: &str) -> Result<()> {
         let actor = run.actor();
-        self.db
+        let kept = self
+            .db
             .prepare(KEEP_WAITING)
             .bind(&[
                 run.session_id.as_str().into(),
@@ -1736,9 +1748,46 @@ impl Integrations {
                 summary.into(),
                 rfc3339(now_ms()).into(),
             ])?
-            .run()
+            .first::<Value>(None)
             .await?;
+        if kept.is_some() && !actor.username.is_empty() {
+            let (title, body) = approval_notice(&run.repo, run.item, tool, summary);
+            let data = ApprovalRequested {
+                workspace: run.workspace.clone(),
+                session_id: run.session_id.clone(),
+                tool_use_id: tool_use_id.to_owned(),
+                thread: approval_thread(&run.session_id, tool_use_id),
+                notify: vec![actor.username.clone()],
+                title,
+                body,
+                link: approval_link(&run.workspace, &run.session_id, tool_use_id),
+            };
+            self.publish(APPROVAL_REQUESTED, None, data).await;
+        }
         Ok(())
+    }
+
+    /// Tells the events service a run's call (or, with none, every call of
+    /// it) no longer waits, so its starter's item about it is done. `by` is
+    /// whoever answered it, by id.
+    async fn tell_settled(&self, run: &RunRow, tool_use_id: Option<&str>, by: Option<&str>, why: &str) {
+        let data = ApprovalSettled {
+            workspace: run.workspace.clone(),
+            session_id: run.session_id.clone(),
+            tool_use_id: tool_use_id.map(str::to_owned),
+            why: why.to_owned(),
+        };
+        self.publish(APPROVAL_SETTLED, by.map(str::to_owned), data).await;
+    }
+
+    /// Publishes one event, about no repository. A failure is logged and
+    /// left: nobody being told never holds up the session.
+    async fn publish<T: serde::Serialize>(&self, kind: &'static str, actor: Option<String>, data: T) {
+        let Some(events) = &self.events else { return };
+        let publish = Publish { events: vec![NewEvent { kind, source: "integrations", repo_id: None, actor, data }] };
+        if let Err(error) = g1t_kit::call::<_, Value>(events, "publish", &publish).await {
+            worker::console_error!("agent sessions: {kind} not published: {error}");
+        }
     }
 
     /// Declines the run's calls that waited [`APPROVAL_WAIT_MS`] with
@@ -1768,6 +1817,8 @@ impl Integrations {
                 key: Some(format!("approval:{}:expired", approval.tool_use_id)),
             };
             entries.push(note);
+            let why = format!("Nobody answered in {} minutes, so g1t declined it", APPROVAL_WAIT_MS / 60_000);
+            self.tell_settled(run, Some(&approval.tool_use_id), None, &why).await;
         }
         Ok(())
     }
@@ -1925,6 +1976,11 @@ impl Integrations {
             key: Some(format!("approval:{tool_use_id}:answered")),
         };
         self.record_run(&run, &run.session_id, vec![entry], Vec::new()).await?;
+        let why = match a.answer {
+            ApprovalAnswer::Allow => "Allowed",
+            ApprovalAnswer::Deny => "Denied",
+        };
+        self.tell_settled(&run, Some(tool_use_id), Some(&a.actor.id), why).await;
         Ok(Outcome::Ok(taken.approval()))
     }
 

@@ -30,6 +30,9 @@ To record your own harness's sessions, see
 
 **Sessions** is in Chat's sidebar, beside your channels and direct
 messages, under **Needs attention**, at `g1t.sh/<workspace>/-/chat/sessions`.
+Your own recent sessions are also listed with your direct messages under
+[**Recents**](/guides/chat/#recents), each with whether it's working,
+waiting on you or idle.
 It shows the sessions in every one of the workspace's repositories you can
 read. Links to its old address, `g1t.sh/<workspace>/-/work/sessions`, still
 work and go on to the same place.

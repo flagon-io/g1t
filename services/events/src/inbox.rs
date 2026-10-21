@@ -55,6 +55,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use g1t_contracts::agent_sessions::{APPROVAL_REQUESTED, APPROVAL_SETTLED, approval_thread, approval_threads};
 use g1t_contracts::credentials::Principal;
 use g1t_contracts::events::{Event, WorkspaceRenamed};
 use g1t_contracts::identity::{AGENT_ID, MembersAmongArgs, UsernamesArgs};
@@ -389,6 +390,7 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
 // | A deployment waits for your review | `workflow.completed` of its run, however it ended |
 // | A push protection bypass to review | `secret_scanning.bypass_reviewed` |
 // | A token waits for your approval | `token.approval_reviewed` |
+// | A hosted session's call waits for your approval | `agent_session.approval_settled`: answered, declined, or the session ended |
 // | A workspace invitation | `workspace_invitation.accepted`, `.declined`, `.revoked` |
 // | A scan's alerts | the next scan's summary with none open (`refresh_security_thread`) |
 
@@ -640,8 +642,12 @@ pub const CLOSES: [&str; 3] = ["pull.merged", "pull.closed", "work_item.closed"]
 
 /// What an event settles once its own notices are written: everything
 /// about a work item or pull request that is over, a pull request's
-/// previews with it. `actor` is who merged or closed it, by username.
+/// previews with it, and a hosted session's call that no longer waits.
+/// `actor` is who merged or closed it, or answered the call, by username.
 pub fn closes(event: &Event, actor: Option<&str>) -> Vec<Settle> {
+    if event.kind == APPROVAL_SETTLED {
+        return approval_settled(event, actor);
+    }
     if !CLOSES.contains(&event.kind.as_str()) {
         return Vec::new();
     }
@@ -663,6 +669,24 @@ pub fn closes(event: &Event, actor: Option<&str>) -> Vec<Settle> {
         settled.push(Settle::matching(format!("{repo_id}/deploy/*/{number}")).saying(why, actor));
     }
     settled
+}
+
+/// A hosted session's call answered, declined for want of an answer, or
+/// ended with its session no longer waits on its starter: that call's item,
+/// or with no call named every one of the session. Settled after a batch's
+/// notices are written, so a call that starts waiting and stops in the same
+/// batch (its session ended at once) is never left waiting in the inbox.
+fn approval_settled(event: &Event, actor: Option<&str>) -> Vec<Settle> {
+    let text = |key: &str| event.data[key].as_str().filter(|value| !value.is_empty()).map(str::to_owned);
+    let Some(session) = text("sessionId") else {
+        return Vec::new();
+    };
+    let why = text("why").unwrap_or_else(|| "No longer waiting".to_owned());
+    let scope = match text("toolUseId") {
+        Some(call) => Some(Settle::thread(approval_thread(&session, &call))),
+        None => approval_threads(&session).map(Settle::matching),
+    };
+    scope.map(|scope| scope.because(&[Reason::Agent]).saying(why, actor)).into_iter().collect()
 }
 
 /// The item a person's own comment or review settles: theirs on that
@@ -1527,7 +1551,8 @@ async fn deliver_events(db: &D1Database, sources: &Sources<'_>, events: &[Event]
 
 /// Events about a workspace rather than a repository, each naming who to
 /// tell (`notify`), what to say (`title`, `body`) and where it is (`link`):
-/// identity's personal access token approvals.
+/// identity's personal access token approvals, workspace invitations, and
+/// hosted sessions' calls waiting for approval (integrations).
 ///
 /// | Event | Who | Reason | Severity |
 /// | --- | --- | --- | --- |
@@ -1536,16 +1561,20 @@ async fn deliver_events(db: &D1Database, sources: &Sources<'_>, events: &[Event]
 /// | `workspace_invitation.created` | the person invited | review_requested | warning |
 /// | `workspace_invitation.accepted` | who invited them | author | success |
 /// | `workspace_invitation.declined` | who invited them | author | info |
+/// | `agent_session.approval_requested` | whoever started the session | agent | warning |
 ///
 /// An invitation's item for the person invited is done once it is
 /// accepted, declined or revoked (`workspace_invitation.revoked`, which
-/// tells nobody).
-pub const WORKSPACE_EVENTS: [&str; 5] = [
+/// tells nobody). A waiting call's is done once it is answered, declined
+/// for want of an answer, or its session ends
+/// (`agent_session.approval_settled`, which tells nobody).
+pub const WORKSPACE_EVENTS: [&str; 6] = [
     "token.approval_requested",
     "token.approval_reviewed",
     "workspace_invitation.created",
     "workspace_invitation.accepted",
     "workspace_invitation.declined",
+    APPROVAL_REQUESTED,
 ];
 
 /// Events that close what a workspace invitation asked of its person.
@@ -1558,6 +1587,8 @@ pub fn workspace_notices(event: &Event, actor: Option<&str>) -> (String, Vec<Not
     let text = |key: &str| data[key].as_str().unwrap_or_default().to_owned();
     let (reason, severity) = match event.kind.as_str() {
         "token.approval_requested" | "workspace_invitation.created" => (Reason::ReviewRequested, Severity::Warning),
+        // An agent waits on its starter: Needs you, as g1t stopping on a pull request is.
+        APPROVAL_REQUESTED => (Reason::Agent, Severity::Warning),
         "workspace_invitation.accepted" => (Reason::Author, Severity::Success),
         _ => (Reason::Author, Severity::Info),
     };
@@ -3703,6 +3734,43 @@ mod tests {
         let (_, told) = workspace_notices(&reviewed, None);
         assert_eq!(told[0].reason, Reason::Author);
         assert!(WORKSPACE_EVENTS.contains(&"token.approval_reviewed"));
+    }
+
+    #[test]
+    fn a_hosted_sessions_waiting_call_needs_its_starter_until_it_is_settled() {
+        let data = g1t_contracts::agent_sessions::ApprovalRequested {
+            workspace: "acme".into(),
+            session_id: "ses_1".into(),
+            tool_use_id: "sevt_3".into(),
+            thread: approval_thread("ses_1", "sevt_3"),
+            notify: vec!["Ada".into()],
+            title: "Your hosted session on #4 waits for your approval to use bash".into(),
+            body: "bash: npm install".into(),
+            link: "/acme/-/chat/sessions/ses_1#approval-sevt_3".into(),
+        };
+        let mut asked = event(APPROVAL_REQUESTED, None, serde_json::to_value(&data).unwrap());
+        asked.repo_id = None;
+        assert!(wants(&asked).is_none(), "about no repository");
+        let (thread, told) = workspace_notices(&asked, None);
+        assert_eq!(thread, "agent-session:ses_1/approval/sevt_3");
+        assert_eq!(told.len(), 1);
+        assert_eq!((told[0].username.as_str(), told[0].reason, told[0].severity), ("ada", Reason::Agent, Severity::Warning));
+        assert_eq!(told[0].body, "bash: npm install");
+        // Answered: that call's item is done, saying how and by whom, once the
+        // batch's notices are written, so one asked in the same batch is settled too.
+        let answered = event(APPROVAL_SETTLED, Some("usr_bea"), json!({ "workspace": "acme", "sessionId": "ses_1", "toolUseId": "sevt_3", "why": "Allowed" }));
+        assert!(settles(&answered, Some("bea")).is_empty(), "not before the batch's notices");
+        let settled = closes(&answered, Some("bea"));
+        assert_eq!(settled.len(), 1);
+        assert_eq!(settled[0].scope, Scope::Thread("agent-session:ses_1/approval/sevt_3".into()));
+        assert_eq!((settled[0].reasons.as_slice(), settled[0].why.as_deref(), settled[0].by.as_deref()), (&[Reason::Agent][..], Some("Allowed"), Some("bea")));
+        // The session ended: every call of it, and no other session's.
+        let ended = event(APPROVAL_SETTLED, None, json!({ "workspace": "acme", "sessionId": "ses_1", "why": "The session ended while it waited" }));
+        assert_eq!(closes(&ended, None)[0].scope, Scope::Matching("agent-session:ses_1/approval/*".into()));
+        let wild = event(APPROVAL_SETTLED, None, json!({ "workspace": "acme", "sessionId": "*", "why": "x" }));
+        assert!(closes(&wild, None).is_empty(), "never a pattern wider than one session");
+        assert!(closes(&event(APPROVAL_SETTLED, None, json!({ "workspace": "acme" })), None).is_empty());
+        assert!(!WORKSPACE_EVENTS.contains(&APPROVAL_SETTLED), "settling tells nobody");
     }
 
     #[test]

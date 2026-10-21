@@ -285,9 +285,24 @@ acting for one: a session never approves its own calls.
   transcript shows a call, with anything that looks like a secret hidden;
   never its whole input) and how long it has left. **Allow** lets it run;
   **Deny** turns it down, with an optional reason that the session is
-  told. The call also shows in **Needs attention** in Chat's sidebar for
-  everyone who may answer it, newest first beside your notifications;
-  **Review** opens the session.
+  told.
+- **Answer it from Needs attention.** The call also shows in **Needs
+  attention** in Chat's sidebar for everyone who may answer it, newest
+  first beside your notifications. Its card has the same summary, how
+  long the call has left, and **Allow**, **Deny** and **Review**: Allow
+  and Deny answer it where you are, on whatever page you're on, and the
+  card leaves once the answer is sent. If it's too late (someone else
+  answered, the 10 minutes ran out, or the session ended), the card says
+  why and then leaves. **Review** opens the session's page at the call,
+  where you can deny it with a reason.
+- **Whoever started the session is told.** The first time g1t sees a call
+  waiting, it puts an item in their [inbox](/guides/notifications/), under
+  **Needs you**: "Your hosted session on #12 waits for your approval to
+  use bash", with the call's one-line summary, linked to the call on the
+  session's page. It is sent once per call, however often the session is
+  read, and marked done by itself once the call is answered, declined or
+  its session ends. In Needs attention the call shows once, as the card
+  you can answer, not also as the notification.
 - **Nobody answers within 10 minutes**, and g1t declines the call, notes
   "g1t declined a call that waited 10 minutes for approval and nobody
   answered" in the transcript, and tells the session to carry on without

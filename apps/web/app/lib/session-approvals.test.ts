@@ -3,7 +3,19 @@ import { test } from "node:test";
 
 import type { AgentApproval, InboxItem } from "@g1t/contracts";
 
-import { approvalWhat, attentionEntries, attentionKey, readAnswer, readMessage, timeLeft, toolName } from "./session-approvals.ts";
+import {
+  approvalKey,
+  approvalOfItem,
+  approvalWhat,
+  attentionEntries,
+  attentionKey,
+  readAnswer,
+  readApprovalTarget,
+  readMessage,
+  refusedForGood,
+  timeLeft,
+  toolName,
+} from "./session-approvals.ts";
 
 const form = (fields: Record<string, string>) => {
   const data = new FormData();
@@ -75,4 +87,30 @@ test("Needs attention holds notifications and waiting calls, newest first, witho
     now,
   );
   assert.deepEqual(entries.map(attentionKey), ["thr_new", "approval:ses_1:sevt_1", "thr_old"]);
+});
+
+test("a notification about a waiting call gives way to the call, and one about a call no longer waiting is left out", () => {
+  const now = Date.parse("2026-10-21T12:05:00Z");
+  const told = (id: string, call: string, updatedAt: string) =>
+    ({ id, updatedAt, event: "agent_session.approval_requested", url: `/acme/-/chat/sessions/ses_1#approval-${call}` }) as InboxItem;
+  assert.deepEqual(approvalOfItem(told("thr_1", "sevt_1", "2026-10-21T12:02:00Z")), { sessionId: "ses_1", toolUseId: "sevt_1" });
+  assert.equal(approvalOfItem({ event: "pull.stalled", url: "/acme/web/pull/1" }), null);
+  const items = [told("thr_1", "sevt_1", "2026-10-21T12:02:00Z"), told("thr_2", "sevt_gone", "2026-10-21T12:01:00Z"), item("thr_pr", "2026-10-21T12:00:00Z")];
+  // The calls read: the waiting one shows once, as the call; the answered one's notification is left out.
+  assert.deepEqual(attentionEntries(items, [approval("sevt_1", "2026-10-21T12:02:00Z")], now).map(attentionKey), ["approval:ses_1:sevt_1", "thr_pr"]);
+  // The calls not read (yet, or at all): the notifications show, as links.
+  assert.deepEqual(attentionEntries(items, null, now).map(attentionKey), ["thr_1", "thr_2", "thr_pr"]);
+  // A call answered here leaves at once, as a call and as a notification.
+  const gone = new Set([approvalKey({ sessionId: "ses_1", toolUseId: "sevt_1" })]);
+  assert.deepEqual(attentionEntries(items, [approval("sevt_1", "2026-10-21T12:02:00Z")], now, gone).map(attentionKey), ["thr_pr"]);
+  assert.deepEqual(attentionEntries(items, null, now, gone).map(attentionKey), ["thr_2", "thr_pr"]);
+});
+
+test("an answer from Needs attention names its session's repository and session; a refusal for good drops the card", () => {
+  assert.deepEqual(readApprovalTarget(form({ repo: " acme/web ", sessionId: "ses_1" })), { repo: { namespace: "acme", name: "web" }, sessionId: "ses_1" });
+  assert.ok("error" in readApprovalTarget(form({ repo: "acme", sessionId: "ses_1" })));
+  assert.ok("error" in readApprovalTarget(form({ repo: "acme/web/x", sessionId: "ses_1" })));
+  assert.ok("error" in readApprovalTarget(form({ repo: "acme/web" })));
+  for (const code of ["conflict", "not_found", "forbidden"]) assert.equal(refusedForGood(code), true, code);
+  for (const code of ["unavailable", "invalid", "rate_limited"]) assert.equal(refusedForGood(code), false, code);
 });
