@@ -140,6 +140,16 @@ goes through the runner Worker's outbound handler (`src/egress.ts`,
 `src/guard.ts`), which decides what may leave. Other protocols have no
 route out at all.
 
+A workflow job's git never leaves Cloudflare for a fetch from g1t.sh: its
+HTTPS to g1t.sh passes the handler, which hands a signed-in
+`git-upload-pack` request (a clone or fetch, such as `actions/checkout`'s)
+to `repos` over the service binding, as the website's front door does,
+and streams the answer back (`src/internal-git.ts`). `repos` authorizes
+it as any other clone, and answers it from the git edge. Pushes,
+anonymous clones and everything else at g1t.sh go out as before, and so
+does a fetch `repos` could not answer, so this path never fails a
+checkout.
+
 ### Secrets a job never holds
 
 A secret can be **brokered**: the job sees a stand-in, `g1tsec_…`, and
