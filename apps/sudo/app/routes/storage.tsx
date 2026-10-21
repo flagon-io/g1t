@@ -92,7 +92,7 @@ export default function Storage({ loaderData, actionData }: Route.ComponentProps
   const locks = list.filter((hold) => hold.kind === "copy_lock").length;
   // Sources a copy lock keeps from taking writes: one held past a copy's
   // usual time, or kept after its fork's call failed, stands out.
-  const blocked = holds ? blockedSources(list, holds.now) : [];
+  const blocked = holds ? blockedSources(list, holds.now, holds.more) : [];
   const summary = blockedSummary(blocked);
   const stalled = blocked.filter((source) => source.stalled).length;
   return (

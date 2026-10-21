@@ -6,6 +6,7 @@ import type { AdminLogEntry, Result, StorageHold, StorageHoldKind, StorageRecove
 import {
   MAX_REASON,
   RELEASE_ACTION,
+  FORK_RESERVE_WINDOW_SECONDS,
   SLOW_COPY_SECONDS,
   blockedSources,
   blockedSummary,
@@ -254,7 +255,7 @@ test("a copy lock still copying blocks its source's writes, but needs no look un
   assert.equal(copying!.stalled, false);
   assert.equal(copying!.attention, false);
   assert.equal(blockedSummary(blockedSources([listed({})], now)), null);
-  const slow = blockedSources([listed({ ageSeconds: SLOW_COPY_SECONDS })], now);
+  const slow = blockedSources([listed({ ageSeconds: SLOW_COPY_SECONDS }), fork], now);
   assert.deepEqual([slow[0]!.stalled, slow[0]!.attention], [false, true]);
   assert.equal(blockedSummary(slow), "A repository takes no writes: its copy into a fork is taking longer than a copy ordinarily does.");
 });
@@ -275,14 +276,15 @@ test("a copy lock kept after its fork's call failed, or past its lease, stands o
   assert.deepEqual([kept!.stalled, kept!.attention, kept!.fork?.outcome], [true, true, "fork for acme--site failed: INTERNAL_ERROR"]);
   // Another fork's ended reservation is not this lock's.
   const other = { ...ended, repo: { ...ended.repo, id: "rep_other" } };
-  assert.equal(blockedSources([listed({ ageSeconds: 300 }), other], now)[0]!.stalled, false);
+  const live = { ...ended, id: "srv_live", state: "held" as const, outcome: null };
+  assert.equal(blockedSources([listed({ ageSeconds: 300 }), other, live], now)[0]!.stalled, false);
   // Past its lease, or older code's lock without one.
   assert.equal(blockedSources([listed({ leaseUntil: "2026-10-21T10:00:00Z" })], now)[0]!.stalled, true);
   assert.equal(blockedSources([listed({ leaseUntil: null, ageSeconds: null })], now)[0]!.stalled, true);
   // Oldest first, and reservations are not sources.
   const fork = (id: string) => ({ ...ended, id: `srv_${id}`, repo: { ...ended.repo, id } });
   const two = blockedSources(
-    [listed({ id: "rep_a", ageSeconds: 100 }), listed({ id: "rep_b", ageSeconds: 9000, leaseUntil: "2026-10-21T09:00:00Z" }), fork("rep_elsewhere")],
+    [listed({ id: "rep_a", ageSeconds: 30 }), listed({ id: "rep_b", ageSeconds: 9000, leaseUntil: "2026-10-21T09:00:00Z" }), fork("rep_elsewhere")],
     now,
   );
   assert.deepEqual(
@@ -294,4 +296,15 @@ test("a copy lock kept after its fork's call failed, or past its lease, stands o
     "A repository takes no writes: its copy into a fork did not finish cleanly. A copy that did not finish cleanly keeps its lock until it is released here, once it is provably abandoned.",
   );
   assert.match(blockedSummary(two)!, /^A repository takes no writes/, "only the one past its lease needs a look");
+});
+
+test("a copy lock whose fork holds no live reservation a minute after it locked is stalled, unless the listing left some out", () => {
+  const now = "2026-10-21T10:05:00Z";
+  // Staff may release the fork's ended reservation at once, while its lock
+  // lasts to its lease and grace.
+  assert.equal(blockedSources([listed({ ageSeconds: FORK_RESERVE_WINDOW_SECONDS })], now)[0]!.stalled, false, "the fork reserves just after it locks");
+  const [unreserved] = blockedSources([listed({ ageSeconds: FORK_RESERVE_WINDOW_SECONDS + 1 })], now);
+  assert.deepEqual([unreserved!.stalled, unreserved!.attention, unreserved!.fork], [true, true, null]);
+  // A listing that left holds out may have left the reservation out too.
+  assert.equal(blockedSources([listed({ ageSeconds: 300 })], now, 3)[0]!.stalled, false);
 });

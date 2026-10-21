@@ -260,16 +260,33 @@ impl<S: GitStore> Repos<S> {
                 }
                 return Err(error);
             }
-            // The lock first. Either way the whole reservation goes, the
-            // source's in-flight share with it, and the fork is counted at
-            // what was measured: what it is billed from (stored_bytes).
-            let unlocked = self.registry.unlock_copy(&source, &fork).await?;
+            // The settle first, so nothing after it can leave the fork
+            // unbilled: the whole reservation goes, the source's in-flight
+            // share with it, and the fork is counted at what was measured,
+            // what it is billed from (stored_bytes). A fork counts in full
+            // by policy, even of its default branch only. Then the lock;
+            // an unlock that fails is said, never returned, so the settle
+            // is neither skipped nor made twice, and the lock is left for
+            // staff (it reads as stalled, public_storage.rs COPY_LOCKED).
             self.registry.finish_public(&reservation, measured).await?;
-            if !unlocked {
+            let gone = match self.registry.unlock_copy(&source, &fork).await {
+                Ok(unlocked) => !unlocked,
+                Err(error) => {
+                    worker::console_error!(
+                        "{}",
+                        serde_json::json!({ "copy_unlock_failed": source.id, "fork": fork.id, "error": error.to_string() })
+                    );
+                    false
+                }
+            };
+            if gone {
                 // Staff released the lock while the store copied, so the
-                // source may have taken writes the fork holds and the
-                // measured size misses: a lower bound, never more. Said
-                // for staff, whose drift report measures what it holds.
+                // source may have taken writes the fork holds and the count
+                // misses.
+                // `measured` is the source's stored_bytes taken right after
+                // the lock, and stored_bytes only grows, so the count is a
+                // lower bound and never more than the fork holds. Said for
+                // staff, whose drift report measures what it holds.
                 worker::console_warn!(
                     "{}",
                     serde_json::json!({

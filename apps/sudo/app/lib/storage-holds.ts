@@ -188,6 +188,13 @@ export function releasedNotice(params: URLSearchParams): { done: string; auditMi
  */
 export const SLOW_COPY_SECONDS = 15 * 60;
 
+/**
+ * How long after a fork locks its source its reservation may not be there
+ * yet: it reserves just after it locks (the repos service's
+ * public_storage.rs `FORK_RESERVE_WINDOW_MS`).
+ */
+export const FORK_RESERVE_WINDOW_SECONDS = 60;
+
 /** A repository a copy lock keeps from taking writes, and what is known of its copy. */
 export type BlockedSource = {
   lock: StorageHold;
@@ -196,8 +203,10 @@ export type BlockedSource = {
   /**
    * The copy did not finish cleanly: the fork's call to the store failed
    * in a way that may still be copying (its reservation ended, and the lock
-   * stays for staff), or the lock's lease has passed. Its source's writers
-   * are told it can take a few hours; it stays until staff release it.
+   * stays for staff), its fork holds no live reservation a minute after it
+   * locked (staff may release an ended one at once), or the lock's lease
+   * has passed. Its source's writers are told it can take a few hours, as
+   * the repos service decides it (public_storage.rs `COPY_LOCKED`).
    */
   stalled: boolean;
   /** Stalled, or held longer than a copy ordinarily takes. */
@@ -208,17 +217,20 @@ export type BlockedSource = {
  * Every source a copy lock keeps from taking writes (pushes, commits from
  * the site, merges, pull request updates), oldest first. The lock and its
  * fork's reservation are separate holds: a lock's target is the fork, and
- * a native fork's reservation is charged to the fork itself.
+ * a native fork's reservation is charged to the fork itself. `more`: how
+ * many holds the listing left out; when it left some out, a fork's
+ * reservation missing from it says nothing.
  */
-export function blockedSources(holds: StorageHold[], now: string): BlockedSource[] {
+export function blockedSources(holds: StorageHold[], now: string, more = 0): BlockedSource[] {
   const at = Date.parse(now);
   return holds
     .filter((hold) => hold.kind === "copy_lock")
     .map((lock) => {
-      const fork =
-        holds.find((hold) => hold.kind === "reservation" && hold.operation === "fork" && lock.target != null && hold.repo.id === lock.target.id) ?? null;
+      const forks = holds.filter((hold) => hold.kind === "reservation" && hold.operation === "fork" && lock.target != null && hold.repo.id === lock.target.id);
+      const fork = forks.find((hold) => hold.state === "held") ?? forks[0] ?? null;
       const leaseOver = lock.leaseUntil == null || Date.parse(lock.leaseUntil) < at;
-      const stalled = fork?.state === "ended" || leaseOver;
+      const unreserved = more === 0 && fork?.state !== "held" && (lock.ageSeconds ?? Number.MAX_SAFE_INTEGER) > FORK_RESERVE_WINDOW_SECONDS;
+      const stalled = forks.some((hold) => hold.state === "ended") || unreserved || leaseOver;
       return { lock, fork, stalled, attention: stalled || (lock.ageSeconds ?? 0) >= SLOW_COPY_SECONDS };
     })
     .sort((a, b) => (b.lock.ageSeconds ?? Number.MAX_SAFE_INTEGER) - (a.lock.ageSeconds ?? Number.MAX_SAFE_INTEGER));

@@ -94,10 +94,11 @@ remote: acme/rocket is being copied into a fork, and takes no pushes until the c
 A copy ordinarily ends within a few minutes, and writes are taken again. A
 fork whose copy timed out may still be copying, so it holds the repository
 until its lease of an hour has passed; g1t staff release it then. Once the
-copy is known not to have finished cleanly, writes are refused with **This
-repository is being copied into a fork, and the copy did not finish
-cleanly, so it takes no writes until g1t staff have checked it. That can
-take a few hours. Try again later.**, and git prints the same.
+copy has taken longer than it should or did not finish cleanly, writes are
+refused with **This repository is being copied into a fork, and the copy
+has taken longer than it should, or did not finish cleanly, so it takes no
+writes until it ends or g1t staff have checked it. That can take a few
+hours. Try again later.**, and git prints the same.
 
 ### When forking is refused
 

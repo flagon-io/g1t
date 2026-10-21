@@ -50,7 +50,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // Repositories a fork's copy lock has kept from taking writes for longer
   // than a copy ordinarily takes, or after the copy did not finish cleanly
   // (the Storage holds page). Null when the repos service did not answer.
-  const blocked = holds.ok ? blockedSources(holds.value.holds, holds.value.now) : null;
+  const blocked = holds.ok ? blockedSources(holds.value.holds, holds.value.now, holds.value.more) : null;
   return {
     me: staff.email,
     now: Date.now(),
@@ -63,11 +63,26 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     signalsError: signals.ok ? null : signals.error,
     blockedWrites: blocked ? blocked.filter((source) => source.attention).length : null,
     stalledWrites: blocked ? blocked.filter((source) => source.stalled).length : 0,
+    // The listing stops at 200 holds: the card says when it left some out.
+    holdsLeftOut: holds.ok ? holds.value.more : 0,
   };
 }
 
 export default function Overview({ loaderData }: Route.ComponentProps) {
-  const { me, now, growth: people, growthError, overview, overviewError, signals, signalCount, signalsError, blockedWrites, stalledWrites } = loaderData;
+  const {
+    me,
+    now,
+    growth: people,
+    growthError,
+    overview,
+    overviewError,
+    signals,
+    signalCount,
+    signalsError,
+    blockedWrites,
+    stalledWrites,
+    holdsLeftOut,
+  } = loaderData;
   const months = overview?.months ?? [];
   const current = months.find((month) => month.month === overview?.month) ?? months.at(-1) ?? null;
   const previous = current ? (months[months.indexOf(current) - 1] ?? null) : null;
@@ -344,7 +359,13 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
               icon={<Lock size={15} />}
               label="Writes blocked"
               value={blockedWrites ?? "—"}
-              hint={blockedWrites == null ? "The repos service did not answer" : "Repositories a fork's copy lock has held too long"}
+              hint={
+                blockedWrites == null
+                  ? "The repos service did not answer"
+                  : holdsLeftOut > 0
+                    ? `Repositories a fork's copy lock has held too long, of the first 200 holds (${holdsLeftOut} not listed)`
+                    : "Repositories a fork's copy lock has held too long"
+              }
               tone={stalledWrites > 0 ? "danger" : (blockedWrites ?? 0) > 0 ? "warn" : undefined}
             />
           </div>
