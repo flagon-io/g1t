@@ -127,6 +127,10 @@ and in the one on [Services and contracts](https://docs.g1t.sh/architecture/serv
 covers the tool, the workflow, rollbacks, adding a unit and first-time
 setup.
 
+- **An urgent deploy** replaces the runner's sandboxes and git edges now,
+  stopping running jobs, instead of letting them finish for up to two hours:
+  Deploy run by hand with **urgent**. For incidents only; the checklist is
+  `docs/operations/urgent-deploys.md`.
 - **Migrations run before the code**, so the old code reads the new schema
   for a minute or more. Add tables and columns; change what rows mean in
   two deploys (code that reads both forms first); never drop what live code

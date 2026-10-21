@@ -20,7 +20,9 @@
 // --json (plan), --out FILE (plan), --no-migrations, --allow-dirty,
 // --rebuild-image, --rebuild-base, --since REV (Workers with no recorded
 // commit are taken to run REV), --prebuilt (deploy what `build` left in
-// each unit's outputs, building nothing); for build-base and image,
+// each unit's outputs, building nothing), --urgent (the runner's
+// sandboxes and edges are replaced now, stopping jobs mid-run: for a fix
+// that cannot wait for them to finish); for build-base and image,
 // --no-push, and for build-base, --no-cache.
 
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -86,7 +88,7 @@ import { withDeployWindow } from "./deploy/status-window.mjs";
 import { publishWebAssets, verifyWebAssets } from "./deploy/web-assets.mjs";
 
 const USAGE =
-  "usage: node scripts/deploy.mjs plan|deploy|build|outputs|migrate|manifest|doctor|install|build-base|image [--all] [--only a,b] [--skip a,b] [--force] [--rollback] [--concurrency N] [--stage S] [--json]";
+  "usage: node scripts/deploy.mjs plan|deploy|build|outputs|migrate|manifest|doctor|install|build-base|image [--all] [--only a,b] [--skip a,b] [--force] [--rollback] [--concurrency N] [--stage S] [--urgent] [--json]";
 
 function parseArgs(argv) {
   const opts = { command: argv[0], only: [], skip: [], concurrency: 4, force: false, all: false, json: false };
@@ -113,6 +115,7 @@ function parseArgs(argv) {
     else if (flag === "--since") opts.since = value();
     else if (flag === "--github-output") opts.githubOutput = true;
     else if (flag === "--prebuilt") opts.prebuilt = true;
+    else if (flag === "--urgent") opts.urgent = true;
     else throw new Error(`unknown flag ${arg}\n${USAGE}`);
   }
   if (!Number.isInteger(opts.concurrency) || opts.concurrency < 1) throw new Error("--concurrency is a whole number, 1 or more");
@@ -385,7 +388,7 @@ async function newBase(unit, { push = true, noCache = false, onLine = log } = {}
 }
 
 /** Builds (and unless `dryRun`, deploys) one unit. */
-async function ship(unit, decision, { head, subject, dirty, dryRun, docker, rebuildImage, rebuildBase, prebuilt }) {
+async function ship(unit, decision, { head, subject, dirty, dryRun, docker, rebuildImage, rebuildBase, prebuilt, urgent }) {
   const started = Date.now();
   const out = unitLogger(unit.id);
   const cwd = join(ROOT, unit.path);
@@ -407,8 +410,8 @@ async function ship(unit, decision, { head, subject, dirty, dryRun, docker, rebu
     if (unit.image) {
       // Wrangler is given the image by reference, so it builds nothing.
       const image = await runnerImage(unit, { dryRun, docker, rebuildImage, rebuildBase }, out);
-      args.push("--config", writeDeployConfig(unit, image.ref));
-      args.push("--containers-rollout", containersRollout(unit, decision, { rebuildImage, rebuildBase }));
+      args.push("--config", writeDeployConfig(unit, image.ref, undefined, { urgent }));
+      args.push("--containers-rollout", containersRollout(unit, decision, { rebuildImage, rebuildBase, urgent }));
       result.note = image.note;
     }
     // Tried again after a wait when Cloudflare, not what is deployed, is
@@ -570,6 +573,7 @@ async function deploy(stack, opts, { dryRun = false } = {}) {
     rebuildImage: opts.rebuildImage,
     rebuildBase: opts.rebuildBase,
     prebuilt: Boolean(opts.prebuilt),
+    urgent: Boolean(opts.urgent),
   };
   // A deploy run by hand shows on the repository's Deployments page; a
   // dirty tree is not a commit anyone can look at, so it is left out.

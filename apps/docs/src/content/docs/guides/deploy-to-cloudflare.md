@@ -379,7 +379,9 @@ alone. When it did, Cloudflare replaces sandboxes on the new image but
 leaves any that started within the last two hours
 (`rollout_active_grace_period` in `services/runner/wrangler.jsonc`) to
 finish first. A workflow job on g1t's machines runs for at most 60
-minutes, so a deploy never cuts one short.
+minutes, so a deploy never cuts one short. New jobs get the new image a
+few minutes after the rollout is marked complete. When a fix cannot wait
+for running jobs, make an [urgent deploy](#urgent-deploys).
 
 The standard sandbox is the instance type `standard-3` (2 vCPU, 8 GiB,
 16 GB), and so is `runs-on: g1t-2core`, in a class of its own; jobs that
@@ -454,6 +456,46 @@ On a new account, deploy a small server (an Express app with a
     list for `<account>/g1t-<app>` has only the two newest builds' tags
     (`GET /v2/<account>/g1t-<app>/tags/list`), and none once the app is
     taken down. The account holds 50 GB of images in all.
+
+## Urgent deploys
+
+Most of g1t ships in seconds: a Worker's new version takes every request
+once its deploy finishes. The runner is the exception. Its sandboxes and
+git edges are Cloudflare Containers, and an ordinary deploy lets a busy one
+finish its job first, for up to two hours. An urgent deploy replaces every
+one of them now. Use it when that wait is the problem: a security fix, a
+sandbox image that is broken or unsafe, an edge serving bad data.
+
+**What it does.** It deploys the runner whether or not it changed, and the
+deploy's container config sets `rollout_active_grace_period` to 0 for that
+deploy only (`services/runner/wrangler.jsonc` keeps its own). Every
+sandbox and git edge is replaced at once. **Jobs in the middle are
+stopped**, and fail; run them again once the deploy is done. Workers in the
+same deploy ship as they always do.
+
+**How to make one**, from the commit on `main` that has the fix:
+
+- **On g1t:** Actions → Deploy → Run workflow, tick **urgent**, run.
+- **From the CLI:** `g1t workflow run deploy.yml -F urgent=true`
+  (add `-f units=<more units>` to ship others with it).
+- **Over MCP:** the `workflow` tool's `dispatch`, workflow `deploy.yml`,
+  inputs `{"urgent": true}`.
+- **From a checkout**, when Actions itself is what is broken: with
+  Cloudflare credentials (`CLOUDFLARE_API_TOKEN`, or `CLOUDFLARE_API_KEY`
+  and `CLOUDFLARE_EMAIL`),
+  `node scripts/deploy.mjs deploy --only runner --force --urgent`.
+
+**Check that it took.** The deploy's log lists each container application
+with its version and "no rollout in progress" once Cloudflare has applied
+it; `npx wrangler containers list` in `services/runner` shows the same. Then start any job
+(for example `g1t workflow run ci.yml`): a job started a few minutes after
+the rollout runs on the new image.
+
+**Faster levers, without a deploy.** In sudo, Costs & margin → Platform
+pause: **compute** stops new jobs' sandboxes from starting, and **git
+edge** sends every clone to Artifacts. Each takes effect within 30
+seconds. Pause first if the fix will take a while, then make the urgent
+deploy, then resume.
 
 ## Rolling back
 

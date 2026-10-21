@@ -575,11 +575,12 @@ export function outsideImports(root, unit) {
  * default rollout goes in steps over wall-clock time, so with deploys
  * often apart a new version never reached every sandbox; `immediate`
  * replaces the idle ones at once, and `rollout_active_grace_period` still
- * keeps a sandbox in the middle of a job from being stopped.
+ * keeps a sandbox in the middle of a job from being stopped. An urgent
+ * deploy always rolls over (its config gives busy ones no grace).
  */
-export function containersRollout(unit, decision, { rebuildImage = false, rebuildBase = false } = {}) {
+export function containersRollout(unit, decision, { rebuildImage = false, rebuildBase = false, urgent = false } = {}) {
   const config = (file) => file.startsWith(`${unit.path}/`) && /wrangler\.jsonc?$/.test(file);
-  const changed = rebuildImage || rebuildBase || decision.image || (decision.files ?? []).some(config);
+  const changed = urgent || rebuildImage || rebuildBase || decision.image || (decision.files ?? []).some(config);
   return changed ? "immediate" : "none";
 }
 
