@@ -6,6 +6,10 @@
     "lib": ["ES2022", "ESNext.Disposable"],
     "strict": true,
     "noEmit": true,
+    // tsc keeps what it found in a .tsbuildinfo beside the config, and next
+    // time checks again only the files whose contents changed and the files
+    // they reach. CI keeps them between runs (ci.yml, the TypeScript job).
+    "incremental": true,
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
     "resolveJsonModule": true

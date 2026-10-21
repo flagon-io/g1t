@@ -1120,10 +1120,11 @@ fn rust_builds_go_through_sccache_before_cargo_and_report_after() {
     assert!(install_at < tests_at && tests_at < stats_at);
     let testing = json!({ "steps": { "affected": { "outputs": { "crates": "-p g1t-kit", "whole": "true" } } } });
     assert!(runs_with(&stats, &testing, Status::Failure));
-    // main's runs keep the caches pull requests restore from: only Rust.
+    // main's runs keep the caches pull requests restore from: Rust's test
+    // builds and tsc's build info; the site's build keeps nothing.
     assert!(ci.trigger("push").unwrap().branches.allows("main"));
     assert!(ci.trigger("pull_request").is_some());
-    for (id, on_push) in [("rust", true), ("typescript", false), ("build", false)] {
+    for (id, on_push) in [("rust", true), ("typescript", true), ("build", false)] {
         let job = ci.jobs.iter().find(|j| j.id == id).unwrap();
         for (event, expected) in [("push", on_push), ("pull_request", true)] {
             let mut contexts = Map::new();
@@ -1334,6 +1335,28 @@ fn workspace_crates() -> Vec<String> {
         .collect();
     names.sort();
     names
+}
+
+#[test]
+fn ci_keeps_only_tsc_build_info_between_type_checks() {
+    // tsc hashes every file it reads against its build info, so an entry
+    // from another commit never hides an error; a generated type kept from
+    // another commit could, so each run writes those again.
+    let ci = read("ci.yml");
+    let typescript = ci.jobs.iter().find(|j| j.id == "typescript").unwrap();
+    let at = typescript
+        .steps
+        .iter()
+        .position(|s| s.raw["with"]["key"].as_str().is_some_and(|k| k.starts_with("tsc-")))
+        .unwrap();
+    let kept = paths(&typescript.steps[at]);
+    assert!(!kept.is_empty() && kept.iter().all(|p| p.ends_with("/*.tsbuildinfo")), "{kept:?}");
+    let check = typescript
+        .steps
+        .iter()
+        .position(|s| s.run.as_deref() == Some("npm run typecheck"))
+        .unwrap();
+    assert!(at < check);
 }
 
 #[test]

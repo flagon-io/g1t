@@ -6,7 +6,7 @@
     "build": "react-router build",
     "test": "node --test app/**/*.test.ts",
     "dev": "react-router dev",
-    "typecheck": "wrangler types --include-env=false && react-router typegen && tsc -b --force",
+    "typecheck": "wrangler types --include-env=false && react-router typegen && tsc -p tsconfig.node.json && tsc -p tsconfig.cloudflare.json",
     "deploy": "npm run build && wrangler deploy",
     "cf-typegen": "wrangler types --include-env=false",
     "postinstall": "wrangler types --include-env=false"
