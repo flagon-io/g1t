@@ -110,6 +110,21 @@ impl Edge {
         self.log.lock().unwrap().clone()
     }
 
+    /// Waits for the log to hold every one of `lines`, and returns it: the
+    /// server writes a line before it answers, but the thread reading its
+    /// stderr may not have kept it yet when the answer arrives (#289).
+    fn logged(&self, lines: &[&str]) -> String {
+        let started = Instant::now();
+        loop {
+            let log = self.log();
+            if lines.iter().all(|line| log.contains(line)) {
+                return log;
+            }
+            assert!(started.elapsed() < Duration::from_secs(10), "the log never had {lines:?}:\n{log}");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
     fn sync(&self, remote: &str, version: u64) {
         let body = json!({ "remote": remote, "token": TOKEN, "version": version, "head": "refs/heads/main" });
         let response = ureq::post(&self.url("/sync")).send_json(body).unwrap();
@@ -246,7 +261,7 @@ fn the_edge_mirrors_a_repository_and_serves_it_to_git() {
     git(&work, &["push", "--quiet", "origin", ":refs/tags/light"]);
     edge.sync(&remote, 2);
     assert_eq!(edge.settled(), json!(2));
-    assert!(edge.log().contains("synced to version 2"), "{}", edge.log());
+    edge.logged(&["synced to version 2"]);
     // The old version is behind now: git is refused.
     assert!(!edge_git(&clones[0], 1, &["fetch", "--quiet", "origin"]).status.success());
     let trace = root.join("trace.txt");
@@ -261,7 +276,7 @@ fn the_edge_mirrors_a_repository_and_serves_it_to_git() {
     // A failed sync leaves the version, and the mirror still serves it.
     edge.sync(&file_url(&root.join("missing.git")), 3);
     assert_eq!(edge.settled(), json!(2));
-    assert!(edge.log().contains("the sync to version 3 failed"), "{}", edge.log());
+    edge.logged(&["the sync to version 3 failed"]);
     assert_ok(&edge_git(&root, 2, &["ls-remote", &git_url]), "ls-remote after a failed sync");
 
     // Syncs asked for together: the latest is where the mirror ends up.
@@ -270,10 +285,7 @@ fn the_edge_mirrors_a_repository_and_serves_it_to_git() {
     assert_eq!(edge.settled(), json!(4));
 
     // Each sync and git request is logged; the token never is.
-    let log = edge.log();
-    assert!(log.contains("GET info/refs 200"), "{log}");
-    assert!(log.contains("POST git-upload-pack 200"), "{log}");
-    assert!(log.contains("synced to version 1") && log.contains("repacked in full"), "{log}");
+    let log = edge.logged(&["GET info/refs 200", "POST git-upload-pack 200", "synced to version 1", "repacked in full", "synced to version 4"]);
     assert!(!log.contains(TOKEN), "the token was logged:\n{log}");
     drop(edge);
     let _ = std::fs::remove_dir_all(&root);
@@ -397,7 +409,7 @@ fn a_fetch_for_what_the_mirror_lacks_is_behind() {
     };
     assert_eq!(fetch(&had), (200, None));
     assert_eq!(fetch(&new), (409, Some("behind".to_owned())));
-    assert!(edge.log().contains(&format!("the mirror has no {new}")), "{}", edge.log());
+    edge.logged(&[&format!("the mirror has no {new}")]);
     // Once it has caught up, it answers.
     edge.sync(&file_url(&origin), 2);
     assert_eq!(edge.settled(), json!(2));
