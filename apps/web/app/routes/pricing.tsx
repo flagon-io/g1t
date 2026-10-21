@@ -100,7 +100,7 @@ const DEFAULT_FREE: Required<FreeTier> = {
   freePrivateStorageBytes: 1_000_000_000,
   auditRetentionDays: 7,
   planAuditRetentionDays: 90,
-  minChargeMicros: 5_000_000,
+  minChargeMicros: 1_000_000,
   gitOperationsIncluded: 50_000,
   paidStartCeilingMicros: 100_000_000,
   overageForgiveCostMicros: 50_000_000,
@@ -254,7 +254,7 @@ function rows(tier: Required<FreeTier>): Row[] {
     {
       what: "Actions cache",
       free: "2 GiB an entry and 10 GiB a repository, never charged",
-      plan: "The same limits, with what it stores at cost plus 20%",
+      plan: "2 GiB an entry and 100 GiB a repository, with what it stores at cost plus 20%",
     },
     {
       what: "Audit log",
@@ -563,8 +563,8 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         </Card>
       </ul>
       <p className="mt-3 text-sm text-muted">
-        No card is charged less than {dollars(tier.minChargeMicros)} when a month closes, so a payment's fee is never most of it. Smaller amounts carry over to
-        the next invoice. Charges at a limit always go through.
+        If a month closes with less than {dollars(tier.minChargeMicros)} owed, your card isn't charged: the amount moves to your next invoice. A charge made
+        because a workspace nears its ceiling on unpaid usage always goes through.
       </p>
 
       <div className="mt-14 grid gap-4 sm:grid-cols-2">

@@ -311,7 +311,7 @@ runs g1t. Their Danger zone says so instead of offering the button.
 | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | Money owed                           | Charged to the workspace's card at once, with no minimum charge. With no card, add one or pay from **Billing** first.  |
 | An unpaid invoice                    | Pay it from **Billing** first.                                                                                         |
-| Prepaid credit                       | It would be lost: spend it, or write to support@g1t.sh about a refund, first.                                          |
+| Prepaid credit                       | Spend it, or write to support@g1t.sh for a refund, first.                                                              |
 | Usage this month still being metered | Storage and git operations are charged when the month closes. You can delete the workspace from the 1st of next month. |
 | The g1t plan                         | Ends at Stripe at once, not at the end of the period.                                                                  |
 | An enterprise account                | A workspace billed through one is moved off it by g1t first: write to support@g1t.sh.                                  |

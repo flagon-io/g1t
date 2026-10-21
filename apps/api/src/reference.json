@@ -13476,7 +13476,7 @@
       "full_name": "flagon-io/g1t",
       "active_caches_size_in_bytes": 8813275136,
       "active_caches_count": 41,
-      "quota_bytes": 10737418240
+      "quota_bytes": 107374182400
     },
     "notes": "Saving past `quota_bytes` evicts the entries restored longest ago."
   },

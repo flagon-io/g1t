@@ -5,7 +5,7 @@
 //! be closed when nothing is left between it and g1t:
 //!
 //! - no invoice of its is still unpaid (open, or failed);
-//! - no prepaid credit is left (it would be lost);
+//! - no prepaid credit is left (spent, or refunded on request);
 //! - what it owes can be charged now, to its card, with no minimum;
 //! - no usage this month is still being metered (storage and git
 //!   operations are charged when the month closes).
@@ -79,7 +79,7 @@ pub(crate) fn decide(facts: &Facts) -> std::result::Result<Settle, String> {
     }
     if facts.balance_micros > 0 {
         return Err(format!(
-            "{ws} has {} of prepaid credit left, which would be lost. Spend it, or write to support@g1t.sh about a refund, first.",
+            "{ws} has {} of prepaid credit left. Spend it, or write to support@g1t.sh for a refund, first.",
             cents(facts.balance_micros)
         ));
     }

@@ -473,7 +473,7 @@ month's GB-months are those days added up, divided by the days in the month, cha
 $0.018 a GB-month: R2's $0.015, plus 20%. It is charged from the first
 byte, to workspaces on the plan only, as **Actions cache storage** under
 **Git operations & storage**. A free workspace's caches are never charged;
-they are held to the same 10 GiB a repository, and 10 GiB of artifacts a run, as everyone's.
+they are held to 10 GiB a repository, where the plan's hold 100 GiB, and to 10 GiB of artifacts a run.
 
 ### Private repository storage
 
@@ -742,12 +742,11 @@ fees** on the statement; those stay as they were.
 
 ### The minimum charge
 
-Only the month's close has a minimum: a card is not charged less than
-**$5** then, so a payment's processing cost is never most of what is paid. When a month
-closes owing less, the amount carries over to the next invoice that reaches
-$5, as _Unpaid from earlier_. A charge made because a workspace is at or
-near a limit always goes through, whatever the amount, so work can carry
-on.
+If a month closes with less than **$1** owed, the card isn't charged. The
+amount moves to the workspace's next invoice, as _Unpaid from earlier_.
+Only the month's close has this minimum: a charge made because a workspace
+nears [g1t's ceiling](#the-ceiling) always goes through, whatever the
+amount, so work can carry on.
 
 ## Moving a repository between workspaces
 
