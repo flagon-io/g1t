@@ -216,10 +216,84 @@ impl Verdict {
     }
 }
 
-/// The lines of a receive-pack report-status, plain or inside side-band
-/// channel 1, as the store sends either. `None` when the answer is not a
-/// report this can read, or carries a fatal error (channel 3).
-pub(crate) fn report_lines(answer: &[u8]) -> Option<Vec<String>> {
+/// A receive-pack's answer, read once for everything that settles or
+/// announces by it: [`verdict`] for a write of one ref, and a push over
+/// git (public_storage.rs `push_settlement`, lib.rs `answer_git`), so they
+/// never read one answer two ways.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Answer {
+    /// A report-status, v1 or v2.
+    Report(Report),
+    /// A fatal error, on side-band channel 3 or as an `ERR` packet, with
+    /// what it said: the store stopped without a word on any ref, most
+    /// likely before it took anything, but that is not known.
+    Fatal(String),
+    /// Nothing this can read as a report: none was asked for, or the
+    /// answer is not git's.
+    Unread,
+}
+
+/// What a report-status says. v1's lines are `unpack <status>`, then
+/// `ok <ref>` or `ng <ref> <reason>` for each command; v2 may follow an
+/// `ok` with `option <key> <value>` lines about it, which say nothing of
+/// whether the ref moved and are passed over. A ref name holds no space,
+/// so an `ok` line names exactly one ref.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct Report {
+    /// Its lines, as sent: the outcome staff read.
+    pub lines: Vec<String>,
+    /// It said `unpack ok`.
+    pub unpacked: bool,
+    /// It said the unpack failed: nothing of the pack was kept.
+    pub unpack_failed: bool,
+    /// The refs it says moved (`ok`).
+    pub moved: Vec<String>,
+    /// The refs it says it refused (`ng`).
+    pub refused: Vec<String>,
+}
+
+impl Report {
+    fn read(lines: Vec<String>) -> Report {
+        let mut report = Report::default();
+        for line in &lines {
+            if let Some(status) = line.strip_prefix("unpack ") {
+                if status == "ok" {
+                    report.unpacked = true;
+                } else {
+                    report.unpack_failed = true;
+                }
+            } else if let Some(reference) = line.strip_prefix("ok ") {
+                report.moved.push(reference.to_owned());
+            } else if let Some(rest) = line.strip_prefix("ng ") {
+                report.refused.push(rest.split(' ').next().unwrap_or_default().to_owned());
+            }
+        }
+        report.lines = lines;
+        report
+    }
+
+    /// Whether it says `reference` moved.
+    pub fn moved(&self, reference: &str) -> bool {
+        !self.unpack_failed && self.moved.iter().any(|moved| moved == reference)
+    }
+}
+
+impl Answer {
+    /// The refs the answer says moved: none when its unpack failed, and
+    /// `None` when it says nothing either way (a fatal error, or no
+    /// report), which leaves it to the store's refs.
+    pub(crate) fn moved_refs(&self) -> Option<&[String]> {
+        match self {
+            Answer::Report(report) if report.unpack_failed => Some(&[]),
+            Answer::Report(report) => Some(&report.moved),
+            Answer::Fatal(_) | Answer::Unread => None,
+        }
+    }
+}
+
+/// Reads a receive-pack's answer, its report-status plain or inside
+/// side-band channel 1, as the store sends either.
+pub(crate) fn read_answer(answer: &[u8]) -> Answer {
     let (packets, _) = read_pkt_lines(answer);
     let banded = packets.first().is_some_and(|packet| matches!(packet.first(), Some(1..=3)));
     let status = if banded {
@@ -228,7 +302,8 @@ pub(crate) fn report_lines(answer: &[u8]) -> Option<Vec<String>> {
             match packet.first() {
                 Some(1) => status.extend_from_slice(&packet[1..]),
                 Some(2) => {}
-                _ => return None,
+                Some(3) => return Answer::Fatal(String::from_utf8_lossy(&packet[1..]).trim().to_owned()),
+                _ => return Answer::Unread,
             }
         }
         status
@@ -237,31 +312,34 @@ pub(crate) fn report_lines(answer: &[u8]) -> Option<Vec<String>> {
     };
     let (lines, _) = read_pkt_lines(&status);
     let lines: Vec<String> = lines.into_iter().map(|line| String::from_utf8_lossy(line).trim_end().to_owned()).collect();
-    (!lines.is_empty()).then_some(lines)
+    if let Some(said) = lines.iter().find_map(|line| line.strip_prefix("ERR ")) {
+        return Answer::Fatal(said.to_owned());
+    }
+    if lines.is_empty() { Answer::Unread } else { Answer::Report(Report::read(lines)) }
 }
 
 /// What a report-status says of `reference`.
-pub(crate) fn verdict(report: &[u8], reference: &str, sent_pack: bool) -> Verdict {
+pub(crate) fn verdict(answer: &[u8], reference: &str, sent_pack: bool) -> Verdict {
     // What was unclear, said whole: it is the outcome staff read on an
     // ended reservation.
     let unclear = |said: &str| {
         let said = if said.is_empty() { "it said nothing" } else { said };
         Verdict::Unclear(format!("The store's answer said neither that {reference} moved nor that it was refused: {said}"))
     };
-    let Some(lines) = report_lines(report) else {
-        return unclear(String::from_utf8_lossy(report).trim());
+    let report = match read_answer(answer) {
+        Answer::Report(report) => report,
+        Answer::Fatal(said) => return unclear(&said),
+        Answer::Unread => return unclear(String::from_utf8_lossy(answer).trim()),
     };
-    let reason = lines.join("; ");
-    if lines.iter().any(|line| line.starts_with("unpack ") && line != "unpack ok") {
+    let reason = report.lines.join("; ");
+    if report.unpack_failed {
         return Verdict::Refused(reason);
     }
     // With nothing to unpack a server may not say so.
-    let unpacked = !sent_pack || lines.iter().any(|line| line == "unpack ok");
-    if unpacked && lines.iter().any(|line| *line == format!("ok {reference}")) {
+    if (!sent_pack || report.unpacked) && report.moved(reference) {
         return Verdict::Moved;
     }
-    let ng = format!("ng {reference}");
-    if lines.iter().any(|line| *line == ng || line.starts_with(&format!("{ng} "))) {
+    if report.refused.iter().any(|refused| refused == reference) {
         return Verdict::Refused(reason);
     }
     unclear(&reason)
