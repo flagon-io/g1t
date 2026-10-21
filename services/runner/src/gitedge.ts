@@ -231,12 +231,66 @@ export function snapshotStore(bucket: R2Bucket): SnapshotStore {
       return { version: versionOf(object), size: object.size, body: object.body };
     },
     async put(key, body, size, version) {
-      // R2 takes a stream only with its length known.
-      const { readable, writable } = new FixedLengthStream(size);
-      const piped = body.pipeTo(writable);
-      await Promise.all([bucket.put(key, readable, { customMetadata: { version: String(version) } }), piped]);
+      // In parts, read from the container's answer as it comes: R2 takes a
+      // whole stream only with its length known, and Workers cannot pipe
+      // that answer into a FixedLengthStream ("Inter-TransformStream
+      // ReadableStream.pipeTo() is not implemented"), which is how no
+      // snapshot was ever kept at first.
+      const upload = await bucket.createMultipartUpload(key, { customMetadata: { version: String(version) } });
+      try {
+        await uploadInParts(upload, body, size);
+      } catch (error) {
+        await upload.abort().catch(() => undefined);
+        throw error;
+      }
     },
   };
+}
+
+/** A snapshot's parts: R2 wants every part but the last the same size, and at least 5 MiB. */
+export const SNAPSHOT_PART_BYTES = 8 * 1024 * 1024;
+
+/** As much of an R2 multipart upload as `uploadInParts` uses. */
+export type PartUpload = {
+  uploadPart(partNumber: number, value: Uint8Array): Promise<R2UploadedPart>;
+  complete(parts: R2UploadedPart[]): Promise<unknown>;
+};
+
+/**
+ * Uploads `body` in parts of exactly `partBytes` (the last one shorter),
+ * holding one part at a time, and completes the upload once all of it,
+ * and exactly `size` bytes, has arrived; a body of another length is
+ * refused, so a snapshot cut short is never kept.
+ */
+export async function uploadInParts(upload: PartUpload, body: ReadableStream<Uint8Array>, size: number, partBytes = SNAPSHOT_PART_BYTES): Promise<void> {
+  const reader = body.getReader();
+  const parts: R2UploadedPart[] = [];
+  let part = new Uint8Array(partBytes);
+  let held = 0;
+  let total = 0;
+  const send = async (bytes: Uint8Array) => {
+    parts.push(await upload.uploadPart(parts.length + 1, bytes));
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    let at = 0;
+    while (at < value.length) {
+      const taken = Math.min(partBytes - held, value.length - at);
+      part.set(value.subarray(at, at + taken), held);
+      held += taken;
+      at += taken;
+      if (held === partBytes) {
+        await send(part);
+        part = new Uint8Array(partBytes);
+        held = 0;
+      }
+    }
+  }
+  if (total !== size) throw new Error(`the snapshot was ${total} bytes, not the ${size} it said`);
+  if (held > 0 || parts.length === 0) await send(part.subarray(0, held));
+  await upload.complete(parts);
 }
 
 /**

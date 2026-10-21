@@ -13,6 +13,7 @@ import {
   restoreSnapshot,
   routeToEdge,
   snapshotKey,
+  uploadInParts,
   syncVersion,
 } from "./gitedge.ts";
 
@@ -358,4 +359,52 @@ test("a snapshot is kept once the sync ends at its version, at most every ten mi
     await keepSnapshot(REPO, 9, { store: memoryStore(null).store, forward: stuck, now: () => clock, wait: async () => void (clock += 60_000) }),
     false,
   );
+});
+
+test("a snapshot is uploaded in equal parts, the last shorter, and only whole", async () => {
+  // A body of 23 bytes arriving in uneven chunks, uploaded in parts of 8.
+  const bytes = Uint8Array.from({ length: 23 }, (_, i) => i);
+  const body = (chunks: number[]) => {
+    let at = 0;
+    return new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const size = chunks.shift();
+        if (size === undefined) return controller.close();
+        controller.enqueue(bytes.slice(at, at + size));
+        at += size;
+      },
+    });
+  };
+  const upload = () => {
+    const sent: { n: number; bytes: number[] }[] = [];
+    let completed: number[] | null = null;
+    return {
+      sent,
+      done: () => completed,
+      uploadPart: async (n: number, value: Uint8Array) => {
+        sent.push({ n, bytes: [...value] });
+        return { partNumber: n, etag: `e${n}` };
+      },
+      complete: async (parts: { partNumber: number }[]) => void (completed = parts.map((p) => p.partNumber)),
+    };
+  };
+  const whole = upload();
+  await uploadInParts(whole, body([5, 1, 10, 7]), 23, 8);
+  assert.deepEqual(
+    whole.sent.map((p) => [p.n, p.bytes.length]),
+    [
+      [1, 8],
+      [2, 8],
+      [3, 7],
+    ],
+  );
+  assert.deepEqual(
+    whole.sent.flatMap((p) => p.bytes),
+    [...bytes],
+  );
+  assert.deepEqual(whole.done(), [1, 2, 3]);
+  // Cut short, or longer than it said: never completed.
+  const short = upload();
+  await assert.rejects(uploadInParts(short, body([5, 1]), 23, 8), /6 bytes, not the 23/);
+  assert.equal(short.done(), null);
 });
