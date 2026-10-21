@@ -85,55 +85,58 @@ const type = async (selector, text) => {
   return found;
 };
 
-await send("Page.enable");
-await send("Page.navigate", { url });
-for (let i = 0; i < 40; i++) {
-  await sleep(500);
-  if (await inFrames(`() => !!document.querySelector('#cardNumber')`)) break;
-}
-await sleep(1000);
-await snap("page");
-await inFrames(
-  `() => { const a = [...document.querySelectorAll('button, a, span')].find((x) => x.textContent.trim() === 'Enter address manually'); if (!a) return false; a.click(); return true; }`,
-);
-await sleep(800);
-await type("#email", "prepay-audit@example.com");
-await type("#cardNumber", "4000002760003184");
-await type("#cardExpiry", "1234");
-await type("#cardCvc", "123");
-await type("#billingName", "Prepay Audit");
-await type("#billingAddressLine1", "1301 2nd Ave");
-await type("#billingLocality", "Seattle");
-await type("#billingPostalCode", "98101");
-await inFrames(
-  `() => { const s = document.querySelector('#billingAdministrativeArea'); if (!s || s.value) return false; s.value = 'WA'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; }`,
-);
-await sleep(1500);
-// Link's "save my information" is ticked by default and wants a phone.
-await inFrames(
-  `() => { const c = document.querySelector('#enableStripePass') || [...document.querySelectorAll('input[type=checkbox]')].find((x) => /Link/.test(x.closest('label')?.textContent ?? x.parentElement?.parentElement?.textContent ?? '')); if (!c || !c.checked) return false; c.click(); return true; }`,
-);
-await sleep(1500);
-await snap("filled");
-const submitted = await inFrames(
-  `() => { const b = document.querySelector('[data-testid="hosted-payment-submit-button"], .SubmitButton'); if (!b) return false; b.click(); return true; }`,
-);
-if (!submitted) throw Error("No submit button");
 let done = false;
-for (let i = 0; i < 60 && !done; i++) {
-  await sleep(2000);
-  const clicked = await inFrames(
-    `() => { const b = document.querySelector('#test-source-authorize-3ds') || [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Complete'); if (!b) return false; b.click(); return 'clicked'; }`,
-  );
-  if (clicked) {
-    await snap("3ds");
-    console.log("3DS challenge completed");
+try {
+  await send("Page.enable");
+  await send("Page.navigate", { url });
+  for (let i = 0; i < 40; i++) {
+    await sleep(500);
+    if (await inFrames(`() => !!document.querySelector('#cardNumber')`)) break;
   }
-  const { result } = await send("Runtime.evaluate", { expression: "location.href", returnByValue: true });
-  if (result.value.startsWith("http://127.0.0.1")) done = true;
+  await sleep(1000);
+  await snap("page");
+  await inFrames(
+    `() => { const a = [...document.querySelectorAll('button, a, span')].find((x) => x.textContent.trim() === 'Enter address manually'); if (!a) return false; a.click(); return true; }`,
+  );
+  await sleep(800);
+  await type("#email", "prepay-audit@example.com");
+  await type("#cardNumber", "4000002760003184");
+  await type("#cardExpiry", "1234");
+  await type("#cardCvc", "123");
+  await type("#billingName", "Prepay Audit");
+  await type("#billingAddressLine1", "1301 2nd Ave");
+  await type("#billingLocality", "Seattle");
+  await type("#billingPostalCode", "98101");
+  await inFrames(
+    `() => { const s = document.querySelector('#billingAdministrativeArea'); if (!s || s.value) return false; s.value = 'WA'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; }`,
+  );
+  await sleep(1500);
+  // Link's "save my information" is ticked by default and wants a phone.
+  await inFrames(
+    `() => { const c = document.querySelector('#enableStripePass') || [...document.querySelectorAll('input[type=checkbox]')].find((x) => /Link/.test(x.closest('label')?.textContent ?? x.parentElement?.parentElement?.textContent ?? '')); if (!c || !c.checked) return false; c.click(); return true; }`,
+  );
+  await sleep(1500);
+  await snap("filled");
+  const submitted = await inFrames(
+    `() => { const b = document.querySelector('[data-testid="hosted-payment-submit-button"], .SubmitButton'); if (!b) return false; b.click(); return true; }`,
+  );
+  if (!submitted) throw Error("No submit button");
+  for (let i = 0; i < 60 && !done; i++) {
+    await sleep(2000);
+    const clicked = await inFrames(
+      `() => { const b = document.querySelector('#test-source-authorize-3ds') || [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Complete'); if (!b) return false; b.click(); return 'clicked'; }`,
+    );
+    if (clicked) {
+      await snap("3ds");
+      console.log("3DS challenge completed");
+    }
+    const { result } = await send("Runtime.evaluate", { expression: "location.href", returnByValue: true });
+    if (result.value.startsWith("http://127.0.0.1")) done = true;
+  }
+  await snap("after");
+  console.log(done ? "Returned to the success URL" : "Did not reach the success URL; see screenshots");
+} finally {
+  ws.close();
+  chrome.kill();
 }
-await snap("after");
-console.log(done ? "Returned to the success URL" : "Did not reach the success URL; see screenshots");
-ws.close();
-chrome.kill();
 process.exit(done ? 0 : 1);

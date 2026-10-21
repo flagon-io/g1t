@@ -743,9 +743,9 @@ fees** on the statement; those stay as they were.
 ### The minimum charge
 
 If a month closes with less than **$1** owed, the card isn't charged. The
-amount moves to the next invoice that reaches $1, as _Unpaid from
-earlier_. Only the month's close has this minimum: a charge made because a
-workspace is at or near its spend limit always goes through, whatever the
+amount moves to the workspace's next invoice, as _Unpaid from earlier_.
+Only the month's close has this minimum: a charge made because a workspace
+nears [g1t's ceiling](#the-ceiling) always goes through, whatever the
 amount, so work can carry on.
 
 ## Moving a repository between workspaces

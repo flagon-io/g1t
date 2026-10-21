@@ -563,8 +563,8 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         </Card>
       </ul>
       <p className="mt-3 text-sm text-muted">
-        If a month closes with less than {dollars(tier.minChargeMicros)} owed, your card isn't charged: the amount moves to the next invoice that reaches it.
-        Charges made at your spend limit always go through.
+        If a month closes with less than {dollars(tier.minChargeMicros)} owed, your card isn't charged: the amount moves to your next invoice. A charge made
+        because a workspace nears its ceiling on unpaid usage always goes through.
       </p>
 
       <div className="mt-14 grid gap-4 sm:grid-cols-2">
