@@ -139,6 +139,26 @@ pub(crate) fn admin_log_account(a: &AdminLogArgs) -> std::result::Result<String,
     }
 }
 
+/// The `admin_actions` id a keyed `admin_log` line is written under:
+/// `admk_<key>`, never one `new_id` makes (`adm_...`), so the same key
+/// finds the same row and no other. `None` when it has no key.
+pub(crate) fn admin_log_id(a: &AdminLogArgs) -> std::result::Result<Option<String>, String> {
+    let Some(key) = a.key.as_deref() else { return Ok(None) };
+    let valid = (1..=80).contains(&key.len()) && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+    if !valid {
+        return Err(format!("admin_log keys are 1 to 80 letters, digits, _ or -, not {key:?}"));
+    }
+    Ok(Some(format!("admk_{key}")))
+}
+
+/// A keyed `admin_log` line: written unless its id is already there.
+pub(crate) const ADMIN_LOG_ONCE: &str = "INSERT INTO admin_actions (id, account, action, detail, by, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+    ON CONFLICT (id) DO NOTHING";
+
+/// Whether the keyed line is there as this kind of change: none means the
+/// key already holds another, and the call is refused. ?1 id, ?2 action.
+pub(crate) const ADMIN_LOG_KEPT: &str = "SELECT 1 AS kept FROM admin_actions WHERE id = ?1 AND action = ?2";
+
 fn kind_text(kind: TermsKind) -> &'static str {
     match kind {
         TermsKind::Standard => "standard",
@@ -292,6 +312,28 @@ impl Billing {
 
     pub(crate) async fn audit(&self, account: &str, action: &str, detail: &str, by: &str) -> Result<()> {
         self.audit_at(account, action, detail, by, now_ms()).await
+    }
+
+    /// `audit`, once for `id` ([`admin_log_id`]): a line already written
+    /// under it is left as it is, so sending it again changes nothing.
+    /// Refused when the id holds a different kind of change, so a key can
+    /// never stand in for another line. Its account is not compared: a
+    /// workspace renamed since has moved its lines (rename.rs).
+    pub(crate) async fn audit_once(&self, id: &str, account: &str, action: &str, detail: &str, by: &str) -> Result<()> {
+        #[derive(Deserialize)]
+        struct Kept {
+            #[serde(rename = "kept")]
+            _kept: f64,
+        }
+        self.db
+            .prepare(ADMIN_LOG_ONCE)
+            .bind(&[id.into(), account.into(), action.into(), detail.into(), by.into(), rfc3339(now_ms()).into()])?
+            .run()
+            .await?;
+        match self.db.prepare(ADMIN_LOG_KEPT).bind(&[id.into(), action.into()])?.first::<Kept>(None).await? {
+            Some(_) => Ok(()),
+            None => Err(worker::Error::RustError(format!("admin_log key {id} already names another change"))),
+        }
     }
 
     /// `audit`, at a given instant: a testing reset's entry carries the
@@ -786,6 +828,24 @@ mod tests {
 
     fn log(body: serde_json::Value) -> std::result::Result<String, String> {
         admin_log_account(&serde_json::from_value::<AdminLogArgs>(body).unwrap())
+    }
+
+    #[test]
+    fn a_keyed_line_has_one_id_however_often_it_is_sent() {
+        let keyed = |key: serde_json::Value| {
+            let body = serde_json::json!({ "account": "storage", "action": "storage_released", "detail": "d", "by": "a@g1t.sh", "key": key });
+            admin_log_id(&serde_json::from_value::<AdminLogArgs>(body).unwrap())
+        };
+        assert_eq!(keyed(serde_json::json!("srr_01abc")), Ok(Some("admk_srr_01abc".to_owned())));
+        assert_eq!(keyed(serde_json::Value::Null), Ok(None));
+        // Never an id new_id makes, so it cannot land on another line.
+        assert!(!keyed(serde_json::json!("x")).unwrap().unwrap().starts_with("adm_"));
+        for bad in [String::new(), "a b".into(), "a'b".into(), "a/b".into(), "k".repeat(81)] {
+            assert!(keyed(serde_json::json!(bad)).is_err(), "{bad:?}");
+        }
+        // Identity's lines, sent without a key, are written as before.
+        let identity = serde_json::json!({ "workspace": "acme", "action": "workspace_restored", "detail": "d", "by": "a@g1t.sh" });
+        assert_eq!(admin_log_id(&serde_json::from_value::<AdminLogArgs>(identity).unwrap()), Ok(None));
     }
 
     #[test]

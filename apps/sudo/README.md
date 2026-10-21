@@ -147,14 +147,20 @@ roadmap.
   provably abandoned hold and takes a reason; the repos service inspects
   it again, checks the same rules in the batch that releases, and writes a
   row of `storage_recoveries` with the evidence, listed under **Released**
-  (`admin_storage_recoveries`). Only once it is released does sudo add it
-  to its audit log (billing's `admin_log`, `storage_released`): under the
-  charged repository's workspace, or the `storage` account when its row is
-  gone, naming the staff member, the hold, the reason and the
-  `storage_recoveries` row. If that write fails, the release still stands:
-  the page says the audit log missed it and points to the row, and sudo
-  logs the error. Provably abandoned means: the write
-  recorded that it ended; or its one-hour lease passed 15 minutes ago; or,
+  (`admin_storage_recoveries`). The same batch keeps the release's line
+  for the audit log (`storage_released`): under the charged repository's
+  workspace, or the `storage` account when its row is gone, naming the
+  staff member, the hold, the reason and the `storage_recoveries` row. The
+  repos service sends it to billing's `admin_log` right after, keyed by
+  that row, and again every hour until billing confirms it, so a lost
+  answer or a request cut short neither loses it nor writes it twice; sudo
+  writes nothing itself. While billing has not confirmed it, the page and
+  the row under **Released** say so. (Against a repos service from before
+  it wrote the line, sudo writes it, keyed the same way, and says if that
+  failed. While a deploy has the new repos service but sudo from before
+  it, a release can be in the audit log twice, since that sudo still writes
+  its own line, unkeyed; it is never missing.) Provably abandoned means: the
+  write recorded that it ended; or its one-hour lease passed 15 minutes ago; or,
   for bytes reserved before the ledger began and locks without a lease,
   24 hours have passed since it began. A release never changes
   `stored_bytes`, which is billed. **Drift** (`admin_storage_drift`) streams

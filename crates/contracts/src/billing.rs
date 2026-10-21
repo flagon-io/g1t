@@ -2822,8 +2822,8 @@ pub struct ConfirmSubscriptionArgs {
 
 /// `admin_log`: a staff change another service made to a workspace, kept
 /// in sudo's audit log with billing's own (`admin_audit`). For identity's
-/// restores and purges of deleted workspaces, and sudo's releases of the
-/// repos service's storage holds. Staff only. Returns `bool`.
+/// restores and purges of deleted workspaces, and the repos service's
+/// releases of storage holds for staff. Staff only. Returns `bool`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AdminLogArgs {
     /// The workspace it was made to, filed under its own account.
@@ -2838,6 +2838,13 @@ pub struct AdminLogArgs {
     pub detail: String,
     /// The staff member's email.
     pub by: String,
+    /// Makes it idempotent: a line sent with a key is written once however
+    /// often it is sent, so a caller whose answer was lost can send it
+    /// again. The repos service sends a storage hold's release keyed by its
+    /// `storage_recoveries` id, from its outbox, until billing confirms it.
+    /// 1 to 80 letters, digits, `_` or `-`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
 }
 
 /// The accounts other than a workspace's that `admin_log` files a change

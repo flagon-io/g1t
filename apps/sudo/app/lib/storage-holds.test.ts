@@ -8,6 +8,7 @@ import {
   RELEASE_ACTION,
   FORK_RESERVE_WINDOW_SECONDS,
   SLOW_COPY_SECONDS,
+  auditState,
   blockedSources,
   blockedSummary,
   formatAge,
@@ -103,6 +104,7 @@ function recovery(path: string | null, kind: StorageHoldKind = "reservation"): S
     staff: "staff@g1t.sh",
     reason: "The push ended with a 500.",
     releasedAt: "2026-10-21T12:00:00Z",
+    audit: null,
   };
 }
 
@@ -161,18 +163,44 @@ test("a release on a repository whose row is gone is filed under storage, not a 
   assert.match(entry.detail, /repository rep_1 \(gone\)/);
 });
 
-test("a release is recorded in the audit log after the repos service released it, naming the staff member", async () => {
+/** A recovery as the repos service answers since it writes the line itself (#315). */
+function audited(path: string | null, sentAt: string | null, error: string | null = null): StorageRecovery {
+  return { ...recovery(path), audit: { sentAt, attempts: 1, error } };
+}
+
+test("the repos service writes a release's audit line itself, and sudo writes none", async () => {
+  const { calls, deps, report } = fakes(
+    async () => ({ ok: true, value: audited("acme/site", "2026-10-21T12:00:01Z") }),
+    async () => true,
+  );
+  const outcome = await releaseHold(deps, hold, "staff@g1t.sh", report);
+  assert.equal(outcome.ok && outcome.audit, "written");
+  assert.deepEqual(calls.release, [["reservation", "srv_1", "staff@g1t.sh", "The push ended with a 500."]]);
+  assert.equal(calls.log.length, 0, "no second line, and nothing for a lost answer to lose");
+  assert.deepEqual(calls.reported, []);
+});
+
+test("a release whose line billing has not confirmed yet is queued, not missed", async () => {
+  const { calls, deps, report } = fakes(
+    async () => ({ ok: true, value: audited("acme/site", null, "admin_log failed with status 500") }),
+    async () => true,
+  );
+  const outcome = await releaseHold(deps, hold, "staff@g1t.sh", report);
+  assert.equal(outcome.ok && outcome.audit, "queued");
+  assert.equal(calls.log.length, 0, "the repos service sends it again, keyed, so sudo does not");
+});
+
+test("a repos service from before it wrote the line gets one from sudo, keyed by the recovery row", async () => {
   const { calls, deps, report } = fakes(
     async () => ({ ok: true, value: recovery("acme/site") }),
     async () => true,
   );
   const outcome = await releaseHold(deps, hold, "staff@g1t.sh", report);
-  assert.equal(outcome.ok && outcome.audited, true);
-  assert.deepEqual(calls.release, [["reservation", "srv_1", "staff@g1t.sh", "The push ended with a 500."]]);
+  assert.equal(outcome.ok && outcome.audit, "written");
   assert.equal(calls.log.length, 1);
   assert.equal(calls.log[0][1], "staff@g1t.sh");
   assert.equal(calls.log[0][0].workspace, "acme");
-  assert.deepEqual(calls.reported, []);
+  assert.equal(calls.log[0][0].key, "src_9", "the same key the repos service sends, so billing writes it once");
 });
 
 test("a refused or unanswered release writes no audit line", async () => {
@@ -190,15 +218,16 @@ test("a refused or unanswered release writes no audit line", async () => {
   const outcome = await releaseHold(down.deps, hold, "staff@g1t.sh", down.report);
   assert.equal(outcome.ok, false);
   assert.equal(!outcome.ok && outcome.status, 502);
+  assert.match(!outcome.ok ? outcome.error : "", /the repos service writes its line in the audit log/);
   assert.equal(down.calls.log.length, 0);
 });
 
-test("a release stands when the audit log fails afterwards: it is reported and logged, never a failure", async () => {
+test("when sudo had to write the line and billing failed, the release stands and it is reported", async () => {
   for (const logged of [() => Promise.reject(new Error("admin_log failed with status 500")), async () => false]) {
     const { calls, deps, report } = fakes(async () => ({ ok: true, value: recovery("acme/site") }), logged);
     const outcome = await releaseHold(deps, hold, "staff@g1t.sh", report);
     assert.equal(outcome.ok, true);
-    assert.equal(outcome.ok && outcome.audited, false);
+    assert.equal(outcome.ok && outcome.audit, "missed");
     assert.equal(outcome.ok && outcome.recovery.id, "src_9");
     assert.equal(calls.log.length, 1, "written once, never retried");
     assert.equal(calls.reported.length, 1);
@@ -208,14 +237,27 @@ test("a release stands when the audit log fails afterwards: it is reported and l
 
 test("after a release the page says whether the audit log has it", () => {
   assert.equal(releasedNotice(new URLSearchParams("hold=reservation:srv_1")), null);
-  const audited = releasedNotice(new URLSearchParams({ done: "released", what: "reservation of 320 MB on srv_1" }));
-  assert.equal(audited?.auditMissed, null);
-  assert.match(audited?.done ?? "", /^Released reservation of 320 MB on srv_1\. It is in the audit log/);
+  const written = releasedNotice(new URLSearchParams({ done: "released", what: "reservation of 320 MB on srv_1" }));
+  assert.equal(written?.audit, null);
+  assert.match(written?.done ?? "", /^Released reservation of 320 MB on srv_1\. It is in the audit log/);
+  const queued = releasedNotice(new URLSearchParams({ done: "released", what: "x", queued: "srr_9" }));
+  assert.equal(queued?.done, "Released x.");
+  assert.equal(queued?.audit?.tone, "info");
+  assert.match(queued?.audit?.text ?? "", /Billing has not confirmed.*storage_recoveries srr_9.*every hour/);
   const missed = releasedNotice(new URLSearchParams({ done: "released", what: "x", unaudited: "src_9" }));
-  assert.equal(missed?.done, "Released x.");
-  assert.match(missed?.auditMissed ?? "", /The release is done, but billing did not record it in the audit log.*storage_recoveries src_9/);
+  assert.equal(missed?.audit?.tone, "warn");
+  assert.match(missed?.audit?.text ?? "", /The release is done, but billing did not record it in the audit log.*storage_recoveries src_9/);
   // A row id that is not one is not shown.
-  assert.doesNotMatch(releasedNotice(new URLSearchParams({ done: "released", unaudited: "<b>" }))?.auditMissed ?? "", /<b>/);
+  assert.doesNotMatch(releasedNotice(new URLSearchParams({ done: "released", unaudited: "<b>" }))?.audit?.text ?? "", /<b>/);
+  assert.doesNotMatch(releasedNotice(new URLSearchParams({ done: "released", queued: "<b>" }))?.audit?.text ?? "", /<b>/);
+});
+
+test("the Released list says which lines billing has not confirmed yet", () => {
+  assert.equal(auditState(recovery("acme/site")), null, "sudo wrote it, before the outbox");
+  assert.equal(auditState(audited("acme/site", "2026-10-21T12:00:01Z")), null);
+  assert.equal(auditState(audited("acme/site", null)), "Not in the audit log yet (1 try): the repos service sends it again every hour.");
+  const tried = { ...audited("acme/site", null, "billing is down"), audit: { sentAt: null, attempts: 3, error: "billing is down" } };
+  assert.match(auditState(tried) ?? "", /^Not in the audit log yet \(3 tries: billing is down\)/);
 });
 
 /** A hold as the repos service lists it. */

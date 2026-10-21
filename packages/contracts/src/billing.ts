@@ -692,6 +692,8 @@ export type AdminAction = { id: string; account: string; action: string; detail:
 export type AdminLogEntry = ({ workspace: string; account?: never } | { account: AdminLogAccount; workspace?: never }) & {
   action: string;
   detail: string;
+  /** Makes it idempotent: a line with a key is written once however often it is sent (a storage release's `storage_recoveries` id). */
+  key?: string;
 };
 
 /** The accounts other than a workspace's that `admin_log` takes (`ADMIN_LOG_ACCOUNTS`): `storage`, for a storage hold on a repository whose row is gone. */

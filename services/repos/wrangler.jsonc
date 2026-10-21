@@ -53,7 +53,9 @@
     // Push protection asks which secrets were allowed, and records the rest.
     { "binding": "SECURITY", "service": "g1t-security" },
     // Whether a workspace far past its free git operations is on the
-    // plan (src/git_ops.rs); asked only then.
+    // plan (src/git_ops.rs); asked only then. And a staff release of a
+    // storage hold is written to sudo's audit log (`admin_log`,
+    // src/storage_holds.rs).
     { "binding": "BILLING", "service": "g1t-billing" },
     // Rulesets: which hold for a push or another change to a branch or
     // tag, and where how they judged it is kept (src/rules.rs).
@@ -129,7 +131,8 @@
   // passed are purged, their git data with them (src/lifecycle.rs), and
   // pull request working copies past FORK_RETENTION_DAYS are removed
   // (src/forks.rs), and a repository queued to move to another namespace
-  // is moved (src/moves.rs). At 02:53 UTC, the repositories whose refs moved since
+  // is moved (src/moves.rs), and a staff release's audit line billing has
+  // not confirmed is sent again (src/storage_holds.rs). At 02:53 UTC, the repositories whose refs moved since
   // their last backup are queued for one (src/backups.rs, BACKUP_CRON);
   // the runner's sweep starts them a few at a time.
   "triggers": { "crons": ["23 * * * *", "53 2 * * *"] },

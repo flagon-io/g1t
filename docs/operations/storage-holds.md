@@ -92,8 +92,15 @@ same batch that releases.
    are kept in the audit row, listed under **Released**. The release is
    also in sudo's audit log (**Storage hold released**, under the
    repository's workspace, or `storage` if its row is gone), naming the
-   row. If billing does not record that line, the page says so: the release
-   still stands, so do not release it again; its row is under **Released**.
+   row. The repos service keeps that line in the release's own batch
+   (`storage_recovery_audits`) and sends it to billing right after, keyed by
+   the row, then every hour until billing confirms it, so it is written
+   once even if an answer is lost or the page stops waiting. If billing has
+   not confirmed it yet, the page and the row under **Released** say so,
+   with billing's last answer: the release still stands, so do not release
+   it again. A line that stays unconfirmed past a few hours means billing
+   keeps refusing it: the repos logs have `storage_release_unaudited` with
+   the error.
 4. **If it is not provably abandoned yet**, the page says when it will be.
    Wait: a write that may still be sending is never released by hand. A
    workspace that needs room sooner can delete what it does not need.

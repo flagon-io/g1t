@@ -744,7 +744,15 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
     workspaceInvoices: (workspace) => call("admin_workspace_invoices", { workspace }),
     allInvoices: (filter = {}) => call("admin_invoices", { status: filter.status ?? null, month: filter.month ?? null }),
     audit: (filter = {}) => call("admin_audit", { by: filter.by ?? null, action: filter.action ?? null, before: filter.before ?? null }),
-    log: (entry, by) => call("admin_log", { workspace: entry.workspace ?? "", account: entry.account ?? null, action: entry.action, detail: entry.detail, by }),
+    log: (entry, by) =>
+      call("admin_log", {
+        workspace: entry.workspace ?? "",
+        account: entry.account ?? null,
+        action: entry.action,
+        detail: entry.detail,
+        by,
+        key: entry.key ?? null,
+      }),
     limitRequests: (status = "open") => call("admin_limit_requests", { status }),
     decideLimitRequest: (id, decision, amountMicros, note, by) => call("admin_decide_limit_request", { id, decision, amount_micros: amountMicros, note, by }),
     overages: () => call("admin_overages", {}),

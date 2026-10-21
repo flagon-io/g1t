@@ -459,3 +459,116 @@ test("the staff listing finds every kind of hold", () => {
   assert.ok(db.prepare(sql("EPOCH")).get().started_ms > 0, "the migration starts the ledger");
   db.close();
 });
+
+// --- A release's line in sudo's audit log: the outbox (migration 0024) ---
+
+const audits = (db) => db.prepare("SELECT * FROM storage_recovery_audits ORDER BY created_at, recovery_id").all();
+/** storage_holds.rs `admin_release_storage_hold` for a reservation, with its outbox row in the same batch. */
+function releaseAudited(db, { audit, id, bytes, now, workspace = "team" }) {
+  const root = db.prepare("SELECT root_id FROM storage_reservations WHERE id = ?").get(id)?.root_id ?? "";
+  const releasedAt = new Date(now).toISOString();
+  const [written] = batch(db, [
+    ["RELEASE_RESERVATION", [audit, id, bytes, "{}", "staff@g1t.sh", "a test", releasedAt, GRACE_MS, now], "get"],
+    ["RELEASE_RESERVATION_SUM", [audit, root, bytes]],
+    ["RELEASE_RESERVATION_ROW", [audit, id]],
+    ["RELEASE_AUDIT", [audit, workspace, workspace ? null : "storage", "storage_released", `Reservation ${id}`, "staff@g1t.sh", releasedAt]],
+  ]);
+  return written !== undefined;
+}
+
+test("a release keeps its audit line to send in the same batch, and a refused one keeps none", () => {
+  const db = database();
+  repo(db, "public", 0);
+  assert.ok(hold(db, { root: "public", id: "srv_held", bytes: 30, now: 0 }));
+  assert.ok(hold(db, { root: "public", id: "srv_old", bytes: 20, now: 0 }));
+  // Still in its lease: nothing released, so no line either.
+  assert.equal(releaseAudited(db, { audit: "srr_early", id: "srv_held", bytes: 30, now: 1_000 }), false);
+  assert.deepEqual(audits(db), []);
+  const late = LEASE_MS + GRACE_MS;
+  assert.ok(releaseAudited(db, { audit: "srr_1", id: "srv_old", bytes: 20, now: late }));
+  assert.deepEqual(
+    audits(db).map((row) => [row.recovery_id, row.workspace, row.account, row.action, row.by, row.sent_at, row.attempts]),
+    [["srr_1", "team", null, "storage_released", "staff@g1t.sh", null, 0]],
+  );
+  // One whose repository is gone is filed under the storage account.
+  assert.ok(releaseAudited(db, { audit: "srr_2", id: "srv_held", bytes: 30, now: late, workspace: null }));
+  assert.equal(audits(db).find((row) => row.recovery_id === "srr_2").account, "storage");
+  // A release that loses its race in the batch rolls its line back with it.
+  assert.equal(releaseAudited(db, { audit: "srr_3", id: "srv_old", bytes: 20, now: late }), false);
+  assert.equal(audits(db).length, 2);
+  db.close();
+});
+
+test("an audit line is sent until billing confirms it, then never again", () => {
+  const db = database();
+  repo(db, "public", 0);
+  assert.ok(hold(db, { root: "public", id: "srv_a", bytes: 5, now: 0 }));
+  assert.ok(hold(db, { root: "public", id: "srv_b", bytes: 5, now: 0 }));
+  const late = LEASE_MS + GRACE_MS;
+  assert.ok(releaseAudited(db, { audit: "srr_a", id: "srv_a", bytes: 5, now: late }));
+  assert.ok(releaseAudited(db, { audit: "srr_b", id: "srv_b", bytes: 5, now: late + 1 }));
+  const unsent = (only = null) =>
+    db
+      .prepare(sql("AUDITS_UNSENT"))
+      .all(10, only)
+      .map((row) => row.recovery_id);
+  assert.deepEqual(unsent(), ["srr_a", "srr_b"]);
+  assert.deepEqual(unsent("srr_b"), ["srr_b"]);
+  // Billing's answer was lost: tried, kept to send again.
+  db.prepare(sql("AUDIT_UNSENT")).run("srr_a", "admin_log failed with status 500", "2026-10-21T13:00:00Z");
+  assert.deepEqual(unsent(), ["srr_b", "srr_a"], "kept to send again, after the one never tried");
+  db.prepare(sql("AUDIT_SENT")).run("srr_a", "2026-10-21T14:00:00Z");
+  assert.deepEqual(unsent(), ["srr_b"]);
+  // A late answer from an earlier try changes nothing once it is sent.
+  db.prepare(sql("AUDIT_UNSENT")).run("srr_a", "late", "2026-10-21T15:00:00Z");
+  db.prepare(sql("AUDIT_SENT")).run("srr_a", "2026-10-21T16:00:00Z");
+  const a = audits(db).find((row) => row.recovery_id === "srr_a");
+  assert.deepEqual([a.sent_at, a.attempts, a.error], ["2026-10-21T14:00:00Z", 2, null]);
+  db.close();
+});
+
+test("the released listing says where each release's audit line stands", () => {
+  const db = database();
+  repo(db, "public", 0);
+  assert.ok(hold(db, { root: "public", id: "srv_new", bytes: 5, now: 0 }));
+  assert.ok(hold(db, { root: "public", id: "srv_old", bytes: 5, now: 0 }));
+  const late = LEASE_MS + GRACE_MS;
+  // Released by code from before the outbox: sudo wrote its line.
+  assert.ok(releaseReservation(db, { audit: "srr_old", id: "srv_old", bytes: 5, now: late }));
+  assert.ok(releaseAudited(db, { audit: "srr_new", id: "srv_new", bytes: 5, now: late + 1 }));
+  db.prepare(sql("AUDIT_UNSENT")).run("srr_new", "billing is down", "2026-10-21T13:00:00Z");
+  const listed = db.prepare(sql("RECOVERIES")).all(10);
+  assert.deepEqual(
+    listed.map((row) => [row.id, row.audit_id, row.audit_sent_at, row.audit_attempts, row.audit_error]),
+    [
+      ["srr_new", "srr_new", null, 1, "billing is down"],
+      ["srr_old", null, null, null, null],
+    ],
+  );
+  assert.equal(listed[0].staff, "staff@g1t.sh");
+  db.close();
+});
+
+test("lines billing keeps refusing cannot keep a newer one from being sent", () => {
+  const db = database();
+  const insert = db.prepare(
+    "INSERT INTO storage_recovery_audits (recovery_id, workspace, action, detail, by, created_at) VALUES (?, 'team', 'storage_released', 'd', 'staff@g1t.sh', ?)",
+  );
+  for (let i = 0; i < 50; i++) insert.run(`srr_old_${String(i).padStart(2, "0")}`, `2026-10-21T10:${String(i).padStart(2, "0")}:00Z`);
+  // A sweep just tried every one of them, and billing refused each.
+  for (let i = 0; i < 50; i++)
+    db.prepare(sql("AUDIT_UNSENT")).run(`srr_old_${String(i).padStart(2, "0")}`, "refused", `2026-10-21T12:00:${String(i).padStart(2, "0")}Z`);
+  insert.run("srr_new", "2026-10-21T11:00:00Z");
+  const picked = db
+    .prepare(sql("AUDITS_UNSENT"))
+    .all(50, null)
+    .map((row) => row.recovery_id);
+  assert.equal(picked.length, 50);
+  assert.equal(picked[0], "srr_new", "never tried, so first");
+  assert.equal(picked[1], "srr_old_00", "then the one tried longest ago");
+  assert.ok(!picked.includes("srr_old_49"), "the one tried last waits for the next sweep");
+  // Where one line stands, for a release whose line the sweep already sent.
+  db.prepare(sql("AUDIT_SENT")).run("srr_new", "2026-10-21T12:30:00Z");
+  assert.deepEqual({ ...db.prepare(sql("AUDIT_STATE")).get("srr_new") }, { sent_at: "2026-10-21T12:30:00Z", attempts: 1, error: null });
+  db.close();
+});

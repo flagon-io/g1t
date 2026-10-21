@@ -2010,6 +2010,23 @@ pub struct StorageRecovery {
     pub reason: String,
     /// RFC 3339.
     pub released_at: String,
+    /// Its line in sudo's audit log, which the repos service writes from
+    /// its outbox (`storage_recovery_audits`). `None` for a release made
+    /// before it did, whose line sudo wrote itself.
+    #[serde(default)]
+    pub audit: Option<StorageRecoveryAudit>,
+}
+
+/// Where a release's line in sudo's audit log stands: written once billing
+/// confirmed it (`sent_at`), and until then tried again every hour.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageRecoveryAudit {
+    /// RFC 3339; `None` while it is still to be written.
+    pub sent_at: Option<String>,
+    pub attempts: u32,
+    /// What billing's last answer was, while it is still to be written.
+    pub error: Option<String>,
 }
 
 /// One repository measured in the store.

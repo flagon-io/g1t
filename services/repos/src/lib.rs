@@ -3374,6 +3374,13 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
         Ok(count) => worker::console_log!("repos: moved {count} repositories between namespaces"),
         Err(error) => worker::console_error!("repos: the move sweep failed: {error}"),
     }
+    // Staff releases of storage holds whose audit line billing has not
+    // confirmed yet (storage_holds.rs).
+    match repos.sweep_recovery_audits().await {
+        Ok((0, 0)) => {}
+        Ok((sent, unsent)) => worker::console_log!("repos: sent {sent} storage release audit lines, {unsent} still unsent"),
+        Err(error) => worker::console_error!("repos: the storage release audit sweep failed: {error}"),
+    }
     meters::flush(&repos.registry.db).await;
 }
 

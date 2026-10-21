@@ -335,3 +335,35 @@ test("different workspaces share one bounded OSS pool and free overruns remain e
   );
   db.close();
 });
+
+test("a keyed admin_log line is written once however often it is sent", () => {
+  const db = database();
+  const once = db.prepare(constant("accounts", "ADMIN_LOG_ONCE"));
+  const send = (detail) => once.run("admk_srr_1", "ws_acme", "storage_released", detail, "staff@g1t.sh", at);
+  send("Reservation srv_1 on acme/site (rep_1), 320 MB: a test · storage_recoveries srr_1");
+  // Its answer was lost, so the repos service sends it again.
+  send("Reservation srv_1 on acme/site (rep_1), 320 MB: a test · storage_recoveries srr_1");
+  const rows = db.prepare("SELECT id, account, action, detail, by FROM admin_actions WHERE id = 'admk_srr_1'").all();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].account, "ws_acme");
+  assert.equal(rows[0].by, "staff@g1t.sh");
+  db.close();
+});
+
+test("a key that already holds another kind of change is refused, and its line is left as it was", () => {
+  const db = database();
+  const once = db.prepare(constant("accounts", "ADMIN_LOG_ONCE"));
+  const kept = db.prepare(constant("accounts", "ADMIN_LOG_KEPT"));
+  once.run("admk_srr_2", "ws_acme", "storage_released", "the release", "staff@g1t.sh", at);
+  assert.ok(kept.get("admk_srr_2", "storage_released"), "the same kind of change: written, or already there");
+  once.run("admk_srr_2", "ws_acme", "workspace_restored", "another change", "staff@g1t.sh", at);
+  assert.equal(kept.get("admk_srr_2", "workspace_restored"), undefined, "audit_once refuses it");
+  assert.deepEqual(
+    db
+      .prepare("SELECT action, detail FROM admin_actions WHERE id = 'admk_srr_2'")
+      .all()
+      .map((row) => [row.action, row.detail]),
+    [["storage_released", "the release"]],
+  );
+  db.close();
+});

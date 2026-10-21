@@ -58,8 +58,9 @@ use std::collections::HashMap;
 use g1t_contracts::repos::{
     AdminReleaseStorageHoldArgs, AdminStorageDriftArgs, AdminStorageHoldArgs, AdminStorageHoldsArgs, AdminStorageRecoveriesArgs,
     AskedRef, Repo, RepoDrift, StorageDrift, StorageHold, StorageHoldInspection, StorageHoldRepo, StorageHolds, StorageRecovery,
-    UpstreamState,
+    StorageRecoveryAudit, UpstreamState,
 };
+use g1t_contracts::billing::AdminLogArgs;
 use g1t_contracts::time::{parse_rfc3339, rfc3339};
 use g1t_contracts::{FailureCode, Outcome, new_id};
 use g1t_kit::now_ms;
@@ -166,9 +167,108 @@ pub(crate) const RELEASE_LOCK: &str = "INSERT INTO storage_recoveries
 pub(crate) const RELEASE_LOCK_ROW: &str = "DELETE FROM storage_copy_locks
     WHERE repo_id = ?2 AND destination_id = ?3 AND EXISTS (SELECT 1 FROM storage_recoveries WHERE id = ?1)";
 
-pub(crate) const RECOVERIES: &str = "SELECT id, kind, root_id, target_id, reservation_id, operation, actor_id, bytes, held_since,
-      evidence, staff, reason, released_at
-    FROM storage_recoveries ORDER BY released_at DESC, id DESC LIMIT ?1";
+/// The release's line for sudo's audit log, kept to send (the outbox,
+/// migration 0024): written in the release's batch, only if its recovery
+/// row was. ?1 audit id, ?2 workspace or null, ?3 account or null, ?4
+/// action, ?5 detail, ?6 staff, ?7 created_at.
+pub(crate) const RELEASE_AUDIT: &str = "INSERT INTO storage_recovery_audits (recovery_id, workspace, account, action, detail, by, created_at)
+    SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7 WHERE EXISTS (SELECT 1 FROM storage_recoveries WHERE id = ?1)";
+
+/// Lines billing has not confirmed: those never tried first, then those
+/// tried longest ago, so lines billing keeps refusing cannot keep newer
+/// ones from being sent. ?1 limit, ?2 one recovery or null for all.
+pub(crate) const AUDITS_UNSENT: &str = "SELECT recovery_id, workspace, account, action, detail, by FROM storage_recovery_audits
+    WHERE sent_at IS NULL AND (?2 IS NULL OR recovery_id = ?2) ORDER BY tried_at IS NOT NULL, tried_at, created_at LIMIT ?1";
+
+/// Where one line stands. ?1 recovery.
+pub(crate) const AUDIT_STATE: &str = "SELECT sent_at, attempts, error FROM storage_recovery_audits WHERE recovery_id = ?1";
+
+/// Billing confirmed it. ?1 recovery, ?2 now.
+pub(crate) const AUDIT_SENT: &str = "UPDATE storage_recovery_audits SET sent_at = ?2, tried_at = ?2, attempts = attempts + 1, error = NULL
+    WHERE recovery_id = ?1 AND sent_at IS NULL";
+
+/// Billing did not confirm it, so it is sent again later. ?1 recovery, ?2
+/// what it answered, ?3 now.
+pub(crate) const AUDIT_UNSENT: &str = "UPDATE storage_recovery_audits SET tried_at = ?3, attempts = attempts + 1, error = ?2
+    WHERE recovery_id = ?1 AND sent_at IS NULL";
+
+pub(crate) const RECOVERIES: &str = "SELECT r.id, r.kind, r.root_id, r.target_id, r.reservation_id, r.operation, r.actor_id, r.bytes,
+      r.held_since, r.evidence, r.staff, r.reason, r.released_at,
+      a.recovery_id AS audit_id, a.sent_at AS audit_sent_at, a.attempts AS audit_attempts, a.error AS audit_error
+    FROM storage_recoveries r LEFT JOIN storage_recovery_audits a ON a.recovery_id = r.id
+    ORDER BY r.released_at DESC, r.id DESC LIMIT ?1";
+
+// --- The release's line in sudo's audit log ---
+
+/// The audit log's kind of change for a release (sudo's ledgers.ts
+/// `AUDIT_ACTIONS`).
+pub const RELEASE_ACTION: &str = "storage_released";
+
+/// Where billing files a release whose repository's row is gone, so no
+/// workspace can be named (billing's `ADMIN_LOG_ACCOUNTS`).
+pub const RELEASE_ACCOUNT: &str = "storage";
+
+/// Unsent lines one sweep sends at most.
+const AUDITS_PER_SWEEP: u32 = 50;
+
+/// A release's line in sudo's audit log, as #310 had sudo write it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuditLine {
+    /// The charged repository's workspace; `None` when its row is gone, and
+    /// then filed under [`RELEASE_ACCOUNT`].
+    pub workspace: Option<String>,
+    pub detail: String,
+}
+
+fn kind_label(kind: &str) -> &str {
+    match kind {
+        "reservation" => "Reservation",
+        "unledgered" => "Unledgered",
+        "copy_lock" => "Copy lock",
+        other => other,
+    }
+}
+
+/// Bytes in the decimal units the storage limits use, as sudo shows them:
+/// `1.5 GB`, `320 MB`, `12.3 kB`, `7 bytes`.
+/// Rounded half up in integers, as sudo's `formatBytes` rounds
+/// (`toFixed`, `Math.round`), so the audit line says what the page does.
+pub fn format_bytes(bytes: u64) -> String {
+    let size = u128::from(bytes);
+    for (scale, unit) in [(1_000_000_000u128, "GB"), (1_000_000, "MB"), (1_000, "kB")] {
+        if size >= scale {
+            let shown = if size >= 100 * scale {
+                format!("{}", (size + scale / 2) / scale)
+            } else {
+                let tenths = (size * 10 + scale / 2) / scale;
+                if tenths % 10 == 0 { format!("{}", tenths / 10) } else { format!("{}.{}", tenths / 10, tenths % 10) }
+            };
+            return format!("{shown} {unit}");
+        }
+    }
+    format!("{bytes} {}", if bytes == 1 { "byte" } else { "bytes" })
+}
+
+/// The line for a release of `hold`, recorded as `recovery_id`: filed
+/// under the charged repository's workspace, naming the hold, the
+/// repository, the one written when that is another (a fork, or a copy
+/// lock's destination, which may be in another workspace), the size, the
+/// reason and the `storage_recoveries` row, which keeps the inspection as
+/// evidence.
+pub fn audit_line(hold: &StorageHold, bytes: u64, reason: &str, recovery_id: &str) -> AuditLine {
+    let named = |repo: &StorageHoldRepo| match &repo.path {
+        Some(path) => format!("{path} ({})", repo.id),
+        None => format!("repository {} (gone)", repo.id),
+    };
+    let workspace = hold.repo.path.as_deref().and_then(|path| path.split('/').next()).filter(|slug| !slug.is_empty()).map(str::to_owned);
+    let written = match &hold.target {
+        Some(target) if target.id != hold.repo.id => format!(" → {}", named(target)),
+        _ => String::new(),
+    };
+    let size = if hold.kind == "copy_lock" { String::new() } else { format!(", {}", format_bytes(bytes)) };
+    let detail = format!("{} {} on {}{written}{size}: {reason} · storage_recoveries {recovery_id}", kind_label(&hold.kind), hold.id, named(&hold.repo));
+    AuditLine { workspace, detail }
+}
 
 // --- Whether a hold is provably abandoned ---
 
@@ -357,6 +457,20 @@ struct RecoveryRow {
     staff: String,
     reason: String,
     released_at: String,
+    audit_id: Option<String>,
+    audit_sent_at: Option<String>,
+    audit_attempts: Option<f64>,
+    audit_error: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UnsentRow {
+    recovery_id: String,
+    workspace: Option<String>,
+    account: Option<String>,
+    action: String,
+    detail: String,
+    by: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -652,7 +766,7 @@ impl<S: GitStore> Repos<S> {
         let audit = new_id("srr", now);
         let released_at = at(now);
         let db = &self.registry.db;
-        let (statements, bytes_released) = match &found {
+        let (mut statements, bytes_released) = match &found {
             Found::Reservation(row) => {
                 let held = bytes(row.bytes) as f64;
                 (
@@ -696,6 +810,20 @@ impl<S: GitStore> Repos<S> {
                 )
             }
         };
+        // Its line in sudo's audit log, in the same batch: released means
+        // the line is kept to send, and it is sent until billing confirms.
+        let hold = &inspection.hold;
+        let line = audit_line(hold, bytes_released, reason, &audit);
+        let filed = |value: Option<&str>| value.map_or(JsValue::NULL, JsValue::from);
+        statements.push(db.prepare(RELEASE_AUDIT).bind(&[
+            audit.as_str().into(),
+            filed(line.workspace.as_deref()),
+            filed(line.workspace.is_none().then_some(RELEASE_ACCOUNT)),
+            RELEASE_ACTION.into(),
+            line.detail.as_str().into(),
+            staff.into(),
+            released_at.as_str().into(),
+        ])?);
         let results = db.batch(statements).await?;
         if results[0].results::<Written>()?.is_empty() {
             return Ok(Outcome::fail(FailureCode::Conflict, "It changed since it was inspected, so nothing was released. Inspect it again."));
@@ -704,7 +832,25 @@ impl<S: GitStore> Repos<S> {
             "{}",
             serde_json::json!({ "storage_hold_released": found.kind(), "id": found.id(), "bytes": bytes_released, "staff": staff, "audit": audit })
         );
-        let hold = &inspection.hold;
+        // Sent now, so the page can say it is in the audit log. If this
+        // answer or billing's is lost, or this request stops here, the
+        // hourly sweep sends it again, and billing writes it once.
+        let sent = self.send_recovery_audits(Some(&audit), 1).await;
+        let audit_state = match sent.as_deref() {
+            Ok([(_, Ok(()))]) => StorageRecoveryAudit { sent_at: Some(at(now_ms())), attempts: 1, error: None },
+            Ok([(_, Err(error))]) => StorageRecoveryAudit { sent_at: None, attempts: 1, error: Some(error.clone()) },
+            // Nothing unsent: the sweep sent it between the batch and now.
+            // Say where it really stands.
+            Ok(_) => match self.recovery_audit(&audit).await {
+                Ok(Some(state)) => state,
+                Ok(None) => StorageRecoveryAudit { sent_at: None, attempts: 0, error: None },
+                Err(error) => StorageRecoveryAudit { sent_at: None, attempts: 0, error: Some(error.to_string()) },
+            },
+            Err(error) => {
+                worker::console_error!("{}", serde_json::json!({ "storage_release_unaudited": audit, "error": error.to_string() }));
+                StorageRecoveryAudit { sent_at: None, attempts: 0, error: Some(error.to_string()) }
+            }
+        };
         Ok(Outcome::Ok(StorageRecovery {
             id: audit,
             kind: hold.kind.clone(),
@@ -719,7 +865,72 @@ impl<S: GitStore> Repos<S> {
             staff: staff.to_owned(),
             reason: reason.to_owned(),
             released_at,
+            audit: Some(audit_state),
         }))
+    }
+
+    /// Sends the release lines billing has not confirmed (at most `limit`,
+    /// or only `only`) to its `admin_log`, keyed by the recovery's id so a
+    /// line sent twice is written once, and marks each sent only once
+    /// billing confirms it. What each answered, by recovery id.
+    pub(crate) async fn send_recovery_audits(&self, only: Option<&str>, limit: u32) -> Result<Vec<(String, std::result::Result<(), String>)>> {
+        let db = &self.registry.db;
+        let unsent = db
+            .prepare(AUDITS_UNSENT)
+            .bind(&[f64::from(limit).into(), only.map_or(JsValue::NULL, JsValue::from)])?
+            .all()
+            .await?
+            .results::<UnsentRow>()?;
+        let mut answers = Vec::with_capacity(unsent.len());
+        for row in unsent {
+            let answer = self.send_recovery_audit(&row).await;
+            let now = at(now_ms());
+            match &answer {
+                Ok(()) => db.prepare(AUDIT_SENT).bind(&[row.recovery_id.as_str().into(), now.as_str().into()])?.run().await?,
+                Err(error) => {
+                    worker::console_error!("{}", serde_json::json!({ "storage_release_unaudited": row.recovery_id, "error": error }));
+                    db.prepare(AUDIT_UNSENT).bind(&[row.recovery_id.as_str().into(), error.as_str().into(), now.as_str().into()])?.run().await?
+                }
+            };
+            answers.push((row.recovery_id, answer));
+        }
+        Ok(answers)
+    }
+
+    async fn send_recovery_audit(&self, row: &UnsentRow) -> std::result::Result<(), String> {
+        let Some(billing) = &self.billing else { return Err("The repos service has no BILLING binding.".to_owned()) };
+        let args = AdminLogArgs {
+            workspace: row.workspace.clone().unwrap_or_default(),
+            account: row.account.clone(),
+            action: row.action.clone(),
+            detail: row.detail.clone(),
+            by: row.by.clone(),
+            key: Some(row.recovery_id.clone()),
+        };
+        match g1t_kit::call::<_, bool>(billing, "admin_log", &args).await {
+            Ok(true) => Ok(()),
+            Ok(false) => Err("Billing did not confirm it.".to_owned()),
+            Err(error) => Err(error.to_string().chars().take(500).collect()),
+        }
+    }
+
+    /// Where one release's line stands, as its outbox row says.
+    async fn recovery_audit(&self, recovery_id: &str) -> Result<Option<StorageRecoveryAudit>> {
+        #[derive(Deserialize)]
+        struct Row {
+            sent_at: Option<String>,
+            attempts: f64,
+            error: Option<String>,
+        }
+        let row = self.registry.db.prepare(AUDIT_STATE).bind(&[recovery_id.into()])?.first::<Row>(None).await?;
+        Ok(row.map(|row| StorageRecoveryAudit { sent_at: row.sent_at, attempts: row.attempts.max(0.0) as u32, error: row.error }))
+    }
+
+    /// The hourly sweep's part: lines a release could not send at once.
+    pub(crate) async fn sweep_recovery_audits(&self) -> Result<(usize, usize)> {
+        let answers = self.send_recovery_audits(None, AUDITS_PER_SWEEP).await?;
+        let sent = answers.iter().filter(|(_, answer)| answer.is_ok()).count();
+        Ok((sent, answers.len() - sent))
     }
 
     /// `admin_storage_recoveries`.
@@ -742,6 +953,11 @@ impl<S: GitStore> Repos<S> {
                 staff: row.staff,
                 reason: row.reason,
                 released_at: row.released_at,
+                audit: row.audit_id.map(|_| StorageRecoveryAudit {
+                    sent_at: row.audit_sent_at,
+                    attempts: row.audit_attempts.map_or(0, |attempts| attempts.max(0.0) as u32),
+                    error: row.audit_error,
+                }),
             })
             .collect())
     }
@@ -943,6 +1159,75 @@ mod tests {
         // And the migration gives the meter the same weights.
         let migration = include_str!("../migrations/0023_storage_reservations.sql");
         assert!(migration.contains("('internal.git.drift_fetch', 1, 0,"));
+    }
+
+    fn held(kind: &str, path: Option<&str>) -> StorageHold {
+        StorageHold {
+            kind: kind.to_owned(),
+            id: if kind == "reservation" { "srv_1".into() } else { "rep_1".into() },
+            repo: StorageHoldRepo { id: "rep_1".into(), path: path.map(str::to_owned), ..StorageHoldRepo::default() },
+            ..StorageHold::default()
+        }
+    }
+
+    #[test]
+    fn bytes_are_written_in_the_units_sudo_shows() {
+        assert_eq!(format_bytes(5_000_000_000), "5 GB");
+        assert_eq!(format_bytes(1_500_000_000), "1.5 GB");
+        assert_eq!(format_bytes(100_000_000), "100 MB");
+        assert_eq!(format_bytes(320_000_000), "320 MB");
+        assert_eq!(format_bytes(12_345), "12.3 kB");
+        // A tie rounds up, as sudo's toFixed does.
+        assert_eq!(format_bytes(1_250), "1.3 kB");
+        assert_eq!(format_bytes(99_950_000), "100 MB");
+        assert_eq!(format_bytes(150_500_000), "151 MB");
+        assert_eq!(format_bytes(u64::MAX), "18446744074 GB");
+        assert_eq!(format_bytes(1), "1 byte");
+        assert_eq!(format_bytes(0), "0 bytes");
+    }
+
+    #[test]
+    fn a_releases_audit_line_is_filed_under_the_repositorys_workspace_and_names_the_recovery_row() {
+        let reason = "The push ended with a 500.";
+        let line = audit_line(&held("reservation", Some("acme/site")), 320_000_000, reason, "srr_9");
+        assert_eq!(line.workspace.as_deref(), Some("acme"));
+        assert_eq!(line.detail, "Reservation srv_1 on acme/site (rep_1), 320 MB: The push ended with a 500. · storage_recoveries srr_9");
+        // A copy lock holds no bytes of its own.
+        let lock = audit_line(&held("copy_lock", Some("acme/site")), 0, reason, "srr_9");
+        assert_eq!(lock.detail, "Copy lock rep_1 on acme/site (rep_1): The push ended with a 500. · storage_recoveries srr_9");
+        // The repository written, when it is another, as a fork in another workspace is.
+        let mut forked = held("copy_lock", Some("acme/site"));
+        forked.target = Some(StorageHoldRepo { id: "rep_2".into(), path: Some("bob/site".into()), ..StorageHoldRepo::default() });
+        let line = audit_line(&forked, 0, reason, "srr_9");
+        assert_eq!(line.workspace.as_deref(), Some("acme"));
+        assert_eq!(line.detail, "Copy lock rep_1 on acme/site (rep_1) → bob/site (rep_2): The push ended with a 500. · storage_recoveries srr_9");
+        forked.target = Some(StorageHoldRepo { id: "rep_2".into(), ..StorageHoldRepo::default() });
+        assert!(audit_line(&forked, 0, reason, "srr_9").detail.contains("→ repository rep_2 (gone)"));
+        // A write to the charged repository itself names it once.
+        let mut own = held("reservation", Some("acme/site"));
+        own.target = Some(own.repo.clone());
+        assert!(!audit_line(&own, 1, reason, "srr_9").detail.contains('→'));
+    }
+
+    #[test]
+    fn a_release_on_a_repository_whose_row_is_gone_is_filed_under_storage() {
+        let line = audit_line(&held("unledgered", None), 7, "Older code.", "srr_9");
+        assert_eq!(line.workspace, None);
+        assert!(line.detail.starts_with("Unledgered rep_1 on repository rep_1 (gone), 7 bytes: Older code."));
+        assert!(g1t_contracts::billing::ADMIN_LOG_ACCOUNTS.contains(&RELEASE_ACCOUNT), "billing files it there");
+    }
+
+    #[test]
+    fn a_release_keeps_its_audit_line_in_the_same_batch_and_billing_writes_it_once() {
+        let source = include_str!("storage_holds.rs");
+        let release = &source[source.find("async fn admin_release_storage_hold(").unwrap()..source.find("async fn send_recovery_audits(").unwrap()];
+        let pushed = release.find("statements.push(db.prepare(RELEASE_AUDIT)").expect("the outbox row is one of the batch's statements");
+        assert!(pushed < release.find("db.batch(statements)").unwrap(), "added before the batch runs");
+        // Each line is sent with its recovery id as billing's key, and only
+        // marked sent once billing says so.
+        let sending = &source[source.find("async fn send_recovery_audit(").unwrap()..source.find("async fn sweep_recovery_audits(").unwrap()];
+        assert!(sending.contains("key: Some(row.recovery_id.clone())"));
+        assert!(sending.contains("Ok(true) => Ok(())"));
     }
 
     #[test]
