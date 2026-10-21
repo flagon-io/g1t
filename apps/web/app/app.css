@@ -238,24 +238,34 @@ html[data-theme="dark"] {
 
 /*
  * The app's frame (components/shell.tsx), set on <body data-frame="app">:
- * the page fills the window beside the rail and the sidebar, and on a
- * phone it fills the window above the bottom bar, flat, as on a computer.
+ * from 768px the app bar runs across the top of the window, and under it
+ * the sidebar and the page with its own top bar; on a phone the page fills
+ * the window above the bottom bar, flat, as on a computer.
  * What sticks to the top or the bottom of a page reads these:
  * --frame-top  what is above the page: a phone's status bar, where it overlaps
- * --topbar-h   that gap plus the top bar: where sticky things sit
+ * --appbar-h   the app bar (components/app-bar.tsx): only in a workspace, from 768px
+ * --topbar-h   those plus the page's top bar: where sticky things sit
  * --tabbar-h   what the bottom takes: on a phone, the bar and the home indicator under it
  * --page-h     the height left for a page that fills the window (Chat)
  * The public frame keeps a plain header 3.5rem tall and nothing at the bottom.
  */
 :root {
   --frame-top: 0px;
+  --appbar-h: 0px;
   --tabbar-h: 0px;
   --topbar-h: 3.5rem;
   --page-h: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 }
 body[data-frame="app"] {
-  --topbar-h: calc(var(--frame-top) + 3.5rem);
+  --topbar-h: calc(var(--frame-top) + var(--appbar-h) + 3.5rem);
   --page-h: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
+}
+/* Under the app bar, the page's own bar is a slimmer 48px: where you are, and the sidebar's toggle. */
+@media (min-width: 768px) {
+  body[data-frame="app"]:has([data-slot="app-bar"]) {
+    --appbar-h: 3.25rem;
+    --topbar-h: calc(var(--frame-top) + var(--appbar-h) + 3rem);
+  }
 }
 @media (max-width: 767px) {
   body[data-frame="app"] {

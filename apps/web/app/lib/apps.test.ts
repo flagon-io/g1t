@@ -22,7 +22,7 @@ import {
   PHONE_TABS,
   appOf,
   phoneMoreApps,
-  railApps,
+  barApps,
 } from "./apps.ts";
 
 test("Work is a built-in app right after Home, for every member, and Sessions are in it", () => {
@@ -39,10 +39,10 @@ test("Work is a built-in app right after Home, for every member, and Sessions ar
   );
 });
 
-test("the rail is Home, Explore, Work, Chat, Code, Artifacts and Routines", () => {
-  assert.deepEqual(railApps(true), ["home", "explore", "work", "chat", "code", "artifacts", "routines"]);
+test("the app bar's tabs are Home, Work, Chat, Code, Artifacts and Routines", () => {
+  assert.deepEqual(barApps(true), ["home", "work", "chat", "code", "artifacts", "routines"]);
   // A member without Code access has no Code, and the rest in the same order.
-  assert.deepEqual(railApps(false), ["home", "explore", "work", "chat", "artifacts", "routines"]);
+  assert.deepEqual(barApps(false), ["home", "work", "chat", "artifacts", "routines"]);
 });
 
 test("a phone's bar is Home, Work, Chat and Notifications, with Code first of More's apps", () => {

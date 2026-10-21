@@ -173,6 +173,21 @@ export function needsYou(items: InboxItem[], max: number): { items: InboxItem[];
 }
 
 /** Whether an item is still unread. */
+/**
+ * The sidebar's Needs attention (components/needs-attention.tsx): what is
+ * waiting on the person in the workspace `slug`, newest first. Done items,
+ * ones snoozed until later and ones dismissed here (`hidden`) are left out;
+ * an item of no workspace counts where its repository is.
+ */
+export function needsAttention(items: InboxItem[], slug: string, now: number, hidden: ReadonlySet<string> = new Set()): InboxItem[] {
+  const ours = (item: InboxItem) =>
+    item.workspace != null ? item.workspace.toLowerCase() === slug.toLowerCase() : (item.repo?.split("/")[0] ?? "").toLowerCase() === slug.toLowerCase();
+  return items
+    .filter((item) => item.severity === "warning" && item.doneAt == null && !hidden.has(item.id) && ours(item))
+    .filter((item) => item.snoozedUntil == null || Date.parse(item.snoozedUntil) <= now)
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+}
+
 export function isUnread(item: Pick<InboxItem, "readAt">): boolean {
   return item.readAt == null;
 }

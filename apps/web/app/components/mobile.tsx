@@ -22,7 +22,7 @@ import { Link, useLocation, useNavigate, useSubmit } from "react-router";
 import { type Abilities, type Membership, type User, hasCodeAccess, shownUsername } from "@g1t/contracts";
 
 import { appIcon, pinnedApp } from "./apps";
-import { CountBadge, ShortcutsDialog } from "./rail";
+import { CountBadge, ShortcutsDialog } from "./app-bar";
 import { Mark } from "./logo";
 
 import { Avatar } from "./ui/avatar";

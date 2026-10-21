@@ -53,18 +53,19 @@ export const BUILTINS: BuiltinInfo[] = [
 ];
 
 /**
- * The rail's apps from its top, in order: Home, Explore (g1t beyond your
- * workspaces, which is no built-in app), Work with its sessions, Chat,
- * Code for a member with Code access, Artifacts and Routines. People and
- * Workspace stand at its foot.
+ * The app bar's tabs, in order (components/app-bar.tsx): Home, Work with
+ * its sessions, Chat, Code for a member with Code access, Artifacts and
+ * Routines. Pinned apps, the Apps launcher and Explore (g1t beyond your
+ * workspaces) follow them as icons; People and Workspace are in the
+ * workspace's menu.
  */
-export const RAIL_APPS = ["home", "explore", "work", "chat", "code", "artifacts", "routines"] as const;
+export const BAR_APPS = ["home", "work", "chat", "code", "artifacts", "routines"] as const satisfies readonly BuiltinApp[];
 
-export type RailApp = (typeof RAIL_APPS)[number];
+export type BarApp = (typeof BAR_APPS)[number];
 
-/** The rail's apps for a member, with Code only when they have Code access. */
-export function railApps(code: boolean): RailApp[] {
-  return RAIL_APPS.filter((key) => code || key !== "code");
+/** The app bar's tabs for a member, with Code only when they have Code access. */
+export function barApps(code: boolean): BarApp[] {
+  return BAR_APPS.filter((key) => code || key !== "code");
 }
 
 /** A phone's bottom bar, before More: Work for every member, Code under More. */
