@@ -775,7 +775,9 @@ After them come the apps you pinned, then:
 The app you are in sits on a filled pill. Your account is the
 avatar at the app bar's end: your status, your profile and settings,
 [appearance](#appearance), the documentation, support, status, the
-keyboard's shortcuts, and signing out.
+keyboard's shortcuts, and signing out. Press <kbd>?</kbd> anywhere (outside
+a text field) to see the keyboard's shortcuts; <kbd>Ctrl</kbd> <kbd>K</kbd>
+(<kbd>⌘</kbd> <kbd>K</kbd> on a Mac) is search.
 
 ### Appearance
 

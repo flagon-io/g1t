@@ -142,6 +142,7 @@ export function WorkspaceSwitcher({
 function shortcuts(palette: string, sidebar: string): [string, string][] {
   return [
     [palette, "Search, jump anywhere, or run a command"],
+    ["?", "Show these shortcuts"],
     [sidebar, "Show or hide the sidebar"],
     ["Esc", "Close a menu, dialog or panel"],
     ["Enter", "Send a message in Chat"],
