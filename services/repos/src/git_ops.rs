@@ -328,17 +328,41 @@ pub fn public_storage_full(public_bytes: i64, free_bytes: i64) -> bool {
     free_bytes > 0 && public_bytes >= free_bytes
 }
 
-/// The answer to a push to a public repository a free workspace has no
-/// room for.
+/// The answer to a push to a public repository a workspace has no room
+/// for, in plain text, which git shows.
 pub fn public_storage_full_response(namespace: &str, public_bytes: i64, free_bytes: i64) -> Result<Response> {
+    plain_refusal(public_storage_full_message(namespace, public_bytes, free_bytes), 403)
+}
+
+fn public_storage_full_message(namespace: &str, public_bytes: i64, free_bytes: i64) -> String {
     let gb = |bytes: i64| bytes as f64 / 1_000_000_000.0;
-    let message = format!(
+    format!(
         "{namespace}'s public repositories hold {:.2} GB. Every workspace has a {:.0} GB public storage limit, including paid workspaces. Public storage is free. Make room before adding more public data: https://g1t.sh/{namespace}/-/billing
 ",
         gb(public_bytes),
         gb(free_bytes)
-    );
-    Response::error(message, 403)
+    )
+}
+
+/// What git is told when g1t refuses a request itself: `message` as plain
+/// text. git prints an error's body (as `remote:` lines, then its own
+/// `fatal:` line with the status) only when the answer is `text/plain`;
+/// with no content type it shows the bare status, such as `403`.
+pub fn plain_refusal(message: impl Into<String>, status: u16) -> Result<Response> {
+    let response = Response::error(message, status)?;
+    response.headers().set("content-type", PLAIN_TEXT)?;
+    Ok(response)
+}
+
+/// The content type of every refusal git is to show ([`plain_refusal`]).
+pub const PLAIN_TEXT: &str = "text/plain; charset=utf-8";
+
+/// What a push to a repository at the store's size limit is told.
+pub fn repository_full_message(namespace: &str, name: &str, held: u64) -> String {
+    format!(
+        "{namespace}/{name} holds about {}, the most a repository may hold on g1t, so it takes no more pushes. Delete what you no longer need, or split it: https://docs.g1t.sh/guides/git/#size-limits\n",
+        crate::pack_limits::megabytes(held)
+    )
 }
 
 /// The answer to a push to a repository being copied into a fork: a native
@@ -383,24 +407,30 @@ pub fn storage_full(private_bytes: i64, free_bytes: i64) -> bool {
 /// The answer to a push a free workspace has no room for. Plain text on
 /// the push's first request, which git shows as the reason.
 pub fn storage_full_response(namespace: &str, private_bytes: i64, free_bytes: i64) -> Result<Response> {
+    plain_refusal(storage_full_message(namespace, private_bytes, free_bytes), 403)
+}
+
+fn storage_full_message(namespace: &str, private_bytes: i64, free_bytes: i64) -> String {
     let gb = |bytes: i64| bytes as f64 / 1_000_000_000.0;
-    let message = format!(
+    format!(
         "{namespace}'s private repositories hold {:.2} GB, and a free workspace has {:.0} GB. Free workspaces are never charged for storage, so pushes to private repositories stop here. Make the repository public, delete what you no longer need, or start the g1t plan, where storage past it is usage at cost plus 20% and pushes never stop: https://g1t.sh/{namespace}/-/billing
 ",
         gb(private_bytes),
         gb(free_bytes)
-    );
-    Response::error(message, 403)
+    )
 }
 
 /// The answer to a free workspace past its share: try again next hour.
 pub fn too_many(namespace: &str, free_cap: u64, hourly: u64) -> Result<Response> {
-    let message = format!(
-        "{namespace} has made more than {free_cap} git operations this month, so g1t allows {hourly} an hour until the month turns. Free workspaces are never charged for git operations. On the g1t plan they are never slowed: past {free_cap} a month they are usage at cost plus 20%: https://g1t.sh/{namespace}/-/billing\n"
-    );
-    let response = Response::error(message, 429)?;
+    let response = plain_refusal(too_many_message(namespace, free_cap, hourly), 429)?;
     response.headers().set("retry-after", "3600")?;
     Ok(response)
+}
+
+fn too_many_message(namespace: &str, free_cap: u64, hourly: u64) -> String {
+    format!(
+        "{namespace} has made more than {free_cap} git operations this month, so g1t allows {hourly} an hour until the month turns. Free workspaces are never charged for git operations. On the g1t plan they are never slowed: past {free_cap} a month they are usage at cost plus 20%: https://g1t.sh/{namespace}/-/billing\n"
+    )
 }
 
 #[cfg(test)]
@@ -517,5 +547,69 @@ mod tests {
         // Past it: 60 an hour, then wait.
         assert!(!slow_down(50_001, 60, 50_000, 60));
         assert!(slow_down(50_001, 61, 50_000, 60));
+    }
+
+    /// The lines of `fn name` in `source`, before its tests.
+    fn body_of<'a>(source: &'a str, name: &str) -> &'a str {
+        let code = source.split("#[cfg(test)]\nmod tests").next().unwrap_or_default();
+        let start = code.find(&format!("fn {name}(")).unwrap_or_else(|| panic!("no fn {name}"));
+        let end = code[start..].find("\n}\n").map_or(code.len(), |at| start + at);
+        &code[start..end]
+    }
+
+    #[test]
+    fn every_refusal_git_is_to_show_is_plain_text_with_its_reason() {
+        // git prints an error's body as `remote:` lines only when it is
+        // text/plain; otherwise only its status, a bare 403 or 429.
+        assert_eq!(PLAIN_TEXT, "text/plain; charset=utf-8");
+        let helper = body_of(include_str!("git_ops.rs"), "plain_refusal");
+        assert!(helper.contains("Response::error(message, status)?"), "{helper}");
+        assert!(helper.contains(r#"set("content-type", PLAIN_TEXT)?"#), "{helper}");
+
+        // Each storage refusal says why, and where to go next.
+        let private = storage_full_message("acme", 1_200_000_000, 1_000_000_000);
+        assert!(private.starts_with("acme's private repositories hold 1.20 GB, and a free workspace has 1 GB."), "{private}");
+        assert!(private.contains("https://g1t.sh/acme/-/billing"), "{private}");
+        let public = public_storage_full_message("acme", 5_000_000_000, 5_000_000_000);
+        assert!(public.starts_with("acme's public repositories hold 5.00 GB."), "{public}");
+        assert!(public.contains("5 GB public storage limit") && public.contains("https://g1t.sh/acme/-/billing"), "{public}");
+        let repository = repository_full_message("acme", "rocket", 950_000_000);
+        assert!(repository.starts_with("acme/rocket holds about "), "{repository}");
+        assert!(repository.contains("takes no more pushes") && repository.contains("https://docs.g1t.sh/guides/git/#size-limits"), "{repository}");
+        let slowed = too_many_message("acme", 50_000, 60);
+        assert!(slowed.contains("so g1t allows 60 an hour") && slowed.contains("https://g1t.sh/acme/-/billing"), "{slowed}");
+        for message in [&private, &public, &repository, &slowed] {
+            // Each ends a line, so git's own `fatal:` starts on the next.
+            assert!(message.ends_with('\n'), "{message}");
+        }
+
+        // Each is sent through the one helper, never as a bare error.
+        let source = include_str!("git_ops.rs");
+        for (name, call) in [
+            ("storage_full_response", "plain_refusal(storage_full_message(namespace, private_bytes, free_bytes), 403)"),
+            ("public_storage_full_response", "plain_refusal(public_storage_full_message(namespace, public_bytes, free_bytes), 403)"),
+            ("too_many", "plain_refusal(too_many_message(namespace, free_cap, hourly), 429)?"),
+        ] {
+            assert!(body_of(source, name).contains(call), "{name}");
+        }
+        let limits = body_of(include_str!("lib.rs"), "git_limits");
+        assert!(limits.contains("git_ops::plain_refusal(message, 403)?, 403, \"The repository is full.\""), "{limits}");
+        assert!(limits.contains("git_ops::repository_full_message(&repo.namespace, &repo.name, held)"));
+        // And so is every other answer git is given in words before the
+        // store hears the request.
+        for (file, source, name) in [
+            ("lib.rs", include_str!("lib.rs"), "git_limits"),
+            ("git_ops.rs", include_str!("git_ops.rs"), "storage_full_response"),
+            ("git_ops.rs", include_str!("git_ops.rs"), "public_storage_full_response"),
+            ("git_ops.rs", include_str!("git_ops.rs"), "too_many"),
+            ("git_http.rs", include_str!("git_http.rs"), "refuse<T>"),
+            ("git_http.rs", include_str!("git_http.rs"), "busy_response"),
+            ("limits.rs", include_str!("limits.rs"), "too_many_anonymous_fetches"),
+            ("run_access.rs", include_str!("run_access.rs"), "refusal"),
+        ] {
+            let body = body_of(source, name);
+            assert!(!body.contains("Response::error("), "{file} {name} sends a bare error");
+            assert!(body.contains("plain_refusal(") || body.contains("_response("), "{file} {name}");
+        }
     }
 }

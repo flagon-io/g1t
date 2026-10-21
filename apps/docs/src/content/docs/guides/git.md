@@ -355,6 +355,11 @@ before a push is stored, and declines a push that would cross one. git
 prints the reason beside each branch (`! [remote rejected] main (…)`), and
 what to do as `remote:` lines. Nothing in a declined push is stored.
 
+A push refused before any data is sent (to a full repository, a free
+workspace's full storage, or a repository being copied into a fork) shows
+the reason and what to do the same way, as `remote:` lines, followed by
+git's own `fatal: unable to access '…': The requested URL returned error: 403`.
+
 | Limit                                                | Size                                                         | What happens past it                                                                                                                                                                                                                            |
 | ---------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A file                                               | 32 MB                                                        | The push is declined, naming the file's size.                                                                                                                                                                                                   |
@@ -397,8 +402,8 @@ To have tags start workflows, push them 3 or fewer at a time.
 
 If Cloudflare Artifacts is rate limiting g1t or not answering, g1t tries
 reads again for a moment, then answers git with HTTP `429` (rate limited)
-or `503` (unavailable) and a `Retry-After` header saying how many seconds
-to wait. Pushes are never tried again on your behalf: run `git push`
+or `503` (unavailable), saying so as `remote:` lines, and a `Retry-After`
+header saying how many seconds to wait. Pushes are never tried again on your behalf: run `git push`
 again. On g1t.sh the page says the git storage is busy instead of failing,
 and [status.g1t.sh](https://status.g1t.sh) shows **Git storage**.
 
@@ -408,7 +413,8 @@ Each clone, fetch and push is a git operation, your coding agents' and
 workflow jobs' included. Every workspace has 50,000
 a month included. Past that, a workspace on the g1t plan pays $0.18 per
 1,000, and a free workspace is never charged: past 50,000 in a month, its
-git requests past 60 in an hour are answered `429` with when to try again,
+git requests past 60 in an hour are answered `429`, with the reason and
+when to try again shown as `remote:` lines,
 until the month turns. Counting starts on 2026-10-14. See
 [git operations](/guides/usage-and-billing/#git-operations).
 

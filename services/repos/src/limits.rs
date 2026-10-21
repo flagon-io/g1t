@@ -38,7 +38,7 @@ pub fn too_many_anonymous_fetches(path: &str) -> Result<Response> {
     let message = format!(
         "Too many anonymous clones of {path} right now. Wait a minute and try again, or clone with credentials: https://docs.g1t.sh/reference/rate-limits/\n"
     );
-    let response = Response::error(message, 429)?;
+    let response = crate::git_ops::plain_refusal(message, 429)?;
     response.headers().set("retry-after", &PERIOD_SECONDS.to_string())?;
     Ok(response)
 }

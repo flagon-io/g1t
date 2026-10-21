@@ -2588,13 +2588,8 @@ impl<S: GitStore> Repos<S> {
         if git.service == GitService::ReceivePack && git.endpoint == "info/refs" {
             let held = self.held(repo).await;
             if held >= self.repo_limit {
-                let message = format!(
-                    "{}/{} holds about {}, the most a repository may hold on g1t, so it takes no more pushes. Delete what you no longer need, or split it: https://docs.g1t.sh/guides/git/#size-limits\n",
-                    repo.namespace,
-                    repo.name,
-                    pack_limits::megabytes(held)
-                );
-                return Ok(Some((Response::error(message, 403)?, 403, "The repository is full.")));
+                let message = git_ops::repository_full_message(&repo.namespace, &repo.name, held);
+                return Ok(Some((git_ops::plain_refusal(message, 403)?, 403, "The repository is full.")));
             }
         }
         if git.service == GitService::ReceivePack && git.endpoint == "info/refs" && repo.is_private {
