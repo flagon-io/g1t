@@ -64,7 +64,7 @@ export function startedSessionCard(workspace: string, session: StartedSession): 
   return {
     kind: "session",
     title,
-    detail: "Hosted session · Claude on the workspace's Anthropic account",
+    detail: "Hosted session",
     state: "Working",
     href: `/${slug}/-/chat/sessions/${id}`,
     fields: [{ label: "Repository", value: repo }],
