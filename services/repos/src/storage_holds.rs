@@ -551,16 +551,22 @@ impl<S: GitStore> Repos<S> {
         let charged_named = named(&self.registry, charged, &mut known).await?;
         let charged_role = if matches!(found, Found::Lock(_)) { "source" } else { "charged" };
         let same = written == Some(charged);
+        // A fork's reservation: where it was copied from, too.
+        let mut source = None;
+        if same && hold.operation.as_deref() == Some("fork") {
+            source = charged_named.1.as_ref().and_then(|repo| repo.forked_from.clone());
+        }
         upstream.push(self.upstream(charged_role, charged_named, if same { &asked } else { &[] }).await?);
         if let Some(written) = written.filter(|_| !same) {
             let written_named = named(&self.registry, written, &mut known).await?;
-            // A fork's reservation: where it was copied from, too.
-            let source = written_named.1.as_ref().and_then(|repo| repo.forked_from.clone()).filter(|_| hold.operation.as_deref() == Some("fork"));
-            upstream.push(self.upstream("written", written_named, &asked).await?);
-            if let Some(source) = source.filter(|source| source != charged) {
-                let source_named = named(&self.registry, &source, &mut known).await?;
-                upstream.push(self.upstream("source", source_named, &[]).await?);
+            if matches!(found, Found::Reservation(_)) && hold.operation.as_deref() == Some("fork") {
+                source = written_named.1.as_ref().and_then(|repo| repo.forked_from.clone());
             }
+            upstream.push(self.upstream("written", written_named, &asked).await?);
+        }
+        if let Some(source) = source.filter(|source| source != charged) {
+            let source_named = named(&self.registry, &source, &mut known).await?;
+            upstream.push(self.upstream("source", source_named, &[]).await?);
         }
         let releasable = hold.abandoned;
         let refusal = (!releasable).then(|| hold.why.clone());
