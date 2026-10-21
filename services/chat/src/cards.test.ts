@@ -25,6 +25,13 @@ test("an old card keeps its links and drops actions nobody answers any more", ()
   );
 });
 
+test("g1t's card for a session started from its conversation keeps the session id the site follows", () => {
+  const card = { kind: "session", title: "Why is CI slow?", detail: null, state: "Working", href: "/acme/-/chat/sessions/ses_01ab", ref: "ses_01ab" };
+  assert.equal(shownCard(card).ref, "ses_01ab");
+  assert.equal(shownCard({ ...card, owner: "agents" }).ref, undefined, "an old agent's card does not");
+  assert.equal(shownCard({ ...card, href: "/acme/web/pull/1" }).ref, undefined, "nor one linked elsewhere");
+});
+
 test("a card with nothing left to press has no actions", () => {
   const card = shownCard({
     kind: "x",
