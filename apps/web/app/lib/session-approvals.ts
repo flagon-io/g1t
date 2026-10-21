@@ -57,19 +57,54 @@ export function approvalWhat(approval: Pick<AgentApproval, "tool" | "summary">):
   return approval.summary.startsWith(prefix) ? approval.summary.slice(prefix.length) : approval.summary;
 }
 
+/**
+ * The inbox event that tells whoever started a hosted session that one of
+ * its calls waits (`APPROVAL_REQUESTED` in the Rust contracts). Written out,
+ * as above, for Node's test runner.
+ */
+const APPROVAL_REQUESTED = "agent_session.approval_requested";
+
+/**
+ * The call an inbox item tells of, when it is a hosted session's call
+ * waiting for approval: its link is the session's page at the call's card
+ * (`/acme/-/chat/sessions/ses_1#approval-sevt_3`).
+ */
+export function approvalOfItem(item: Pick<InboxItem, "event" | "url">): { sessionId: string; toolUseId: string } | null {
+  if (item.event !== APPROVAL_REQUESTED) return null;
+  const match = /\/-\/chat\/sessions\/([^/?#]+)[^#]*#approval-(.+)$/.exec(item.url);
+  return match ? { sessionId: decodeURIComponent(match[1]!), toolUseId: decodeURIComponent(match[2]!) } : null;
+}
+
 /** One row of Needs attention: a notification, or a call waiting on the viewer's answer. */
 export type AttentionEntry = { kind: "inbox"; at: number; item: InboxItem } | { kind: "approval"; at: number; approval: AgentApproval };
+
+/** A waiting call's key, in Needs attention and once it is answered there. */
+export function approvalKey(approval: Pick<AgentApproval, "sessionId" | "toolUseId">): string {
+  return `approval:${approval.sessionId}:${approval.toolUseId}`;
+}
 
 /**
  * Notifications and waiting calls in one list, newest first. A call past
  * its time is left out: g1t declines it at its next look, and an answer
- * would be refused.
+ * would be refused. So is a call answered here (`gone`, by `approvalKey`).
+ *
+ * A call shows once. Its starter is also told of it in their inbox, and
+ * the waiting calls (`approvals`) are what can be answered, so a
+ * notification about a call gives way to the call, and one about a call no
+ * longer waiting (answered elsewhere, declined, ended) is left out rather
+ * than linger until the inbox settles it. Only while the calls could not
+ * be read (`approvals` null) do those notifications show, as links.
  */
-export function attentionEntries(items: InboxItem[], approvals: AgentApproval[], now: number): AttentionEntry[] {
+export function attentionEntries(items: InboxItem[], approvals: AgentApproval[] | null, now: number, gone: ReadonlySet<string> = new Set()): AttentionEntry[] {
   const entries: AttentionEntry[] = [
-    ...items.map((item): AttentionEntry => ({ kind: "inbox", at: Date.parse(item.updatedAt) || 0, item })),
-    ...approvals
-      .filter((approval) => approval.status === "waiting" && Date.parse(approval.expiresAt) > now)
+    ...items
+      .filter((item) => {
+        const call = approvalOfItem(item);
+        return call == null || (approvals == null && !gone.has(approvalKey(call)));
+      })
+      .map((item): AttentionEntry => ({ kind: "inbox", at: Date.parse(item.updatedAt) || 0, item })),
+    ...(approvals ?? [])
+      .filter((approval) => approval.status === "waiting" && Date.parse(approval.expiresAt) > now && !gone.has(approvalKey(approval)))
       .map((approval): AttentionEntry => ({ kind: "approval", at: Date.parse(approval.askedAt) || 0, approval })),
   ];
   return entries.sort((a, b) => b.at - a.at);
@@ -77,5 +112,35 @@ export function attentionEntries(items: InboxItem[], approvals: AgentApproval[],
 
 /** A row's key in the list. */
 export function attentionKey(entry: AttentionEntry): string {
-  return entry.kind === "inbox" ? entry.item.id : `approval:${entry.approval.sessionId}:${entry.approval.toolUseId}`;
+  return entry.kind === "inbox" ? entry.item.id : approvalKey(entry.approval);
 }
+
+/** Which call an answer from Needs attention is for: its session's repository and the session, besides the answer itself. */
+export type ApprovalTarget = { repo: { namespace: string; name: string }; sessionId: string };
+
+/** Reads which call a Needs attention card answers, or what is wrong with the form. */
+export function readApprovalTarget(form: FormData): ApprovalTarget | { error: string } {
+  const [namespace, name, ...rest] = String(form.get("repo") ?? "")
+    .trim()
+    .split("/");
+  const sessionId = String(form.get("sessionId") ?? "").trim();
+  if (!namespace || !name || rest.length > 0) return { error: "Say which repository the session runs in." };
+  if (!sessionId) return { error: "Say which session to answer." };
+  return { repo: { namespace, name }, sessionId };
+}
+
+/** What answering a call from Needs attention comes to. */
+export type AnswerOutcome = { answered: true } | { error: string; refused: boolean };
+
+/**
+ * Whether a refused answer means the call is gone for good: answered by
+ * someone else, declined, its session ended, or not theirs to answer. Its
+ * card says why, then leaves. Anything else (g1t did not answer, the
+ * provider did not take it) may be tried again, and the card stays.
+ */
+export function refusedForGood(code: string): boolean {
+  return code === "conflict" || code === "not_found" || code === "forbidden";
+}
+
+/** The window event an answer from anywhere sends, so what shows the call (Needs attention, Recents) reads again. */
+export const APPROVAL_ANSWERED_EVENT = "g1t:approval-answered";
