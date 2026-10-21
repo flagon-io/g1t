@@ -575,6 +575,9 @@ pub struct Forwarded {
     /// was streamed to the store unscanned (`LargePushes::Unscanned`). Its
     /// `git.push` events say so, and security scans it after it lands.
     pub unscanned: bool,
+    /// For a push: the store refused it for its rate limit (429), before
+    /// taking any of it, so its storage reservation can go at once.
+    pub rate_limited: bool,
 }
 
 /// What became of a git request.
@@ -1087,6 +1090,7 @@ pub async fn forward(
                     sent,
                     from_store: false,
                     unscanned: false,
+                    rate_limited: false,
                 }));
             }
             (Err(error), None) => return Err(error),
@@ -1117,6 +1121,7 @@ pub async fn forward(
         sent,
         from_store: true,
         unscanned: false,
+        rate_limited: false,
     }))
 }
 
@@ -1154,6 +1159,7 @@ pub async fn from_edge(response: Response, git: &GitRequest, get: bool, body: Op
         sent: body.map_or(0, |body| body.len() as u64),
         from_store: false,
         unscanned: false,
+        rate_limited: false,
     })
 }
 
@@ -1299,6 +1305,7 @@ async fn push(
                 let mut walked = walked.borrow_mut();
                 walked.1 += chunk.len() as u64;
                 if let Some(deadline) = limits.deadline_ms
+                    && !chunk.is_empty()
                     && g1t_kit::now_ms() > deadline
                 {
                     let minutes = crate::public_storage::LEASE_MS / 60_000;
@@ -1340,6 +1347,7 @@ async fn push(
         ms,
     );
     // A push is never tried again: the store may have taken it.
+    let rate_limited = matches!((&answered, failure), (Ok(_), Some(Failure::RateLimited)));
     let mut response = match (answered, failure) {
         (Ok(response), None) => response,
         (Ok(response), Some(Failure::RateLimited)) => {
@@ -1368,6 +1376,7 @@ async fn push(
         sent,
         from_store: true,
         unscanned,
+        rate_limited,
     }))
 }
 

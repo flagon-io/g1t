@@ -274,6 +274,28 @@ pub(crate) const TRANSFER: &str = "UPDATE repos SET namespace = ?2 WHERE id = ?1
 pub(crate) const LOCK_COPY: &str = "INSERT INTO storage_copy_locks (repo_id, destination_id, created_at, created_ms, lease_until_ms)
     VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT DO NOTHING RETURNING repo_id";
 
+/// What a push's answer does with its reservation.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Settlement {
+    /// Stored: the reservation becomes the bytes measured.
+    Finish,
+    /// Refused before the store took any of it.
+    Release,
+    /// The store may have kept it: ended, for staff.
+    End,
+}
+
+/// A push the store answered with `status`; `rate_limited` when the store
+/// refused it for its rate limit (git_http.rs `Forwarded`), which takes
+/// nothing. Any other answer than 200 is ambiguous.
+pub(crate) fn push_settlement(status: u16, rate_limited: bool) -> Settlement {
+    match (status, rate_limited) {
+        (200, _) => Settlement::Finish,
+        (_, true) => Settlement::Release,
+        _ => Settlement::End,
+    }
+}
+
 /// Ends a copy lock. ?1 source, ?2 destination.
 pub(crate) const UNLOCK_COPY: &str = "DELETE FROM storage_copy_locks WHERE repo_id = ?1 AND destination_id = ?2 RETURNING repo_id";
 
@@ -439,6 +461,17 @@ mod tests {
         let old = admission(RESERVE, "RETURNING");
         let new = admission(HOLD, "ON CONFLICT").replace(" AND ?10 <= ?11", "");
         assert_eq!(old, new);
+    }
+
+    #[test]
+    fn a_push_refused_for_the_rate_limit_lets_its_reservation_go_at_once() {
+        assert_eq!(push_settlement(200, false), Settlement::Finish);
+        assert_eq!(push_settlement(429, true), Settlement::Release);
+        // A server error, or no answer (g1t's own 503), may have been kept.
+        assert_eq!(push_settlement(500, false), Settlement::End);
+        assert_eq!(push_settlement(503, false), Settlement::End);
+        // A 429 g1t did not see as the store's rate limit is not assumed to be one.
+        assert_eq!(push_settlement(429, false), Settlement::End);
     }
 
     #[test]

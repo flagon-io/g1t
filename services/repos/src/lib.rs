@@ -2417,16 +2417,20 @@ impl<S: GitStore> Repos<S> {
         let mut response = forwarded.response;
         let status = response.status_code();
         if let Some(reserved) = &public_reserved {
-            // Successful uploads replace it with the actual admitted pack.
-            // On any other answer the store may have kept the push, so the
-            // whole reservation stays, ended, with the refs it asked for:
-            // staff release it once they have looked (storage_holds.rs).
-            if status == 200 {
-                self.registry.finish_public(reserved, forwarded.pack_bytes).await?;
-            } else {
-                let refs: Vec<(String, String)> =
-                    forwarded.pushed.iter().map(|pushed| (pushed.git_ref.clone(), pushed.after.clone())).collect();
-                self.registry.end_public(reserved, &format!("The store answered the push with {status}."), &refs).await;
+            match public_storage::push_settlement(status, forwarded.rate_limited) {
+                // Successful uploads replace it with the actual admitted pack.
+                public_storage::Settlement::Finish => self.registry.finish_public(reserved, forwarded.pack_bytes).await?,
+                // Refused for the store's rate limit: it took nothing.
+                public_storage::Settlement::Release => self.registry.release_public(reserved).await?,
+                // On any other answer the store may have kept the push, so
+                // the whole reservation stays, ended, with the refs it asked
+                // for: staff release it once they have looked
+                // (storage_holds.rs).
+                public_storage::Settlement::End => {
+                    let refs: Vec<(String, String)> =
+                        forwarded.pushed.iter().map(|pushed| (pushed.git_ref.clone(), pushed.after.clone())).collect();
+                    self.registry.end_public(reserved, &format!("The store answered the push with {status}."), &refs).await;
+                }
             }
         }
         if write && !get {
