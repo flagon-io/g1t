@@ -490,9 +490,9 @@ Storage is charged at $0.60 a GB-month (cost plus 20%). It is measured from
 the packs pushed through g1t's git endpoints to each repository and its
 pull requests' working copies, so what is charged is never more than what
 is stored. A push, merge or update that storage refused, for example
-because its branch moved meanwhile, is not counted. Public repositories are never charged, and neither is a free
-workspace: its pushes to private repositories stop at 1 GB instead. On the
-plan they never stop.
+because its branch moved meanwhile, is not counted. Public repositories
+are never charged, and neither is a free workspace: its pushes to private
+repositories stop at 1 GB instead. On the plan they never stop.
 
 A [fork](/concepts/forks/) counts toward the workspace it was forked into
 in full, from the moment it is made: its size is what was copied into it,
