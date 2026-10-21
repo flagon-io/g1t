@@ -93,13 +93,12 @@ import {
 import { InMain } from "./landmark";
 import { NeedsAttention } from "./needs-attention";
 import { cn } from "../lib/cn";
-import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
+import { CommandPalette, type PaletteCommand, PaletteKey, ShortcutsKey, usePaletteShortcut, useShortcutsKey } from "./command-palette";
 import { AskButton } from "./ask-button";
 import { NotificationsBell } from "./inbox";
 import { desktopBridge, useDesktopApp, useTitleBarSearch } from "../lib/notify-client";
 import { PinButton } from "./pin-button";
 import { Hint } from "./ui/hint";
-import { Kbd } from "./ui/kbd";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import {
   Sidebar,
@@ -466,16 +465,8 @@ function AccountMenu({ user, on = "page" }: { user: User; on?: "bar" | "page" })
   const submit = useSubmit();
   const [open, setOpen] = useState(false);
   const [keys, setKeys] = useState(false);
-  // ? (Shift /) shows the keyboard's shortcuts from anywhere, except while typing.
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "?" || event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented || typing(event.target)) return;
-      event.preventDefault();
-      setKeys(true);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  // ⌘K or Ctrl K (or ?) shows the keyboard's shortcuts from anywhere but a text field; / is search.
+  useShortcutsKey(() => setKeys(true));
   // Inside the desktop app there is nothing to get.
   const inApp = useDesktopApp();
   // Your status's dialog: outside the menu, so the menu closes behind it.
@@ -592,8 +583,8 @@ function AccountMenu({ user, on = "page" }: { user: User; on?: "bar" | "page" })
             <DropdownMenuItem className={MENU_ROW} onSelect={() => setKeys(true)}>
               <Keyboard />
               Keyboard shortcuts
-              {/* ? opens them anywhere; Ctrl K is search's, not theirs. */}
-              <Kbd className="ml-auto px-1.5 font-sans text-xs text-faint">?</Kbd>
+              {/* Ctrl K (⌘K on a Mac) opens them anywhere; / is search's. */}
+              <ShortcutsKey className="ml-auto font-sans text-xs text-faint" />
             </DropdownMenuItem>
             {!inApp && (
               <DropdownMenuItem asChild className={MENU_ROW}>

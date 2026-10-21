@@ -265,7 +265,7 @@ open their title and state when you hover over them. Links to
 g1t itself; any other picture is a link.
 
 In the panel, **Enter** sends, **Shift+Enter** starts a new line, and
-**⌘K** (**Ctrl+K**) puts you back in the box. On an empty conversation,
+**/** puts you back in the box. On an empty conversation,
 the panel suggests a few questions for the page you are on.
 
 ## Clear the conversation

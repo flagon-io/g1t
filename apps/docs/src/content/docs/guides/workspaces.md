@@ -745,7 +745,7 @@ Each page has three parts:
 | --------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **The app bar** | Across the top of the window                     | g1t's mark, which goes to **Chat** and its [Home](/guides/home/); the workspace, with **People** and **Workspace settings** in its menu; the built-in apps, **Chat**, **Work**, **Code**, **Library** and **Routines**, named from 1280px wide and icons alone below; the apps you pinned, **Apps** and **Explore**; then search, **Ask**, the bell, **Create new** and your account. |
 | **The sidebar** | Under the app bar, from the window's left edge   | The lists of the app you are in, in named groups; Ctrl B (⌘B on a Mac) folds it away. Home has none.                                                                                                                                                                                                                                                                                  |
-| **The page**    | The rest of the window, flat against the sidebar | Its header: the button that shows or hides the sidebar, where you are, **Search or jump to** (<kbd>Ctrl</kbd> <kbd>K</kbd>, or <kbd>⌘</kbd> <kbd>K</kbd> on a Mac) when the sidebar is hidden or has a search of its own, the [notifications](/guides/notifications/) bell and **Create new**. Then the page itself.                                                                  |
+| **The page**    | The rest of the window, flat against the sidebar | Its header: the button that shows or hides the sidebar, where you are, **Search or jump to** (<kbd>/</kbd>) when the sidebar is hidden or has a search of its own, the [notifications](/guides/notifications/) bell and **Create new**. Then the page itself.                                                                                                                         |
 
 ### The app bar
 
@@ -775,9 +775,9 @@ After them come the apps you pinned, then:
 The app you are in sits on a filled pill. Your account is the
 avatar at the app bar's end: your status, your profile and settings,
 [appearance](#appearance), the documentation, support, status, the
-keyboard's shortcuts, and signing out. Press <kbd>?</kbd> anywhere (outside
-a text field) to see the keyboard's shortcuts; <kbd>Ctrl</kbd> <kbd>K</kbd>
-(<kbd>⌘</kbd> <kbd>K</kbd> on a Mac) is search.
+keyboard's shortcuts, and signing out. Press <kbd>Ctrl</kbd> <kbd>K</kbd>
+(<kbd>⌘</kbd> <kbd>K</kbd> on a Mac), or <kbd>?</kbd>, anywhere outside a
+text field to see the keyboard's shortcuts; <kbd>/</kbd> is search.
 
 ### Appearance
 
@@ -799,9 +799,9 @@ To change it:
 
 The page changes at once. You can also choose under
 [Settings → Account](https://g1t.sh/settings/account), or press
-<kbd>Ctrl</kbd> <kbd>K</kbd> (<kbd>⌘</kbd> <kbd>K</kbd> on a Mac) and run
+<kbd>/</kbd> and run
 **Use light theme**, **Use dark theme** or **Use auto theme**. Signed out,
-the same commands are in ⌘K, and the phone's menu has the switch.
+the same commands are in search (<kbd>/</kbd>), and the phone's menu has the switch.
 
 Your choice is kept in this browser, in a `g1t_theme` cookie, so every page
 is drawn in it from the start; another browser or device starts on Auto.
@@ -838,7 +838,7 @@ sidebar, leaving the page wider, and brings it back; <kbd>Ctrl</kbd> <kbd>B</kbd
 a Mac) does both, except while you type. g1t remembers which you chose.
 When the sidebar is hidden, or the app has none, the page's header starts
 with the same switcher. Under the top row, **Search or jump to** opens the
-same palette as <kbd>Ctrl</kbd> <kbd>K</kbd>; in Chat and Artifacts, whose
+same palette as <kbd>/</kbd>; in Chat and Artifacts, whose
 sidebars search their own lists, it stays in the page's header.
 
 Below it are the lists of the app you are in, each group under a small
@@ -911,7 +911,7 @@ However many projects a workspace has, Code's sidebar lists a few:
 - **All projects**, with how many there are, opens the Projects page.
 
 Pins and recent projects are yours: nobody else sees them, and each
-workspace has its own. ⌘K finds any project in the workspace, pinned or not.
+workspace has its own. Search (<kbd>/</kbd>) finds any project in the workspace, pinned or not.
 From the API, use
 [`GET /user/pinned_projects/{workspace}`](/reference/api/pinned-projects/list-pinned-projects/)
 and the other [pinned projects](/reference/api/pinned-projects/list-pinned-projects/)
