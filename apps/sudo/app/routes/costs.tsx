@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
-import type { CostsReport, PlatformGuard, PlatformMetric } from "@g1t/contracts";
+import type { CostsReport, GitEdgeReport, GitEdgeUsage, PlatformGuard, PlatformMetric } from "@g1t/contracts";
 
 import type { Route } from "./+types/costs";
 import { DaysChart } from "~/components/costs";
@@ -12,7 +12,10 @@ import {
   capPercent,
   count,
   daySeries,
+  edgesPercent,
+  edgesRunning,
   givenParts as givenBy,
+  hours,
   marginOnPrice,
   marginTone,
   parseBucket,
@@ -49,6 +52,7 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
           <Notice tone="warn">Billing did not answer for costs: {error}</Notice>
         </div>
         <PlatformSection guard={loaderData.guard} unavailable={loaderData.guardError} failed={failed} />
+        <GitEdgeSection edge={loaderData.edge} unavailable={loaderData.edgeError} />
       </main>
     );
   }
@@ -76,6 +80,8 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
       <SpendSection caps={report.caps} range={range} error={failed?.section === "lift" ? failed.error : null} />
 
       <PlatformSection guard={loaderData.guard} unavailable={loaderData.guardError} failed={failed} />
+
+      <GitEdgeSection edge={loaderData.edge} unavailable={loaderData.edgeError} />
 
       <Section
         className="mt-6"
@@ -563,7 +569,7 @@ function SpendSection({ caps, range, error }: { caps: CostsReport["caps"]; range
 
 /**
  * The platform pause and the hourly usage watch (billing's platform.rs;
- * docs.g1t.sh/guides/deploy-to-cloudflare/#spend-guardrails): four levels
+ * docs.g1t.sh/guides/deploy-to-cloudflare/#spend-guardrails): five levels
  * staff can pause across g1t, what Cloudflare counted in the last hour
  * against each threshold, and the last day's breaches.
  */
@@ -690,6 +696,102 @@ function PlatformSection({ guard, unavailable, failed }: { guard: PlatformGuard 
         </>
       )}
     </Section>
+  );
+}
+
+/**
+ * The git edge (the repos service's git_edge.rs, the runner's gitedge.ts):
+ * the edges running now against max_instances, what they used and cost
+ * over the last day and the month, and its pause. Read by billing from
+ * Cloudflare with the costs token (billing's git_edge.rs).
+ */
+function GitEdgeSection({ edge, unavailable }: { edge: GitEdgeReport | null; unavailable: string | null }) {
+  const paused = edge?.pause.paused ?? false;
+  const percent = edge ? edgesPercent(edge) : null;
+  return (
+    <Section
+      className="mt-6"
+      id="git-edge"
+      title="Git edge"
+      description="Containers that answer clones and fetches with real git, one per busy repository: started for a repository cloned twice within the hour, asleep after 10 idle minutes, at most max_instances at once. Anything else is answered by Artifacts. Cost is Containers' list price for memory, CPU and disk (standard-2: 1 vCPU, 6 GiB, 12 GB). Turn it off with the git edge level of the platform pause: every service sees it within 30 seconds, no deploy."
+    >
+      {!edge ? (
+        <Notice tone="warn">Billing did not answer for the git edge: {unavailable}</Notice>
+      ) : (
+        <>
+          {paused && (
+            <div className="mb-4">
+              <Notice tone="warn">
+                Paused <When at={edge.pause.set_at} time /> by {edge.pause.auto ? "the usage watcher" : edge.pause.set_by}
+                {edge.pause.note ? `: “${edge.pause.note}”` : ""}. Every clone and fetch goes to Artifacts. Resume it under{" "}
+                <a href="#platform" className="underline">
+                  Platform pause
+                </a>
+                .
+              </Notice>
+            </div>
+          )}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat
+              label="Edges running now"
+              value={edgesRunning(edge)}
+              tone={percent != null && percent >= 100 ? "warn" : undefined}
+              hint={
+                edge.instances_error
+                  ? "Not read: see below"
+                  : percent != null && percent >= 100
+                    ? "At max_instances: more clones go to Artifacts"
+                    : "Against max_instances"
+              }
+            />
+            <EdgeUsageStat label="Last 24 hours" usage={edge.last_day} />
+            <EdgeUsageStat label={edge.month_to_date ? `${edge.month_to_date.since.slice(0, 7)}, so far` : "This month, so far"} usage={edge.month_to_date} />
+            <Stat
+              label="Pause"
+              value={paused ? "Paused" : "Running"}
+              tone={paused ? "danger" : "mint"}
+              hint={
+                <a href="#platform" className="underline">
+                  {paused ? "Resume" : "Pause"} under Platform pause
+                </a>
+              }
+            />
+          </div>
+          {(edge.instances_error || edge.usage_error) && (
+            <div className="mt-4">
+              <Notice tone="warn">
+                <ul className="space-y-1 text-xs">
+                  {edge.instances_error && <li>Edges running not read: {edge.instances_error}</li>}
+                  {edge.usage_error && <li>Usage not read: {edge.usage_error}</li>}
+                </ul>
+              </Notice>
+            </div>
+          )}
+          <p className="mt-3 text-xs text-muted">
+            Containers application <code>{edge.application}</code>
+            {edge.application_id ? (
+              <>
+                {" "}
+                (<code>{edge.application_id}</code>)
+              </>
+            ) : null}
+            . How often Artifacts answered instead (the edge cold, behind or refused) is counted in the repos service&apos;s meters, <code>git_edge.hit</code>{" "}
+            and <code>git_edge.miss</code>: <code>node scripts/ops/gitstore-usage.mjs</code> shows them.
+          </p>
+        </>
+      )}
+    </Section>
+  );
+}
+
+function EdgeUsageStat({ label, usage }: { label: string; usage: GitEdgeUsage | null }) {
+  if (!usage) return <Stat label={label} value="—" hint="Not read" />;
+  return (
+    <Stat
+      label={label}
+      value={usd(Math.round(usage.cost_dollars * 1_000_000))}
+      hint={`${hours(usage.edge_hours)} of edges, ${count(usage.cpu_seconds)} CPU-seconds`}
+    />
   );
 }
 

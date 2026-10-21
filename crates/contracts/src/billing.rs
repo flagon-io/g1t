@@ -3447,10 +3447,16 @@ pub enum PauseLevel {
     Indexing,
     /// Social card rendering, which falls back to a static image.
     Renders,
+    /// The git edge (the repos service's git_edge.rs): every clone and
+    /// fetch is answered by Artifacts, as with `GIT_EDGE=off`, and no edge
+    /// container is asked, started or synced. Nothing is refused; clones
+    /// of busy repositories are only slower.
+    GitEdge,
 }
 
 impl PauseLevel {
-    pub const ALL: [PauseLevel; 4] = [PauseLevel::Compute, PauseLevel::Schedules, PauseLevel::Indexing, PauseLevel::Renders];
+    pub const ALL: [PauseLevel; 5] =
+        [PauseLevel::Compute, PauseLevel::Schedules, PauseLevel::Indexing, PauseLevel::Renders, PauseLevel::GitEdge];
 
     pub fn as_str(self) -> &'static str {
         match self {
@@ -3458,6 +3464,7 @@ impl PauseLevel {
             PauseLevel::Schedules => "schedules",
             PauseLevel::Indexing => "indexing",
             PauseLevel::Renders => "renders",
+            PauseLevel::GitEdge => "git_edge",
         }
     }
 
@@ -3479,6 +3486,8 @@ pub struct PlatformPause {
     pub indexing: bool,
     #[serde(default)]
     pub renders: bool,
+    #[serde(default)]
+    pub git_edge: bool,
 }
 
 impl PlatformPause {
@@ -3488,6 +3497,7 @@ impl PlatformPause {
             PauseLevel::Schedules => self.schedules,
             PauseLevel::Indexing => self.indexing,
             PauseLevel::Renders => self.renders,
+            PauseLevel::GitEdge => self.git_edge,
         }
     }
 
@@ -3497,6 +3507,7 @@ impl PlatformPause {
             PauseLevel::Schedules => self.schedules = paused,
             PauseLevel::Indexing => self.indexing = paused,
             PauseLevel::Renders => self.renders = paused,
+            PauseLevel::GitEdge => self.git_edge = paused,
         }
     }
 
@@ -3597,6 +3608,48 @@ pub struct AdminSetPauseArgs {
     pub paused: bool,
     pub note: String,
     pub by: String,
+}
+
+/// `admin_git_edge`: the git edge's containers (the runner's
+/// `g1t-runner-gitedge` application) as Cloudflare reports them, for
+/// sudo. Returns `GitEdgeReport`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminGitEdgeArgs {}
+
+/// What the git edge's containers used over a window, at list price.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct GitEdgeUsage {
+    /// The window, as Cloudflare was asked for it.
+    pub since: String,
+    pub until: String,
+    /// Hours of edge containers awake: the memory allocated over one
+    /// edge's memory.
+    pub edge_hours: f64,
+    pub memory_gib_seconds: f64,
+    pub cpu_seconds: f64,
+    /// Memory, CPU and disk at Containers' list prices, in dollars.
+    pub cost_dollars: f64,
+}
+
+/// `admin_git_edge`. Each part is `None`, with its error, when Cloudflare
+/// did not answer for it; the pause is billing's own.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct GitEdgeReport {
+    /// The container application's name and, once found, its id.
+    pub application: String,
+    pub application_id: Option<String>,
+    /// Edges running now, and the most that may.
+    pub running: Option<u32>,
+    pub max_instances: Option<u32>,
+    pub instances_error: Option<String>,
+    /// The last 24 hours, and the month so far (UTC).
+    pub last_day: Option<GitEdgeUsage>,
+    pub month_to_date: Option<GitEdgeUsage>,
+    pub usage_error: Option<String>,
+    /// The `git_edge` pause level.
+    pub pause: PauseState,
+    /// Whether billing has a Cloudflare token to ask with.
+    pub can_read: bool,
 }
 
 /// `admin_cost_alerts`: the open margin alerts, for sudo's banner.

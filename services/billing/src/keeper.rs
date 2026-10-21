@@ -90,6 +90,13 @@ impl Keeper {
         send_with(self.billing_token()?, Method::Post, "https://api.cloudflare.com/client/v4/graphql", Some(body)).await
     }
 
+    /// The account's Containers applications, as Cloudflare answers them
+    /// (each with its `health.instances`). Needs Containers Read on the
+    /// same token.
+    pub(crate) async fn container_applications(&self) -> Result<Value> {
+        send_with(self.billing_token()?, Method::Get, &self.api("/containers/applications"), None).await
+    }
+
     pub(crate) fn account(&self) -> &str {
         &self.account
     }
@@ -194,16 +201,16 @@ pub(crate) struct ContainerUsage {
 /// base; CPU only as used.
 const SANDBOX_GIB: f64 = 8.0;
 const SANDBOX_DISK_GB: f64 = 16.0;
-const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
+pub(crate) const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
 /// The Durable Object behind each container is billed for as long as the
 /// container runs, at 128 MB.
 const SANDBOX_DO_GB: f64 = 0.125;
 
 /// Cloudflare's published Containers rates, in dollars, used for any rate
 /// the bill does not show yet (while usage is inside the included amount).
-const LIST_MEMORY_GIB_SECOND: f64 = 0.000_002_5;
-const LIST_DISK_GB_SECOND: f64 = 0.000_000_07;
-const LIST_VCPU_SECOND: f64 = 0.000_02;
+pub(crate) const LIST_MEMORY_GIB_SECOND: f64 = 0.000_002_5;
+pub(crate) const LIST_DISK_GB_SECOND: f64 = 0.000_000_07;
+pub(crate) const LIST_VCPU_SECOND: f64 = 0.000_02;
 /// Durable Objects duration: $12.50 per million GB-seconds.
 const LIST_DO_GB_SECOND: f64 = 0.000_012_5;
 

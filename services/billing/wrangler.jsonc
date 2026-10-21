@@ -165,10 +165,12 @@
     "PLATFORM_SPIKE_FACTOR": "10",
     "PLATFORM_SPIKE_FLOOR_PERCENT": "10",
     // Severe: 5 times a threshold pauses the levels that metric feeds,
-    // of those AUTO_PAUSE names (compute, schedules, indexing, renders;
-    // comma-separated, empty for none). Staff resume them in sudo.
+    // of those AUTO_PAUSE names (compute, schedules, indexing, renders,
+    // git_edge; comma-separated, empty for none). Staff resume them in
+    // sudo. git_edge refuses nothing (clones go to Artifacts), so the
+    // watcher may pull it.
     "PLATFORM_SEVERE_FACTOR": "5",
-    "AUTO_PAUSE": "schedules,indexing",
+    "AUTO_PAUSE": "schedules,indexing,git_edge",
     // Cloudflare's fixed subscriptions a month, for sudo's figures only:
     // Workers Paid ($5) and Workers for Platforms ($25).
     "CLOUDFLARE_FIXED_MONTHLY_MICROS": "30000000"

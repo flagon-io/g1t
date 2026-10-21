@@ -9,6 +9,7 @@ import type {
   CostMappingInput,
   CostSettings,
   CycleMeter,
+  GitEdgeReport,
   OverallMargin,
   PauseLevel,
   PlatformGuard,
@@ -339,9 +340,15 @@ export const PAUSE_LEVELS: { level: PauseLevel; title: string; stops: string }[]
   { level: "schedules", title: "Schedules", stops: "Actions' cron-triggered runs." },
   { level: "indexing", title: "Indexing", stops: "Context embeddings and backfills, and search's backfills (they go on from where they were when resumed)." },
   { level: "renders", title: "Renders", stops: "Social card images: a cache miss gets the brand card or the static logo." },
+  {
+    level: "git_edge",
+    title: "Git edge",
+    stops:
+      "The git edge: every clone and fetch is answered by Artifacts, as with GIT_EDGE=off, and no edge container starts. Nothing is refused; clones are slower.",
+  },
 ];
 
-/** Whether a form's level is one of the four. */
+/** Whether a form's level is one of the five. */
 export function parsePauseLevel(value: unknown): PauseLevel | null {
   const level = String(value ?? "");
   return PAUSE_LEVELS.some((l) => l.level === level) ? (level as PauseLevel) : null;
@@ -354,6 +361,24 @@ export function pauseBanner(guard: PlatformGuard): string | null {
   const names = paused.map((l) => (l.auto ? `${l.level} (by the usage watcher)` : l.level));
   const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
   return `Paused across g1t: ${list}.`;
+}
+
+/** `3 of 10`, or what is known of it: the edges running against `max_instances`. */
+export function edgesRunning(report: Pick<GitEdgeReport, "running" | "max_instances">): string {
+  if (report.running == null) return "—";
+  return report.max_instances == null ? `${report.running}` : `${report.running} of ${report.max_instances}`;
+}
+
+/** How full the edges are, 0 to 100; null when unknown. */
+export function edgesPercent(report: Pick<GitEdgeReport, "running" | "max_instances">): number | null {
+  if (report.running == null || !report.max_instances) return null;
+  return Math.max(0, Math.min(100, Math.round((report.running / report.max_instances) * 100)));
+}
+
+/** `12.5 h`, `0.4 h`, `120 h`: edge-hours in a few characters. */
+export function hours(value: number): string {
+  if (value >= 100) return `${Math.round(value)} h`;
+  return `${value.toFixed(1)} h`;
 }
 
 /** `1.2M`, `240k`, `2.0B`: a count in a few characters. */

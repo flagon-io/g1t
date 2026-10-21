@@ -8,13 +8,17 @@
 //! operations, Durable Objects, KV and Artifacts. A loop in any of them is
 //! otherwise found on the bill.
 //!
-//! - **The pause** (`platform_pause`): four independent levels, set by
+//! - **The pause** (`platform_pause`): five independent levels, set by
 //!   staff in sudo (Costs & margin, Platform pause) or by the watcher on a
 //!   severe breach. `compute` refuses every reservation through `reserve`
 //!   but embeddings; `indexing` refuses embeddings, and context's and
 //!   search's backfills check it themselves; `schedules` stops Actions'
 //!   cron runs and the runner's sweep; `renders` makes social cards a
-//!   static image. Callers keep the answer 30 seconds in their isolate
+//!   static image; `git_edge` turns the repos service's git edge off, as
+//!   its `GIT_EDGE=off` does without a deploy: every clone and fetch is
+//!   answered by Artifacts and no edge container is started (sudo shows
+//!   the edges and their cost, git_edge.rs). It refuses nothing, so it is
+//!   in `AUTO_PAUSE` by default. Callers keep the answer 30 seconds in their isolate
 //!   (`g1t_kit::pause`, `@g1t/contracts` `platformPaused`), and so does
 //!   billing (`pause_now`): never a database read per request. When the
 //!   flag cannot be read, nothing is paused: a pause is pulled on purpose,
@@ -30,7 +34,7 @@
 //!   staff are emailed (`COSTS_ALERT_EMAIL`, once per metric every 6
 //!   hours) and sudo shows it. Over `PLATFORM_SEVERE_FACTOR` times its
 //!   threshold, the levels that metric feeds are paused, of those
-//!   `AUTO_PAUSE` allows (`schedules,indexing` unless set).
+//!   `AUTO_PAUSE` allows (`schedules,indexing,git_edge` unless set).
 //!
 //! A dataset GraphQL refuses (a field renamed, a dataset the token cannot
 //! read) is skipped and the others still count, but never quietly: each
@@ -85,7 +89,7 @@ pub(crate) struct Metric {
     pub levels: &'static [PauseLevel],
 }
 
-use PauseLevel::{Compute, Indexing, Renders, Schedules};
+use PauseLevel::{Compute, GitEdge, Indexing, Renders, Schedules};
 
 pub(crate) const METRICS: &[Metric] = &[
     Metric { key: "workers_requests", title: "Workers requests", var: "WORKERS_REQUESTS", default: 20_000_000.0, of: "script", levels: &[Schedules, Indexing, Renders] },
@@ -138,7 +142,7 @@ impl Watch {
         let thresholds = METRICS.iter().map(|m| (m.key, number(&format!("PLATFORM_HOURLY_{}", m.var), m.default))).collect();
         let auto_pause = match var("AUTO_PAUSE") {
             Some(list) => list.split(',').filter_map(PauseLevel::parse).collect(),
-            None => vec![Schedules, Indexing],
+            None => vec![Schedules, Indexing, GitEdge],
         };
         Watch {
             thresholds,
@@ -163,6 +167,9 @@ pub(crate) fn pause_refusal(level: PauseLevel) -> String {
         Indexing => "new indexing and semantic search embeddings",
         Schedules => "scheduled workflow runs and queued agents",
         Renders => "new social card images",
+        // Never a refusal: the repos service answers every read from
+        // Artifacts instead. Here for completeness.
+        GitEdge => "the git edge's fast clones",
     };
     format!("g1t has paused {what} across the platform while it looks into unusual usage. Work already running finishes; try again later.")
 }
@@ -263,7 +270,7 @@ impl Billing {
     pub(crate) async fn admin_set_pause(&self, a: AdminSetPauseArgs, keeper: &Keeper) -> Result<Outcome<PlatformGuard>> {
         let (by, note) = (a.by.trim(), a.note.trim());
         let Some(level) = PauseLevel::parse(&a.level) else {
-            return Ok(Outcome::fail(FailureCode::Invalid, "Pick compute, schedules, indexing or renders."));
+            return Ok(Outcome::fail(FailureCode::Invalid, "Pick compute, schedules, indexing, renders or git_edge."));
         };
         if by.is_empty() || note.chars().count() < 5 {
             return Ok(Outcome::fail(FailureCode::Invalid, "Say who is changing it, and why, in the note."));
@@ -273,12 +280,10 @@ impl Billing {
         Ok(Outcome::Ok(self.platform_guard(keeper).await?))
     }
 
-    /// `admin_platform_guard`: the pauses, the last hour, the month so far
-    /// and the last day's breaches.
-    pub(crate) async fn platform_guard(&self, keeper: &Keeper) -> Result<PlatformGuard> {
-        let watch = Watch::from_env(&self.env);
+    /// Every level as sudo shows it: who set it, when and why.
+    pub(crate) async fn pause_states(&self) -> Result<Vec<PauseState>> {
         let rows = self.pause_rows().await?;
-        let levels = PauseLevel::ALL
+        Ok(PauseLevel::ALL
             .iter()
             .map(|level| match rows.iter().find(|r| r.level == level.as_str()) {
                 Some(r) => PauseState {
@@ -291,7 +296,14 @@ impl Billing {
                 },
                 None => PauseState { level: level.as_str().to_owned(), ..PauseState::default() },
             })
-            .collect();
+            .collect())
+    }
+
+    /// `admin_platform_guard`: the pauses, the last hour, the month so far
+    /// and the last day's breaches.
+    pub(crate) async fn platform_guard(&self, keeper: &Keeper) -> Result<PlatformGuard> {
+        let watch = Watch::from_env(&self.env);
+        let levels = self.pause_states().await?;
         #[derive(Deserialize)]
         struct Hour {
             hour: Option<String>,
@@ -1049,7 +1061,7 @@ mod tests {
         assert_eq!(w.threshold("d1_rows_read"), 2_000_000_000.0);
         assert_eq!(w.threshold("do_rows_written"), 5_000_000.0);
         assert_eq!(w.threshold("workers_requests"), 20_000_000.0);
-        assert_eq!(w.auto_pause, vec![Schedules, Indexing]);
+        assert_eq!(w.auto_pause, vec![Schedules, Indexing, GitEdge]);
     }
 
     #[test]
@@ -1181,6 +1193,11 @@ mod tests {
         }
         assert!(pause_refusal(Compute).contains("Work already running finishes"));
         assert_eq!(PauseLevel::parse(" indexing "), Some(Indexing));
+        assert_eq!(PauseLevel::parse("git_edge"), Some(GitEdge));
+        // No reservation waits on the git edge: pausing it refuses nobody.
+        for kind in [ComputeKind::Agent, ComputeKind::Check, ComputeKind::Workflow, ComputeKind::Queue, ComputeKind::Deploy, ComputeKind::Embedding] {
+            assert_ne!(level_for(kind), GitEdge);
+        }
         assert_eq!(PauseLevel::parse("everything"), None);
     }
 }

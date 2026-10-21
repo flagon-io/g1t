@@ -126,9 +126,15 @@ in the last day. An edge costs a container while it is awake, so a
 repository cloned once, or rarely, starts none. At most 10 edges run at
 once, which bounds what they cost (`max_instances`); past that, an edge that cannot start
 waits two minutes before it tries again, and its repository is read from
-Artifacts meanwhile. `repos`' `GIT_EDGE` variable is `on`; `off` turns the
-edge off everywhere, for an incident, and `-owner/name` entries leave
-those repositories out (`on, -acme/rocket`). The edge is asked only once
+Artifacts meanwhile. To turn the edge off everywhere without a deploy,
+staff pause the `git_edge` level of the
+[platform pause](/guides/deploy-to-cloudflare/#spend-guardrails) in sudo,
+where the edges running and what they cost are shown beside it (billing's
+usage watcher may pause it too, on a severe breach): within 30 seconds
+every read goes to Artifacts and no edge is asked, started or synced. If
+the pause cannot be read, the edge stays on. `repos`' `GIT_EDGE` variable
+is `on`; `off` turns the edge off too, with a deploy, and `-owner/name`
+entries leave those repositories out (`on, -acme/rocket`). The edge is asked only once
 `repos` has authorized the read, as for any read of Artifacts, and the
 runner Worker that reaches it has no route of its own: only bound
 services call it.

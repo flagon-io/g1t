@@ -758,6 +758,7 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
     liftBreaker: (note, by) => call("admin_lift_breaker", { note, by }),
     platformGuard: () => call("admin_platform_guard", {}),
     setPause: (level, paused, note, by) => call("admin_set_pause", { level, paused, note, by }),
+    gitEdge: () => call("admin_git_edge", {}),
     decideProposal: (id, decision, note, by) => call("admin_decide_proposal", { id, decision, note, by }),
     setCostSettings: (settings, by) => call("admin_set_cost_settings", { settings, by }),
     setCostMapping: (mapping, by) =>

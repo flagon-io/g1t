@@ -11,6 +11,8 @@
  *   starts queued agents.
  * - `indexing`: context embeddings and backfills, search backfills.
  * - `renders`: social card rendering, which falls back to a static image.
+ * - `git_edge`: the repos service's git edge; every clone and fetch is
+ *   answered by Artifacts, as with its `GIT_EDGE=off`, without a deploy.
  *
  * Read through billing's `platform_pause`, kept for 30 seconds in the
  * isolate: never a database read per request. When billing cannot say,
@@ -22,9 +24,9 @@
  */
 import type { ServiceBinding } from "./clients";
 
-export type PauseLevel = "compute" | "schedules" | "indexing" | "renders";
+export type PauseLevel = "compute" | "schedules" | "indexing" | "renders" | "git_edge";
 
-export const PAUSE_LEVELS: readonly PauseLevel[] = ["compute", "schedules", "indexing", "renders"];
+export const PAUSE_LEVELS: readonly PauseLevel[] = ["compute", "schedules", "indexing", "renders", "git_edge"];
 
 /** Billing's `platform_pause`: which levels are paused now. */
 export type PlatformPause = Record<PauseLevel, boolean>;
@@ -32,7 +34,7 @@ export type PlatformPause = Record<PauseLevel, boolean>;
 /** How long an answer is kept in the isolate. */
 export const PAUSE_KEPT_MS = 30_000;
 
-const NOTHING_PAUSED: PlatformPause = { compute: false, schedules: false, indexing: false, renders: false };
+const NOTHING_PAUSED: PlatformPause = { compute: false, schedules: false, indexing: false, renders: false, git_edge: false };
 
 let kept: { value: PlatformPause; until: number } | null = null;
 
@@ -44,6 +46,7 @@ export function readPause(answer: unknown): PlatformPause {
     schedules: raw.schedules === true,
     indexing: raw.indexing === true,
     renders: raw.renders === true,
+    git_edge: raw.git_edge === true,
   };
 }
 

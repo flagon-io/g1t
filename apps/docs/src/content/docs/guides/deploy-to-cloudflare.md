@@ -546,9 +546,18 @@ Cloudflare has no hard spending cap. Besides each workspace's own
   `services/billing/wrangler.jsonc`; `0` turns one off. A breach at five
   times its threshold pauses the kinds of work in `AUTO_PAUSE`.
 - **The platform pause** stops a kind of work everywhere: `compute`
-  (sandboxes), `schedules`, `indexing` or `renders` (social cards). Staff
-  pause and resume in sudo, under **Costs & margin**. Work already
-  running finishes, and if the pause cannot be read, nothing is paused.
+  (sandboxes), `schedules`, `indexing`, `renders` (social cards) or
+  `git_edge`. Staff pause and resume in sudo, under **Costs & margin**.
+  Work already running finishes, and if the pause cannot be read, nothing
+  is paused.
+- **`git_edge`** turns the [git edge](/architecture/compute/#the-git-edge)
+  off without a deploy: every clone and fetch is answered by Artifacts,
+  as with the repos service's `GIT_EDGE=off`, and no edge container
+  starts. It refuses nothing, so `AUTO_PAUSE` includes it by default.
+  Beside it, sudo's **Git edge** panel shows the edges running against
+  `max_instances` and their edge-hours and cost for the last 24 hours and
+  the month, which billing reads with the same token; the running count
+  needs Containers Read on it too.
 - **Check the watch's queries** after changing them:
   `CLOUDFLARE_API_TOKEN=<token> node scripts/ops/platform-usage.mjs`. It
   exits 1 and names any dataset that errored or answered empty.
