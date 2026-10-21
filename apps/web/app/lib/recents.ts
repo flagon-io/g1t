@@ -1,15 +1,16 @@
 /**
- * Recents in Chat's sidebar (components/chat/sidebar.tsx): the viewer's
- * direct messages and their agent sessions in one list, newest activity
- * first. The sessions come from `-/recents.json` (routes/workspace/recents-json.ts);
- * the direct messages from the sidebar as chat gives it.
+ * Sessions in Chat's sidebar (components/chat/sidebar.tsx): the viewer's
+ * agent sessions, newest activity first, in their own section below Direct
+ * messages. A conversation (with a person, or with g1t) is not a session:
+ * the sessions it starts are linked from it. They come from
+ * `-/recents.json` (routes/workspace/recents-json.ts).
  * Pure, so it is tested under Node.
  */
-import type { AgentApproval, ChatSidebarEntry, Harness, SessionKind, WorkspaceSession } from "@g1t/contracts";
+import type { AgentApproval, Harness, SessionKind, WorkspaceSession } from "@g1t/contracts";
 
 import { workspaceSessionTitle } from "./sessions.ts";
 
-/** Rows Recents shows before Show all; unread and open conversations always show. */
+/** Sessions shown before Show all; one waiting on the viewer, or open, always shows. */
 export const RECENTS_SHOWN = 10;
 
 /**
@@ -88,29 +89,12 @@ export function filterSessions(sessions: RecentSession[], filter: "all" | "unrea
   );
 }
 
-/** One row of Recents: a direct message, or an agent session. */
-export type RecentRow = { kind: "dm"; at: string; entry: ChatSidebarEntry; first: boolean } | { kind: "session"; at: string; session: RecentSession };
-
 /**
- * Direct messages and sessions in one list, newest activity first. `first`
- * direct messages (the viewer's with @g1t) head it whenever they were last
- * used, as they headed Direct messages.
+ * The rows shown while the list is short: the first `max`, and after them
+ * any that must stay in view (`keep`: a session waiting on the viewer, or
+ * open). How many more Show all reveals.
  */
-export function recentRows(dms: ChatSidebarEntry[], sessions: RecentSession[], first: (entry: ChatSidebarEntry) => boolean = () => false): RecentRow[] {
-  const rows: RecentRow[] = [
-    ...dms.map((entry): RecentRow => ({ kind: "dm", at: entry.channel.last_message_at ?? entry.channel.created_at, entry, first: first(entry) })),
-    ...sessions.map((session): RecentRow => ({ kind: "session", at: session.at, session })),
-  ];
-  const head = (row: RecentRow) => (row.kind === "dm" && row.first ? 0 : 1);
-  return rows.sort((a, b) => head(a) - head(b) || b.at.localeCompare(a.at));
-}
-
-/**
- * The rows shown while Recents is short: the first `max`, and after them
- * any that must stay in view (`keep`: an unread or open conversation, a
- * session waiting on the viewer or open). How many more Show all reveals.
- */
-export function shortRecents(rows: RecentRow[], max: number, keep: (row: RecentRow) => boolean): { shown: RecentRow[]; more: number } {
+export function shortRecents<T>(rows: T[], max: number, keep: (row: T) => boolean): { shown: T[]; more: number } {
   const shown = rows.filter((row, index) => index < max || keep(row));
   return { shown, more: rows.length - shown.length };
 }

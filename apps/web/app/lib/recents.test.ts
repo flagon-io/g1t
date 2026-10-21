@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { AgentApproval, ChatSidebarEntry, WorkspaceSession } from "@g1t/contracts";
+import type { AgentApproval, WorkspaceSession } from "@g1t/contracts";
 
-import { type RecentRow, filterSessions, recentRows, recentSessions, shortRecents } from "./recents.ts";
+import { filterSessions, recentSessions, shortRecents } from "./recents.ts";
 
 const session = (id: string, at: string, over: Partial<WorkspaceSession> = {}): WorkspaceSession => ({
   kind: "hosted",
@@ -31,20 +31,7 @@ const session = (id: string, at: string, over: Partial<WorkspaceSession> = {}): 
 
 const waitingOn = (sessionId: string) => ({ sessionId, status: "waiting" }) as AgentApproval;
 
-const dm = (id: string, at: string): ChatSidebarEntry =>
-  ({
-    channel: { id, kind: "dm", last_message_at: at, created_at: at },
-    title: id,
-    others: [],
-    starred: false,
-    muted: false,
-    unread: 0,
-    mentions: 0,
-  }) as unknown as ChatSidebarEntry;
-
-const key = (row: RecentRow) => (row.kind === "dm" ? row.entry.channel.id : row.session.id);
-
-test("Recents' sessions are the viewer's, those on their work items and those waiting on them, each once, newest first", () => {
+test("Sessions in the sidebar are the viewer's, those on their work items and those waiting on them, each once, newest first", () => {
   const sessions = recentSessions({
     me: "Ada",
     mine: [session("ses_mine", "2026-10-21T12:00:00Z", { state: "ended" }), session("ses_both", "2026-10-21T12:03:00Z")],
@@ -72,23 +59,9 @@ test("Recents' sessions are the viewer's, those on their work items and those wa
   assert.deepEqual(unread, []);
 });
 
-test("direct messages and sessions interleave by their latest activity, @g1t's first", () => {
-  const sessions = recentSessions({ me: "ada", mine: [session("ses_1", "2026-10-21T12:02:00Z")], live: [], items: [], approvals: null });
-  const rows = recentRows(
-    [dm("dm_old", "2026-10-21T11:00:00Z"), dm("dm_new", "2026-10-21T12:03:00Z"), dm("dm_g1t", "2026-10-20T09:00:00Z")],
-    sessions,
-    (entry) => entry.channel.id === "dm_g1t",
-  );
-  assert.deepEqual(rows.map(key), ["dm_g1t", "dm_new", "ses_1", "dm_old"]);
-});
-
-test("Recents is short, but what must stay in view stays; the filter and search reach sessions", () => {
-  const rows = recentRows(
-    ["a", "b", "c", "d"].map((id, i) => dm(id, `2026-10-21T12:0${9 - i}:00Z`)),
-    [],
-  );
-  const { shown, more } = shortRecents(rows, 2, (row) => key(row) === "d");
-  assert.deepEqual(shown.map(key), ["a", "b", "d"]);
+test("Sessions is short, but what must stay in view stays; the filter and search reach sessions", () => {
+  const { shown, more } = shortRecents(["a", "b", "c", "d"], 2, (row) => row === "d");
+  assert.deepEqual(shown, ["a", "b", "d"]);
   assert.equal(more, 1);
   const sessions = recentSessions({
     me: "ada",

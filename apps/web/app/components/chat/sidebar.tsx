@@ -21,7 +21,7 @@ import { Skeleton } from "../ui/skeleton";
 import { type ChatFilter, agentsOnlyDm, channelPath, filterEntries, g1tEntry, sections } from "../../lib/chat";
 import { feedConnected } from "../../lib/notify-client";
 import { FALLBACK_REFRESH_MS } from "../../lib/notify-store";
-import { RECENTS_SHOWN, type RecentRow, filterSessions, recentRows, shortRecents } from "../../lib/recents";
+import { RECENTS_SHOWN, type RecentSession, filterSessions, shortRecents } from "../../lib/recents";
 import { sessionPath, sessionsPath } from "../../lib/work-items";
 import { setMutedConversations } from "../../lib/sound-events";
 
@@ -49,8 +49,10 @@ function Count({ entry }: { entry: ChatSidebarEntry | undefined }) {
 
 /**
  * Chat mode's sidebar: what you pinned, the workspace's own channels (and a
- * way to browse the rest), its public channels, then Recents: direct
- * messages and your agent sessions together, the latest first. Sections fold, and
+ * way to browse the rest), its public channels, direct messages (people,
+ * and g1t), then your agent sessions, the latest first. A conversation is
+ * not a session: what g1t starts from one is linked there, and listed
+ * under Sessions. Sections fold, and
  * stay folded on this device. All, Unread and Mentions filter every section. It refreshes
  * itself while the tab is shown, so unread counts move without a reload.
  */
@@ -127,22 +129,15 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
     <ConversationRow key={entry.channel.id} entry={entry} slug={slug} pathname={pathname} onPin={() => void togglePin(entry)} />
   );
 
-  // Recents: direct messages and the viewer's agent sessions, newest activity first.
+  // Sessions: the viewer's agent sessions, newest activity first, apart from the people they talk to.
   const sessions = useRecentSessions(slug, sidebar != null && !sidebar.guest);
-  const [allRecents, setAllRecents] = useState(false);
-  useEffect(() => setAllRecents(false), [slug]);
-  const recentList = recentRows(dms, filterSessions(sessions ?? [], filter, query), g1tEntry);
-  const keepRecent = (row: RecentRow) =>
-    row.kind === "dm" ? keepShown(row.entry) : row.session.status === "waiting" || pathname === sessionPath(slug, row.session.id);
+  const [allSessions, setAllSessions] = useState(false);
+  useEffect(() => setAllSessions(false), [slug]);
+  const sessionList = filterSessions(sessions ?? [], filter, query);
+  const keepSession = (session: RecentSession) => session.status === "waiting" || pathname === sessionPath(slug, session.id);
   // Filtering or searching shows every match; otherwise the list is short until Show all.
-  const recent = allRecents || filter !== "all" || query ? { shown: recentList, more: 0 } : shortRecents(recentList, RECENTS_SHOWN, keepRecent);
-  const recentKeep = recentList.filter(keepRecent);
-  const recentRow = (row: RecentRow) =>
-    row.kind === "dm" ? (
-      conversation(row.entry)
-    ) : (
-      <RecentSessionRow key={row.session.id} session={row.session} slug={slug} pathname={pathname} rowClass={ROW} />
-    );
+  const recent = allSessions || filter !== "all" || query ? { shown: sessionList, more: 0 } : shortRecents(sessionList, RECENTS_SHOWN, keepSession);
+  const sessionRow = (session: RecentSession) => <RecentSessionRow key={session.id} session={session} slug={slug} pathname={pathname} rowClass={ROW} />;
 
   return (
     // The colour behind it, for the dots cut out of people's avatars.
@@ -211,16 +206,8 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
           <p className="px-2 py-3 text-xs leading-relaxed text-faint">Chat didn&apos;t answer. Your conversations will show here once it does.</p>
         ) : (
           <>
-            {/* What agents are doing, beside the people you talk to: what waits on you first, then the sessions. A guest has neither here. */}
-            {!sidebar.guest && (
-              <>
-                <NeedsAttention slug={slug} className="mx-0 mb-3" />
-                {/* One way in: the sessions page has the views and filters (live, yours, each kind). */}
-                <ul className="mb-3 space-y-px">
-                  <SessionsRow slug={slug} pathname={pathname} />
-                </ul>
-              </>
-            )}
+            {/* What waits on you first, from people and agents alike. A guest has none here. */}
+            {!sidebar.guest && <NeedsAttention slug={slug} className="mx-0 mb-3" />}
             {/* Open to anyone on g1t, apart from the workspace's own, and first: only when there are some, or for a guest, to find them. */}
             {(publicChannels.length > 0 || (sidebar.guest && filter === "all" && !query)) && (
               <Section id="public" title="Public channels" folded={folded} onFold={fold} keep={publicChannels.filter(keepShown).map(conversation)}>
@@ -273,16 +260,16 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
                   ))}
               </Section>
             )}
-            {/*
-              Recents: the people you talk to and your agent sessions in one list, newest
-              activity first, in place of Direct messages. Short (RECENTS_SHOWN), with
-              what is unread, waiting on you or open always in view; Show all lists every
-              one here, and Sessions above has the rest. A guest has neither here: those
-              are for the workspace's members. Its id is Direct messages' own, so a fold
-              made there is kept.
-            */}
+            {/* A guest has no direct messages here: those are for the workspace's members. */}
             {!sidebar.guest && (
-              <Section id="people" title="Recents" folded={folded} onFold={fold} action={<NewMessageButton slug={slug} />} keep={recentKeep.map(recentRow)}>
+              <Section
+                id="people"
+                title="Direct messages"
+                folded={folded}
+                onFold={fold}
+                action={<NewMessageButton slug={slug} />}
+                keep={dms.filter(keepShown).map(conversation)}
+              >
                 {/* @g1t, before the first word to it: its direct message opens on first use. */}
                 {filter === "all" && !query && !entries.some(g1tEntry) && (
                   <ExtraRow
@@ -292,25 +279,36 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
                     g1t
                   </ExtraRow>
                 )}
-                {recent.shown.map(recentRow)}
-                {(recent.more > 0 || allRecents) && recentList.length > RECENTS_SHOWN && (
+                {dms.map(conversation)}
+                {dms.length === 0 && filter === "all" && !query && <Empty>Message a teammate.</Empty>}
+              </Section>
+            )}
+            {/*
+              Sessions: the agents' work, apart from the conversations that started it, at the
+              bottom. Short (RECENTS_SHOWN), with what waits on you or is open always in view;
+              Show all lists every recent one here, and All sessions has the views and filters.
+            */}
+            {!sidebar.guest && (sessionList.length > 0 || (filter === "all" && !query)) && (
+              <Section id="sessions" title="Sessions" folded={folded} onFold={fold} keep={sessionList.filter(keepSession).map(sessionRow)}>
+                {recent.shown.map(sessionRow)}
+                {(recent.more > 0 || allSessions) && sessionList.length > RECENTS_SHOWN && (
                   <li>
                     <button
                       type="button"
-                      onClick={() => setAllRecents((open) => !open)}
-                      aria-expanded={allRecents}
+                      onClick={() => setAllSessions((open) => !open)}
+                      aria-expanded={allSessions}
                       className={`${ROW} w-full text-left text-faint hover:bg-sidebar-accent/60 hover:text-muted`}
                     >
-                      <span className="flex w-4.5 shrink-0 justify-center">{allRecents ? <ChevronsUp size={14} /> : <ChevronsDown size={14} />}</span>
-                      <span className="min-w-0 grow truncate">{allRecents ? "Show fewer" : "Show all"}</span>
-                      {!allRecents && <span className="shrink-0 text-xs tabular-nums">{recent.more}</span>}
+                      <span className="flex w-4.5 shrink-0 justify-center">{allSessions ? <ChevronsUp size={14} /> : <ChevronsDown size={14} />}</span>
+                      <span className="min-w-0 grow truncate">{allSessions ? "Show fewer" : "Show all"}</span>
+                      {!allSessions && <span className="shrink-0 text-xs tabular-nums">{recent.more}</span>}
                     </button>
                   </li>
                 )}
-                {recentList.length === 0 && filter === "all" && !query && <Empty>Message a teammate.</Empty>}
+                {filter === "all" && !query && <SessionsRow slug={slug} pathname={pathname} />}
               </Section>
             )}
-            {shown.length === 0 && recentList.length === 0 && (filter !== "all" || query) && (
+            {shown.length === 0 && sessionList.length === 0 && (filter !== "all" || query) && (
               <p className="px-2 py-2 text-xs text-faint">{query ? "Nothing matches." : filter === "unread" ? "You're all caught up." : "No mentions."}</p>
             )}
           </>
@@ -410,7 +408,7 @@ function ExtraRow({ to, icon, count, countLabel, children }: { to: string; icon:
   );
 }
 
-/** Sessions: every agent session in the workspace, lit on any of its pages; its views and filters are on the page. */
+/** All sessions: every agent session in the workspace, lit on any of its pages; its views and filters are on the page. */
 function SessionsRow({ slug, pathname }: { slug: string; pathname: string }) {
   const to = sessionsPath(slug);
   const current = pathname === to || pathname.startsWith(`${to}/`);
@@ -424,7 +422,7 @@ function SessionsRow({ slug, pathname }: { slug: string; pathname: string }) {
         <span className="flex w-4.5 shrink-0 justify-center text-faint">
           <Radio size={15} />
         </span>
-        <span className="min-w-0 grow truncate">Sessions</span>
+        <span className="min-w-0 grow truncate">All sessions</span>
       </Link>
     </li>
   );
