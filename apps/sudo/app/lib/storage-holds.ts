@@ -110,15 +110,20 @@ export const RELEASE_ACTION = "storage_released";
  * A release's line in sudo's audit log (billing's `admin_log`): filed under
  * the charged repository's workspace, or under `storage` when its row is
  * gone and no workspace can be named. It names the hold, the repository,
- * the reason and the repos service's `storage_recoveries` row, which keeps
- * the inspection as evidence.
+ * the one written when that is another (a fork, or a copy lock's
+ * destination, which may be in another workspace), the reason and the
+ * repos service's `storage_recoveries` row, which keeps the inspection as
+ * evidence.
  */
 export function releaseAuditEntry(hold: { kind: StorageHoldKind; id: string }, recovery: StorageRecovery): AdminLogEntry {
   const path = recovery.evidence?.hold.repo.path ?? null;
   const workspace = path?.split("/")[0] ?? "";
-  const repo = path ? `${path} (${recovery.repoId})` : `repository ${recovery.repoId} (gone)`;
+  const named = (id: string, at: string | null) => (at ? `${at} (${id})` : `repository ${id} (gone)`);
+  const repo = named(recovery.repoId, path);
+  const targetId = recovery.evidence?.hold.target?.id ?? recovery.targetId;
+  const written = targetId && targetId !== recovery.repoId ? ` → ${named(targetId, recovery.evidence?.hold.target?.path ?? null)}` : "";
   const bytes = hold.kind === "copy_lock" ? "" : `, ${formatBytes(recovery.bytes)}`;
-  const detail = `${kindLabel(hold.kind)} ${hold.id} on ${repo}${bytes}: ${recovery.reason} · storage_recoveries ${recovery.id}`;
+  const detail = `${kindLabel(hold.kind)} ${hold.id} on ${repo}${written}${bytes}: ${recovery.reason} · storage_recoveries ${recovery.id}`;
   return workspace ? { workspace, action: RELEASE_ACTION, detail } : { account: "storage", action: RELEASE_ACTION, detail };
 }
 
@@ -142,7 +147,15 @@ export async function releaseHold(
   report: (message: string) => void = console.error,
 ): Promise<ReleaseOutcome> {
   const released = await settle(calls.release(hold.kind, hold.id, staff, hold.reason));
-  if (!released.ok) return { ok: false, status: 502, error: `The repos service did not answer: ${released.error}` };
+  // Unanswered, it may still have been released, and then its audit line is
+  // missing: Released below says which, before anyone tries again.
+  if (!released.ok) {
+    return {
+      ok: false,
+      status: 502,
+      error: `The repos service did not answer: ${released.error}. It may have released the hold anyway: look for it under Released before trying again, and if it is there, it is not in the audit log.`,
+    };
+  }
   if (!released.value.ok) return { ok: false, status: 422, error: released.value.error.message };
   const recovery = released.value.value;
   const logged = await settle(calls.log(releaseAuditEntry(hold, recovery), staff));

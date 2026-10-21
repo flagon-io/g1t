@@ -134,6 +134,22 @@ test("a release's audit line is filed under the repository's workspace and names
   assert.equal(lock.detail, "Copy lock rep_1 on acme/site (rep_1): The push ended with a 500. · storage_recoveries src_9");
 });
 
+test("a release names the repository written when it is another, as a fork in another workspace is", () => {
+  const forked = recovery("acme/site", "copy_lock");
+  forked.targetId = "rep_2";
+  forked.evidence!.hold.target = { id: "rep_2", path: "bob/site", private: true, deleted: false };
+  const entry = releaseAuditEntry({ kind: "copy_lock", id: "rep_1" }, forked);
+  assert.equal(entry.workspace, "acme");
+  assert.equal(entry.detail, "Copy lock rep_1 on acme/site (rep_1) → bob/site (rep_2): The push ended with a 500. · storage_recoveries src_9");
+  // Without the inspection, the recovery row's own target is named; once gone, it says so.
+  const bare = { ...forked, evidence: null };
+  assert.match(releaseAuditEntry({ kind: "copy_lock", id: "rep_1" }, bare).detail, /→ repository rep_2 \(gone\)/);
+  // A write to the charged repository itself names it once.
+  const own = recovery("acme/site");
+  own.evidence!.hold.target = own.evidence!.hold.repo;
+  assert.doesNotMatch(releaseAuditEntry(hold, own).detail, /→/);
+});
+
 test("a release on a repository whose row is gone is filed under storage, not a guessed workspace", () => {
   const entry = releaseAuditEntry(hold, recovery(null));
   assert.equal(entry.account, "storage");
