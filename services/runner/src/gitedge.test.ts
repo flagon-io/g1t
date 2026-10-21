@@ -7,15 +7,20 @@ import {
   GIT_EDGE_ENV,
   SNAPSHOT_EVERY_MS,
   type SnapshotStore,
+  NO_CLONES,
+  SAME_CLONE_MS,
+  START_IF_CLONED_WITHIN_MS,
   WAKE_AFTER_READ_MS,
   afterPush,
   answerEdge,
   edgeRoute,
   keepSnapshot,
+  noteClone,
   readLately,
   restoreSnapshot,
   routeToEdge,
   snapshotKey,
+  startsOnRead,
   uploadInParts,
   syncVersion,
 } from "./gitedge.ts";
@@ -252,20 +257,20 @@ test("a sync starts the edge and waits for it, then passes the request to /sync"
   assert.equal(failed.seen.forwarded.length, 0);
 });
 
-test("a push wakes an edge asleep only when its repository was read in the last day", async () => {
+test("a push wakes an edge asleep only when its repository was cloned twice in the last day", async () => {
   const now = 1_800_000_000_000;
   const pushed = JSON.stringify({ remote: "r", token: "t", version: 18, head: "refs/heads/main", push: true });
   const sync = (body: string) => new Request(`${base}/sync`, { method: "POST", body });
-  const asleep = (readAt: number | null) => {
+  const asleep = (earlier: number | null, latest: number | null = earlier) => {
     const edge = box(false, () => new Response(null, { status: 202 }));
-    edge.edge.readAt = async () => readAt;
+    edge.edge.clones = async () => ({ earlier, latest });
     edge.edge.now = () => now;
     return edge;
   };
 
-  // Never read, or not for more than a day: nothing starts.
-  for (const readAt of [null, now - WAKE_AFTER_READ_MS]) {
-    const { edge, seen } = asleep(readAt);
+  // Never cloned twice, or not for more than a day: nothing starts.
+  for (const earlier of [null, now - WAKE_AFTER_READ_MS]) {
+    const { edge, seen } = asleep(earlier, now - 1000);
     const answer = await answerEdge(sync(pushed), edge);
     assert.equal(answer.status, 204);
     assert.equal(answer.headers.get("x-g1t-edge"), "asleep");
@@ -273,21 +278,25 @@ test("a push wakes an edge asleep only when its repository was read in the last 
     assert.equal(seen.forwarded.length, 0);
   }
 
-  // Read an hour ago: it starts, for the clones that follow the push.
-  const lately = asleep(now - 60 * 60 * 1000);
+  // Cloned twice in the last few hours: it starts, for the clones that follow the push.
+  const lately = asleep(now - 5 * 60 * 60 * 1000, now - 60 * 60 * 1000);
   assert.equal((await answerEdge(sync(pushed), lately.edge)).status, 202);
   assert.equal(lately.seen.starts, 1);
   assert.equal(lately.seen.forwarded[0]!.body, pushed);
 
-  // A sync after a read the edge missed starts it, read lately or not.
-  const missed = asleep(null);
+  // A sync after a read the edge missed starts it only for a repository
+  // cloned again within the hour.
   const body = JSON.stringify({ remote: "r", token: "t", version: 18, head: "refs/heads/main", push: false });
-  assert.equal((await answerEdge(sync(body), missed.edge)).status, 202);
-  assert.equal(missed.seen.starts, 1);
+  const once = asleep(null, now);
+  assert.equal((await answerEdge(sync(body), once.edge)).status, 204);
+  assert.equal(once.seen.starts, 0);
+  const again = asleep(now - 20 * 60 * 1000, now);
+  assert.equal((await answerEdge(sync(body), again.edge)).status, 202);
+  assert.equal(again.seen.starts, 1);
 
   // One running catches up with every push.
   const running = box(true, () => new Response(null, { status: 202 }));
-  running.edge.readAt = async () => null;
+  running.edge.clones = async () => NO_CLONES;
   assert.equal((await answerEdge(sync(pushed), running.edge)).status, 202);
   assert.equal(running.seen.forwarded.length, 1);
 
@@ -295,21 +304,57 @@ test("a push wakes an edge asleep only when its repository was read in the last 
   assert.equal(afterPush(body), false);
   assert.equal(afterPush('{"push":"true"}'), false);
   assert.equal(afterPush("not json"), false);
-  assert.equal(readLately(null, now), false);
-  assert.equal(readLately(now - WAKE_AFTER_READ_MS + 1, now), true);
-  assert.equal(readLately(now - WAKE_AFTER_READ_MS, now), false);
+  assert.equal(readLately(NO_CLONES, now), false);
+  assert.equal(readLately({ earlier: now - WAKE_AFTER_READ_MS + 1, latest: now }, now), true);
+  assert.equal(readLately({ earlier: now - WAKE_AFTER_READ_MS, latest: now }, now), false);
 });
 
-test("every read is noted, whether the edge answers it or is cold", async () => {
-  for (const running of [true, false]) {
-    const { edge } = box(running, () => new Response("0008NAK\n"));
-    let noted = 0;
-    edge.noteRead = () => void noted++;
-    await answerEdge(new Request(`${base}/info/refs?service=git-upload-pack`), edge);
-    await answerEdge(new Request(`${base}/git-upload-pack`, { method: "POST", body: "0011command=fetch\n0000" }), edge);
-    await answerEdge(new Request(`${base}/state`), edge);
-    assert.equal(noted, 2, running ? "running" : "cold");
+test("a repository cloned once starts no edge; cloned again within the hour, it does", async () => {
+  const now = 1_800_000_000_000;
+  const clone = async (clones: { earlier: number | null; latest: number | null }) => {
+    const { edge, seen } = box(false);
+    let noted = clones;
+    edge.noteClone = async () => (noted = noteClone(noted, now));
+    edge.clones = async () => noted;
+    edge.now = () => now;
+    const refs = await answerEdge(new Request(`${base}/info/refs?service=git-upload-pack`), edge);
+    const pack = await answerEdge(new Request(`${base}/git-upload-pack`, { method: "POST", body: "0011command=fetch\n0000" }), edge);
+    // The store answers the clone; an edge it started answers the next request.
+    assert.equal(refs.status, 503);
+    assert.equal(refs.headers.get("x-g1t-edge"), "cold");
+    assert.equal(pack.status, seen.starts ? 200 : 503);
+    await Promise.all(seen.background);
+    return { seen, noted };
+  };
+
+  // The first clone ever, and one after an hour without: the store answers, nothing starts.
+  for (const latest of [null, now - START_IF_CLONED_WITHIN_MS - 1]) {
+    const { seen, noted } = await clone({ earlier: null, latest });
+    assert.equal(seen.starts, 0);
+    assert.deepEqual(noted, { earlier: latest, latest: now });
   }
+  // A second clone within the hour starts it, once.
+  const { seen } = await clone({ earlier: null, latest: now - 20 * 60 * 1000 });
+  assert.equal(seen.starts, 1);
+
+  // The lazy fetches of one blobless clone are that clone, not another.
+  const first = { earlier: null, latest: now - SAME_CLONE_MS + 1 };
+  assert.equal(noteClone(first, now), first);
+  assert.deepEqual(noteClone(first, now + 1), { earlier: first.latest, latest: now + 1 });
+  assert.equal(startsOnRead({ earlier: now - START_IF_CLONED_WITHIN_MS + 1, latest: now }, now), true);
+  assert.equal(startsOnRead({ earlier: now - START_IF_CLONED_WITHIN_MS, latest: now }, now), false);
+  assert.equal(startsOnRead({ earlier: null, latest: now }, now), false);
+});
+
+test("only info/refs notes a clone; a running edge answers whatever was noted", async () => {
+  const { edge } = box(true, () => new Response("0008NAK\n"));
+  let noted = 0;
+  edge.noteClone = async () => (noted++, NO_CLONES);
+  edge.clones = async () => NO_CLONES;
+  assert.equal((await answerEdge(new Request(`${base}/info/refs?service=git-upload-pack`), edge)).status, 200);
+  assert.equal((await answerEdge(new Request(`${base}/git-upload-pack`, { method: "POST", body: "0011command=fetch\n0000" }), edge)).status, 200);
+  await answerEdge(new Request(`${base}/state`), edge);
+  assert.equal(noted, 1);
 });
 
 test("a cold edge's state says so and starts nothing; a running one's is the container's", async () => {

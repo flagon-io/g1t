@@ -64,8 +64,10 @@ import { EGRESS_ENV, jobNamespaceOf } from "./egress";
 import {
   GIT_EDGE_ENV,
   GIT_EDGE_PORT,
-  NOTE_READ_EVERY_MS,
-  READ_AT,
+  CLONES,
+  type Clones,
+  NO_CLONES,
+  noteClone,
   START_REST_MS,
   type SnapshotStore,
   answerEdge,
@@ -845,25 +847,24 @@ export class Sandbox4Core extends AttemptSandbox {
  * capped, and holds no credentials but the read token each sync brings.
  * Its requests go straight out: it registers no outbound handlers, so
  * nothing of it is intercepted and it needs no re-signing certificate
- * (`EGRESS_ENV`). It sleeps after half an hour without a request, and its
+ * (`EGRESS_ENV`). It sleeps after ten minutes without a request, and its
  * mirror goes with it (but for its snapshot); the next clone finds it cold
- * and starts it again. Every repository has one, so it starts only when
- * the repository is read, or pushed to after it was read in the last day.
+ * and starts it again. Every repository has one, and it costs a container
+ * while awake, so it starts only for a repository cloned twice within the
+ * hour, or pushed to after that within the day (gitedge.ts `startsOnRead`).
  * When it cannot start (every one of `max_instances` is running), it does
  * not try again for `START_REST_MS`: reads meanwhile are answered from
  * Artifacts, as they are while it is cold.
  */
 export class GitEdge extends Container<RunnerEnv> {
   defaultPort = GIT_EDGE_PORT;
-  sleepAfter = "30m";
+  sleepAfter = "10m";
   enableInternet = true;
   envVars = GIT_EDGE_ENV;
   /** The start under way, shared by every request that finds it cold. */
   private warming: Promise<void> | null = null;
   /** Until when no start is tried, after one failed. */
   private restUntil = 0;
-  /** When a read was last noted in storage (`READ_AT`), by this instance. */
-  private notedReadAt = 0;
 
   override async fetch(request: Request): Promise<Response> {
     const forward = (forwarded: Request) => this.containerFetch(forwarded, GIT_EDGE_PORT);
@@ -874,17 +875,19 @@ export class GitEdge extends Container<RunnerEnv> {
       forward,
       background: (work) => this.ctx.waitUntil(work),
       keep: store ? async (repoId, version) => void (await keepSnapshot(repoId, version, { store, forward })) : undefined,
-      noteRead: () => this.noteRead(),
-      readAt: async () => (await this.ctx.storage.get<number>(READ_AT)) ?? null,
+      noteClone: () => this.noteClone(),
+      clones: async () => (await this.ctx.storage.get<Clones>(CLONES)) ?? NO_CLONES,
     });
   }
 
-  /** Notes the read in storage, at most every `NOTE_READ_EVERY_MS`. */
-  private noteRead(): void {
-    const now = Date.now();
-    if (now - this.notedReadAt < NOTE_READ_EVERY_MS) return;
-    this.notedReadAt = now;
-    this.ctx.waitUntil(this.ctx.storage.put(READ_AT, now).catch((error: unknown) => console.error("git edge read not noted", describeError(error))));
+  /** Notes a clone now in storage (`CLONES`), and gives the clones as noted. */
+  private async noteClone(): Promise<Clones> {
+    const before = (await this.ctx.storage.get<Clones>(CLONES)) ?? NO_CLONES;
+    const after = noteClone(before, Date.now());
+    if (after !== before) {
+      this.ctx.waitUntil(this.ctx.storage.put(CLONES, after).catch((error: unknown) => console.error("git edge clone not noted", describeError(error))));
+    }
+    return after;
   }
 
   /** Listening on its port: what the library itself waits for before it passes a request on. */

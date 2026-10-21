@@ -57,18 +57,21 @@
     {
       // The git edge (src/gitedge.ts): not a machine jobs can ask for, so
       // it is in no machine catalogue. Every repository has one, started
-      // when it is read (and asleep after 30 minutes without a request):
-      // the same image started as the edge's server (MODE=gitedge), on
-      // standard-2 (1 vCPU, 6 GiB, 12 GB; a repository is at most 950 MB)
-      // because repacking a mirror needs memory and CPU. max_instances
-      // bounds how many repositories have a live edge at once, and what
-      // they can cost; a clone of any other repository is answered from
-      // Artifacts at once, as without the edge, and its edge tries to
-      // start again two minutes later (START_REST_MS).
+      // when it is cloned twice within the hour (and asleep after 10
+      // minutes without a request): the same image started as the edge's
+      // server (MODE=gitedge), on standard-2 (1 vCPU, 6 GiB, 12 GB; a
+      // repository is at most 950 MB) because repacking a mirror needs
+      // memory and CPU. max_instances bounds how many repositories have a
+      // live edge at once, and so what they can cost: 10 awake all month is
+      // about $820 at list prices, the most the edge can cost, and a
+      // repository cloned only now and then costs nothing. A clone of any
+      // other repository is answered from Artifacts at once, as without the
+      // edge, and its edge tries to start again two minutes later
+      // (START_REST_MS).
       "class_name": "GitEdge",
       "image": "./Dockerfile",
       "instance_type": "standard-2",
-      "max_instances": 50,
+      "max_instances": 10,
       // A clone under way when a deploy replaces its edge is given this
       // long, in seconds, to finish; the next one finds the edge cold.
       "rollout_active_grace_period": 300
