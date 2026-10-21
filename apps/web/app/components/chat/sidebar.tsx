@@ -1,14 +1,35 @@
 import { useSidebarLocation } from "../../lib/use-sidebar-location";
-import { ArrowLeft, BellOff, Check, ChevronDown, Compass, Globe, Hash, Lock, Pin, PinOff, Search, X } from "lucide-react";
+import {
+  ArrowLeft,
+  BellOff,
+  Bot,
+  Check,
+  ChevronDown,
+  CircleUserRound,
+  Compass,
+  Cpu,
+  Globe,
+  Hash,
+  History,
+  Lock,
+  Pin,
+  PinOff,
+  Radio,
+  ScrollText,
+  Search,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { ContextMenu } from "radix-ui";
 import { type ReactNode, useEffect, useState } from "react";
-import { NavLink, useFetcher, useNavigate } from "react-router";
+import { Link, NavLink, useFetcher, useNavigate } from "react-router";
 
 import type { Channel, ChannelInvitation, ChatSidebarEntry, GuestChannel } from "@g1t/contracts";
 
 import { conversationCache } from "./conversation-cache";
 import { CreateChannelButton, NewMessageButton, useChatData, useChatSend, useChatSidebar } from "./actions";
 import { DndMenu } from "./dnd-menu";
+import { NeedsAttention } from "../needs-attention";
 import { MemberAvatar } from "./marks";
 import { PersonStatusEmoji } from "../presence";
 import { Avatar } from "../ui/avatar";
@@ -19,6 +40,7 @@ import { Skeleton } from "../ui/skeleton";
 import { type ChatFilter, agentsOnlyDm, channelPath, filterEntries, g1tEntry, sections } from "../../lib/chat";
 import { feedConnected } from "../../lib/notify-client";
 import { FALLBACK_REFRESH_MS } from "../../lib/notify-store";
+import { sessionsPath } from "../../lib/work-items";
 import { setMutedConversations } from "../../lib/sound-events";
 
 /** How often the sidebar asks again while the tab is shown and the feed socket is down. */
@@ -50,19 +72,20 @@ function Count({ entry }: { entry: ChatSidebarEntry | undefined }) {
  * stay folded on this device. All, Unread and Mentions filter every section. It refreshes
  * itself while the tab is shown, so unread counts move without a reload.
  */
-export function ChatSidebar({ slug: home, heading = true }: { slug: string; heading?: boolean }) {
+export function ChatSidebar({ slug: home, heading = true, username }: { slug: string; heading?: boolean; username?: string }) {
   const data = useChatData();
   // The workspace whose chat is open: another one's, for a guest there.
   const slug = data?.slug ?? home;
-  const { sidebar, refresh } = useChatSidebar();
+  const { sidebar, refresh } = useChatSidebar(home);
   const send = useChatSend(slug);
   const [filter, setFilter] = useState<ChatFilter>("all");
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
   const { pathname } = useSidebarLocation();
 
+  const ready = sidebar != null;
   useEffect(() => {
-    if (!data) return;
+    if (!ready) return;
     // Notify: counts arrive live over the feed socket; this asks again only while it is down.
     const tick = () => {
       if (document.visibilityState === "visible" && !feedConnected()) refresh();
@@ -73,7 +96,7 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
       clearInterval(timer);
       document.removeEventListener("visibilitychange", tick);
     };
-  }, [data, refresh]);
+  }, [ready, refresh]);
 
   // Pins show at once and go back if the service refuses.
   const [pins, setPins] = useState<Map<string, boolean>>(new Map());
@@ -88,7 +111,7 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
     entries.find((e) => pathname === channelPath(slug, e.channel) || pathname.startsWith(`${channelPath(slug, e.channel)}/`))?.channel.id ?? null;
   const shown = filterEntries(entries, filter, query, currentId);
   const { pinned, channels, publicChannels, dms } = sections(shown);
-  const loading = !data;
+  const loading = !data && !sidebar;
 
   // Folded sections, remembered per workspace on this device. A folded
   // section still shows what is unread and the conversation open now.
@@ -189,6 +212,15 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
           <p className="px-2 py-3 text-xs leading-relaxed text-faint">Chat didn&apos;t answer. Your conversations will show here once it does.</p>
         ) : (
           <>
+            {/* What agents are doing, beside the people you talk to: what waits on you first, then the sessions. A guest has neither here. */}
+            {!sidebar.guest && (
+              <>
+                <NeedsAttention slug={slug} className="mx-0 mb-3" />
+                <Section id="sessions" title="Sessions" folded={folded} onFold={fold}>
+                  <SessionRows slug={slug} me={data?.me.username ?? username ?? ""} />
+                </Section>
+              </>
+            )}
             {/* Open to anyone on g1t, apart from the workspace's own, and first: only when there are some, or for a guest, to find them. */}
             {(publicChannels.length > 0 || (sidebar.guest && filter === "all" && !query)) && (
               <Section id="public" title="Public channels" folded={folded} onFold={fold} keep={publicChannels.filter(keepShown).map(conversation)}>
@@ -361,6 +393,49 @@ function ExtraRow({ to, icon, count, countLabel, children }: { to: string; icon:
         )}
       </NavLink>
     </li>
+  );
+}
+
+/**
+ * Sessions' views, which were Work's: what is going now, every session,
+ * your own, and each kind. They differ by their query alone, so each is
+ * lit only on its own (lib/work-items.ts `sessionsPath`).
+ */
+const SESSION_VIEWS: { label: string; icon: ReactNode; filters: Record<string, string> }[] = [
+  { label: "Live now", icon: <Radio size={15} />, filters: {} },
+  { label: "Every session", icon: <History size={15} />, filters: { state: "recent" } },
+  { label: "Yours", icon: <CircleUserRound size={15} />, filters: { person: "" } },
+  { label: "People's harnesses", icon: <Bot size={15} />, filters: { kind: "harness" } },
+  { label: "Started on g1t", icon: <Sparkles size={15} />, filters: { kind: "hosted" } },
+  { label: "g1t's agent", icon: <Cpu size={15} />, filters: { kind: "agent" } },
+  { label: "Recorded on pull requests", icon: <ScrollText size={15} />, filters: { kind: "recorded" } },
+];
+
+function SessionRows({ slug, me }: { slug: string; me: string }) {
+  const { pathname, search } = useSidebarLocation();
+  const list = sessionsPath(slug);
+  const query = new URLSearchParams(search);
+  return (
+    <>
+      {SESSION_VIEWS.map((view) => {
+        // "Yours" is the signed-in person's.
+        const filters = "person" in view.filters ? { person: me } : view.filters;
+        const current =
+          pathname === list && [...query.keys()].every((key) => key in filters) && Object.entries(filters).every(([key, value]) => query.get(key) === value);
+        return (
+          <li key={view.label}>
+            <Link
+              to={sessionsPath(slug, filters)}
+              aria-current={current ? "page" : undefined}
+              className={`${ROW} ${current ? "bg-sidebar-accent text-fg" : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"}`}
+            >
+              <span className="flex w-4.5 shrink-0 justify-center text-faint">{view.icon}</span>
+              <span className="min-w-0 grow truncate">{view.label}</span>
+            </Link>
+          </li>
+        );
+      })}
+    </>
   );
 }
 

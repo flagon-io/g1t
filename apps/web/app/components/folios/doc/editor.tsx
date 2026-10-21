@@ -133,7 +133,7 @@ function LiveEditor({
 
   const threadStore = useMemo(() => {
     const auth = canDo(role, "comment") ? new DefaultThreadStoreAuth(me.key, editable ? "editor" : "comment") : new ReadOnlyAuth();
-    return new RESTYjsThreadStore(`/${slug}/-/artifacts/threads/${folioId}`, {}, provider.doc.getMap("threads"), auth);
+    return new RESTYjsThreadStore(`/${slug}/-/library/artifacts/threads/${folioId}`, {}, provider.doc.getMap("threads"), auth);
   }, [slug, folioId, role, me.key, editable, provider]);
 
   const editor = useCreateBlockNote(
@@ -164,7 +164,7 @@ function LiveEditor({
         syntaxHighlighter,
       ],
       uploadFile: async (file: File) => {
-        const response = await fetch(`/${slug}/-/artifacts/upload?folio=${encodeURIComponent(folioId)}&name=${encodeURIComponent(file.name)}`, {
+        const response = await fetch(`/${slug}/-/library/artifacts/upload?folio=${encodeURIComponent(folioId)}&name=${encodeURIComponent(file.name)}`, {
           method: "POST",
           headers: { "content-type": file.type || "application/octet-stream" },
           body: file,
@@ -238,7 +238,7 @@ function LiveEditor({
   // `[[` links an artifact, as `@` mentions someone.
   const searchPages = async (query: string) => {
     try {
-      const r = await fetch(`/${slug}/-/artifacts/api?search=${encodeURIComponent(query)}`, { headers: { accept: "application/json" } });
+      const r = await fetch(`/${slug}/-/library/artifacts/api?search=${encodeURIComponent(query)}`, { headers: { accept: "application/json" } });
       const result = (await r.json()) as Result<FolioSearchHit[]>;
       return result.ok ? result.value : [];
     } catch {

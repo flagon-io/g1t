@@ -64,8 +64,8 @@ const own = (more: Partial<WorkSession> = {}): WorkSession =>
   }) as WorkSession;
 
 test("every kind of session opens where it is shown", () => {
-  assert.equal(sessionHref("Acme", listed("ses_1")), "/acme/-/work/sessions/ses_1");
-  assert.equal(sessionHref("acme", listed("ses_2", { kind: "hosted", harness: "claude_managed_agents" })), "/acme/-/work/sessions/ses_2");
+  assert.equal(sessionHref("Acme", listed("ses_1")), "/acme/-/chat/sessions/ses_1");
+  assert.equal(sessionHref("acme", listed("ses_2", { kind: "hosted", harness: "claude_managed_agents" })), "/acme/-/chat/sessions/ses_2");
   // g1t's agent and a recorded session are their pull request's Session tab.
   assert.equal(sessionHref("acme", listed("run_1", { kind: "agent", repo: "acme/api", pull: 8 })), "/acme/api/pull/8/session");
   assert.equal(sessionHref("acme", listed("pr_1", { kind: "recorded", pull: 7 })), "/acme/web/pull/7/session");

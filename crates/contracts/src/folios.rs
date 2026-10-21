@@ -156,7 +156,7 @@ pub struct FolioRef {
     pub icon: Option<String>,
     /// `<title-slug>-<id>`.
     pub slug: String,
-    /// `/<ws>/-/artifacts/<slug>`.
+    /// `/<ws>/-/library/artifacts/<slug>`.
     pub path: String,
 }
 
@@ -752,7 +752,7 @@ mod tests {
     fn folio() -> Folio {
         serde_json::from_value(json!({
             "id": "fol_01jb2k7x9hfq0b3zj0f5s2m8ra", "kind": "slides", "title": "Q4 roadmap", "icon": null,
-            "slug": "q4-roadmap-fol_01jb2k7x9hfq0b3zj0f5s2m8ra", "path": "/acme/-/artifacts/q4-roadmap-fol_01jb2k7x9hfq0b3zj0f5s2m8ra",
+            "slug": "q4-roadmap-fol_01jb2k7x9hfq0b3zj0f5s2m8ra", "path": "/acme/-/library/artifacts/q4-roadmap-fol_01jb2k7x9hfq0b3zj0f5s2m8ra",
             "workspace_id": "wsp_1", "space": { "id": "spc_1", "slug": "general", "name": "General", "kind": "workspace" },
             "parent_id": null, "position": 1.5,
             "owner": { "kind": "user", "id": "usr_1", "name": "ana", "display_name": "Ana" },

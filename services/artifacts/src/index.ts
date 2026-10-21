@@ -789,7 +789,7 @@ class Docs {
         path: file.path,
         title: file.title,
         markdown: file.markdown,
-        href: `/${workspace.slug}/-/artifacts/repo/${repoPath}/${encoded}`,
+        href: `/${workspace.slug}/-/library/artifacts/repo/${repoPath}/${encoded}`,
         code_href: `/${repoPath}/blob/${encodeURIComponent(match.repo.defaultBranch)}/${encoded}`,
       },
     });

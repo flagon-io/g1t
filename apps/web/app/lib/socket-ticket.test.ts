@@ -39,6 +39,8 @@ const CHAT = "/acme/-/chat/live";
 test("only the site's live sockets take a ticket, in the form the routes match", () => {
   assert.deepEqual(socketPath("/-/live"), { path: "/-/live", workspace: null });
   assert.deepEqual(socketPath("/Acme//-/chat/live/"), { path: "/acme/-/chat/live", workspace: "acme" });
+  assert.deepEqual(socketPath("/acme/-/library/artifacts/live"), { path: "/acme/-/library/artifacts/live", workspace: "acme" });
+  // A page opened before artifacts moved into the Library still connects where they were.
   assert.deepEqual(socketPath("/acme/-/artifacts/live"), { path: "/acme/-/artifacts/live", workspace: "acme" });
   for (const path of ["/", "/acme", "/acme/-/chat", "/acme/-/inbox/live", "/-/-/chat/live", "/acme/web/-/chat/live", "/-/live/ticket", "/%E0%A4%A"]) {
     assert.equal(socketPath(path), null, path);
@@ -69,7 +71,7 @@ test("a ticket past its minute opens nothing", async () => {
 test("a ticket opens no other socket: another kind, or another workspace's", async () => {
   reset();
   const { ticket } = await issueTicket(SECRET, { token: "g1t_web", userId: "usr_ada", path: CHAT }, NOW);
-  for (const path of ["/acme/-/artifacts/live", "/-/live", "/other/-/chat/live"]) {
+  for (const path of ["/acme/-/library/artifacts/live", "/-/live", "/other/-/chat/live"]) {
     assert.equal(await openTicket(SECRET, ticket, path, NOW), null, path);
     assert.equal(await ticketViewer(upgrade(path, ticket), SECRET, lookup, NOW), null, path);
   }
@@ -218,7 +220,7 @@ test("a ticket for a chat-scoped token opens Chat's socket and the feed, checked
     assert.equal((await ticketViewer(upgrade(path, ticket), SECRET, bySocket, NOW))?.id, "usr_ada", path);
   }
   // An artifact's socket is the website's alone, even with a genuine ticket.
-  const artifacts = "/acme/-/artifacts/live";
+  const artifacts = "/acme/-/library/artifacts/live";
   const { ticket } = await issueTicket(SECRET, { token: "g1t_app", userId: "usr_ada", path: artifacts }, NOW);
   assert.equal(await ticketViewer(upgrade(artifacts, ticket), SECRET, bySocket, NOW), null);
   // Chat taken away since the ticket was made: the socket opens nothing.

@@ -40,7 +40,7 @@ function cardFor(slug: string, id: string): Promise<Card | undefined> {
   const key = `${slug}/${id}`;
   const kept = cards.get(key);
   if (kept && Date.now() - kept.at < KEEP_MS) return kept.card;
-  const card = fetch(`/${slug}/-/artifacts/api?unfurl=${encodeURIComponent(id)}`, { headers: { accept: "application/json" } })
+  const card = fetch(`/${slug}/-/library/artifacts/api?unfurl=${encodeURIComponent(id)}`, { headers: { accept: "application/json" } })
     .then((r) => r.json() as Promise<Result<Card>>)
     .then((r) => (r.ok ? r.value : undefined))
     // Not answered: no card at all, rather than a wrong one.

@@ -8,7 +8,7 @@ import { assertSameOrigin, requireUser, roleIn } from "../../../lib/session.serv
 
 /**
  * A file put in an artifact (an image, a PDF, an attachment):
- * `POST <site>/<workspace>/-/artifacts/upload?folio=<id>&name=<file name>`
+ * `POST <site>/<workspace>/-/library/artifacts/upload?folio=<id>&name=<file name>`
  * with the file as the body. The artifacts service checks the viewer can edit
  * the folio, keeps the file, and answers with its address on the usercontent
  * origin, where it is served, never on the site.

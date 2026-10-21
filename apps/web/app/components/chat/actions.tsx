@@ -22,15 +22,23 @@ export function useChatData(): ChatLayoutData | undefined {
 /** The sidebar's own fetcher: every component that refreshes it shares this one. */
 export const SIDEBAR_FETCHER = "chat-sidebar";
 
-/** The sidebar as last read: refreshed in place, else what the page loaded. */
-export function useChatSidebar(): { sidebar: ChatSidebar | null; refresh: () => void } {
+/**
+ * The sidebar as last read: refreshed in place, else what the page loaded.
+ * Off Chat's own pages (its sessions, `-/chat/sessions`, are not under its
+ * layout), `home` names the workspace and the sidebar reads itself once.
+ */
+export function useChatSidebar(home?: string): { sidebar: ChatSidebar | null; refresh: () => void } {
   const data = useChatData();
   const fetcher = useFetcher<Result<ChatSidebar>>({ key: SIDEBAR_FETCHER });
-  const slug = data?.slug;
+  const slug = data?.slug ?? home;
   const refresh = useCallback(() => {
     if (slug) fetcher.load(`/${slug}/-/chat/api`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
+  useEffect(() => {
+    if (!data && home && fetcher.state === "idle" && fetcher.data === undefined) refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, home]);
   const fresh = fetcher.data?.ok ? fetcher.data.value : null;
   const sidebar = fresh ?? data?.sidebar ?? null;
   // A conversation read on its page reads as read everywhere at once, until

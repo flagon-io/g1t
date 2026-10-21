@@ -86,8 +86,8 @@ test("the rail's mode follows the address", async () => {
   // Agents mode and Memory are gone: their old addresses fall to Code's not-found page.
   assert.equal(modeOf("/acme/-/agents", "acme"), "code");
   assert.equal(modeOf("/acme/-/memory", "acme"), "code");
-  assert.equal(modeOf("/acme/-/artifacts", "acme"), "artifacts");
-  assert.equal(modeOf("/acme/-/artifacts/spaces/general", "acme"), "artifacts");
+  assert.equal(modeOf("/acme/-/library/artifacts", "acme"), "artifacts");
+  assert.equal(modeOf("/acme/-/library/artifacts/spaces/general", "acme"), "artifacts");
   assert.equal(modeOf("/acme/-/routines", "acme"), "routines");
   // Docs mode is gone: its old addresses are nobody's mode, so they fall to Code's not-found page.
   assert.equal(modeOf("/acme/-/docs", "acme"), "code");
@@ -183,6 +183,11 @@ test("Work is a mode of its own, after Home", async () => {
   // Sessions are Work's: its list and each session light Work.
   assert.equal(modeOf("/acme/-/work/sessions", "acme"), "work");
   assert.equal(modeOf("/acme/-/work/sessions/ses_1.data", "acme"), "work");
+  // Sessions are Chat's now, beside the people you talk to.
+  assert.equal(modeOf("/acme/-/chat/sessions", "acme"), "chat");
+  assert.equal(modeOf("/acme/-/chat/sessions/ses_1", "acme"), "chat");
+  assert.equal(modeOf("/acme/-/library/artifacts", "acme"), "artifacts");
+  assert.equal(modeOf("/acme/-/library", "acme"), "artifacts");
   // Their old address is no page of its own any more, so it falls to Code's not-found page.
   assert.equal(modeOf("/acme/-/sessions", "acme"), "code");
   assert.equal(modeHome("work", "acme"), "/acme/-/work");

@@ -58,7 +58,7 @@ import {
   Search,
   ServerCog,
   Settings,
-  Shapes,
+  LibraryBig,
   Shield,
   ShieldCheck,
   Scale,
@@ -1559,24 +1559,19 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
 }
 
 /**
- * Work's sidebar, and its menu on a phone (the Work tab tapped again), in
- * two sections. First, under the mode's own name as every mode's first rows
- * are, its work items: the plan, the board of them as they move, Triage,
- * the views of all of them people keep coming back to, saved in the address
- * (open, yours, closed), a new one, and the workspace's labels and
- * milestones. Then Sessions, the work being
- * done on them: what is going now, what just ended, your own, and each
- * kind, kept in the address as well.
+ * Work's sidebar, and its menu on a phone (the Work tab tapped again): a new
+ * work item first, then its work items: the plan, the board of them as they
+ * move, Triage, the views of all of them people keep coming back to, saved
+ * in the address (open, yours, closed), and the workspace's labels and
+ * milestones. Sessions, the work agents do on them, are Chat's.
  */
 function WorkSidebar({ slug, username }: { slug: string; username: string }) {
   const { pathname: path, search } = useSidebarLocation();
   const list = workPath(slug, "all");
-  const sessions = sessionsPath(slug);
   const query = new URLSearchParams(search);
   const viewOf = (page: string) => (want: Record<string, string>) =>
     path === page && [...query.keys()].every((key) => key in want) && Object.entries(want).every(([key, value]) => query.get(key) === value);
   const view = viewOf(list);
-  const sessionView = viewOf(sessions);
   const at = (page: string) => path === workPath(slug, page) || path.startsWith(`${workPath(slug, page)}/`);
   return (
     <div className="flex h-full flex-col">
@@ -1587,8 +1582,8 @@ function WorkSidebar({ slug, username }: { slug: string; username: string }) {
             New work item
           </PrimaryLink>
         </NavRows>
-        <NeedsAttention slug={slug} className="my-2" />
-        <NavRows>
+        {/* Room between what the sidebar makes and where it goes. */}
+        <NavRows className="mt-3">
           <SidebarLink to={workPath(slug)} icon={<ListOrdered size={15} />} current={path === workPath(slug)}>
             Plan
           </SidebarLink>
@@ -1614,30 +1609,6 @@ function WorkSidebar({ slug, username }: { slug: string; username: string }) {
             Milestones
           </SidebarLink>
         </NavRows>
-        <Rule />
-        <NavGroup title="Sessions">
-          <SidebarLink to={sessions} icon={<Radio size={15} />} current={sessionView({})}>
-            Live now
-          </SidebarLink>
-          <SidebarLink to={sessionsPath(slug, { state: "recent" })} icon={<History size={15} />} current={sessionView({ state: "recent" })}>
-            Every session
-          </SidebarLink>
-          <SidebarLink to={sessionsPath(slug, { person: username })} icon={<CircleUserRound size={15} />} current={sessionView({ person: username })}>
-            Yours
-          </SidebarLink>
-          <SidebarLink to={sessionsPath(slug, { kind: "harness" })} icon={<Bot size={15} />} current={sessionView({ kind: "harness" })}>
-            People's harnesses
-          </SidebarLink>
-          <SidebarLink to={sessionsPath(slug, { kind: "hosted" })} icon={<Sparkles size={15} />} current={sessionView({ kind: "hosted" })}>
-            Started on g1t
-          </SidebarLink>
-          <SidebarLink to={sessionsPath(slug, { kind: "agent" })} icon={<Cpu size={15} />} current={sessionView({ kind: "agent" })}>
-            g1t's agent
-          </SidebarLink>
-          <SidebarLink to={sessionsPath(slug, { kind: "recorded" })} icon={<ScrollText size={15} />} current={sessionView({ kind: "recorded" })}>
-            Recorded on pull requests
-          </SidebarLink>
-        </NavGroup>
       </nav>
     </div>
   );
@@ -1782,6 +1753,7 @@ const SECTIONS: Record<string, string> = {
   work: "Work",
   chat: "Chat",
   artifacts: "Artifacts",
+  library: "Library",
   routines: "Routines",
   home: "Home",
   apps: "Apps",
@@ -1848,8 +1820,12 @@ function Breadcrumbs({
     if (third === "settings" && fourth === "chat") {
       // Chat settings is a page of its own, not one of General's.
       trail.push({ label: "Chat settings", to: `${page}/chat` });
+    } else if (third === "chat" && fourth === "sessions") {
+      // Chat's sessions: Chat / Sessions / Session.
+      trail.push({ label: "Chat", to: page }, { label: "Sessions", to: `${page}/sessions` });
+      if (parts[4]) trail.push({ label: "Session", to: `${page}/sessions/${parts[4]}` });
     } else if (third === "work") {
-      // Work: Work / #12, Work / Labels, Work / Milestones / #3, Work / Sessions / Session.
+      // Work: Work / #12, Work / Labels, Work / Milestones / #3.
       trail.push({ label: "Work", to: page });
       const words: Record<string, string> = { new: "New work item", board: "Board", labels: "Labels", milestones: "Milestones", sessions: "Sessions" };
       if (fourth && /^\d+$/.test(fourth)) trail.push({ label: `Work item #${fourth}`, short: `#${fourth}`, to: `${page}/${fourth}` });
@@ -1998,7 +1974,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
           { label: "Milestones", hint: "Work", to: workPath(ws.slug, "milestones"), icon: <ListTodo size={15} /> },
           { label: "Chat", to: `/${ws.slug}/-/chat`, icon: <MessagesSquare size={15} /> },
           ...(hasCodeAccess(ws) ? [{ label: "Code overview", to: `/${ws.slug}/-/overview`, icon: <Code2 size={15} /> }] : []),
-          { label: "Artifacts", to: `/${ws.slug}/-/artifacts`, icon: <Shapes size={15} /> },
+          { label: "Library", to: `/${ws.slug}/-/library/artifacts`, icon: <LibraryBig size={15} /> },
           { label: "Routines", hint: "Standing work for @g1t (soon)", to: `/${ws.slug}/-/routines`, icon: <Repeat size={15} /> },
           { label: "Apps", hint: "Everything installed that you can use", to: `/${ws.slug}/-/apps`, icon: <LayoutGrid size={15} /> },
           { label: "Workspace", hint: "Billing, policies, settings", to: `/${ws.slug}/-/workspace`, icon: <Building2 size={15} /> },
@@ -2159,7 +2135,7 @@ const MODE_MENU: Record<Panel, string> = {
   browse: "Explore",
   work: "Work",
   chat: "Chat",
-  artifacts: "Artifacts",
+  artifacts: "Library",
   code: "Code",
   notifications: "Notifications",
   people: "People",
@@ -2342,7 +2318,7 @@ export function AppShell({
       case "work":
         return <WorkSidebar slug={ws.slug} username={user.username} />;
       case "chat":
-        return <ChatSidebar slug={ws.slug} />;
+        return <ChatSidebar slug={ws.slug} username={user.username} />;
       case "artifacts":
         return <FoliosSidebar slug={ws.slug} />;
       case "notifications":

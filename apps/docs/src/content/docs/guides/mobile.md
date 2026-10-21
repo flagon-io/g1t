@@ -187,8 +187,8 @@ pages it has screens for:
 | `g1t://<workspace>/-/work/<number>`                                            | The work item                                                                                                                                                                                                                               |
 | `g1t://<workspace>/-/work/new`                                                 | A new work item                                                                                                                                                                                                                             |
 | `g1t://<workspace>/-/work/board`                                               | Work, on the Board                                                                                                                                                                                                                          |
-| `g1t://<workspace>/-/work/sessions`, with its filters (`?state=live&repo=web`) | Work, on Sessions                                                                                                                                                                                                                           |
-| `g1t://<workspace>/-/work/sessions/<id>`                                       | The session                                                                                                                                                                                                                                 |
+| `g1t://<workspace>/-/chat/sessions`, with its filters (`?state=live&repo=web`) | Work, on Sessions                                                                                                                                                                                                                           |
+| `g1t://<workspace>/-/chat/sessions/<id>`                                       | The session                                                                                                                                                                                                                                 |
 | `g1t://<workspace>/-/chat`, `…/-/chat/<channel>`, `…/-/chat/dm/<id>`           | Chat, or the conversation, in that workspace                                                                                                                                                                                                |
 | `g1t://<owner>/<repo>`                                                         | The repository                                                                                                                                                                                                                              |
 | `g1t://<owner>/<repo>/pull/<number>`                                           | The pull request                                                                                                                                                                                                                            |
@@ -196,7 +196,7 @@ pages it has screens for:
 
 The same paths as `https://g1t.sh/…` links, such as
 `https://g1t.sh/<workspace>/-/work/<number>` or
-`https://g1t.sh/<workspace>/-/work/sessions/<id>`, open these screens once
+`https://g1t.sh/<workspace>/-/chat/sessions/<id>`, open these screens once
 g1t.sh publishes the files Android and iOS check first (see
 [below](#whats-not-there-yet)). The workspace's labels and milestones open
 on the site.

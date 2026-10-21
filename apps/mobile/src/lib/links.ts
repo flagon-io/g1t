@@ -46,6 +46,12 @@ export function routeFor(sitePath: string): string | null {
   if (second === "-") {
     if (third === "chat") {
       if (!fourth) return `/chat?${workspace}`;
+      // Sessions are Chat's on the site; the app keeps them with Work for now.
+      if (fourth === "sessions") {
+        if (!fifth) return `/work?${workspace}&view=sessions${filtersOf(query, SESSION_FILTERS)}`;
+        if (parts.length === 5) return `/work/sessions/${encodeURIComponent(fifth)}?${workspace}`;
+        return null;
+      }
       if (fourth === "dm" && fifth) return `/chat/${encodeURIComponent(fifth)}?${workspace}`;
       if (fourth !== "browse" && fourth !== "dm" && !fifth) return `/chat/${encodeURIComponent(fourth)}?${workspace}`;
       return null;
@@ -54,7 +60,7 @@ export function routeFor(sitePath: string): string | null {
       if (!fourth) return `/work?${workspace}${filtersOf(query, WORK_FILTERS)}`;
       if (fourth === "new" && !fifth) return `/work/new?${workspace}`;
       if (fourth === "board" && !fifth) return `/work?${workspace}&view=board`;
-      // Sessions are Work's: its Sessions view, and one session's screen.
+      // Sessions were Work's on the site: links from then open its Sessions view, and one session's screen.
       if (fourth === "sessions") {
         if (!fifth) return `/work?${workspace}&view=sessions${filtersOf(query, SESSION_FILTERS)}`;
         if (parts.length === 5) return `/work/sessions/${encodeURIComponent(fifth)}?${workspace}`;

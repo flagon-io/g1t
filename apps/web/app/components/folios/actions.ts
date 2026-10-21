@@ -64,7 +64,7 @@ export function sidebarLoaded(): void {
 
 export async function foliosRequest<T>(slug: string, intent: string, body: Record<string, unknown> = {}): Promise<Result<T>> {
   try {
-    const response = await fetch(`/${slug}/-/artifacts/api`, {
+    const response = await fetch(`/${slug}/-/library/artifacts/api`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify({ intent, ...body }),
@@ -80,7 +80,7 @@ export async function foliosRequest<T>(slug: string, intent: string, body: Recor
 
 export async function foliosQuery<T>(slug: string, query: Record<string, string>): Promise<Result<T>> {
   try {
-    const response = await fetch(`/${slug}/-/artifacts/api?${new URLSearchParams(query)}`, {
+    const response = await fetch(`/${slug}/-/library/artifacts/api?${new URLSearchParams(query)}`, {
       headers: { accept: "application/json" },
       signal: AbortSignal.timeout(FOLIOS_TIMEOUT_MS),
     });

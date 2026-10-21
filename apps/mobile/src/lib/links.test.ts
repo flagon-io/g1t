@@ -51,6 +51,9 @@ test("Work's sessions open Work on its Sessions, and a session its screen", () =
   // The list keeps the filters the site's does, and drops anything else.
   assert.equal(routeFor("/acme/-/work/sessions?state=live&repo=web&page=2"), "/work?workspace=acme&view=sessions&state=live&repo=web");
   assert.equal(routeFor("/acme/-/work/sessions/ses_1/entries"), null);
+  // Chat's sessions, where the site has them now.
+  assert.equal(routeFor(linkPathOf("https://g1t.sh/acme/-/chat/sessions")!), "/work?workspace=acme&view=sessions");
+  assert.equal(routeFor(linkPathOf("https://g1t.sh/acme/-/chat/sessions/ses_01abc")!), "/work/sessions/ses_01abc?workspace=acme");
   // Sessions were once a page of their own; that address is gone, so the app has no screen for it.
   assert.equal(routeFor("/acme/-/sessions"), null);
   assert.equal(routeFor("/acme/-/sessions/ses_1"), null);

@@ -182,7 +182,7 @@ export default function FoliosHome({ loaderData, params }: Route.ComponentProps)
         <h1 className="grow text-2xl font-semibold tracking-tight">Artifacts</h1>
         <Hint label="Templates">
           <Link
-            to={`/${slug}/-/artifacts/templates`}
+            to={`/${slug}/-/library/artifacts/templates`}
             aria-label="Templates"
             className="flex size-9 items-center justify-center rounded-md border border-line text-muted transition-colors hover:border-line-strong hover:bg-surface hover:text-fg"
           >
@@ -321,7 +321,8 @@ function ViewButton({ active, label, to, children }: { active: boolean; label: s
  */
 function MakeTiles({ slug, spaces }: { slug: string; spaces: { id: string; name: string }[] }) {
   const navigation = useNavigation();
-  const starting = navigation.state !== "idle" && navigation.formMethod?.toUpperCase() === "POST" && navigation.formAction?.includes("/-/artifacts/new/");
+  const starting =
+    navigation.state !== "idle" && navigation.formMethod?.toUpperCase() === "POST" && navigation.formAction?.includes("/-/library/artifacts/new/");
   const [choosing, setChoosing] = useState(false);
   return (
     <div className="-mx-4 mt-5 flex snap-x gap-3 overflow-x-auto px-4 pb-1 scrollbar-none sm:mx-0 sm:grid sm:grid-cols-4 sm:overflow-visible sm:px-0">
@@ -355,7 +356,7 @@ function MakeTiles({ slug, spaces }: { slug: string; spaces: { id: string; name:
         }
         return (
           <div key={kind} className="relative flex w-40 shrink-0 snap-start sm:w-auto">
-            <Form method="post" action={`/${slug}/-/artifacts/new/${kind}`} className="flex grow">
+            <Form method="post" action={`/${slug}/-/library/artifacts/new/${kind}`} className="flex grow">
               <button
                 type="submit"
                 disabled={starting}
@@ -379,7 +380,7 @@ function MakeTiles({ slug, spaces }: { slug: string; spaces: { id: string; name:
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
                 <DropdownMenuItem asChild>
-                  <Link to={`/${slug}/-/artifacts/templates?kind=${kind}`}>From a template…</Link>
+                  <Link to={`/${slug}/-/library/artifacts/templates?kind=${kind}`}>From a template…</Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled={spaces.length === 0} onSelect={() => setChoosing(true)}>
                   In a space…
@@ -433,7 +434,7 @@ function SpaceChooser({
           <DialogTitle>New {FOLIO_KIND_UI[kind].label.toLowerCase().replace(/s$/, "")} in a space</DialogTitle>
           <DialogDescription>It follows the space&apos;s access: everyone in the space can open it.</DialogDescription>
         </DialogHeader>
-        <Form method="post" action={`/${slug}/-/artifacts/new/${kind}`} className="space-y-4">
+        <Form method="post" action={`/${slug}/-/library/artifacts/new/${kind}`} className="space-y-4">
           <SelectField
             name="space"
             aria-label="Space"

@@ -45,8 +45,8 @@ sessions, pull requests and what it was blocked by.
   `g1t.sh/<owner>/<repo>/work` and `…/sessions` are not found. Its claims
   and sessions are on Work's
   [Sessions](/work/sessions/), filtered to it:
-  `g1t.sh/<workspace>/-/work/sessions?repo=<name>`. A session's page is
-  `g1t.sh/<workspace>/-/work/sessions/<id>`, and a pull request's recorded
+  `g1t.sh/<workspace>/-/chat/sessions?repo=<name>`. A session's page is
+  `g1t.sh/<workspace>/-/chat/sessions/<id>`, and a pull request's recorded
   session is its **Session** tab, `…/pull/<number>/session`.
 
 ## Labels and milestones

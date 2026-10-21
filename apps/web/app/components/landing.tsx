@@ -201,8 +201,8 @@ const MODES: {
   },
   {
     icon: <BookOpen size={18} />,
-    name: "Artifacts",
-    about: "Docs now, and slides, designs and dashboards next, made together live.",
+    name: "Library",
+    about: "Your artifacts: docs now, and slides, designs and dashboards next, made together live.",
     to: `${DOCS}/guides/artifacts/`,
   },
 ];
@@ -661,11 +661,11 @@ export function Landing() {
         </div>
       </section>
 
-      {/* Artifacts: the docs the work cites. */}
+      {/* The Library: the docs the work cites. */}
       <section className="mx-auto max-w-7xl px-4 pt-24">
         <div className="grid gap-10 rounded-3xl bg-surface p-8 ring-1 ring-line sm:p-10 lg:grid-cols-[1fr_1.1fr] lg:gap-16">
           <div>
-            <Eyebrow>Artifacts</Eyebrow>
+            <Eyebrow>Library</Eyebrow>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance">A knowledge base that keeps itself true</h2>
             <p className="mt-4 max-w-xl leading-7 text-muted">
               Docs, private until you share them or kept in spaces, edited together live, with history, comments and backlinks. When a merged change touches

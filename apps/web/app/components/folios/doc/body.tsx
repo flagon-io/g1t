@@ -83,7 +83,7 @@ export default function DocBody({ slug, page, folio, live, role, showComments, o
       else if (event.type === "folio.trashed") void revalidator.revalidate();
       else if (event.type === "access") {
         onRole(event.role);
-        if (!event.role) navigate(`/${slug}/-/artifacts`);
+        if (!event.role) navigate(`/${slug}/-/library/artifacts`);
       } else if (event.type === "suggestion.created") setSuggestions((was) => [...was.filter((s) => s.id !== event.suggestion.id), event.suggestion]);
       else if (event.type === "suggestion.updated")
         setSuggestions((was) =>
@@ -130,7 +130,7 @@ export default function DocBody({ slug, page, folio, live, role, showComments, o
 
   const threadRequest = async (path: string, method: string, body: unknown) => {
     try {
-      const r = await fetch(`/${slug}/-/artifacts/threads/${folio.id}${path}`, {
+      const r = await fetch(`/${slug}/-/library/artifacts/threads/${folio.id}${path}`, {
         method,
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
@@ -167,7 +167,7 @@ export default function DocBody({ slug, page, folio, live, role, showComments, o
           {trashed && (
             <p className="mb-6 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-sm text-warn">
               This is in the trash.{" "}
-              <Link to={`/${slug}/-/artifacts/trash`} className="underline">
+              <Link to={`/${slug}/-/library/artifacts/trash`} className="underline">
                 Open the trash
               </Link>{" "}
               to restore it.

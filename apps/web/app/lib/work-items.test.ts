@@ -16,6 +16,7 @@ import {
   repoChips,
   repoFilter,
   repoWorkPath,
+  movedSessionsPath,
   sessionPath,
   sessionsPath,
   shortPath,
@@ -158,14 +159,22 @@ test("a parent's progress, and what closing it does with its open sub-items", ()
 
 test("a repository's Work tab, and a new work item filed from it", () => {
   assert.equal(repoWorkPath("acme", "web"), "/acme/-/work/all?repo=web");
-  assert.equal(sessionsPath("Acme"), "/acme/-/work/sessions");
-  assert.equal(sessionsPath("acme", { repo: "web", person: null }), "/acme/-/work/sessions?repo=web");
-  assert.equal(sessionPath("Acme", "ses_1"), "/acme/-/work/sessions/ses_1");
+  assert.equal(sessionsPath("Acme"), "/acme/-/chat/sessions");
+  assert.equal(sessionsPath("acme", { repo: "web", person: null }), "/acme/-/chat/sessions?repo=web");
+  assert.equal(sessionPath("Acme", "ses_1"), "/acme/-/chat/sessions/ses_1");
   assert.equal(newItemPath("Acme"), "/acme/-/work/new");
   assert.equal(newItemPath("acme", "web"), "/acme/-/work/new?repo=web");
   assert.equal(newItemPath("acme", "web", 212), "/acme/-/work/new?repo=web&parent=212");
   assert.equal(newItemPath("acme", null, 212), "/acme/-/work/new?parent=212");
   assert.deepEqual(repoFilter("acme", "web"), { namespace: "acme", name: "web" });
+
+  test("sessions' addresses from when they were Work's go to Chat, filters and all", () => {
+    assert.equal(movedSessionsPath("/Acme/-/work/sessions"), "/acme/-/chat/sessions");
+    assert.equal(movedSessionsPath("/acme/-/work/sessions/", "?state=recent"), "/acme/-/chat/sessions?state=recent");
+    assert.equal(movedSessionsPath("/acme/-/work/sessions/ses_1"), "/acme/-/chat/sessions/ses_1");
+    assert.equal(movedSessionsPath("/acme/-/work/sessions/ses_1/entries"), null);
+    assert.equal(movedSessionsPath("/acme/-/work"), null);
+  });
   assert.deepEqual(repoFilter("acme", "Beta/api"), { namespace: "beta", name: "api" });
   assert.equal(repoFilter("acme", "a/b/c"), null);
   assert.equal(shortPath("acme/web", "acme"), "web");

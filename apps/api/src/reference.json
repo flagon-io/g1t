@@ -14020,7 +14020,7 @@
           "excerpt": "What we ship this quarter, and what we leave for next.",
           "source": null,
           "stale": false,
-          "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+          "html_url": "https://g1t.sh/acme/-/library/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
         }
       ],
       "next_cursor": null
@@ -14041,7 +14041,7 @@
         "title": "Q4 roadmap",
         "icon": "🗺️",
         "slug": "q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
-        "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+        "html_url": "https://g1t.sh/acme/-/library/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
         "space_name": "General",
         "snippet": "We ship the merge queue and Artifacts in Q4; dashboards follow.",
         "heading": "This quarter",
@@ -14102,7 +14102,7 @@
       "excerpt": "What we ship this quarter, and what we leave for next.",
       "source": null,
       "stale": false,
-      "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+      "html_url": "https://g1t.sh/acme/-/library/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
     },
     "notes": "`artifact_id` is the id, or the artifact's address (`q4-roadmap-fol_…`, or its whole link). Not found when you cannot open it, the same as when it does not exist."
   },
@@ -14118,7 +14118,7 @@
         "title": "Q4 roadmap",
         "icon": "🗺️",
         "slug": "q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
-        "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+        "html_url": "https://g1t.sh/acme/-/library/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
         "edited_at": "2026-10-08T16:40:12.000Z"
       },
       "space": {
@@ -14377,7 +14377,7 @@
       "excerpt": "What changed in 2.4.",
       "source": null,
       "stale": false,
-      "html_url": "https://g1t.sh/acme/-/artifacts/release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+      "html_url": "https://g1t.sh/acme/-/library/artifacts/release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
     },
     "notes": "Left out `space` and `parent_id`, it lands in your Private, where only you can open it until you share it. `kind` is `doc` until slides, designs and dashboards ship; they answer `422` saying they are not here yet."
   },
@@ -14431,7 +14431,7 @@
       "excerpt": "What changed in 2.4.",
       "source": null,
       "stale": false,
-      "html_url": "https://g1t.sh/acme/-/artifacts/release-notes-2-4-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+      "html_url": "https://g1t.sh/acme/-/library/artifacts/release-notes-2-4-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
     },
     "notes": "Moving it into a space it follows (`inherit`) gives the space's members its access. `space` set to `private` moves it to the top of your Private, which only its owner can do."
   },
@@ -14456,7 +14456,7 @@
         "title": "Q4 roadmap",
         "icon": "🗺️",
         "slug": "q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
-        "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+        "html_url": "https://g1t.sh/acme/-/library/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
       },
       "version_id": "ver_01kqa7h9k1n3q5s7u9w1y3a5c",
       "summary": "Replaced the section This quarter."
@@ -14504,7 +14504,7 @@
       "excerpt": "What changed in 2.4.",
       "source": null,
       "stale": false,
-      "html_url": "https://g1t.sh/acme/-/artifacts/release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+      "html_url": "https://g1t.sh/acme/-/library/artifacts/release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
     },
     "notes": "Everything under it goes to the trash with it. It is deleted for good 30 days later, or with `purge_workspace_artifact`."
   },
@@ -14549,7 +14549,7 @@
       "excerpt": "What changed in 2.4.",
       "source": null,
       "stale": false,
-      "html_url": "https://g1t.sh/acme/-/artifacts/release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+      "html_url": "https://g1t.sh/acme/-/library/artifacts/release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
     }
   },
   "restore_workspace_artifact_version": {

@@ -28,9 +28,11 @@ To record your own harness's sessions, see
 
 ## The Sessions pages
 
-**Sessions** is the second section of Work's sidebar, at
-`g1t.sh/<workspace>/-/work/sessions`. It shows the sessions in every one
-of the workspace's repositories you can read.
+**Sessions** is in Chat's sidebar, beside your channels and direct
+messages, under **Needs attention**, at `g1t.sh/<workspace>/-/chat/sessions`.
+It shows the sessions in every one of the workspace's repositories you can
+read. Links to its old address, `g1t.sh/<workspace>/-/work/sessions`, still
+work and go on to the same place.
 
 **Live now** is what is cooking right now:
 
@@ -71,7 +73,7 @@ keeps the filters, so a filtered view can be shared:
 | Every session | `?state=recent`                                                                                   |
 
 A repository's sessions are Sessions filtered to it,
-`g1t.sh/<workspace>/-/work/sessions?repo=<name>`: a repository has no
+`g1t.sh/<workspace>/-/chat/sessions?repo=<name>`: a repository has no
 Sessions page of its own. On a phone the filters are in one **Filters**
 sheet.
 
@@ -121,7 +123,7 @@ Anthropic account is stopped from its page instead, with **Stop**.
 
 ## A session's page
 
-A session's page is `g1t.sh/<workspace>/-/work/sessions/<id>` (its
+A session's page is `g1t.sh/<workspace>/-/chat/sessions/<id>` (its
 `ses_…` id), opened from Sessions or from anywhere the session is listed.
 It shows:
 

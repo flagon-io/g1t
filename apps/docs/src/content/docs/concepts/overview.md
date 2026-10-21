@@ -222,7 +222,7 @@ the `session` tool or `g1t session`. A session is recorded in the repository it
 is checked out in, and tied to the work item it claimed and the pull
 request it opened. People read it on the pull request's **Session** tab,
 on the work item, and in **Work**'s **Sessions**
-(`g1t.sh/<workspace>/-/work/sessions`), which shows who is working on
+(`g1t.sh/<workspace>/-/chat/sessions`), which shows who is working on
 what right now across its repositories. See
 [sessions](/work/sessions/) and [claims and dependencies](/work/claims-and-dependencies/).
 

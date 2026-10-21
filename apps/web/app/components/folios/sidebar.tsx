@@ -1,7 +1,7 @@
 import { useSidebarLocation } from "../../lib/use-sidebar-location";
 /**
  * Artifacts mode's sidebar (beside the rail; docs.g1t.sh/guides/artifacts/,
- * "The sidebar"): search, Home, New and Templates; Favorites; the spaces
+ * "The sidebar"): search, All artifacts, New and Templates; Favorites; the spaces
  * shown (joined open spaces, team spaces, members-only spaces) each with
  * its tree; Private, everything of yours in no space; Shared, the tops of
  * what others shared with you; then what's possibly out of date,
@@ -26,7 +26,7 @@ import {
   FileText,
   Folder,
   FolderGit2,
-  Home,
+  Shapes,
   LayoutTemplate,
   Lock,
   Plus,
@@ -184,7 +184,7 @@ function TreeRow({
           <ChevronRight size={13} className={`transition-transform ${expanded ? "rotate-90" : ""}`} />
         </button>
         <NavLink
-          to={`/${slug}/-/artifacts/${folioSlug(item.title, item.id)}`}
+          to={`/${slug}/-/library/artifacts/${folioSlug(item.title, item.id)}`}
           prefetch="intent"
           {...warmOnIntent(item)}
           className="flex min-w-0 grow items-center gap-1.5"
@@ -447,7 +447,7 @@ function RepoFolderRows({ slug, repo, folder, depth, current }: { slug: string; 
 /** A project's docs folder: read-only, its files as folders, from the repository's default branch. */
 function RepoTree({ slug, space }: { slug: string; space: DocRepoSpace }) {
   const { pathname } = useSidebarLocation();
-  const base = `/${slug}/-/artifacts/repo/${space.repo}/`;
+  const base = `/${slug}/-/library/artifacts/repo/${space.repo}/`;
   const here = decodeURIComponent(pathname).startsWith(base);
   const [collapsed, setCollapsed] = useState(!here);
   const root = useMemo(() => repoFolders(space.files), [space.files]);
@@ -514,7 +514,7 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-9 shrink-0 items-center gap-1 pr-1 pl-3">
-        <h2 className="min-w-0 grow truncate text-[0.6875rem] font-medium tracking-wide text-faint uppercase">Artifacts</h2>
+        <h2 className="min-w-0 grow truncate text-[0.6875rem] font-medium tracking-wide text-faint uppercase">Library</h2>
         <NewMenu onMake={make}>
           <Button type="button" aria-label="New" variant="ghost" className="h-8 gap-0.5 px-1.5 text-faint">
             <Plus size={16} />
@@ -527,12 +527,12 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
           </Button>
         )}
       </div>
-      <nav aria-label="Artifacts" className="min-h-0 grow overflow-y-auto px-2.5 pt-3 pb-4 scrollbar-thin">
+      <nav aria-label="Library" className="min-h-0 grow overflow-y-auto px-2.5 pt-3 pb-4 scrollbar-thin">
         <form
           role="search"
           onSubmit={(e) => {
             e.preventDefault();
-            navigate(`/${slug}/-/artifacts?q=${encodeURIComponent(query.trim())}`);
+            navigate(`/${slug}/-/library/artifacts?q=${encodeURIComponent(query.trim())}`);
           }}
           className="mb-2"
         >
@@ -548,11 +548,13 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
           </label>
         </form>
         {error && <p className="mb-2 px-2 text-xs text-danger">{error}</p>}
+        {/* The Library's artifacts: all of them, then the templates to start one from. */}
+        <h3 className="mt-1 mb-1 px-2 text-xs text-faint">Artifacts</h3>
         <div className="space-y-px">
-          <SideLink to={`/${slug}/-/artifacts`} end icon={<Home size={15} />}>
-            Home
+          <SideLink to={`/${slug}/-/library/artifacts`} end icon={<Shapes size={15} />}>
+            All artifacts
           </SideLink>
-          <SideLink to={`/${slug}/-/artifacts/templates`} icon={<LayoutTemplate size={15} />}>
+          <SideLink to={`/${slug}/-/library/artifacts/templates`} icon={<LayoutTemplate size={15} />}>
             Templates
           </SideLink>
         </div>
@@ -589,11 +591,11 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
                     </DropdownMenuTrigger>
                   </Hint>
                   <DropdownMenuContent align="end" className="w-44">
-                    <DropdownMenuItem onSelect={() => navigate(`/${slug}/-/artifacts/spaces`)}>
+                    <DropdownMenuItem onSelect={() => navigate(`/${slug}/-/library/artifacts/spaces`)}>
                       <Compass size={14} /> Browse spaces
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={() => navigate(`/${slug}/-/artifacts/spaces/new`)}>
+                    <DropdownMenuItem onSelect={() => navigate(`/${slug}/-/library/artifacts/spaces/new`)}>
                       <Plus size={14} /> New space
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -662,7 +664,7 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
             <div className="mt-4 space-y-px">
               {!!sidebar.stale_count && (
                 <SideLink
-                  to={`/${slug}/-/artifacts/stale`}
+                  to={`/${slug}/-/library/artifacts/stale`}
                   icon={<AlertTriangle size={15} className="text-warn" />}
                   trailing={<span className="text-[0.6875rem] text-warn tabular-nums">{sidebar.stale_count}</span>}
                 >
@@ -703,7 +705,7 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
             </Section>
             <div className="mt-4 space-y-px">
               <SideLink
-                to={`/${slug}/-/artifacts/trash`}
+                to={`/${slug}/-/library/artifacts/trash`}
                 icon={<Trash2 size={15} />}
                 trailing={sidebar.trash_count ? <span className="text-[0.6875rem] text-faint tabular-nums">{sidebar.trash_count}</span> : undefined}
               >

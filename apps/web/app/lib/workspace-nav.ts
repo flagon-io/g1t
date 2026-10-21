@@ -247,10 +247,11 @@ export type ModeKey =
 /** Workspace pages under `-/`, by the mode they belong to. Anything else of the workspace's is Code's. */
 const PAGE_MODES: Record<string, ModeKey> = {
   home: "home",
-  // Work's sessions (`-/work/sessions`) are Work's too.
   work: "work",
   chat: "chat",
   artifacts: "artifacts",
+  // Artifacts are the Library's (`-/library/artifacts`).
+  library: "artifacts",
   routines: "routines",
   apps: "apps",
   people: "people",
@@ -318,7 +319,7 @@ export function modeHome(mode: ModeKey, slug: string): string {
     case "chat":
       return `/${slug}/-/chat`;
     case "artifacts":
-      return `/${slug}/-/artifacts`;
+      return `/${slug}/-/library/artifacts`;
     case "routines":
       return `/${slug}/-/routines`;
     case "code":

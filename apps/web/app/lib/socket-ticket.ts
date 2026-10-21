@@ -12,7 +12,7 @@
  * A ticket:
  * - is good for {@link TICKET_SECONDS} seconds, and for one socket path
  *   alone (`/-/live`, `/<workspace>/-/chat/live` or
- *   `/<workspace>/-/artifacts/live`);
+ *   `/<workspace>/-/library/artifacts/live`);
  * - is read only by those sockets' upgrade, never by a page, a data
  *   request, a form post or the API ({@link ticketViewer} ignores any
  *   request that is not a WebSocket upgrade);
@@ -55,7 +55,8 @@ export function socketPath(pathname: string): { path: string; workspace: string 
   path = path.toLowerCase().replace(/\/{2,}/g, "/");
   if (path.length > 1) path = path.replace(/\/+$/, "");
   if (path === "/-/live") return { path, workspace: null };
-  const match = /^\/([^/]+)\/-\/(?:chat|artifacts)\/live$/.exec(path);
+  // An artifact's socket under the Library, or where it was before, for a page opened then.
+  const match = /^\/([^/]+)\/-\/(?:chat|artifacts|library\/artifacts)\/live$/.exec(path);
   if (!match || match[1] === "-") return null;
   return { path, workspace: match[1]! };
 }

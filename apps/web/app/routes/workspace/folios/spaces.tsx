@@ -59,7 +59,7 @@ export default function BrowseSpaces({ loaderData, params }: Route.ComponentProp
           <p className="mt-1 text-sm text-muted">A space holds artifacts for a team, a project or a topic. Join an open space to see it in your sidebar.</p>
         </div>
         <Button asChild variant="outline">
-          <Link to={`/${slug}/-/artifacts/spaces/new`}>
+          <Link to={`/${slug}/-/library/artifacts/spaces/new`}>
             <Plus size={15} /> New space
           </Link>
         </Button>

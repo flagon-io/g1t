@@ -26,6 +26,8 @@ import type {
   WorkspaceSignals,
 } from "@g1t/contracts";
 
+import { sessionsPath } from "./work-items.ts";
+
 const DAY_MS = 86_400_000;
 
 /** Weeks of history the pulse and the trends read. */
@@ -786,7 +788,7 @@ export function spreadSignal(ctx: SignalContext): Signal | null {
       `${spread.people} people use it now`,
       `${spread.first.name} first, ${spoken(Math.max(0, (Date.parse(spread.recent[0]!.at) - Date.parse(spread.first.at)) / 1000))} before the next`,
     ],
-    link: { label: "See the sessions", to: `/${ctx.slug}/-/work/sessions` },
+    link: { label: "See the sessions", to: sessionsPath(ctx.slug) },
     weight: 22 + Math.min(12, spread.recent.length * 3),
     ask: `How have ${namesWords(spread.recent.map((person) => person.name))} been using ${tool}, and what did ${spread.first.name} do with it first?`,
   };

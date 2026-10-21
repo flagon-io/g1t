@@ -229,7 +229,7 @@ async function embed(slug: string, address: string, viewer: User, origin: string
   }
   const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
   const missing = { ok: false as const, error: { code: "not_found" as const, message: "Not found." } };
-  // /<owner>/-/artifacts/<slug>-<id>
+  // /<owner>/-/library/artifacts/<slug>-<id>
   if (parts[1] === "-" && parts[2] === "artifacts" && parts[3]) {
     if (parts[0]!.toLowerCase() !== slug) return missing;
     const id = folioIdFrom(parts[3]);

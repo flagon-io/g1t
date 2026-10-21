@@ -4,8 +4,8 @@ description: Find anyone in a workspace, see their teams and what they own, and 
 ---
 
 **People** is where a workspace's people are listed: who they are, the
-teams they are on and what they own. Open it from **People** at the foot
-of the rail. Its sidebar has:
+teams they are on and what they own. Open it from **People** in the
+workspace's menu, in the app bar. Its sidebar has:
 
 | Page         | Address                       | What it is                                                 |
 | ------------ | ----------------------------- | ---------------------------------------------------------- |

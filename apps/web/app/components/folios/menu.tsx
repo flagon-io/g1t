@@ -110,7 +110,7 @@ export function FolioMenu({
             <Link2 size={14} /> Copy link
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
-            <a href={`/${slug}/-/artifacts/export?folio=${encodeURIComponent(folio.id)}`}>
+            <a href={`/${slug}/-/library/artifacts/export?folio=${encodeURIComponent(folio.id)}`}>
               <Download size={14} /> Export Markdown
             </a>
           </DropdownMenuItem>

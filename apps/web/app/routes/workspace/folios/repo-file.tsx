@@ -51,7 +51,7 @@ export default function RepoDocFile({ loaderData, params }: Route.ComponentProps
       >
         <div className="min-w-0 grow">
           <Crumbs
-            items={[{ label: "Artifacts", to: `/${slug}/-/artifacts` }, { label: space.repo }, ...file.path.split("/").map((part) => ({ label: part }))]}
+            items={[{ label: "Library", to: `/${slug}/-/library/artifacts` }, { label: space.repo }, ...file.path.split("/").map((part) => ({ label: part }))]}
           />
         </div>
         <Link to={file.code_href} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line px-2.5 text-xs text-fg/85 hover:bg-raised">
@@ -64,7 +64,7 @@ export default function RepoDocFile({ loaderData, params }: Route.ComponentProps
               aria-label={`Stop showing ${space.repo}'s docs`}
               onClick={async () => {
                 const done = await send("remove_repo_space", { id: space.id });
-                if (done.ok) navigate(`/${slug}/-/artifacts`);
+                if (done.ok) navigate(`/${slug}/-/library/artifacts`);
               }}
               variant="ghost"
               size="icon-sm"

@@ -303,7 +303,7 @@ const APP_TABS: { key: string; icon: ReactNode; label: string; target?: CursorTa
   // Unread in #support, none of it a mention: the quiet count, as the app gives it.
   { key: "chat", icon: <MessagesSquare size={14} />, label: "Chat", target: "tab-chat", scenes: ["chat"], badge: 3 },
   { key: "code", icon: <Code2 size={14} />, label: "Code", target: "tab-code", scenes: ["code", "session"] },
-  { key: "artifacts", icon: <Shapes size={14} />, label: "Artifacts" },
+  { key: "artifacts", icon: <Shapes size={14} />, label: "Library" },
   { key: "routines", icon: <Repeat size={14} />, label: "Routines" },
 ];
 

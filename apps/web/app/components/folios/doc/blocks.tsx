@@ -248,7 +248,7 @@ function EmbedView({ url, title }: { url: string; title: string }) {
   useEffect(() => {
     let cancelled = false;
     const workspace = window.location.pathname.split("/")[1] ?? "";
-    fetch(`/${workspace}/-/artifacts/api?embed=${encodeURIComponent(url)}`, { headers: { accept: "application/json" } })
+    fetch(`/${workspace}/-/library/artifacts/api?embed=${encodeURIComponent(url)}`, { headers: { accept: "application/json" } })
       .then((r) => r.json() as Promise<{ ok: boolean; value?: EmbedCard }>)
       .then((r) => !cancelled && setCard(r.ok && r.value ? r.value : "missing"))
       .catch(() => !cancelled && setCard("missing"));

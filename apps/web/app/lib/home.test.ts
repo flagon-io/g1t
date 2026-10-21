@@ -585,7 +585,7 @@ test("the digest: what was done, by kind with counts, and who, agents marked", (
       ["pulls", "5 opened, 5 merged, 4 reviewed", "/acme/-/repositories"],
       ["items", "2 opened, 2 closed, 7 comments", "/acme/-/work/all?repo=web"],
       ["shipped", "2 deploys, 1 release, 1 package version", "/acme/web/deployments"],
-      ["docs", "1 doc created, 7 docs edited", "/acme/-/artifacts"],
+      ["docs", "1 doc created, 7 docs edited", "/acme/-/library/artifacts"],
       ["chat", "120 messages in 5 conversations", "/acme/-/chat"],
     ],
   );
@@ -1084,7 +1084,7 @@ test("a change made in a harness session carries the agent mark, linked to the s
       },
     ],
   );
-  assert.deepEqual(marked!.agent, { harness: "claude_code", to: "/acme/-/work/sessions/ses_1" });
+  assert.deepEqual(marked!.agent, { harness: "claude_code", to: "/acme/-/chat/sessions/ses_1" });
   assert.equal(agentLabel(marked!.agent!), "Made in a Claude Code session");
   assert.equal(plain!.agent, undefined);
   assert.equal(agentLabel({ harness: null, to: null }), "Made in a session");
@@ -1117,7 +1117,7 @@ test("each person's push to a default branch is a row: its commit, who pushed, a
   assert.deepEqual(
     rows.map((row) => [row.title, row.detail, row.sha, row.to, row.agent?.to ?? null]),
     [
-      ["Fix the bell's count", "web · pushed to main · by ana", "c3", "/acme/web/commit/c3", "/acme/-/work/sessions/ses_9"],
+      ["Fix the bell's count", "web · pushed to main · by ana", "c3", "/acme/web/commit/c3", "/acme/-/chat/sessions/ses_9"],
       ["2 commits pushed to main", "web · Tidy · by ana", "c2", "/acme/web/activity", null],
     ],
   );

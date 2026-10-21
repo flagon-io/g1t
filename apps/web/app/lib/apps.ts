@@ -46,7 +46,8 @@ export const BUILTINS: BuiltinInfo[] = [
   { key: "chat", name: "Chat", path: under("chat") },
   { key: "notifications", name: "Notifications", path: () => "/notifications" },
   { key: "code", name: "Code", path: under("overview"), code: true },
-  { key: "artifacts", name: "Artifacts", path: under("artifacts") },
+  // Artifacts are the Library's: docs now, and slides, designs and dashboards next.
+  { key: "artifacts", name: "Library", path: under("library/artifacts") },
   { key: "routines", name: "Routines", path: under("routines") },
   { key: "people", name: "People", path: under("people") },
   { key: "workspace", name: "Workspace", path: under("workspace") },

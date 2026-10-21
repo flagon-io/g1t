@@ -198,12 +198,12 @@ export function citationHref(c: { repo: string; path: string; ref: string | null
 
 /** A project's docs file's address in Artifacts. */
 export function repoFilePath(workspace: string, repo: string, path: string): string {
-  return `/${workspace}/-/artifacts/repo/${repo}/${path.split("/").map(encodeURIComponent).join("/")}`;
+  return `/${workspace}/-/library/artifacts/repo/${repo}/${path.split("/").map(encodeURIComponent).join("/")}`;
 }
 
 /** A space's address in Artifacts. */
 export function spacePath(workspace: string, space: string): string {
-  return `/${workspace}/-/artifacts/spaces/${space}`;
+  return `/${workspace}/-/library/artifacts/spaces/${space}`;
 }
 
 /** A folder of a project's docs, as the sidebar shows it: files, then folders, each by name. */
@@ -235,10 +235,29 @@ export function repoFolders(files: { path: string; title: string }[]): RepoFolde
   return root;
 }
 
-/** The artifact ids a chat message links to in this workspace, in order, once each. */
+/**
+ * Where an address from before the Library is now: `/acme/-/artifacts/x`
+ * is `/acme/-/library/artifacts/x`, and `/acme/-/library` (or the old
+ * `/acme/-/artifacts` itself) is the Library's artifacts. `search` (with its
+ * `?`, or empty) is kept.
+ */
+export function libraryAddress(pathname: string, search = ""): string {
+  const library = /^\/([^/]+)\/-\/library\/?$/.exec(pathname);
+  if (library) return `/${library[1]}/-/library/artifacts${search}`;
+  const old = /^\/([^/]+)\/-\/artifacts(\/.*)?$/.exec(pathname);
+  if (!old) return `${pathname}${search}`;
+  const rest = (old[2] ?? "").replace(/\/+$/, "");
+  return `/${old[1]}/-/library/artifacts${rest}${search}`;
+}
+
+/**
+ * The artifact ids a chat message links to in this workspace, in order, once
+ * each: at `-/library/artifacts/`, or `-/artifacts/` as links before the
+ * Library had them.
+ */
 export function linkedArtifacts(body: string, workspace: string): string[] {
   const out: string[] = [];
-  const re = /\/([A-Za-z0-9_.-]+)\/-\/artifacts\/(?:[a-z0-9-]*-)?(fol_[0-9a-hjkmnp-tv-z]{26})(?![0-9a-z])/g;
+  const re = /\/([A-Za-z0-9_.-]+)\/-\/(?:library\/)?artifacts\/(?:[a-z0-9-]*-)?(fol_[0-9a-hjkmnp-tv-z]{26})(?![0-9a-z])/g;
   for (let m = re.exec(body); m; m = re.exec(body)) {
     if (m[1]!.toLowerCase() === workspace.toLowerCase() && !out.includes(m[2]!)) out.push(m[2]!);
   }

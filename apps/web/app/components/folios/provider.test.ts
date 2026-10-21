@@ -9,7 +9,7 @@ import * as Y from "yjs";
 import { FolioProvider, pageStateBytes } from "./provider.ts";
 
 // The provider is browser code; the little it needs of the browser, a page address and sockets, is faked here.
-(globalThis as { location?: unknown }).location = { href: "https://g1t.test/acme/-/artifacts/x", protocol: "https:" };
+(globalThis as { location?: unknown }).location = { href: "https://g1t.test/acme/-/library/artifacts/x", protocol: "https:" };
 
 class FakeSocket {
   static readonly CONNECTING = 0;
@@ -78,13 +78,13 @@ test("a doc seeded from the page's state opens at once, and what is typed before
   // Someone else edited after the save: the room is ahead of the page.
   server.getText("t").insert(0, "Oh, ");
 
-  const provider = new FolioProvider("wss://g1t.test/acme/-/artifacts/live?folio=f1", { state: carried });
+  const provider = new FolioProvider("wss://g1t.test/acme/-/library/artifacts/live?folio=f1", { state: carried });
   t.after(() => provider.destroy());
   assert.equal(provider.seeded, true);
   assert.equal(provider.doc.getText("t").toString(), "hello", "the editor can open on the page's document before any socket");
   assert.equal(provider.status, "connecting");
   const socket = FakeSocket.instances[0]!;
-  assert.equal(socket.url, "wss://g1t.test/acme/-/artifacts/live?folio=f1");
+  assert.equal(socket.url, "wss://g1t.test/acme/-/library/artifacts/live?folio=f1");
 
   // Typed before the socket opened: kept in the document, nothing sent yet.
   provider.doc.getText("t").insert(5, " world");
@@ -112,7 +112,7 @@ test("without a saved state the document starts empty and is not seeded, and the
   FakeSocket.instances = [];
   const server = new Y.Doc();
   server.getText("t").insert(0, "from the room");
-  const provider = new FolioProvider("wss://g1t.test/acme/-/artifacts/live?folio=f2", { state: null });
+  const provider = new FolioProvider("wss://g1t.test/acme/-/library/artifacts/live?folio=f2", { state: null });
   t.after(() => provider.destroy());
   assert.equal(provider.seeded, false);
   const socket = FakeSocket.instances[0]!;
@@ -127,7 +127,7 @@ test("without a saved state the document starts empty and is not seeded, and the
 
 test("a state that is not a Yjs update is ignored, and the provider waits for the room as before", (t) => {
   FakeSocket.instances = [];
-  const provider = new FolioProvider("wss://g1t.test/acme/-/artifacts/live?folio=f3", { state: new Uint8Array([1, 2, 3, 4, 5, 6, 7]) });
+  const provider = new FolioProvider("wss://g1t.test/acme/-/library/artifacts/live?folio=f3", { state: new Uint8Array([1, 2, 3, 4, 5, 6, 7]) });
   t.after(() => provider.destroy());
   assert.equal(provider.seeded, false);
   provider.destroy();

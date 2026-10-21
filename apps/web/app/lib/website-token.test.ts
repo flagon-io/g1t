@@ -285,11 +285,11 @@ test("a chat-scoped token opens Chat's socket and the feed, never an artifact's"
   const reader = scoped(["chat:read"]);
   assert.equal(socketUser(reader, "/acme/-/chat/live")?.username, "ada");
   assert.equal(socketUser(reader, "/-/live")?.username, "ada");
-  assert.equal(socketUser(reader, "/acme/-/artifacts/live"), null);
+  assert.equal(socketUser(reader, "/acme/-/library/artifacts/live"), null);
   assert.equal(socketUser(scoped(null), "/acme/-/chat/live"), null, "full access, without the website permission");
   assert.equal(socketUser(scoped(["notifications:write"]), "/-/live"), null);
   assert.equal(socketUser(scoped(["chat:read"], { job: { run_id: "run_1", job_id: "job_1" } }), "/-/live"), null);
   assert.equal(socketUser({ ...ada, token: undefined }, "/-/live"), null);
   // The website permission opens every socket, as before.
-  assert.equal(socketUser(ada, "/acme/-/artifacts/live")?.username, "ada");
+  assert.equal(socketUser(ada, "/acme/-/library/artifacts/live")?.username, "ada");
 });

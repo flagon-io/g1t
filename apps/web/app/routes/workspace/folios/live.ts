@@ -7,7 +7,7 @@ import { roleIn } from "../../../lib/session.server";
 import { socketViewer } from "../../../lib/socket-ticket.server";
 
 /**
- * An artifact's live socket: `wss://<site>/<workspace>/-/artifacts/live?folio=<id>`.
+ * An artifact's live socket: `wss://<site>/<workspace>/-/library/artifacts/live?folio=<id>`.
  * The site checks the session and that the page asking is the site's own,
  * then hands the upgrade to the artifacts service with the viewer, which checks
  * their role in the folio and gives the socket to its room (one Durable
