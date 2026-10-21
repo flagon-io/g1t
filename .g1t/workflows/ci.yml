@@ -46,6 +46,10 @@ jobs:
       # and restore (at full debug info its cache entry reached 1.7 GB of
       # the 2 GB an entry may hold).
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      # A warning fails the build, so dead code and unused imports never
+      # pile up. Every cargo command below compiles with it, so the cache
+      # entries it saves are built the same way.
+      RUSTFLAGS: -D warnings
     steps:
       - uses: actions/checkout@v5
       # rust: the toolchain; cargo: Cargo.lock's crates.io and git packages,
