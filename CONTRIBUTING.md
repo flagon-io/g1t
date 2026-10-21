@@ -173,7 +173,8 @@ g1t's workflows cache with `actions/cache` against g1t's own cache
 rules). Three of them shape everything here: a run restores from its own
 ref, its pull request's base, then `main`, so a release tag never reads
 another tag's entries; a key is written once; and a repository holds
-10 GiB, past which the entries restored longest ago go. So:
+100 GiB (10 GiB in a workspace on the Free plan), past which the entries
+restored longest ago go. So:
 
 - **`main` saves; pull requests and tags restore.** CI's Rust and desktop
   jobs keep their caches on each push to `main`, and the Caches workflow
@@ -209,7 +210,7 @@ another tag's entries; a key is written once; and a repository holds
   `ci-cache.mjs tidy`) deletes, hourly, the entries a newer one of the same
   key less its last part has replaced, once nothing has used them for an
   hour. Before it, two or three generations of every build filled the
-  10 GiB, and the quota took Deploy's entries first.
+  10 GiB the quota was then, and it took Deploy's entries first.
 
 | Entry                      | Key                                                                                     | Saved by                                      | Restored by                 |
 | -------------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------- | --------------------------- |
@@ -231,7 +232,7 @@ from key` names the entry (the key itself is a hit; another is a start),
 `Cache Size` and the step's time say what it cost, and the post step says
 whether it saved. `sccache's hits and misses` is on each Rust job's summary.
 `g1t cache usage` says what the repository's entries hold against its
-10 GiB, and `g1t cache list --sort size-in-bytes` which take the most.
+quota, and `g1t cache list --sort size-in-bytes` which take the most.
 
 ## Adding a machine size
 

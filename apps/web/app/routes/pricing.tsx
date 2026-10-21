@@ -254,7 +254,7 @@ function rows(tier: Required<FreeTier>): Row[] {
     {
       what: "Actions cache",
       free: "2 GiB an entry and 10 GiB a repository, never charged",
-      plan: "The same limits, with what it stores at cost plus 20%",
+      plan: "2 GiB an entry and 100 GiB a repository, with what it stores at cost plus 20%",
     },
     {
       what: "Audit log",

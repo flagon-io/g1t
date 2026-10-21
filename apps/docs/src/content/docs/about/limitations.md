@@ -357,7 +357,7 @@ includes, and fails for any other version.
 | Standard machine          | 2 vCPUs, 8 GiB of memory, 16 GB of disk (`ubuntu-latest` and every other hosted label in a private repository, and `g1t-2core`).                                           |
 | One job on g1t's machines | 60 minutes. On a self-hosted runner, 24 hours.                                                                                                                             |
 | One cache entry           | 2 GiB, compressed. A larger one is not saved.                                                                                                                              |
-| A repository's caches     | 10 GiB together. Past it, the entries restored longest ago are removed.                                                                                                    |
+| A repository's caches     | 10 GiB together, 100 GiB on the g1t plan. Past it, the entries restored longest ago are removed.                                                                           |
 | One artifact              | 5 GiB, zipped. Kept 14 days unless the repository says otherwise, at most 90.                                                                                              |
 | A run's artifacts         | 10 GiB together.                                                                                                                                                           |
 

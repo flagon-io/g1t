@@ -809,7 +809,7 @@ unless the job brings a cache:
 |                        |                                                                                                                                                                                                                                                                                                                           |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | One entry              | Up to 2 GiB, compressed. A larger one is not saved, and the job goes on.                                                                                                                                                                                                                                                  |
-| A repository's entries | Up to 10 GiB together. Saving past it removes the entries restored longest ago.                                                                                                                                                                                                                                           |
+| A repository's entries | Up to 10 GiB together, or 100 GiB in a workspace on the g1t plan. Saving past it removes the entries restored longest ago. A workspace that leaves the plan keeps its entries until its next save in each repository, which takes them down to 10 GiB.                                                                    |
 | A free workspace       | Its cache and [artifacts](#artifacts), in every repository, up to 2 GiB together. Past it, a save is refused (the job goes on) until old entries expire or artifacts are deleted; on the g1t plan there is no such cap.                                                                                                   |
 | How long               | Until it has not been restored for 7 days, and at most 28 days after it was saved. A lookup (`lookup-only: true`) counts as a restore.                                                                                                                                                                                    |
 | Which branch           | An entry belongs to the branch, tag or pull request whose run saved it. A run restores from its own, then from the branch its pull request merges into, then from the default branch. A tag's run reads its own tag's entries and the default branch's, never another tag's.                                              |
@@ -845,7 +845,7 @@ at R2's price plus the margin; see
 
 ### Seeing and deleting entries
 
-To see what a repository's cache holds against its 10 GiB, and which
+To see what a repository's cache holds against its quota, and which
 entries take the most:
 
 ```sh
@@ -1076,7 +1076,7 @@ What to expect:
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | What is cached                 | Every library crate (`rlib`): your workspace's crates and their dependencies.                                                                                                                                                                |
 | What is compiled each time     | What rustc links: binaries, `cdylib` crates, proc macros, build scripts and test harnesses.                                                                                                                                                  |
-| Its entries                    | One per compiled crate, often thousands for a workspace, each a few KB to a few MB. They count toward the repository's 10 GiB like any other entry, and the ones not restored for 7 days are deleted.                                        |
+| Its entries                    | One per compiled crate, often thousands for a workspace, each a few KB to a few MB. They count toward the repository's quota like any other entry, and the ones not restored for 7 days are deleted.                                         |
 | Branches                       | A pull request reads what the default branch saved. Run the workflow on pushes to the default branch too, as above, or each pull request's first run starts with an empty cache.                                                             |
 | Releases from tags             | A tag's run reads the default branch's entries, but what it saves only that tag would ever read. Set `SCCACHE_GHA_RW_MODE: READ_ONLY` on a tag's run (`if [ "$GITHUB_REF_TYPE" = tag ]`) so it saves nothing: it still looks every crate up. |
 | Starting over                  | Set `SCCACHE_GHA_VERSION` to any new value. A new sccache release starts over by itself.                                                                                                                                                     |

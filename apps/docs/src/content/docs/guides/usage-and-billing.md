@@ -473,7 +473,7 @@ month's GB-months are those days added up, divided by the days in the month, cha
 $0.018 a GB-month: R2's $0.015, plus 20%. It is charged from the first
 byte, to workspaces on the plan only, as **Actions cache storage** under
 **Git operations & storage**. A free workspace's caches are never charged;
-they are held to the same 10 GiB a repository, and 10 GiB of artifacts a run, as everyone's.
+they are held to 10 GiB a repository, where the plan's hold 100 GiB, and to 10 GiB of artifacts a run.
 
 ### Private repository storage
 

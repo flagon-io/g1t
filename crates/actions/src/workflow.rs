@@ -893,7 +893,7 @@ fn action_note(uses: &str) -> Option<(Severity, String)> {
         "actions/checkout" => Some((Severity::Info, "`actions/checkout` checks out from g1t.".to_owned())),
         "actions/cache" | "actions/cache/restore" | "actions/cache/save" => Some((
             Severity::Info,
-            format!("`{name}`: g1t keeps the cache per repository: up to 2 GiB an entry and 10 GiB a repository, until it goes 7 days unused, and at most 28 days."),
+            format!("`{name}`: g1t keeps the cache per repository: up to 2 GiB an entry and 10 GiB a repository (100 GiB on the g1t plan), until it goes 7 days unused, and at most 28 days."),
         )),
         "actions/upload-artifact" | "actions/download-artifact" => Some((
             Severity::Info,

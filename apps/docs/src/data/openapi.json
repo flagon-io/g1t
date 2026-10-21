@@ -83610,7 +83610,7 @@
           "Actions"
         ],
         "summary": "Get a repository's cache usage",
-        "description": "What a repository's saved cache entries hold together: active_caches_size_in_bytes and active_caches_count, and quota_bytes, the most they may hold (10 GiB). Saving past it evicts the entries restored longest ago. Needs the Read role.\n\nSaving past `quota_bytes` evicts the entries restored longest ago.",
+        "description": "What a repository's saved cache entries hold together: active_caches_size_in_bytes and active_caches_count, and quota_bytes, the most they may hold (10 GiB, or 100 GiB in a workspace on the g1t plan). Saving past it evicts the entries restored longest ago. Needs the Read role.\n\nSaving past `quota_bytes` evicts the entries restored longest ago.",
         "x-operation": "get_cache_usage",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "cache_usage",
@@ -83658,7 +83658,7 @@
                   "full_name": "flagon-io/g1t",
                   "active_caches_size_in_bytes": 8813275136,
                   "active_caches_count": 41,
-                  "quota_bytes": 10737418240
+                  "quota_bytes": 107374182400
                 }
               }
             },

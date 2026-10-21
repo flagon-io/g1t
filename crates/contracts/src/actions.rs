@@ -1248,9 +1248,18 @@ pub fn instance_named(label: &str) -> Option<InstanceType> {
 
 /// The largest one cache entry may be, compressed.
 pub const CACHE_MAX_ENTRY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-/// What one repository's entries may hold together. Saving past it evicts
-/// the entries restored longest ago.
-pub const CACHE_REPO_QUOTA_BYTES: u64 = 10 * 1024 * 1024 * 1024;
+/// What one repository's entries may hold together in a workspace on the
+/// Free plan. Saving past it evicts the entries restored longest ago.
+pub const CACHE_REPO_QUOTA_FREE_BYTES: u64 = 10 * 1024 * 1024 * 1024;
+/// What one repository's entries may hold together in a workspace on the
+/// g1t plan (any plan but Free).
+pub const CACHE_REPO_QUOTA_PAID_BYTES: u64 = 100 * 1024 * 1024 * 1024;
+
+/// What one repository's entries may hold together, by whether its
+/// workspace has the plan.
+pub fn cache_repo_quota(has_plan: bool) -> u64 {
+    if has_plan { CACHE_REPO_QUOTA_PAID_BYTES } else { CACHE_REPO_QUOTA_FREE_BYTES }
+}
 /// An entry not restored for this long is deleted.
 pub const CACHE_UNUSED_DAYS: u64 = 7;
 /// An entry is deleted this long after it was saved, however often it is
@@ -1421,7 +1430,8 @@ pub struct CachesArgs {
 }
 
 /// `cache_usage`: what a repository's saved entries hold together, against
-/// `CACHE_REPO_QUOTA_BYTES`. Anyone who can see the repository. Returns
+/// its quota by its workspace's plan (`cache_repo_quota`). Anyone who can
+/// see the repository. Returns
 /// `Outcome<CacheUsage>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CacheUsageArgs {
@@ -1434,6 +1444,8 @@ pub struct CacheUsageArgs {
 pub struct CacheUsage {
     pub active_caches_size_in_bytes: u64,
     pub active_caches_count: u64,
+    /// The most the repository's entries may hold: 10 GiB on the Free
+    /// plan, 100 GiB on the g1t plan.
     pub quota_bytes: u64,
 }
 
