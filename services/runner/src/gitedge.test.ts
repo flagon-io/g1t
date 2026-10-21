@@ -1,7 +1,20 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { type EdgeBox, type EdgeNamespace, GIT_EDGE_ENV, answerEdge, edgeRoute, routeToEdge } from "./gitedge.ts";
+import {
+  type EdgeBox,
+  type EdgeNamespace,
+  GIT_EDGE_ENV,
+  SNAPSHOT_EVERY_MS,
+  type SnapshotStore,
+  answerEdge,
+  edgeRoute,
+  keepSnapshot,
+  restoreSnapshot,
+  routeToEdge,
+  snapshotKey,
+  syncVersion,
+} from "./gitedge.ts";
 
 const REPO = "rep_01jb2k7x9hfq0b3zj0f5s2m8ra";
 const base = `https://runner/gitedge/${REPO}`;
@@ -260,4 +273,89 @@ test("an object asked for anything but its endpoints answers 404 and starts noth
   }
   assert.equal(seen.starts, 0);
   assert.equal(seen.background.length, 0);
+});
+
+/** A store of snapshots in memory, which records what was put in it. */
+function memoryStore(kept: { version: number; uploaded: number; bytes: string } | null) {
+  const puts: { key: string; size: number; version: number; bytes: string }[] = [];
+  const store: SnapshotStore = {
+    head: async () => (kept ? { version: kept.version, uploaded: kept.uploaded } : null),
+    get: async () => (kept ? { version: kept.version, size: kept.bytes.length, body: new Response(kept.bytes).body! } : null),
+    put: async (key, body, size, version) => void puts.push({ key, size, version, bytes: await new Response(body).text() }),
+  };
+  return { store, puts };
+}
+
+test("a sync's version is read from its body", () => {
+  assert.equal(syncVersion('{"remote":"r","token":"t","version":17,"head":"refs/heads/main"}'), 17);
+  assert.equal(syncVersion('{"version":"17"}'), null);
+  assert.equal(syncVersion('{"version":-1}'), null);
+  assert.equal(syncVersion("not json"), null);
+  assert.equal(snapshotKey(REPO), `packs/edge/${REPO}/mirror.tar`);
+});
+
+test("a sync passed on starts keeping a snapshot of the version it asks for", async () => {
+  const { edge, seen } = box(true, () => new Response(null, { status: 202 }));
+  const kept: [string, number][] = [];
+  edge.keep = async (repoId, version) => void kept.push([repoId, version]);
+  const body = JSON.stringify({ remote: "https://a/r.git", token: "t", version: 9, head: "refs/heads/main" });
+  const answer = await answerEdge(new Request(`${base}/sync`, { method: "POST", body }), edge);
+  assert.equal(answer.status, 202);
+  assert.equal(seen.forwarded[0]!.body, body);
+  await Promise.all(seen.background);
+  assert.deepEqual(kept, [[REPO, 9]]);
+});
+
+test("a kept snapshot is restored into a container that just started", async () => {
+  const { store } = memoryStore({ version: 7, uploaded: 0, bytes: "tar bytes" });
+  const asked: { method: string; url: string; version: string | null; length: string | null; body: string }[] = [];
+  const restored = await restoreSnapshot(REPO, store, async (request) => {
+    asked.push({
+      method: request.method,
+      url: request.url,
+      version: request.headers.get("x-g1t-edge-version"),
+      length: request.headers.get("content-length"),
+      body: await request.text(),
+    });
+    return new Response(null, { status: 204 });
+  });
+  assert.equal(restored, true);
+  assert.deepEqual(asked, [{ method: "PUT", url: "http://gitedge/snapshot", version: "7", length: "9", body: "tar bytes" }]);
+  // None kept: nothing is asked.
+  const none = memoryStore(null);
+  assert.equal(await restoreSnapshot(REPO, none.store, async () => assert.fail("asked")), false);
+});
+
+test("a snapshot is kept once the sync ends at its version, at most every ten minutes", async () => {
+  const now = 1_000_000_000;
+  // The container: syncing twice, then at version 9, and its snapshot.
+  const container = (version: number | null) => {
+    let polls = 0;
+    return async (request: Request) => {
+      if (request.url.endsWith("/state")) return Response.json({ version, syncing: polls++ < 2 });
+      return new Response("mirror", { headers: { "content-length": "6", "x-g1t-edge-version": String(version) } });
+    };
+  };
+  const waits: number[] = [];
+  const wait = async (ms: number) => void waits.push(ms);
+  const fresh = memoryStore(null);
+  assert.equal(await keepSnapshot(REPO, 9, { store: fresh.store, forward: container(9), now: () => now, wait }), true);
+  assert.deepEqual(fresh.puts, [{ key: `packs/edge/${REPO}/mirror.tar`, size: 6, version: 9, bytes: "mirror" }]);
+  assert.deepEqual(waits, [3000, 3000]);
+  // A newer sync took over: it keeps its own.
+  assert.equal(await keepSnapshot(REPO, 9, { store: memoryStore(null).store, forward: container(10), now: () => now, wait }), false);
+  // One kept recently, or of this version already: not again.
+  const recent = memoryStore({ version: 8, uploaded: now - 60_000, bytes: "" });
+  assert.equal(await keepSnapshot(REPO, 9, { store: recent.store, forward: container(9), now: () => now, wait }), false);
+  const same = memoryStore({ version: 9, uploaded: now - 2 * SNAPSHOT_EVERY_MS, bytes: "" });
+  assert.equal(await keepSnapshot(REPO, 9, { store: same.store, forward: container(9), now: () => now, wait }), false);
+  const old = memoryStore({ version: 8, uploaded: now - 2 * SNAPSHOT_EVERY_MS, bytes: "" });
+  assert.equal(await keepSnapshot(REPO, 9, { store: old.store, forward: container(9), now: () => now, wait }), true);
+  // A sync that never ends is given up on.
+  let clock = now;
+  const stuck = async () => Response.json({ version: 9, syncing: true });
+  assert.equal(
+    await keepSnapshot(REPO, 9, { store: memoryStore(null).store, forward: stuck, now: () => clock, wait: async () => void (clock += 60_000) }),
+    false,
+  );
 });

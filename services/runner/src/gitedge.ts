@@ -93,9 +93,12 @@ export async function routeToEdge(request: Request, namespace: EdgeNamespace | u
  */
 export type EdgeBox = {
   ready(): Promise<boolean>;
-  start(): Promise<void>;
+  /** Starts the container for `repoId` and restores its snapshot, if one is kept. */
+  start(repoId: string): Promise<void>;
   forward(request: Request): Promise<Response>;
   background(work: Promise<unknown>): void;
+  /** Keeps a snapshot of the mirror once the sync to `version` has ended. */
+  keep?: (repoId: string, version: number) => Promise<void>;
   log?: (...data: unknown[]) => void;
 };
 
@@ -121,12 +124,19 @@ export async function answerEdge(request: Request, box: EdgeBox): Promise<Respon
   switch (route.endpoint) {
     case "sync": {
       try {
-        await box.start();
+        await box.start(route.repoId);
       } catch (error) {
         log("git edge not started for a sync", route.repoId, String(error));
         return edgeMiss(503, "cold", "The git edge could not start.\n");
       }
-      return send(box, request, "/sync", "", route, log);
+      // A few hundred bytes: read, for the version it syncs to, and sent on.
+      const body = await request.text();
+      const answer = await send(box, new Request(request, { body }), "/sync", "", route, log);
+      const version = syncVersion(body);
+      if (answer.status === 202 && version !== null && box.keep) {
+        box.background(box.keep(route.repoId, version).catch((error: unknown) => log("git edge snapshot not kept", route.repoId, String(error))));
+      }
+      return answer;
     }
     case "state": {
       if (!(await box.ready())) return Response.json({ version: null, cold: true });
@@ -136,7 +146,7 @@ export async function answerEdge(request: Request, box: EdgeBox): Promise<Respon
     case "git-upload-pack": {
       if (!(await box.ready())) {
         // Started for the next clone, which this one makes no slower.
-        box.background(box.start().catch((error: unknown) => log("git edge not started", route.repoId, String(error))));
+        box.background(box.start(route.repoId).catch((error: unknown) => log("git edge not started", route.repoId, String(error))));
         return edgeMiss(503, "cold", "The git edge is starting.\n");
       }
       return send(box, request, `/git/${route.endpoint}`, url.search, route, log);
@@ -165,6 +175,135 @@ async function send(box: EdgeBox, request: Request, path: string, search: string
     log("git edge request failed", route.repoId, route.endpoint, String(error));
     return edgeMiss(502, "error", "The git edge could not be reached.\n");
   }
+}
+
+/** The version a sync's body asks for, or null when it names none. */
+export function syncVersion(body: string): number | null {
+  try {
+    const version = (JSON.parse(body) as { version?: unknown }).version;
+    return typeof version === "number" && Number.isSafeInteger(version) && version >= 0 ? version : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Snapshots of a repository's mirror. A container loses its disk when it
+ * sleeps, and a cold edge used to clone the whole repository from
+ * Artifacts again (the first clone after the edge's deploy took 116 s
+ * while it did). So once a sync has ended, the mirror is kept in R2 as the
+ * container's `GET /snapshot` makes it (a tar of the packed mirror, with
+ * the version it is at), and the next start restores it (`PUT /snapshot`)
+ * before its first sync, which then fetches only what is newer. In the
+ * packs bucket under `packs/`, so the bucket's 7-day rule deletes the
+ * snapshot of a repository nobody has cloned since.
+ */
+export const SNAPSHOT_EVERY_MS = 10 * 60 * 1000;
+/** How long a snapshot waits for the sync it follows to end. */
+export const SNAPSHOT_WAIT_MS = 10 * 60 * 1000;
+
+export function snapshotKey(repoId: string): string {
+  return `packs/edge/${repoId}/mirror.tar`;
+}
+
+/** Where snapshots are kept: R2, as much of it as snapshots use. */
+export type SnapshotStore = {
+  head(key: string): Promise<{ version: number; uploaded: number } | null>;
+  get(key: string): Promise<{ version: number; size: number; body: ReadableStream } | null>;
+  put(key: string, body: ReadableStream, size: number, version: number): Promise<void>;
+};
+
+/** Snapshots in an R2 bucket, the version each was made at in its metadata. */
+export function snapshotStore(bucket: R2Bucket): SnapshotStore {
+  const versionOf = (object: R2Object) => Number(object.customMetadata?.version ?? Number.NaN);
+  return {
+    async head(key) {
+      const object = await bucket.head(key);
+      return object && Number.isSafeInteger(versionOf(object)) ? { version: versionOf(object), uploaded: object.uploaded.getTime() } : null;
+    },
+    async get(key) {
+      const object = await bucket.get(key);
+      if (!object) return null;
+      if (!Number.isSafeInteger(versionOf(object))) {
+        await object.body.cancel();
+        return null;
+      }
+      return { version: versionOf(object), size: object.size, body: object.body };
+    },
+    async put(key, body, size, version) {
+      // R2 takes a stream only with its length known.
+      const { readable, writable } = new FixedLengthStream(size);
+      const piped = body.pipeTo(writable);
+      await Promise.all([bucket.put(key, readable, { customMetadata: { version: String(version) } }), piped]);
+    },
+  };
+}
+
+/**
+ * Restores the kept snapshot of `repoId` into a container that has just
+ * started. Whether one was restored; a missing or refused one leaves the
+ * edge empty, and its first sync fetches everything, as before.
+ */
+export async function restoreSnapshot(
+  repoId: string,
+  store: SnapshotStore,
+  forward: (request: Request) => Promise<Response>,
+  log: (...data: unknown[]) => void = console.log,
+): Promise<boolean> {
+  const kept = await store.get(snapshotKey(repoId));
+  if (!kept) return false;
+  const answer = await forward(
+    new Request("http://gitedge/snapshot", {
+      method: "PUT",
+      headers: { "x-g1t-edge-version": String(kept.version), "content-length": String(kept.size) },
+      body: kept.body,
+      duplex: "half",
+    } as RequestInit),
+  );
+  if (answer.status !== 204) log("git edge snapshot not restored", repoId, answer.status);
+  return answer.status === 204;
+}
+
+/**
+ * Keeps a snapshot of `repoId`'s mirror once the sync to `version` has
+ * ended: only when it ended at that version (a newer sync keeps its own),
+ * the kept one is older, and none was kept in the last
+ * `SNAPSHOT_EVERY_MS`, so a busy repository's pushes do not each upload
+ * the whole mirror.
+ */
+export async function keepSnapshot(
+  repoId: string,
+  version: number,
+  deps: {
+    store: SnapshotStore;
+    forward: (request: Request) => Promise<Response>;
+    now?: () => number;
+    wait?: (ms: number) => Promise<void>;
+  },
+): Promise<boolean> {
+  const now = deps.now ?? Date.now;
+  const wait = deps.wait ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const until = now() + SNAPSHOT_WAIT_MS;
+  let state: { version: number | null; syncing: boolean };
+  for (;;) {
+    state = (await (await deps.forward(new Request("http://gitedge/state"))).json()) as typeof state;
+    if (!state.syncing) break;
+    if (now() > until) return false;
+    await wait(3000);
+  }
+  if (state.version !== version) return false;
+  const key = snapshotKey(repoId);
+  const kept = await deps.store.head(key);
+  if (kept && (kept.version >= version || now() - kept.uploaded < SNAPSHOT_EVERY_MS)) return false;
+  const made = await deps.forward(new Request("http://gitedge/snapshot"));
+  const size = Number(made.headers.get("content-length"));
+  const at = Number(made.headers.get("x-g1t-edge-version"));
+  if (made.status !== 200 || !made.body || !Number.isSafeInteger(size) || size <= 0 || !Number.isSafeInteger(at)) {
+    await made.body?.cancel();
+    return false;
+  }
+  await deps.store.put(key, made.body, size, at);
+  return true;
 }
 
 /** An answer the repos service takes as a miss: why, in `x-g1t-edge`. */

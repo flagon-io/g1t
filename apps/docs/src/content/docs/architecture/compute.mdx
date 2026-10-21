@@ -107,8 +107,13 @@ only for a mirror at the repository's current refs version; while it is
 cold, behind or failing, `repos` answers from Artifacts as it would
 without it, and asks it to catch up. It only makes clones smaller and
 faster: pushes go to Artifacts, which stays the source of truth, and an
-edge left idle for half an hour stops, its mirror with it. Its requests
-go straight out, not through the outbound handler below.
+edge left idle for half an hour stops, its disk with it. Once a sync has
+ended, the packed mirror is kept in the packs bucket
+(`packs/edge/<repo_id>/mirror.tar`, at most every ten minutes), and a
+container that starts again restores it before its first sync, which then
+fetches only what is new; the bucket's 7-day rule deletes the snapshot of
+a repository nobody has cloned since. Its requests go straight out, not
+through the outbound handler below.
 
 ### Egress
 
