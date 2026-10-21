@@ -29,10 +29,22 @@
 //! goes to Artifacts, as before the edge. `-owner/name` entries, separated
 //! by commas (`on, -acme/rocket`), leave those repositories out. It needs
 //! the `RUNNER` binding.
+//!
+//! The off switch without a deploy is the platform pause's `git_edge`
+//! level (billing's platform.rs), which staff pull in sudo (Costs &
+//! margin, Platform pause, beside the edges running and what they cost)
+//! and billing's usage watcher may pull on a severe breach. While it is
+//! on, every read goes to Artifacts and no edge is asked, started or
+//! synced, exactly as with `GIT_EDGE=off`. It is read through the `BILLING`
+//! binding and kept 30 seconds in the isolate (`g1t_kit::pause`); when it
+//! cannot be read, the edge is not paused: a pause is pulled on purpose,
+//! and a billing outage changes nothing here. `GIT_EDGE=off` still turns
+//! the edge off whatever the pause says.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
+use g1t_contracts::billing::{PauseLevel, PlatformPause};
 use g1t_contracts::repos::{GitAccess, GitService};
 use worker::{Env, Fetcher, Headers, Method, Request, RequestInit, Response};
 
@@ -138,10 +150,18 @@ pub fn answers(git: &GitRequest, get: bool) -> bool {
         }
 }
 
+/// Whether the platform pause turns the edge off. A pause billing could
+/// not say (`g1t_kit::pause` answers nothing paused) never does.
+pub fn paused_by(pause: &PlatformPause) -> bool {
+    pause.is(PauseLevel::GitEdge)
+}
+
 /// The runner's git edges, one per repository.
 pub struct Edge {
     runner: Fetcher,
     repositories: Repositories,
+    /// Where the platform pause is read; without it, never paused.
+    billing: Option<Fetcher>,
 }
 
 impl Edge {
@@ -149,7 +169,16 @@ impl Edge {
     pub fn from_env(env: &Env) -> Option<Edge> {
         let repositories = Repositories::parse(env.var("GIT_EDGE").ok().map(|value| value.to_string()).as_deref())?;
         let runner = env.service("RUNNER").ok()?;
-        Some(Edge { runner, repositories })
+        Some(Edge { runner, repositories, billing: env.service("BILLING").ok() })
+    }
+
+    /// Whether staff (or billing's usage watcher) paused the edge across
+    /// g1t: the `git_edge` level, kept 30 seconds in the isolate.
+    pub async fn paused(&self) -> bool {
+        match &self.billing {
+            Some(billing) => paused_by(&g1t_kit::pause::current(billing).await),
+            None => false,
+        }
     }
 
     /// Whether the edge serves `owner/name` at all (`GIT_EDGE`).
@@ -373,6 +402,19 @@ mod tests {
         assert!(some.include("flagon-io", "g1t"));
         // Names without an owner or a name leave nothing out.
         assert_eq!(Repositories::parse(Some("-rocket, -/x, -acme/")), Some(Repositories::default()));
+    }
+
+    #[test]
+    fn the_git_edge_pause_turns_it_off_and_an_unread_pause_does_not() {
+        // What g1t_kit::pause answers when billing cannot say: not paused.
+        assert!(!paused_by(&PlatformPause::default()));
+        assert!(paused_by(&PlatformPause { git_edge: true, ..PlatformPause::default() }));
+        // The other levels leave the edge alone.
+        let others = PlatformPause { compute: true, schedules: true, indexing: true, renders: true, git_edge: false };
+        assert!(!paused_by(&others));
+        // An older billing that does not know the level: not paused.
+        let old: PlatformPause = serde_json::from_str(r#"{"compute":false,"schedules":true,"indexing":false,"renders":false}"#).unwrap();
+        assert!(!paused_by(&old));
     }
 
     #[test]

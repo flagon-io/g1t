@@ -30,6 +30,7 @@ mod costs;
 mod cycle;
 mod detach;
 mod margin;
+mod git_edge;
 mod platform;
 mod pricing;
 mod provider_costs;
@@ -1361,6 +1362,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "platform_pause" => reply(&billing.pause_now().await),
         "admin_platform_guard" => reply(&billing.platform_guard(&keeper::Keeper::from_env(&env)).await?),
         "admin_set_pause" => reply(&billing.admin_set_pause(args(body)?, &keeper::Keeper::from_env(&env)).await?),
+        // The git edge for sudo (src/git_edge.rs): its containers and cost.
+        "admin_git_edge" => reply(&billing.git_edge(&keeper::Keeper::from_env(&env)).await?),
         "admin_decide_proposal" => reply(&billing.admin_decide_proposal(args(body)?).await?),
         "admin_set_cost_settings" => reply(&billing.admin_set_cost_settings(args(body)?).await?),
         "admin_set_cost_mapping" => reply(&billing.admin_set_cost_mapping(args(body)?).await?),

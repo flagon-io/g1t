@@ -258,6 +258,14 @@ pub(crate) struct Repos<S: GitStore> {
 }
 
 impl<S: GitStore> Repos<S> {
+    /// The git edge, unless `GIT_EDGE` turns it off or the platform pause's
+    /// `git_edge` level is on (read through billing, kept 30 seconds; not
+    /// paused when billing cannot say). See git_edge.rs.
+    async fn live_edge(&self) -> Option<Rc<git_edge::Edge>> {
+        let edge = self.edge.clone()?;
+        if edge.paused().await { None } else { Some(edge) }
+    }
+
     /// Records that the refs of the repository with this id changed, once
     /// they have, so that the answers kept that list them go stale (see
     /// refs_cache.rs). Everything that changes a repository's refs calls
@@ -2213,13 +2221,14 @@ impl<S: GitStore> Repos<S> {
         // A read the repository's git edge may answer (git_edge.rs): asked
         // first, for the refs as g1t records them, so it never answers with
         // older ones. Anything but its answer goes to the store, as before;
-        // so does every read while an edge just found cold starts.
-        let edge_version = self
-            .edge
+        // so does every read while an edge just found cold starts, and every
+        // read while the platform pause's git_edge level is on.
+        let edge = if !write && !fallback && git_edge::answers(git, get) { self.live_edge().await } else { None };
+        let edge_version = edge
             .as_ref()
-            .filter(|edge| !write && !fallback && git_edge::answers(git, get) && edge.asks(&repo.id, &repo.namespace, &repo.name))
+            .filter(|edge| edge.asks(&repo.id, &repo.namespace, &repo.name))
             .and(refs_cache::usable(registry::refs_state(&repo.id), now_ms()));
-        let edge_answer = match (self.edge.as_ref(), edge_version) {
+        let edge_answer = match (edge.as_ref(), edge_version) {
             (Some(edge), Some(version)) => {
                 let answer = edge.answer(&repo.id, version, git, &request, body.as_deref()).await;
                 timing.mark("edge");
@@ -2324,7 +2333,7 @@ impl<S: GitStore> Repos<S> {
         };
         // The edge was asked and did not answer (cold, or behind the refs):
         // it catches up now, for the next read.
-        if let (Some(edge), Some(version), Some(access), false) = (self.edge.clone(), edge_version, store_access.clone(), edge_answered) {
+        if let (Some(edge), Some(version), Some(access), false) = (edge, edge_version, store_access.clone(), edge_answered) {
             let (repo_id, head) = (repo.id.clone(), repo.default_branch.clone());
             ctx.wait_until(async move { edge.sync(&repo_id, version, &access, &head, false).await });
         }
@@ -2380,8 +2389,9 @@ impl<S: GitStore> Repos<S> {
             // The repository's git edge catches up with the push, so the
             // clones that follow it (a CI run's) find it ready. One asleep is
             // woken only if its repository was read lately (gitedge.ts).
-            if let (200, Some(edge), Some(access), Some(refs)) =
-                (status, self.edge.clone(), store_access.clone(), registry::refs_state(&repo.id))
+            // Not while the edge is paused.
+            let edge = if status == 200 { self.live_edge().await } else { None };
+            if let (Some(edge), Some(access), Some(refs)) = (edge, store_access.clone(), registry::refs_state(&repo.id))
                 && edge.serves(&repo.namespace, &repo.name)
             {
                 let (repo_id, head) = (repo.id.clone(), repo.default_branch.clone());

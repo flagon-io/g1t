@@ -790,6 +790,8 @@ export interface BillingAdminApi {
   platformGuard(): Promise<PlatformGuard>;
   /** Pauses or resumes one level across g1t; needs a note, recorded in the audit log. */
   setPause(level: PauseLevel, paused: boolean, note: string, by: string): Promise<Result<PlatformGuard>>;
+  /** The git edge's containers running now, what they used and cost, and its pause (billing's git_edge.rs). */
+  gitEdge(): Promise<GitEdgeReport>;
   /** Approve or reject a price proposal; a rejection needs a note. An approved rise waits out the notice period. */
   decideProposal(id: string, decision: "approve" | "reject", note: string, by: string): Promise<Result<PriceProposal>>;
   setCostSettings(settings: CostSettings, by: string): Promise<Result<CostSettings>>;
@@ -1633,6 +1635,36 @@ export type PlatformGuard = {
   empty?: boolean;
   /** The hour the latest run read. */
   last_run?: string | null;
+};
+
+/** What the git edge's containers used over a window, at Containers' list prices. Snake case, as billing sends it. */
+export type GitEdgeUsage = {
+  since: string;
+  until: string;
+  /** Hours of edge containers awake. */
+  edge_hours: number;
+  memory_gib_seconds: number;
+  cpu_seconds: number;
+  /** Memory, CPU and disk, in dollars. */
+  cost_dollars: number;
+};
+
+/** Billing's `admin_git_edge`: the git edge's containers as Cloudflare reports them. Each part is null, with its error, when Cloudflare did not answer for it. */
+export type GitEdgeReport = {
+  /** The Containers application, `g1t-runner-gitedge`. */
+  application: string;
+  application_id: string | null;
+  /** Edges running now, and the most that may (`max_instances`). */
+  running: number | null;
+  max_instances: number | null;
+  instances_error: string | null;
+  last_day: GitEdgeUsage | null;
+  month_to_date: GitEdgeUsage | null;
+  usage_error: string | null;
+  /** The platform pause's `git_edge` level. */
+  pause: PauseState;
+  /** Whether billing has a Cloudflare token to ask with. */
+  can_read: boolean;
 };
 
 /** What g1t pays for itself, at cost, against its caps (billing's `budget`). */

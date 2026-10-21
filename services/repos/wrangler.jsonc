@@ -121,7 +121,8 @@
     // The git edge (src/git_edge.rs) serves every repository: `on`. `off`
     // turns it off everywhere, for an incident, and every read goes to
     // Artifacts; `-owner/name` entries, separated by commas, leave those
-    // repositories out (`on, -acme/rocket`).
+    // repositories out (`on, -acme/rocket`). For an incident, prefer the
+    // platform pause's `git_edge` level in sudo: the same, with no deploy.
     "GIT_EDGE": "on"
   },
   // Every hour, deleted repositories whose 30 days to be restored have

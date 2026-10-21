@@ -33,9 +33,9 @@ test("the platform pause is read once per 30 seconds, and nothing is paused when
   assert.equal((await platformPause(billing, now + PAUSE_KEPT_MS - 1)).schedules, true);
   assert.equal(calls, 1);
   const down = { fetch: async () => new Response("no", { status: 500 }) };
-  assert.deepEqual(await platformPause(down, now + PAUSE_KEPT_MS), { compute: false, schedules: false, indexing: false, renders: false });
+  assert.deepEqual(await platformPause(down, now + PAUSE_KEPT_MS), { compute: false, schedules: false, indexing: false, renders: false, git_edge: false });
   // No binding: never paused.
   assert.equal((await platformPause(undefined)).renders, false);
-  assert.deepEqual(readPause({ renders: "yes", indexing: true }), { compute: false, schedules: false, indexing: true, renders: false });
+  assert.deepEqual(readPause({ renders: "yes", indexing: true }), { compute: false, schedules: false, indexing: true, renders: false, git_edge: false });
   forgetPlatformPause();
 });

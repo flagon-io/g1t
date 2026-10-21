@@ -10,7 +10,10 @@ import {
   cycleHeadline,
   daySeries,
   daysBetween,
+  edgesPercent,
+  edgesRunning,
   givenParts,
+  hours,
   marginOnPrice,
   marginPercent,
   marginTone,
@@ -232,7 +235,7 @@ test("a rise replaced before its date says so, rather than missing its date", ()
 });
 
 test("the pause banner names every paused level, and who paused it when it was not a person", () => {
-  const level = (name: "compute" | "schedules" | "indexing" | "renders", paused: boolean, auto = false) => ({
+  const level = (name: "compute" | "schedules" | "indexing" | "renders" | "git_edge", paused: boolean, auto = false) => ({
     level: name,
     paused,
     note: null,
@@ -257,11 +260,26 @@ test("the pause banner names every paused level, and who paused it when it was n
     "Paused across g1t: compute, schedules and indexing (by the usage watcher).",
   );
   assert.equal(parsePauseLevel("renders"), "renders");
+  assert.equal(parsePauseLevel("git_edge"), "git_edge");
+  assert.equal(pauseBanner(guard([level("git_edge", true)])), "Paused across g1t: git_edge.");
   assert.equal(parsePauseLevel("everything"), null);
   assert.equal(count(240_000), "240k");
   assert.equal(count(2_000_000_000), "2.0B");
   assert.equal(thresholdShare(240_000, 200_000), 120);
   assert.equal(thresholdShare(5, 0), null);
+});
+
+test("the git edge panel shows the edges running against max_instances, and edge-hours", () => {
+  assert.equal(edgesRunning({ running: 3, max_instances: 10 }), "3 of 10");
+  assert.equal(edgesRunning({ running: 0, max_instances: null }), "0");
+  assert.equal(edgesRunning({ running: null, max_instances: 10 }), "—");
+  assert.equal(edgesPercent({ running: 3, max_instances: 10 }), 30);
+  assert.equal(edgesPercent({ running: 12, max_instances: 10 }), 100);
+  assert.equal(edgesPercent({ running: 3, max_instances: 0 }), null);
+  assert.equal(edgesPercent({ running: null, max_instances: 10 }), null);
+  assert.equal(hours(0.04), "0.0 h");
+  assert.equal(hours(12.46), "12.5 h");
+  assert.equal(hours(240.4), "240 h");
 });
 
 test("subscriptions over the range are billing's, day by day by the billing cycle", () => {

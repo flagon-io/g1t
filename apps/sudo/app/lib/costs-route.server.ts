@@ -27,7 +27,7 @@ export async function costsLoader(request: Request, context: unknown) {
   requireStaff(context as Parameters<typeof requireStaff>[0]);
   const url = new URL(request.url);
   const range = parseRange(url.searchParams.get("days"));
-  const [report, guard] = await Promise.all([settle(admin.costs(range)), settle(admin.platformGuard())]);
+  const [report, guard, edge] = await Promise.all([settle(admin.costs(range)), settle(admin.platformGuard()), settle(admin.gitEdge())]);
   const done = url.searchParams.get("done");
   return {
     range,
@@ -37,6 +37,9 @@ export async function costsLoader(request: Request, context: unknown) {
     // The platform pause and usage watch (billing's platform.rs).
     guard: guard.ok ? guard.value : null,
     guardError: guard.ok ? null : guard.error,
+    // The git edge's containers and cost (billing's git_edge.rs).
+    edge: edge.ok ? edge.value : null,
+    edgeError: edge.ok ? null : edge.error,
     done: done ? (DONE[done] ?? null) : null,
   };
 }
@@ -71,7 +74,7 @@ export async function costsAction(request: Request, context: unknown) {
   }
   if (intent === "pause" || intent === "resume") {
     const level = parsePauseLevel(form.get("level"));
-    if (!level) return fail("platform", "Pick compute, schedules, indexing or renders.");
+    if (!level) return fail("platform", "Pick compute, schedules, indexing, renders or git_edge.");
     const note = String(form.get("note") ?? "")
       .trim()
       .slice(0, 500);
