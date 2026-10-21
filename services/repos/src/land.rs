@@ -350,8 +350,8 @@ pub(crate) async fn fast_forward(
             {
                 // Refused past the copy's lease too: cut short, the push
                 // is refused whole (public_storage.rs).
-                if !quota.grow(pack.len() as u64).await? {
-                    let why = "Public repository storage is full. Make room before adding more data.".to_owned();
+                if let Err(refusal) = quota.grow(pack.len() as u64).await? {
+                    let why = refusal.message();
                     *failure.borrow_mut() = Some(why.clone());
                     return Err(Error::RustError(why));
                 }

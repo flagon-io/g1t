@@ -600,11 +600,12 @@ impl<S: GitStore> Repos<S> {
     ) -> Result<Outcome<PullBranchUpdate>> {
         let branch = update.branch;
         let source_access = source_git.access(Scope::Write).await?;
-        let Some(pushed) = self
+        let pushed = match self
             .push_reserved(source, Operation::Update, Some(&actor.id), &source_access, branch, Some(update.head), update.commit, pack)
             .await?
-        else {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Public repository storage is full. Make room before adding more data."));
+        {
+            Ok(pushed) => pushed,
+            Err(refusal) => return Ok(refusal.outcome()),
         };
         self.refs_moved(&source.id).await;
         let git_ref = format!("refs/heads/{branch}");

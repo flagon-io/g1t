@@ -2305,11 +2305,16 @@ impl<S: GitStore> Repos<S> {
                 .unwrap_or(pack_limits::PLATFORM_BODY_LIMIT_BYTES)
                 .min(pack_limits::PLATFORM_BODY_LIMIT_BYTES);
             let pusher = viewer.as_ref().map(|viewer| viewer.id.as_str());
-            let Some(reservation) = self.registry
+            let reservation = match self.registry
                 .reserve_public(&repo, requested, self.free_public_bytes, public_storage::Operation::Push, pusher).await?
-            else {
-                return git_ops::public_storage_full_response(&repo.namespace,
-                    self.registry.public_bytes(&repo.namespace).await?, self.free_public_bytes);
+            {
+                Ok(reservation) => reservation,
+                // Taken between the push's first request and this one.
+                Err(public_storage::Refusal::Locked) => return git_ops::copy_locked_response(&repo.namespace, &repo.name),
+                Err(_) => {
+                    return git_ops::public_storage_full_response(&repo.namespace,
+                        self.registry.public_bytes(&repo.namespace).await?, self.free_public_bytes);
+                }
             };
             limits.repo_limit = limits.repo_limit.min(limits.held.saturating_add(requested));
             // A push still streaming at the lease is cut short, so the store
@@ -2547,7 +2552,8 @@ impl<S: GitStore> Repos<S> {
     /// asked on the way. A free workspace is never charged for private
     /// storage: once its private repositories hold the free amount, pushes
     /// to them stop, checked when a push begins so that git shows the
-    /// reason. So do pushes to a repository at the store's size limit.
+    /// reason. So do pushes to a repository at the store's size limit, and
+    /// to one being copied into a fork.
     async fn git_limits(
         &self,
         call: git_ops::GitCall,
@@ -2608,6 +2614,16 @@ impl<S: GitStore> Repos<S> {
                     )));
                 }
             }
+        }
+        // A native fork's copy lock refuses every write to its source,
+        // private or public and whatever room it has (public_storage.rs):
+        // said when the push begins, so that git shows it.
+        if git.service == GitService::ReceivePack && git.endpoint == "info/refs" && self.registry.copy_locked(repo).await? {
+            return Ok(Some((
+                git_ops::copy_locked_response(&repo.namespace, &repo.name)?,
+                403,
+                "The repository is being copied into a fork.",
+            )));
         }
         Ok(None)
     }

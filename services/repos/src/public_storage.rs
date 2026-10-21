@@ -21,6 +21,11 @@
 //! Settling is by row: an operation whose row staff already released still
 //! records the bytes it measured, and never takes another write's
 //! reservation with it.
+//!
+//! A refused grant says why ([`Refusal`]), read in the batch that asked:
+//! a native fork's copy lock on the root refuses every write to it, private
+//! or public and whatever room there is, and says so; only a write the cap
+//! refused is told that public storage is full.
 use std::cell::RefCell;
 
 use g1t_contracts::new_id;
@@ -117,6 +122,47 @@ pub(crate) struct Reservation {
     pub lease_until_ms: u64,
 }
 
+/// Why a write was refused its reservation: decided here, in the batch
+/// that asked ([`COPY_LOCKED`] beside [`HOLD`]), so every write says the
+/// same thing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Refusal {
+    /// The repository is being copied into a native fork, whose lock
+    /// refuses its writes until the fork's size is taken (network.rs),
+    /// whether it is private or public, and whatever room there is.
+    Locked,
+    /// The workspace's public repositories cannot fit it.
+    Full,
+    /// A streamed copy's lease passed before it finished (land.rs).
+    Overdue,
+}
+
+impl Refusal {
+    /// What the write's author is told.
+    pub fn message(self) -> String {
+        match self {
+            Refusal::Locked => LOCKED_MESSAGE.to_owned(),
+            Refusal::Full => FULL_MESSAGE.to_owned(),
+            Refusal::Overdue => format!("The copy took longer than {}, so g1t stopped it. Try again.", lease_words()),
+        }
+    }
+
+    /// The failure a write from the site answers with.
+    pub fn outcome<T>(self) -> g1t_contracts::Outcome<T> {
+        let code = match self {
+            Refusal::Locked | Refusal::Overdue => g1t_contracts::FailureCode::Conflict,
+            Refusal::Full => g1t_contracts::FailureCode::Forbidden,
+        };
+        g1t_contracts::Outcome::fail(code, self.message())
+    }
+}
+
+/// A write to a repository being copied into a fork. A native fork is one
+/// call to the store, which ordinarily answers within a few minutes.
+pub const LOCKED_MESSAGE: &str = "This repository is being copied into a fork. Try again in a few minutes.";
+/// A write the workspace's public storage cannot fit.
+pub const FULL_MESSAGE: &str = "Public repository storage is full. Make room before adding more data.";
+
 /// A streamed copy's reservation, grown chunk by chunk (land.rs).
 pub(crate) struct StreamQuota {
     pub registry: Registry,
@@ -129,15 +175,15 @@ pub(crate) struct StreamQuota {
 
 impl StreamQuota {
     /// Reserves `bytes` more, under the one reservation of this copy.
-    pub async fn grow(&self, bytes: u64) -> Result<bool> {
+    pub async fn grow(&self, bytes: u64) -> Result<std::result::Result<(), Refusal>> {
         let held = self.held.borrow().clone();
         match held {
             None => match self.registry.reserve_public(&self.repo, bytes, self.cap, self.operation, self.actor.as_deref()).await? {
-                Some(reservation) => {
+                Ok(reservation) => {
                     *self.held.borrow_mut() = Some(reservation);
-                    Ok(true)
+                    Ok(Ok(()))
                 }
-                None => Ok(false),
+                Err(refusal) => Ok(Err(refusal)),
             },
             Some(mut reservation) => {
                 let grown = self.registry.grow_public(&mut reservation, bytes, self.cap).await?;
@@ -215,18 +261,14 @@ impl<S: crate::store::GitStore> crate::Repos<S> {
     /// admission for copy.rs, which asks once with the pack's size.
     pub(crate) async fn hold_into(
         &self, slot: &RefCell<Option<Reservation>>, repo: &Repo, bytes: u64, operation: Operation, actor: Option<&str>,
-    ) -> Result<bool> {
-        match self.registry.reserve_public(repo, bytes, self.free_public_bytes, operation, actor).await? {
-            Some(reservation) => {
-                *slot.borrow_mut() = Some(reservation);
-                Ok(true)
-            }
-            None => Ok(false),
-        }
+    ) -> Result<std::result::Result<(), Refusal>> {
+        let reservation = self.registry.reserve_public(repo, bytes, self.free_public_bytes, operation, actor).await?;
+        Ok(reservation.map(|reservation| *slot.borrow_mut() = Some(reservation)))
     }
 
-    /// Pushes `pack` to `branch` under a reservation of its size: `None`
-    /// when the workspace's public storage cannot fit it. The inner result
+    /// Pushes `pack` to `branch` under a reservation of its size: the
+    /// [`Refusal`] when it was refused one (the repository is being copied
+    /// into a fork, or the workspace's public storage cannot fit it). The inner result
     /// is the store's verdict on the branch (land.rs `push_pack_judged`). The pack
     /// is counted only when the branch moved; one the store refused (the
     /// branch had moved, or the unpack failed) gives its reservation back
@@ -237,10 +279,11 @@ impl<S: crate::store::GitStore> crate::Repos<S> {
     pub(crate) async fn push_reserved(
         &self, repo: &Repo, operation: Operation, actor: Option<&str>, access: &g1t_contracts::repos::GitAccess,
         branch: &str, old: Option<&str>, new: &str, pack: Vec<u8>,
-    ) -> Result<Option<std::result::Result<(), String>>> {
+    ) -> Result<std::result::Result<std::result::Result<(), String>, Refusal>> {
         let bytes = pack.len() as u64;
-        let Some(reservation) = self.registry.reserve_public(repo, bytes, self.free_public_bytes, operation, actor).await? else {
-            return Ok(None);
+        let reservation = match self.registry.reserve_public(repo, bytes, self.free_public_bytes, operation, actor).await? {
+            Ok(reservation) => reservation,
+            Err(refusal) => return Ok(Err(refusal)),
         };
         let refs = asked_refs((&format!("refs/heads/{branch}"), new));
         match crate::land::push_pack_judged(access, branch, old, new, pack).await {
@@ -250,7 +293,7 @@ impl<S: crate::store::GitStore> crate::Repos<S> {
                     Settlement::Release => self.registry.release_public(&reservation).await?,
                     Settlement::End => self.registry.end_public(&reservation, verdict.reason(), &refs).await,
                 }
-                Ok(Some(verdict.into_result()))
+                Ok(Ok(verdict.into_result()))
             }
             Err(error) => {
                 self.registry.end_public(&reservation, &error.to_string(), &refs).await;
@@ -288,6 +331,10 @@ pub(crate) const HOLD: &str = "INSERT INTO storage_reservations (id, root_id, ta
 /// Adds a grant [`HOLD`] made to the sum. ?1 root, ?2 bytes, ?3 id, ?4 grant.
 pub(crate) const HOLD_SUM: &str = "UPDATE repos SET storage_reserved_bytes = storage_reserved_bytes + ?2
     WHERE id = ?1 AND EXISTS (SELECT 1 FROM storage_reservations WHERE id = ?3 AND grant_id = ?4)";
+
+/// Whether a native fork's copy lock holds `?1`: read in [`HOLD`]'s batch,
+/// so a refused grant says whether the lock or the cap refused it.
+pub(crate) const COPY_LOCKED: &str = "SELECT EXISTS (SELECT 1 FROM storage_copy_locks WHERE repo_id = ?1) AS locked";
 
 /// Settling a reservation staff already released: the measured bytes are
 /// recorded all the same. ?1 root, ?2 id, ?3 measured. Runs first.
@@ -375,6 +422,20 @@ pub(crate) fn write_settlement(verdict: &Verdict) -> Settlement {
     }
 }
 
+/// Why [`HOLD`] refused a grant at `now`, for a reservation leased to
+/// `lease_until_ms`: `locked` when [`COPY_LOCKED`] found the root held.
+/// The lock comes first: while it is held, nothing is granted however much
+/// room there is.
+pub(crate) fn refusal(locked: bool, now: u64, lease_until_ms: u64) -> Refusal {
+    if locked {
+        Refusal::Locked
+    } else if now > lease_until_ms {
+        Refusal::Overdue
+    } else {
+        Refusal::Full
+    }
+}
+
 /// Ends a copy lock. ?1 source, ?2 destination.
 pub(crate) const UNLOCK_COPY: &str = "DELETE FROM storage_copy_locks WHERE repo_id = ?1 AND destination_id = ?2 RETURNING repo_id";
 
@@ -410,6 +471,15 @@ impl Registry {
             .first::<Locked>(None).await?.is_some())
     }
 
+    /// Whether a native fork's copy lock holds `repo`'s root, refusing its
+    /// writes: asked when a push begins, so that git shows why (lib.rs).
+    pub(crate) async fn copy_locked(&self, repo: &Repo) -> Result<bool> {
+        #[derive(Deserialize)]
+        struct Locked { locked: f64 }
+        let root = repo.fork_of.as_deref().unwrap_or(&repo.id);
+        Ok(self.db.prepare(COPY_LOCKED).bind(&[root.into()])?.first::<Locked>(None).await?.is_some_and(|row| row.locked > 0.0))
+    }
+
     /// Lets the source take writes again. False when its lock was gone
     /// already: staff released it while the copy ran (storage_holds.rs).
     pub(crate) async fn unlock_copy(&self, source: &Repo, destination: &Repo) -> Result<bool> {
@@ -431,11 +501,12 @@ impl Registry {
     }
 
     /// Reserves against the canonical root, also counting retained deleted
-    /// repositories, for `operation` writing `repo`. `None` when the
-    /// workspace cannot fit the write.
+    /// repositories, for `operation` writing `repo`. The [`Refusal`] when
+    /// the root is being copied into a fork, or the workspace cannot fit
+    /// the write.
     pub(crate) async fn reserve_public(
         &self, repo: &Repo, bytes: u64, cap: i64, operation: Operation, actor: Option<&str>,
-    ) -> Result<Option<Reservation>> {
+    ) -> Result<std::result::Result<Reservation, Refusal>> {
         let now = now_ms();
         let mut reservation = Reservation {
             id: new_id("srv", now),
@@ -447,17 +518,23 @@ impl Registry {
             created_at: rfc3339(now),
             lease_until_ms: now + LEASE_MS,
         };
-        Ok(self.grant(&mut reservation, bytes, cap, now).await?.then_some(reservation))
+        Ok(self.grant(&mut reservation, bytes, cap, now).await?.map(|()| reservation))
     }
 
     /// Reserves `bytes` more under `reservation`, while its lease lasts.
-    pub(crate) async fn grow_public(&self, reservation: &mut Reservation, bytes: u64, cap: i64) -> Result<bool> {
+    pub(crate) async fn grow_public(
+        &self, reservation: &mut Reservation, bytes: u64, cap: i64,
+    ) -> Result<std::result::Result<(), Refusal>> {
         self.grant(reservation, bytes, cap, now_ms()).await
     }
 
-    async fn grant(&self, reservation: &mut Reservation, bytes: u64, cap: i64, now: u64) -> Result<bool> {
+    async fn grant(
+        &self, reservation: &mut Reservation, bytes: u64, cap: i64, now: u64,
+    ) -> Result<std::result::Result<(), Refusal>> {
         #[derive(Deserialize)]
         struct Held { #[serde(rename = "id")] _id: String }
+        #[derive(Deserialize)]
+        struct Locked { locked: f64 }
         let grant = new_id("grt", now);
         let actor: worker::wasm_bindgen::JsValue = match &reservation.actor {
             Some(actor) => actor.as_str().into(),
@@ -472,12 +549,14 @@ impl Registry {
             self.db.prepare(HOLD_SUM).bind(&[
                 reservation.root.as_str().into(), (bytes as f64).into(), reservation.id.as_str().into(), grant.as_str().into(),
             ])?,
+            self.db.prepare(COPY_LOCKED).bind(&[reservation.root.as_str().into()])?,
         ]).await?;
-        let granted = !results[0].results::<Held>()?.is_empty();
-        if granted {
+        if !results[0].results::<Held>()?.is_empty() {
             reservation.bytes = reservation.bytes.saturating_add(bytes);
+            return Ok(Ok(()));
         }
-        Ok(granted)
+        let locked = results[2].results::<Locked>()?.first().is_some_and(|row| row.locked > 0.0);
+        Ok(Err(refusal(locked, now, reservation.lease_until_ms)))
     }
 
     /// Lets a reservation go, nothing written: the store was never asked,
@@ -732,6 +811,83 @@ mod tests {
         assert!(!may_still_run(&unavailable.error("fork not asked: the git store has been failing").to_string()));
         // An answer with a reason (NOT_FOUND, a bad name) carries no Busy.
         assert!(!may_still_run("NOT_FOUND: no such repository"));
+    }
+
+    /// What a refused grant found in its batch (conformance's
+    /// public-storage.test.mjs runs [`HOLD`] and [`COPY_LOCKED`] for each
+    /// of these), and what a write is told.
+    const REFUSED: [(&str, bool, Refusal); 3] = [
+        ("a private repository being copied into a fork", true, Refusal::Locked),
+        ("a public one being copied, with room", true, Refusal::Locked),
+        ("a public one whose workspace is really full", false, Refusal::Full),
+    ];
+
+    #[test]
+    fn a_web_commit_to_a_repository_being_forked_says_so_and_one_with_no_room_says_it_is_full() {
+        let now = 1_000;
+        for (case, locked, expected) in REFUSED {
+            let refused = refusal(locked, now, now + LEASE_MS);
+            assert_eq!(refused, expected, "{case}");
+            let g1t_contracts::Outcome::Fail(failure) = refused.outcome::<()>() else { panic!("{case}") };
+            if locked {
+                assert_eq!(failure.message, "This repository is being copied into a fork. Try again in a few minutes.", "{case}");
+                assert_eq!(failure.code, g1t_contracts::FailureCode::Conflict);
+                assert!(!failure.message.contains("full"));
+            } else {
+                assert_eq!(failure.message, "Public repository storage is full. Make room before adding more data.", "{case}");
+                assert_eq!(failure.code, g1t_contracts::FailureCode::Forbidden);
+            }
+        }
+        // A streamed copy refused past its lease was neither.
+        assert_eq!(refusal(false, now + LEASE_MS + 1, now + LEASE_MS), Refusal::Overdue);
+        assert_eq!(refusal(true, now + LEASE_MS + 1, now + LEASE_MS), Refusal::Locked);
+        assert!(Refusal::Overdue.message().contains("an hour"));
+        // Every write from the site says what its refusal was: none
+        // assumes the cap.
+        for (file, source, function) in [
+            ("commit_file.rs", include_str!("commit_file.rs"), "commit_file"),
+            ("catch_up.rs", include_str!("catch_up.rs"), "push_update"),
+            ("merge_methods.rs", include_str!("merge_methods.rs"), "land_by"),
+            ("merge_methods.rs", include_str!("merge_methods.rs"), "build_queue_step"),
+        ] {
+            let body = body_of(source, function);
+            assert!(body.contains("Err(refusal) => return Ok(refusal.outcome())"), "{file}: {function}");
+            assert!(!body.contains("storage is full"), "{file}: {function}");
+        }
+        for (file, source) in [("land.rs", include_str!("land.rs")), ("copy.rs", include_str!("copy.rs"))] {
+            let code = source.split("#[cfg(test)]\nmod tests").next().unwrap_or_default();
+            assert!(code.contains("refusal.message()"), "{file}");
+            assert!(!code.contains("storage is full"), "{file}");
+        }
+        // The batch that grants reads the lock, so the refusal is decided
+        // where the grant was.
+        let grant = body_of(include_str!("public_storage.rs"), "grant");
+        assert!(grant.contains("self.db.prepare(COPY_LOCKED)") && grant.contains("refusal(locked, now, reservation.lease_until_ms)"));
+    }
+
+    #[test]
+    fn a_push_to_a_repository_being_forked_says_so_and_one_with_no_room_says_it_is_full() {
+        let now = 1_000;
+        let source = include_str!("lib.rs");
+        let answer = body_of(source, "answer_git");
+        let limits = body_of(source, "git_limits");
+        for (case, locked, expected) in REFUSED {
+            assert_eq!(refusal(locked, now, now + LEASE_MS), expected, "{case}");
+        }
+        // When the push begins, so that git shows it, private or public:
+        // after the checks for room, so a workspace that is full says so.
+        let lock = limits.find("self.registry.copy_locked(repo)").expect("checked when a push begins");
+        assert!(limits[lock..].contains("git_ops::copy_locked_response(&repo.namespace, &repo.name)"));
+        assert!(limits.find("public_storage_full_response").unwrap() < lock);
+        let line = limits[..lock].rsplit('\n').next().unwrap_or_default();
+        assert!(!line.contains("is_private"), "{line}");
+        // And when its pack is reserved, should the lock have been taken
+        // in between.
+        assert!(answer.contains("Err(public_storage::Refusal::Locked) => return git_ops::copy_locked_response(&repo.namespace, &repo.name)"));
+        let message = crate::git_ops::copy_locked_message("acme", "rocket");
+        assert!(message.starts_with("acme/rocket is being copied into a fork"), "{message}");
+        assert!(message.contains("try again in a few minutes") && message.contains("https://docs.g1t.sh/guides/git/#size-limits"));
+        assert!(message.ends_with('\n') && !message.contains("full"));
     }
 
     #[test]

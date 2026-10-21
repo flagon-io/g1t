@@ -163,10 +163,9 @@ impl<S: GitStore> Repos<S> {
         let access = git.access(Scope::Write).await?;
         // Only if the branch is still not there.
         let pack = write_pack(&objects);
-        let Some(pushed) =
-            self.push_reserved(&repo, Operation::Commit, Some(&a.actor.id), &access, &a.branch, None, &commit_id, pack).await?
-        else {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Public repository storage is full. Make room before adding more data."));
+        let pushed = match self.push_reserved(&repo, Operation::Commit, Some(&a.actor.id), &access, &a.branch, None, &commit_id, pack).await? {
+            Ok(pushed) => pushed,
+            Err(refusal) => return Ok(refusal.outcome()),
         };
         self.refs_moved(&repo.id).await;
 

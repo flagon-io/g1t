@@ -80,6 +80,12 @@ the workflows it copied until someone turns them on (see
 [Turn on workflows](#turn-on-workflows)). Deployments stay off until you set
 up the fork's own project.
 
+While a fork is being copied, the repository it is copied from takes no
+writes: a push, a commit from the site, a merge or a pull request update is
+refused with **This repository is being copied into a fork. Try again in a
+few minutes.**, whatever room its workspace has. A copy ordinarily ends within
+a few minutes, and writes are taken again.
+
 ### When forking is refused
 
 | Response               | Why                                                                                                                                | What to do                                                            |

@@ -9,8 +9,9 @@ Platform → **Storage holds** (`/storage`); the design is in
 A write reserves public storage before it reaches the git store, and a
 native fork locks its source while it copies. One that is interrupted keeps
 its hold: a reservation counts against the workspace's 5 GB public cap, and
-a copy lock refuses every push to the source (with the "storage is full"
-message, as a full workspace gets). Nothing expires them on a timer, on
+a copy lock refuses every write to the source, private or public (each
+told "This repository is being copied into a fork. Try again in a few
+minutes.", never that storage is full). Nothing expires them on a timer, on
 purpose: releasing one that is still in flight would let two writes take the
 same room.
 

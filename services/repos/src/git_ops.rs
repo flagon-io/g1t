@@ -341,6 +341,20 @@ pub fn public_storage_full_response(namespace: &str, public_bytes: i64, free_byt
     Response::error(message, 403)
 }
 
+/// The answer to a push to a repository being copied into a fork: a native
+/// fork's copy lock refuses its writes until the copy ends
+/// (public_storage.rs), private or public, whatever room it has.
+pub fn copy_locked_response(namespace: &str, name: &str) -> Result<Response> {
+    Response::error(copy_locked_message(namespace, name), 403)
+}
+
+pub(crate) fn copy_locked_message(namespace: &str, name: &str) -> String {
+    format!(
+        "{namespace}/{name} is being copied into a fork, and takes no pushes until the copy ends. Nothing was pushed; try again in a few minutes: https://docs.g1t.sh/guides/git/#size-limits
+"
+    )
+}
+
 /// Whether a push to a private repository should be refused: a free
 /// workspace whose private repositories already hold its free amount. Free
 /// workspaces are never charged for storage; past it, pushes stop instead.

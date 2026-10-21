@@ -220,7 +220,7 @@ impl<S: GitStore> Repos<S> {
             let bytes = measured.saturating_add(pending);
             self.registry.claim_store_key(&fork, Some(&source_namespace), &default).await?;
             self.registry.insert(&fork).await?;
-            let Some(reservation) =
+            let Ok(reservation) =
                 self.registry.reserve_public(&fork, bytes, self.free_public_bytes, Operation::Fork, Some(&a.actor.id)).await?
             else {
                 self.registry.remove(&fork.id).await?;
