@@ -67,7 +67,22 @@ const checksum = (bytes) => `"${createHash("md5").update(bytes).digest("hex")}"`
 const objectUrl = (account, bucket, key) => `https://api.cloudflare.com/client/v4/accounts/${account}/r2/buckets/${bucket}/objects/${key}`;
 const manifestName = (names) => names.find((name) => /^manifest-[a-zA-Z0-9_-]{8}\.js$/.test(name));
 
-async function confirmUpload(response, bytes, label) {
+/** An ETag as `"<md5>"`, as `checksum` writes it: R2's REST gateway answers a GET with a weak one, `W/"<md5>"`. */
+const strong = (etag) => (etag ? `"${etag.replace(/^W\//, "").replaceAll('"', "")}"` : null);
+
+/** The stored object's ETag, or null when there is none. */
+async function storedEtag(url, headers, fetchImpl, label) {
+  // Cloudflare's R2 REST gateway does not implement HEAD. Range avoids
+  // downloading unchanged files; cancel the body even if Range is ignored.
+  const existing = await fetchImpl(url, { headers: { ...headers, range: "bytes=0-0" }, signal: AbortSignal.timeout(30_000) });
+  await existing.body?.cancel();
+  if (existing.ok) return strong(existing.headers.get("etag"));
+  if (existing.status !== 404) throw new Error(`Asset archive lookup failed (${existing.status}): ${label}`);
+  return null;
+}
+
+/** `stored`, when given, reads the object's ETag: a 2xx whose receipt can't be read (empty or cut short) is confirmed by the object itself. */
+async function confirmUpload(response, bytes, label, stored) {
   if (!response.ok) {
     await response.body?.cancel();
     throw new Error(`Asset archive upload failed (${response.status}): ${label}`);
@@ -76,6 +91,7 @@ async function confirmUpload(response, bytes, label) {
   try {
     receipt = await response.json();
   } catch {
+    if (stored && (await stored()) === checksum(bytes)) return;
     throw new Error(`Invalid asset upload receipt: ${label}`);
   }
   if (receipt.success !== true || `"${receipt.result?.etag?.replaceAll('"', "")}"` !== checksum(bytes))
@@ -117,24 +133,20 @@ export async function archiveAsset({ name, bytes, account, bucket, headers, inde
     if (index.get(key) !== expected) throw new Error(`Asset filename collision: ${name}`);
     return;
   }
-  // Cloudflare's R2 REST gateway does not implement HEAD. Range avoids
-  // downloading unchanged files; cancel the body even if Range is ignored.
-  const existing = await fetchImpl(url, { headers: { ...headers, range: "bytes=0-0" }, signal: AbortSignal.timeout(30_000) });
-  if (existing.ok) {
-    await existing.body?.cancel();
-    if (existing.headers.get("etag") !== expected) throw new Error(`Asset filename collision: ${name}`);
+  const stored = () => storedEtag(url, headers, fetchImpl, name);
+  const existing = await stored();
+  if (existing) {
+    if (existing !== expected) throw new Error(`Asset filename collision: ${name}`);
     index?.set(key, expected);
     return;
   }
-  await existing.body?.cancel();
-  if (existing.status !== 404) throw new Error(`Asset archive lookup failed (${existing.status}): ${name}`);
   const uploaded = await fetchImpl(url, {
     method: "PUT",
     headers: { ...headers, "content-type": TYPES[name.split(".").at(-1)], "cache-control": "public, max-age=31536000, immutable" },
     body: bytes,
     signal: AbortSignal.timeout(60_000),
   });
-  await confirmUpload(uploaded, bytes, name);
+  await confirmUpload(uploaded, bytes, name, stored);
   index?.set(key, expected);
 }
 

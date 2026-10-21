@@ -63,6 +63,26 @@ test("archive failures block cutover and immutable filename collisions are refus
       return new Response(null, { headers: { etag } });
     },
   });
+  // R2's REST gateway answers a GET with a weak ETag: the same object.
+  await archiveAsset({ ...args, fetchImpl: async () => new Response(null, { headers: { etag: `W/${etag}` } }) });
+  await assert.rejects(archiveAsset({ ...args, fetchImpl: async () => new Response(null, { headers: { etag: 'W/"different"' } }) }), /collision/);
+});
+
+test("an upload whose receipt can't be read is confirmed by the stored object", async () => {
+  const args = { name: "app-12345678.css", bytes: Buffer.from("body{}"), account: "account", bucket: "bucket", headers: {} };
+  const etag = `W/"${createHash("md5").update(args.bytes).digest("hex")}"`;
+  const landed = (stored) => {
+    let put = false;
+    return async (_url, init) => {
+      if (init.method === "PUT") {
+        put = true;
+        return new Response("", { status: 200 });
+      }
+      return put ? new Response(null, { headers: { etag: stored } }) : new Response(null, { status: 404 });
+    };
+  };
+  await archiveAsset({ ...args, fetchImpl: landed(etag) });
+  await assert.rejects(archiveAsset({ ...args, fetchImpl: landed('W/"different"') }), /Invalid asset upload receipt/);
 });
 
 test("a missing live asset aborts the archive instead of saving an HTML error as CSS", async () => {
