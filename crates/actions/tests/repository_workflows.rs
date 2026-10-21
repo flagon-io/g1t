@@ -1084,7 +1084,7 @@ fn rust_builds_go_through_sccache_before_cargo_and_report_after() {
     let ci = read("ci.yml");
     let rust = ci.jobs.iter().find(|j| j.id == "rust").unwrap();
     let (install_at, _) = step(rust, "bash scripts/sccache.sh install");
-    let (tests_at, _) = step(rust, "cargo test --workspace --locked --quiet");
+    let (tests_at, _) = step(rust, "cargo test ${{ matrix.crates }} --locked --quiet");
     let (stats_at, stats) = step(rust, "bash scripts/sccache.sh stats");
     assert!(install_at < tests_at && tests_at < stats_at);
     assert!(step_runs(&stats, json!({}), Status::Failure));
@@ -1263,5 +1263,80 @@ fn every_install_runs_again_when_a_connection_drops() {
                 }
             }
         }
+    }
+}
+
+/// The workspace's crates, by package name: Cargo.toml's members, with
+/// `crates/*` read from the folder.
+fn workspace_crates() -> Vec<String> {
+    let root = workflows_dir().join("../..");
+    let manifest = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
+    let members = manifest
+        .lines()
+        .find(|line| line.trim_start().starts_with("members"))
+        .unwrap();
+    let mut dirs = Vec::new();
+    for member in members.split('"').skip(1).step_by(2) {
+        match member.strip_suffix("/*") {
+            Some(parent) => {
+                for entry in std::fs::read_dir(root.join(parent)).unwrap() {
+                    let path = entry.unwrap().path();
+                    if path.join("Cargo.toml").exists() {
+                        dirs.push(path);
+                    }
+                }
+            }
+            None => dirs.push(root.join(member)),
+        }
+    }
+    let mut names: Vec<String> = dirs
+        .iter()
+        .map(|dir| {
+            let manifest = std::fs::read_to_string(dir.join("Cargo.toml")).unwrap();
+            let line = manifest
+                .lines()
+                .find(|line| line.trim_start().starts_with("name"))
+                .unwrap_or_else(|| panic!("{} has no name", dir.display()));
+            line.split('"').nth(1).unwrap().to_owned()
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+#[test]
+fn ci_tests_every_crate_once_across_its_rust_parts() {
+    let ci = read("ci.yml");
+    let rust = ci.jobs.iter().find(|j| j.id == "rust").unwrap();
+    assert!(!rust.fail_fast);
+    let parts = rust.raw["strategy"]["matrix"]["include"].as_array().unwrap();
+    assert!(parts.len() >= 2, "{parts:?}");
+    let mut tested: Vec<String> = Vec::new();
+    for part in parts {
+        let crates = part["crates"].as_str().unwrap();
+        let mut words = crates.split_whitespace();
+        while let Some(flag) = words.next() {
+            assert_eq!(flag, "-p", "{crates}");
+            tested.push(words.next().unwrap().to_owned());
+        }
+    }
+    tested.sort();
+    let mut once = tested.clone();
+    once.dedup();
+    assert_eq!(tested, once, "a crate is in more than one part");
+    assert_eq!(tested, workspace_crates(), "the parts and the workspace's crates differ");
+    // Each part keeps a test build of its own, and builds and prunes the same crates.
+    let key = rust
+        .steps
+        .iter()
+        .find(|s| s.id.as_deref() == Some("test-build"))
+        .unwrap()
+        .raw["with"]["key"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(key.contains("${{ matrix.part }}"), "{key}");
+    for run in ["cargo test ${{ matrix.crates }} --locked --quiet", "node scripts/deploy/ci-cache.mjs prune target/debug -- test ${{ matrix.crates }} --locked --no-run"] {
+        assert!(rust.steps.iter().any(|s| s.run.as_deref() == Some(run)), "{run}");
     }
 }
