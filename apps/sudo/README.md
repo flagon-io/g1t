@@ -32,9 +32,11 @@ roadmap.
   each links to its workspace or enterprise and to Stripe's page (https
   only).
 - **Audit log** (`/audit`): every change made in sudo, and what Stripe told
-  billing, newest first, 100 a page with "Older" (`admin_audit`). Filter by
-  staff email and kind of change; each line links to its workspace or
-  enterprise.
+  billing, newest first, 100 a page with "Older" (`admin_audit`). Changes
+  other services make for staff are written to it with `admin_log`:
+  identity's (deleted workspaces and accounts, aliases, suspensions) and storage holds
+  released on Storage holds. Filter by staff email and kind of change; each
+  line links to its workspace or enterprise.
 - **Workspaces** (`/workspaces`): every workspace, newest first, 50 to a
   page, with its owners, members, who it is billed to, its terms, this
   month's usage against its limit, what it was charged and what it cost
@@ -145,7 +147,13 @@ roadmap.
   provably abandoned hold and takes a reason; the repos service inspects
   it again, checks the same rules in the batch that releases, and writes a
   row of `storage_recoveries` with the evidence, listed under **Released**
-  (`admin_storage_recoveries`). Provably abandoned means: the write
+  (`admin_storage_recoveries`). Only once it is released does sudo add it
+  to its audit log (billing's `admin_log`, `storage_released`): under the
+  charged repository's workspace, or the `storage` account when its row is
+  gone, naming the staff member, the hold, the reason and the
+  `storage_recoveries` row. If that write fails, the release still stands:
+  the page says the audit log missed it and points to the row, and sudo
+  logs the error. Provably abandoned means: the write
   recorded that it ended; or its one-hour lease passed 15 minutes ago; or,
   for bytes reserved before the ledger began and locks without a lease,
   24 hours have passed since it began. A release never changes

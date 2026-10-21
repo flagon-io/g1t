@@ -69,6 +69,7 @@ export function accountPath(account: string | null | undefined): string | null {
   const id = (account ?? "").trim().toLowerCase();
   // Shared invite links, retired with invite-only registration: `invites` is a reserved name, never a workspace's.
   if (id === SHARED_INVITES_ACCOUNT) return "/invites";
+  if (id === STORAGE_ACCOUNT) return "/storage";
   const status = /^(incident|maintenance):([a-z0-9-]{1,64})$/.exec(id);
   if (status) return status[1] === "incident" ? `/incidents/${status[2]}` : `/incidents/maintenance/${status[2]}`;
   if (ENTERPRISE.test(id)) return `/enterprises/${encodeURIComponent(id)}`;
@@ -79,12 +80,16 @@ export function accountPath(account: string | null | undefined): string | null {
 /** Where sudo's audit log files shared invite links. */
 export const SHARED_INVITES_ACCOUNT = "ws_invites";
 
+/** Where it files a storage hold released on a repository whose row is gone, so no workspace can be named (billing's `ADMIN_LOG_ACCOUNTS`). */
+export const STORAGE_ACCOUNT = "storage";
+
 /** What to call an account: a workspace by its slug, an enterprise by its name when known. */
 export function accountName(account: string, names: Map<string, string> = new Map()): string {
   if (names.has(account)) return names.get(account) as string;
   // The retired model catalogue, in older entries.
   if (account === "models") return "Model catalogue (retired)";
   if (account === SHARED_INVITES_ACCOUNT) return "Shared invite links";
+  if (account === STORAGE_ACCOUNT) return "Storage holds";
   if (account.startsWith("incident:")) return "Incident";
   if (account.startsWith("maintenance:")) return "Maintenance";
   if (account.startsWith("ws_")) return account.slice(3);
@@ -128,6 +133,9 @@ export const AUDIT_ACTIONS: Record<string, string> = {
   // From identity: shared invite links staff made or revoked, filed under `ws_invites`.
   shared_invite_created: "Shared invite link made",
   shared_invite_revoked: "Shared invite link revoked",
+  // From the Storage holds page: a reservation or copy lock released in the repos service, filed under
+  // the repository's workspace (or `storage`); the detail names its storage_recoveries row.
+  storage_released: "Storage hold released",
   // From the status page (apps/status), merged in by the Audit log page.
   incident_declared: "Incident declared",
   incident_detected: "Incident detected",
