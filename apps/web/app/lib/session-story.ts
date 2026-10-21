@@ -6,7 +6,7 @@
  * what it delivered. The transcript is the evidence, folded under them.
  * No Workers or React imports, so it can be tested under Node.
  */
-import type { Decision, SessionEntry, SessionLink, SessionTouch, WorkSession } from "@g1t/contracts";
+import type { Decision, LinkVia, SessionEntry, SessionLink, SessionTouch, WorkSession } from "@g1t/contracts";
 
 /**
  * What the session came to, in its own words: what it reported, else, once
@@ -90,21 +90,22 @@ export function highlights(
 
 /** Something the session delivered, as its card shows it. */
 export type Deliverable =
-  | { kind: "pull"; number: number; title: string; state: string }
-  | { kind: "item"; number: number; title: string; state: string }
+  | { kind: "pull"; number: number; title: string; state: string; via: LinkVia[] }
+  | { kind: "item"; number: number; title: string; state: string; via: LinkVia[] }
   | { kind: "commits"; shas: string[] };
 
 /**
- * What it delivered: its pull requests, then the work items it worked on,
+ * What it delivered: its pull requests, then the work items it worked on
+ * (each with how it was tied to the session),
  * then its commits as one card, each once, in the order it touched them.
  */
 export function deliverables(links: SessionLink[], touched: SessionTouch[]): Deliverable[] {
   const pulls = links
     .filter((link) => link.kind === "pull")
-    .map((link): Deliverable => ({ kind: "pull", number: link.number, title: link.title, state: link.state }));
+    .map((link): Deliverable => ({ kind: "pull", number: link.number, title: link.title, state: link.state, via: link.via }));
   const items = links
     .filter((link) => link.kind === "item")
-    .map((link): Deliverable => ({ kind: "item", number: link.number, title: link.title, state: link.state }));
+    .map((link): Deliverable => ({ kind: "item", number: link.number, title: link.title, state: link.state, via: link.via }));
   const shas = [...new Set(touched.filter((touch) => touch.kind === "commit").map((touch) => touch.value))];
   return [...pulls, ...items, ...(shas.length > 0 ? [{ kind: "commits" as const, shas }] : [])];
 }

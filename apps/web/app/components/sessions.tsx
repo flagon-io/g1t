@@ -292,8 +292,9 @@ export function SessionsViews({ workspace, filters }: { workspace: string; filte
   );
 }
 
-const HARNESSES = Object.keys(HARNESS_NAMES) as Harness[];
-const KINDS = Object.keys(KIND_NAMES) as SessionKind[];
+// Read when the bar is drawn, not as the module loads: the bundle may run this module before lib/coordination's.
+const harnesses = () => Object.keys(HARNESS_NAMES) as Harness[];
+const kinds = () => Object.keys(KIND_NAMES) as SessionKind[];
 
 /** Sessions' filters: a menu each on a computer, one sheet on a phone. Each choice is a link. */
 export function SessionsFiltersBar({
@@ -345,14 +346,14 @@ export function SessionsFiltersBar({
       active: filters.harness ? HARNESS_NAMES[filters.harness] : null,
       any: "Any harness",
       field: "harness",
-      options: HARNESSES.map((key) => ({ key, label: HARNESS_NAMES[key] })),
+      options: harnesses().map((key) => ({ key, label: HARNESS_NAMES[key] })),
     },
     {
       title: "Kind",
       active: filters.kind ? KIND_NAMES[filters.kind] : null,
       any: "Every kind",
       field: "kind",
-      options: KINDS.map((key) => ({ key, label: KIND_NAMES[key] })),
+      options: kinds().map((key) => ({ key, label: KIND_NAMES[key] })),
     },
   ];
   return (

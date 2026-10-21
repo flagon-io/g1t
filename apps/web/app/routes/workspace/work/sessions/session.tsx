@@ -1,4 +1,4 @@
-import { ArrowLeft, Bot, ChevronRight, ExternalLink, GitBranch, Pencil, Sparkles, Square } from "lucide-react";
+import { ArrowLeft, Bot, ChevronRight, ExternalLink, GitBranch, GitCommitHorizontal, Pencil, Sparkles, Square } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Form, Link } from "react-router";
 
@@ -433,13 +433,18 @@ export default function WorkSessionPage({ loaderData, actionData }: Route.Compon
 
   const answer = limited ? null : sessionAnswer(session, entries);
   // The transcript is folded under an answer, and open while it is the whole story, or when a citation points into it.
-  const [transcript, setTranscript] = useState(() => answer == null || (typeof location !== "undefined" && location.hash.startsWith("#entry-")));
+  const [transcript, setTranscript] = useState(answer == null);
   // A citation into the transcript: unfold it, then, once it is drawn, go to the entry and let the address say so.
   const [cited, setCited] = useState<number | null>(null);
   const cite = (seq: number) => {
     setTranscript(true);
     setCited(seq);
   };
+  // A link straight to an entry (`#entry-12`) unfolds the transcript once the page has hydrated, so the server's page and the browser's agree.
+  useEffect(() => {
+    const seq = Number(/^#entry-(\d+)$/.exec(location.hash)?.[1]);
+    if (Number.isFinite(seq) && seq > 0) cite(seq);
+  }, []);
   useEffect(() => {
     if (cited == null) return;
     const anchor = entryAnchor(cited);
@@ -464,7 +469,8 @@ export default function WorkSessionPage({ loaderData, actionData }: Route.Compon
   const files = filesTouched(touched);
   const commits = delivered.find((item) => item.kind === "commits")?.shas.length ?? 0;
   const pulls = links.filter((link) => link.kind === "pull").length;
-  const where: TouchKind[] = ["file", "branch", "item"];
+  // Every commit is listed here, each linked: the Deliverables card links the first.
+  const where: TouchKind[] = ["file", "branch", "commit", "item"];
   const groups = touchedByKind(touched);
 
   return (
@@ -534,12 +540,24 @@ export default function WorkSessionPage({ loaderData, actionData }: Route.Compon
           {repo}
         </Link>
         <span className="text-faint">·</span>
-        <TimeAgo at={session.startedAt} />
-        {session.state === "ended" && session.endReason && <span className="text-faint">· {endReasonText(session.endReason)}</span>}
+        <span>
+          started <TimeAgo at={session.startedAt} />
+        </span>
+        {/* Whether it is still alive: when it was last heard from, or when and why it ended. */}
+        <span>
+          · {live ? "last heard from" : "ended"} <TimeAgo at={session.endedAt ?? session.lastSeenAt} />
+          {session.endReason && ` (${endReasonText(session.endReason)})`}
+        </span>
         {session.branch && (
           <Link to={`${base}/tree/${session.branch}`} className="inline-flex items-center gap-1 font-mono text-xs hover:text-fg">
             <GitBranch size={12} />
             {session.branch}
+          </Link>
+        )}
+        {session.headCommit && (
+          <Link to={`${base}/commit/${session.headCommit}`} className="inline-flex items-center gap-1 font-mono text-xs hover:text-fg">
+            <GitCommitHorizontal size={12} />
+            {session.headCommit.slice(0, 7)}
           </Link>
         )}
         <HarnessBadge harness={session.harness} />
@@ -604,11 +622,24 @@ export default function WorkSessionPage({ loaderData, actionData }: Route.Compon
           </StatTile>
           <StatTile
             label="Model cost"
-            value={session.costUsd != null && Number.isFinite(session.costUsd) ? `$${session.costUsd.toFixed(2)}` : "—"}
+            value={
+              session.costUsd != null && Number.isFinite(session.costUsd)
+                ? session.costUsd > 0 && session.costUsd < 0.01
+                  ? "< $0.01"
+                  : `≈ $${session.costUsd.toFixed(2)}`
+                : session.costPartial
+                  ? "Unknown"
+                  : "—"
+            }
             detail={
               cost ? (
-                <Hint label="Estimated from the tokens its transcript recorded, at the provider's list price. Its subagents count on their own sessions.">
-                  <span>{managed ? "Billed by Anthropic to the workspace" : "Billed by the provider to whoever ran it"}</span>
+                <Hint
+                  label={`${cost}. Estimated from the tokens its transcript recorded, at the provider's list price; its subagents count on their own sessions.`}
+                >
+                  <span>
+                    {managed ? "Billed by Anthropic to the workspace" : "Billed by the provider to whoever ran it"}
+                    {session.costPartial && ", some usage priced as unknown"}
+                  </span>
                 </Hint>
               ) : (
                 "Its harness reported no usage"

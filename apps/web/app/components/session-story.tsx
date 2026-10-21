@@ -8,9 +8,10 @@ import { ChevronRight, GitCommitHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
-import type { Pull, State } from "@g1t/contracts";
+import type { LinkVia, Pull, State } from "@g1t/contracts";
 
 import { cn } from "../lib/cn";
+import { viaLabel } from "../lib/coordination";
 import type { MarkdownRepo } from "../lib/markdown-plugins";
 import { itemPath } from "../lib/refs";
 import type { ActivityBar, Deliverable, Highlight } from "../lib/session-story";
@@ -105,8 +106,10 @@ export function ActivityBars({ bars }: { bars: ActivityBar[] }) {
         >
           {/* The hit target is the whole column, taller than the bar. */}
           <span className="flex h-full min-w-0 flex-1 items-end">
+            {/* A live session's run grows with the clock, so the server's bars and the browser's may differ by a slice. */}
             <span
-              className={cn("w-full rounded-t-[4px] transition-opacity", bar.entries > 0 ? "bg-accent hover:opacity-80" : "bg-line")}
+              suppressHydrationWarning
+              className={cn("w-full rounded-t-sm transition-opacity", bar.entries > 0 ? "bg-accent hover:opacity-80" : "bg-line")}
               style={{ height: bar.entries > 0 ? `${Math.max(10, (bar.entries / most) * 100)}%` : "2px" }}
             />
           </span>
@@ -206,10 +209,12 @@ export function Deliverables({ items, base, workspace }: { items: Deliverable[];
                   {item.kind === "pull" ? (
                     <>
                       <PullIcon status={pullStatus(item.state)} size={12} /> Pull request · {item.state}
+                      <TiedBy via={item.via} />
                     </>
                   ) : item.kind === "item" ? (
                     <>
                       <ItemIcon item={{ state: (item.state === "closed" ? "closed" : "open") as State, reason: null }} size={12} /> Work item · {item.state}
+                      <TiedBy via={item.via} />
                     </>
                   ) : (
                     <>
@@ -224,6 +229,12 @@ export function Deliverables({ items, base, workspace }: { items: Deliverable[];
       })}
     </ul>
   );
+}
+
+/** How it was tied to the session, faint after its kind: opened by it, claimed, by a commit. */
+function TiedBy({ via }: { via: LinkVia[] }) {
+  if (via.length === 0) return null;
+  return <span className="truncate text-faint">· {via.map(viaLabel).join(", ")}</span>;
 }
 
 function DeliverablePreview({ item }: { item: Deliverable }) {

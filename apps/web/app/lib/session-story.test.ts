@@ -88,12 +88,12 @@ test("deliverables are its pull requests, its work items, then its commits as on
     { sessionId: "s", kind: "commit", value: "def5678", at: "" },
   ];
   const links = [
-    { kind: "item" as const, number: 304, title: "Sessions", state: "open", via: [], sessionIds: [] },
-    { kind: "pull" as const, number: 305, title: "Event model", state: "open", via: [], sessionIds: [] },
+    { kind: "item" as const, number: 304, title: "Sessions", state: "open", via: ["claim" as const], sessionIds: [] },
+    { kind: "pull" as const, number: 305, title: "Event model", state: "open", via: ["opened" as const], sessionIds: [] },
   ];
   assert.deepEqual(deliverables(links, touched), [
-    { kind: "pull", number: 305, title: "Event model", state: "open" },
-    { kind: "item", number: 304, title: "Sessions", state: "open" },
+    { kind: "pull", number: 305, title: "Event model", state: "open", via: ["opened"] },
+    { kind: "item", number: 304, title: "Sessions", state: "open", via: ["claim"] },
     { kind: "commits", shas: ["abc1234", "def5678"] },
   ]);
   assert.deepEqual(filesTouched(touched), ["a.ts"]);
