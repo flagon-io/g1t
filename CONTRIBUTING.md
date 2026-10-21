@@ -176,10 +176,10 @@ another tag's entries; a key is written once; and a repository holds
 100 GiB (10 GiB in a workspace on the Free plan), past which the entries
 restored longest ago go. So:
 
-- **`main` saves; pull requests and tags restore.** CI's Rust and desktop
-  jobs keep their caches on each push to `main`, and the Caches workflow
-  (`.g1t/workflows/caches.yml`) builds and saves what only releases use,
-  when its key is missing. Release workflows only restore.
+- **`main` saves; pull requests and tags restore.** CI's Rust, TypeScript
+  and desktop jobs keep their caches on each push to `main`, and the
+  Caches workflow (`.g1t/workflows/caches.yml`) builds and saves what only
+  releases use, when its key is missing. Release workflows only restore.
 - **Rust caches are keyed by the toolchain and the dependencies**, from
   `node scripts/deploy/ci-cache.mjs keys`: `rustc -V`, and a hash of the
   packages `Cargo.lock` takes from crates.io and git. A release bumping a
@@ -201,6 +201,14 @@ restored longest ago go. So:
   `SCCACHE_GHA_RW_MODE=READ_ONLY` when `GITHUB_REF_TYPE` is `tag`): a
   release's run finds what `main`'s runs compiled, and saves nothing only
   its own tag could read.
+- **Only tsc's build info is kept between type checks, never generated
+  types.** tsc (`"incremental"` in `tsconfig.base.json`) hashes every file
+  a check reads against its `.tsbuildinfo` and checks again what changed
+  and what imports it, so an entry from any commit gives the errors a check
+  from nothing would. `worker-configuration.d.ts` and `.react-router` are
+  written again by each workspace's `typecheck` script, every run. The site
+  and sudo check with `tsc -p` on each config, not `tsc -b`, which skips a
+  project when none of its own files is newer than its build info.
 - **Images a build runs in are pinned by digest.** The CLI's release
   builds in `cargo-zigbuild` (`BUILDER` in `scripts/cli-release.mjs`), and
   its cache is keyed by that digest (`zigbuild` from `ci-cache.mjs keys`)
@@ -217,6 +225,7 @@ restored longest ago go. So:
 | npm's downloads            | `npm-full-<os>-<package-lock.json>`                                                     | Caches (`npm`)                                | every npm install           |
 | Crates and their index     | `cargo-crates-<os>-<deps>`                                                              | CI Rust (`cargo fetch` of the whole lockfile) | Deploy, the runner release  |
 | The test builds            | `cargo-test-<os>-<rust>-<part>-<deps>`, one for each of CI Rust's three parts           | CI Rust, when it tests a whole part           | CI Rust on pull requests    |
+| tsc's build info           | `tsc-<os>-<package-lock.json>-<commit>` (every `*.tsbuildinfo`)                         | CI TypeScript on `main`                       | CI TypeScript               |
 | Workers' builds            | `cargo-workers-<os>-<rust>-<group>-<deps>`                                              | Deploy                                        | Deploy                      |
 | The runner's image build   | `runner-musl-<os>-<rust>-<deps>`                                                        | Deploy                                        | Deploy                      |
 | worker-build and its tools | `worker-build-…`, `worker-build-tools-…`                                                | Deploy                                        | Deploy                      |

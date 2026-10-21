@@ -6,7 +6,7 @@
     "build": "react-router build && node scripts/load-check.mjs && node scripts/deploy-check.mjs",
     "test": "node --test app/**/*.test.ts",
     "dev": "react-router dev",
-    "typecheck": "wrangler types --include-env=false && react-router typegen && tsc -b --force",
+    "typecheck": "wrangler types --include-env=false && react-router typegen && tsc -p tsconfig.node.json && tsc -p tsconfig.cloudflare.json",
     "deploy": "npm run build && node ../../scripts/deploy/web-assets.mjs --deploy",
     "preview": "npm run build && vite preview",
     "cf-typegen": "wrangler types --include-env=false",

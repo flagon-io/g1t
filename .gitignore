@@ -8,6 +8,8 @@ target/
 worker-configuration.d.ts
 .wrangler/
 .dev.vars*
+# tsc's incremental type check (tsconfig.base.json)
+*.tsbuildinfo
 
 .env*
 

@@ -1,4 +1,5 @@
 {
+  // `tsc -p` on each of these, not `tsc -b`: apps/web/tsconfig.json says why.
   "files": [],
   "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.cloudflare.json" }],
   "compilerOptions": {

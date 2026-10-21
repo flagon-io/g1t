@@ -1,4 +1,8 @@
 {
+  // The type check runs `tsc -p` on each of these, not `tsc -b`: build mode
+  // skips a project none of whose own files is newer than its .tsbuildinfo,
+  // and so missed changes in the shared contracts; `tsc -p` compares the
+  // contents of every file it reads.
   "files": [],
   "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.cloudflare.json" }],
   "compilerOptions": {
