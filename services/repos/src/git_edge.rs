@@ -3,12 +3,14 @@
 //! Artifacts, the git store, answers a clone with packs it barely
 //! deltifies: flagon-io/g1t cloned whole from g1t.sh was 134 MB and took
 //! 38 s, and from GitHub 34 MB and 3 s, for the same 42.8k objects. g1t has
-//! no say in how Artifacts packs. So for the repositories `GIT_EDGE` names,
-//! a read of the git store (`info/refs` for upload-pack, and
-//! `git-upload-pack`) is first asked of the repository's git edge: a
-//! container of the runner's (services/runner/src/gitedge.ts) that keeps a
-//! well-packed mirror of the repository and answers with git's own
-//! upload-pack (crates/runner gitedge.rs).
+//! no say in how Artifacts packs. So a read of the git store (`info/refs`
+//! for upload-pack, and `git-upload-pack`) of any repository is first asked
+//! of the repository's git edge: a container of the runner's
+//! (services/runner/src/gitedge.ts) that keeps a well-packed mirror of the
+//! repository and answers with git's own upload-pack (crates/runner
+//! gitedge.rs). It is asked only once the read is authorized, as any read
+//! of the store is: the runner is reached only through the `RUNNER`
+//! binding, and its edge answers whatever g1t sends it.
 //!
 //! The edge is only ever faster, never the source of truth: pushes go to
 //! Artifacts as before, and the edge answers only for the version of the
@@ -16,12 +18,20 @@
 //! version registry.rs keeps), so it never shows refs older than the ones
 //! g1t has recorded. Cold, behind or failing, it answers anything but 200,
 //! and the request goes to Artifacts as it always did; the edge is then
-//! told to catch up ([`Edge::sync`]), as it is after every push.
+//! told to catch up ([`Edge::sync`]), as it is after every push. A cold
+//! edge answers at once and starts in the background, so the first read of
+//! a repository nobody has read lately costs one short request more than
+//! the store alone; the reads after it in the next [`COLD_REST_MS`] go
+//! straight to the store ([`resting`]) while the edge starts.
 //!
-//! `GIT_EDGE`: `off` or unset (nothing changes), `*` (every repository), or
-//! `owner/name` entries separated by commas. It needs the `RUNNER` binding.
+//! `GIT_EDGE`: unset, empty or `on`, every repository is served by its
+//! edge. `off` turns the edge off everywhere, for an incident: every read
+//! goes to Artifacts, as before the edge. `-owner/name` entries, separated
+//! by commas (`on, -acme/rocket`), leave those repositories out. It needs
+//! the `RUNNER` binding.
 
-use std::collections::HashSet;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 
 use g1t_contracts::repos::{GitAccess, GitService};
 use worker::{Env, Fetcher, Headers, Method, Request, RequestInit, Response};
@@ -37,38 +47,83 @@ pub const MISS: &str = "git_edge.miss";
 /// would (git_http.rs passes the same to the store).
 const FORWARDED_HEADERS: [&str; 4] = ["accept", "content-encoding", "content-type", "git-protocol"];
 
-/// Which repositories the edge answers for.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Repositories {
-    All,
-    Named(HashSet<String>),
+/// Which repositories the edge answers for: every one but those
+/// `GIT_EDGE` leaves out.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Repositories {
+    left_out: HashSet<String>,
 }
 
 impl Repositories {
-    /// `GIT_EDGE`'s value: `None` when the edge is off.
+    /// `GIT_EDGE`'s value: `None` when it turns the edge off. Entries it
+    /// does not know (a name without `-`, as the allow-list of before had)
+    /// change nothing.
     pub fn parse(value: Option<&str>) -> Option<Repositories> {
-        let value = value.map(str::trim).unwrap_or_default();
-        if value.is_empty() || value.eq_ignore_ascii_case("off") {
+        let entries: Vec<&str> = value.unwrap_or_default().split(',').map(str::trim).filter(|entry| !entry.is_empty()).collect();
+        if entries.iter().any(|entry| entry.eq_ignore_ascii_case("off")) {
             return None;
         }
-        if value == "*" {
-            return Some(Repositories::All);
-        }
-        let named: HashSet<String> = value
-            .split(',')
+        let left_out = entries
+            .iter()
+            .filter_map(|entry| entry.strip_prefix('-'))
             .map(|name| name.trim().to_ascii_lowercase())
             .filter(|name| name.split_once('/').is_some_and(|(owner, repo)| !owner.is_empty() && !repo.is_empty()))
             .collect();
-        (!named.is_empty()).then_some(Repositories::Named(named))
+        Some(Repositories { left_out })
     }
 
     /// Whether the edge answers for `owner/name`.
     pub fn include(&self, owner: &str, name: &str) -> bool {
-        match self {
-            Repositories::All => true,
-            Repositories::Named(named) => named.contains(&format!("{owner}/{name}").to_ascii_lowercase()),
-        }
+        !self.left_out.contains(&format!("{owner}/{name}").to_ascii_lowercase())
     }
+}
+
+/// How long the reads of a repository whose edge was cold go straight to
+/// the store: about as long as an edge takes to start and catch up. One
+/// read finds it cold and starts it; the ones that follow do not each ask.
+pub const COLD_REST_MS: u64 = 30_000;
+/// How long they do when the runner has no edge deployed at all.
+pub const OFF_REST_MS: u64 = 10 * 60_000;
+
+/// How long the edge's reads of a repository rest after it answered
+/// `status` with `x-g1t-edge: why` (`None`: it was not reached at all),
+/// when they do. A cold, failing or unreachable edge is left alone while it
+/// starts; one that is behind is asked again at once, since it catches up
+/// in moments.
+pub fn rest_after(status: Option<u16>, why: Option<&str>) -> Option<u64> {
+    match (status, why) {
+        (Some(503), Some("off")) => Some(OFF_REST_MS),
+        (Some(status), _) if status >= 500 => Some(COLD_REST_MS),
+        (None, _) => Some(COLD_REST_MS),
+        _ => None,
+    }
+}
+
+/// The most repositories an isolate remembers resting: past it, the ones
+/// whose rest has ended are forgotten, and if that is not enough, all.
+const RESTING_HELD: usize = 4096;
+
+thread_local! {
+    /// Repositories whose edge is not asked until a time (ms), by id.
+    static RESTING: RefCell<HashMap<String, u64>> = RefCell::new(HashMap::new());
+}
+
+/// Whether reads of `repo_id` skip its edge at `now`, after it was cold.
+pub fn resting(repo_id: &str, now: u64) -> bool {
+    RESTING.with(|resting| resting.borrow().get(repo_id).is_some_and(|&until| now < until))
+}
+
+fn rest(repo_id: &str, until: u64, now: u64) {
+    RESTING.with(|resting| {
+        let mut resting = resting.borrow_mut();
+        if resting.len() >= RESTING_HELD {
+            resting.retain(|_, kept| now < *kept);
+            if resting.len() >= RESTING_HELD {
+                resting.clear();
+            }
+        }
+        resting.insert(repo_id.to_owned(), until);
+    });
 }
 
 /// Whether a request is a read the edge can answer: the ref advertisement
@@ -83,22 +138,29 @@ pub fn answers(git: &GitRequest, get: bool) -> bool {
         }
 }
 
-/// The runner's git edges, for the repositories `GIT_EDGE` names.
+/// The runner's git edges, one per repository.
 pub struct Edge {
     runner: Fetcher,
     repositories: Repositories,
 }
 
 impl Edge {
-    /// The edge, when `GIT_EDGE` turns it on and the `RUNNER` binding is there.
+    /// The edge, unless `GIT_EDGE` turns it off, when the `RUNNER` binding is there.
     pub fn from_env(env: &Env) -> Option<Edge> {
         let repositories = Repositories::parse(env.var("GIT_EDGE").ok().map(|value| value.to_string()).as_deref())?;
         let runner = env.service("RUNNER").ok()?;
         Some(Edge { runner, repositories })
     }
 
+    /// Whether the edge serves `owner/name` at all (`GIT_EDGE`).
     pub fn serves(&self, owner: &str, name: &str) -> bool {
         self.repositories.include(owner, name)
+    }
+
+    /// Whether a read of `repo_id` (`owner/name`) is asked of its edge now:
+    /// it is served, and its edge was not just found cold.
+    pub fn asks(&self, repo_id: &str, owner: &str, name: &str) -> bool {
+        self.serves(owner, name) && !resting(repo_id, g1t_kit::now_ms())
     }
 
     /// The edge's answer to a read, when it has one for refs at `version`:
@@ -122,7 +184,16 @@ impl Edge {
             let url = format!("https://runner/gitedge/{repo_id}/{}{query}", git.endpoint);
             self.runner.fetch_request(Request::new_with_init(&url, &init)?).await
         };
-        let response = match asked.await {
+        let asked = asked.await;
+        let rested = match &asked {
+            Ok(response) => rest_after(Some(response.status_code()), response.headers().get("x-g1t-edge").ok().flatten().as_deref()),
+            Err(_) => rest_after(None, None),
+        };
+        if let Some(rested) = rested {
+            let now = g1t_kit::now_ms();
+            rest(repo_id, now + rested, now);
+        }
+        let response = match asked {
             Ok(response) if response.status_code() == 200 => response,
             Ok(_) => return None,
             Err(error) => {
@@ -159,14 +230,18 @@ impl Edge {
     /// fetching from the store with `access` (a credential that may read
     /// it), and to name `head` (the default branch) as its HEAD. It answers
     /// at once and catches up on its own; a failure only leaves the edge
-    /// behind, and reads go to the store until it catches up.
-    pub async fn sync(&self, repo_id: &str, version: u64, access: &GitAccess, head: &str) {
+    /// behind, and reads go to the store until it catches up. After a push
+    /// (`pushed`), an edge that is asleep is started only when its
+    /// repository was read lately (gitedge.ts): a push to a repository
+    /// nobody clones starts no container.
+    pub async fn sync(&self, repo_id: &str, version: u64, access: &GitAccess, head: &str, pushed: bool) {
         let asked = async {
             let body = serde_json::json!({
                 "remote": access.remote,
                 "token": access.token,
                 "version": version,
                 "head": format!("refs/heads/{head}"),
+                "push": pushed,
             });
             let headers = Headers::new();
             headers.set("content-type", "application/json")?;
@@ -271,20 +346,59 @@ mod tests {
     }
 
     #[test]
-    fn git_edge_names_the_repositories_it_answers_for() {
-        assert_eq!(Repositories::parse(None), None);
-        assert_eq!(Repositories::parse(Some("")), None);
-        assert_eq!(Repositories::parse(Some(" off ")), None);
-        assert_eq!(Repositories::parse(Some("OFF")), None);
-        assert_eq!(Repositories::parse(Some("*")), Some(Repositories::All));
-        // Names without an owner are not names.
-        assert_eq!(Repositories::parse(Some("rocket, /x, acme/")), None);
-        let named = Repositories::parse(Some("flagon-io/g1t, Acme/Rocket")).unwrap();
-        assert!(named.include("flagon-io", "g1t"));
-        assert!(named.include("acme", "rocket"));
-        assert!(named.include("ACME", "Rocket"));
-        assert!(!named.include("acme", "launchpad"));
-        assert!(Repositories::All.include("anyone", "anything"));
+    fn git_edge_serves_every_repository_unless_it_is_off_or_left_out() {
+        // Nothing to configure: every repository.
+        for value in [None, Some(""), Some(" "), Some("on"), Some("*")] {
+            let every = Repositories::parse(value).unwrap();
+            assert!(every.include("flagon-io", "g1t"), "{value:?}");
+            assert!(every.include("anyone", "anything"), "{value:?}");
+        }
+        // The allow-list of before is no longer one: it changes nothing.
+        assert!(Repositories::parse(Some("flagon-io/g1t")).unwrap().include("acme", "rocket"));
+        // The incident switch.
+        assert_eq!(Repositories::parse(Some("off")), None);
+        assert_eq!(Repositories::parse(Some(" OFF ")), None);
+        assert_eq!(Repositories::parse(Some("-acme/rocket, off")), None);
+        // Some left out.
+        let some = Repositories::parse(Some("on, -Acme/Rocket, - flagon-io/huge")).unwrap();
+        assert!(!some.include("acme", "rocket"));
+        assert!(!some.include("ACME", "rocket"));
+        assert!(!some.include("flagon-io", "huge"));
+        assert!(some.include("acme", "launchpad"));
+        assert!(some.include("flagon-io", "g1t"));
+        // Names without an owner or a name leave nothing out.
+        assert_eq!(Repositories::parse(Some("-rocket, -/x, -acme/")), Some(Repositories::default()));
+    }
+
+    #[test]
+    fn a_cold_edge_is_left_alone_while_it_starts() {
+        // Answered, or behind (it catches up in moments): asked again at once.
+        assert_eq!(rest_after(Some(200), None), None);
+        assert_eq!(rest_after(Some(409), Some("behind")), None);
+        assert_eq!(rest_after(Some(404), None), None);
+        // Cold, failing, unreachable: the store answers while it starts.
+        assert_eq!(rest_after(Some(503), Some("cold")), Some(COLD_REST_MS));
+        assert_eq!(rest_after(Some(502), Some("error")), Some(COLD_REST_MS));
+        assert_eq!(rest_after(Some(503), None), Some(COLD_REST_MS));
+        assert_eq!(rest_after(None, None), Some(COLD_REST_MS));
+        // No edge deployed in the runner: asked again much later.
+        assert_eq!(rest_after(Some(503), Some("off")), Some(OFF_REST_MS));
+
+        let now = 1_000_000;
+        assert!(!resting("rep_cold", now));
+        rest("rep_cold", now + COLD_REST_MS, now);
+        assert!(resting("rep_cold", now));
+        assert!(resting("rep_cold", now + COLD_REST_MS - 1));
+        assert!(!resting("rep_cold", now + COLD_REST_MS));
+        assert!(!resting("rep_other", now));
+        // Never more than it may hold: ended rests are forgotten first.
+        for n in 0..RESTING_HELD {
+            rest(&format!("rep_{n}"), now + 1, now);
+        }
+        rest("rep_last", now + 10 + COLD_REST_MS, now + 10);
+        assert!(resting("rep_last", now + 10));
+        assert!(!resting("rep_0", now + 10));
+        RESTING.with(|resting| assert!(resting.borrow().len() <= RESTING_HELD));
     }
 
     #[test]

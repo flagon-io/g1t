@@ -98,8 +98,9 @@ which has Node, Python, Go, Rust, Java, .NET, Ruby and Docker, with the
 ### The git edge
 
 `runner` has one more Container class, `GitEdge`, which is not a machine
-and no job can ask for it. Each repository being cloned gets one, named by
-its id, on `standard-2` (1 vCPU, 6 GiB memory, 12 GB disk): the same image,
+and no job can ask for it. Every repository has one, named by its id and
+started when the repository is read, on `standard-2` (1 vCPU, 6 GiB
+memory, 12 GB disk): the same image,
 with the `g1t-runner` binary started as an HTTP server (`MODE=gitedge`)
 that keeps a mirror of the repository, fetched from Artifacts and repacked
 with real git, and answers clones and fetches from it. `repos` asks it
@@ -114,6 +115,21 @@ container that starts again restores it before its first sync, which then
 fetches only what is new; the bucket's 7-day rule deletes the snapshot of
 a repository nobody has cloned since. Its requests go straight out, not
 through the outbound handler below.
+
+A cold edge never makes a read wait: it answers at once that it is cold
+and starts in the background, Artifacts answers the read, and that
+isolate of `repos` sends the repository's reads straight to Artifacts for
+the next 30 seconds while the edge starts. A push catches a running edge
+up; one asleep is woken by a push only if its repository was read in the
+last day, so a repository nobody clones starts no container. At most 50
+edges run at once (`max_instances`); past that, an edge that cannot start
+waits two minutes before it tries again, and its repository is read from
+Artifacts meanwhile. `repos`' `GIT_EDGE` variable is `on`; `off` turns the
+edge off everywhere, for an incident, and `-owner/name` entries leave
+those repositories out (`on, -acme/rocket`). The edge is asked only once
+`repos` has authorized the read, as for any read of Artifacts, and the
+runner Worker that reaches it has no route of its own: only bound
+services call it.
 
 ### Egress
 
