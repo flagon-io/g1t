@@ -99,14 +99,49 @@ export type EdgeBox = {
   background(work: Promise<unknown>): void;
   /** Keeps a snapshot of the mirror once the sync to `version` has ended. */
   keep?: (repoId: string, version: number) => Promise<void>;
+  /** Notes that the repository was read now (`readLately`). */
+  noteRead?: () => void;
+  /** When the repository was last read, as `noteRead` noted it, if ever. */
+  readAt?: () => Promise<number | null>;
+  now?: () => number;
   log?: (...data: unknown[]) => void;
 };
+
+/**
+ * How long after a repository was last read a push still wakes its edge
+ * when it is asleep: a repository read lately is likely read again after a
+ * push (a CI run's clones), and one nobody reads starts no container for
+ * each push. Every repository is served by its edge, so most edges are of
+ * repositories pushed to far more often than they are cloned.
+ */
+export const WAKE_AFTER_READ_MS = 24 * 60 * 60 * 1000;
+
+/** How often, at most, a read is noted in the object's storage, and under which key. */
+export const NOTE_READ_EVERY_MS = 10 * 60 * 1000;
+export const READ_AT = "gitedge:readAt";
+
+/**
+ * How long an edge that could not start (every one of the class's
+ * `max_instances` running, say) waits before it tries again: the store
+ * answers its reads meanwhile, and a start that fails has already spent a
+ * minute trying.
+ */
+export const START_REST_MS = 2 * 60 * 1000;
+
+/** Whether a push wakes an edge asleep whose repository was last read at `readAt`. */
+export function readLately(readAt: number | null, now: number): boolean {
+  return readAt !== null && now - readAt < WAKE_AFTER_READ_MS;
+}
 
 /**
  * A `GitEdge` object's answer to a request routed to it (`routeToEdge`):
  *
  * - `sync` starts the container if it is not running, waits for it, and
  *   passes the request to its `/sync`, answering what it answers (202).
+ *   A sync after a push (`"push": true`) of an edge that is not running
+ *   starts it only when the repository was read in the last
+ *   `WAKE_AFTER_READ_MS`; otherwise it is a `204` with `x-g1t-edge: asleep`,
+ *   and the next read finds it cold.
  * - `info/refs` and `git-upload-pack` never wait for a container to start:
  *   a cold one is started in the background and the answer is a `503`
  *   with `x-g1t-edge: cold` at once, so the repos service answers from
@@ -123,14 +158,20 @@ export async function answerEdge(request: Request, box: EdgeBox): Promise<Respon
   const log = box.log ?? console.log;
   switch (route.endpoint) {
     case "sync": {
+      // A few hundred bytes: read, for the version it syncs to, and sent on.
+      const body = await request.text();
+      if (afterPush(body) && box.readAt && !(await box.ready())) {
+        const now = (box.now ?? Date.now)();
+        if (!readLately(await box.readAt(), now)) {
+          return new Response(null, { status: 204, headers: { "x-g1t-edge": "asleep" } });
+        }
+      }
       try {
         await box.start(route.repoId);
       } catch (error) {
         log("git edge not started for a sync", route.repoId, String(error));
         return edgeMiss(503, "cold", "The git edge could not start.\n");
       }
-      // A few hundred bytes: read, for the version it syncs to, and sent on.
-      const body = await request.text();
       const answer = await send(box, new Request(request, { body }), "/sync", "", route, log);
       const version = syncVersion(body);
       if (answer.status === 202 && version !== null && box.keep) {
@@ -144,6 +185,7 @@ export async function answerEdge(request: Request, box: EdgeBox): Promise<Respon
     }
     case "info/refs":
     case "git-upload-pack": {
+      box.noteRead?.();
       if (!(await box.ready())) {
         // Started for the next clone, which this one makes no slower.
         box.background(box.start(route.repoId).catch((error: unknown) => log("git edge not started", route.repoId, String(error))));
@@ -184,6 +226,15 @@ export function syncVersion(body: string): number | null {
     return typeof version === "number" && Number.isSafeInteger(version) && version >= 0 ? version : null;
   } catch {
     return null;
+  }
+}
+
+/** Whether a sync's body says it follows a push. */
+export function afterPush(body: string): boolean {
+  try {
+    return (JSON.parse(body) as { push?: unknown }).push === true;
+  } catch {
+    return false;
   }
 }
 

@@ -249,8 +249,8 @@ pub(crate) struct Repos<S: GitStore> {
     shared: Option<Rc<shared::Shared>>,
     /// Packs for fresh clones (pack_cache.rs); `None` without the bucket.
     packs: Option<Rc<pack_cache::Packs>>,
-    /// The git edge, for the repositories `GIT_EDGE` names (git_edge.rs);
-    /// `None` while it is off.
+    /// The git edge, for every repository `GIT_EDGE` does not leave out
+    /// (git_edge.rs); `None` while it is off.
     edge: Option<Rc<git_edge::Edge>>,
     /// What this request started that need not hold up its answer
     /// (store.rs), handed to its `waitUntil` once it has answered.
@@ -2212,11 +2212,12 @@ impl<S: GitStore> Repos<S> {
         }
         // A read the repository's git edge may answer (git_edge.rs): asked
         // first, for the refs as g1t records them, so it never answers with
-        // older ones. Anything but its answer goes to the store, as before.
+        // older ones. Anything but its answer goes to the store, as before;
+        // so does every read while an edge just found cold starts.
         let edge_version = self
             .edge
             .as_ref()
-            .filter(|edge| !write && !fallback && git_edge::answers(git, get) && edge.serves(&repo.namespace, &repo.name))
+            .filter(|edge| !write && !fallback && git_edge::answers(git, get) && edge.asks(&repo.id, &repo.namespace, &repo.name))
             .and(refs_cache::usable(registry::refs_state(&repo.id), now_ms()));
         let edge_answer = match (self.edge.as_ref(), edge_version) {
             (Some(edge), Some(version)) => {
@@ -2325,7 +2326,7 @@ impl<S: GitStore> Repos<S> {
         // it catches up now, for the next read.
         if let (Some(edge), Some(version), Some(access), false) = (self.edge.clone(), edge_version, store_access.clone(), edge_answered) {
             let (repo_id, head) = (repo.id.clone(), repo.default_branch.clone());
-            ctx.wait_until(async move { edge.sync(&repo_id, version, &access, &head).await });
+            ctx.wait_until(async move { edge.sync(&repo_id, version, &access, &head, false).await });
         }
         let forwarded =
             match outcome {
@@ -2377,13 +2378,14 @@ impl<S: GitStore> Repos<S> {
             self.refs_moved(&repo.id).await;
             timing.mark("refs");
             // The repository's git edge catches up with the push, so the
-            // clones that follow it (a CI run's) find it ready.
+            // clones that follow it (a CI run's) find it ready. One asleep is
+            // woken only if its repository was read lately (gitedge.ts).
             if let (200, Some(edge), Some(access), Some(refs)) =
                 (status, self.edge.clone(), store_access.clone(), registry::refs_state(&repo.id))
                 && edge.serves(&repo.namespace, &repo.name)
             {
                 let (repo_id, head) = (repo.id.clone(), repo.default_branch.clone());
-                ctx.wait_until(async move { edge.sync(&repo_id, refs.version, &access, &head).await });
+                ctx.wait_until(async move { edge.sync(&repo_id, refs.version, &access, &head, true).await });
             }
             if status == 200 {
                 push_feedback::add(&mut report, self.security.as_ref(), &repo, &viewer).await;
