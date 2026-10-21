@@ -24,6 +24,11 @@
 //!   failed): those are no longer the old version's, so the mirror is then
 //!   at none until a sync succeeds.
 //! - `GET /state`: `{"version": 17 | null, "syncing": bool}`.
+//! - `GET /snapshot`: the packed mirror as a tar, with its version in
+//!   `x-g1t-edge-version`; `PUT /snapshot` unpacks one into an edge that
+//!   has no mirror yet. A container loses its disk when it sleeps; the
+//!   Durable Object keeps the snapshot in R2 and restores it on the next
+//!   start, so a cold edge fetches only what is new instead of everything.
 //! - `GET /git/info/refs?service=git-upload-pack` and
 //!   `POST /git/git-upload-pack`, with the version the caller expects in
 //!   `x-g1t-edge-version`: `409` with `x-g1t-edge: behind` unless the
@@ -110,6 +115,9 @@ struct Edge {
     root: PathBuf,
     state: Mutex<State>,
     wake: Condvar,
+    /// Held while the mirror's files change or are read whole: a sync, a
+    /// snapshot being made, one being restored. Never two at once.
+    disk: Mutex<()>,
 }
 
 impl Edge {
@@ -305,8 +313,10 @@ fn work(edge: Arc<Edge>) {
             }
         };
         crate::abuse::touch();
+        let disk = edge.disk.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let started = Instant::now();
         let result = sync(&edge, &job, || edge.state().changing = true);
+        drop(disk);
         let elapsed = started.elapsed().as_millis();
         let (packs, bytes) = packs_of(&edge.mirror());
         let mut state = edge.state();
@@ -381,6 +391,11 @@ fn handle(edge: &Edge, request: Request) {
             return;
         }
         (Method::Post, "/sync") => ("sync", ask_sync(edge, request), 0),
+        (Method::Get, "/snapshot") => {
+            let (status, bytes) = snapshot(edge, request);
+            ("snapshot", status, bytes)
+        }
+        (Method::Put, "/snapshot") => ("restore", restore(edge, request), 0),
         (Method::Get, "/git/info/refs") if is_upload_pack(query) => {
             let (status, bytes) = serve_git(edge, request, "info/refs", query);
             ("info/refs", status, bytes)
@@ -431,6 +446,123 @@ fn ask_sync(edge: &Edge, mut request: Request) -> u16 {
     edge.wake.notify_one();
     respond(request, Response::empty(202));
     202
+}
+
+/// Snapshots made at once, each named apart (`snapshot-<n>.tar`).
+static SNAPSHOTS: AtomicU64 = AtomicU64::new(0);
+
+/// `GET /snapshot`: the mirror as a tar of its directory, for the Durable
+/// Object to keep in R2 (services/runner gitedge.ts) and restore when a
+/// container starts cold, with the version the mirror is at in
+/// `x-g1t-edge-version`. Only of a mirror a sync has packed and left at a
+/// version (`409` otherwise). The tar is made into a file while the disk
+/// is held, so no sync changes the mirror half way through it, then sent
+/// with its length, as R2 wants it.
+fn snapshot(edge: &Edge, request: Request) -> (u16, u64) {
+    let name = format!("snapshot-{}.tar", SNAPSHOTS.fetch_add(1, Ordering::Relaxed));
+    let file = edge.root.join(&name);
+    let made = {
+        let _disk = edge.disk.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let version = {
+            let state = edge.state();
+            if state.changing { None } else { state.version }
+        };
+        match version.filter(|_| edge.mirror().join(PACKED_MARKER).exists()) {
+            None => None,
+            Some(version) => Some((
+                version,
+                Command::new("tar").current_dir(&edge.root).args(["-cf", &name, MIRROR]).stdin(Stdio::null()).output(),
+            )),
+        }
+    };
+    let version = match made {
+        None => {
+            respond(request, Response::empty(409));
+            return (409, 0);
+        }
+        Some((version, Ok(output))) if output.status.success() => version,
+        Some((_, made)) => {
+            let said = made.map_or_else(|error| error.to_string(), |output| String::from_utf8_lossy(&output.stderr).trim().to_owned());
+            eprintln!("g1t-runner: gitedge: could not make a snapshot: {said}");
+            let _ = std::fs::remove_file(&file);
+            respond(request, Response::empty(500));
+            return (500, 0);
+        }
+    };
+    let opened = std::fs::File::open(&file).and_then(|opened| opened.metadata().map(|meta| (opened, meta.len())));
+    let (status, bytes) = match opened {
+        Ok((opened, bytes)) => {
+            let at = Header::from_bytes(VERSION_HEADER.as_bytes(), version.to_string().as_bytes()).expect("a valid header");
+            // With its length, never chunked (tiny_http chunks what is
+            // larger than 32 KB unless told), as R2 needs the length.
+            respond(request, Response::from_file(opened).with_header(at).with_chunked_threshold(usize::MAX));
+            (200, bytes)
+        }
+        Err(error) => {
+            eprintln!("g1t-runner: gitedge: could not read the snapshot: {error}");
+            respond(request, Response::empty(500));
+            (500, 0)
+        }
+    };
+    let _ = std::fs::remove_file(&file);
+    (status, bytes)
+}
+
+/// `PUT /snapshot`, with the version it was made at in
+/// `x-g1t-edge-version`: a snapshot of this repository's mirror (`GET
+/// /snapshot`) unpacked as the mirror of an edge that has none, which is
+/// then at that version, so the sync asked for next fetches only what is
+/// newer instead of the whole repository. Only ever into an empty edge
+/// that no sync has been asked of (`409` otherwise); a snapshot that does
+/// not unpack into a packed bare repository is refused (`422`) and leaves
+/// nothing behind.
+fn restore(edge: &Edge, mut request: Request) -> u16 {
+    let Some(version) = header(&request, VERSION_HEADER).and_then(|value| value.trim().parse::<u64>().ok()) else {
+        respond(request, Response::from_string("x-g1t-edge-version says the snapshot's version").with_status_code(400));
+        return 400;
+    };
+    let _disk = edge.disk.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mirror = edge.mirror();
+    {
+        let state = edge.state();
+        if state.syncing || state.version.is_some() || mirror.join("HEAD").exists() {
+            respond(request, Response::empty(409));
+            return 409;
+        }
+    }
+    let unpacked = std::fs::create_dir_all(&edge.root).map_err(anyhow::Error::from).and_then(|()| {
+        let mut tar = Command::new("tar")
+            .current_dir(&edge.root)
+            .args(["-xf", "-"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .context("could not run tar")?;
+        let mut stdin = tar.stdin.take().expect("piped");
+        let copied = io::copy(request.as_reader(), &mut stdin);
+        drop(stdin);
+        let output = tar.wait_with_output()?;
+        copied.context("could not read the snapshot")?;
+        if !output.status.success() {
+            bail!("tar failed: {}", String::from_utf8_lossy(&output.stderr).trim());
+        }
+        if !mirror.join(PACKED_MARKER).exists() || git_with(&mirror, &["rev-parse", "--is-bare-repository"], &[])? != "true" {
+            bail!("it is not a packed mirror");
+        }
+        Ok(())
+    });
+    if let Err(error) = unpacked {
+        eprintln!("g1t-runner: gitedge: the snapshot at version {version} was not restored: {error:#}");
+        let _ = std::fs::remove_dir_all(&mirror);
+        respond(request, Response::empty(422));
+        return 422;
+    }
+    let (packs, bytes) = packs_of(&mirror);
+    edge.state().version = Some(version);
+    eprintln!("g1t-runner: gitedge: restored a snapshot at version {version}: {packs} packs, {}", megabytes(bytes));
+    respond(request, Response::empty(204));
+    204
 }
 
 /// The body of `git http-backend`'s answer, in the chunks its stdout is
@@ -631,7 +763,7 @@ pub fn main() -> i32 {
     };
     let listening = server.server_addr().to_ip().map_or_else(|| format!("port {port}"), |address| address.to_string());
     eprintln!("g1t-runner: gitedge: listening on {listening}, the mirror in {}", root.join(MIRROR).display());
-    let edge = Arc::new(Edge { root, state: Mutex::new(State::default()), wake: Condvar::new() });
+    let edge = Arc::new(Edge { root, state: Mutex::new(State::default()), wake: Condvar::new(), disk: Mutex::new(()) });
     let worker = edge.clone();
     std::thread::spawn(move || work(worker));
     for request in server.incoming_requests() {

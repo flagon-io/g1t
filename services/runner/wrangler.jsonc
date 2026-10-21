@@ -88,6 +88,11 @@
     // Each repository's git edge.
     { "tag": "v5", "new_sqlite_classes": ["GitEdge"] }
   ],
+  // The repos service's packs bucket: each repository's git edge keeps its
+  // mirror there (packs/edge/<repo_id>/mirror.tar, src/gitedge.ts), so a
+  // cold edge restores it rather than cloning the repository again. The
+  // bucket's 7-day rule on packs/ deletes one nobody has cloned since.
+  "r2_buckets": [{ "binding": "GIT_PACKS", "bucket_name": "g1t-git-packs" }],
   "services": [
     { "binding": "IDENTITY", "service": "g1t-identity" },
     { "binding": "REPOS", "service": "g1t-repos" },

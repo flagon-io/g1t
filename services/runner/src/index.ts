@@ -61,7 +61,7 @@ import { newlyMisdirected } from "./broker";
 import { relay, relayDeps } from "./broker-relay";
 import { forward } from "./forward";
 import { EGRESS_ENV, jobNamespaceOf } from "./egress";
-import { GIT_EDGE_ENV, GIT_EDGE_PORT, answerEdge, routeToEdge } from "./gitedge";
+import { GIT_EDGE_ENV, GIT_EDGE_PORT, type SnapshotStore, answerEdge, keepSnapshot, restoreSnapshot, routeToEdge, snapshotStore } from "./gitedge";
 
 // Outbound interception, which brokered secrets and abuse reports use,
 // needs this exported.
@@ -83,6 +83,12 @@ export interface RunnerEnv {
    * every clone is answered from Artifacts.
    */
   GIT_EDGE?: DurableObjectNamespace<GitEdge>;
+  /**
+   * The bucket the repos service keeps clone packs in: the git edge keeps
+   * each repository's mirror there too (`packs/edge/<repo_id>/`), restored
+   * when its container starts cold. Without it, a cold edge fetches all.
+   */
+  GIT_PACKS?: R2Bucket;
   IDENTITY: ServiceBinding;
   REPOS: ServiceBinding;
   WORK: ServiceBinding;
@@ -839,25 +845,42 @@ export class GitEdge extends Container<RunnerEnv> {
   private warming: Promise<void> | null = null;
 
   override async fetch(request: Request): Promise<Response> {
+    const forward = (forwarded: Request) => this.containerFetch(forwarded, GIT_EDGE_PORT);
+    const store = this.env.GIT_PACKS ? snapshotStore(this.env.GIT_PACKS) : null;
     return answerEdge(request, {
-      // Listening on its port: what the library itself waits for before
-      // it passes a request on.
-      ready: async () => this.ctx.container?.running === true && (await this.getState()).status === "healthy",
-      start: () => this.warm(),
-      forward: (forwarded) => this.containerFetch(forwarded, GIT_EDGE_PORT),
+      ready: () => this.listening(),
+      start: (repoId) => this.warm(repoId, store),
+      forward,
       background: (work) => this.ctx.waitUntil(work),
+      keep: store ? async (repoId, version) => void (await keepSnapshot(repoId, version, { store, forward })) : undefined,
     });
+  }
+
+  /** Listening on its port: what the library itself waits for before it passes a request on. */
+  private async listening(): Promise<boolean> {
+    return this.ctx.container?.running === true && (await this.getState()).status === "healthy";
   }
 
   /**
    * Starts the container and waits until its server listens, once however
-   * many ask. A first start may pull the image, so it is given a minute.
+   * many ask. A container started now (not one already running) is given
+   * the repository's kept snapshot (gitedge.ts), so its first sync fetches
+   * only what is new. A first start may pull the image, so it is given a
+   * minute.
    */
-  private warm(): Promise<void> {
-    this.warming ??= this.startAndWaitForPorts({
-      ports: GIT_EDGE_PORT,
-      cancellationOptions: { instanceGetTimeoutMS: 60_000, portReadyTimeoutMS: 60_000 },
-    }).finally(() => {
+  private warm(repoId: string, store: SnapshotStore | null): Promise<void> {
+    this.warming ??= (async () => {
+      const running = await this.listening();
+      await this.startAndWaitForPorts({
+        ports: GIT_EDGE_PORT,
+        cancellationOptions: { instanceGetTimeoutMS: 60_000, portReadyTimeoutMS: 60_000 },
+      });
+      if (!running && store) {
+        await restoreSnapshot(repoId, store, (request) => this.containerFetch(request, GIT_EDGE_PORT)).catch((error: unknown) =>
+          console.error("git edge snapshot not restored", repoId, describeError(error)),
+        );
+      }
+    })().finally(() => {
       this.warming = null;
     });
     return this.warming;

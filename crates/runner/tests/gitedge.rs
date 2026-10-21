@@ -297,3 +297,61 @@ fn a_bad_sync_request_is_refused() {
     drop(edge);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn a_snapshot_restores_an_empty_edge_to_its_version() {
+    let root = scratch("snapshot");
+    let work = root.join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    git(&work, &["init", "--quiet", "--initial-branch=main"]);
+    for n in 0..3 {
+        commit(&work, &format!("file{n}.txt"), &format!("change {n}\n").repeat(100));
+    }
+    let origin = root.join("origin.git");
+    git(&root, &["clone", "--bare", "--quiet", work.to_str().unwrap(), origin.to_str().unwrap()]);
+    git(&work, &["remote", "add", "origin", origin.to_str().unwrap()]);
+    let remote = file_url(&origin);
+
+    // Nothing to snapshot before a sync.
+    let first = Edge::start(&root.join("first"));
+    assert_eq!(first.status(ureq::get(&first.url("/snapshot"))).0, 409);
+    first.sync(&remote, 3);
+    assert_eq!(first.settled(), json!(3));
+    let response = ureq::get(&first.url("/snapshot")).call().unwrap();
+    assert_eq!(response.header("x-g1t-edge-version"), Some("3"));
+    let length: usize = response.header("content-length").unwrap().parse().unwrap();
+    let mut snapshot = Vec::new();
+    std::io::Read::read_to_end(&mut response.into_reader(), &mut snapshot).unwrap();
+    assert_eq!(snapshot.len(), length);
+
+    // A cold edge restored from it is at its version, and serves it.
+    let second = Edge::start(&root.join("second"));
+    let put = |edge: &Edge, version: &str, body: &[u8]| match ureq::put(&edge.url("/snapshot")).set("x-g1t-edge-version", version).send_bytes(body) {
+        Ok(response) => response.status(),
+        Err(ureq::Error::Status(status, _)) => status,
+        Err(error) => panic!("{error}"),
+    };
+    assert_eq!(put(&second, "3", &snapshot), 204);
+    assert_eq!(second.state()["version"], json!(3));
+    let clone = root.join("clone.git");
+    let url = second.url("/git");
+    assert_ok(&edge_git(&root, 3, &["clone", "--bare", "--quiet", &url, clone.to_str().unwrap()]), "a clone of the restored edge");
+    assert_eq!(objects(&clone), objects(&origin));
+    // Only ever into an empty edge.
+    assert_eq!(put(&second, "3", &snapshot), 409);
+
+    // A sync after the restore fetches only what is new.
+    commit(&work, "file3.txt", "more\n");
+    git(&work, &["push", "--quiet", "origin", "main"]);
+    second.sync(&remote, 4);
+    assert_eq!(second.settled(), json!(4));
+    assert_eq!(refs(&root.join("second/repo.git")), refs(&origin));
+
+    // What is not a snapshot leaves nothing behind, and no version.
+    let third = Edge::start(&root.join("third"));
+    assert_eq!(put(&third, "3", b"not a tar"), 422);
+    assert_eq!(third.state()["version"], Value::Null);
+    assert!(!root.join("third/repo.git").exists());
+    assert_eq!(put(&third, "x", &snapshot), 400);
+    assert!(!first.log().contains(TOKEN) && !second.log().contains(TOKEN));
+}
