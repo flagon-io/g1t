@@ -83,8 +83,16 @@ pub fn has_room(in_workspace: u32, in_pool: u32) -> bool {
 
 /// How long a job waits for a machine when the runner has none for it
 /// (every sandbox of its class taken, or a rollout replacing them) before it
-/// fails saying so. Tried again each minute until then.
+/// fails saying so. Tried again within seconds (MACHINE_RETRY_MS), then each
+/// minute until then.
 pub const WAIT_FOR_MACHINE_MS: u64 = 30 * 60 * 1000;
+
+/// The pauses before a job refused for want of a machine is tried again,
+/// after a request or the minute's sweep: refusals come in bursts that end
+/// within seconds, and the next sweep left such a job waiting a median
+/// 13.5 s and p90 120 s (#292). Together well under the 30 s a request's
+/// `wait_until` may run after its answer.
+pub const MACHINE_RETRY_MS: [u64; 3] = [2_000, 5_000, 10_000];
 
 /// How long a job on g1t's machines has to say anything after it starts.
 /// Its runner reports its first step within seconds (6 to 12 on Deploy
@@ -308,7 +316,7 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         ctx.wait_until(async move {
             match Actions::new(&env) {
                 Ok(service) => {
-                    if let Err(error) = service.start_queued().await {
+                    if let Err(error) = service.start_queued_retrying(&std::collections::HashSet::new()).await {
                         worker::console_error!("actions: starting queued jobs after {method} failed: {error}");
                     }
                 }
@@ -516,6 +524,13 @@ mod room_tests {
         assert!(!waited_for_a_machine(Some(&since), 1_000_000 + WAIT_FOR_MACHINE_MS - 1));
         assert!(waited_for_a_machine(Some(&since), 1_000_000 + WAIT_FOR_MACHINE_MS));
         assert!(!waited_for_a_machine(Some("not a time"), u64::MAX));
+    }
+
+    #[test]
+    fn a_job_refused_a_machine_is_tried_again_within_seconds() {
+        let waited: u64 = MACHINE_RETRY_MS.iter().sum();
+        assert!(MACHINE_RETRY_MS.windows(2).all(|pair| pair[0] < pair[1]));
+        assert!(waited < 30_000 && waited < WAIT_FOR_MACHINE_MS);
     }
 
     #[test]
