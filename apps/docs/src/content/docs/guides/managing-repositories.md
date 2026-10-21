@@ -12,14 +12,13 @@ when you do.
 ## What it is, and the facts beside the files
 
 The header at the top of every page of a repository (Code, Work, Pull
-requests, Actions, Settings and the rest) shows its project's description,
-and its website and topics as you set them under
-[Edit the details](#edit-the-details). The website is the project's
-homepage when it has one.
+requests, Actions, Settings and the rest) shows its description, and its
+website and topics as you set them under
+[Edit the details](#edit-the-details). The website is its
+[homepage](/guides/repositories/#links) when it has no other.
 
-A repository has no description of its own: its
-[project](/guides/projects/) has, and search, link previews and lists of
-repositories show that one. Change it in the project's **Settings →
+Search, link previews and lists of repositories show its description too.
+Change it under **Name and description** on the repository's **Settings →
 General**, or with
 [`update_project`](/reference/api/projects/update-project/) (or
 `description` on [`update_repo`](/reference/api/repositories/update-repo/),
@@ -113,7 +112,7 @@ stars on a private repository are seen only by people who can read it.
 | Section         | What it holds                                                                                                                                                                                                                                                                                                                                                           |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Name**        | The repository's name, the second part of its address.                                                                                                                                                                                                                                                                                                                  |
-| **Details**     | Its website and topics, shown on its page, in [search and Explore](/guides/search/). Its description is its project's, on **General**.                                                                                                                                                                                                                                  |
+| **Details**     | Its website and topics, shown on its page, in [search and Explore](/guides/search/). Its description is on **General**.                                                                                                                                                                                                                                                 |
 | **Branches**    | The default branch, renaming a branch, and a link to **Branches and merging**: [branch protection](/guides/git/#protected-branches), [required status checks](/guides/pull-requests/#required-status-checks), required approvals, and the [merge queue](/guides/merge-queue/). What a sandbox may reach is under **Guardrails**; see [guardrails](/guides/guardrails/). |
 | **Artifacts**   | How many days the files workflow runs upload are kept, 1 to 90 (14 unless changed). See [artifacts](/guides/actions/#artifacts).                                                                                                                                                                                                                                        |
 | **Features**    | Whether work items can be filed in it (a [fork](/concepts/forks/) starts with this off), and whether merges and commits land the work items they name. See [work items](#work-items).                                                                                                                                                                                   |
@@ -121,7 +120,7 @@ stars on a private repository are seen only by people who can read it.
 | **Pushes**      | How many branches and tags one push may update. See [pushes](#pushes).                                                                                                                                                                                                                                                                                                  |
 | **Archives**    | Whether downloads hold Git LFS objects. Coming soon.                                                                                                                                                                                                                                                                                                                    |
 | **Forking**     | For a private repository, whether people who can read it may [fork it](/guides/forking-repositories/#allow-forking-a-private-repository). Public repositories can always be forked.                                                                                                                                                                                     |
-| **Danger zone** | Change visibility and [detach a fork](/guides/forking-repositories/#detach-a-fork). Shown to people with the Admin role. Archiving, [transferring](/guides/transferring-repositories/) and deleting are the project's, in the danger zone of **Settings → General**.                                                                                                    |
+| **Danger zone** | Change visibility and [detach a fork](/guides/forking-repositories/#detach-a-fork). Shown to people with the Admin role. Archiving, [transferring](/guides/transferring-repositories/) and deleting are in the danger zone of **Settings → General**.                                                                                                                   |
 
 While a repository is [archived](#archive-a-repository), the settings that
 change it are turned off until it is unarchived.
@@ -238,7 +237,7 @@ and archiving it are done by a person, not a workspace token.
 
 1. Open the repository's **Settings → Repository**.
 2. Under **Details**, change **Website** or **Topics**. The description
-   is the project's: change it on **Settings → General**.
+   is on **Settings → General**.
 3. Choose **Save**.
 
 | Field   | Rules                                                                                                             |
@@ -357,9 +356,7 @@ keeps working, the same way as after a
 | `git clone`, `fetch`, `pull` and `push` | Redirected to the new remote. Git follows it and prints a warning each time.         |
 | API and MCP                             | A call that names the repository by its old name runs against it under its new name. |
 
-Its project follows: a project that had the repository's name takes the
-new one, unless another project in the workspace already has it, and its
-deployed apps are built again under the new name while the old addresses
+Its deployed apps are built again under the new name while the old addresses
 redirect.
 
 A redirect stops as soon as a repository is made at the old address.
@@ -404,7 +401,7 @@ are detached and keep the visibility they had.
 | ------------------ | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Who can see it     | Anyone: its code, its pull requests and the work items filed in it, and cloning it, without signing in. | Only people with a role on it: its workspace's owners, its members (unless the [base permission](/guides/access-and-roles/#the-base-permission) is None), and anyone given a role on it. Anyone else gets a page that says it does not exist. |
 | Search and Explore | It is added to [search](/guides/search/) and Explore for everyone.                                      | It leaves search and Explore for everyone outside the workspace.                                                                                                                                                                              |
-| Link previews      | Links to it show a preview card with its name and its project's description.                            | Links to it stop showing a preview card.                                                                                                                                                                                                      |
+| Link previews      | Links to it show a preview card with its name and its description.                                      | Links to it stop showing a preview card.                                                                                                                                                                                                      |
 | Storage            | It stops counting toward the workspace's private storage.                                               | It counts toward the workspace's private storage. A free workspace has 1 GB; making it private is refused when that would go over. See [what is free](/guides/usage-and-billing/#what-is-free).                                               |
 
 Nothing else changes: its address, members, settings, secrets, webhooks
@@ -431,7 +428,7 @@ makes the same change without the confirmation, for people with Admin.
 Archiving makes a repository read-only. Use it for work that is finished
 but should stay readable.
 
-1. Open the project's **Settings → General**.
+1. Open the repository's **Settings → General**.
 2. Under **Danger zone**, choose **Archive**.
 3. Read what changes and choose **Archive** again.
 
@@ -446,7 +443,7 @@ While it is archived:
 | Deployments                               | Keep serving.                                               |
 | Who can see it                            | Unchanged. Anyone who could see it still can, and clone it. |
 
-Its page says it is archived, and so do its project's card on the
+Its page says it is archived, and so do its card on the
 workspace overview and its card on [Explore](/guides/search/#explore),
 with an **archived** label. To undo it, someone with Admin chooses **Unarchive**
 in the same place. Pushes, merges, work items, pull requests and workflows
@@ -473,11 +470,10 @@ when it is not.
 Deleting takes a repository away at once, but an owner can restore it for
 30 days. After that it is purged: removed for good, its git data with it.
 
-1. Open the project's **Settings → General**.
-2. Under **Danger zone**, choose **Delete**. The project goes with its
-   repository.
+1. Open the repository's **Settings → General**.
+2. Under **Danger zone**, choose **Delete**.
 3. Read what happens, type the full name (`<workspace>/<repo>`) to
-   confirm, and choose **Delete project**.
+   confirm, and choose **Delete repository**.
 
 |                                            | While it is deleted                                    | When it is purged                 |
 | ------------------------------------------ | ------------------------------------------------------ | --------------------------------- |

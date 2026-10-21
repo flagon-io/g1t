@@ -20,15 +20,14 @@ This page explains both. To fork a repository, see
 ## Forks
 
 A fork is an ordinary repository of the workspace it is in. It has its own
-access, settings, rules, pull requests, workflows and project. What
+access, settings, rules, pull requests, workflows and deployments. What
 it shares with its parent is where it came from: it can be synced from the
 parent and can open pull requests into it.
 
 ### What a fork starts with
 
 Forking copies the parent's **code** (its default branch, or every branch
-and tag), and the fork's project starts with the **description** of the
-parent's project. Nothing else comes with it: no work items or
+and tag), and the fork starts with the parent's **description**. Nothing else comes with it: no work items or
 pull requests, settings, rulesets, secrets, variables, webhooks,
 environments, deployments or releases. The fork starts with its own
 defaults, and with two things off:
@@ -42,7 +41,7 @@ defaults, and with two things off:
   [work items](/work/work-items/). Turn them on in the
   fork's settings if it becomes a project of its own.
 
-Deployments stay off until the fork's own project is set up.
+Deployments stay off until they are turned on for the fork.
 
 ### Who can see a fork
 

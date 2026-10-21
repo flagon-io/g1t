@@ -112,7 +112,7 @@ heartbeat, update and recorded entry counts:
 | `ended`  | Ended by its harness, or not heard from for 30 minutes (`end_reason` `timed_out`). A heartbeat brings a timed-out session back; one its harness ended stays ended. |
 
 A session its harness left behind, killed or never told to end, can be
-ended by hand: **End session** in its menu under Live now (on the project's
+ended by hand: **End session** in its menu under Live now (on the repository's
 overview and on Sessions), or on its page. Whoever runs a session can end
 it, and so can anyone with write access to the repository; nobody else
 sees the action. It ends with `end_reason` `ended by hand by @name`, its
@@ -173,9 +173,9 @@ Sessions show where the work is, as it happens:
   it.
 - **Cooking now**, above the [Work list](/work/#cooking-now): the live
   sessions, a strip of cards.
-- **A project's overview**: **Live now**, the people and coding agents
+- **A repository's overview**: **Live now**, the people and coding agents
   working on that repository, grouped by work item, then by pull request
-  or branch. See [the overview](/guides/projects/#the-overview).
+  or branch. See [the overview](/guides/repositories/#the-overview).
 
 ## What a session records
 

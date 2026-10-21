@@ -114,7 +114,7 @@ part of the price.
   about 1,428 on `g1t-4core` (which `ubuntu-latest` gets in a public
   repository).
 - **Everyone in the workspace** at one price, never per person.
-- **Unlimited** projects, previews and repositories.
+- **Unlimited** repositories and previews.
 - Workflows, the merge queue,
   [deployments](/guides/deployments/), semantic search, and
   [Security and quality](/guides/security/pricing/) on private
@@ -124,7 +124,7 @@ part of the price.
 - Usage past $10 is charged the same way, **up to your
   [spend limit](#limits)**.
 
-The plan has no count limit on projects or previews. Public repository
+The plan has no count limit on repositories or previews. Public repository
 storage has the 5 GB cap above, and repository and request size limits
 still apply. Paid usage is metered from the
 first unit (past the free 1 GB of private storage and 50,000 git
@@ -169,7 +169,7 @@ There are no seats. The live figures are on
 | Git operations, past the free 50,000 a month                                                                             | 1,000                                                                         | $0.15                                                          | $0.18                            |
 | Search embeddings                                                                                                        | Million tokens                                                                | $0.067                                                         | $0.0804                          |
 | Security scans                                                                                                           | Million CPU ms / million rows                                                 | $0.02 / $1.00                                                  | $0.024 / $1.20                   |
-| Projects, previews, apps and repositories                                                                                |                                                                               | Next to nothing                                                | Not charged                      |
+| Repositories, previews and apps                                                                                          |                                                                               | Next to nothing                                                | Not charged                      |
 
 Build seconds follow what Cloudflare bills g1t, so that figure moves a
 little; the pricing page always has today's. Runner minutes are fixed
@@ -200,7 +200,7 @@ of the month it started, so a plan started mid-month renews mid-month.
 Then come a meter for the month's included usage, and the **Upcoming invoice**: the plan and add-ons
 at their monthly price plus usage still owed after included usage, credit
 and any discount, from g1t's own ledger (**View upcoming invoice** splits
-it). **Usage** goes to usage by product and project. App traffic, custom
+it). **Usage** goes to usage by product and repository. App traffic, custom
 domains, storage and git operations are counted through the month and
 charged when it closes.
 
@@ -286,17 +286,17 @@ pool**.
 
 ## What is charged
 
-|                                                                          | Charged                                                                                                               |
-| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| Checks and the [merge queue](/guides/merge-queue/)                       | [Runner minutes](#runner-minutes)                                                                                     |
-| [Workflow](/guides/actions/) jobs                                        | [Runner minutes](#runner-minutes), at the rate of the machine each ran on                                             |
-| [Actions cache](#actions-cache)                                          | What it holds, on the plan only                                                                                       |
-| [Deployments](/guides/deployments/)                                      | Builds, requests, CPU time, custom domains and container time, from the first. Projects and previews are not charged. |
-| [Private repository storage](#storage-search-embeddings-and-scans)       | Past the free 1 GB, on the plan only                                                                                  |
-| [Git operations](#git-operations)                                        | Past the free 50,000 a month, on the plan only                                                                        |
-| [Search embeddings](#storage-search-embeddings-and-scans)                | For private text, on the plan only                                                                                    |
-| [Security scans](#storage-search-embeddings-and-scans)                   | On the plan only                                                                                                      |
-| Repositories, work items, pull requests, review, search, the API and MCP | No                                                                                                                    |
+|                                                                          | Charged                                                                                                                   |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| Checks and the [merge queue](/guides/merge-queue/)                       | [Runner minutes](#runner-minutes)                                                                                         |
+| [Workflow](/guides/actions/) jobs                                        | [Runner minutes](#runner-minutes), at the rate of the machine each ran on                                                 |
+| [Actions cache](#actions-cache)                                          | What it holds, on the plan only                                                                                           |
+| [Deployments](/guides/deployments/)                                      | Builds, requests, CPU time, custom domains and container time, from the first. Repositories and previews are not charged. |
+| [Private repository storage](#storage-search-embeddings-and-scans)       | Past the free 1 GB, on the plan only                                                                                      |
+| [Git operations](#git-operations)                                        | Past the free 50,000 a month, on the plan only                                                                            |
+| [Search embeddings](#storage-search-embeddings-and-scans)                | For private text, on the plan only                                                                                        |
+| [Security scans](#storage-search-embeddings-and-scans)                   | On the plan only                                                                                                          |
+| Repositories, work items, pull requests, review, search, the API and MCP | No                                                                                                                        |
 
 The charge goes to the workspace that owns the repository, whoever
 started the work.
@@ -860,7 +860,7 @@ is public; custom terms change how you pay, not what things cost.
   to 100%, with a reason, sometimes until a date. Prices themselves stay
   the public ones. The statement shows every line at its price and the
   discount beside it: the totals read **Usage at price**, **Discount
-  (30%)** and **Charged**, each day or project has a **Discount** line, and
+  (30%)** and **Charged**, each day or repository has a **Discount** line, and
   the CSV has `price (USD)` and `discount (USD)` columns. The Usage page
   shows usage at price too, with the discount and what was charged.
 - **A 100% discount**: nothing is charged, and the plan is on without
@@ -933,9 +933,9 @@ current period ends, and is not renewed.
 ## The Usage page
 
 A workspace's **Usage** page, `g1t.sh/<workspace>/-/usage`, shows what it
-used, by product, project and day. Every member can see it, from **Usage**
-in the workspace's sidebar. A project's own, `g1t.sh/<workspace>/<project>/usage`,
-shows the same for that project.
+used, by product, repository and day. Every member can see it, from **Usage**
+in the workspace's sidebar. A repository's own, `g1t.sh/<workspace>/<repository>/usage`,
+shows the same for that repository.
 
 Every amount is **usage at price**: what was charged, plus what included
 usage, credit or a discount paid for it. It is the one figure Usage and
@@ -943,13 +943,13 @@ Billing both show, so they agree.
 
 The filters, in one row:
 
-| Filter   | Choices                                                                                                                                                                                  |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Period   | **Current billing cycle** (the calendar month, UTC), **Last billing cycle**, the last 7, 30 or 90 days, or a **Custom range** of up to 400 days. The days it covers are shown beside it. |
-| Products | Any of Sandboxes, Deployments, Git & storage, Packages, Security & quality and Search.                                                                                                   |
-| Projects | Any of the projects with usage in the period.                                                                                                                                            |
-| Group by | Product, project or day, for the breakdown.                                                                                                                                              |
-| **⋯**    | **Export CSV** (a row per day, product and meter) and the usage API.                                                                                                                     |
+| Filter       | Choices                                                                                                                                                                                  |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Period       | **Current billing cycle** (the calendar month, UTC), **Last billing cycle**, the last 7, 30 or 90 days, or a **Custom range** of up to 400 days. The days it covers are shown beside it. |
+| Products     | Any of Sandboxes, Deployments, Git & storage, Packages, Security & quality and Search.                                                                                                   |
+| Repositories | Any of the repositories with usage in the period.                                                                                                                                        |
+| Group by     | Product, repository or day, for the breakdown.                                                                                                                                           |
+| **⋯**        | **Export CSV** (a row per day, product and meter) and the usage API.                                                                                                                     |
 
 Then:
 
@@ -966,7 +966,7 @@ Then:
   for each machine;
   builds; git operations and private storage with what is free; and so
   on), each with a trend line, how much was used and its charge at price.
-  Open a meter for its projects.
+  Open a meter for its repositories.
 
 Storage, git operations, scans and search embeddings are metered through
 the month and charged when it closes; until then they are marked pending.
@@ -980,7 +980,7 @@ time. Every member can see it.
 
 - **Totals.** What the month charged, what was paid and credited, and how
   many entries make it up.
-- **Grouped by day or by project.** Each day (or project) has one line
+- **Grouped by day or by repository.** Each day (or repository) has one line
   per kind of charge, with how many entries it holds and what they come
   to:
 
@@ -1112,7 +1112,7 @@ month's usage in five lines, `builds`, `requests`, `domains`,
 before included usage or a pool paid for it) and a `quantity` such as
 _42 build minutes_, each at price (what was charged plus what paid for it), as Usage measures it.
 
-**`usage_report`** (`workspace`, `viewer`, `from`, `until`, optional `products` and `projects`; members only) is what the Usage page reads: totals (`priceMicros`, `discountMicros`, `includedMicros`, `creditsMicros`, `chargedMicros`, `pendingMicros`, `pendingChargedMicros`), each day's usage by product, and every product family with its meters, their daily figures and their projects.
+**`usage_report`** (`workspace`, `viewer`, `from`, `until`, optional `products` and `projects`; members only) is what the Usage page reads: totals (`priceMicros`, `discountMicros`, `includedMicros`, `creditsMicros`, `chargedMicros`, `pendingMicros`, `pendingChargedMicros`), each day's usage by product, and every product family with its meters, their daily figures and their repositories.
 
 **`reserve`** holds the work's estimated cost before it starts, so starts
 at the same moment cannot overshoot together. `kind` is `check`,

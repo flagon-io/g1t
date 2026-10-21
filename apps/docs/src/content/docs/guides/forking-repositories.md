@@ -33,8 +33,8 @@ run or an agent's run cannot fork.
 1. Open the repository and choose **Fork** in its header.
 2. Pick the **workspace** to fork it into. Only workspaces where you can
    create a repository of its kind are listed.
-3. Keep its **name**, or give the fork another. Its project starts with
-   the parent project's **description**; change it later on the fork's
+3. Keep its **name**, or give the fork another. It starts with
+   the parent's **description**; change it later on the fork's
    **Settings → General**.
 4. Leave **Copy the `<default>` branch only** on to copy just the default
    branch, or turn it off to copy every branch and tag.
@@ -67,18 +67,18 @@ action.
 
 ### What the fork gets
 
-| Copied                                           | Not copied                                             |
-| ------------------------------------------------ | ------------------------------------------------------ |
-| The default branch, or every branch and tag      | Work items, pull requests and comments                 |
-| Its project's description, to the fork's project | Settings, rulesets and branch protection               |
-|                                                  | Secrets, variables and webhooks                        |
-|                                                  | Environments, projects, deployments and custom domains |
-|                                                  | Releases, packages and stars                           |
+| Copied                                      | Not copied                                   |
+| ------------------------------------------- | -------------------------------------------- |
+| The default branch, or every branch and tag | Work items, pull requests and comments       |
+| Its description                             | Settings, rulesets and branch protection     |
+|                                             | Secrets, variables and webhooks              |
+|                                             | Environments, deployments and custom domains |
+|                                             | Releases, packages and stars                 |
 
 Filing work items is off in a new fork, and so are its workflows: a fork runs none of
 the workflows it copied until someone turns them on (see
-[Turn on workflows](#turn-on-workflows)). Deployments stay off until you set
-up the fork's own project.
+[Turn on workflows](#turn-on-workflows)). Deployments stay off until you turn
+them on for the fork.
 
 While a fork is being copied, the repository it is copied from takes no
 writes, whatever room its workspace has. A commit from the site, a merge or a
@@ -237,7 +237,7 @@ From the CLI, `g1t repo forks`; from the API,
 ## Detach a fork
 
 Detaching makes a fork an ordinary repository with no parent. Do it when the
-fork has become its own project, or to change who can see it: a fork stays
+fork has become a project of its own, or to change who can see it: a fork stays
 exactly as visible as its parent until it is detached.
 
 1. Open the fork's **Settings → Repository**.

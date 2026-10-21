@@ -5,7 +5,7 @@ description: Install the g1t command line, sign in, and work with repositories, 
 
 `g1t` is the command line for g1t. It does the work you would otherwise do on
 the site: open and review pull requests, wait on checks, read a failing run's
-logs, set secrets, read a project's logs, and call any operation of the
+logs, set secrets, read a repository's logs, and call any operation of the
 [API](/reference/api/). It is one file with nothing to install alongside it,
 and it is built to be run by agents as much as by people: every command can
 print JSON, nothing waits for input unless a person is at the terminal, and
@@ -435,7 +435,7 @@ turned on again, and a workflow the workspace requires stays on.
 ```sh
 g1t deploy list --env production
 g1t deploy view dep_01kq8m3t5v7x9z1b3d5f7h9k2m
-g1t deploy enable                       # turn on this project's g1t.page deployments
+g1t deploy enable                       # turn on this repository's g1t.page deployments
 g1t deploy settings --project acme/web --previews off --build-command "npm run build:site"
 
 g1t logs --since 1h --level error,fatal
@@ -451,7 +451,7 @@ g1t secret list --workspace acme
 ```
 
 `g1t logs` reads the [observability](/guides/observability/) data of the
-current repository's project, or of `--project WORKSPACE/SLUG`. A secret's
+current repository, or of the one `--project WORKSPACE/SLUG` names. A secret's
 value is read from stdin, so it stays out of your shell's history; at a
 terminal with nothing piped, `g1t` asks for it without echoing. Values are
 never printed. `--brokered-host` makes it a [brokered
@@ -732,7 +732,7 @@ than a set of tool definitions, and the agent finds what it needs with
 2. Give it a token. Either sign in once with `g1t auth login` as the user
    the agent runs as, or set `G1T_TOKEN` in its environment. Make a token
    with only the [scopes](/guides/authentication/#scopes) it needs.
-3. Tell it `g1t` is there. A few lines in the project's `CLAUDE.md` or
+3. Tell it `g1t` is there. A few lines in the repository's `CLAUDE.md` or
    `AGENTS.md` are enough:
 
 ```md

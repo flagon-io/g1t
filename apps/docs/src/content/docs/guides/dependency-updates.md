@@ -28,7 +28,7 @@ g1t opens for vulnerable dependencies. See
 
 2. Push it. g1t reads the file on every push to the default branch, and
    checks each entry it can update once, straight away.
-3. Open the project's **Security** page and choose **Dependency updates**.
+3. Open the repository's **Security** page and choose **Dependency updates**.
    It lists each entry, when it runs next, and what its last run found.
 
 A repository you bring to g1t keeps its existing file. You don't need to
@@ -326,8 +326,8 @@ Security updates always merge into the default branch, so an entry whose
 
 ## The Security page
 
-Open the project's **Security** page and choose the **Dependency updates**
-tab, at `g1t.sh/<owner>/<project>/security/dependency-updates`. It shows:
+Open the repository's **Security** page and choose the **Dependency updates**
+tab, at `g1t.sh/<owner>/<repository>/security/dependency-updates`. It shows:
 
 - the file g1t read, and any file it ignored;
 - each problem in the file, with its line;

@@ -22,7 +22,7 @@ Notifications hold one **thread** for each thing you were told about:
 - a [work item](/work/work-items/)
 - a pull request
 - a workflow on one branch
-- a deployment: a project's production, or one pull request's preview
+- a deployment: a repository's production, or one pull request's preview
 - a workflow run waiting for your review to deploy to an environment
 - a repository's security alerts of one kind: its secrets, its code
   scanning alerts, or its vulnerable dependencies (see [Security](#security))
@@ -112,7 +112,7 @@ any thread.
 | A review asked of you                          | The request to you, or to your team, is removed                                                            |
 | Checks that failed on your pull request        | Its checks pass on its latest commit                                                                       |
 | A workflow that failed on a branch             | That workflow passes on that branch                                                                        |
-| A deployment that failed                       | That project's production, or that preview, deploys                                                        |
+| A deployment that failed                       | That repository's production, or that preview, deploys                                                     |
 | A deployment waiting for your review           | Its workflow run ends, however it ended                                                                    |
 | A push protection bypass to review             | Someone decides it                                                                                         |
 | A member's token waiting for your approval     | An owner approves, denies or revokes it                                                                    |
@@ -214,7 +214,7 @@ its members.
 | A **work item**                              | Someone comments on it or changes it, links a repository, claims it, or a pull request for it lands. If you are at the end of the page, it follows new items down.                                               |
 | **Actions** and a **run**                    | A run starts, one of its jobs starts or finishes, or the run finishes. A running job's log streams on its own.                                                                                                   |
 | **Security**                                 | An alert is opened, fixed, dismissed or reopened.                                                                                                                                                                |
-| Your workspace's **Home**                    | Something lands, runs, deploys or comes to need you in its projects (the first 25). See [Home](/guides/home/#while-the-page-is-open).                                                                            |
+| Your workspace's **Home**                    | Something lands, runs, deploys or comes to need you in its repositories (the first 25). See [Home](/guides/home/#while-the-page-is-open).                                                                        |
 
 A page refreshes a second after the last change it shows, so a burst of
 them is one refresh. It never refreshes while you are typing in it or have

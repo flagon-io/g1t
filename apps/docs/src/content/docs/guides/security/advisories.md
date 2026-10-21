@@ -16,7 +16,7 @@ what the repository itself ships, as opposed to the
   without a work item anyone can read. Accepting a report makes a draft advisory
   from it.
 
-Both live under `g1t.sh/<owner>/<project>/security/advisories`; the Security
+Both live under `g1t.sh/<owner>/<repository>/security/advisories`; the Security
 overview's **Reporting** rows say where each stands.
 
 ## The security policy

@@ -65,7 +65,7 @@ place, so no service's code changes:
 | `services/search` | Runs: site search is SQLite full-text search |
 | `services/chat` | Runs, with its Durable Objects; custom emoji are kept with avatars |
 | `services/artifacts` | Runs: [artifacts](/guides/artifacts/) and their spaces, with their live rooms. Files people add are kept in the `g1t-docs-files` bucket. Search matches words, not meaning, because there is no embedding model. |
-| `services/telemetry` | Runs. Observability for projects: each project's logs, traces, metrics and errors in a Durable Object's SQLite storage. Software sends OpenTelemetry to the API's port, at `http://localhost:8789/otlp` ([Observability](/guides/observability/)). Deployments on `g1t.page`, the other source, are off. |
+| `services/telemetry` | Runs. Observability for repositories: each repository's logs, traces, metrics and errors in a Durable Object's SQLite storage. Software sends OpenTelemetry to the API's port, at `http://localhost:8789/otlp` ([Observability](/guides/observability/)). Deployments on `g1t.page`, the other source, are off. |
 | `services/notify` | Runs. Notifications are live in open tabs; browser push needs a VAPID key pair, which an installation does not make. Push to the phone app goes through Expo and needs nothing set; `PHONE_PUSH=off` sends phones nothing ([the phone app](/guides/self-hosting/#the-phone-app)). |
 | `services/billing` | Runs with nothing charged and no usage limit |
 | `services/integrations` | Runs |

@@ -48,7 +48,7 @@ can still file, follow and close work.
 A repository has no Work of its own. Its work items are Work filtered to
 it, `g1t.sh/<workspace>/-/work?repo=<name>`, and its sessions are
 Sessions filtered to it, `g1t.sh/<workspace>/-/chat/sessions?repo=<name>`.
-A project has no Work tab of its own: from one, the command palette
+A repository has no Work tab of its own: from one, the command palette
 (`/`) has **Work** and **Sessions** filtered to it.
 
 ## Work's sidebar

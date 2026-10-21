@@ -12,11 +12,11 @@ and its latest status is its state.
 Deployments reach that list three ways. Each deployment says which in its
 `source`:
 
-| `source`   | Made by                                                                                              | Ids     |
-| ---------- | ---------------------------------------------------------------------------------------------------- | ------- |
-| `api`      | Any CI or script, through the routes on this page, with an access token.                             | `dep_…` |
-| `actions`  | A [g1t Actions](/guides/actions/) job with an `environment:`, by itself.                             | `dep_…` |
-| `g1t_page` | A [g1t.page](/guides/deployments/) build of a project, to the `production` or `preview` environment. | `dpl_…` |
+| `source`   | Made by                                                                                                 | Ids     |
+| ---------- | ------------------------------------------------------------------------------------------------------- | ------- |
+| `api`      | Any CI or script, through the routes on this page, with an access token.                                | `dep_…` |
+| `actions`  | A [g1t Actions](/guides/actions/) job with an `environment:`, by itself.                                | `dep_…` |
+| `g1t_page` | A [g1t.page](/guides/deployments/) build of a repository, to the `production` or `preview` environment. | `dpl_…` |
 
 A status's id starts `dst_`. Every deployment, whatever its source, shows
 on the repository's **Deployments** page, sets a check on its commit, and
@@ -250,18 +250,18 @@ curl "https://api.g1t.sh/repos/acme/web/deployments?environment=production&state
 
 A deployment has these fields:
 
-| Field                                                         |                                                                                                         |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `id`                                                          | `dep_…`, or `dpl_…` for a g1t.page build.                                                               |
-| `environment`, `ref`, `sha`, `task`, `description`, `payload` | As reported.                                                                                            |
-| `production_environment`, `transient_environment`             | As reported.                                                                                            |
-| `state`                                                       | Its latest status's state.                                                                              |
-| `environment_url`, `log_url`                                  | The latest addresses it was given.                                                                      |
-| `creator`                                                     | The username of whoever reported it or started its run, or `g1t`.                                       |
-| `source`                                                      | `api`, `actions` or `g1t_page`.                                                                         |
-| `run_id`, `run_url`                                           | The g1t Actions run that made it. Null for other sources.                                               |
-| `project`, `number`                                           | For a g1t.page build: the project, and for a preview its pull request's number. Null for other sources. |
-| `created_at`, `updated_at`                                    | When it was made, and when it last changed.                                                             |
+| Field                                                         |                                                                                                            |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `id`                                                          | `dep_…`, or `dpl_…` for a g1t.page build.                                                                  |
+| `environment`, `ref`, `sha`, `task`, `description`, `payload` | As reported.                                                                                               |
+| `production_environment`, `transient_environment`             | As reported.                                                                                               |
+| `state`                                                       | Its latest status's state.                                                                                 |
+| `environment_url`, `log_url`                                  | The latest addresses it was given.                                                                         |
+| `creator`                                                     | The username of whoever reported it or started its run, or `g1t`.                                          |
+| `source`                                                      | `api`, `actions` or `g1t_page`.                                                                            |
+| `run_id`, `run_url`                                           | The g1t Actions run that made it. Null for other sources.                                                  |
+| `project`, `number`                                           | For a g1t.page build: the repository, and for a preview its pull request's number. Null for other sources. |
+| `created_at`, `updated_at`                                    | When it was made, and when it last changed.                                                                |
 
 Reading needs the `deployments:read` scope and the Read role. A public
 repository's deployments can be read by anyone. Reporting needs
@@ -426,28 +426,28 @@ The [`workflow` tool](/reference/mcp/#workflow) has an action for each route:
 | `update_deployment_settings` | `PATCH /workspaces/{workspace}/projects/{project}/deployments/settings` |
 
 They take the repository as `repo`, written `owner/name`, and the same
-fields as the routes; a project's g1t.page settings take `workspace` and
+fields as the routes; a repository's g1t.page settings take `workspace` and
 `project` instead, and `update_deployment_settings` with `enabled: true`
 [turns its deployments on](/guides/deployments/#without-the-site).
 
 ## On the site
 
-- **The Deployments page**, `g1t.sh/<owner>/<project>/deployments`, shows
+- **The Deployments page**, `g1t.sh/<owner>/<repository>/deployments`, shows
   a card for each environment: its state, address, commit, ref, who
   deployed it and from where, when, and how many deployments it has had.
   Below is every deployment, newest first, filtered by **Environment**,
-  **State**, **Source**, **Creator** and **Ref**. Projects deployed to
+  **State**, **Source**, **Creator** and **Ref**. Repositories deployed to
   g1t.page manage their apps under **On g1t.page** on the same page.
-- **A deployment's page**, `g1t.sh/<owner>/<project>/deployments/<id>`,
+- **A deployment's page**, `g1t.sh/<owner>/<repository>/deployments/<id>`,
   shows its statuses in order, links to its log and run, and its payload.
   Only the newest status can show as still under way; a `queued` or
   `in_progress` one that a later status followed shows as over.
 - **Every link to where something runs**, a g1t.page address, an
-  environment's URL, a pull request's preview or a project's homepage,
+  environment's URL, a pull request's preview or a repository's homepage,
   opens in a new tab, wherever on the site it appears.
-- **The repository's code page** and **the project's overview** show a
+- **The repository's code page** and **its overview** show a
   **Deployments** panel with how many there are, and each environment's
   latest deployment and when. It links to the Deployments page.
-- **The project's overview** shows a production environment deployed
+- **The repository's overview** shows a production environment deployed
   elsewhere in its production card: its address, state, commit and when it
   went up.

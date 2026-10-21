@@ -93,6 +93,16 @@ const moved = {
   "/guides/sessions/#who-sees-what": "/work/sessions/#who-sees-what",
   "/guides/sessions/#who-may-do-what": "/work/claims-and-dependencies/#who-may-do-what",
   "/guides/sessions/#pending-coordination-updates": "/work/claims-and-dependencies/#coordination-updates",
+  // Work's home is the project; what Code called a project is the repository.
+  "/guides/projects/": "/guides/repositories/",
+  "/guides/projects/#your-projects": "/guides/repositories/#your-repositories",
+  "/guides/projects/#a-projects-pages": "/guides/repositories/#a-repositorys-pages",
+  "/guides/projects/#what-a-project-is": "/guides/repositories/#what-a-repository-is",
+  "/guides/projects/#create-a-project": "/guides/repositories/#create-a-repository",
+  "/guides/workspaces/#the-projects-page": "/guides/workspaces/#the-repositories-page",
+  "/guides/workspaces/#pinned-and-recent-projects": "/guides/workspaces/#pinned-and-recent-repositories",
+  "/guides/deployments/#what-a-project-is-built-as": "/guides/deployments/#what-an-app-is-built-as",
+  "/guides/artifacts/#projects-docs": "/guides/artifacts/#repositories-docs",
 };
 
 export default defineConfig({
@@ -197,9 +207,9 @@ export default defineConfig({
           ],
         },
         {
-          label: "Projects",
+          label: "Repositories",
           items: [
-            { label: "Projects", slug: "guides/projects" },
+            { label: "Repositories", slug: "guides/repositories" },
             { label: "Deployments", slug: "guides/deployments" },
             { label: "Deployments API", slug: "guides/deployments-api" },
             { label: "Observability", slug: "guides/observability" },

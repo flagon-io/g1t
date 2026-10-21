@@ -71,9 +71,9 @@ status 404:
 | Signed in  | **Nothing here**: this page doesn't exist, or you don't have access to it, with which account you are signed in as and a link to switch account. If you should have access, ask someone with the Admin role on it to add you. |
 
 Work items, pull requests and workspace pages work the same way. The sidebar
-does not open the project or workspace the address names, so nothing on
+does not open the repository or workspace the address names, so nothing on
 the page hints at whether it exists; a missing file, commit or pull request in a
-project you can see keeps that project's sidebar. A profile that does not
+repository you can see keeps that repository's sidebar. A profile that does not
 exist says **No one on g1t goes by that name**, since profiles are public.
 
 ## Download a ZIP
@@ -141,9 +141,9 @@ Uploaded avatars are on the same host, at
 
 ## Browsing without an account
 
-Public projects, Explore, Search and profiles are open to everyone, in the
+Public repositories, Explore, Search and profiles are open to everyone, in the
 same sidebar members use. Signed out, the sidebar has Explore and Search,
-and in a project its Code, Work, Pull requests, Workflows and
+and in a repository its Code, Work, Pull requests, Workflows and
 Deployments; pages only people with a role on the repository see, such as
 Security and Settings, are left out. **Sign in** and **Sign up** sit at the bottom, and both bring you
 back to the page you were on.

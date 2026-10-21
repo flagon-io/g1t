@@ -215,7 +215,7 @@ most never need one. The session is the record of that work:
    other work items or pull requests, when it is named again as it ends.
    Rename a session on its page to pin your own title: g1t and Claude never
    replace it. See [Session titles](/work/session-titles/).
-2. **It shows to the team.** The project's overview lists it in **Live
+2. **It shows to the team.** The repository's overview lists it in **Live
    now** under its pull request, else its branch, else under **No branch
    yet**, with who it is for, Claude Code, its state, when it was last
    heard from and its branch; the workspace's

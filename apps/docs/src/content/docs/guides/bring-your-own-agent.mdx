@@ -1,6 +1,6 @@
 ---
 title: Connect an AI client
-description: Connect coding agents, ChatGPT, Claude chat, Grok, Open WebUI or LibreChat to g1t projects through MCP.
+description: Connect coding agents, ChatGPT, Claude chat, Grok, Open WebUI or LibreChat to g1t repositories through MCP.
 ---
 
 import AgentSetup from "../../../components/AgentSetup.astro";
@@ -27,8 +27,8 @@ one from g1t instead, see [hand a work item to g1t](#hand-a-work-item-to-g1t).
 
 ## Connect your AI client
 
-Choose your client below. The project pages and these docs remember your choice.
-When you open a project, the workspace's first configured AI provider supplies the
+Choose your client below. The repository pages and these docs remember your choice.
+When you open a repository, the workspace's first configured AI provider supplies the
 default; your explicit choice takes priority. OpenAI defaults to Codex, Anthropic
 to Claude Code, Gemini to Gemini CLI, xAI to Grok, and self-hosted OpenAI-compatible
 endpoints to Open WebUI. Other providers default to OpenCode. This only
@@ -59,7 +59,7 @@ These are setup instructions based on the clients' documented capabilities;
 they are not an end-to-end certification of every model and client version.
 A chat app can read and act through g1t's tools without having a local shell.
 Using Grok as g1t's configured AI provider is separate from connecting Grok chat
-to your projects. The same distinction applies to GPT and open-weight models.
+to your repositories. The same distinction applies to GPT and open-weight models.
 
 Signing in opens g1t in your browser. The page lists what the agent will be
 able to do; untick anything you would rather it could not, and approve.
@@ -127,7 +127,7 @@ the agent does is done as you, and shows as you in the
 Most of what an agent is asked starts without a work item, and a question,
 a look around or a trivial fix never needs one. Record the session
 anyway (`session` with `start`), with a `title` saying what it is for: the
-team sees it in **Live now** on the project's overview, under its pull
+team sees it in **Live now** on the repository's overview, under its pull
 request or branch, and on the workspace's
 [Sessions](/work/sessions/). When the work becomes a change others
 should know about (a branch to push, a pull request), look for its work
@@ -380,14 +380,14 @@ repository and a `number`, and work items as the `workspace` and a
 | `pull_request`  | Pull requests: create, record and read sessions, review, merge, the merge queue                                  |
 | `session`       | Your harness's session: start, update, record, end, get, list; dispatch work on a work item; who else is working |
 | `workflow`      | Workflow runs and logs, checks, deployments, environments and runners                                            |
-| `observability` | A project's requests, logs, traces, errors and metrics in production                                             |
+| `observability` | A repository's requests, logs, traces, errors and metrics in production                                          |
 | `package`       | Packages in every registry                                                                                       |
 | `secret`        | Secrets and variables                                                                                            |
 | `security`      | Secret scanning, code scanning, vulnerable dependencies and advisories                                           |
 | `webhook`       | Webhooks and their deliveries                                                                                    |
 | `access`        | Who has which role on a repository, and deploy keys                                                              |
 | `team`          | Teams and their members and repositories                                                                         |
-| `workspace`     | Workspaces, members, labels, milestones, integrations, projects, rulesets and token rules                        |
+| `workspace`     | Workspaces, members, labels, milestones, integrations, repositories, rulesets and token rules                    |
 | `ai`            | The workspace's AI providers, and what Ask answers with                                                          |
 | `billing`       | Usage, budget and invoices                                                                                       |
 | `notifications` | Your inbox                                                                                                       |

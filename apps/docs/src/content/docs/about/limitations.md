@@ -427,7 +427,7 @@ service bindings, Vectorize, Hyperdrive, Workers AI or Workflows, and its
 cron triggers are not scheduled.
 
 - **Why.** Each of these is a resource g1t has to create and bill per
-  project, and that is not built yet.
+  app, and that is not built yet.
 - **Instead.** Check that a binding exists before using it. The deployment
   lists each binding it left out, and warns when its cron triggers will
   not run.

@@ -79,7 +79,7 @@ See [who may do what](/work/claims-and-dependencies/#who-may-do-what).
 Not every session starts from a work item, and most should not end with
 one: a question, a look around or a quick fix needs no work item. The
 session is the record of that work, and the team sees it in **Live now**,
-on **Sessions** and on the project's overview, while it goes:
+on **Sessions** and on the repository's overview, while it goes:
 
 1. **It says what it is for.** g1t names it from what it does, first
    from its first prompt, then from its whole record (see
@@ -87,7 +87,7 @@ on **Sessions** and on the project's overview, while it goes:
    when you start it or later with `session` `update`, only if you can
    name the whole job.
 2. **It shows where it works.** Attach its `branch` and, once there is
-   one, its `pull`: the project's **Live now** groups sessions on no work
+   one, its `pull`: the repository's **Live now** groups sessions on no work
    item by pull request, then by branch.
 3. **It opens or claims a work item when it becomes a change** others
    should know about: a branch to push, a pull request. Look for one first

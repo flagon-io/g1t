@@ -252,7 +252,7 @@ branch:
 | Medium or higher, and errors             | Errors, and security results of medium severity or worse  |
 | Any security result, and errors          | Errors, and any security result                           |
 
-The check links to `g1t.sh/<owner>/<project>/security/pulls/<number>`,
+The check links to `g1t.sh/<owner>/<repository>/security/pulls/<number>`,
 which lists what it found. To block merges on it, require **Code
 scanning** under **Settings → Branches** once it has reported on a pull
 request, as for any [required check](/guides/pull-requests/). The merge
@@ -260,7 +260,7 @@ queue waits for it the same way.
 
 ## Alerts
 
-`g1t.sh/<owner>/<project>/security/code-scanning` lists alerts, open
+`g1t.sh/<owner>/<repository>/security/code-scanning` lists alerts, open
 first and worst first, with recent analyses below. Filter by state,
 severity and tool. Each alert's page has its rule's help, its location,
 the analyses that reported it and its actions:

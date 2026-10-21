@@ -160,8 +160,8 @@ rulesets set a queue, the queue uses the smallest batch size and timeout
 and the longest wait among them.
 
 `required_deployments` takes `environments`. `preview` is a pull request's
-[preview deployment](/guides/deployments/). A project's slug is that
-project's deployment, when a repository has several. Any other name is an
+[preview deployment](/guides/deployments/). An app's slug is that
+app's deployment, when a repository has several. Any other name is an
 environment [deployments are reported to](/guides/deployments-api/), from
 any CI or by a g1t Actions job with an `environment:`: a successful
 `deploy / <environment>` check on the head meets it, such as

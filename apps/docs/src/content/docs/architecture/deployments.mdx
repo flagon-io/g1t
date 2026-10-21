@@ -1,6 +1,6 @@
 ---
 title: Deployments, packages and telemetry
-description: How apps are built and served on g1t.page, how the package registries are routed and stored, and where a project's logs, traces and metrics go.
+description: How apps are built and served on g1t.page, how the package registries are routed and stored, and where a repository's logs, traces and metrics go.
 ---
 
 import Diagram from "../../../components/Diagram.astro";
@@ -23,7 +23,7 @@ event queue and asks `runner` for a sandbox in `deploy` mode
 ([Actions, runners and sandboxes](/architecture/compute/#other-work-in-sandboxes)).
 The sandbox works out what the app is, preferring what runs nothing while
 no one visits, in this order
-([What a project is built as](/guides/deployments/#what-a-project-is-built-as)):
+([What an app is built as](/guides/deployments/#what-an-app-is-built-as)):
 
 1. a Workers project, from `wrangler deploy --dry-run`;
 2. a framework it knows, such as Vite, Astro, Next.js or SvelteKit, as
@@ -60,8 +60,8 @@ instead and hand over the result, with
 
 |             | Hostname                                                            |
 | ----------- | ------------------------------------------------------------------- |
-| Production  | `<project>-<workspace>.g1t.page`                                    |
-| A preview   | `<project>-git-<branch>-<workspace>.g1t.page`                       |
+| Production  | `<repository>-<workspace>.g1t.page`                                 |
+| A preview   | `<repository>-git-<branch>-<workspace>.g1t.page`                    |
 | Your domain | A CNAME to `domains.g1t.page`, a custom hostname on g1t.page's zone |
 
 `pages` answers every one of those hostnames. It reads the app's name from
@@ -95,9 +95,9 @@ store. Large downloads are answered with a signed URL to the bucket.
 
 ## Telemetry
 
-`telemetry` (`services/telemetry`, TypeScript) keeps each project's logs,
+`telemetry` (`services/telemetry`, TypeScript) keeps each repository's logs,
 traces, metrics and errors in a Durable Object of its own,
-`TelemetryStore`, in that object's SQLite storage. A project's data never
+`TelemetryStore`, in that object's SQLite storage. A repository's data never
 shares a database with another's.
 
 It has three ways in:
