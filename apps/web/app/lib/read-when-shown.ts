@@ -1,12 +1,11 @@
 /**
  * When messages shown outside their conversation count as read: g1t's
- * answer on Home's Summarize card, the top bar's Ask panel, or any other
+ * answer on Home's Summarize card, or any other
  * page that shows a conversation's messages. Pure rules, and the record of
  * which conversations this page shows right now, so a toast, a sound or a
  * system notification does not repeat what is on screen (lib/notify-client,
  * lib/sound-events). The hook that uses them is lib/use-read-when-shown.ts.
  */
-import type { ChatMessage } from "@g1t/contracts";
 
 /** What a surface knows when it might mark its conversation read. */
 export type ReadMoment = {
@@ -29,23 +28,6 @@ export function readNow(moment: ReadMoment): string | null {
   if (!moment.visible || !moment.onScreen || !moment.newestId) return null;
   if (moment.lastRead !== null && moment.newestId <= moment.lastRead) return null;
   return moment.newestId;
-}
-
-type Shown = Pick<ChatMessage, "id" | "answer" | "deleted_at"> & { pending?: boolean };
-
-/**
- * The newest message there to read: saved (not one still being sent) and
- * finished. An answer still being written is read once it is done, so the
- * mark lands on the final message, not before it exists.
- */
-export function newestFinished(messages: readonly Shown[]): string | null {
-  let newest: string | null = null;
-  for (const m of messages) {
-    if (m.pending || m.deleted_at) continue;
-    if (m.answer?.state === "thinking" || m.answer?.state === "streaming") continue;
-    if (newest === null || m.id > newest) newest = m.id;
-  }
-  return newest;
 }
 
 // ── Conversations shown on this page ─────────────────────────────────────

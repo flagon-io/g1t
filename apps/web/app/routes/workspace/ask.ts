@@ -1,5 +1,5 @@
 /**
- * Ask g1t (components/ask-composer): `GET -/ask` says what Ask answers with
+ * Ask g1t (Chat's New with no repository, components/chat/agent-composer.tsx): `GET -/ask` says what Ask answers with
  * in the workspace, or why it cannot yet, and whether the viewer is an
  * owner who can choose; with `?sessions`, whether sessions can start on the
  * workspace's Anthropic account. The conversation itself is the viewer's

@@ -1,9 +1,9 @@
 /**
- * Home's way into Ask (components/ask-composer): the box at the top of the
+ * Home's way into Ask: the box at the top of the
  * page, What changed (g1t's plain-English summary of the span, streamed
  * onto the page by components/home-summary), and Explain on each change
  * that landed (components/home.tsx). The box and Explain hand their
- * question to the top bar's Ask panel (lib/ask.ts askG1t). Every question
+ * question to your direct message with g1t (lib/ask.ts askG1t), which opens in Chat. Every question
  * goes to the viewer's direct message with @g1t, so the answers stay in
  * Chat and Ask carries on from them.
  */

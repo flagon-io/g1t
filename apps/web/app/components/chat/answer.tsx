@@ -1,6 +1,6 @@
 /**
- * One answer from @g1t, as it shows wherever g1t answers: the top bar's
- * Ask (components/ask-composer.tsx) and its direct message in Chat
+ * One answer from @g1t, as it shows wherever g1t answers: its direct
+ * message in Chat
  * (components/chat/channel.tsx). Thinking until its first words, the words
  * as they stream, then the answer with who wrote it and what can be done
  * with it: copy it, or have g1t answer again.

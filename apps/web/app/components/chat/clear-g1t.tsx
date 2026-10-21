@@ -13,8 +13,8 @@ import {
 
 /**
  * Confirms clearing your conversation with @g1t (docs.g1t.sh/guides/ask/,
- * "Clear the conversation"): the Ask panel's menu, the direct message's
- * menu in Chat, and `/clear` typed in either open it. `onClear` deletes
+ * "Clear the conversation"): the direct message's
+ * menu in Chat, and `/clear` typed there, open it. `onClear` deletes
  * it; the dialog stays open, saying what went wrong, if that fails.
  */
 export function ClearG1tDialog({

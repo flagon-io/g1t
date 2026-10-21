@@ -30,7 +30,7 @@ export type Viewing = { path: string; channel_id?: string | null; shown?: Readon
  * Whether the person is looking at the conversation a notification is
  * about right now: its page is open, the chat page open says it shows
  * that channel, or another surface on the page shows its messages (Home's
- * Summarize, the Ask panel). A toast for it would only repeat what is on
+ * Summarize). A toast for it would only repeat what is on
  * screen.
  */
 export function isViewing(notification: FeedNotification, viewing: Viewing): boolean {

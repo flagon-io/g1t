@@ -75,7 +75,7 @@ test("no toast for the conversation on screen, by page or by channel; inbox item
   assert.equal(addToast([], note("1", { kind: "inbox", channel_id: null, href: "/acme/api/pull/4" }), { path: "/acme/api/pull/4" }, 1).length, 1);
 });
 
-test("no toast for a conversation another surface shows: g1t's answer on Home, the Ask panel", () => {
+test("no toast for a conversation another surface shows: g1t's answer on Home", () => {
   const home = { path: "/acme", shown: new Set(["chn_1"]) };
   assert.ok(isViewing(note("1"), home));
   assert.deepEqual(addToast([], note("1"), home, 1), []);

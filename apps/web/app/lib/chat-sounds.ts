@@ -29,7 +29,7 @@ export type FocusState = {
   focused: boolean;
   /** The conversation on screen, by channel id; null on any other page. */
   viewingChannel: string | null;
-  /** Conversations shown besides, outside Chat: g1t's answer on Home, the Ask panel (lib/read-when-shown.ts). */
+  /** Conversations shown besides, outside Chat: g1t's answer on Home (lib/read-when-shown.ts). */
   shown?: ReadonlySet<string>;
 };
 

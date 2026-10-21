@@ -2,17 +2,17 @@ import { Check, Globe, Hash, Lock, Plus, Search, SquarePen, X } from "lucide-rea
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, useNavigate, useRouteLoaderData } from "react-router";
 
-import type { ChannelVisibility, ChatSidebar, Result } from "@g1t/contracts";
+import type { AskPage, ChannelVisibility, ChatSidebar, Result } from "@g1t/contracts";
 
 import { Avatar } from "../ui/avatar";
 import { Button } from "../ui/button";
 import { Hint } from "../ui/hint";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { RadioGroup, RadioOption } from "../ui/radio-group";
+import { AgentComposer } from "./agent-composer";
 import { channelName, shownHandle, shownName } from "../../lib/chat";
 import type { ChatLayoutData } from "../../routes/workspace/chat/layout";
 import { useLiveCounts } from "../../lib/notify-client";
-import { browserTimeZone } from "../../lib/time-zone";
 import { overlayEntries, unlisted } from "../../lib/notify-store";
 
 /** Chat mode's data, while a chat page is open; undefined elsewhere. */
@@ -289,8 +289,10 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
 type Pickable = { key: string; name: string; handle: string; display: string; avatar: string | null };
 
 /**
- * A new direct message: choose one person or a few, then open the
- * conversation between you (the same one each time for the same people).
+ * New: a new conversation with g1t (claude.ai's New chat), which can start agent work, or a message to one
+ * person or a few. The sidebar's pencil, a phone's
+ * round button and an empty Chat all open it; the top bar's Ask opens the
+ * same over any page (components/ask-button.tsx).
  */
 export function NewMessageButton({ slug, variant = "icon", children }: { slug: string; variant?: "icon" | "button" | "fab"; children?: ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -309,7 +311,7 @@ export function NewMessageButton({ slug, variant = "icon", children }: { slug: s
           <SquarePen size={22} />
         </Button>
       ) : variant === "icon" ? (
-        <Hint label="New: ask g1t, or message someone">
+        <Hint label="New: a conversation with g1t, or a message to someone">
           <Button type="button" aria-label="New" onClick={() => setOpen(true)} variant="ghost" size="icon-sm" className="text-faint">
             <SquarePen size={15} />
           </Button>
@@ -320,24 +322,46 @@ export function NewMessageButton({ slug, variant = "icon", children }: { slug: s
           {children ?? "New message"}
         </Button>
       )}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md gap-0 p-0 max-sm:pb-[env(safe-area-inset-bottom)]" showClose={false}>
-          {open && <NewDialog slug={slug} onDone={() => setOpen(false)} />}
-        </DialogContent>
-      </Dialog>
+      <NewChatDialog slug={slug} open={open} onOpenChange={setOpen} />
     </>
   );
 }
 
 /**
- * New, as claude.ai has it: what you want done, to g1t, first; or a
- * message to one person or a few. Starting with g1t opens your direct
- * message with g1t on a new conversation (it reads only what comes next)
- * and sends what you wrote there, so you never type its name.
+ * New's dialog, wherever it is opened. `page` is where it was opened from
+ * (the top bar's Ask, over any page): the agent starts on that page's
+ * repository and work item, and g1t is told the page. `text` starts in the box.
  */
-function NewDialog({ slug, onDone }: { slug: string; onDone: () => void }) {
-  const [mode, setMode] = useState<"g1t" | "people">("g1t");
-  const tab = (key: "g1t" | "people", label: string) => (
+export function NewChatDialog({
+  slug,
+  open,
+  onOpenChange,
+  page,
+  text,
+}: {
+  slug: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  page?: AskPage | null;
+  text?: string;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-xl gap-0 p-0 max-sm:pb-[env(safe-area-inset-bottom)]" showClose={false}>
+        {open && <NewDialog slug={slug} page={page} text={text} onDone={() => onOpenChange(false)} />}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * New, as claude.ai has it: g1t first, then people. The g1t tab
+ * is a new conversation with g1t, which with a repository starts agent
+ * work there (components/chat/agent-composer.tsx).
+ */
+function NewDialog({ slug, page, text, onDone }: { slug: string; page?: AskPage | null; text?: string; onDone: () => void }) {
+  const [mode, setMode] = useState<"agent" | "people">("agent");
+  const tab = (key: "agent" | "people", label: string) => (
     <button
       type="button"
       role="tab"
@@ -349,80 +373,25 @@ function NewDialog({ slug, onDone }: { slug: string; onDone: () => void }) {
     </button>
   );
   return (
-    <div className="flex max-h-[min(36rem,calc(100dvh-2rem))] flex-col">
+    <div className="flex max-h-[min(40rem,calc(100dvh-2rem))] flex-col">
       <div className="flex items-center justify-between gap-3 px-5 pt-5">
         <DialogTitle>New</DialogTitle>
         <div role="tablist" aria-label="Start" className="flex rounded-md bg-surface p-0.5 ring-1 ring-line">
-          {tab("g1t", "Ask g1t")}
+          {tab("agent", "g1t")}
           {tab("people", "Message people")}
         </div>
       </div>
-      {mode === "g1t" ? <NewWithG1t slug={slug} onDone={onDone} /> : <NewMessage slug={slug} onDone={onDone} />}
+      {mode === "agent" ? (
+        <>
+          <DialogDescription className="px-5 pt-1.5 pb-3">
+            A new conversation with g1t. Choose a repository and g1t starts agent work there, linked in the conversation.
+          </DialogDescription>
+          <AgentComposer slug={slug} page={page} initialText={text} onDone={onDone} />
+        </>
+      ) : (
+        <NewMessage slug={slug} onDone={onDone} />
+      )}
     </div>
-  );
-}
-
-/** What you want done, to g1t: a new conversation in your direct message with it, opened with what you wrote. */
-function NewWithG1t({ slug, onDone }: { slug: string; onDone: () => void }) {
-  const [text, setText] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const send = useChatSend(slug);
-  const navigate = useNavigate();
-  const start = async () => {
-    const body = text.trim();
-    if (!body || busy) return;
-    setBusy(true);
-    setError(null);
-    const opened = await send<{ channel: { id: string }; to: string }>({ intent: "g1t_dm" });
-    if (!opened.ok) {
-      setBusy(false);
-      return setError(opened.error.message);
-    }
-    const channel_id = opened.value.channel.id;
-    // A new conversation: g1t reads only what comes after this, as New means.
-    await send({ intent: "g1t_reset", channel_id });
-    const posted = await send({ intent: "post", channel_id, body, page: { time_zone: browserTimeZone() } });
-    setBusy(false);
-    if (!posted.ok) return setError(posted.error.message);
-    onDone();
-    navigate(opened.value.to);
-  };
-  return (
-    <>
-      <DialogDescription className="px-5 pt-1.5">
-        What do you want done? g1t starts on it in a new conversation, in your direct message with it.
-      </DialogDescription>
-      <div className="px-5 pt-4 pb-4">
-        <textarea
-          autoFocus
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-              event.preventDefault();
-              void start();
-            }
-          }}
-          rows={4}
-          placeholder="Ask g1t what changed, what's blocked, or what to do next"
-          aria-label="What do you want done"
-          className="w-full resize-none rounded-md border border-line bg-bg px-3 py-2.5 text-sm outline-none placeholder:text-faint focus:border-accent-dim"
-        />
-        <p className="mt-1.5 text-xs text-faint">Enter starts it, Shift Enter makes a new line.</p>
-      </div>
-      <div className="flex items-center justify-between gap-3 border-t border-line px-5 py-3">
-        <span className="min-w-0 truncate text-sm text-danger">{error}</span>
-        <div className="flex shrink-0 gap-2">
-          <Button type="button" onClick={onDone} variant="outline">
-            Cancel
-          </Button>
-          <Button type="button" disabled={busy || !text.trim()} onClick={() => void start()} variant="accent">
-            {busy ? "Starting…" : "Start"}
-          </Button>
-        </div>
-      </div>
-    </>
   );
 }
 

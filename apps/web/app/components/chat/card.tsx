@@ -26,6 +26,7 @@ import { cn } from "../../lib/cn";
 import { type CardChip, cardChip, foldsBody, shownActions } from "../../lib/card-actions";
 import { repoAt } from "../../lib/markdown-plugins";
 import { sessionChip } from "../../lib/session-card";
+import { useHostedSessionState } from "../../lib/use-session-follow";
 import { codeAccessPath } from "../../lib/workspace-nav";
 
 // A card g1t posts in chat (or an agent did, on old messages): what it is
@@ -185,7 +186,10 @@ export function CardBox({
   code: boolean;
 }) {
   const href = cardHref(card.href, slug, code);
-  const chip = chipOf(card);
+  // A hosted session g1t started from the conversation reads as it stands now: Working pulses until Done.
+  const now = useHostedSessionState(slug, card);
+  const state = now ?? card.state;
+  const chip = now ? { ...sessionChip(now), live: now === "Working" } : chipOf(card);
   const live = card.kind === "session" && !!chip?.live;
   const actions = shownActions(card);
   const head = (
@@ -209,7 +213,7 @@ export function CardBox({
         </span>
         {card.detail && <span className="mt-0.5 block truncate font-mono text-xs text-muted tabular-nums">{card.detail}</span>}
       </span>
-      {card.state && chip && <StateChip state={card.state} chip={chip} />}
+      {state && chip && <StateChip state={state} chip={chip} />}
     </>
   );
 
