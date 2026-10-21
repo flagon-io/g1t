@@ -489,10 +489,16 @@ fn a_cargo_target_restored_from_an_older_entry_is_pruned_before_it_is_saved() {
         // restores, and a save step of the same entry after the prune saves
         // when it runs.
         if saves(&job.steps[at]) {
-            assert_eq!(
-                condition,
-                format!("${{{{ steps.{cache}.outputs.cache-hit != 'true' }}}}"),
-                "{file} {id}"
+            // A job a pull request may pass without running (ci-affected.mjs
+            // --job) asks that too: skipped, the cache step says no hit.
+            let hit = format!("steps.{cache}.outputs.cache-hit != 'true' }}}}");
+            assert!(
+                [
+                    format!("${{{{ {hit}"),
+                    format!("${{{{ steps.affected.outputs.run == 'true' && {hit}"),
+                ]
+                .contains(&condition.to_string()),
+                "{file} {id}: {condition}"
             );
         } else {
             let key = &job.steps[at].raw["with"]["key"];

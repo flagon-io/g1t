@@ -7,6 +7,11 @@
 #   typescript  type checks and tests of the apps and TS services, the
 #               deploy and ops scripts, and the deploy manifest
 #   build       the site, sudo and the docs build as they deploy
+#   desktop     the desktop app's checks and tests, and the release scripts'
+#
+# On a pull request, `rust`, `build` and `desktop` run only for what it
+# changes (scripts/deploy/ci-affected.mjs) and pass without running
+# otherwise; `typescript` always runs.
 #
 # On a push to main `rust`, `typescript` and `desktop` run, keeping main's
 # caches current:
@@ -230,19 +235,30 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      # Two commits deep, as for the Rust parts: what the pull request
+      # changes. A change of only Rust source, which none of the three
+      # reads, passes without building (ci-affected.mjs JOBS).
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+      - name: Whether this pull request needs it
+        id: affected
+        run: node scripts/deploy/ci-affected.mjs --job build
       # npm's downloads, kept between runs: an install reads them first
       # and asks the registry only for what changed, so a dropped
       # connection to it rarely stops the job.
       - name: Cache npm's downloads
+        if: ${{ steps.affected.outputs.run == 'true' }}
         uses: actions/cache@v4
         with:
           path: ~/.npm
           key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-full-${{ runner.os }}-
       - name: Install
+        if: ${{ steps.affected.outputs.run == 'true' }}
         run: node scripts/deploy/npm-ci.mjs --prefer-offline --no-audit --no-fund
       - name: The site, sudo and the docs
+        if: ${{ steps.affected.outputs.run == 'true' }}
         run: node scripts/deploy.mjs build --only web,sudo,docs
 
   desktop:
@@ -252,9 +268,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      # A pull request that changes none of the app's files, its release
+      # scripts or the build's own (ci-affected.mjs DESKTOP) passes without
+      # building; main's runs build it, keeping its cache.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+      - name: Whether this pull request needs it
+        id: affected
+        run: node scripts/deploy/ci-affected.mjs --job desktop
       - name: Cache keys
         id: keys
+        if: ${{ steps.affected.outputs.run == 'true' }}
         run: node scripts/deploy/ci-cache.mjs keys
       # g1t's runner image has Tauri's system packages, so on it the two
       # steps after this are skipped (they took 68 s a run: a minute to
@@ -262,21 +287,23 @@ jobs:
       # them (self-hosted, or an older image) installs them as before.
       - name: Is what Tauri needs on Linux installed
         id: tauri-apt
+        if: ${{ steps.affected.outputs.run == 'true' }}
         run: bash scripts/apt-install.sh tauri --check
       # apt's lists and downloads (scripts/apt-install.sh): 110 s of every
       # run before, mostly fetching 335 MB. Saved here, on main; the desktop
       # release's Linux build restores the same entry.
       - name: Cache apt's downloads
-        if: ${{ steps.tauri-apt.outputs.installed != 'true' }}
+        if: ${{ steps.affected.outputs.run == 'true' && steps.tauri-apt.outputs.installed != 'true' }}
         uses: actions/cache@v4
         with:
           path: ~/.cache/apt/tauri
           key: apt-tauri-${{ runner.os }}-${{ hashFiles('scripts/apt-install.sh') }}
       - name: What Tauri needs on Linux
-        if: ${{ steps.tauri-apt.outputs.installed != 'true' }}
+        if: ${{ steps.affected.outputs.run == 'true' && steps.tauri-apt.outputs.installed != 'true' }}
         run: bash scripts/apt-install.sh tauri
       - name: Cache the desktop app's build
         id: desktop-build
+        if: ${{ steps.affected.outputs.run == 'true' }}
         uses: actions/cache@v4
         with:
           path: |
@@ -289,9 +316,11 @@ jobs:
       # Outside the workspace on purpose (Cargo.toml says why): checked and
       # tested here, built into installers by desktop-release.yml.
       - name: Check and test
+        if: ${{ steps.affected.outputs.run == 'true' }}
         run: cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --quiet
       - name: Only this build's files are saved
-        if: ${{ steps.desktop-build.outputs.cache-hit != 'true' }}
+        if: ${{ steps.affected.outputs.run == 'true' && steps.desktop-build.outputs.cache-hit != 'true' }}
         run: node scripts/deploy/ci-cache.mjs prune apps/desktop/src-tauri/target/debug -- test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --no-run
       - name: The release scripts' tests
+        if: ${{ steps.affected.outputs.run == 'true' }}
         run: node --test scripts/desktop-release.test.mjs scripts/mobile-release.test.mjs scripts/cli-release.test.mjs

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { EVERYTHING, READS, affected, partCrates, workspace } from "./ci-affected.mjs";
+import { DESKTOP, EVERYTHING, READS, affected, needs, partCrates, workspace } from "./ci-affected.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
@@ -48,6 +48,37 @@ test("a file outside the crates tests those that read it, and nothing when none 
   assert.deepEqual(affected(CRATES, [".g1t/workflows/deploy.yml"]), ["g1t-actions"]);
   assert.deepEqual(affected(CRATES, ["packages/contracts/src/scopes.ts"]), ["g1t-api", "g1t-contracts", "g1t-kit", "g1t-rules", "g1t-work"]);
   assert.deepEqual(affected(CRATES, []), []);
+});
+
+test("the desktop job runs for its own files and the build's, and for nothing else", () => {
+  for (const file of [
+    "apps/desktop/src-tauri/src/main.rs",
+    "apps/desktop/package.json",
+    "scripts/cli-release.test.mjs",
+    "scripts/apt-install.sh",
+    ".g1t/workflows/ci.yml",
+  ]) {
+    assert.equal(needs("desktop", ["crates/kit/src/lib.rs", file]), true, file);
+  }
+  assert.equal(needs("desktop", ["crates/kit/src/lib.rs", "apps/web/app/root.tsx", "Cargo.lock", "apps/desktopper/x.ts"]), false);
+});
+
+test("the site, sudo and the docs build for any change but Rust source alone", () => {
+  assert.equal(needs("build", ["crates/kit/src/lib.rs", "services/work/src/items.rs"]), false);
+  assert.equal(needs("build", ["crates/kit/src/lib.rs", "crates/kit/Cargo.toml"]), true);
+  assert.equal(needs("build", ["apps/docs/src/content/docs/index.md"]), true);
+  assert.equal(needs("build", []), false);
+});
+
+test("every file the desktop job names is there", () => {
+  // The toolchain's files, like EVERYTHING's, are there only when pinned.
+  for (const entry of DESKTOP.filter((e) => !EVERYTHING.includes(e))) assert.ok(existsSync(join(ROOT, entry)), entry);
+  // Its tests run each release script's test file.
+  const ci = readFileSync(join(ROOT, ".g1t/workflows/ci.yml"), "utf8");
+  const tests = ci.match(/node --test scripts\/desktop-release\.test\.mjs.*/)[0];
+  for (const test of tests.match(/scripts\/[\w-]+\.test\.mjs/g)) assert.ok(DESKTOP.includes(test), test);
+  // Outside the workspace, with no path dependency on it.
+  assert.doesNotMatch(readFileSync(join(ROOT, "apps/desktop/src-tauri/Cargo.toml"), "utf8"), /\bpath\s*=/);
 });
 
 test("a part's crates are read from its -p arguments", () => {

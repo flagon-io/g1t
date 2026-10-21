@@ -46,7 +46,7 @@ env:
 jobs:
   look:
     name: What is missing
-    runs-on: ubuntu-latest
+    runs-on: g1t-2core # builds nothing: the 2-vCPU machine is enough
     timeout-minutes: 10
     outputs:
       npm: ${{ steps.npm.outputs.cache-hit != 'true' }}
@@ -174,7 +174,7 @@ jobs:
     name: npm's downloads
     needs: look
     if: ${{ needs.look.outputs.npm == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: g1t-2core # builds nothing: the 2-vCPU machine is enough
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5

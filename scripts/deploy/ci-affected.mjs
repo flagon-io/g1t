@@ -5,6 +5,11 @@
 // and a part compiled and tested all of its own whatever changed.
 //
 //   node scripts/deploy/ci-affected.mjs -p <crate>...
+//   node scripts/deploy/ci-affected.mjs --job desktop|build
+//
+// With --job it says whether a pull request needs one of CI's other jobs
+// (JOBS), as the output `run` (true or false), on the same terms: not a
+// pull request, or anything failing, runs it.
 //
 // It takes the part's `-p` arguments and writes to the step's outputs
 // (GITHUB_OUTPUT):
@@ -81,6 +86,48 @@ export const READS = [
   ["crates/scan/fixtures/", ["g1t-security"]],
 ];
 
+/**
+ * The desktop job's files: the app, outside the workspace with a lockfile
+ * of its own and no path dependency on it; the release scripts whose tests
+ * the job runs, and the CLI's manifest cli-release.mjs reads its version
+ * from; what installs Tauri's packages; and the toolchain and this
+ * workflow's own files.
+ */
+export const DESKTOP = [
+  "apps/desktop/",
+  "scripts/desktop-release.mjs",
+  "scripts/desktop-release.test.mjs",
+  "scripts/mobile-release.mjs",
+  "scripts/mobile-release.test.mjs",
+  "scripts/cli-release.mjs",
+  "scripts/cli-release.test.mjs",
+  "crates/g1t/Cargo.toml",
+  "scripts/apt-install.sh",
+  "rust-toolchain",
+  "rust-toolchain.toml",
+  ".cargo/",
+  ".g1t/workflows/ci.yml",
+  "scripts/deploy/ci-affected.mjs",
+  "scripts/deploy/ci-cache.mjs",
+];
+
+/**
+ * CI's other jobs a pull request may pass without running, and whether a
+ * changed file needs each: `desktop` its own files (DESKTOP), `build` (the
+ * site, sudo and the docs) any file but Rust source, which none of them
+ * reads. TypeScript runs on every pull request: its tests and the
+ * conformance suite read Rust source and manifests throughout.
+ */
+export const JOBS = {
+  desktop: (file) => DESKTOP.some((entry) => under(file, entry)),
+  build: (file) => !file.endsWith(".rs"),
+};
+
+/** Whether a change to `files` needs `job` (a key of JOBS) to run. */
+export function needs(job, files) {
+  return files.some(JOBS[job]);
+}
+
 /** Whether `path` is `entry`, or under it when `entry` is a folder. */
 function under(path, entry) {
   return entry.endsWith("/") ? path.startsWith(entry) : path === entry;
@@ -155,7 +202,27 @@ function changedFiles() {
   return { files };
 }
 
+/** `--job <name>`: writes `run`, whether this run needs the job. */
+function mainJob(job) {
+  if (!JOBS[job]) throw new Error(`no job ${job}: one of ${Object.keys(JOBS).join(", ")}`);
+  let run = true;
+  try {
+    const { files, why } = changedFiles();
+    if (files) {
+      run = needs(job, files);
+      console.log(`${files.length} files changed; ${run ? `the ${job} job's among them` : `none of them the ${job} job's, so it passes without running`}`);
+    } else {
+      console.log(why.replace("tests every crate", `runs the ${job} job`));
+    }
+  } catch (error) {
+    console.log(`::warning title=Affected files::${error.message.split("\n")[0]}; the ${job} job runs`);
+    run = true;
+  }
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `run=${run}\n`);
+}
+
 function main(args) {
+  if (args[0] === "--job") return mainJob(args[1]);
   const part = partCrates(args);
   let test = part;
   try {

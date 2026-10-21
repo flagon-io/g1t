@@ -231,7 +231,7 @@ jobs:
     # The binaries go out even when an image job failed: the manifest then
     # names no sandbox images, and computers keep the sandbox they have.
     if: ${{ always() && needs.binaries.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: g1t-2core # builds nothing: the 2-vCPU machine is enough
     environment:
       name: production
       deployment: false

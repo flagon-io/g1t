@@ -84,7 +84,7 @@ env:
 jobs:
   check:
     name: Check
-    runs-on: ubuntu-latest
+    runs-on: g1t-2core # builds nothing: the 2-vCPU machine is enough
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -109,7 +109,7 @@ jobs:
   # Runs beside check: nothing deploys until both have succeeded.
   plan:
     name: Plan
-    runs-on: ubuntu-latest
+    runs-on: g1t-2core # builds nothing: the 2-vCPU machine is enough
     # Production's secrets, without a deployment: planning deploys nothing.
     environment:
       name: production
@@ -271,7 +271,7 @@ jobs:
     name: Migrations
     needs: [check, plan]
     if: ${{ needs.plan.outputs.migrate == 'true' && inputs.dry_run != true }}
-    runs-on: ubuntu-latest
+    runs-on: g1t-2core # builds nothing: the 2-vCPU machine is enough
     environment:
       name: production
       url: https://g1t.sh
@@ -453,7 +453,7 @@ jobs:
     name: Smoke
     needs: [check, plan, core, edge, front]
     if: ${{ !failure() && !cancelled() && inputs.dry_run != true && (needs.plan.outputs.has_core == 'true' || needs.plan.outputs.has_edge == 'true' || needs.plan.outputs.has_front == 'true') }}
-    runs-on: ubuntu-latest
+    runs-on: g1t-2core # builds nothing: the 2-vCPU machine is enough
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5

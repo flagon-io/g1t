@@ -47,7 +47,7 @@ env:
 jobs:
   version:
     name: The tag names this version
-    runs-on: ubuntu-latest
+    runs-on: g1t-2core # builds nothing: the 2-vCPU machine is enough
     outputs:
       version: ${{ steps.read.outputs.version }}
     steps:
@@ -292,7 +292,7 @@ jobs:
       && contains(fromJSON('["success","skipped"]'), needs.windows.result)
       && contains(fromJSON('["success","skipped"]'), needs.windows_cross.result)
       && contains(fromJSON('["success","skipped"]'), needs.macos.result)
-    runs-on: ubuntu-latest
+    runs-on: g1t-2core # builds nothing: the 2-vCPU machine is enough
     # Production's secrets, without a deployment: a release is not a deploy of
     # g1t.sh, and would otherwise show on its card as one in progress.
     environment:
