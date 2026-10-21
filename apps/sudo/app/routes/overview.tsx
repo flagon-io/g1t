@@ -9,6 +9,7 @@ import {
   FileText,
   Gauge,
   HandHelping,
+  Lock,
   Minus,
   TrendingDown,
   TrendingUp,
@@ -25,10 +26,11 @@ import { change, dayShort, monthLong } from "~/lib/chart";
 import { givenLabel, givenTotal, marginApart, moneyApart } from "~/lib/pricing";
 import { givenParts } from "~/lib/costs";
 import { usd } from "~/lib/money";
-import { admin, identity } from "~/lib/services.server";
+import { admin, identity, reposAdmin } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
 import { bySignalUrgency, reachOutHref } from "~/lib/signals";
 import { requireStaff } from "~/lib/staff";
+import { blockedSources } from "~/lib/storage-holds";
 import { ago } from "~/lib/time";
 
 export const meta: Route.MetaFunction = () => [{ title: "Overview · sudo" }, { name: "robots", content: "noindex, nofollow" }];
@@ -39,7 +41,16 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { search, searchParams } = new URL(request.url);
   if (searchParams.has("q") || searchParams.has("show") || searchParams.has("page")) throw redirect(`/workspaces${search}`);
 
-  const [overview, signals, growth] = await Promise.all([settle(admin.overview()), settle(admin.signals()), settle(identity.growth())]);
+  const [overview, signals, growth, holds] = await Promise.all([
+    settle(admin.overview()),
+    settle(admin.signals()),
+    settle(identity.growth()),
+    settle(reposAdmin.holds(200)),
+  ]);
+  // Repositories a fork's copy lock has kept from taking writes for longer
+  // than a copy ordinarily takes, or after the copy did not finish cleanly
+  // (the Storage holds page). Null when the repos service did not answer.
+  const blocked = holds.ok ? blockedSources(holds.value.holds, holds.value.now) : null;
   return {
     me: staff.email,
     now: Date.now(),
@@ -50,11 +61,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     signals: signals.ok ? bySignalUrgency(signals.value) : [],
     signalCount: signals.ok ? signals.value.length : 0,
     signalsError: signals.ok ? null : signals.error,
+    blockedWrites: blocked ? blocked.filter((source) => source.attention).length : null,
+    stalledWrites: blocked ? blocked.filter((source) => source.stalled).length : 0,
   };
 }
 
 export default function Overview({ loaderData }: Route.ComponentProps) {
-  const { me, now, growth: people, growthError, overview, overviewError, signals, signalCount, signalsError } = loaderData;
+  const { me, now, growth: people, growthError, overview, overviewError, signals, signalCount, signalsError, blockedWrites, stalledWrites } = loaderData;
   const months = overview?.months ?? [];
   const current = months.find((month) => month.month === overview?.month) ?? months.at(-1) ?? null;
   const previous = current ? (months[months.indexOf(current) - 1] ?? null) : null;
@@ -325,6 +338,14 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
               value={overview.followUpsDue}
               hint="Next steps due today or earlier"
               tone={overview.followUpsDue > 0 ? "warn" : undefined}
+            />
+            <AttentionCard
+              to="/storage"
+              icon={<Lock size={15} />}
+              label="Writes blocked"
+              value={blockedWrites ?? "—"}
+              hint={blockedWrites == null ? "The repos service did not answer" : "Repositories a fork's copy lock has held too long"}
+              tone={stalledWrites > 0 ? "danger" : (blockedWrites ?? 0) > 0 ? "warn" : undefined}
             />
           </div>
         </>

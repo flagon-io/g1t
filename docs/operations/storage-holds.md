@@ -12,12 +12,42 @@ its hold: a reservation counts against the workspace's 5 GB public cap, and
 a copy lock refuses every write to the source, private or public (each
 told "This repository is being copied into a fork. Try again in a few
 minutes; if it lasts more than an hour, g1t staff release it.", never that
-storage is full; a push is told the same in git's `remote:` lines). A pull
+storage is full; a push is told the same in git's `remote:` lines; once the
+copy is known not to have finished cleanly, that it can take a few hours,
+below). A pull
 request g1t merges by itself stalls with that message, and a person's
 automatic merge turns off with it: neither is tried again by itself once the lock
 is released. Nothing expires a hold on a timer, on
 purpose: releasing one that is still in flight would let two writes take the
 same room.
+
+## A source that takes no writes
+
+A fork whose call to the store timed out or met a server error may still be
+copying, so it keeps its source's lock, and the source refuses every write
+until staff release it: at the soonest 75 minutes after the copy began (the
+lease, an hour, and 15 minutes' grace). Its writers are told the copy did
+not finish cleanly and that it can take a few hours, so do not leave it.
+
+- **Where it shows.** sudo's Overview has **Writes blocked** under Needs
+  attention: the repositories a copy lock has held longer than a copy
+  ordinarily takes (15 minutes), red once one did not finish cleanly. The
+  Storage holds page lists them under **Writes blocked**, with how long each
+  has been blocked, how the fork's call ended, and when its lock becomes
+  releasable. The repos service also logs `copy_lock_kept` (an error, with
+  the source, the fork and the store's error) when it keeps a lock this
+  way.
+- **What to do.** Inspect the lock: the fork's refs in the store say whether
+  the copy landed. Once it is releasable, release it with what you saw; the
+  source takes writes again at once. Then release the fork's ended
+  reservation the same way. Whether the fork kept the copy, its
+  `stored_bytes` stays as it was: note it in the reason, and use Drift.
+- **A fork that outlived its lock.** If the store's call returns after staff
+  released the lock, the fork is counted at its source's measured size, a
+  lower bound that never overcharges, and the repos service logs
+  `fork_outlived_copy_lock` (a warning, with the fork and the bytes
+  counted): the source may have taken writes the fork holds and the count
+  misses. Drift measures how far it is out.
 
 ## Provably abandoned
 

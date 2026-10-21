@@ -131,10 +131,10 @@ function grant(db, { root, id, bytes, now = 0, lease = now + LEASE_MS, cap = CAP
   const [held, , locked] = batch(db, [
     ["HOLD", [root, bytes, cap, id, root, "push", null, made, new Date(now).toISOString(), now, lease], "get"],
     ["HOLD_SUM", [root, bytes, id, made]],
-    ["COPY_LOCKED", [root], "get"],
+    ["COPY_LOCKED", [root, now], "get"],
   ]);
   if (held !== undefined) return "granted";
-  if (locked.locked) return "locked";
+  if (locked.locked) return locked.stalled ? "stalled" : "locked";
   return now > lease ? "overdue" : "full";
 }
 /** public_storage.rs `settle`. */
@@ -233,6 +233,53 @@ test("a write to a repository being copied into a fork is refused for the lock, 
   db.exec("DELETE FROM storage_copy_locks");
   assert.equal(grant(db, { root: "private", id: "srv_private", bytes: 10 }), "granted");
   assert.equal(grant(db, { root: "public", id: "srv_public", bytes: 10 }), "granted");
+  db.close();
+});
+
+test("a lock whose copy did not finish cleanly says so, and one still copying does not", () => {
+  const db = database();
+  repo(db, "source", 100);
+  repo(db, "fork", 0);
+  db.prepare(sql("LOCK_COPY")).get("source", "fork", "2026-10-21T00:00:00Z", 0, LEASE_MS);
+  // The fork's reservation (root and target the fork), still copying.
+  assert.ok(hold(db, { root: "fork", id: "srv_fork", bytes: 100, operation: "fork" }));
+  assert.equal(grant(db, { root: "source", id: "srv_push", bytes: 10, now: HOUR / 2 }), "locked");
+  // Its call to the store failed in a way that may still be copying
+  // (network.rs): the reservation ends and the lock stays, for staff.
+  end(db, "srv_fork", HOUR / 2);
+  assert.equal(grant(db, { root: "source", id: "srv_push", bytes: 10, now: HOUR / 2 }), "stalled");
+  // Another repository's ended fork reservation is not this lock's.
+  db.exec("DELETE FROM storage_reservations");
+  assert.equal(grant(db, { root: "source", id: "srv_push", bytes: 10, now: HOUR / 2 }), "locked");
+  // Past its lease, however it got there, and a lock older code took
+  // without one.
+  assert.equal(grant(db, { root: "source", id: "srv_push", bytes: 10, now: LEASE_MS + 1 }), "stalled");
+  db.exec("UPDATE storage_copy_locks SET lease_until_ms = NULL");
+  assert.equal(grant(db, { root: "source", id: "srv_push", bytes: 10, now: 1 }), "stalled");
+  assert.deepEqual(sums(db, "source"), { stored: 100, reserved: 0, ledger: 0 }, "nothing is reserved while it is locked");
+  db.close();
+});
+
+test("a fork made after staff released its copy lock is counted at what was measured, never more", () => {
+  const db = database();
+  repo(db, "source", 100);
+  repo(db, "fork", 0, "team", 1);
+  db.prepare(sql("LOCK_COPY")).get("source", "fork", "2026-10-21T00:00:00Z", 0, LEASE_MS);
+  // The fork reserves its source's measured 100 and in-flight 30.
+  assert.ok(hold(db, { root: "fork", id: "srv_fork", bytes: 130, operation: "fork" }));
+  // The store's call outlives the lease and grace; staff release the lock.
+  const late = LEASE_MS + GRACE_MS;
+  assert.ok(releaseLock(db, { audit: "srr_lock", source: "source", destination: "fork", now: late }));
+  assert.equal(db.prepare(sql("UNLOCK_COPY")).get("source", "fork"), undefined, "the fork finds its lock gone");
+  // It settles at the measured size all the same (network.rs `fork`).
+  settle(db, "fork", "srv_fork", 100);
+  assert.deepEqual(sums(db, "fork"), { stored: 100, reserved: 0, ledger: 0 }, "billed from stored_bytes: the measured lower bound");
+  // Had staff released its reservation too, the measured size still lands, once.
+  repo(db, "fork2", 0, "team", 1);
+  assert.ok(hold(db, { root: "fork2", id: "srv_fork2", bytes: 130, operation: "fork" }));
+  assert.ok(releaseReservation(db, { audit: "srr_2", id: "srv_fork2", bytes: 130, now: late }));
+  settle(db, "fork2", "srv_fork2", 100);
+  assert.deepEqual(sums(db, "fork2"), { stored: 100, reserved: 0, ledger: 0 });
   db.close();
 });
 

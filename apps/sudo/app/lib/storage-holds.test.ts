@@ -6,6 +6,9 @@ import type { AdminLogEntry, Result, StorageHold, StorageHoldKind, StorageRecove
 import {
   MAX_REASON,
   RELEASE_ACTION,
+  SLOW_COPY_SECONDS,
+  blockedSources,
+  blockedSummary,
   formatAge,
   formatBytes,
   holdKey,
@@ -212,4 +215,83 @@ test("after a release the page says whether the audit log has it", () => {
   assert.match(missed?.auditMissed ?? "", /The release is done, but billing did not record it in the audit log.*storage_recoveries src_9/);
   // A row id that is not one is not shown.
   assert.doesNotMatch(releasedNotice(new URLSearchParams({ done: "released", unaudited: "<b>" }))?.auditMissed ?? "", /<b>/);
+});
+
+/** A hold as the repos service lists it. */
+function listed(over: Partial<StorageHold>): StorageHold {
+  return {
+    kind: "copy_lock",
+    id: "rep_src",
+    repo: { id: "rep_src", path: "acme/site", private: true, deleted: false },
+    target: { id: "rep_fork", path: "bob/site", private: true, deleted: false },
+    operation: "fork",
+    actor: null,
+    state: null,
+    bytes: 0,
+    since: "2026-10-21T10:00:00Z",
+    ageSeconds: 60,
+    leaseUntil: "2026-10-21T11:00:00Z",
+    outcome: null,
+    abandoned: false,
+    why: "The copy may still be running.",
+    releasableAt: "2026-10-21T11:15:00Z",
+    ...over,
+  };
+}
+
+test("a copy lock still copying blocks its source's writes, but needs no look until it is slow", () => {
+  const now = "2026-10-21T10:01:00Z";
+  const fork = listed({
+    kind: "reservation",
+    id: "srv_fork",
+    repo: { id: "rep_fork", path: "bob/site", private: true, deleted: false },
+    target: null,
+    state: "held",
+    bytes: 100,
+  });
+  const [copying] = blockedSources([listed({}), fork], now);
+  assert.equal(copying!.fork?.id, "srv_fork", "its fork's reservation is found by the fork's id");
+  assert.equal(copying!.stalled, false);
+  assert.equal(copying!.attention, false);
+  assert.equal(blockedSummary(blockedSources([listed({})], now)), null);
+  const slow = blockedSources([listed({ ageSeconds: SLOW_COPY_SECONDS })], now);
+  assert.deepEqual([slow[0]!.stalled, slow[0]!.attention], [false, true]);
+  assert.equal(blockedSummary(slow), "A repository takes no writes: its copy into a fork is taking longer than a copy ordinarily does.");
+});
+
+test("a copy lock kept after its fork's call failed, or past its lease, stands out", () => {
+  const now = "2026-10-21T10:05:00Z";
+  // The fork's call failed in a way that may still be copying: its
+  // reservation ended, and the lock stays (network.rs).
+  const ended = listed({
+    kind: "reservation",
+    id: "srv_fork",
+    repo: { id: "rep_fork", path: "bob/site", private: true, deleted: false },
+    target: { id: "rep_fork", path: "bob/site", private: true, deleted: false },
+    state: "ended",
+    outcome: "fork for acme--site failed: INTERNAL_ERROR",
+  });
+  const [kept] = blockedSources([listed({ ageSeconds: 300 }), ended], now);
+  assert.deepEqual([kept!.stalled, kept!.attention, kept!.fork?.outcome], [true, true, "fork for acme--site failed: INTERNAL_ERROR"]);
+  // Another fork's ended reservation is not this lock's.
+  const other = { ...ended, repo: { ...ended.repo, id: "rep_other" } };
+  assert.equal(blockedSources([listed({ ageSeconds: 300 }), other], now)[0]!.stalled, false);
+  // Past its lease, or older code's lock without one.
+  assert.equal(blockedSources([listed({ leaseUntil: "2026-10-21T10:00:00Z" })], now)[0]!.stalled, true);
+  assert.equal(blockedSources([listed({ leaseUntil: null, ageSeconds: null })], now)[0]!.stalled, true);
+  // Oldest first, and reservations are not sources.
+  const fork = (id: string) => ({ ...ended, id: `srv_${id}`, repo: { ...ended.repo, id } });
+  const two = blockedSources(
+    [listed({ id: "rep_a", ageSeconds: 100 }), listed({ id: "rep_b", ageSeconds: 9000, leaseUntil: "2026-10-21T09:00:00Z" }), fork("rep_elsewhere")],
+    now,
+  );
+  assert.deepEqual(
+    two.map((source) => source.lock.id),
+    ["rep_b", "rep_a"],
+  );
+  assert.equal(
+    blockedSummary(blockedSources([listed({ ageSeconds: 300 }), ended], now)),
+    "A repository takes no writes: its copy into a fork did not finish cleanly. A copy that did not finish cleanly keeps its lock until it is released here, once it is provably abandoned.",
+  );
+  assert.match(blockedSummary(two)!, /^A repository takes no writes/, "only the one past its lease needs a look");
 });
