@@ -185,9 +185,180 @@ pub struct StopAgentSessionArgs {
     pub id: String,
 }
 
+/// How long a Managed Agents session's tool call waits for someone to
+/// allow or deny it before g1t declines it. The session sits idle while it
+/// waits (on the workspace's own Anthropic account, which bills nothing for
+/// idle time), so this is about not leaving a session stuck, not cost: long
+/// enough for whoever is told to open the page, short enough that a session
+/// started and forgotten carries on (with the call declined) the same hour.
+pub const APPROVAL_WAIT_MS: u64 = 10 * 60 * 1000;
+
+/// Who may answer a running Managed Agents session (allow or deny its
+/// calls, send it a message): whoever started it, and the workspace's
+/// members with write access to its repository, who could make the same
+/// changes themselves. Never an agent or a token acting for one: a session
+/// must not approve its own calls. `started_by` is the id of whoever
+/// started it; `member` and `can_push` are the viewer's in the session's
+/// workspace and repository.
+pub fn may_answer(viewer: &User, started_by: &str, member: bool, can_push: bool) -> bool {
+    if viewer.id.is_empty() || viewer.kind != crate::PrincipalKind::User || viewer.acting.is_some() || !viewer.verified {
+        return false;
+    }
+    viewer.id == started_by || (member && can_push)
+}
+
+/// Where a call that waited for approval stands.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalStatus {
+    /// Nobody has answered it yet.
+    #[default]
+    Waiting,
+    Allowed,
+    Denied,
+    /// Nobody answered within [`APPROVAL_WAIT_MS`]: g1t declined it.
+    Expired,
+    /// The session ended while it waited.
+    Ended,
+}
+
+impl ApprovalStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ApprovalStatus::Waiting => "waiting",
+            ApprovalStatus::Allowed => "allowed",
+            ApprovalStatus::Denied => "denied",
+            ApprovalStatus::Expired => "expired",
+            ApprovalStatus::Ended => "ended",
+        }
+    }
+
+    pub fn parse(name: &str) -> ApprovalStatus {
+        match name {
+            "allowed" => ApprovalStatus::Allowed,
+            "denied" => ApprovalStatus::Denied,
+            "expired" => ApprovalStatus::Expired,
+            "ended" => ApprovalStatus::Ended,
+            _ => ApprovalStatus::Waiting,
+        }
+    }
+}
+
+/// A tool call of a Managed Agents session that waits for someone to allow
+/// or deny it. What it would do is summarized as the transcript shows a
+/// call (`tool: what`, secrets hidden), never its whole input.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentApproval {
+    /// The g1t session (`ses_…`) at the top of its tree.
+    pub session_id: String,
+    /// `owner/name`.
+    pub repo: String,
+    /// The work item the session works on, by number in the workspace.
+    #[serde(default)]
+    pub item: Option<u32>,
+    /// The call's id with the provider: what an answer names.
+    pub tool_use_id: String,
+    /// The tool, as the transcript names it (`bash`, `g1t:work_item`).
+    pub tool: String,
+    /// What it wants to do, in one line.
+    pub summary: String,
+    pub status: ApprovalStatus,
+    /// Who started the session (username).
+    pub started_by: String,
+    /// Who answered it (username), when someone did.
+    #[serde(default)]
+    pub answered_by: Option<String>,
+    /// RFC 3339.
+    pub asked_at: String,
+    /// When g1t declines it if nobody answers. RFC 3339.
+    pub expires_at: String,
+}
+
+/// `agent_session_approvals`: the calls waiting for approval in a
+/// workspace's Managed Agents sessions that `viewer` may answer (see
+/// [`may_answer`]), newest first; with `session`, that session's only.
+/// Returns `Outcome<Vec<AgentApproval>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AgentApprovalsArgs {
+    pub viewer: Viewer,
+    pub workspace: String,
+    /// A g1t session (`ses_…`) at the top of its tree.
+    #[serde(default)]
+    pub session: Option<String>,
+}
+
+/// An answer to a call that waits for approval.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalAnswer {
+    Allow,
+    Deny,
+}
+
+/// The most characters of a message sent to a running session.
+pub const MAX_MESSAGE_CHARS: usize = 4_000;
+
+/// `answer_agent_session`: allows or denies a call of a running Managed
+/// Agents session that waits for approval. For whoever [`may_answer`]. An
+/// answer after the session ended, after [`APPROVAL_WAIT_MS`], or after
+/// someone else answered is refused, never sent. Returns
+/// `Outcome<AgentApproval>`: the call as it now stands.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AnswerAgentSessionArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    /// The g1t session (`ses_…`) at the top of its tree.
+    pub id: String,
+    pub tool_use_id: String,
+    pub answer: ApprovalAnswer,
+    /// With a denial: why, told to the session.
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+/// `message_agent_session`: sends a message to a running Managed Agents
+/// session, as its next instruction. For whoever [`may_answer`]. Returns
+/// `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MessageAgentSessionArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    /// The g1t session (`ses_…`) at the top of its tree.
+    pub id: String,
+    pub text: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn person(id: &str) -> User {
+        User { id: id.into(), username: id.into(), verified: true, ..Default::default() }
+    }
+
+    #[test]
+    fn whoever_started_it_and_writers_in_the_workspace_may_answer() {
+        assert!(may_answer(&person("usr_a"), "usr_a", false, false));
+        assert!(may_answer(&person("usr_b"), "usr_a", true, true));
+        // A member who only reads, or a writer from outside the workspace, may not.
+        assert!(!may_answer(&person("usr_b"), "usr_a", true, false));
+        assert!(!may_answer(&person("usr_b"), "usr_a", false, true));
+        // Nor anyone signed out, unverified, or anything but a person.
+        assert!(!may_answer(&User::default(), "", true, true));
+        assert!(!may_answer(&User { verified: false, ..person("usr_a") }, "usr_a", true, true));
+        assert!(!may_answer(&User { kind: crate::PrincipalKind::Agent, ..person("usr_a") }, "usr_a", true, true));
+        assert!(!may_answer(&User { kind: crate::PrincipalKind::Workspace, ..person("acme") }, "usr_a", true, true));
+    }
+
+    #[test]
+    fn approval_states_are_named_one_way() {
+        for status in [ApprovalStatus::Waiting, ApprovalStatus::Allowed, ApprovalStatus::Denied, ApprovalStatus::Expired, ApprovalStatus::Ended] {
+            assert_eq!(ApprovalStatus::parse(status.as_str()), status);
+            assert_eq!(serde_json::to_value(status).unwrap(), status.as_str());
+        }
+        assert_eq!(serde_json::to_value(ApprovalAnswer::Deny).unwrap(), "deny");
+    }
 
     #[test]
     fn modes_are_named_one_way() {

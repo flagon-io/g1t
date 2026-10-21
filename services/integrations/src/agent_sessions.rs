@@ -22,8 +22,14 @@
 //! and with what (never what they returned), what it touched, and each
 //! subagent thread as a session of its own under it, with the task it was
 //! given and what it reported. A call that waits for someone's approval is
-//! declined, as nobody is watching. When it finishes, its g1t session ends
-//! with its last message as its result, and the vault and token go.
+//! kept (`agent_approvals`) and shown on the session's page and in Needs
+//! attention, where whoever started the session, or a workspace member with
+//! write access to its repository, allows or denies it
+//! (`answer_agent_session`); nobody answering within
+//! [`APPROVAL_WAIT_MS`] declines it. The same people can send a running
+//! session a message (`message_agent_session`). When it finishes, its g1t
+//! session ends with its last message as its result, and the vault and
+//! token go.
 //!
 //! Without an Anthropic connection, or when asked, it hands off instead:
 //! a `claude` command line, for someone with g1t's Claude Code plugin,
@@ -37,8 +43,9 @@ use std::collections::BTreeMap;
 use g1t_contracts::agent_sessions::*;
 use g1t_contracts::credentials::{CreateRunCredentialArgs, CredentialUse, GitGrant, RunCredentialKind};
 use g1t_contracts::identity::{CreatedAccessToken, RemoveArgs};
+use g1t_contracts::access::{self, Capability};
 use g1t_contracts::ai::AiProvider;
-use g1t_contracts::repos::RepoPath;
+use g1t_contracts::repos::{GetArgs, Repo, RepoPath};
 use g1t_contracts::time::{parse_rfc3339, rfc3339};
 use g1t_contracts::work::{
     EndSessionArgs, Harness, KeyedSessionEntry, NewSessionEntry, NewTouch, OpenWorkItemArgs, PullDetail, RecordEntriesArgs, Recorded, Session,
@@ -77,6 +84,10 @@ const PER_TICK: u32 = 20;
 /// The most characters of a message, a task or a result kept.
 const MAX_TEXT: usize = 8_000;
 const MAX_ITEM_BODY: usize = 8_000;
+/// The most characters of why a call was denied, told to the session.
+const MAX_NOTE: usize = 1_000;
+/// The most calls waiting for approval read at once.
+const MAX_APPROVALS: u32 = 100;
 /// How soon a look at a session's page reads it again.
 const SYNC_EVERY_MS: u64 = 5_000;
 
@@ -93,7 +104,17 @@ const G1T_SKILLS: [(&str, &str); 3] = [
 const RETIRED_SKILLS: [&str; 1] = ["work-on-issue"];
 
 /// The methods this module answers.
-pub const METHODS: [&str; 6] = ["start_agent_session", "agent_sessions_setup", "sync_agent_session", "agent_session_link", "stop_agent_session", "sync_agent_sessions"];
+pub const METHODS: [&str; 9] = [
+    "start_agent_session",
+    "agent_sessions_setup",
+    "sync_agent_session",
+    "agent_session_link",
+    "stop_agent_session",
+    "sync_agent_sessions",
+    "agent_session_approvals",
+    "answer_agent_session",
+    "message_agent_session",
+];
 
 // --- Requests, built without calling anything ------------------------------
 
@@ -213,9 +234,92 @@ pub fn message_event(text: &str) -> Value {
     json!({ "events": [{ "type": "user.message", "content": [{ "type": "text", "text": text }] }] })
 }
 
-/// Declines a call that waits for approval: nobody is watching.
-pub fn deny_event(tool_use_id: &str) -> Value {
-    json!({ "events": [{ "type": "user.tool_confirmation", "tool_use_id": tool_use_id, "result": "deny" }] })
+/// Answers a call that waits for approval (`evaluated_permission: "ask"`).
+/// `tool_use_id` is the id of its `agent.tool_use` or `agent.mcp_tool_use`
+/// event on the session's stream, a subagent's too: the API routes the
+/// answer to the thread. A denial tells the session why, in `note`.
+pub fn confirmation_event(tool_use_id: &str, answer: ApprovalAnswer, note: Option<&str>) -> Value {
+    let result = match answer {
+        ApprovalAnswer::Allow => "allow",
+        ApprovalAnswer::Deny => "deny",
+    };
+    let mut event = json!({ "type": "user.tool_confirmation", "tool_use_id": tool_use_id, "result": result });
+    if answer == ApprovalAnswer::Deny
+        && let Some(note) = note.map(str::trim).filter(|note| !note.is_empty())
+    {
+        event["deny_message"] = json!(cut(note, MAX_NOTE));
+    }
+    json!({ "events": [event] })
+}
+
+/// What the session is told when nobody answered a call in time.
+const EXPIRED_TOLD: &str = "Nobody answered this approval in time, so g1t declined the call. Carry on without it, \
+     and say in your report what it was for, so someone can do it or start you again.";
+
+/// Declines a call that waited for approval longer than [`APPROVAL_WAIT_MS`].
+pub fn expired_event(tool_use_id: &str) -> Value {
+    confirmation_event(tool_use_id, ApprovalAnswer::Deny, Some(EXPIRED_TOLD))
+}
+
+/// What the session is told when someone denies a call: who, and why when they said.
+pub fn denial_told(username: &str, note: Option<&str>) -> String {
+    match note.map(str::trim).filter(|note| !note.is_empty()) {
+        Some(note) => format!("{username} denied this call on g1t: {note}"),
+        None => format!("{username} denied this call on g1t."),
+    }
+}
+
+/// The transcript's note when a call starts waiting.
+pub fn waiting_note(summary: &str) -> String {
+    format!(
+        "Waiting for approval: {summary}. Whoever started this session, or a workspace member with write access to the repository, \
+         can allow or deny it on this page; g1t declines it if nobody answers in {} minutes.",
+        APPROVAL_WAIT_MS / 60_000
+    )
+}
+
+/// The transcript's note when nobody answered.
+pub fn expired_note(summary: &str) -> String {
+    format!("g1t declined a call that waited {} minutes for approval and nobody answered: {summary}.", APPROVAL_WAIT_MS / 60_000)
+}
+
+/// The transcript's note when someone answered.
+pub fn answered_note(username: &str, answer: ApprovalAnswer, summary: &str) -> String {
+    let did = match answer {
+        ApprovalAnswer::Allow => "allowed",
+        ApprovalAnswer::Deny => "denied",
+    };
+    format!("{username} {did} {summary}.")
+}
+
+/// Whether a call g1t saw waiting at `asked_at` has waited its time out by
+/// `now`. One whose time cannot be read has.
+pub fn approval_due(asked_at: &str, now: u64) -> bool {
+    parse_rfc3339(asked_at).is_none_or(|asked| now.saturating_sub(asked) >= APPROVAL_WAIT_MS)
+}
+
+/// When a call g1t saw waiting at `asked_at` is declined if nobody answers.
+pub fn approval_expires(asked_at: &str) -> String {
+    rfc3339(parse_rfc3339(asked_at).unwrap_or_default() + APPROVAL_WAIT_MS)
+}
+
+/// Why an answer to a call cannot be sent, if it cannot: the session
+/// ended, the call waited its time out, or someone answered it already. A
+/// refused answer is never kept to send later.
+pub fn refusal(status: ApprovalStatus, running: bool, asked_at: &str, answered_by: Option<&str>, now: u64) -> Option<String> {
+    let minutes = APPROVAL_WAIT_MS / 60_000;
+    let by = answered_by.unwrap_or("Someone");
+    match status {
+        ApprovalStatus::Allowed => Some(format!("{by} allowed it already.")),
+        ApprovalStatus::Denied => Some(format!("{by} denied it already.")),
+        ApprovalStatus::Expired => Some(format!("Nobody answered it in {minutes} minutes, so g1t declined it.")),
+        ApprovalStatus::Ended => Some("The session ended while it waited: there is nothing to answer.".to_owned()),
+        ApprovalStatus::Waiting if !running => Some("The session has ended: there is nothing to answer.".to_owned()),
+        ApprovalStatus::Waiting if approval_due(asked_at, now) => {
+            Some(format!("It waited {minutes} minutes and nobody answered, so g1t declines it."))
+        }
+        ApprovalStatus::Waiting => None,
+    }
 }
 
 pub fn interrupt_event() -> Value {
@@ -526,8 +630,8 @@ pub fn branch_in(command: &str) -> Option<String> {
 pub enum Mapped {
     Entry { kind: SessionEntryKind, text: String, tool: Option<String> },
     Touch(NewTouch),
-    /// A call waits for approval.
-    Confirm(String),
+    /// A call waits for approval: its event id, its tool, and what it does.
+    Confirm { id: String, tool: String, summary: String },
     ThreadCreated { thread: String, agent: Option<String> },
     /// The coordinator gave a thread its task.
     ThreadTask { thread: String, text: String },
@@ -609,7 +713,7 @@ pub fn map_event(event: &Value) -> Vec<Mapped> {
             if event["evaluated_permission"].as_str() == Some("ask")
                 && let Some(id) = event["id"].as_str()
             {
-                out.push(Mapped::Confirm(id.to_owned()));
+                out.push(Mapped::Confirm { id: id.to_owned(), tool: tool.clone(), summary: summarize(&tool, input) });
             }
         }
         "session.thread_created" => {
@@ -701,7 +805,10 @@ struct AgentRow {
 #[derive(Deserialize)]
 pub(crate) struct RunRow {
     session_id: String,
+    workspace: String,
     repo: String,
+    #[serde(default)]
+    item: Option<u32>,
     connection_id: String,
     actor: String,
     provider_session_id: String,
@@ -729,6 +836,46 @@ impl RunRow {
         serde_json::from_str(&self.threads).unwrap_or_default()
     }
 }
+
+/// A call that waits, or waited, for approval (`agent_approvals`).
+#[derive(Deserialize)]
+struct ApprovalRow {
+    session_id: String,
+    tool_use_id: String,
+    repo: String,
+    item: Option<u32>,
+    started_by: String,
+    started_by_name: String,
+    tool: String,
+    summary: String,
+    status: String,
+    answered_by: Option<String>,
+    asked_at: String,
+}
+
+impl ApprovalRow {
+    fn status(&self) -> ApprovalStatus {
+        ApprovalStatus::parse(&self.status)
+    }
+
+    fn approval(&self) -> AgentApproval {
+        AgentApproval {
+            session_id: self.session_id.clone(),
+            repo: self.repo.clone(),
+            item: self.item,
+            tool_use_id: self.tool_use_id.clone(),
+            tool: self.tool.clone(),
+            summary: self.summary.clone(),
+            status: self.status(),
+            started_by: self.started_by_name.clone(),
+            answered_by: self.answered_by.clone(),
+            expires_at: approval_expires(&self.asked_at),
+            asked_at: self.asked_at.clone(),
+        }
+    }
+}
+
+const APPROVAL_COLUMNS: &str = "session_id, tool_use_id, repo, item, started_by, started_by_name, tool, summary, status, answered_by, asked_at";
 
 fn host_of(url: &str) -> Option<String> {
     let rest = url.split("://").nth(1)?;
@@ -1346,9 +1493,11 @@ impl Integrations {
                         entries.push(keyed(&id, entries.len(), kind, text, tool));
                     }
                     Mapped::Touch(touch) => touched.push(touch),
-                    Mapped::Confirm(tool_use) => {
-                        let _ = self.call_anthropic(&key, Method::Post, &format!("/v1/sessions/{}/events", run.provider_session_id), Some(deny_event(&tool_use))).await?;
-                        entries.push(keyed(&id, entries.len(), SessionEntryKind::Note, "g1t declined a call that waited for approval: nobody was watching.".to_owned(), None));
+                    // It waits for someone to answer, from the session's page or Needs
+                    // attention; the check below declines it once nobody has in time.
+                    Mapped::Confirm { id: tool_use, tool, summary } => {
+                        self.keep_waiting(&run, &tool_use, &tool, &summary).await?;
+                        entries.push(keyed(&id, entries.len(), SessionEntryKind::Note, waiting_note(&summary), None));
                     }
                     Mapped::ThreadCreated { thread, agent } => {
                         if threads.contains_key(&thread) {
@@ -1413,6 +1562,9 @@ impl Integrations {
         if ended.is_none() && finished(&events, run.result.is_some()) {
             ended = Some("done");
         }
+        if ended.is_none() {
+            self.decline_unanswered(&run, &key, &mut entries).await?;
+        }
         self.record_run(&run, &run.session_id, entries, touched).await?;
         // Each subagent thread's own events.
         for (thread, state) in threads.iter_mut().filter(|(_, state)| !state.done) {
@@ -1464,6 +1616,12 @@ impl Integrations {
             self.end_run_session(run, &state.session, "done", None).await?;
         }
         self.end_run_session(run, &run.session_id, reason, run.result.clone()).await?;
+        // A call still waiting has nobody left to answer it.
+        self.db
+            .prepare("UPDATE agent_approvals SET status = 'ended', answered_at = ? WHERE session_id = ? AND status = 'waiting'")
+            .bind(&[rfc3339(now_ms()).into(), run.session_id.as_str().into()])?
+            .run()
+            .await?;
         if let (Some(key), Some(vault)) = (key, &run.vault_id) {
             self.forget_vault(key, vault).await;
         }
@@ -1533,6 +1691,262 @@ impl Integrations {
         Ok(Outcome::Ok(true))
     }
 
+    /// Keeps a call that waits for approval, once: reading the same event
+    /// again leaves it as it is, answered or not. Its time starts when g1t
+    /// sees it, which is when anyone can be shown it.
+    async fn keep_waiting(&self, run: &RunRow, tool_use_id: &str, tool: &str, summary: &str) -> Result<()> {
+        let actor = run.actor();
+        self.db
+            .prepare(
+                "INSERT OR IGNORE INTO agent_approvals
+                   (session_id, tool_use_id, workspace, repo, item, started_by, started_by_name, tool, summary, asked_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(&[
+                run.session_id.as_str().into(),
+                tool_use_id.into(),
+                run.workspace.as_str().into(),
+                run.repo.as_str().into(),
+                run.item.map_or(JsValue::NULL, JsValue::from),
+                actor.id.as_str().into(),
+                actor.username.as_str().into(),
+                tool.into(),
+                summary.into(),
+                rfc3339(now_ms()).into(),
+            ])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    /// Declines the run's calls that waited [`APPROVAL_WAIT_MS`] with
+    /// nobody answering, each noted in its transcript. Each is taken from
+    /// `waiting` first, so an answer that arrives at the same moment and
+    /// this never both reach the session.
+    async fn decline_unanswered(&self, run: &RunRow, key: &str, entries: &mut Vec<KeyedSessionEntry>) -> Result<()> {
+        let now = now_ms();
+        let cutoff = rfc3339(now.saturating_sub(APPROVAL_WAIT_MS));
+        let due = self
+            .db
+            .prepare(format!(
+                "UPDATE agent_approvals SET status = 'expired', answered_at = ?
+                 WHERE session_id = ? AND status = 'waiting' AND asked_at <= ? RETURNING {APPROVAL_COLUMNS}"
+            ))
+            .bind(&[rfc3339(now).into(), run.session_id.as_str().into(), cutoff.as_str().into()])?
+            .all()
+            .await?
+            .results::<ApprovalRow>()?;
+        for approval in due {
+            let declined = self
+                .call_anthropic(key, Method::Post, &format!("/v1/sessions/{}/events", run.provider_session_id), Some(expired_event(&approval.tool_use_id)))
+                .await?;
+            if let Err(problem) = declined {
+                // Answered meanwhile (in the Console, say) or gone: it waits on nobody now either way.
+                worker::console_error!("agent sessions: {}: {} not declined: {problem}", run.session_id, approval.tool_use_id);
+            }
+            let note = KeyedSessionEntry {
+                entry: NewSessionEntry { kind: SessionEntryKind::Note, text: expired_note(&approval.summary), tool: None, commit: None },
+                key: Some(format!("approval:{}:expired", approval.tool_use_id)),
+            };
+            entries.push(note);
+        }
+        Ok(())
+    }
+
+    /// Whether `actor` may answer the run: see [`may_answer`].
+    async fn may_answer_run(&self, actor: &User, run: &RunRow) -> Result<bool> {
+        let started_by = run.actor().id;
+        if actor.id == started_by || !actor.is_member(&run.workspace) {
+            return Ok(may_answer(actor, &started_by, false, false));
+        }
+        let Some(path) = run.repo_path() else { return Ok(false) };
+        Ok(may_answer(actor, &started_by, true, self.can_push(actor, &path).await?))
+    }
+
+    /// Whether `actor` may push to the repository, as the repos service sees it.
+    async fn can_push(&self, actor: &User, path: &RepoPath) -> Result<bool> {
+        let found: Outcome<Repo> = g1t_kit::call(&self.repos, "get", &GetArgs { path: path.clone(), viewer: Some(actor.clone()) }).await?;
+        Ok(match found {
+            Outcome::Ok(repo) => access::check(Some(actor), &repo, Capability::Push).is_ok(),
+            Outcome::Fail(_) => false,
+        })
+    }
+
+    /// The run a person answers: in that repository, still going, and theirs
+    /// to answer. Anyone who may not is told there is no such session.
+    async fn answerable_run(&self, actor: &User, repo: &RepoPath, id: &str) -> Result<Outcome<RunRow>> {
+        let missing = || Outcome::fail(FailureCode::NotFound, "No session g1t started has that id.");
+        let Some(run) = self.run_row(id.trim()).await? else { return Ok(missing()) };
+        let path = format!("{}/{}", repo.namespace, repo.name).to_lowercase();
+        if run.repo.to_lowercase() != path || actor.id.is_empty() {
+            return Ok(missing());
+        }
+        if !self.may_answer_run(actor, &run).await? {
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                "Only whoever started this session, or a workspace member with write access to the repository, can answer it.",
+            ));
+        }
+        if run.status != "running" {
+            return Ok(Outcome::fail(FailureCode::Conflict, "The session has ended: there is nothing to answer."));
+        }
+        Ok(Outcome::Ok(run))
+    }
+
+    /// `agent_session_approvals`: see [`AgentApprovalsArgs`].
+    pub(crate) async fn agent_session_approvals(&self, a: AgentApprovalsArgs) -> Result<Outcome<Vec<AgentApproval>>> {
+        let workspace = a.workspace.to_lowercase();
+        let Some(viewer) = a.viewer.filter(|viewer| viewer.is_member(&workspace)) else {
+            return Ok(Outcome::Ok(Vec::new()));
+        };
+        // Only those still in time: one past it is declined at the next look.
+        let since = rfc3339(now_ms().saturating_sub(APPROVAL_WAIT_MS));
+        let rows = match a.session.as_deref().map(str::trim) {
+            Some(session) => self
+                .db
+                .prepare(format!(
+                    "SELECT {APPROVAL_COLUMNS} FROM agent_approvals
+                     WHERE workspace = ? AND session_id = ? AND status = 'waiting' AND asked_at > ? ORDER BY asked_at DESC LIMIT ?"
+                ))
+                .bind(&[workspace.as_str().into(), session.into(), since.as_str().into(), MAX_APPROVALS.into()])?,
+            None => self
+                .db
+                .prepare(format!(
+                    "SELECT {APPROVAL_COLUMNS} FROM agent_approvals
+                     WHERE workspace = ? AND status = 'waiting' AND asked_at > ? ORDER BY asked_at DESC LIMIT ?"
+                ))
+                .bind(&[workspace.as_str().into(), since.as_str().into(), MAX_APPROVALS.into()])?,
+        }
+        .all()
+        .await?
+        .results::<ApprovalRow>()?;
+        // Whether the viewer pushes to each repository, asked once for each.
+        let mut pushes: BTreeMap<String, bool> = BTreeMap::new();
+        let mut shown = Vec::new();
+        for row in rows {
+            let can_push = if row.started_by == viewer.id {
+                false
+            } else if let Some(&known) = pushes.get(&row.repo) {
+                known
+            } else {
+                let path = row.repo.split_once('/').map(|(namespace, name)| RepoPath { namespace: namespace.to_owned(), name: name.to_owned() });
+                let known = match path {
+                    Some(path) => self.can_push(&viewer, &path).await?,
+                    None => false,
+                };
+                pushes.insert(row.repo.clone(), known);
+                known
+            };
+            if may_answer(&viewer, &row.started_by, true, can_push) {
+                shown.push(row.approval());
+            }
+        }
+        Ok(Outcome::Ok(shown))
+    }
+
+    /// `answer_agent_session`: see [`AnswerAgentSessionArgs`].
+    pub(crate) async fn answer_agent_session(&self, a: AnswerAgentSessionArgs) -> Result<Outcome<AgentApproval>> {
+        let run = match self.answerable_run(&a.actor, &a.repo, &a.id).await? {
+            Outcome::Ok(run) => run,
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        };
+        let tool_use_id = a.tool_use_id.trim();
+        let read = || async {
+            self.db
+                .prepare(format!("SELECT {APPROVAL_COLUMNS} FROM agent_approvals WHERE session_id = ? AND tool_use_id = ?"))
+                .bind(&[run.session_id.as_str().into(), tool_use_id.into()])?
+                .first::<ApprovalRow>(None)
+                .await
+        };
+        let Some(approval) = read().await? else {
+            return Ok(Outcome::fail(FailureCode::NotFound, "No call of this session waits for that approval."));
+        };
+        let now = now_ms();
+        if let Some(why) = refusal(approval.status(), true, &approval.asked_at, approval.answered_by.as_deref(), now) {
+            return Ok(Outcome::fail(FailureCode::Conflict, why));
+        }
+        let status = match a.answer {
+            ApprovalAnswer::Allow => ApprovalStatus::Allowed,
+            ApprovalAnswer::Deny => ApprovalStatus::Denied,
+        };
+        // Taken from waiting first: of two answers at once, or an answer and
+        // the timeout, only one reaches the session.
+        let cutoff = rfc3339(now.saturating_sub(APPROVAL_WAIT_MS));
+        let taken = self
+            .db
+            .prepare(format!(
+                "UPDATE agent_approvals SET status = ?, answered_by = ?, answered_at = ?
+                 WHERE session_id = ? AND tool_use_id = ? AND status = 'waiting' AND asked_at > ? RETURNING {APPROVAL_COLUMNS}"
+            ))
+            .bind(&[
+                status.as_str().into(),
+                a.actor.username.as_str().into(),
+                rfc3339(now).into(),
+                run.session_id.as_str().into(),
+                tool_use_id.into(),
+                cutoff.as_str().into(),
+            ])?
+            .first::<ApprovalRow>(None)
+            .await?;
+        let Some(taken) = taken else {
+            let now_is = read().await?;
+            let why = now_is
+                .and_then(|row| refusal(row.status(), true, &row.asked_at, row.answered_by.as_deref(), now_ms()))
+                .unwrap_or_else(|| "It was answered meanwhile.".to_owned());
+            return Ok(Outcome::fail(FailureCode::Conflict, why));
+        };
+        let Some(row) = self.ai_row(&run.connection_id).await? else {
+            return Ok(Outcome::fail(FailureCode::Unavailable, "The workspace's Anthropic connection is gone."));
+        };
+        let key = self.ai_secret(&row).unwrap_or_default();
+        let event = confirmation_event(tool_use_id, a.answer, Some(&denial_told(&a.actor.username, a.note.as_deref())));
+        if let Err(problem) = self.call_anthropic(&key, Method::Post, &format!("/v1/sessions/{}/events", run.provider_session_id), Some(event)).await? {
+            // Not sent: it waits again, for another try or the timeout.
+            self.db
+                .prepare("UPDATE agent_approvals SET status = 'waiting', answered_by = NULL, answered_at = NULL WHERE session_id = ? AND tool_use_id = ?")
+                .bind(&[run.session_id.as_str().into(), tool_use_id.into()])?
+                .run()
+                .await?;
+            return Ok(Outcome::fail(FailureCode::Unavailable, problem));
+        }
+        let entry = KeyedSessionEntry {
+            entry: NewSessionEntry { kind: SessionEntryKind::Note, text: answered_note(&a.actor.username, a.answer, &taken.summary), tool: None, commit: None },
+            key: Some(format!("approval:{tool_use_id}:answered")),
+        };
+        self.record_run(&run, &run.session_id, vec![entry], Vec::new()).await?;
+        Ok(Outcome::Ok(taken.approval()))
+    }
+
+    /// `message_agent_session`: see [`MessageAgentSessionArgs`].
+    pub(crate) async fn message_agent_session(&self, a: MessageAgentSessionArgs) -> Result<Outcome<bool>> {
+        let text = a.text.trim();
+        if text.is_empty() {
+            return Ok(Outcome::fail(FailureCode::Invalid, "Write a message to send."));
+        }
+        if text.chars().count() > MAX_MESSAGE_CHARS {
+            return Ok(Outcome::fail(FailureCode::Invalid, format!("A message is at most {MAX_MESSAGE_CHARS} characters.")));
+        }
+        let run = match self.answerable_run(&a.actor, &a.repo, &a.id).await? {
+            Outcome::Ok(run) => run,
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        };
+        let Some(row) = self.ai_row(&run.connection_id).await? else {
+            return Ok(Outcome::fail(FailureCode::Unavailable, "The workspace's Anthropic connection is gone."));
+        };
+        let key = self.ai_secret(&row).unwrap_or_default();
+        if let Err(problem) = self.call_anthropic(&key, Method::Post, &format!("/v1/sessions/{}/events", run.provider_session_id), Some(message_event(text))).await? {
+            return Ok(Outcome::fail(FailureCode::Unavailable, problem));
+        }
+        // The message itself shows as a prompt when the session is next read;
+        // this says who sent it, which the session's stream does not.
+        let entry = KeyedSessionEntry {
+            entry: NewSessionEntry { kind: SessionEntryKind::Note, text: format!("{} sent it a message from g1t.", a.actor.username), tool: None, commit: None },
+            key: Some(format!("message:{}:{}", a.actor.id, now_ms())),
+        };
+        self.record_run(&run, &run.session_id, vec![entry], Vec::new()).await?;
+        Ok(Outcome::Ok(true))
+    }
+
     /// Follows the running sessions least recently read: the cron's work.
     pub(crate) async fn sync_running(&self) -> Result<u32> {
         let runs = self
@@ -1591,6 +2005,9 @@ pub async fn route(service: &Integrations, method: &str, body: Value) -> Result<
         "agent_session_link" => reply(&service.agent_session_link(args(body)?).await?),
         "stop_agent_session" => reply(&service.stop_agent_session(args(body)?).await?),
         "sync_agent_sessions" => reply(&service.sync_running().await?),
+        "agent_session_approvals" => reply(&service.agent_session_approvals(args(body)?).await?),
+        "answer_agent_session" => reply(&service.answer_agent_session(args(body)?).await?),
+        "message_agent_session" => reply(&service.message_agent_session(args(body)?).await?),
         _ => worker::Response::error("Unknown method", 404),
     }
 }
@@ -1765,7 +2182,7 @@ mod tests {
         let bash = json!({ "type": "agent.tool_use", "id": "sevt_3", "name": "bash", "input": { "command": "git push -u origin 4-greet" }, "evaluated_permission": "ask" });
         let mapped = map_event(&bash);
         assert!(mapped.contains(&Mapped::Touch(NewTouch { kind: TouchKind::Branch, value: "4-greet".into() })));
-        assert!(mapped.contains(&Mapped::Confirm("sevt_3".into())));
+        assert!(mapped.contains(&Mapped::Confirm { id: "sevt_3".into(), tool: "bash".into(), summary: "bash: git push -u origin 4-greet".into() }));
         let mcp = json!({ "type": "agent.mcp_tool_use", "id": "sevt_4", "name": "work_item", "mcp_server_name": "g1t", "input": { "action": "claim", "workspace": "acme", "number": 4 } });
         let mapped = map_event(&mcp);
         assert_eq!(mapped[0], Mapped::Entry { kind: SessionEntryKind::ToolCall, text: "g1t:work_item: claim".into(), tool: Some("g1t:work_item".into()) });
@@ -1785,6 +2202,62 @@ mod tests {
         let idle = json!({ "type": "session.status_idle", "stop_reason": { "type": "requires_action", "event_ids": ["sevt_3"] } });
         assert_eq!(map_event(&idle), vec![Mapped::Idle("requires_action".into())]);
         assert_eq!(thread_harness_id("sesn_1", "sthr_1"), "sesn_1/agent/sthr_1");
+    }
+
+    #[test]
+    fn answers_are_tool_confirmations_for_the_call_that_waits() {
+        assert_eq!(
+            confirmation_event("sevt_3", ApprovalAnswer::Allow, Some("ignored for an allow")),
+            json!({ "events": [{ "type": "user.tool_confirmation", "tool_use_id": "sevt_3", "result": "allow" }] })
+        );
+        assert_eq!(
+            confirmation_event("sevt_3", ApprovalAnswer::Deny, Some(&denial_told("ada", Some(" Use staging. ")))),
+            json!({ "events": [{ "type": "user.tool_confirmation", "tool_use_id": "sevt_3", "result": "deny", "deny_message": "ada denied this call on g1t: Use staging." }] })
+        );
+        assert_eq!(denial_told("ada", Some("  ")), "ada denied this call on g1t.");
+        let quiet = confirmation_event("sevt_3", ApprovalAnswer::Deny, None);
+        assert!(quiet["events"][0].get("deny_message").is_none());
+        let long = "x".repeat(MAX_NOTE + 50);
+        assert!(confirmation_event("sevt_3", ApprovalAnswer::Deny, Some(&long))["events"][0]["deny_message"].as_str().unwrap().chars().count() <= MAX_NOTE + 1);
+        let expired = expired_event("sevt_4");
+        assert_eq!(expired["events"][0]["type"], "user.tool_confirmation");
+        assert_eq!(expired["events"][0]["result"], "deny");
+        assert!(expired["events"][0]["deny_message"].as_str().unwrap().contains("Nobody answered"));
+    }
+
+    #[test]
+    fn a_call_waits_for_an_answer_then_is_declined_when_nobody_gives_one() {
+        let asked = "2026-10-21T12:00:00.000Z";
+        let at = parse_rfc3339(asked).unwrap();
+        assert_eq!(APPROVAL_WAIT_MS, 10 * 60 * 1000);
+        assert!(!approval_due(asked, at));
+        assert!(!approval_due(asked, at + APPROVAL_WAIT_MS - 1));
+        assert!(approval_due(asked, at + APPROVAL_WAIT_MS));
+        assert!(approval_due("not a time", at), "a time that cannot be read is not waited on forever");
+        assert_eq!(approval_expires(asked), "2026-10-21T12:10:00.000Z");
+        // Waiting and in time: it may be answered.
+        assert_eq!(refusal(ApprovalStatus::Waiting, true, asked, None, at + 60_000), None);
+        // Past its time, even before the next look declines it: refused, never sent.
+        assert!(refusal(ApprovalStatus::Waiting, true, asked, None, at + APPROVAL_WAIT_MS).unwrap().contains("nobody answered"));
+        assert!(refusal(ApprovalStatus::Expired, true, asked, None, at + 60_000).unwrap().contains("g1t declined it"));
+        // The session ended: nothing to answer.
+        assert!(refusal(ApprovalStatus::Waiting, false, asked, None, at).unwrap().contains("ended"));
+        assert!(refusal(ApprovalStatus::Ended, true, asked, None, at).unwrap().contains("ended"));
+        // Someone answered first.
+        assert_eq!(refusal(ApprovalStatus::Allowed, true, asked, Some("ada"), at).as_deref(), Some("ada allowed it already."));
+        assert_eq!(refusal(ApprovalStatus::Denied, true, asked, None, at).as_deref(), Some("Someone denied it already."));
+        // What the transcript says at each step.
+        assert!(waiting_note("bash: npm install").starts_with("Waiting for approval: bash: npm install."));
+        assert!(waiting_note("bash: npm install").contains("10 minutes"));
+        assert_eq!(expired_note("bash: npm install"), "g1t declined a call that waited 10 minutes for approval and nobody answered: bash: npm install.");
+        assert_eq!(answered_note("ada", ApprovalAnswer::Allow, "bash: npm install"), "ada allowed bash: npm install.");
+        // What it shows never holds a secret the call was given.
+        let call = json!({ "type": "agent.tool_use", "id": "sevt_9", "name": "bash", "input": { "command": "curl -H 'x' api_key=sk-ant-123" }, "evaluated_permission": "ask" });
+        let summary = map_event(&call).into_iter().find_map(|mapped| match mapped {
+            Mapped::Confirm { summary, .. } => Some(summary),
+            _ => None,
+        });
+        assert_eq!(summary.as_deref(), Some("bash: curl -H 'x' …"));
     }
 
     #[test]

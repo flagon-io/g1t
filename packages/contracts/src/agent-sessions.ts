@@ -2,7 +2,9 @@
  * Starting work on a work item in a session on the person's own Claude.
  * Mirrors `crates/contracts/src/agent_sessions.rs` (the integrations
  * service's `start_agent_session`, `agent_sessions_setup`,
- * `sync_agent_session`, `agent_session_link` and `stop_agent_session`).
+ * `sync_agent_session`, `agent_session_link`, `stop_agent_session`,
+ * `agent_session_approvals`, `answer_agent_session` and
+ * `message_agent_session`).
  */
 import type { ServiceBinding } from "./clients";
 import type { User, Viewer } from "./identity";
@@ -54,6 +56,45 @@ export type StartAgentSessionInput = {
   handoff?: boolean;
 };
 
+/**
+ * How long a hosted session's tool call waits for someone to allow or deny
+ * it before g1t declines it (`APPROVAL_WAIT_MS` in the Rust contracts).
+ */
+export const APPROVAL_WAIT_MS = 10 * 60 * 1000;
+
+/** The most characters of a message sent to a running session. */
+export const MAX_SESSION_MESSAGE_CHARS = 4000;
+
+/** Where a call that waited for approval stands. */
+export type ApprovalStatus = "waiting" | "allowed" | "denied" | "expired" | "ended";
+
+/** An answer to a call that waits for approval. */
+export type ApprovalAnswer = "allow" | "deny";
+
+/**
+ * A tool call of a hosted session that waits for someone to allow or deny
+ * it. What it would do is one line, as the transcript shows a call, with
+ * secrets hidden; never its whole input.
+ */
+export type AgentApproval = {
+  /** The g1t session at the top of its tree. */
+  sessionId: string;
+  /** `owner/name`. */
+  repo: string;
+  item: number | null;
+  /** The call's id with the provider: what an answer names. */
+  toolUseId: string;
+  tool: string;
+  summary: string;
+  status: ApprovalStatus;
+  /** Who started the session (username). */
+  startedBy: string;
+  answeredBy: string | null;
+  askedAt: string;
+  /** When g1t declines it if nobody answers. */
+  expiresAt: string;
+};
+
 /** The integrations service's methods for sessions on a workspace's Anthropic account. */
 export interface AgentSessionsApi {
   setup(workspace: string, viewer: Viewer): Promise<Result<AgentSessionsSetup>>;
@@ -64,6 +105,20 @@ export interface AgentSessionsApi {
   link(actor: User, repo: RepoPath, id: string): Promise<Result<string>>;
   /** Interrupts it and ends its record. Only whoever started it. */
   stop(actor: User, repo: RepoPath, id: string): Promise<Result<boolean>>;
+  /**
+   * The calls waiting for approval in the workspace's hosted sessions that
+   * the viewer may answer, newest first; with `session`, that session's only.
+   * Whoever started a session may answer it, and so may the workspace's
+   * members with write access to its repository.
+   */
+  approvals(viewer: Viewer, workspace: string, session?: string): Promise<Result<AgentApproval[]>>;
+  /**
+   * Allows or denies a call that waits for approval. Refused once the session
+   * ended, the call waited its time out, or someone else answered it.
+   */
+  answer(actor: User, repo: RepoPath, id: string, toolUseId: string, answer: ApprovalAnswer, note?: string): Promise<Result<AgentApproval>>;
+  /** Sends a running session a message, as its next instruction. */
+  message(actor: User, repo: RepoPath, id: string, text: string): Promise<Result<boolean>>;
 }
 
 async function rpc<T>(service: ServiceBinding, method: string, args: object): Promise<T> {
@@ -96,5 +151,8 @@ export function agentSessionsClient(service: ServiceBinding): AgentSessionsApi {
     sync: (repo, id, viewer) => call("sync_agent_session", { repo, id, viewer }),
     link: (actor, repo, id) => call("agent_session_link", { actor, repo, id }),
     stop: (actor, repo, id) => call("stop_agent_session", { actor, repo, id }),
+    approvals: (viewer, workspace, session) => call("agent_session_approvals", { viewer, workspace, session: session ?? null }),
+    answer: (actor, repo, id, toolUseId, answer, note) => call("answer_agent_session", { actor, repo, id, tool_use_id: toolUseId, answer, note: note ?? null }),
+    message: (actor, repo, id, text) => call("message_agent_session", { actor, repo, id, text }),
   };
 }
