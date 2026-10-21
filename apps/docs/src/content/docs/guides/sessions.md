@@ -261,14 +261,50 @@ so the link opens there.
 The session is recorded as harness `claude_managed_agents`: its messages,
 the tools it called and with what (never what they returned), the skills
 it read, what it touched, and each thread as a subagent with its task and
-report. g1t follows it every minute, and at once while its page is open. A
-call that waits for someone's approval is declined, since nobody is
-watching. When it finishes, its session ends with its last message as its
-result. Whoever started it can stop it from its page, and open it on the
-Claude Console from there (**Open in Claude Console**); nobody else is
-given that link, since the Console shows everything the session was asked
-and every tool's output. It runs on your
-workspace's key and Anthropic bills the account for it; g1t bills nothing.
+report. g1t follows it every minute, and at once while its page is open.
+When it finishes, its session ends with its last message as its result.
+Whoever started it can stop it from its page, and open it on the Claude
+Console from there (**Open in Claude Console**); nobody else is given that
+link, since the Console shows everything the session was asked and every
+tool's output. It runs on your workspace's key and Anthropic bills the
+account for it; g1t bills nothing, for the session or for answering it.
+
+### Answer a running session
+
+While a session on the workspace's Anthropic account runs, you can answer
+it from its page if you started it, or if you are a member of the
+workspace with write access to its repository (who could make the same
+changes yourself). Nobody else can, and neither can an agent or a token
+acting for one: a session never approves its own calls.
+
+- **Allow or deny a call that waits for approval.** Most calls run without
+  asking; one the provider's checks could not settle waits for a person.
+  g1t no longer declines it at once: it notes it in the transcript
+  ("Waiting for approval: …") and shows a card at the top of the session's
+  page with the tool, what the call wants to do (one line, as the
+  transcript shows a call, with anything that looks like a secret hidden;
+  never its whole input) and how long it has left. **Allow** lets it run;
+  **Deny** turns it down, with an optional reason that the session is
+  told. The call also shows in **Needs attention** in Chat's sidebar for
+  everyone who may answer it, newest first beside your notifications;
+  **Review** opens the session.
+- **Nobody answers within 10 minutes**, and g1t declines the call, notes
+  "g1t declined a call that waited 10 minutes for approval and nobody
+  answered" in the transcript, and tells the session to carry on without
+  it and say in its report what it was for. While it waits the session
+  sits idle on Anthropic's side; ten minutes is long enough to see it and
+  short enough that a forgotten session moves on the same hour.
+- **An answer that comes too late is refused, never sent later**: after
+  the session ended, after the 10 minutes, or after someone else answered
+  ("ada allowed it already"). Each answer is noted in the transcript with
+  who gave it.
+- **Send to this session**, under its answer on the page, sends it a
+  message as its next instruction; Enter sends, Shift+Enter starts a new
+  line (up to 4,000 characters). It shows in the transcript as a prompt
+  when g1t next reads the session, with a note saying who sent it.
+
+What a subagent waits on is answered the same way, on the page of the
+session that started it: the provider routes the answer to the subagent.
 
 ## Assign g1t, or ask it in the thread
 
