@@ -291,7 +291,7 @@ impl Security {
         let number = linked.number;
         let item = WorkItemActionArgs { actor: system.clone(), workspace: workspace.clone(), number, reason: Some(CloseReason::NotPlanned) };
         let closed: Outcome<Value> =
-            g1t_kit::call(&self.work, "close_work_item", &CloseWorkItemArgs { item, repo: None, commit: None }).await?;
+            g1t_kit::call(&self.work, "close_work_item", &CloseWorkItemArgs { item, repo: None, commit: None, sub_items: Some(g1t_contracts::work::OpenSubItems::Leave), move_to: None }).await?;
         if matches!(closed, Outcome::Ok(_)) {
             self.comment_on(&system, None, &workspace, number, why).await?;
         }
