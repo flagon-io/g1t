@@ -166,24 +166,37 @@ impl StreamQuota {
 
     /// The copy stopped without knowing whether the store took it.
     pub async fn end(&self, outcome: &str) {
+        self.end_asking(outcome, &[]).await;
+    }
+
+    /// [`Self::end`], with the refs it asked the store to move.
+    async fn end_asking(&self, outcome: &str, refs: &[(String, String)]) {
         let held = self.held.borrow_mut().take();
         if let Some(reservation) = held {
-            self.registry.end_public(&reservation, outcome, &[]).await;
+            self.registry.end_public(&reservation, outcome, refs).await;
         }
     }
 
-    /// The store answered the copy, `measured` bytes of pack sent: settled
-    /// by its [`write_settlement`].
-    pub async fn settle(&self, verdict: &Verdict, measured: u64) -> Result<()> {
+    /// The store answered the copy, `measured` bytes of pack sent, which
+    /// asked it to move `(reference, new)`: settled by its
+    /// [`write_settlement`]. One that ends keeps the ref it asked for, so
+    /// staff can see whether it landed (storage_holds.rs).
+    pub async fn settle(&self, verdict: &Verdict, measured: u64, asked: (&str, &str)) -> Result<()> {
         match write_settlement(verdict) {
             Settlement::Finish => self.finish(measured).await,
             Settlement::Release => self.release().await,
             Settlement::End => {
-                self.end(verdict.reason()).await;
+                self.end_asking(verdict.reason(), &asked_refs(asked)).await;
                 Ok(())
             }
         }
     }
+}
+
+/// The refs a write of one ref asked the store to move, as an ended
+/// reservation keeps them: `(name, new)`.
+pub(crate) fn asked_refs((reference, new): (&str, &str)) -> Vec<(String, String)> {
+    vec![(reference.to_owned(), new.to_owned())]
 }
 
 impl<S: crate::store::GitStore> crate::Repos<S> {
@@ -214,7 +227,7 @@ impl<S: crate::store::GitStore> crate::Repos<S> {
 
     /// Pushes `pack` to `branch` under a reservation of its size: `None`
     /// when the workspace's public storage cannot fit it. The inner result
-    /// is the store's verdict on the branch (land.rs `push_pack`). The pack
+    /// is the store's verdict on the branch (land.rs `push_pack_judged`). The pack
     /// is counted only when the branch moved; one the store refused (the
     /// branch had moved, or the unpack failed) gives its reservation back
     /// with nothing counted. A push the store answered with an error, never
@@ -229,7 +242,7 @@ impl<S: crate::store::GitStore> crate::Repos<S> {
         let Some(reservation) = self.registry.reserve_public(repo, bytes, self.free_public_bytes, operation, actor).await? else {
             return Ok(None);
         };
-        let refs = [(format!("refs/heads/{branch}"), new.to_owned())];
+        let refs = asked_refs((&format!("refs/heads/{branch}"), new));
         match crate::land::push_pack_judged(access, branch, old, new, pack).await {
             Ok(verdict) => {
                 match write_settlement(&verdict) {
@@ -597,7 +610,11 @@ mod tests {
         assert!(reserved.contains("Settlement::Finish => self.registry.finish_public("));
         assert!(reserved.contains("Settlement::Release => self.registry.release_public("));
         let copied = body_of(include_str!("land.rs"), "fast_forward");
-        assert!(copied.contains("quota.settle(&verdict, moved)"), "{copied}");
+        assert!(copied.contains("quota.settle(&verdict, moved, (&reference, new))"), "{copied}");
+        // Ended, either way keeping the ref asked for, for staff to inspect.
+        assert!(reserved.contains("asked_refs((&format!(\"refs/heads/{branch}\"), new))"));
+        assert!(body_of(include_str!("public_storage.rs"), "settle").contains("self.end_asking(verdict.reason(), &asked_refs(asked))"));
+        assert_eq!(asked_refs(("refs/heads/main", "abc")), [("refs/heads/main".to_owned(), "abc".to_owned())]);
         assert!(!copied.contains("quota.finish("));
     }
 

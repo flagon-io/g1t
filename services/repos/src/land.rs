@@ -242,8 +242,14 @@ pub(crate) fn report_lines(answer: &[u8]) -> Option<Vec<String>> {
 
 /// What a report-status says of `reference`.
 pub(crate) fn verdict(report: &[u8], reference: &str, sent_pack: bool) -> Verdict {
+    // What was unclear, said whole: it is the outcome staff read on an
+    // ended reservation.
+    let unclear = |said: &str| {
+        let said = if said.is_empty() { "it said nothing" } else { said };
+        Verdict::Unclear(format!("The store's answer said neither that {reference} moved nor that it was refused: {said}"))
+    };
     let Some(lines) = report_lines(report) else {
-        return Verdict::Unclear(String::from_utf8_lossy(report).trim_end().to_owned());
+        return unclear(String::from_utf8_lossy(report).trim());
     };
     let reason = lines.join("; ");
     if lines.iter().any(|line| line.starts_with("unpack ") && line != "unpack ok") {
@@ -258,7 +264,7 @@ pub(crate) fn verdict(report: &[u8], reference: &str, sent_pack: bool) -> Verdic
     if lines.iter().any(|line| *line == ng || line.starts_with(&format!("{ng} "))) {
         return Verdict::Refused(reason);
     }
-    Verdict::Unclear(reason)
+    unclear(&reason)
 }
 
 /// Whether a report-status says `reference` moved.
@@ -405,7 +411,7 @@ pub(crate) async fn fast_forward(
     if let Some(quota) = quota {
         // Counted only when the branch moved (public_storage.rs
         // `write_settlement`).
-        quota.settle(&verdict, moved).await?;
+        quota.settle(&verdict, moved, (&reference, new)).await?;
     }
     if let (Some(from), Some(to)) = (crate::store::key_from_remote(&source.remote), crate::store::key_from_remote(&target.remote)) {
         meters::record_bytes("internal.git.fetch", &from, 0, moved);
@@ -661,7 +667,14 @@ mod tests {
         // Another ref's refusal, or none at all, says nothing of this one.
         assert!(matches!(verdict(&lines(&["unpack ok", "ng refs/heads/main2 x"]), main, true), Verdict::Unclear(_)));
         assert!(matches!(verdict(&lines(&["unpack ok"]), main, true), Verdict::Unclear(_)));
-        assert!(matches!(verdict(b"", main, true), Verdict::Unclear(_)));
+        assert_eq!(
+            verdict(b"", main, true),
+            Verdict::Unclear("The store's answer said neither that refs/heads/main moved nor that it was refused: it said nothing".to_owned())
+        );
+        assert_eq!(
+            verdict(&lines(&["unpack ok"]), main, true).reason(),
+            "The store's answer said neither that refs/heads/main moved nor that it was refused: unpack ok"
+        );
         assert!(matches!(verdict(b"garbage", main, true), Verdict::Unclear(_)));
         // The same report inside side-band channel 1 reads the same.
         let mut banded = pkt_line("\u{2}remote: working\n");
