@@ -188,6 +188,11 @@ another tag's entries; a key is written once; and a repository holds
   saved** (`ci-cache.mjs prune`), to what this build used.
 - **A partial install never saves a whole-install key.** npm's downloads
   and the crates are saved only by jobs that fetch all of them.
+- **A partial test build is never saved.** On a pull request, CI's Rust
+  parts test only the crates it changes and those that depend on them
+  (`scripts/deploy/ci-affected.mjs`); a part that tested some of its
+  crates saves no entry, and one with none to test does nothing. On
+  `main` every part tests, and saves, all of its crates.
 - **One set of paths per entry.** An entry's version is the hash of its
   paths, so every step that names it, in every workflow, names the same
   ones. `crates/actions/tests/repository_workflows.rs` holds all of this.
@@ -210,7 +215,7 @@ another tag's entries; a key is written once; and a repository holds
 | -------------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------- | --------------------------- |
 | npm's downloads            | `npm-full-<os>-<package-lock.json>`                                                     | Caches (`npm`)                                | every npm install           |
 | Crates and their index     | `cargo-crates-<os>-<deps>`                                                              | CI Rust (`cargo fetch` of the whole lockfile) | Deploy, the runner release  |
-| The test build             | `cargo-test-<os>-<rust>-<deps>`                                                         | CI Rust                                       | CI Rust on pull requests    |
+| The test builds            | `cargo-test-<os>-<rust>-<part>-<deps>`, one for each of CI Rust's three parts           | CI Rust, when it tests a whole part           | CI Rust on pull requests    |
 | Workers' builds            | `cargo-workers-<os>-<rust>-<group>-<deps>`                                              | Deploy                                        | Deploy                      |
 | The runner's image build   | `runner-musl-<os>-<rust>-<deps>`                                                        | Deploy                                        | Deploy                      |
 | worker-build and its tools | `worker-build-…`, `worker-build-tools-…`                                                | Deploy                                        | Deploy                      |
