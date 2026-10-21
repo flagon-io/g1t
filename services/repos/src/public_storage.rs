@@ -35,8 +35,21 @@ use crate::registry::Registry;
 /// whole, and one read whole after it is declined (git_http.rs); a branch
 /// copied chunk by chunk is refused its next chunk (land.rs). Writes of one
 /// pack in memory, and a native fork's one call to the store, are not cut:
-/// the lease assumes they have been answered by then.
-pub const LEASE_MS: u64 = 2 * 3600 * 1000;
+/// the lease assumes they have been answered by then. An hour: a 950 MB
+/// repository, the largest g1t holds (pack_limits.rs), uploads well within
+/// it on any ordinary connection. The copy lock's lease, the grants a
+/// streamed copy may still take (`HOLD`) and a push's deadline all come
+/// from this one figure.
+pub const LEASE_MS: u64 = 60 * 60 * 1000;
+
+/// The lease in words, for people: `an hour`, `2 hours`, `45 minutes`.
+pub fn lease_words() -> String {
+    match LEASE_MS / 60_000 {
+        60 => "an hour".to_owned(),
+        minutes if minutes % 60 == 0 => format!("{} hours", minutes / 60),
+        minutes => format!("{minutes} minutes"),
+    }
+}
 /// How long after a lease a reservation still counts as possibly in
 /// flight: clocks differ between isolates, and the store may still be
 /// answering what it was sent just before.
@@ -491,6 +504,8 @@ mod tests {
 
     #[test]
     fn a_write_is_cut_short_well_before_older_code_could_still_be_running() {
+        assert_eq!(LEASE_MS, 3_600_000, "an hour");
+        assert_eq!(lease_words(), "an hour");
         assert!(GRACE_MS > 0 && LEGACY_MS > LEASE_MS + GRACE_MS);
         // Grants past the lease are refused in the statement itself.
         assert!(HOLD.contains("?10 <= ?11"));

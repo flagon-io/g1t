@@ -48,8 +48,9 @@ Recently deleted repositories still count until permanently deleted.
 
 A write reserves room under the cap before it reaches storage, so writes
 at the same moment cannot overshoot it together, and gives back what it
-did not use as soon as it finishes. A push still sending after two hours
-is declined, and nothing of it is stored. A write that is interrupted
+did not use as soon as it finishes. A push still uploading after an hour
+is declined, and nothing of it is stored: a 950 MB repository, the
+largest allowed, uploads well within an hour on any ordinary connection. A write that is interrupted
 keeps its reservation until g1t staff confirm it can no longer finish,
 from what the write itself recorded and never by its age alone. While it
 is held, a reservation counts against the 5 GB cap, but it is never

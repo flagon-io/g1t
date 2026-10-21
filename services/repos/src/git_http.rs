@@ -653,7 +653,7 @@ pub enum SizeViolation {
     Repository { held: u64, incoming: u64, limit: u64 },
     Unscannable { size: u64, cap: usize },
     /// Still streaming at its deadline ([`PushLimits::deadline_ms`]).
-    Overdue { minutes: u64 },
+    Overdue,
 }
 
 /// Why a push is declined for its size, as git shows it: the `ng` reason,
@@ -700,10 +700,13 @@ pub fn size_refusal(violation: &SizeViolation) -> (String, Vec<String>) {
                 "See https://docs.g1t.sh/guides/git/#size-limits. Nothing was pushed.".to_owned(),
             ],
         ),
-        SizeViolation::Overdue { minutes } => (
+        SizeViolation::Overdue => (
             "the push took too long".to_owned(),
             vec![
-                format!("g1t takes a push for up to {minutes} minutes; this one was still arriving."),
+                format!(
+                    "g1t takes a push for up to {}; this one was still arriving. A 950 MB repository, the largest g1t holds, uploads well within that on any ordinary connection.",
+                    crate::public_storage::lease_words()
+                ),
                 "Push again from a faster connection, or in parts: https://docs.g1t.sh/guides/git/#size-limits.".to_owned(),
                 "Nothing was pushed.".to_owned(),
             ],
@@ -1266,7 +1269,7 @@ async fn push(
         if !ended {
             drain(&mut stream).await?;
         }
-        let (reason, messages) = size_refusal(&SizeViolation::Overdue { minutes: crate::public_storage::LEASE_MS / 60_000 });
+        let (reason, messages) = size_refusal(&SizeViolation::Overdue);
         return Ok(Push::Declined(declined(&head, &reason, &messages)?, reason));
     }
     let mut pushed = pushed_branches(&head);
@@ -1308,8 +1311,7 @@ async fn push(
                     && !chunk.is_empty()
                     && g1t_kit::now_ms() > deadline
                 {
-                    let minutes = crate::public_storage::LEASE_MS / 60_000;
-                    *found.borrow_mut() = Some(SizeViolation::Overdue { minutes });
+                    *found.borrow_mut() = Some(SizeViolation::Overdue);
                     return Err(worker::Error::RustError("push past its deadline".into()));
                 }
                 if let Some(violation) = check_size(&mut walked.0, &chunk, &limits) {

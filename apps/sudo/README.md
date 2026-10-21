@@ -146,7 +146,7 @@ roadmap.
   it again, checks the same rules in the batch that releases, and writes a
   row of `storage_recoveries` with the evidence, listed under **Released**
   (`admin_storage_recoveries`). Provably abandoned means: the write
-  recorded that it ended; or its two-hour lease passed 15 minutes ago; or,
+  recorded that it ended; or its one-hour lease passed 15 minutes ago; or,
   for bytes reserved before the ledger began and locks without a lease,
   24 hours have passed since it began. A release never changes
   `stored_bytes`, which is billed. **Drift** (`admin_storage_drift`) streams

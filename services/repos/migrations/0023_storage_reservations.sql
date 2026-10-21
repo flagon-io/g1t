@@ -16,8 +16,8 @@
 -- state: `held` while the operation runs; `ended` once it stopped without
 --   knowing whether the store took the write (a push the store answered
 --   with an error), so nothing of it can still arrive.
--- created_ms, lease_until_ms: when it was made and its lease
---   (milliseconds): a push or streamed copy is cut short there, and any
+-- created_ms, lease_until_ms: when it was made and its lease, an hour
+--   later (milliseconds, public_storage.rs LEASE_MS): a push or streamed copy is cut short there, and any
 --   other write's one request to the store is taken as answered by then.
 -- ended_ms, outcome, refs: when and how an `ended` one ended, and the refs
 --   it asked for as JSON `[[ref, new], ...]`, for inspection.
