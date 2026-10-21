@@ -42,6 +42,9 @@ jobs:
   # the libraries, but a test binary is linked and never cached), and the
   # suites then ran one after another. The parts are about even in Rust;
   # repository_workflows.rs checks every workspace crate is in exactly one.
+  # On a pull request a part tests only its crates the change reaches
+  # (scripts/deploy/ci-affected.mjs), and a part it does not reach passes
+  # without compiling; on main every part tests all of its crates.
   rust:
     name: Rust (${{ matrix.part }})
     runs-on: ubuntu-latest
@@ -68,17 +71,30 @@ jobs:
       # entries it saves are built the same way.
       RUSTFLAGS: -D warnings
     steps:
+      # Two commits deep: a pull request's run builds its test merge commit,
+      # and what it changes is that commit against its first parent, the
+      # base branch's tip.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+      # The crates this part tests: on a pull request, those whose files it
+      # changes and those that depend on them, else every one. With none,
+      # every step after this one is skipped and the part passes.
+      - name: What this part tests
+        id: affected
+        run: node scripts/deploy/ci-affected.mjs ${{ matrix.crates }}
       # rust: the toolchain; cargo: Cargo.lock's crates.io and git packages,
       # not the workspace's own versions (scripts/deploy/ci-cache.mjs).
       - name: Cache keys
         id: keys
+        if: ${{ steps.affected.outputs.crates }}
         run: node scripts/deploy/ci-cache.mjs keys
       # Every crate the lockfile names, for every target (the fetch below):
       # saved by these jobs alone (each fetches all of it, and the first to
       # finish keeps it), and only restored by Deploy and the releases,
       # which each download part of it.
       - name: Cache crates
+        if: ${{ steps.affected.outputs.crates }}
         uses: actions/cache@v4
         with:
           path: |
@@ -87,14 +103,17 @@ jobs:
           key: cargo-crates-${{ runner.os }}-${{ steps.keys.outputs.cargo }}
           restore-keys: cargo-crates-${{ runner.os }}-
       - name: Every crate the lockfile names
+        if: ${{ steps.affected.outputs.crates }}
         run: cargo fetch --locked
       # This part's compiled dependencies and crates, an entry for each part.
-      # Saved when the dependencies or the toolchain change; otherwise the
-      # part's last entry for this toolchain is a start, else any part's,
-      # and only this build's files go into the new one (the prune below).
+      # Saved after the tests (below) when the dependencies or the toolchain
+      # change; otherwise the part's last entry for this toolchain is a
+      # start, else any part's, and only this build's files go into the new
+      # one (the prune below).
       - name: Cache the test build
         id: test-build
-        uses: actions/cache@v4
+        if: ${{ steps.affected.outputs.crates }}
+        uses: actions/cache/restore@v4
         with:
           path: |
             target/debug
@@ -108,16 +127,32 @@ jobs:
       # (scripts/sccache.sh). Test harnesses and Workers' own crates are
       # linked, and still compiled.
       - name: sccache
+        if: ${{ steps.affected.outputs.crates }}
         run: bash scripts/sccache.sh install
       - name: Tests
-        run: cargo test ${{ matrix.crates }} --locked --quiet
+        if: ${{ steps.affected.outputs.crates }}
+        run: cargo test ${{ steps.affected.outputs.crates }} --locked --quiet
       # A restored target keeps the old versions of whatever changed beside
       # the new ones; only what this build used goes into the new entry.
+      # And only a run that tested all of the part's crates saves one: a run
+      # that tested some built only those, and saved under the key a whole
+      # build is found by, its entry would be a hit for the runs after it,
+      # which would compile the rest every time and never save a whole one.
+      # main's runs test everything, and keep the entries pull requests
+      # start from.
       - name: Only this build's files are saved
-        if: ${{ steps.test-build.outputs.cache-hit != 'true' }}
+        if: ${{ steps.test-build.outputs.cache-hit != 'true' && steps.affected.outputs.whole == 'true' }}
         run: node scripts/deploy/ci-cache.mjs prune target/debug -- test ${{ matrix.crates }} --locked --no-run
+      - name: Save the test build
+        if: ${{ steps.test-build.outputs.cache-hit != 'true' && steps.affected.outputs.whole == 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            target/debug
+            !target/debug/incremental
+          key: cargo-test-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ matrix.part }}-${{ steps.keys.outputs.cargo }}
       - name: sccache's hits and misses
-        if: ${{ always() }}
+        if: ${{ always() && steps.affected.outputs.crates }}
         run: bash scripts/sccache.sh stats
 
   typescript:
