@@ -35,7 +35,7 @@ use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
 
-use crate::land::Verdict;
+use crate::land::{Answer, Report, Verdict};
 use crate::registry::Registry;
 
 /// How long an operation holding a reservation may send to the store. A
@@ -442,34 +442,39 @@ pub(crate) enum Settlement {
     End,
 }
 
-/// A push the store answered with `status` and `report`, its answer read
-/// whole; `rate_limited` when the store refused it for its rate limit
-/// (git_http.rs `Forwarded`), which takes nothing. A 200 whose report
-/// says the store refused all of it ([`refused_whole`]) takes nothing
-/// either; any other 200 is counted. Any other answer than 200 is
-/// ambiguous.
-pub(crate) fn push_settlement(status: u16, rate_limited: bool, report: Option<&[u8]>) -> Settlement {
-    match (status, rate_limited) {
-        (200, _) if report.is_some_and(refused_whole) => Settlement::Release,
-        (200, _) => Settlement::Finish,
-        (_, true) => Settlement::Release,
+/// A push the store answered with `status` and `answer`, its answer read
+/// whole (land.rs `read_answer`); `rate_limited` when the store refused it
+/// for its rate limit (git_http.rs `Forwarded`), which takes nothing. A
+/// 200 whose report says the store refused all of it ([`refused_whole`])
+/// takes nothing either. A 200 with a fatal error (side-band channel 3,
+/// or `ERR`) says nothing of any ref: the store most likely took nothing,
+/// but that is not known, so it ends, as a write of one ref answered so
+/// does (`write_settlement`). Any other 200 is counted, a report that
+/// moved a ref or none at all (a client that asked for none). Any other
+/// answer than 200 is ambiguous.
+pub(crate) fn push_settlement(status: u16, rate_limited: bool, answer: Option<&Answer>) -> Settlement {
+    match (status, rate_limited, answer) {
+        (200, _, Some(Answer::Report(report))) if refused_whole(report) => Settlement::Release,
+        (200, _, Some(Answer::Fatal(_))) => Settlement::End,
+        (200, ..) => Settlement::Finish,
+        (_, true, _) => Settlement::Release,
         _ => Settlement::End,
+    }
+}
+
+/// What an ended push's reservation says of how it ended, for staff.
+pub(crate) fn push_outcome(status: u16, answer: Option<&Answer>) -> String {
+    match answer {
+        Some(Answer::Fatal(said)) => format!("The store answered the push with {status} and a fatal error: {said}"),
+        _ => format!("The store answered the push with {status}."),
     }
 }
 
 /// Whether a push's report-status says the store kept none of it: its
 /// unpack failed, or it refused (`ng`) every ref it reports on and moved
-/// none. A report this cannot read says neither.
-pub(crate) fn refused_whole(report: &[u8]) -> bool {
-    let Some(lines) = crate::land::report_lines(report) else {
-        return false;
-    };
-    if lines.iter().any(|line| line.starts_with("unpack ") && line != "unpack ok") {
-        return true;
-    }
-    lines.iter().any(|line| line == "unpack ok")
-        && lines.iter().any(|line| line.starts_with("ng "))
-        && !lines.iter().any(|line| line.starts_with("ok "))
+/// none.
+pub(crate) fn refused_whole(report: &Report) -> bool {
+    report.unpack_failed || (report.unpacked && !report.refused.is_empty() && report.moved.is_empty())
 }
 
 /// What the store's answer to a write of one ref (land.rs `Verdict`)
@@ -864,7 +869,7 @@ mod tests {
 
     #[test]
     fn a_push_the_store_refused_whole_counts_nothing() {
-        let settle = |answer: Vec<u8>| push_settlement(200, false, Some(&answer));
+        let settle = |answer: Vec<u8>| push_settlement(200, false, Some(&crate::land::read_answer(&answer)));
         for answer in [
             // Every ref refused: the store moved none of them.
             report(&["unpack ok", "ng refs/heads/main non-fast-forward", "ng refs/tags/v1 already exists"]),
@@ -883,12 +888,105 @@ mod tests {
         assert_eq!(settle(b"0000".to_vec()), Settlement::Finish);
         assert_eq!(settle(Vec::new()), Settlement::Finish);
         // An answer other than 200 is ambiguous whatever it says.
-        assert_eq!(push_settlement(500, false, Some(&report(&["unpack ok", "ng refs/heads/main x"]))), Settlement::End);
+        let refused = crate::land::read_answer(&report(&["unpack ok", "ng refs/heads/main x"]));
+        assert_eq!(push_settlement(500, false, Some(&refused)), Settlement::End);
         // The push path reads the report before it settles.
         let answer = body_of(include_str!("lib.rs"), "answer_git");
         let read = answer.find("match response.bytes().await").expect("the report is read");
-        let settles = answer.find("public_storage::push_settlement(status, forwarded.rate_limited, report)").expect("settled by it");
-        assert!(read < settles);
+        let parsed = answer.find("land::read_answer(report)").expect("read once");
+        let settles = answer.find("public_storage::push_settlement(status, forwarded.rate_limited, reply.as_ref())").expect("settled by it");
+        assert!(read < parsed && parsed < settles);
+    }
+
+    #[test]
+    fn a_push_the_store_answered_with_a_fatal_error_stays_ended_for_staff() {
+        let fatal = [crate::git_http::pkt_line(b"\x03fatal: the remote end hung up unexpectedly\n"), b"0000".to_vec()].concat();
+        let after_progress = [crate::git_http::pkt_line(b"\x02Receiving objects: 40%\n"), fatal.clone()].concat();
+        let err = [crate::git_http::pkt_line(b"ERR pack exceeds the store's limit\n"), b"0000".to_vec()].concat();
+        for answer in [&fatal, &after_progress, &err] {
+            let read = crate::land::read_answer(answer);
+            assert!(matches!(read, Answer::Fatal(_)), "{read:?}");
+            // Ended with the refs it asked for, as a write of one ref
+            // answered so is (Unclear).
+            assert_eq!(push_settlement(200, false, Some(&read)), Settlement::End);
+            assert_eq!(settled(answer, "refs/heads/main"), Settlement::End);
+            // Every ref is left to record_push, which checks the store.
+            assert!(read.records("refs/heads/main"));
+        }
+        let outcome = push_outcome(200, Some(&crate::land::read_answer(&fatal)));
+        assert_eq!(outcome, "The store answered the push with 200 and a fatal error: fatal: the remote end hung up unexpectedly");
+        assert_eq!(push_outcome(500, None), "The store answered the push with 500.");
+        // The push path ends it through end_public with what it asked for.
+        let answer = body_of(include_str!("lib.rs"), "answer_git");
+        assert!(answer.contains("let outcome = public_storage::push_outcome(status, reply.as_ref());"));
+        assert!(answer.contains("self.registry.end_public(reserved, &outcome, &asked).await;"));
+    }
+
+    #[test]
+    fn a_push_and_a_write_of_one_ref_read_a_report_the_same() {
+        // v1, and v2 with option lines after an ok, plain and banded.
+        let answers = [
+            report(&["unpack ok", "ok refs/heads/main"]),
+            report(&["unpack ok", "ok refs/heads/main", "option refname refs/heads/main", "option old-oid abc", "option new-oid def"]),
+            banded(&["unpack ok", "ok refs/heads/main", "option forced-update"]),
+            report(&["unpack ok", "ng refs/heads/main non-fast-forward"]),
+            report(&["unpack ok", "ng refs/heads/main"]),
+            report(&["unpack error: bad pack", "ok refs/heads/main"]),
+            report(&["unpack ok"]),
+            report(&["unpack ok", "ok refs/heads/main2"]),
+            report(&["unpack ok", "okrefs/heads/main"]),
+        ];
+        for answer in &answers {
+            let read = crate::land::read_answer(answer);
+            let verdict = crate::land::verdict(answer, "refs/heads/main", true);
+            let Answer::Report(report) = &read else { panic!("{read:?}") };
+            // A write of one ref is counted when the report says it moved,
+            // and a ref refused there is one a push does not record.
+            assert_eq!(verdict == Verdict::Moved, report.moved("refs/heads/main"), "{report:?}");
+            assert_eq!(matches!(verdict, Verdict::Refused(_)), !read.records("refs/heads/main"), "{report:?}");
+            if refused_whole(report) {
+                assert!(matches!(verdict, Verdict::Refused(_)), "{report:?}");
+            }
+        }
+        // v2's options are not refs.
+        let Answer::Report(v2) = crate::land::read_answer(&answers[1]) else { panic!() };
+        assert_eq!(v2.moved, ["refs/heads/main"]);
+        assert!(v2.refused.is_empty());
+        // One parser: neither reads the lines itself.
+        let code = include_str!("public_storage.rs").split("#[cfg(test)]\nmod tests").next().unwrap_or_default();
+        assert!(!code.contains("starts_with(\"ok \")") && !code.contains("starts_with(\"ng \")"));
+    }
+
+    #[test]
+    fn a_push_records_every_ref_but_those_its_report_refused() {
+        let (main, tag, pull) = ("refs/heads/main", "refs/tags/v1", "refs/pull/1/head");
+        let recorded = |answer: Vec<u8>| {
+            let read = crate::land::read_answer(&answer);
+            [main, tag, pull].into_iter().filter(|git_ref| read.records(git_ref)).collect::<Vec<_>>()
+        };
+        // Every ref refused, a tag among them: none.
+        assert!(recorded(report(&["unpack ok", "ng refs/heads/main non-fast-forward", "ng refs/tags/v1 already exists", "ng refs/pull/1/head x"])).is_empty());
+        // The unpack failed: none, whatever the refs say.
+        assert!(recorded(report(&["unpack error: invalid pack", "ok refs/heads/main"])).is_empty());
+        // One moved beside one refused (a hidden ref): all but the refused.
+        assert_eq!(recorded(banded(&["unpack ok", "ok refs/heads/main", "ng refs/pull/1/head deny updating a hidden ref"])), [main, tag]);
+        assert_eq!(recorded(report(&["unpack ok", "ok refs/heads/main", "option refname refs/heads/main", "ng refs/tags/v1 already exists"])), [main, pull]);
+        // A report that mentions only some refs, or none (just `unpack ok`,
+        // or cut short): the rest are left to record_push's store checks.
+        assert_eq!(recorded(report(&["unpack ok", "ok refs/heads/main"])), [main, tag, pull]);
+        assert_eq!(recorded(report(&["unpack ok"])), [main, tag, pull]);
+        assert_eq!(recorded(banded(&["unpack ok", "ng refs/tags/v1 already exists"])), [main, pull]);
+        // No report, or a fatal error: left to the store too.
+        assert_eq!(recorded(Vec::new()), [main, tag, pull]);
+        assert_eq!(recorded([crate::git_http::pkt_line(b"\x03fatal: hung up\n"), b"0000".to_vec()].concat()), [main, tag, pull]);
+        // The push path filters what it records by it, pushed and deleted.
+        let answer = body_of(include_str!("lib.rs"), "answer_git");
+        let filtered = answer.find("if let Some(reply) = &reply {").expect("filtered by the report");
+        let done = answer.find("after.push = Some(PushDone {").expect("recorded");
+        assert!(filtered < done);
+        assert!(answer.contains("pushed.retain(|pushed| reply.records(&pushed.git_ref));"));
+        assert!(answer.contains("deleted.retain(|(git_ref, _)| reply.records(git_ref));"));
+        assert!(!answer[done..].contains("forwarded.pushed") && !answer[done..].contains("forwarded.deleted"));
     }
 
     #[test]

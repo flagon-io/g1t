@@ -354,6 +354,15 @@ impl<S: GitStore> Repos<S> {
         let head = a.head.clone();
 
         // The head, kept in the repository, its objects brought from the fork.
+        // Not reserved or counted here. They come from the pull request's
+        // source (contracts `Pull::source_id`): its working copy, whose
+        // pushes were counted to this repository (its root, registry.rs
+        // `add_stored_bytes`) when they were made, so counting the copy too
+        // would count them twice; or a branch of someone's own fork
+        // (`head_repo`, `fork_of` NULL), whose pushes were counted to that
+        // fork, not to this repository. Either way this repository's owner
+        // did not push them, so they are not billed here; Drift counts the
+        // fork's as the store holding more than g1t counts.
         let held_head = find(&refs, &head_ref);
         if held_head.as_deref() != Some(head.as_str()) {
             let write = git.access(Scope::Write).await?;
@@ -396,6 +405,11 @@ impl<S: GitStore> Repos<S> {
                 Ok(PullMergeRef::Merged { head, base, merge: commit })
             }
             Made::Merged { commit, objects } => {
+                // Not reserved or counted (`stored_bytes`): the test merge is
+                // g1t's own ref, made again whenever the base or head moves,
+                // from a merge commit and the trees g1t wrote for it. Nobody
+                // pushed it, so nobody is charged for it; Drift counts it as
+                // the store holding more than g1t counts (storage-holds.md).
                 let write = git.access(Scope::Write).await?;
                 let pushed = land::push_ref(&write, &merge_ref, held_merge.as_deref(), &commit, Some(write_pack(&objects))).await?;
                 self.refs_moved(&target.id).await;

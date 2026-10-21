@@ -2453,21 +2453,24 @@ impl<S: GitStore> Repos<S> {
         } else {
             None
         };
+        // The store's answer, read once: its reservation settles by it, and
+        // the refs it refused are not recorded.
+        let reply = answered.as_ref().map(|(_, report)| land::read_answer(report));
         if let Some(reserved) = &public_reserved {
-            let report = answered.as_ref().map(|(_, report)| report.as_slice());
-            match public_storage::push_settlement(status, forwarded.rate_limited, report) {
+            match public_storage::push_settlement(status, forwarded.rate_limited, reply.as_ref()) {
                 // Successful uploads replace it with the actual admitted pack.
                 public_storage::Settlement::Finish => self.registry.finish_public(reserved, forwarded.pack_bytes).await?,
                 // Refused for the store's rate limit, or a report saying
                 // the store refused all of it (its unpack failed, or every
                 // ref was refused): it took nothing.
                 public_storage::Settlement::Release => self.registry.release_public(reserved).await?,
-                // On any other answer the store may have kept the push, so
-                // the whole reservation stays, ended, with the refs it asked
-                // for: staff release it once they have looked
-                // (storage_holds.rs).
+                // On any other answer (an error, or a 200 with a fatal
+                // error) the store may have kept the push, so the whole
+                // reservation stays, ended, with the refs it asked for:
+                // staff release it once they have looked (storage_holds.rs).
                 public_storage::Settlement::End => {
-                    self.registry.end_public(reserved, &format!("The store answered the push with {status}."), &asked).await;
+                    let outcome = public_storage::push_outcome(status, reply.as_ref());
+                    self.registry.end_public(reserved, &outcome, &asked).await;
                 }
             }
         }
@@ -2527,12 +2530,24 @@ impl<S: GitStore> Repos<S> {
             }
         }
         after.ended(status, None);
-        if status == 200 && (forwarded.pack_bytes > 0 || !forwarded.pushed.is_empty() || !forwarded.deleted.is_empty()) {
+        // A ref the report refused is not recorded: it starts no event,
+        // webhook, workflow or rule, and a push whose unpack failed records
+        // nothing. A ref the report does not mention, or an answer that
+        // says neither (a fatal error, no report), is left to record_push,
+        // which checks where it is in the store.
+        let (mut pushed, mut deleted) = (forwarded.pushed, forwarded.deleted);
+        if let Some(reply) = &reply {
+            pushed.retain(|pushed| reply.records(&pushed.git_ref));
+            deleted.retain(|(git_ref, _)| reply.records(git_ref));
+        }
+        // A reserved push is counted by its reservation, settled above.
+        let pack_bytes = if public_reserved.is_some() { 0 } else { forwarded.pack_bytes };
+        if status == 200 && (pack_bytes > 0 || !pushed.is_empty() || !deleted.is_empty()) {
             after.push = Some(PushDone {
                 repo,
-                pushed: forwarded.pushed,
-                deleted: forwarded.deleted,
-                pack_bytes: if public_reserved.is_some() { 0 } else { forwarded.pack_bytes },
+                pushed,
+                deleted,
+                pack_bytes,
                 caused_by_job: viewer.as_ref().and_then(g1t_contracts::events::job_run_of).map(str::to_owned),
                 // The calendar credits people, never a job's, an agent's or a workspace's token.
                 credit: viewer
