@@ -2316,7 +2316,9 @@ impl<S: GitStore> Repos<S> {
             {
                 Ok(reservation) => reservation,
                 // Taken between the push's first request and this one.
-                Err(public_storage::Refusal::Locked) => return git_ops::copy_locked_response(&repo.namespace, &repo.name),
+                Err(refusal @ (public_storage::Refusal::Locked | public_storage::Refusal::Stalled)) => {
+                    return git_ops::copy_locked_response(&repo.namespace, &repo.name, refusal);
+                }
                 Err(_) => {
                     return git_ops::public_storage_full_response(&repo.namespace,
                         self.registry.public_bytes(&repo.namespace).await?, self.free_public_bytes);
@@ -2627,10 +2629,10 @@ impl<S: GitStore> Repos<S> {
         // POST's reservation enforces the lock whatever this read found.
         if git.service == GitService::ReceivePack
             && git.endpoint == "info/refs"
-            && self.registry.copy_locked(repo).await.unwrap_or(false)
+            && let Some(refusal) = self.registry.copy_locked(repo).await.unwrap_or(None)
         {
             return Ok(Some((
-                git_ops::copy_locked_response(&repo.namespace, &repo.name)?,
+                git_ops::copy_locked_response(&repo.namespace, &repo.name, refusal)?,
                 403,
                 "The repository is being copied into a fork.",
             )));

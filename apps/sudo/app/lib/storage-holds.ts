@@ -4,7 +4,7 @@
  * storage_holds.rs decides what is provably abandoned; this only says it).
  * No Workers imports, so it can be tested under Node.
  */
-import type { AdminLogEntry, BillingAdminApi, ReposAdminApi, StorageHoldKind, StorageRecovery } from "@g1t/contracts";
+import type { AdminLogEntry, BillingAdminApi, ReposAdminApi, StorageHold, StorageHoldKind, StorageRecovery } from "@g1t/contracts";
 
 import type { Parsed } from "./forms.ts";
 import { settle } from "./settle.ts";
@@ -180,4 +180,75 @@ export function releasedNotice(params: URLSearchParams): { done: string; auditMi
     done: `Released ${params.get("what") ?? "the hold"}.`,
     auditMissed: `The release is done, but billing did not record it in the audit log, so it is not listed there. Its row${row}, with who, why and the inspection, is under Released below, and sudo's logs have the error. Do not release it again: it is gone.`,
   };
+}
+
+/**
+ * How long a native fork's copy ordinarily takes at most. A copy lock held
+ * longer, while its source refuses every write, is worth a look.
+ */
+export const SLOW_COPY_SECONDS = 15 * 60;
+
+/**
+ * How long after a fork locks its source its reservation may not be there
+ * yet: it reserves just after it locks (the repos service's
+ * public_storage.rs `FORK_RESERVE_WINDOW_MS`).
+ */
+export const FORK_RESERVE_WINDOW_SECONDS = 60;
+
+/** A repository a copy lock keeps from taking writes, and what is known of its copy. */
+export type BlockedSource = {
+  lock: StorageHold;
+  /** The fork's own reservation, when it is still listed. */
+  fork: StorageHold | null;
+  /**
+   * The copy did not finish cleanly: the fork's call to the store failed
+   * in a way that may still be copying (its reservation ended, and the lock
+   * stays for staff), its fork holds no live reservation a minute after it
+   * locked (staff may release an ended one at once), or the lock's lease
+   * has passed. Its source's writers are told it can take a few hours, as
+   * the repos service decides it (public_storage.rs `COPY_LOCKED`).
+   */
+  stalled: boolean;
+  /** Stalled, or held longer than a copy ordinarily takes. */
+  attention: boolean;
+};
+
+/**
+ * Every source a copy lock keeps from taking writes (pushes, commits from
+ * the site, merges, pull request updates), oldest first. The lock and its
+ * fork's reservation are separate holds: a lock's target is the fork, and
+ * a native fork's reservation is charged to the fork itself. `more`: how
+ * many holds the listing left out; when it left some out, a fork's
+ * reservation missing from it says nothing.
+ */
+export function blockedSources(holds: StorageHold[], now: string, more = 0): BlockedSource[] {
+  const at = Date.parse(now);
+  return holds
+    .filter((hold) => hold.kind === "copy_lock")
+    .map((lock) => {
+      const forks = holds.filter((hold) => hold.kind === "reservation" && hold.operation === "fork" && lock.target != null && hold.repo.id === lock.target.id);
+      const fork = forks.find((hold) => hold.state === "held") ?? forks[0] ?? null;
+      const leaseOver = lock.leaseUntil == null || Date.parse(lock.leaseUntil) < at;
+      const unreserved = more === 0 && fork?.state !== "held" && (lock.ageSeconds ?? Number.MAX_SAFE_INTEGER) > FORK_RESERVE_WINDOW_SECONDS;
+      const stalled = forks.some((hold) => hold.state === "ended") || unreserved || leaseOver;
+      return { lock, fork, stalled, attention: stalled || (lock.ageSeconds ?? 0) >= SLOW_COPY_SECONDS };
+    })
+    .sort((a, b) => (b.lock.ageSeconds ?? Number.MAX_SAFE_INTEGER) - (a.lock.ageSeconds ?? Number.MAX_SAFE_INTEGER));
+}
+
+/** The page's and Overview's line for blocked sources: null when none needs a look. */
+export function blockedSummary(blocked: BlockedSource[]): string | null {
+  const needing = blocked.filter((source) => source.attention);
+  if (needing.length === 0) return null;
+  const stalled = needing.filter((source) => source.stalled).length;
+  const one = needing.length === 1;
+  const them = one ? "A repository takes" : `${needing.length} repositories take`;
+  const how =
+    stalled === needing.length
+      ? `${one ? "its copy" : "their copies"} into a fork did not finish cleanly`
+      : stalled > 0
+        ? `${stalled} of their copies into a fork did not finish cleanly, and the rest are taking longer than a copy ordinarily does`
+        : `${one ? "its copy" : "their copies"} into a fork ${one ? "is" : "are"} taking longer than a copy ordinarily does`;
+  const after = stalled > 0 ? " A copy that did not finish cleanly keeps its lock until it is released here, once it is provably abandoned." : "";
+  return `${them} no writes: ${how}.${after}`;
 }

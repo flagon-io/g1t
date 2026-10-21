@@ -12,12 +12,55 @@ its hold: a reservation counts against the workspace's 5 GB public cap, and
 a copy lock refuses every write to the source, private or public (each
 told "This repository is being copied into a fork. Try again in a few
 minutes; if it lasts more than an hour, g1t staff release it.", never that
-storage is full; a push is told the same in git's `remote:` lines). A pull
+storage is full; a push is told the same in git's `remote:` lines; once the
+copy has taken longer than it should or did not finish cleanly, that it can
+take a few hours, below). A pull
 request g1t merges by itself stalls with that message, and a person's
 automatic merge turns off with it: neither is tried again by itself once the lock
 is released. Nothing expires a hold on a timer, on
 purpose: releasing one that is still in flight would let two writes take the
 same room.
+
+## A source that takes no writes
+
+A fork whose call to the store timed out or met a server error may still be
+copying, so it keeps its source's lock, and the source refuses every write
+until staff release it: at the soonest 75 minutes after the copy began (the
+lease, an hour, and 15 minutes' grace). The repos service reads a lock as
+stalled when its fork's reservation ended, when its fork holds no live
+reservation a minute after it locked, or once its lease has passed. Its
+writers are then told the copy has taken longer than it should, or did not
+finish cleanly, and that it can take a few hours, so do not leave it.
+
+- **Where it shows.** sudo's Overview has **Writes blocked** under Needs
+  attention: the repositories a copy lock has held longer than a copy
+  ordinarily takes (15 minutes), red once one did not finish cleanly. The
+  Storage holds page lists them under **Writes blocked**, with how long each
+  has been blocked, how the fork's call ended, and when its lock becomes
+  releasable. The repos service also logs `copy_lock_kept` (an error, with
+  the source, the fork and the store's error) when it keeps a lock this
+  way.
+- **What to do.** Inspect the lock: the fork's refs in the store say whether
+  the copy landed. Once it is releasable, release the **lock first**, with
+  what you saw; the source takes writes again at once. Then release the
+  fork's ended reservation the same way. In that order because the ended
+  reservation is releasable at once while the lock waits for its lease and
+  grace, and the reservation is what tells sudo how the fork's call ended:
+  released first, the Writes blocked row loses it (the lock still reads as
+  stalled, as one whose fork holds no live reservation). Whether the fork
+  kept the copy, its `stored_bytes` stays as it was: note it in the reason,
+  and use Drift.
+- **A fork that outlived its lock.** If the store's call returns after staff
+  released the lock, the fork is counted at its source's measured size, a
+  lower bound that never overcharges: it is the source's `stored_bytes`
+  read right after the lock, which only grows, and a fork counts in full by
+  policy, even of its default branch only. The fork is counted before the
+  lock is let go, so an unlock that fails (logged as `copy_unlock_failed`,
+  the lock left for staff, reading as stalled) never leaves it uncounted.
+  The repos service logs
+  `fork_outlived_copy_lock` (a warning, with the fork and the bytes
+  counted): the source may have taken writes the fork holds and the count
+  misses. Drift measures how far it is out.
 
 ## Provably abandoned
 

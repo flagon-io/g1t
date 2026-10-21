@@ -240,10 +240,18 @@ impl<S: GitStore> Repos<S> {
                 let message = error.to_string();
                 if public_storage::may_still_run(&message) {
                     // A timeout or a server error: the store may still be
-                    // copying. The lock stays until its lease and grace
-                    // have passed, for staff (storage_holds.rs), and the
-                    // reservation stays, ended.
+                    // copying. The lock stays until staff release it, at
+                    // the soonest once its lease and grace have passed
+                    // (storage_holds.rs), and the reservation stays, ended.
+                    // Its source takes no writes until then, and its
+                    // writers are told the copy did not
+                    // finish cleanly (public_storage.rs `Refusal::Stalled`);
+                    // sudo's Overview and Storage holds show it.
                     self.registry.end_public(&reservation, &message, &[]).await;
+                    worker::console_error!(
+                        "{}",
+                        serde_json::json!({ "copy_lock_kept": source.id, "fork": fork.id, "error": message })
+                    );
                 } else {
                     // The store refused, or was never asked: nothing is
                     // copying and nothing was copied.
@@ -252,16 +260,40 @@ impl<S: GitStore> Repos<S> {
                 }
                 return Err(error);
             }
-            // The lock first: if staff released it while the store copied,
-            // the source may have taken writes the measured size misses, so
-            // the reservation stays, ended, for staff to look at.
-            if self.registry.unlock_copy(&source, &fork).await? {
-                // The whole reservation goes, the source's in-flight share
-                // with it: the fork holds what was measured.
-                self.registry.finish_public(&reservation, measured).await?;
-            } else {
-                let why = "The fork was made after staff released its copy lock: the source may have taken writes its measured size misses.";
-                self.registry.end_public(&reservation, why, &[]).await;
+            // The settle first, so nothing after it can leave the fork
+            // unbilled: the whole reservation goes, the source's in-flight
+            // share with it, and the fork is counted at what was measured,
+            // what it is billed from (stored_bytes). A fork counts in full
+            // by policy, even of its default branch only. Then the lock;
+            // an unlock that fails is said, never returned, so the settle
+            // is neither skipped nor made twice, and the lock is left for
+            // staff (it reads as stalled, public_storage.rs COPY_LOCKED).
+            self.registry.finish_public(&reservation, measured).await?;
+            let gone = match self.registry.unlock_copy(&source, &fork).await {
+                Ok(unlocked) => !unlocked,
+                Err(error) => {
+                    worker::console_error!(
+                        "{}",
+                        serde_json::json!({ "copy_unlock_failed": source.id, "fork": fork.id, "error": error.to_string() })
+                    );
+                    false
+                }
+            };
+            if gone {
+                // Staff released the lock while the store copied, so the
+                // source may have taken writes the fork holds and the count
+                // misses.
+                // `measured` is the source's stored_bytes taken right after
+                // the lock, and stored_bytes only grows, so the count is a
+                // lower bound and never more than the fork holds. Said for
+                // staff, whose drift report measures what it holds.
+                worker::console_warn!(
+                    "{}",
+                    serde_json::json!({
+                        "fork_outlived_copy_lock": fork.id, "source": source.id, "measured_bytes": measured,
+                        "note": "The fork was made after staff released its copy lock: it is counted at its source's measured size, and may hold more.",
+                    })
+                );
             }
         } else {
             // Kept in the EU: copied there, never forked across.

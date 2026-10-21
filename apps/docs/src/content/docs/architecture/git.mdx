@@ -145,9 +145,20 @@ public storage is full. The lock is `unavailable` rather than a conflict,
 since its end starts nothing that would try again: a pull request g1t
 merges by itself stalls with the message, and a person's automatic merge
 turns off with it. A fork whose call timed out or met a server error may
-still be copying, so it keeps its lock until the lease and grace have
-passed, and staff release it; one the store refused unlocks at once. A fork that finishes after staff released its lock leaves its
-reservation ended, for staff to look at.
+still be copying, so it keeps its lock until staff release it, at the
+soonest once the lease and grace have passed; one the store refused
+unlocks at once. Once a copy has taken longer than it should or did not
+finish cleanly (the same batch reads whether the fork's reservation ended,
+whether the fork holds no live reservation a minute after it locked, or
+whether the lock's lease has passed), its source's writers are told so
+instead, and that it can take a few hours. sudo's Overview and Storage
+holds page show such a source until it is released. A fork is counted
+before its lock is let go, at its source's measured size, even when staff
+released the lock while it copied: a lower bound, since the source may
+have taken writes meanwhile, and never more than the fork holds, as the
+measured size is the source's `stored_bytes` read right after the lock and
+`stored_bytes` only grows. A fork counts in full by policy, even of its
+default branch only.
 
 Rows and locks that outlive their write are for staff, in sudo's Storage
 holds page (`services/repos/src/storage_holds.rs`). A hold is released only

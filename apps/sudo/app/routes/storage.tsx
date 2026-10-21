@@ -1,4 +1,4 @@
-import { HardDrive, Search, Unlock } from "lucide-react";
+import { HardDrive, Lock, Search, Unlock } from "lucide-react";
 import { Link, data, redirect } from "react-router";
 
 import type { StorageDrift, StorageHold, StorageHoldInspection, StorageHoldRepo, StorageRecovery, UpstreamState } from "@g1t/contracts";
@@ -11,6 +11,9 @@ import { settle } from "~/lib/settle";
 import { requireStaff } from "~/lib/staff";
 import {
   MAX_REASON,
+  type BlockedSource,
+  blockedSources,
+  blockedSummary,
   formatAge,
   formatBytes,
   holdKey,
@@ -87,6 +90,11 @@ export default function Storage({ loaderData, actionData }: Route.ComponentProps
   const held = list.reduce((sum, hold) => sum + hold.bytes, 0);
   const abandoned = list.filter((hold) => hold.abandoned);
   const locks = list.filter((hold) => hold.kind === "copy_lock").length;
+  // Sources a copy lock keeps from taking writes: one held past a copy's
+  // usual time, or kept after its fork's call failed, stands out.
+  const blocked = holds ? blockedSources(list, holds.now, holds.more) : [];
+  const summary = blockedSummary(blocked);
+  const stalled = blocked.filter((source) => source.stalled).length;
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
       <PageHeader
@@ -98,6 +106,7 @@ export default function Storage({ loaderData, actionData }: Route.ComponentProps
         {auditMissed && <Notice tone="warn">{auditMissed}</Notice>}
         {error && <Notice tone="error">The repos service did not answer: {error}</Notice>}
         {actionData?.error && !actionData.key && <Notice tone="error">{actionData.error}</Notice>}
+        {summary && <Notice tone={stalled ? "error" : "warn"}>{summary}</Notice>}
       </div>
       {holds && (
         <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -112,9 +121,11 @@ export default function Storage({ loaderData, actionData }: Route.ComponentProps
           <Stat
             label="Copy locks"
             value={locks}
-            tone={locks ? "warn" : undefined}
+            tone={stalled ? "danger" : locks ? "warn" : undefined}
             hint={
-              holds.ledgerSince ? (
+              stalled ? (
+                `${stalled} did not finish cleanly`
+              ) : holds.ledgerSince ? (
                 <>
                   Ledger since <When at={holds.ledgerSince} />
                 </>
@@ -133,6 +144,7 @@ export default function Storage({ loaderData, actionData }: Route.ComponentProps
           actionError={actionData?.key === picked ? (actionData.error ?? null) : null}
         />
       )}
+      {blocked.length > 0 && <Blocked blocked={blocked} picked={picked} />}
       <Section title="Holds" description="Oldest first. Inspect one to see the git store's state and release it." className="mt-6">
         {list.length === 0 ? (
           <EmptyState title={holds ? "Nothing is held" : "Nothing to show"}>
@@ -166,6 +178,64 @@ function RepoName({ repo }: { repo: StorageHoldRepo | null }) {
       {repo.private ? <Badge>private</Badge> : <Badge tone="info">public</Badge>}
       {repo.deleted && <Badge tone="danger">deleted</Badge>}
     </span>
+  );
+}
+
+/**
+ * The repositories a copy lock keeps from taking writes. Their writers are
+ * told so (public_storage.rs `Refusal`): "a few minutes" while the copy
+ * runs, "a few hours" once it did not finish cleanly, when the lock stays
+ * until it is released here.
+ */
+function Blocked({ blocked, picked }: { blocked: BlockedSource[]; picked: string | null }) {
+  return (
+    <Section
+      title="Writes blocked"
+      description="Repositories being copied into a fork take no pushes, commits from the site, merges or pull request updates until the copy ends. A copy ordinarily ends within a few minutes; one that did not finish cleanly keeps its lock until it is released here."
+      className="mt-6"
+    >
+      <ul className="-mx-4 -my-4 divide-y divide-line sm:-mx-5 sm:-my-5">
+        {blocked.map(({ lock, fork, stalled, attention }) => {
+          const key = holdKey(lock.kind, lock.id);
+          return (
+            <li key={key} className={`flex flex-col gap-1.5 px-4 py-3 sm:px-5 ${picked === key ? "bg-accent/5" : ""}`}>
+              <p className="flex flex-wrap items-center gap-2 text-sm">
+                <Lock size={14} className={stalled ? "text-danger" : attention ? "text-warn" : "text-faint"} />
+                <RepoName repo={lock.repo} />
+                <span className="text-xs text-muted">into</span>
+                <RepoName repo={lock.target} />
+                {stalled ? (
+                  <Badge tone="danger">did not finish cleanly</Badge>
+                ) : attention ? (
+                  <Badge tone="warn">slow</Badge>
+                ) : (
+                  <Badge tone="mint">copying</Badge>
+                )}
+                <span className="ml-auto text-xs text-faint">blocked for {formatAge(lock.ageSeconds)}</span>
+              </p>
+              {fork?.state === "ended" && <p className="text-xs text-muted">The fork's call to the store ended: {fork.outcome ?? "with no answer"}</p>}
+              <p className="text-xs text-fg-soft">
+                {lock.abandoned ? (
+                  "Provably abandoned: it can be released now."
+                ) : lock.releasableAt ? (
+                  <>
+                    Releasable from <When at={lock.releasableAt} time />, if the copy has not ended by then.
+                  </>
+                ) : (
+                  lock.why
+                )}
+              </p>
+              <p>
+                <Link to={`/storage?hold=${encodeURIComponent(key)}#inspection`} className="inline-flex items-center gap-1 text-xs text-accent hover:underline">
+                  <Search size={12} />
+                  Inspect
+                </Link>
+              </p>
+            </li>
+          );
+        })}
+      </ul>
+    </Section>
   );
 }
 

@@ -365,6 +365,10 @@ what to do as `remote:` lines. Nothing in a declined push is stored.
 | A push                                               | 100 MB                                                       | Refused by the network with HTTP `413` before g1t sees it.                                                                                                                                                                                      |
 | How long a push may take to upload                   | 1 hour                                                       | The push is declined (`the push took too long`), and nothing of it is stored. A push is at most 100 MB, which uploads well within an hour on any ordinary connection; push again from a faster one, or in parts.                                |
 
+A copy into a fork that has taken longer than it should, or did not finish
+cleanly, holds its source's pushes until it ends or g1t staff have checked
+it, which can take a few hours; git says so when the push begins.
+
 To push a large history in parts:
 
 ```sh
