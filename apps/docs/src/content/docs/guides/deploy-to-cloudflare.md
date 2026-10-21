@@ -379,7 +379,14 @@ alone. When it did, Cloudflare replaces sandboxes on the new image but
 leaves any that started within the last two hours
 (`rollout_active_grace_period` in `services/runner/wrangler.jsonc`) to
 finish first. A workflow job on g1t's machines runs for at most 60
-minutes, so a deploy never cuts one short.
+minutes, so a deploy never cuts one short. New jobs get the new image a
+few minutes after the rollout is marked complete.
+
+For an incident, a fix that cannot wait for running jobs: run Deploy by
+hand with **urgent** (or `node scripts/deploy.mjs deploy --only runner
+--force --urgent`). The runner is deployed whether or not it changed,
+and every sandbox and git edge is replaced now, with no grace: jobs in
+the middle are stopped and can be run again.
 
 The standard sandbox is the instance type `standard-3` (2 vCPU, 8 GiB,
 16 GB), and so is `runs-on: g1t-2core`, in a class of its own; jobs that
