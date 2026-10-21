@@ -60,7 +60,8 @@ export default function ChatIndex({ loaderData, params }: Route.ComponentProps) 
     if (!home && window.matchMedia("(min-width: 768px)").matches) navigate(to ?? `/${slug}/-/home`, { replace: true });
   }, [home, to, slug, navigate]);
   // Home drawn here takes its data as a prop: its route's own export would read this route's data instead.
-  if (home) return <HomePage data={home} />;
+  // A page of its own per workspace, so nothing of the last one is held over after switching.
+  if (home) return <HomePage key={slug} data={home} />;
   return (
     <>
       {/* A phone: the list of conversations, full screen. */}

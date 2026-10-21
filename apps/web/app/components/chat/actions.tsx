@@ -20,8 +20,14 @@ export function useChatData(): ChatLayoutData | undefined {
   return useRouteLoaderData("routes/workspace/chat/layout") as ChatLayoutData | undefined;
 }
 
-/** The sidebar's own fetcher: every component that refreshes it shares this one. */
-export const SIDEBAR_FETCHER = "chat-sidebar";
+/**
+ * The sidebar's own fetcher, one per workspace: every component that
+ * refreshes a workspace's sidebar shares it. One key for every workspace
+ * kept the last one's sidebar over the next one's after switching.
+ */
+export function sidebarFetcher(slug: string | null | undefined): string {
+  return `chat-sidebar:${slug ?? ""}`;
+}
 
 /**
  * The sidebar as last read: refreshed in place, else what the page loaded.
@@ -30,8 +36,8 @@ export const SIDEBAR_FETCHER = "chat-sidebar";
  */
 export function useChatSidebar(home?: string): { sidebar: ChatSidebar | null; refresh: () => void } {
   const data = useChatData();
-  const fetcher = useFetcher<Result<ChatSidebar>>({ key: SIDEBAR_FETCHER });
   const slug = data?.slug ?? home;
+  const fetcher = useFetcher<Result<ChatSidebar>>({ key: sidebarFetcher(slug) });
   const refresh = useCallback(() => {
     if (slug) fetcher.load(`/${slug}/-/chat/api`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -73,7 +79,7 @@ export function useChatSidebar(home?: string): { sidebar: ChatSidebar | null; re
  * something that changes the sidebar refreshes it.
  */
 export function useChatSend(slug: string) {
-  const fetcher = useFetcher<Result<ChatSidebar>>({ key: SIDEBAR_FETCHER });
+  const fetcher = useFetcher<Result<ChatSidebar>>({ key: sidebarFetcher(slug) });
   return useCallback(
     async <T = unknown,>(body: Record<string, unknown>): Promise<Result<T>> => {
       try {
