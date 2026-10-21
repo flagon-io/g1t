@@ -8,14 +8,19 @@
  *   be given brokered secrets sends its HTTP and HTTPS through `egress`
  *   below, which fills them in and sends everything on, to any host.
  * - A sandbox's report that it stopped itself for mining comes to `abuse`.
+ * - A workflow job's HTTPS to g1t.sh comes to `git` (or `egress`), which
+ *   hands its fetches to the repos service over its binding
+ *   (internal-git.ts) and sends the rest on.
  */
 import type { OutboundHandlerContext } from "@cloudflare/containers";
 
 import { type RepoPath, type RunKind, type ServiceBinding, guardrailsClient } from "@g1t/contracts";
 
 import { ABUSE_HOST, type RunGuard, sandboxNamespace } from "./egress";
+import { standInsIn } from "./broker.ts";
 import { type BrokeredParams, brokered } from "./broker-egress.ts";
 import { forward } from "./forward.ts";
+import { isGitHost, viaRepos } from "./internal-git.ts";
 
 export {
   ABUSE_EXIT_CODE,
@@ -60,17 +65,31 @@ export function buildGuard(minutes: number): RunGuard {
  * The outbound handler of a sandbox whose HTTP and HTTPS pass the Worker
  * (a workflow job that may be given brokered secrets): every request it
  * makes, to any host. Its brokered secrets are filled in first, if it has
- * any, and the request is sent on with `forward`'s retries.
+ * any, and the request is sent on with `forward`'s retries. Its fetches
+ * from g1t.sh go to the repos service, as `git` sends them, unless they
+ * carry a stand-in to fill in.
  */
 export async function egress(
   request: Request,
-  env: { SANDBOX: DurableObjectNamespace; ACTIONS?: ServiceBinding },
+  env: { SANDBOX: DurableObjectNamespace; ACTIONS?: ServiceBinding; REPOS?: object },
   ctx: OutboundHandlerContext<EgressParams>,
 ): Promise<Response> {
   const host = new URL(request.url).host;
   // A sandbox reporting that it stopped itself for mining.
   if (host === ABUSE_HOST) return abuse(request, env, ctx);
-  return (await brokered(request, env, ctx)) ?? forward(request);
+  const onward = async (sent: Request) => (await brokered(sent, env, ctx)) ?? forward(sent);
+  if (isGitHost(host) && standInsIn(request.url, request.headers).length === 0) return viaRepos(request, env, onward);
+  return onward(request);
+}
+
+/**
+ * The outbound handler for g1t.sh on a workflow job whose other requests
+ * go straight out: its fetches go to the repos service; the rest, and a
+ * fetch the repos service could not answer, go straight out as they would
+ * have without this handler (the containers library's own `fetch`).
+ */
+export async function git(request: Request, env: { REPOS?: object }): Promise<Response> {
+  return viaRepos(request, env, (sent) => fetch(sent));
 }
 
 /**
