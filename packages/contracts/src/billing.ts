@@ -684,6 +684,19 @@ export type BillingLink = {
 
 export type AdminAction = { id: string; account: string; action: string; detail: string; by: string; createdAt: string };
 
+/**
+ * Where `admin_log` files a staff change made outside billing: a workspace
+ * (its own account), or, when no workspace can be named, an
+ * `AdminLogAccount`. Mirrors `AdminLogArgs` in crates/contracts/src/billing.rs.
+ */
+export type AdminLogEntry = ({ workspace: string; account?: never } | { account: AdminLogAccount; workspace?: never }) & {
+  action: string;
+  detail: string;
+};
+
+/** The accounts other than a workspace's that `admin_log` takes (`ADMIN_LOG_ACCOUNTS`): `storage`, for a storage hold on a repository whose row is gone. */
+export type AdminLogAccount = "storage";
+
 export type AccountDetail = {
   summary: AccountSummary;
   workspaces: Limit[];
@@ -759,6 +772,8 @@ export interface BillingAdminApi {
   allInvoices(filter?: { status?: string; month?: string }): Promise<InvoiceSummary[]>;
   /** Every change made in sudo and by Stripe, newest first, 100 at a time. */
   audit(filter?: { by?: string; action?: string; before?: string }): Promise<AdminAction[]>;
+  /** A staff change made in another service, such as a storage hold the repos service released, kept in this audit log. */
+  log(entry: AdminLogEntry, by: string): Promise<boolean>;
   /** Limit and overage requests, with each workspace's history; `open` by default. */
   limitRequests(status?: "open" | "approved" | "declined" | "all"): Promise<LimitRequestReview[]>;
   /** Approve (at the amount asked, or another) or decline; the owner is told in the app and by email. */
