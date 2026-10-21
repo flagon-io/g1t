@@ -94,10 +94,15 @@ export const POLICIES: Policy[] = [
 export const POLICIES_DRAFT = false;
 
 /** When any policy last changed, `YYYY-MM-DD`. */
-export const POLICIES_UPDATED = "2026-10-14";
+export const POLICIES_UPDATED = "2026-10-21";
 
 /** Every change to the policies, newest first. */
 export const POLICY_HISTORY: { date: string; change: string }[] = [
+  {
+    date: "2026-10-21",
+    change:
+      "Privacy Policy: g1t.sh no longer uses site analytics. HeyCatch is gone, along with its analytics cookie, the consent banner and Cookie choices; g1t uses no third-party analytics. Subprocessors: HeyCatch, Inc. removed.",
+  },
   {
     date: "2026-10-14",
     change:

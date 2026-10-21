@@ -1,6 +1,6 @@
 This policy explains what information g1t collects, why, where it goes, how long we keep it, and what you can do about it. It covers g1t.sh, api.g1t.sh, mcp.g1t.sh, docs.g1t.sh, g1t.page and the runners and sandboxes g1t runs. g1t is run by Flagon, Inc. ("Flagon", "we"), which is responsible for your information.
 
-The short version: we collect what we need to run a git platform for you and your agents, we don't sell it, we don't advertise, we don't use your private content to train AI models, and the only analytics on g1t.sh counts how pages are used without reading what is in your workspaces.
+The short version: we collect what we need to run a git platform for you and your agents, we don't sell it, we don't advertise, we don't use your private content to train AI models, and we use no third-party analytics.
 
 ## What we collect
 
@@ -42,17 +42,7 @@ Payments are handled by Stripe. **Card numbers never reach g1t.** From Stripe we
 
 ### How the site is used
 
-On g1t.sh, our analytics provider HeyCatch, Inc. records page views, clicks and the page each happened on, with your browser and device type, your IP address (which it uses to estimate your country and city) and the site that sent you. We use it to learn which pages help people and where they get stuck.
-
-- **On the public pages** (the home page, pricing, Explore, signing up and signing in, support, security and these policies) it receives the page's address and the text of what you click.
-- **Everywhere else** your browser removes names before anything is sent: an address such as `g1t.sh/acme/web/pull/12` is sent as `/:name/:name/pull/:n`, and page titles and the text, links and attributes of what you click are left out. Nothing from your repositories, issues, pull requests or chat is sent.
-- **If you're signed in**, it receives your account's internal id, so your visits count as one person. Not your username, email address or name.
-- **Never**: recordings of your screen or session, what you type, or error reports.
-- **Query strings** are removed, except campaign tags (`utm_…`).
-
-**If you're in the EU, the EEA, the UK or Switzerland, we ask first.** Until you choose **Allow**, nothing is loaded from HeyCatch, no analytics cookie is set and nothing is sent. Your answer is kept in your browser's local storage (`g1t_analytics`), and **Cookie choices** at the foot of any page asks again. Elsewhere, analytics runs without asking. If your browser sends Do Not Track, nothing is recorded anywhere. A g1t you run yourself sends nothing to HeyCatch.
-
-HeyCatch stores these events with PostHog in the United States, under its [data processing addendum](https://heycatch.ai/dpa), which includes the EU Standard Contractual Clauses.
+g1t uses **no third-party analytics**. No analytics script is loaded, no analytics cookie is set, and nothing about the pages you visit or what you click is sent to an analytics company. What we know about how g1t is used comes from running it: the request logs described under [Technical information](#technical-information) and our own records of the service.
 
 ### When you write to us
 
@@ -66,22 +56,21 @@ The email sign-up form uses **Cloudflare Turnstile** to distinguish people from 
 
 ## Cookies and browser storage
 
-g1t uses the cookies it needs to work, and one analytics cookie. There are **no advertising or cross-site tracking cookies**.
+g1t uses only the cookies it needs to work. There are **no analytics, advertising or cross-site tracking cookies**.
 
-| Cookie         | What it's for                                                                                                                                                                                                  | How long                       |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| `g1t_session`  | Keeps you signed in. HttpOnly and Secure; set only when you sign in.                                                                                                                                           | 30 days, or until you sign out |
-| `g1t_ws`       | Remembers which workspace you last chose, so the sidebar opens on it.                                                                                                                                          | 1 year                         |
-| `g1t_seen`     | Remembers when you last looked at mission control, so it can show what's new since.                                                                                                                            | 1 year                         |
-| `g1t_tz`       | Your browser's time zone, so mission control's greeting and days fit your day.                                                                                                                                 | 1 year                         |
-| `g1t_theme`    | Whether this browser shows g1t light, dark or as your system is set, if you chose.                                                                                                                             | 1 year                         |
-| `g1t_dock`     | This browser's copy of the apps you pinned to your dock, used when your account's copy can't be read.                                                                                                          | 1 year                         |
-| `g1t_sidebar`  | Whether you folded the sidebar away.                                                                                                                                                                           | 1 year                         |
-| `ph_…_posthog` | Set by HeyCatch's analytics on g1t.sh: a random id for your browser, so its visits count as one visitor ([above](#how-the-site-is-used)). In the EU, the EEA, the UK and Switzerland, only after you allow it. | 1 year                         |
+| Cookie        | What it's for                                                                                         | How long                       |
+| ------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------ |
+| `g1t_session` | Keeps you signed in. HttpOnly and Secure; set only when you sign in.                                  | 30 days, or until you sign out |
+| `g1t_ws`      | Remembers which workspace you last chose, so the sidebar opens on it.                                 | 1 year                         |
+| `g1t_seen`    | Remembers when you last looked at mission control, so it can show what's new since.                   | 1 year                         |
+| `g1t_tz`      | Your browser's time zone, so mission control's greeting and days fit your day.                        | 1 year                         |
+| `g1t_theme`   | Whether this browser shows g1t light, dark or as your system is set, if you chose.                    | 1 year                         |
+| `g1t_dock`    | This browser's copy of the apps you pinned to your dock, used when your account's copy can't be read. | 1 year                         |
+| `g1t_sidebar` | Whether you folded the sidebar away.                                                                  | 1 year                         |
 
 Cloudflare may set its own security cookies (such as `__cf_bm`) to tell people from bots when g1t is under attack.
 
-The site also keeps a few preferences in your browser's local storage, which never leave your device: which coding agent you set up with and how you like diffs shown. HeyCatch keeps a copy of its analytics id there too, which is sent with each analytics event.
+The site also keeps a few preferences in your browser's local storage, which never leave your device: which coding agent you set up with and how you like diffs shown.
 
 **Fonts.** g1t.sh and docs.g1t.sh serve their typefaces themselves, so loading a page asks no one else for them.
 
@@ -94,9 +83,9 @@ We use your information to:
 - bill workspaces and keep the records the law requires;
 - send you the email g1t needs to: confirming your address, resetting your password, billing alerts and receipts, answers to requests you made, and important changes to g1t or these policies. **We don't send marketing email**;
 - answer you when you write to us;
-- improve g1t, using our own records of how it is used and the site analytics [above](#how-the-site-is-used). We don't use your private content to train AI models.
+- improve g1t, using our own records of how it is used. We don't use your private content to train AI models.
 
-If you're in the European Economic Area or the United Kingdom, our legal bases are: **performing our contract with you** (running the service you signed up for), **our legitimate interests** (keeping g1t secure, preventing abuse, and improving it, balanced against your rights), and **legal obligations** (such as keeping tax records). For optional analytics where we ask permission, we rely on **your consent**. You can withdraw it at any time through **Cookie choices** in the footer, without affecting processing that was lawful before you withdrew it.
+If you're in the European Economic Area or the United Kingdom, our legal bases are: **performing our contract with you** (running the service you signed up for), **our legitimate interests** (keeping g1t secure, preventing abuse, and improving it, balanced against your rights), and **legal obligations** (such as keeping tax records).
 
 **We don't sell your personal information, and we don't share it for advertising.**
 
@@ -104,7 +93,7 @@ If you're in the European Economic Area or the United Kingdom, our legal bases a
 
 We share information only to run g1t, at your direction, or when the law requires it.
 
-- **Service providers ("subprocessors")** that run parts of g1t for us: Cloudflare (hosting, storage, databases, sandboxes, sending email and search), Stripe (payments and tax), HeyCatch (site analytics), Expo (notifications to the phone app) and Google (our mailboxes). The [subprocessors](/policies/subprocessors) page lists them and what each receives.
+- **Service providers ("subprocessors")** that run parts of g1t for us: Cloudflare (hosting, storage, databases, sandboxes, sending email and search), Stripe (payments and tax), Expo (notifications to the phone app) and Google (our mailboxes). The [subprocessors](/policies/subprocessors) page lists them and what each receives.
 - **Services you connect.** When you connect an AI provider, an issue tracker, error tracking or a webhook, or let your sandboxes reach a host, we send them what that connection needs, because you asked us to.
 - **Other people on g1t**, as your settings allow: your workspace's members, and everyone for public projects and your public profile.
 - **Vulnerability databases.** To find vulnerable dependencies, we send the names and versions of packages in your lockfiles to OSV.dev, an open database run by Google. Nothing else about you or your repository is sent.
