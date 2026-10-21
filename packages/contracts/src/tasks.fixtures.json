@@ -1,0 +1,75 @@
+{
+  "lists": [
+    { "body": "", "tasks": [] },
+    { "body": "No boxes here.\n\n- just a list\n- of things", "tasks": [] },
+    {
+      "body": "- [ ] one\n- [x] two\n- [X] three",
+      "tasks": [
+        { "number": 1, "line": 1, "text": "one", "checked": false },
+        { "number": 2, "line": 2, "text": "two", "checked": true },
+        { "number": 3, "line": 3, "text": "three", "checked": true }
+      ]
+    },
+    {
+      "body": "Intro\r\n\r\n* [ ] star\r\n+ [x] plus\r\n",
+      "tasks": [
+        { "number": 1, "line": 3, "text": "star", "checked": false },
+        { "number": 2, "line": 4, "text": "plus", "checked": true }
+      ]
+    },
+    {
+      "body": "1. [ ] first\n2) [x] second\n10. [ ] tenth",
+      "tasks": [
+        { "number": 1, "line": 1, "text": "first", "checked": false },
+        { "number": 2, "line": 2, "text": "second", "checked": true },
+        { "number": 3, "line": 3, "text": "tenth", "checked": false }
+      ]
+    },
+    {
+      "body": "- [ ] parent\n  - [x] child\n    - [ ] grandchild\n- plain\n\t- [ ] tabbed",
+      "tasks": [
+        { "number": 1, "line": 1, "text": "parent", "checked": false },
+        { "number": 2, "line": 2, "text": "child", "checked": true },
+        { "number": 3, "line": 3, "text": "grandchild", "checked": false },
+        { "number": 4, "line": 5, "text": "tabbed", "checked": false }
+      ]
+    },
+    {
+      "body": "> - [ ] quoted\n>> * [x] twice quoted\n > 1. [ ] spaced quote",
+      "tasks": [
+        { "number": 1, "line": 1, "text": "quoted", "checked": false },
+        { "number": 2, "line": 2, "text": "twice quoted", "checked": true },
+        { "number": 3, "line": 3, "text": "spaced quote", "checked": false }
+      ]
+    },
+    {
+      "body": "```\n- [ ] in code\n```\n- [ ] after code\n~~~md\n- [ ] in tildes\n~~~\n````\n```\n- [ ] still in the longer fence\n````\n- [x] last",
+      "tasks": [
+        { "number": 1, "line": 4, "text": "after code", "checked": false },
+        { "number": 2, "line": 12, "text": "last", "checked": true }
+      ]
+    },
+    {
+      "body": "- [ ]\n- [ ] \n- [x]text\n-[ ] tight\n- [y] other\n- [  ] wide\n- [ ] real",
+      "tasks": [{ "number": 1, "line": 7, "text": "real", "checked": false }]
+    },
+    {
+      "body": "-  [x]   spaced out   \n- [ ]\ttabbed text",
+      "tasks": [
+        { "number": 1, "line": 1, "text": "spaced out", "checked": true },
+        { "number": 2, "line": 2, "text": "tabbed text", "checked": false }
+      ]
+    },
+    {
+      "body": "- [ ] Use `- [ ]` in **markdown** and [links](https://g1t.sh)\n- [x] Café ☕ naïve",
+      "tasks": [
+        { "number": 1, "line": 1, "text": "Use `- [ ]` in **markdown** and [links](https://g1t.sh)", "checked": false },
+        { "number": 2, "line": 2, "text": "Café ☕ naïve", "checked": true }
+      ]
+    },
+    {
+      "body": "Text with [ ] brackets\n- not [ ] a box\n1234567890. [ ] too many digits\n- [ ] a box",
+      "tasks": [{ "number": 1, "line": 4, "text": "a box", "checked": false }]
+    }
+  ]
+}

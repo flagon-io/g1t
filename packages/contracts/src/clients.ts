@@ -474,6 +474,7 @@ export function workClient(service: ServiceBinding): WorkApi {
       }),
     setWorkItemParent: (actor, workspace, number, parent, onlyFrom) =>
       call("set_work_item_parent", { actor, workspace, number, parent, ...(onlyFrom ? { only_from: onlyFrom } : {}) }),
+    checkWorkItemTask: (actor, workspace, number, check) => call("check_work_item_task", { actor, workspace, number, ...check }),
     reopenWorkItem: (actor, workspace, number) => call("reopen_work_item", { actor, workspace, number }),
     linkWorkItem: (actor, workspace, number, repo, role = "target") => call("link_work_item", { actor, workspace, number, repo, role }),
     unlinkWorkItem: (actor, workspace, number, repo) => call("unlink_work_item", { actor, workspace, number, repo }),
@@ -555,6 +556,7 @@ export function workClient(service: ServiceBinding): WorkApi {
     editCommitComment: (actor, repo, id, body) => call("edit_commit_comment", { actor, repo, id, body }),
     deleteCommitComment: (actor, repo, id) => call("delete_commit_comment", { actor, repo, id }),
     readyPull: (actor, repo, number, summary) => call("ready_pull", { actor, repo, number, summary }),
+    checkPullTask: (actor, repo, number, check) => call("check_pull_task", { actor, repo, number, ...check }),
     closePull: (actor, repo, number) => call("close_pull", { actor, repo, number }),
     reopenPull: (actor, repo, number) => call("reopen_pull", { actor, repo, number }),
     convertPullToDraft: (actor, repo, number) => call("convert_pull_to_draft", { actor, repo, number }),

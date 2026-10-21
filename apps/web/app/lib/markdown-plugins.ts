@@ -12,9 +12,18 @@ type Element = {
   tagName: string;
   properties: Record<string, unknown>;
   children: Node[];
+  position?: Node["position"];
 };
 /** A node of the HTML tree, loosely: only what these plugins read. */
-type Node = { type: string; value?: string; tagName?: string; properties?: Record<string, unknown>; children?: Node[] };
+type Node = {
+  type: string;
+  value?: string;
+  tagName?: string;
+  properties?: Record<string, unknown>;
+  children?: Node[];
+  /** Where in the text it was written; none for what a plugin made. */
+  position?: { start: { line: number } };
+};
 
 /** The repository a document belongs to, so `#12` is read in it. */
 export type MarkdownRepo = { namespace: string; name: string };
@@ -60,6 +69,35 @@ export function rehypeAlerts() {
     };
     walk(tree);
   };
+}
+
+/**
+ * Task list boxes: each box markdown made (not one written as HTML, which
+ * has a place of its own in the text) says the line of its list item, as
+ * `data-task-line`, so a click can tick the box on that line
+ * (`@g1t/contracts/tasks`).
+ */
+export function rehypeTaskLines() {
+  return (tree: Node) => {
+    const walk = (node: Node) => {
+      for (const child of node.children ?? []) {
+        if (isElement(child, "li") && child.position) {
+          const box = child.children.find((c): c is Element => isElement(c, "input")) ?? firstInput(child);
+          if (box && !box.position && box.properties.type === "checkbox") {
+            box.properties = { ...box.properties, dataTaskLine: child.position.start.line };
+          }
+        }
+        walk(child);
+      }
+    };
+    walk(tree);
+  };
+}
+
+/** The box at the start of a list item whose text is in a paragraph (a loose list's). */
+function firstInput(item: Element): Element | undefined {
+  const first = item.children.find((c) => c.type !== "text" || c.value?.trim());
+  return first && isElement(first, "p") ? first.children.find((c): c is Element => isElement(c, "input")) : undefined;
 }
 
 /**

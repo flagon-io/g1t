@@ -49,6 +49,7 @@ import { firstScreens } from "../../lib/diff";
 import { highlightFirstFiles } from "../../lib/highlight.server";
 import { excerpt, page } from "../../lib/meta";
 import { openedBy } from "../../lib/opened-by";
+import { taskCheckOf } from "../../lib/task-check";
 import { useArrived } from "../../lib/use-arrived";
 import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { DiffView } from "../../components/diff-view";
@@ -446,6 +447,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       },
     );
     return reacted.ok ? null : { error: reacted.error.message, action };
+  }
+  // A box of its description's task list, ticked or not (components/markdown.tsx).
+  if (action === "check-task") {
+    const checked = await work.checkPullTask(user, path, number, taskCheckOf(form));
+    return checked.ok ? null : { error: checked.error.message, action };
   }
   if (action === "labels") {
     const set = await work.setLabels(user, { repo: path, number }, form.getAll("label").map(String));
@@ -1152,7 +1158,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   >
                     {pull.body ? (
                       <>
-                        <Markdown source={pull.body} repo={{ namespace: params.owner, name: params.repo }} />
+                        <Markdown source={pull.body} repo={{ namespace: params.owner, name: params.repo }} checkable={canManage} />
                         <Reactions reactions={loaderData.reactions} viewer={viewer?.username ?? null} className="mt-3" />
                       </>
                     ) : (

@@ -636,6 +636,8 @@ pub const ROUTES: &[Route] = &[
     route("PUT", "/workspaces/:workspace/work/:number/parent", Op::SetWorkItemParent, &[]),
     route("POST", "/workspaces/:workspace/work/:number/sub_items", Op::AddWorkItemSubItem, &[]),
     route("DELETE", "/workspaces/:workspace/work/:number/sub_items/:sub_item", Op::RemoveWorkItemSubItem, &[]),
+    // A box of its task list, ticked or not.
+    route("PATCH", "/workspaces/:workspace/work/:number/tasks", Op::CheckWorkItemTask, &[]),
     route("GET", "/workspaces/:workspace/work/:number/labels", Op::ListWorkItemLabels, &[]),
     route("POST", "/workspaces/:workspace/work/:number/labels", Op::AddWorkItemLabels, &[]),
     route("PUT", "/workspaces/:workspace/work/:number/labels", Op::SetWorkItemLabels, &[]),
@@ -1171,6 +1173,7 @@ pub const ROUTES: &[Route] = &[
         &[],
     ),
     route("POST", "/repos/:owner/:name/pulls/:number/draft", Op::ConvertPullRequestToDraft, &[]),
+    route("PATCH", "/repos/:owner/:name/pulls/:number/tasks", Op::CheckPullRequestTask, &[]),
     route(
         "POST",
         "/repos/:owner/:name/pulls/:number/close",
@@ -1623,6 +1626,7 @@ mod tests {
         let op = |method: &str, path: &str| resolve(method, path, &[], Value::Null).unwrap().0.op;
         assert_eq!(op("POST", "/repos/acme/web/pulls/9/reopen"), Op::ReopenPullRequest);
         assert_eq!(op("POST", "/repos/acme/web/pulls/9/draft"), Op::ConvertPullRequestToDraft);
+        assert_eq!(op("PATCH", "/repos/acme/web/pulls/9/tasks"), Op::CheckPullRequestTask);
         assert_eq!(op("POST", "/repos/acme/web/pulls/9/close"), Op::ClosePullRequest);
         // Reopening and closing with a PATCH, as `state`.
         let (route, input) = resolve("PATCH", "/repos/acme/web/pulls/9", &[], json!({ "state": "open" })).unwrap();
@@ -1676,6 +1680,7 @@ mod tests {
         assert_eq!(input, json!({ "repo": "acme/api", "number": 12, "workspace": "acme" }));
         assert_eq!(op("PUT", "/workspaces/acme/work/12/parent"), Op::SetWorkItemParent);
         assert_eq!(op("POST", "/workspaces/acme/work/12/sub_items"), Op::AddWorkItemSubItem);
+        assert_eq!(op("PATCH", "/workspaces/acme/work/12/tasks"), Op::CheckWorkItemTask);
         let (route, input) = resolve("DELETE", "/workspaces/acme/work/12/sub_items/14", &[], Value::Null).unwrap();
         assert_eq!(route.op, Op::RemoveWorkItemSubItem);
         assert_eq!(input["sub_item"], json!("14"));

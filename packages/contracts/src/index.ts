@@ -55,6 +55,7 @@ export * from "./security";
 export * from "./security-suite";
 export * from "./sso";
 export * from "./status";
+export * from "./tasks";
 export * from "./teams";
 export * from "./people";
 export * from "./webhooks";

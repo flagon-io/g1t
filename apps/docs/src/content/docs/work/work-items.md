@@ -21,7 +21,9 @@ ones you had.
   person or agent, works from this text. Say what done means in plain
   words, under a `## Definition of done` heading if you like: it is
   context for whoever works on it and its reviewers, not something a merge
-  waits on;
+  waits on. A [task list](/work/task-lists/) (`- [ ]`) in it is a
+  checklist whose boxes can be ticked on the page, from the CLI and over
+  MCP;
 - its **repositories**, each with a role: where it was filed, where it
   should land, and where work for it happened (see
   [below](#repositories-and-their-roles));
@@ -130,13 +132,13 @@ Your role on a work item is the higher of your
 [role](/guides/access-and-roles/) in the workspace and your role in its
 origin repository.
 
-| To                                                                                                          | You need                                                                                                      |
-| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Comment and react                                                                                           | To be signed in and see it                                                                                    |
-| Edit its title and description, change its labels, assignees and what it is blocked by, close and reopen it | To be its owner, or the Triage role. Its owner is its author, or, for one g1t filed for someone, that person. |
-| Put it in a milestone                                                                                       | The Triage role                                                                                               |
-| Link and unlink repositories                                                                                | The Triage role                                                                                               |
-| Make a new label as you label it                                                                            | The Write role                                                                                                |
+| To                                                                                                                                           | You need                                                                                                      |
+| -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Comment and react                                                                                                                            | To be signed in and see it                                                                                    |
+| Edit its title and description (and tick its task list's boxes), change its labels, assignees and what it is blocked by, close and reopen it | To be its owner, or the Triage role. Its owner is its author, or, for one g1t filed for someone, that person. |
+| Put it in a milestone                                                                                                                        | The Triage role                                                                                               |
+| Link and unlink repositories                                                                                                                 | The Triage role                                                                                               |
+| Make a new label as you label it                                                                                                             | The Write role                                                                                                |
 
 A work item carries at most 20 labels and 10 assignees.
 

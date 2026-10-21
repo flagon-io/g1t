@@ -409,6 +409,7 @@
         "link_work_item",
         "unlink_work_item",
         "set_work_item_parent",
+        "check_work_item_task",
         "add_work_item_sub_item",
         "remove_work_item_sub_item",
         "list_repo_work_items",
@@ -459,6 +460,7 @@
         "get_pull_request_changes",
         "mark_pull_request_ready",
         "convert_pull_request_to_draft",
+        "check_pull_request_task",
         "request_reviewers",
         "remove_requested_reviewers",
         "review_pull_request",
@@ -63074,6 +63076,214 @@
         }
       }
     },
+    "/workspaces/{workspace}/work/{number}/tasks": {
+      "patch": {
+        "operationId": "check_work_item_task",
+        "tags": [
+          "Work items"
+        ],
+        "summary": "Tick a box of a work item's task list",
+        "description": "Tick or untick a box of a work item's task list: the `- [ ]` and `- [x]` items of its body, numbered from 1 in the order they are written (boxes in fenced code blocks are examples, not boxes). Name the box by task, its number, or by text, words of it: the box whose text is exactly that, ignoring case and spacing, else the one box whose text contains it; text more than one box has is refused with `422`, naming them. checked is true (the default) to tick it and false to untick it. Only that box changes, and it is changed in the body as it is at that moment, so a box someone else ticked meanwhile is kept. With task, give expected, the box's text as you read it: when a box was added or removed above it since, the one box with that text is ticked instead, and when none or several have it the call is refused with `409` rather than ticking the wrong box. A box already as asked is left as it is (changed false). Returns the box (number, line, text, checked), whether it changed, the body after, and how many boxes are done of the total. Whoever may edit the body may: its author, the person g1t filed it for, or anyone with the Triage role. A change is a work_item.updated event. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace.\n\nWith text instead of task (\"announce\"), the box whose text says it. Ticking a box someone ticked already answers changed false and leaves the body as it is.",
+        "x-operation": "check_work_item_task",
+        "x-mcp-tool": "work_item",
+        "x-mcp-action": "check",
+        "x-scope": "work:write",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "work:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The work item's number, shown after the #. A workspace numbers its work items and new pull requests in one sequence."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "task": {
+                    "number": 3,
+                    "line": 5,
+                    "text": "Document the new flag",
+                    "checked": true
+                  },
+                  "changed": true,
+                  "body": "Ship the new clone flag.\n\n- [x] Add --filter to clone\n  - [x] Tests for blob:none\n- [x] Document the new flag\n- [ ] Announce it",
+                  "done": 3,
+                  "total": 4
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "repo": {
+                    "type": "string",
+                    "description": "Instead of workspace: a repository of the workspace, as \"owner/name\", whose workspace it is."
+                  },
+                  "task": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "The box's number, from 1, in the order the boxes are written."
+                  },
+                  "text": {
+                    "type": "string",
+                    "description": "Instead of task: words of the box's text. The box that says exactly this (ignoring case and spacing), else the one box whose text contains it."
+                  },
+                  "checked": {
+                    "type": "boolean",
+                    "description": "true (the default) ticks it; false unticks it."
+                  },
+                  "expected": {
+                    "type": "string",
+                    "description": "With task: the box's text as you read it. A box that moved is found by it, or the call is refused rather than ticking the wrong box."
+                  }
+                }
+              },
+              "example": {
+                "task": 3,
+                "checked": true,
+                "expected": "Document the new flag"
+              }
+            }
+          }
+        }
+      }
+    },
     "/workspaces/{workspace}/work/{number}/labels": {
       "get": {
         "operationId": "list_work_item_labels",
@@ -93890,6 +94100,218 @@
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/pulls/{number}/tasks": {
+      "patch": {
+        "operationId": "check_pull_request_task",
+        "tags": [
+          "Pull requests"
+        ],
+        "summary": "Tick a box of a pull request's task list",
+        "description": "Tick or untick a box of a pull request's task list: the `- [ ]` and `- [x]` items of its description, numbered from 1 in the order they are written. It works as check_work_item_task does: task (the box's number) or text (words of it), checked (true by default), and expected (its text as you read it, so a box that moved is found or refused with `409`), changing only that box against the description as it is. Returns the box, whether it changed, the description after, and how many boxes are done of the total. Its author may, and whoever asked g1t for it; anyone else needs the Triage role or higher. A merged or closed pull request's boxes can still be ticked.",
+        "x-operation": "check_pull_request_task",
+        "x-mcp-tool": "pull_request",
+        "x-mcp-action": "check",
+        "x-scope": "pull_requests:write",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "pull_requests:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The pull request's number, shown after the #."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "task": {
+                    "number": 1,
+                    "line": 3,
+                    "text": "Run the migration against a copy of production",
+                    "checked": false
+                  },
+                  "changed": true,
+                  "body": "Moves sessions into their own table.\n\n- [ ] Run the migration against a copy of production\n- [x] Update the API reference",
+                  "done": 1,
+                  "total": 2
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "task": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "The box's number, from 1, in the order the boxes are written."
+                  },
+                  "text": {
+                    "type": "string",
+                    "description": "Instead of task: words of the box's text. The box that says exactly this (ignoring case and spacing), else the one box whose text contains it."
+                  },
+                  "checked": {
+                    "type": "boolean",
+                    "description": "true (the default) ticks it; false unticks it."
+                  },
+                  "expected": {
+                    "type": "string",
+                    "description": "With task: the box's text as you read it. A box that moved is found by it, or the call is refused rather than ticking the wrong box."
+                  }
+                }
+              },
+              "example": {
+                "text": "migration",
+                "checked": false
+              }
+            }
           }
         }
       }

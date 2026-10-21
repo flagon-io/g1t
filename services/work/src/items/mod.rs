@@ -60,6 +60,7 @@ mod reading;
 mod refs;
 mod rows;
 mod sub_items;
+mod tasks;
 pub(crate) mod sql;
 #[cfg(test)]
 mod tests;

@@ -37,6 +37,9 @@ pub use sub_items::*;
 mod workspace_sessions;
 pub use workspace_sessions::*;
 
+mod tasks;
+pub use tasks::*;
+
 pub mod refs;
 
 /// The labels a new repository starts with, and that "Add the default
