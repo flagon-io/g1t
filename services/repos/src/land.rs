@@ -317,25 +317,34 @@ async fn push_ref_judged(
 /// Moves `branch` on `target` from `old` to `new`, a commit that exists in
 /// `source`. The caller must have checked that `new` descends from `old`.
 /// The pack goes from the source's answer into the push as it arrives.
+/// The [`Refusal`](crate::public_storage::Refusal) when `quota` was refused
+/// a reservation on the way (the repository is being copied into a fork,
+/// its workspace has no room, or the copy outlived its lease), as
+/// `push_reserved` answers; the inner result is the store's verdict.
 pub(crate) async fn fast_forward(
     source: &GitAccess, target: &GitAccess, branch: &str, old: Option<&str>, new: &str,
     quota: Option<Rc<crate::public_storage::StreamQuota>>,
-) -> Result<std::result::Result<(), String>> {
+) -> Result<std::result::Result<std::result::Result<(), String>, crate::public_storage::Refusal>> {
     let request = want_request(new, old);
     let sent = request.len() as u64;
     let mut fetched = send(source, "git-upload-pack", Uint8Array::from(request.as_slice()).into(), sent).await?;
     let reference = format!("refs/heads/{branch}");
     let failure: Rc<RefCell<Option<String>>> = Rc::default();
+    // Why the push was cut short, when a reservation refused it: its
+    // author is told that, not that the push failed.
+    let refused: Rc<std::cell::Cell<Option<crate::public_storage::Refusal>>> = Rc::default();
     let demux = Rc::new(RefCell::new(Sideband::default()));
     // Set once every pack byte has been passed on to the store.
     let delivered = Rc::new(std::cell::Cell::new(false));
     let pack = {
         let failure = failure.clone();
+        let refused = refused.clone();
         let demux = demux.clone();
         let quota = quota.clone();
         let delivered = delivered.clone();
         fetched.stream()?.then(move |chunk| {
             let failure = failure.clone();
+            let refused = refused.clone();
             let demux = demux.clone();
             let quota = quota.clone();
             let delivered = delivered.clone();
@@ -353,6 +362,7 @@ pub(crate) async fn fast_forward(
                 if let Err(refusal) = quota.grow(pack.len() as u64).await? {
                     let why = refusal.message();
                     *failure.borrow_mut() = Some(why.clone());
+                    refused.set(Some(refusal));
                     return Err(Error::RustError(why));
                 }
             }
@@ -389,6 +399,11 @@ pub(crate) async fn fast_forward(
                 CutShort::End => quota.end(&why).await,
             }
         }
+        // Refused its reservation: the caller says why, as every write
+        // refused one does (public_storage.rs `Refusal`).
+        if let Some(refusal) = refused.get() {
+            return Ok(Err(refusal));
+        }
         return Err(Error::RustError(why));
     }
     let report = match pushed {
@@ -417,7 +432,7 @@ pub(crate) async fn fast_forward(
         meters::record_bytes("internal.git.fetch", &from, 0, moved);
         meters::record_bytes("internal.git.receive_pack", &to, moved, 0);
     }
-    Ok(verdict.into_result())
+    Ok(Ok(verdict.into_result()))
 }
 
 /// The size of the pack `source` sends for everything `wants` reaches that

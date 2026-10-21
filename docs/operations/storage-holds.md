@@ -11,7 +11,11 @@ native fork locks its source while it copies. One that is interrupted keeps
 its hold: a reservation counts against the workspace's 5 GB public cap, and
 a copy lock refuses every write to the source, private or public (each
 told "This repository is being copied into a fork. Try again in a few
-minutes.", never that storage is full). Nothing expires them on a timer, on
+minutes; if it lasts more than an hour, g1t staff release it.", never that
+storage is full; a push is told the same in git's `remote:` lines). A pull
+request g1t merges by itself stalls with that message, and a person's
+automatic merge turns off with it: neither is tried again by itself once the lock
+is released. Nothing expires a hold on a timer, on
 purpose: releasing one that is still in flight would let two writes take the
 same room.
 

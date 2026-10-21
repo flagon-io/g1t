@@ -1807,6 +1807,12 @@ impl<S: GitStore> Repos<S> {
             land::fast_forward(&source_access, &target_access, branch, old.as_deref(), &new, self.public_quota(&target, public_storage::Operation::Land, Some(&a.actor.id)))
                 .await?;
         self.refs_moved(&target.id).await;
+        let pushed = match pushed {
+            Ok(pushed) => pushed,
+            // Refused a reservation on the way: said as every write from
+            // the site says it (a fast-forward merge, the merge queue's).
+            Err(refusal) => return Ok(refusal.outcome()),
+        };
         if let Err(reason) = pushed {
             // Most often another pull request landed between the check and the push.
             return Ok(Outcome::fail(
@@ -2617,8 +2623,12 @@ impl<S: GitStore> Repos<S> {
         }
         // A native fork's copy lock refuses every write to its source,
         // private or public and whatever room it has (public_storage.rs):
-        // said when the push begins, so that git shows it.
-        if git.service == GitService::ReceivePack && git.endpoint == "info/refs" && self.registry.copy_locked(repo).await? {
+        // said when the push begins, so that git shows it. Best effort: the
+        // POST's reservation enforces the lock whatever this read found.
+        if git.service == GitService::ReceivePack
+            && git.endpoint == "info/refs"
+            && self.registry.copy_locked(repo).await.unwrap_or(false)
+        {
             return Ok(Some((
                 git_ops::copy_locked_response(&repo.namespace, &repo.name)?,
                 403,

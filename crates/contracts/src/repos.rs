@@ -1807,6 +1807,12 @@ pub struct RepoRedirect {
     pub created_at: String,
 }
 
+/// What a write from the site (a commit, a merge, a pull request update)
+/// is told, as a `Forbidden`, when its workspace's public storage cannot
+/// fit it. Work tells it by this from `update_pull_branch`'s refusals of
+/// who may push to the branch.
+pub const PUBLIC_STORAGE_FULL: &str = "Public repository storage is full. Make room before adding more data.";
+
 // --- Staff only (sudo.g1t.sh): public storage holds ---
 //
 // A write reserves public storage capacity before it reaches the git

@@ -344,14 +344,22 @@ pub fn public_storage_full_response(namespace: &str, public_bytes: i64, free_byt
 /// The answer to a push to a repository being copied into a fork: a native
 /// fork's copy lock refuses its writes until the copy ends
 /// (public_storage.rs), private or public, whatever room it has.
+/// Plain text, which git prints as `remote:` lines before it gives up: it
+/// shows an error's body only when it is `text/plain`.
 pub fn copy_locked_response(namespace: &str, name: &str) -> Result<Response> {
-    Response::error(copy_locked_message(namespace, name), 403)
+    let response = Response::error(copy_locked_message(namespace, name), 403)?;
+    response.headers().set("content-type", "text/plain; charset=utf-8")?;
+    Ok(response)
 }
 
+/// A copy ordinarily ends within minutes; a fork whose call to the store
+/// timed out keeps its lock until its lease and grace have passed, and
+/// staff release it (public_storage.rs `LOCKED_MESSAGE`).
 pub(crate) fn copy_locked_message(namespace: &str, name: &str) -> String {
     format!(
-        "{namespace}/{name} is being copied into a fork, and takes no pushes until the copy ends. Nothing was pushed; try again in a few minutes: https://docs.g1t.sh/guides/git/#size-limits
-"
+        "{namespace}/{name} is being copied into a fork, and takes no pushes until the copy ends. Nothing was pushed; try again in a few minutes. If it lasts more than {}, g1t staff release it: https://docs.g1t.sh/guides/git/#size-limits
+",
+        crate::public_storage::lease_words()
     )
 }
 

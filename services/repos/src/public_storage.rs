@@ -147,10 +147,16 @@ impl Refusal {
         }
     }
 
-    /// The failure a write from the site answers with.
+    /// The failure a write from the site answers with. The lock is
+    /// `Unavailable`, not a conflict: an automatic merge lets go of a
+    /// conflict for its next look to try again, and the lock's end
+    /// publishes nothing that would look again, so a merge g1t makes
+    /// stalls with the message instead (work's lifecycle.rs
+    /// `merge_by_policy`).
     pub fn outcome<T>(self) -> g1t_contracts::Outcome<T> {
         let code = match self {
-            Refusal::Locked | Refusal::Overdue => g1t_contracts::FailureCode::Conflict,
+            Refusal::Locked => g1t_contracts::FailureCode::Unavailable,
+            Refusal::Overdue => g1t_contracts::FailureCode::Conflict,
             Refusal::Full => g1t_contracts::FailureCode::Forbidden,
         };
         g1t_contracts::Outcome::fail(code, self.message())
@@ -158,10 +164,14 @@ impl Refusal {
 }
 
 /// A write to a repository being copied into a fork. A native fork is one
-/// call to the store, which ordinarily answers within a few minutes.
-pub const LOCKED_MESSAGE: &str = "This repository is being copied into a fork. Try again in a few minutes.";
-/// A write the workspace's public storage cannot fit.
-pub const FULL_MESSAGE: &str = "Public repository storage is full. Make room before adding more data.";
+/// call to the store, which ordinarily answers within a few minutes; one
+/// whose call timed out keeps its lock until its lease (an hour) and grace
+/// have passed, and staff release it (storage_holds.rs).
+pub const LOCKED_MESSAGE: &str =
+    "This repository is being copied into a fork. Try again in a few minutes; if it lasts more than an hour, g1t staff release it.";
+/// A write the workspace's public storage cannot fit: one constant with
+/// work's, which tells it from a refusal of who may push.
+pub const FULL_MESSAGE: &str = g1t_contracts::repos::PUBLIC_STORAGE_FULL;
 
 /// A streamed copy's reservation, grown chunk by chunk (land.rs).
 pub(crate) struct StreamQuota {
@@ -755,6 +765,39 @@ mod tests {
     }
 
     #[test]
+    fn a_landing_or_sync_refused_its_reservation_says_why() {
+        // fast_forward hands back the refusal that cut it short, once its
+        // reservation was let go as any cut short is.
+        let forward = body_of(include_str!("land.rs"), "fast_forward");
+        assert!(forward.contains("refused.set(Some(refusal));"));
+        let cut = forward.find("match cut_short(delivered.get())").expect("cut short as before");
+        let handed = forward.find("return Ok(Err(refusal));").expect("the refusal handed back");
+        assert!(cut < handed);
+        // Each caller says it: a fast-forward merge and the merge queue's
+        // landing (land), a sync, and a fork of the default branch.
+        for (file, source, function, said) in [
+            ("lib.rs", include_str!("lib.rs"), "land", "Err(refusal) => return Ok(refusal.outcome()),"),
+            ("network.rs", include_str!("network.rs"), "sync_fork", "Err(refusal) => return Ok(refusal.outcome()),"),
+            ("network.rs", include_str!("network.rs"), "fork", "Err(refusal) => Err(refusal.message()),"),
+        ] {
+            let body = body_of(source, function);
+            let at = body.find("land::fast_forward(").unwrap_or_else(|| panic!("{file}: {function}"));
+            assert!(body[at..].contains(said), "{file}: {function}");
+        }
+        // What a landing on a repository being copied into a fork is told:
+        // the lock, as a merge g1t makes stalls with it.
+        let g1t_contracts::Outcome::Fail(locked) = Refusal::Locked.outcome::<g1t_contracts::repos::Landed>() else {
+            panic!("refused")
+        };
+        assert_eq!(locked.code, g1t_contracts::FailureCode::Unavailable);
+        assert_eq!(locked.message, LOCKED_MESSAGE);
+        let g1t_contracts::Outcome::Fail(full) = Refusal::Full.outcome::<g1t_contracts::repos::SyncedFork>() else {
+            panic!("refused")
+        };
+        assert_eq!((full.code, full.message.as_str()), (g1t_contracts::FailureCode::Forbidden, FULL_MESSAGE));
+    }
+
+    #[test]
     fn a_write_the_store_answered_without_a_verdict_stays_ended_for_staff() {
         // Nothing, an unpack that said nothing of the ref, a report for
         // another ref, a fatal error on side-band channel 3, or no report.
@@ -830,8 +873,14 @@ mod tests {
             assert_eq!(refused, expected, "{case}");
             let g1t_contracts::Outcome::Fail(failure) = refused.outcome::<()>() else { panic!("{case}") };
             if locked {
-                assert_eq!(failure.message, "This repository is being copied into a fork. Try again in a few minutes.", "{case}");
-                assert_eq!(failure.code, g1t_contracts::FailureCode::Conflict);
+                assert_eq!(
+                    failure.message,
+                    "This repository is being copied into a fork. Try again in a few minutes; if it lasts more than an hour, g1t staff release it.",
+                    "{case}"
+                );
+                // Not a conflict, which a merge g1t makes would let go of
+                // with nothing to try it again.
+                assert_eq!(failure.code, g1t_contracts::FailureCode::Unavailable);
                 assert!(!failure.message.contains("full"));
             } else {
                 assert_eq!(failure.message, "Public repository storage is full. Make room before adding more data.", "{case}");
@@ -842,6 +891,10 @@ mod tests {
         assert_eq!(refusal(false, now + LEASE_MS + 1, now + LEASE_MS), Refusal::Overdue);
         assert_eq!(refusal(true, now + LEASE_MS + 1, now + LEASE_MS), Refusal::Locked);
         assert!(Refusal::Overdue.message().contains("an hour"));
+        let g1t_contracts::Outcome::Fail(overdue) = Refusal::Overdue.outcome::<()>() else { panic!("overdue") };
+        assert_eq!(overdue.code, g1t_contracts::FailureCode::Conflict);
+        // A lock outlasts the copy's few minutes only to its lease.
+        assert!(Refusal::Locked.message().contains(&format!("more than {}", lease_words())));
         // Every write from the site says what its refusal was: none
         // assumes the cap.
         for (file, source, function) in [
@@ -877,6 +930,9 @@ mod tests {
         // When the push begins, so that git shows it, private or public:
         // after the checks for room, so a workspace that is full says so.
         let lock = limits.find("self.registry.copy_locked(repo)").expect("checked when a push begins");
+        // A failed read lets the push begin: its reservation refuses it.
+        assert!(limits[lock..].starts_with("self.registry.copy_locked(repo).await.unwrap_or(false)"));
+        assert!(body_of(include_str!("public_storage.rs"), "grant").contains("self.db.prepare(COPY_LOCKED)"));
         assert!(limits[lock..].contains("git_ops::copy_locked_response(&repo.namespace, &repo.name)"));
         assert!(limits.find("public_storage_full_response").unwrap() < lock);
         let line = limits[..lock].rsplit('\n').next().unwrap_or_default();
@@ -887,6 +943,10 @@ mod tests {
         let message = crate::git_ops::copy_locked_message("acme", "rocket");
         assert!(message.starts_with("acme/rocket is being copied into a fork"), "{message}");
         assert!(message.contains("try again in a few minutes") && message.contains("https://docs.g1t.sh/guides/git/#size-limits"));
+        assert!(message.contains(&format!("If it lasts more than {}, g1t staff release it", lease_words())), "{message}");
+        // git prints an error's body only when it is plain text.
+        let response = body_of(include_str!("git_ops.rs"), "copy_locked_response");
+        assert!(response.contains(r#"set("content-type", "text/plain; charset=utf-8")"#), "{response}");
         assert!(message.ends_with('\n') && !message.contains("full"));
     }
 
