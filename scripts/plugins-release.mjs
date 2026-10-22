@@ -149,6 +149,10 @@ Then start Claude Code again, run \`/mcp\` and sign **plugin:g1t:g1t** in.
 The plugin's hooks need the [g1t CLI](https://docs.g1t.sh/guides/cli/)
 ${cli} or later and Node 18 or later.
 
+To keep the plugin current, run \`/plugin\`, open **Marketplaces**, choose
+**g1t** and **Enable auto-update**: Claude Code doesn't update this
+marketplace by itself otherwise.
+
 The guide, with what each hook records and never records and how to opt
 out: https://docs.g1t.sh/guides/claude-code-plugin/
 

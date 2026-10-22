@@ -78,6 +78,32 @@ claude plugin update g1t@g1t
 Then start Claude Code again. `claude plugin list` says which version you
 have.
 
+Claude Code updates a marketplace it didn't ship with only when you turn
+that on, so a plugin you never update stays at the version you installed.
+An older plugin records less: before 0.3.1, sessions never said what they
+cost. To keep it current, run `/plugin`, open **Marketplaces**, choose
+**g1t** and **Enable auto-update**. Claude Code then fetches new versions
+in the background, and the next start loads them. A team can turn it on
+for everyone in managed settings:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "g1t": {
+      "source": { "source": "git", "url": "https://g1t.sh/flagon-io/g1t-plugins.git" },
+      "autoUpdate": true
+    }
+  }
+}
+```
+
+Once a day at most, after a session starts, the plugin reads which
+version g1t.sh publishes: the marketplace's `.claude-plugin/marketplace.json`,
+a plain download that sends nothing about you or your session. When a
+newer version is out and not downloaded yet, Claude Code says so once for
+that version, with the commands above. With
+`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` set, it doesn't look.
+
 ### Where the plugin is made
 
 `flagon-io/g1t-plugins` is published from g1t's repository, where the
