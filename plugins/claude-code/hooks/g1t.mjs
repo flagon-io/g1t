@@ -62,6 +62,13 @@
 //
 // Every CLI call is in test/cli-contract.json, which the tests hold this
 // file and the CLI's own parser (crates/g1t) to.
+//
+// The same file records Codex, Cursor, Gemini CLI and GitHub Copilot CLI
+// sessions, run by their own plugin or extension as `node g1t.mjs HARNESS`
+// (Copilot also passes the event's name, which its payload leaves out).
+// Each harness is an entry in HARNESSES: how its events and fields become
+// the ones above, its tools' names, how its transcript says what it used,
+// and how what is printed reaches it.
 
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -106,27 +113,332 @@ const INSTALL = "`curl -fsSL https://g1t.sh/install | sh` (on Windows, `irm http
 export function howToUpdate(version) {
   return version && !older(version, UPGRADE_CLI) ? "`g1t upgrade`" : `the installer again: ${INSTALL}`;
 }
-/** The tools that run shell commands: Claude Code's, and Codex's. */
-const SHELL_TOOLS = new Set(["Bash", "PowerShell", "exec", "exec_command", "shell", "shell_command", "local_shell"]);
-/** Codex's tool that writes files: its input is a patch that names them. */
-const PATCH_TOOLS = new Set(["apply_patch"]);
-/** The tool that starts subagents (Task before Claude Code renamed it). */
-const AGENT_TOOLS = new Set(["Agent", "Task"]);
-/** Tools that write a file, and where they say which. */
-const WRITERS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
-
 const SELF = fileURLToPath(import.meta.url);
 
+const none = new Set();
+
 /**
- * The harness running these hooks: `codex` when Codex's hooks.json runs
- * this file (it passes `codex`, which main keeps in G1T_HOOK_HARNESS for
- * the background half), else Claude Code's `claude_code`. Codex gives its
- * hooks the same events and fields Claude Code does; what differs is its
- * tools' names (SHELL_TOOLS, PATCH_TOOLS), its transcript (codexCountLine)
- * and its subagents, which it names itself (no pairing).
+ * The harnesses these hooks run in, and what differs between them. Claude
+ * Code's events and fields are the core's own: every other harness's are
+ * turned into them (`event`), and what the core prints is turned back
+ * into what the harness reads (`reply`).
+ *
+ *   cli        its --harness on g1t (Gemini CLI has none of its own: other)
+ *   dir        its state folder under ~/.g1t, unless `dataEnv` names another
+ *   tools      its tools' names: those that run shell commands, apply a
+ *              patch that names the files it writes, write a file (file_path,
+ *              or path), and start a subagent
+ *   count      its transcript's reader, a line at a time; none when its
+ *              transcript says nothing of tokens (Cursor's)
+ *   transcripts the transcripts a session's usage is counted from, when
+ *              its subagents write their own and are not sessions here
+ *   contextAt  the event, after SessionStart, whose reply can carry text for
+ *              the agent: pending coordination updates, a notice, and where
+ *              no environment file sets G1T_SESSION (envFile), the session's
+ *              id for the commits' trailer, said once (`when` says when)
+ *   envFile    Claude Code's: G1T_SESSION is set in its environment file
+ *   pairs      Claude Code's: a subagent is paired with the Agent call that
+ *              started it (pairSubagent); the others say which it is
+ *   subagentContext  a starting subagent is told it is a session of its own
+ *   dedupe     the same event may arrive twice (Cursor runs Claude Code's
+ *              hooks too): each is handled once, by its `dedupe` key
+ */
+export const HARNESSES = {
+  claude_code: {
+    cli: "claude_code",
+    dir: "claude-code",
+    dataEnv: ["CLAUDE_PLUGIN_DATA"],
+    tools: {
+      shell: new Set(["Bash", "PowerShell"]),
+      patch: none,
+      writers: new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]),
+      agents: new Set(["Agent", "Task"]),
+    },
+    count: countLine,
+    contextAt: "UserPromptSubmit",
+    envFile: true,
+    pairs: true,
+    subagentContext: true,
+    event: (raw) => raw,
+    reply: (native, output) => output,
+  },
+  // Codex gives its hooks the same events and fields Claude Code does; its
+  // subagents are named by its hooks, with transcripts of their own.
+  codex: {
+    cli: "codex",
+    dir: "codex",
+    dataEnv: ["CLAUDE_PLUGIN_DATA"],
+    tools: { shell: new Set(["exec", "exec_command", "shell", "shell_command", "local_shell"]), patch: new Set(["apply_patch"]), writers: none, agents: none },
+    count: codexCountLine,
+    contextAt: "UserPromptSubmit",
+    when: "at your first prompt",
+    subagentContext: true,
+    event: (raw) => raw,
+    reply: (native, output) => output,
+  },
+  // Cursor's hooks carry no tokens and its transcript none either: its
+  // sessions are recorded without usage (its cost comes from its Admin API).
+  cursor: {
+    cli: "cursor",
+    dir: "cursor",
+    dataEnv: [],
+    tools: { shell: new Set(["Shell"]), patch: none, writers: new Set(["Write"]), agents: none },
+    count: null,
+    contextAt: "PostToolUse",
+    when: "after your first tool call",
+    dedupe: true,
+    event: cursorEvent,
+    reply: cursorReply,
+  },
+  // Gemini CLI's subagents write transcripts of their own beside the
+  // session's, which its hooks never tell apart: their usage is the session's.
+  gemini: {
+    cli: "other",
+    dir: "gemini",
+    dataEnv: [],
+    tools: { shell: new Set(["run_shell_command"]), patch: none, writers: new Set(["write_file", "replace"]), agents: none },
+    count: geminiCountLine,
+    transcripts: geminiTranscripts,
+    contextAt: "UserPromptSubmit",
+    when: "at your first prompt",
+    event: geminiEvent,
+    reply: geminiReply,
+  },
+  // GitHub Copilot CLI writes every session's events, with each model
+  // call's usage, to one file; a subagent's calls carry its id.
+  copilot: {
+    cli: "copilot",
+    dir: "copilot",
+    dataEnv: ["COPILOT_PLUGIN_DATA"],
+    tools: { shell: new Set(["bash", "powershell"]), patch: new Set(["apply_patch"]), writers: new Set(["create", "edit"]), agents: none },
+    count: copilotCountLine,
+    contextAt: "PostToolUse",
+    when: "after your first tool call",
+    event: copilotEvent,
+    reply: copilotReply,
+  },
+};
+
+/**
+ * The harness running these hooks: the one its plugin names (`node
+ * g1t.mjs codex`, which main keeps in G1T_HOOK_HARNESS for the background
+ * half), else Claude Code's `claude_code`.
  */
 export function harnessOf(env = process.env) {
-  return env.G1T_HOOK_HARNESS === "codex" ? "codex" : "claude_code";
+  return Object.hasOwn(HARNESSES, env.G1T_HOOK_HARNESS ?? "") ? env.G1T_HOOK_HARNESS : "claude_code";
+}
+
+/** The harness running these hooks, as HARNESSES describes it. */
+export const adapterOf = (env = process.env) => HARNESSES[harnessOf(env)];
+
+/** A tool's input as an object: some harnesses give it as JSON text. */
+function toolInput(input) {
+  if (typeof input !== "string" || !/^\s*[{[]/.test(input)) return input ?? {};
+  try {
+    return JSON.parse(input);
+  } catch {
+    return input;
+  }
+}
+
+// --- Cursor ---------------------------------------------------------------
+
+const CURSOR_EVENTS = {
+  sessionStart: "SessionStart",
+  beforeSubmitPrompt: "UserPromptSubmit",
+  postToolUse: "PostToolUse",
+  afterFileEdit: "FileEdit",
+  subagentStart: "SubagentStart",
+  subagentStop: "SubagentStop",
+  stop: "Stop",
+  sessionEnd: "SessionEnd",
+};
+
+/**
+ * A Cursor hook's event as the core reads it. Its conversation_id is the
+ * session's, the same for every turn (a subagent's events carry its
+ * parent's as parent_conversation_id). afterFileEdit says which file was
+ * written (FileEdit). A subagent's stop does not say which subagent it
+ * was: it is the one that started with the same type and task (agent_key).
+ * Claude Code's event names are taken too, for its hooks that Cursor runs.
+ */
+export function cursorEvent(raw, { env = process.env } = {}) {
+  const native = raw?.hook_event_name;
+  const name = CURSOR_EVENTS[native] ?? (Object.values(CURSOR_EVENTS).includes(native) && native !== "FileEdit" ? native : null);
+  if (!name) return null;
+  const event = {
+    hook_event_name: name,
+    session_id: raw.parent_conversation_id || raw.conversation_id || raw.session_id,
+    cwd: raw.cwd || (Array.isArray(raw.workspace_roots) ? raw.workspace_roots[0] : null) || env.CURSOR_PROJECT_DIR || undefined,
+    model: raw.model_id || raw.model || null,
+    dedupe: [native, raw.conversation_id, raw.generation_id, raw.tool_use_id, raw.file_path, raw.subagent_id, raw.task, raw.status, raw.reason]
+      .map((v) => v ?? "")
+      .join("|"),
+  };
+  switch (name) {
+    case "UserPromptSubmit":
+      event.prompt = raw.prompt;
+      break;
+    case "PostToolUse":
+      event.tool_name = raw.tool_name;
+      event.tool_input = toolInput(raw.tool_input);
+      if (raw.tool_use_id) event.tool_use_id = raw.tool_use_id;
+      break;
+    case "FileEdit":
+      event.file_path = raw.file_path;
+      break;
+    case "SubagentStart":
+      event.agent_id = raw.subagent_id;
+      event.agent_model = raw.subagent_model || null;
+    // falls through: both name the subagent by its type and task
+    case "SubagentStop":
+      event.agent_type = raw.subagent_type || null;
+      event.agent_task = raw.task || raw.description || null;
+      event.agent_key = `${raw.subagent_type ?? ""}|${raw.task ?? ""}`;
+      if (name === "SubagentStop") event.last_assistant_message = raw.summary;
+      break;
+    case "SessionEnd":
+      event.reason = raw.reason;
+      break;
+  }
+  return event;
+}
+
+/** What a Cursor hook prints: context where Cursor takes it, and always an answer where it waits for one. */
+export function cursorReply(native, output) {
+  const text = contextText(output);
+  if (native === "subagentStart") return { permission: "allow" };
+  if (native === "beforeSubmitPrompt") return { continue: true };
+  if ((native === "sessionStart" || native === "postToolUse") && text) return { additional_context: text };
+  return null;
+}
+
+/** The text a reply carries for the agent: a notice for you, which it is asked to pass on, and its context. */
+function contextText(output) {
+  const notice = output?.systemMessage ? `Tell the user once: ${output.systemMessage}` : null;
+  return [notice, output?.hookSpecificOutput?.additionalContext].filter(Boolean).join("\n\n");
+}
+
+// --- Gemini CLI ---------------------------------------------------------
+
+const GEMINI_EVENTS = {
+  SessionStart: "SessionStart",
+  BeforeAgent: "UserPromptSubmit",
+  BeforeTool: "PreToolUse",
+  AfterTool: "PostToolUse",
+  AfterAgent: "Stop",
+  SessionEnd: "SessionEnd",
+};
+
+/**
+ * A Gemini CLI hook's event as the core reads it: its fields are Claude
+ * Code's (session_id, transcript_path, cwd, prompt, tool_name, tool_input);
+ * BeforeAgent is a prompt and AfterAgent the end of a turn. What a tool
+ * returned is dropped here.
+ */
+export function geminiEvent(raw) {
+  const name = GEMINI_EVENTS[raw?.hook_event_name];
+  if (!name) return null;
+  const { tool_response, llm_request, llm_response, prompt_response, ...rest } = raw;
+  return { ...rest, hook_event_name: name, ...(rest.tool_input !== undefined ? { tool_input: toolInput(rest.tool_input) } : {}) };
+}
+
+/** What a Gemini CLI hook prints: Claude Code's shape under its own event's name, and a changed tool input as tool_input. */
+export function geminiReply(native, output) {
+  if (!output?.hookSpecificOutput) return output;
+  const { updatedInput, ...specific } = output.hookSpecificOutput;
+  return { ...output, hookSpecificOutput: { ...specific, hookEventName: native, ...(updatedInput ? { tool_input: updatedInput } : {}) } };
+}
+
+/** A Gemini CLI session's transcripts: its own, and its subagents', in a folder named for the session beside it. */
+export function geminiTranscripts(transcript, sid) {
+  const out = [transcript];
+  try {
+    const dir = join(dirname(transcript), safeName(sid));
+    for (const name of readdirSync(dir).sort()) if (name.endsWith(".jsonl")) out.push(join(dir, name));
+  } catch {}
+  return out;
+}
+
+// --- GitHub Copilot CLI ---------------------------------------------------
+
+const COPILOT_EVENTS = {
+  sessionStart: "SessionStart",
+  userPromptSubmitted: "UserPromptSubmit",
+  postToolUse: "PostToolUse",
+  subagentStart: "SubagentStart",
+  subagentStop: "SubagentStop",
+  agentStop: "Stop",
+  sessionEnd: "SessionEnd",
+};
+
+/** Where Copilot CLI writes a session's events (its transcriptPath). */
+export function copilotTranscript(sid, env = process.env) {
+  return join(env.COPILOT_HOME || join(homedir(), ".copilot"), "session-state", safeName(sid), "events.jsonl");
+}
+
+/**
+ * A Copilot CLI hook's event as the core reads it. Its payload is
+ * camelCase and leaves out the event's name, which its hooks.json passes
+ * (`node g1t.mjs copilot sessionStart`). Inside a subagent, events carry
+ * its agentId: its prompt is its own session's, and its turn's end is not
+ * the session's (subagentStop ends it). The usage of a turn is counted
+ * from the session's events file, the main agent's calls apart from each
+ * subagent's (usage_agent).
+ */
+export function copilotEvent(raw, { name, env = process.env } = {}) {
+  const native = name || raw?.hook_event_name;
+  const core = COPILOT_EVENTS[native] ?? (Object.values(COPILOT_EVENTS).includes(native) ? native : null);
+  const sid = raw?.sessionId ?? raw?.session_id;
+  if (!core || !sid) return null;
+  const agentId = raw.agentId ?? raw.agent_id ?? null;
+  const event = { hook_event_name: core, session_id: String(sid), cwd: raw.cwd };
+  switch (core) {
+    case "UserPromptSubmit":
+      event.prompt = raw.prompt;
+      if (agentId) {
+        event.agent_id = String(agentId);
+        event.agent_type = raw.agentType ?? null;
+      }
+      break;
+    case "PostToolUse":
+      event.tool_name = raw.toolName ?? raw.tool_name;
+      event.tool_input = toolInput(raw.toolArgs ?? raw.tool_input);
+      break;
+    case "SubagentStart":
+    case "SubagentStop":
+      if (!agentId) return null;
+      event.agent_id = String(agentId);
+      event.agent_type = raw.agentName ?? raw.agentType ?? null;
+      event.agent_task = raw.agentDescription ?? raw.agentDisplayName ?? null;
+      if (core === "SubagentStop") {
+        event.last_assistant_message = raw.response;
+        event.agent_transcript_path = raw.transcriptPath ?? copilotTranscript(sid, env);
+        event.usage_agent = String(agentId);
+      }
+      break;
+    case "Stop":
+      if (agentId) return null;
+      event.transcript_path = raw.transcriptPath ?? copilotTranscript(sid, env);
+      event.usage_agent = "";
+      break;
+    case "SessionEnd": {
+      event.reason = raw.reason;
+      const transcript = raw.transcriptPath ?? copilotTranscript(sid, env);
+      if (existsSync(transcript)) {
+        event.transcript_path = transcript;
+        event.usage_agent = "";
+      }
+      break;
+    }
+  }
+  return event;
+}
+
+/** What a Copilot CLI hook prints: additionalContext, where Copilot takes it. */
+export function copilotReply(native, output) {
+  const text = contextText(output);
+  return text && (native === "sessionStart" || native === "postToolUse") ? { additionalContext: text } : null;
 }
 
 /** A shell tool's command as one line of text: Codex may give the input as a string, or the command as argv. */
@@ -251,6 +563,7 @@ export function summarizeTool(name, input, cwd) {
     what = command.split("\n")[0] + (command.includes("\n") ? " …" : "");
   } else if (i.file_path || i.notebook_path) what = path(i.file_path ?? i.notebook_path);
   else if (typeof i.pattern === "string") what = `${i.pattern}${i.path ? ` in ${path(i.path)}` : ""}`;
+  else if (typeof i.path === "string") what = path(i.path);
   else if (typeof i.url === "string") what = i.url;
   else if (typeof i.query === "string") what = i.query;
   else if (typeof i.description === "string") what = i.description;
@@ -331,9 +644,13 @@ function skillStep(name) {
   return { args: ["session", "log", "--kind", "skill", "--", clip(name, 100)], skill: name.replace(/^.*:/, "") };
 }
 
-/** The g1t MCP tool a call is to, by name: `work_item` for mcp__plugin_g1t_g1t__work_item or mcp__g1t__work_item. */
+/**
+ * The g1t MCP tool a call is to, by name: `work_item` for
+ * mcp__plugin_g1t_g1t__work_item or mcp__g1t__work_item (Claude Code,
+ * Codex), mcp_g1t_work_item (Gemini CLI) or g1t-work_item (Copilot CLI).
+ */
 export function g1tTool(name) {
-  const match = /^mcp__(?:plugin_g1t_)?g1t__([a-z_]+)$/.exec(String(name ?? ""));
+  const match = /^(?:mcp__(?:plugin_g1t_)?g1t__|mcp_g1t_|g1t-)([a-z_]+)$/.exec(String(name ?? ""));
   return match ? match[1] : null;
 }
 
@@ -342,8 +659,14 @@ export function g1tTool(name) {
  * `only`: sent only with usage to report (before the session ends);
  * otherwise a plain heartbeat when there is none.
  */
-function usageStep(transcript, { only = false, model = null } = {}) {
-  return { args: ["session", "heartbeat"], usage: String(transcript), ...(only ? { only: true } : {}), ...(model ? { model: String(model) } : {}) };
+function usageStep(transcript, { only = false, model = null, agent } = {}) {
+  return {
+    args: ["session", "heartbeat"],
+    usage: String(transcript),
+    ...(only ? { only: true } : {}),
+    ...(model ? { model: String(model) } : {}),
+    ...(typeof agent === "string" ? { agent } : {}),
+  };
 }
 
 /**
@@ -358,6 +681,7 @@ export function plan(event, env = process.env) {
   if (!name || !sid || env.G1T_RECORD === "0") return null;
   const cwd = event.cwd || process.cwd();
   const job = { cwd, sid, steps: [] };
+  const { shell, patch, writers, agents } = adapterOf(env).tools;
   // Inside a subagent, what it does is its own session's.
   if (event.agent_id) job.agent = { id: String(event.agent_id), type: event.agent_type || null };
   switch (name) {
@@ -382,12 +706,15 @@ export function plan(event, env = process.env) {
     case "SubagentStart":
       if (!job.agent) return null;
       job.agent.start = true;
+      // A harness that says what the subagent is for (Claude Code's are paired with their Agent call instead).
+      if (event.agent_task) job.agent.task = scrub(event.agent_task, TASK_LIMIT);
+      if (event.agent_model) job.agent.model = String(event.agent_model);
       return job;
     case "SubagentStop": {
       if (!job.agent) return null;
       // Its own transcript: its parent's leaves out what it used.
       const transcript = event.agent_transcript_path ?? subagentPaths(event.transcript_path, event.agent_id)?.transcript;
-      if (transcript) job.steps.push(usageStep(transcript, { only: true, model: event.model }));
+      if (transcript) job.steps.push(usageStep(transcript, { only: true, model: event.model, agent: event.usage_agent }));
       const args = ["session", "end", "--reason", "done"];
       const result = typeof event.last_assistant_message === "string" ? event.last_assistant_message.trim() : "";
       // --flag=VALUE throughout for text: one that starts with a dash ("- Found …") is still a value.
@@ -395,12 +722,19 @@ export function plan(event, env = process.env) {
       job.steps.push({ args });
       return job;
     }
+    case "FileEdit": {
+      // A harness's own event for a file written (Cursor's afterFileEdit).
+      const file = repoPath(event.file_path, cwd);
+      if (!file) return null;
+      job.steps.push({ args: ["session", "touch", `--file=${file}`] });
+      return job;
+    }
     case "PostToolUse": {
       if (!event.tool_name) return null;
       const tool = event.tool_name;
       const given = event.tool_input ?? {};
       // A shell tool's command as text, whatever shape the harness gives it in.
-      const input = SHELL_TOOLS.has(tool) ? { ...(typeof given === "object" ? given : {}), command: commandOf(given) } : given;
+      const input = shell.has(tool) ? { ...(typeof given === "object" ? given : {}), command: commandOf(given) } : given;
       if (tool === "Skill") {
         const skill = typeof input.skill === "string" ? input.skill.trim() : "";
         if (!skill) return null;
@@ -410,17 +744,17 @@ export function plan(event, env = process.env) {
       }
       job.steps.push({ args: ["session", "log", "--kind", "tool_call", "--", summarizeTool(tool, input, cwd)] });
       const touch = [];
-      if (WRITERS.has(tool)) {
-        const file = repoPath(input.file_path ?? input.notebook_path, cwd);
+      if (writers.has(tool)) {
+        const file = repoPath(input.file_path ?? input.notebook_path ?? input.path, cwd);
         if (file) touch.push(`--file=${file}`);
       }
-      if (PATCH_TOOLS.has(tool)) {
+      if (patch.has(tool)) {
         for (const named of patchFiles(given).slice(0, 100)) {
           const file = repoPath(named, cwd);
           if (file) touch.push(`--file=${file}`);
         }
       }
-      if (AGENT_TOOLS.has(tool) && !job.agent) {
+      if (agents.has(tool) && !job.agent) {
         const response = event.tool_response ?? {};
         const agentId = response.agentId ?? response.agent_id;
         if (agentId) {
@@ -436,7 +770,7 @@ export function plan(event, env = process.env) {
           if (event.tool_use_id) job.toolUseId = String(event.tool_use_id);
         }
       }
-      if (SHELL_TOOLS.has(tool)) {
+      if (shell.has(tool)) {
         // What the command wrote (sed, a script, a formatter): the files it
         // changed, against what PreToolUse saw before it ran.
         if (event.session_id && event.tool_use_id) {
@@ -462,7 +796,7 @@ export function plan(event, env = process.env) {
       }
       // After an acknowledgement, fetch the inbox again at once, so the
       // next tool is not shown what was just acknowledged.
-      const acknowledged = SHELL_TOOLS.has(tool)
+      const acknowledged = shell.has(tool)
         ? /\backnowledge\b/.test(String(input.command ?? ""))
         : g1tTool(tool) === "session" && Array.isArray(input.acknowledge) && input.acknowledge.length > 0;
       if (acknowledged) job.refreshUpdates = true;
@@ -470,10 +804,12 @@ export function plan(event, env = process.env) {
       return job;
     }
     case "Stop":
-      job.steps.push(event.transcript_path ? usageStep(event.transcript_path, { model: event.model }) : { args: ["session", "heartbeat"] });
+      job.steps.push(
+        event.transcript_path ? usageStep(event.transcript_path, { model: event.model, agent: event.usage_agent }) : { args: ["session", "heartbeat"] },
+      );
       return job;
     case "SessionEnd":
-      if (event.transcript_path) job.steps.push(usageStep(event.transcript_path, { only: true, model: event.model }));
+      if (event.transcript_path) job.steps.push(usageStep(event.transcript_path, { only: true, model: event.model, agent: event.usage_agent }));
       job.steps.push({ args: ["session", "end", "--reason", String(event.reason || "other")] });
       job.end = true;
       return job;
@@ -572,9 +908,15 @@ function cli(bin, args, options) {
   });
 }
 
-/** Where the plugin keeps its state: Claude Code's data folder for it. */
+/**
+ * Where the plugin keeps its state: G1T_HOOK_DATA, else the folder its
+ * harness gives a plugin (CLAUDE_PLUGIN_DATA, COPILOT_PLUGIN_DATA), else
+ * ~/.g1t/<harness>. Cursor's is always its own, so the Cursor plugin and
+ * Claude Code's hooks that Cursor runs share it (see dedupe).
+ */
 export function dataDir(env = process.env) {
-  return env.CLAUDE_PLUGIN_DATA || join(homedir(), ".g1t", harnessOf(env) === "codex" ? "codex" : "claude-code");
+  const adapter = adapterOf(env);
+  return env.G1T_HOOK_DATA || adapter.dataEnv.map((name) => env[name]).find(Boolean) || join(homedir(), ".g1t", adapter.dir);
 }
 
 function readJson(path, fallback) {
@@ -626,7 +968,24 @@ export function sessionFiles(sid, env = process.env) {
     told: join(dir, `${safe}.told`),
     agent: (agentId) => join(dir, `${safe}.agent.${safeName(String(agentId).replace(/^agent-/, ""))}.id`),
     usage: (transcript) => join(dir, `${safe}.usage.${createHash("sha256").update(String(transcript)).digest("hex").slice(0, 16)}.json`),
+    started: (key) => join(dir, `${safe}.started.${createHash("sha256").update(String(key)).digest("hex").slice(0, 16)}`),
+    seen: (key) => join(dir, `${safe}.seen.${createHash("sha256").update(String(key)).digest("hex").slice(0, 16)}`),
   };
+}
+
+/**
+ * Whether this is the first time an event is handled (by its dedupe
+ * key): creating its file is atomic, so of two copies of one event, run
+ * at once, one goes on.
+ */
+export function firstDelivery(files, key) {
+  try {
+    mkdirSync(files.dir, { recursive: true });
+    writeFileSync(files.seen(key), "", { flag: "wx" });
+    return true;
+  } catch (error) {
+    return error?.code !== "EEXIST";
+  }
 }
 
 /** Forgets sessions untouched for a week (ones that never saw SessionEnd). */
@@ -829,10 +1188,19 @@ export function entryUsage(entry) {
   return { id, model, counts };
 }
 
-/** The tier a message is priced at: `long` for a claude-haiku-5-5 prompt over LONG_PROMPT_TOKENS. */
+/** The prompt size above which Gemini's Pro models are priced as their `long` tier. */
+export const GEMINI_LONG_PROMPT_TOKENS = 200000;
+
+/**
+ * The tier a message is priced at: `long` for a claude-haiku-5-5 prompt
+ * over LONG_PROMPT_TOKENS, or a gemini-2.5-pro or gemini-3.1-pro prompt
+ * over GEMINI_LONG_PROMPT_TOKENS.
+ */
 export function usageTier(model, counts) {
   const prompt = counts.input_tokens + counts.cache_read_tokens + counts.cache_write_5m_tokens + counts.cache_write_1h_tokens;
-  return /claude-haiku-5-5/i.test(model) && prompt > LONG_PROMPT_TOKENS ? "long" : null;
+  if (/claude-haiku-5-5/i.test(model)) return prompt > LONG_PROMPT_TOKENS ? "long" : null;
+  if (/^gemini-(?:2\.5|3\.1)-pro\b/i.test(model)) return prompt > GEMINI_LONG_PROMPT_TOKENS ? "long" : null;
+  return null;
 }
 
 function addTo(totals, model, counts, sign) {
@@ -857,8 +1225,14 @@ export function countLine(state, line) {
     return;
   }
   const found = entryUsage(entry);
-  if (!found) return;
-  const { id, model, counts } = found;
+  if (found) countMessage(state, found);
+}
+
+/**
+ * Counts one message's usage into `state`: one seen before (by its id)
+ * counts once, at the most each count was given.
+ */
+function countMessage(state, { id, model, counts }) {
   const before = id ? state.recent[id] : null;
   if (before) {
     addTo(state.totals, before.model, before.counts, -1);
@@ -941,20 +1315,118 @@ export function codexCountLine(state, line) {
 }
 
 /**
+ * Counts one line of a Gemini CLI transcript into `state`. Each reply of
+ * the model (type `gemini`) has its model and tokens: `input` holds the
+ * cached input, which is taken out; `thoughts` are billed as output, and
+ * `tool` (the tool-use prompt) as input. Gemini CLI writes a message
+ * again as it changes: one seen before (by its id) counts once.
+ */
+export function geminiCountLine(state, line) {
+  if (!line.includes('"tokens"')) return;
+  let entry;
+  try {
+    entry = JSON.parse(line);
+  } catch {
+    return;
+  }
+  const tokens = entry?.type === "gemini" ? entry.tokens : null;
+  const model = typeof entry?.model === "string" ? entry.model.trim() : "";
+  if (!tokens || typeof tokens !== "object" || !model) return;
+  const cached = whole(tokens.cached);
+  const counts = {
+    input_tokens: Math.max(0, whole(tokens.input) - cached) + whole(tokens.tool),
+    output_tokens: whole(tokens.output) + whole(tokens.thoughts),
+    cache_write_5m_tokens: 0,
+    cache_write_1h_tokens: 0,
+    cache_read_tokens: cached,
+  };
+  countMessage(state, { id: typeof entry.id === "string" ? entry.id : null, model, counts });
+}
+
+/** A model as the price list names it: Copilot names Claude's with dots (claude-sonnet-4.6). */
+export function copilotModel(model) {
+  const name = typeof model === "string" ? model.trim() : "";
+  return /^claude-/i.test(name) ? name.replace(/(\d)\.(\d)/g, "$1-$2") : name;
+}
+
+/**
+ * Counts one line of a Copilot CLI session's events into `state`: each
+ * `session.usage_record` is one model call's usage, counted once by its
+ * id. Its inputTokens holds the cache reads and writes, which are taken
+ * out; its outputTokens holds the reasoning. A subagent's calls carry its
+ * agentId: `state.agent` ("" for the main agent's) keeps only one's.
+ */
+export function copilotCountLine(state, line) {
+  if (!line.includes('"session.usage_record"')) return;
+  let entry;
+  try {
+    entry = JSON.parse(line);
+  } catch {
+    return;
+  }
+  if (entry?.type !== "session.usage_record") return;
+  if (typeof state.agent === "string" && String(entry.agentId ?? "") !== state.agent) return;
+  const usage = entry.data?.usage;
+  const model = copilotModel(usage?.model);
+  if (!usage || !model) return;
+  const read = whole(usage.cacheReadTokens);
+  const written = whole(usage.cacheWriteTokens);
+  const counts = {
+    input_tokens: Math.max(0, whole(usage.inputTokens) - read - written),
+    output_tokens: whole(usage.outputTokens),
+    cache_write_5m_tokens: written,
+    cache_write_1h_tokens: 0,
+    cache_read_tokens: read,
+  };
+  const id = [usage.accounting?.usageId, usage.apiCallId, entry.id].find((value) => typeof value === "string") ?? null;
+  countMessage(state, { id, model, counts });
+}
+
+/** Several transcripts' usage as one: the same model and tier added together. Null when none could be read. */
+export function mergeUsage(lists) {
+  const read = lists.filter(Array.isArray);
+  if (!read.length) return null;
+  const totals = {};
+  for (const row of read.flat()) {
+    const key = `${row.model}\u0000${row.tier ?? ""}`;
+    const sum = (totals[key] ??= { model: row.model, ...(row.tier ? { tier: row.tier } : {}), ...Object.fromEntries(COUNTS.map((name) => [name, 0])) });
+    for (const name of COUNTS) sum[name] += whole(row[name]);
+  }
+  return Object.values(totals);
+}
+
+/**
  * A transcript's token usage so far, per model and tier: what it has
  * counted before (kept at `statePath`, with how far it read), and the
  * lines written since, read a chunk at a time. Only complete lines are
  * counted. A transcript that got shorter is counted again from the top.
- * Null when it cannot be read; never throws.
+ * `harness` says how it is read (HARNESSES' count); `agent`, for one
+ * shared with subagents, whose usage it is. Null when it cannot be read,
+ * or says nothing of tokens; never throws.
  */
-export function transcriptUsage(transcript, statePath, { harness = "claude_code", model = null } = {}) {
+export function transcriptUsage(transcript, statePath, { harness = "claude_code", model = null, agent } = {}) {
   let fd;
-  const count = harness === "codex" ? codexCountLine : countLine;
+  const count = (HARNESSES[harness] ?? HARNESSES.claude_code).count;
+  if (!count) return null;
   try {
     const size = statSync(transcript).size;
     let state = statePath ? readJson(statePath, null) : null;
-    if (!state || state.path !== transcript || !(state.offset <= size) || typeof state.totals !== "object" || typeof state.recent !== "object") {
+    if (
+      !state ||
+      state.path !== transcript ||
+      state.agent !== agent ||
+      !(state.offset <= size) ||
+      typeof state.totals !== "object" ||
+      typeof state.recent !== "object"
+    ) {
+      state = { path: transcript, offset: 0, totals: {}, recent: {}, ...(typeof agent === "string" ? { agent } : {}) };
+    }
+    // An older Gemini CLI wrote a session as one JSON document, rewritten whole: read whole.
+    if (/\.json$/.test(transcript)) {
       state = { path: transcript, offset: 0, totals: {}, recent: {} };
+      const messages = JSON.parse(readFileSync(transcript, "utf8"))?.messages;
+      for (const message of Array.isArray(messages) ? messages : []) count(state, JSON.stringify(message));
+      return usageList(state);
     }
     // The model the hook says, for a Codex transcript that has not said one yet.
     if (model) state.hookModel = String(model);
@@ -1164,7 +1636,7 @@ function startSubagent(bin, job, files, agent, parentId, opts) {
     "session",
     "start",
     "--harness",
-    harnessOf(opts.env),
+    adapterOf(opts.env).cli,
     "--harness-session-id",
     subagentHarnessId(job.sid, agent.id),
     "--parent",
@@ -1184,6 +1656,20 @@ function startSubagent(bin, job, files, agent, parentId, opts) {
   return { id };
 }
 
+/**
+ * The usage a heartbeat step reports: its transcript's (with its
+ * subagents', where the harness keeps them apart and they are not
+ * sessions here), each counted on from where it was left.
+ */
+export function sessionUsage(step, sid, files, env = process.env) {
+  const adapter = adapterOf(env);
+  const transcripts = adapter.transcripts ? adapter.transcripts(step.usage, sid) : [step.usage];
+  const options = { harness: harnessOf(env), model: step.model, ...(typeof step.agent === "string" ? { agent: step.agent } : {}) };
+  const key = (transcript) => (typeof step.agent === "string" ? `${transcript}#${step.agent}` : transcript);
+  const lists = transcripts.map((transcript) => transcriptUsage(transcript, files.usage(key(transcript)), options));
+  return transcripts.length === 1 ? lists[0] : mergeUsage(lists);
+}
+
 /** Starts the session if it needs to, then runs the job's steps in order. */
 export function work(job, env = process.env) {
   const bin = findCli(env);
@@ -1197,7 +1683,7 @@ export function work(job, env = process.env) {
   let id = readText(files.id);
   if (job.start || !id) {
     const item = job.item ?? readText(files.item);
-    const args = ["session", "start", "--harness", harnessOf(env), "--harness-session-id", job.sid];
+    const args = ["session", "start", "--harness", adapterOf(env).cli, "--harness-session-id", job.sid];
     if (item) args.push("--item", String(item));
     args.push("--json");
     const out = cli(bin, args, opts);
@@ -1225,7 +1711,7 @@ export function work(job, env = process.env) {
   if (job.agent) {
     let child = readText(files.agent(job.agent.id));
     // A subagent starting: the task and prompt of the Agent call that started it.
-    if (job.agent.start && job.pair && harnessOf(env) === "claude_code") pairSubagent(job.agent, files, job.transcript, env);
+    if (job.agent.start && job.pair && adapterOf(env).pairs) pairSubagent(job.agent, files, job.transcript, env);
     if (job.agent.start || !child) {
       const started = startSubagent(bin, job, files, job.agent, id, opts);
       if (started.auth) return setProblem(env, "signed_out");
@@ -1241,8 +1727,7 @@ export function work(job, env = process.env) {
       let args = step.key ? [...step.args.slice(0, -2), `--key=${step.key}`, ...step.args.slice(-2)] : step.args;
       if (step.usage) {
         // Only a CLI that takes it is given usage: the counts, never what the transcript says.
-        const usage =
-          version && !older(version, USAGE_CLI) ? transcriptUsage(step.usage, files.usage(step.usage), { harness: harnessOf(env), model: step.model }) : null;
+        const usage = version && !older(version, USAGE_CLI) ? sessionUsage(step, job.sid, files, env) : null;
         if (usage?.length) args = [...args, `--usage-json=${JSON.stringify(usage)}`];
         else if (step.only) continue;
       }
@@ -1302,23 +1787,28 @@ export const TRAILER =
   "Add the trailer `G1t-Session: $G1T_SESSION` to the commits you make (git commit --trailer), so g1t ties them to this session. A commit pushed straight to the default branch that finishes a work item says `Closes #N` in its message (`Part of #N` when it does only part of it): a bare `(#N)` only links it, and the item stays open.";
 
 /**
- * Codex's: it has no environment file to set G1T_SESSION in, so its hooks
- * say the session's id at the first prompt after it starts (codexIdContext).
+ * A harness with no environment file to set G1T_SESSION in: its hooks say
+ * the session's id `when` its contextAt event first comes (idContext).
  */
-export const CODEX_TRAILER =
-  "Add the trailer `G1t-Session: ID` to the commits you make (git commit --trailer), with this session's id, which g1t says at your first prompt (`g1t session view --json --jq .id` prints it too), so g1t ties them to this session. A commit pushed straight to the default branch that finishes a work item says `Closes #N` in its message (`Part of #N` when it does only part of it): a bare `(#N)` only links it, and the item stays open.";
+export const saidTrailer = (when) =>
+  `Add the trailer \`G1t-Session: ID\` to the commits you make (git commit --trailer), with this session's id, which g1t says ${when} (\`g1t session view --json --jq .id\` prints it too), so g1t ties them to this session. A commit pushed straight to the default branch that finishes a work item says \`Closes #N\` in its message (\`Part of #N\` when it does only part of it): a bare \`(#N)\` only links it, and the item stays open.`;
+
+/** Codex's, which is told its session's id at its first prompt. */
+export const CODEX_TRAILER = saidTrailer(HARNESSES.codex.when);
 
 /** What a session of this harness is told about trailers. */
 export function trailerFor(env = process.env) {
-  return harnessOf(env) === "codex" ? CODEX_TRAILER : TRAILER;
+  const adapter = adapterOf(env);
+  return adapter.envFile ? TRAILER : saidTrailer(adapter.when);
 }
 
 /**
- * Codex: the session's id, said once, at the first prompt after it has
- * one, for the commits' trailer. Null when said, or when it has none yet.
+ * A harness with no environment file (all but Claude Code): the session's
+ * id, said once, at its contextAt event after it has one, for the
+ * commits' trailer. Null when said, or when it has none yet.
  */
-export function codexIdContext(files, env = process.env) {
-  if (!files || harnessOf(env) !== "codex") return null;
+export function idContext(files, env = process.env) {
+  if (!files || adapterOf(env).envFile) return null;
   const id = readText(files.id);
   if (!id || existsSync(files.told)) return null;
   write(files.told, id);
@@ -1396,7 +1886,8 @@ export function preToolUse(event, env = process.env) {
   const files = sessionFiles(event.session_id, env);
   const tool = event.tool_name;
   const input = event.tool_input ?? {};
-  if (AGENT_TOOLS.has(tool) && !event.agent_id) {
+  const { shell, agents } = adapterOf(env).tools;
+  if (agents.has(tool) && !event.agent_id) {
     rememberTask(files, input, event.tool_use_id);
     return null;
   }
@@ -1409,7 +1900,7 @@ export function preToolUse(event, env = process.env) {
   // A subagent's g1t commands act as its own session. Only these commands
   // are changed. Claude Code checks its permission rules against the
   // changed command; no permission decision is made here.
-  if (SHELL_TOOLS.has(tool) && harnessOf(env) === "claude_code" && event.agent_id && namesG1t && !setsIt && /^[A-Za-z0-9_]+$/.test(session)) {
+  if (shell.has(tool) && harnessOf(env) === "claude_code" && event.agent_id && namesG1t && !setsIt && /^[A-Za-z0-9_]+$/.test(session)) {
     updated = { ...input, command: `${sessionPrefix(tool, session)}${input.command}` };
   }
   const g1t = g1tTool(tool);
@@ -1473,7 +1964,7 @@ export const mayAddRemote = (command) =>
 export function lateStart(event, env, files) {
   const name = event?.hook_event_name;
   if (name !== "UserPromptSubmit" && name !== "PostToolUse") return null;
-  if (name === "PostToolUse" && !(SHELL_TOOLS.has(event.tool_name) && mayAddRemote(event.tool_input?.command))) return null;
+  if (name === "PostToolUse" && !(adapterOf(env).tools.shell.has(event.tool_name) && mayAddRemote(commandOf(event.tool_input)))) return null;
   if (!existsSync(files.unrecorded)) return null;
   const output = sessionStart(event, env, findCli(env));
   if (!output) return null;
@@ -1484,11 +1975,12 @@ export function lateStart(event, env, files) {
 /** Runs one hook: what it prints, and the job it hands to the background. */
 export function hook(event, env = process.env) {
   if (env.G1T_RECORD === "0") return { output: null, job: null };
+  const adapter = adapterOf(env);
   const name = event?.hook_event_name;
   if (name === "PreToolUse") {
     if (!event.session_id || !existsSync(sessionFiles(event.session_id, env).marker)) return { output: null, job: null };
     // The uncommitted files as a shell command finds them, so PostToolUse can say which it wrote.
-    if (SHELL_TOOLS.has(event.tool_name) && event.tool_use_id) {
+    if (adapter.tools.shell.has(event.tool_name) && event.tool_use_id) {
       const before = dirtyFiles(event.cwd || process.cwd());
       if (before) write(sessionFiles(event.session_id, env).shell(event.tool_use_id), JSON.stringify(before));
     }
@@ -1499,6 +1991,20 @@ export function hook(event, env = process.env) {
   }
   // Each prompt is a turn; a skill is recorded once in a turn, however it was run.
   const files = event?.session_id ? sessionFiles(event.session_id, env) : null;
+  // The same event twice (Cursor runs its plugin's hooks and Claude Code's): handled once.
+  if (adapter.dedupe && files && event.dedupe && (name === "SessionStart" || existsSync(files.marker)) && !firstDelivery(files, event.dedupe)) {
+    return { output: null, job: null };
+  }
+  // A harness that does not say which subagent stopped: the one that started with the same key.
+  if (files && event.agent_key) {
+    if (name === "SubagentStart" && event.agent_id) write(files.started(event.agent_key), String(event.agent_id));
+    if (name === "SubagentStop" && !event.agent_id) {
+      const id = readText(files.started(event.agent_key));
+      rmSync(files.started(event.agent_key), { force: true });
+      if (!id) return { output: null, job: null };
+      event = { ...event, agent_id: id };
+    }
+  }
   // A session that started with no g1t remote, which it has now.
   const late = files && name !== "SessionStart" && !existsSync(files.marker) ? lateStart(event, env, files) : null;
   let turn = files ? Number(readText(files.turn)) || 0 : 0;
@@ -1524,16 +2030,19 @@ export function hook(event, env = process.env) {
   for (const step of job.steps) if (step.skill) step.key = `skill:${safeName(step.skill)}:${turn}`;
   if (name === "SubagentStart") {
     // Paired with its Agent call in the background half (pairSubagent), which may wait for Claude Code's files.
-    job.pair = true;
+    if (adapter.pairs) job.pair = true;
     if (event.transcript_path) job.transcript = String(event.transcript_path);
+    if (!adapter.subagentContext) return { output: null, job };
     const item = Number(readText(files.item)) || null;
     return { output: { hookSpecificOutput: { hookEventName: "SubagentStart", additionalContext: subagentContext(item, env) } }, job };
   }
-  const notice = late?.output.systemMessage ?? (name === "UserPromptSubmit" ? takeNotice(env) : null);
+  // Where the harness takes text for the agent after the start: a prompt, or (Cursor, Copilot) after a tool.
+  const here = name === adapter.contextAt;
+  const notice = late?.output.systemMessage ?? (here ? takeNotice(env) : null);
   const context = [
     late?.output.hookSpecificOutput?.additionalContext,
-    name === "UserPromptSubmit" ? codexIdContext(files, env) : null,
-    name === "UserPromptSubmit" ? updateContext(event, env) : null,
+    here ? idContext(files, env) : null,
+    here ? updateContext(event, env, { throttle: name !== "UserPromptSubmit" }) : null,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -1570,18 +2079,26 @@ async function main() {
     if (job.start && !job.agent && harnessOf() === "claude_code") await checkForUpdate();
     return;
   }
-  // Codex's hooks.json runs `node g1t.mjs codex`: the background half inherits it.
-  if (process.argv[2] === "codex") process.env.G1T_HOOK_HARNESS = "codex";
-  let raw = "";
-  for await (const chunk of process.stdin) raw += chunk;
-  const event = JSON.parse(raw || "{}");
-  const old = oldNode(event);
-  if (old !== undefined) {
-    if (old) process.stdout.write(JSON.stringify(old));
-    return;
+  // Another harness's plugin runs `node g1t.mjs HARNESS [EVENT]`: the background half inherits it.
+  const named = Object.hasOwn(HARNESSES, process.argv[2] ?? "") ? process.argv[2] : null;
+  if (named) process.env.G1T_HOOK_HARNESS = named;
+  let text = "";
+  for await (const chunk of process.stdin) text += chunk;
+  const raw = JSON.parse(text || "{}");
+  // Cursor runs Claude Code's hooks too, with its own events: they are Cursor's.
+  if (!named && typeof raw?.cursor_version === "string") process.env.G1T_HOOK_HARNESS = "cursor";
+  const adapter = adapterOf();
+  const native = (named ? process.argv[3] : null) || raw?.hook_event_name;
+  const event = adapter.event(raw, { name: native, env: process.env });
+  let output = null;
+  let job = null;
+  if (event) {
+    const old = oldNode(event);
+    if (old !== undefined) output = old;
+    else ({ output, job } = hook(event));
   }
-  const { output, job } = hook(event);
-  if (output) process.stdout.write(JSON.stringify(output));
+  const reply = adapter.reply(native, output);
+  if (reply) process.stdout.write(JSON.stringify(reply));
   if (job) background(job);
 }
 

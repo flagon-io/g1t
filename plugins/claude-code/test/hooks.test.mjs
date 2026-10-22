@@ -52,7 +52,7 @@ import {
   codexCounts,
   dataDir,
   updateNotice,
-  codexIdContext,
+  idContext,
   trailerFor,
 } from "../hooks/g1t.mjs";
 
@@ -1409,13 +1409,13 @@ test("Codex is told its session's id once, at the first prompt after it has one,
   try {
     const env = { G1T_HOOK_HARNESS: "codex", CLAUDE_PLUGIN_DATA: dir };
     const files = sessionFiles("codex-run", env);
-    assert.equal(codexIdContext(files, env), null, "not before it has one");
+    assert.equal(idContext(files, env), null, "not before it has one");
     mkdirSync(files.dir, { recursive: true });
     writeFileSync(files.id, "ses_codex1");
-    assert.match(codexIdContext(files, env), /this session is ses_codex1 on g1t\. Add the trailer `G1t-Session: ses_codex1`/);
-    assert.equal(codexIdContext(files, env), null, "once");
-    assert.equal(codexIdContext(files, { CLAUDE_PLUGIN_DATA: dir }), null, "never for Claude Code, which has G1T_SESSION");
-    assert.equal(codexIdContext(null, env), null);
+    assert.match(idContext(files, env), /this session is ses_codex1 on g1t\. Add the trailer `G1t-Session: ses_codex1`/);
+    assert.equal(idContext(files, env), null, "once");
+    assert.equal(idContext(files, { CLAUDE_PLUGIN_DATA: dir }), null, "never for Claude Code, which has G1T_SESSION");
+    assert.equal(idContext(null, env), null);
     assert.match(trailerFor(env), /which g1t says at your first prompt/);
     assert.match(trailerFor({}), /\$G1T_SESSION/);
   } finally {
