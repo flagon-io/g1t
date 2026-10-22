@@ -20,7 +20,8 @@ use crate::{LIST_PAGE, Work, optional, optional_number, state_name};
 /// most recently closed first; with `?12`, only those numbered below it.
 /// With `?13`, only open ones on that horizon of the plan, in the plan's
 /// order (plan.rs). With `?14`, only the sub-items of the work item of that
-/// number. With `?15`, only those in the project of that id.
+/// number. With `?15`, only those in the project of that id; with `?16`,
+/// only those in the cycle of that number.
 const LIST_SQL: &str = "SELECT {ITEM_COLUMNS} FROM work_items
      WHERE workspace = ?1 AND (?2 IS NULL OR state = ?2)
        AND (?3 IS NULL OR EXISTS (SELECT 1 FROM json_each(work_items.labels) WHERE json_each.value = ?3))
@@ -36,6 +37,7 @@ const LIST_SQL: &str = "SELECT {ITEM_COLUMNS} FROM work_items
        AND (?13 IS NULL OR (state = 'open' AND COALESCE(horizon, 'triage') = ?13))
        AND (?14 IS NULL OR parent_id = (SELECT p.id FROM work_items p WHERE p.workspace = ?1 AND p.number = ?14))
        AND (?15 IS NULL OR project_id = ?15)
+       AND (?16 IS NULL OR cycle_number = ?16)
      ORDER BY CASE WHEN ?11 IS NULL THEN NULL ELSE closed_at END DESC,
        CASE WHEN ?13 IS NULL THEN NULL ELSE urgent END DESC,
        CASE WHEN ?13 IS NULL THEN NULL ELSE rank IS NULL END,
@@ -235,6 +237,7 @@ impl Work {
                 a.horizon.map_or(JsValue::NULL, |horizon| horizon.as_str().into()),
                 optional_number(a.parent),
                 optional(&project),
+                optional_number(a.cycle),
             ])?;
         let rows = self.timing.db(1, query.all()).await?.results::<ItemRow>()?;
         Ok(Outcome::Ok(
@@ -384,11 +387,35 @@ mod tests {
         parent: Option<u32>,
         project: Option<&str>,
     ) -> Vec<u32> {
+        listed_with(db, state, limit, closed_since, before, parent, project, None)
+    }
+
+    /// As [`listed_in`], only those in the cycle of number `cycle` when given.
+    #[allow(clippy::too_many_arguments)]
+    fn listed_with(
+        db: &Connection,
+        state: Option<&str>,
+        limit: u32,
+        closed_since: Option<&str>,
+        before: Option<u32>,
+        parent: Option<u32>,
+        project: Option<&str>,
+        cycle: Option<u32>,
+    ) -> Vec<u32> {
         let sql = LIST_SQL.replace("{ITEM_COLUMNS}", ITEM_COLUMNS);
-        let values: [&dyn ToSql; 15] = [&"acme", &state, &None::<String>, &None::<u32>, &None::<String>, &None::<String>, &None::<String>, &1, &"[]", &limit, &closed_since, &before, &None::<String>, &parent, &project];
+        let values: [&dyn ToSql; 16] =
+            [&"acme", &state, &None::<String>, &None::<u32>, &None::<String>, &None::<String>, &None::<String>, &1, &"[]", &limit, &closed_since, &before, &None::<String>, &parent, &project, &cycle];
         let mut statement = db.prepare(&sql).unwrap();
         let numbers = statement.query_map(&values[..], |row| row.get::<_, u32>("number")).unwrap();
         numbers.map(Result::unwrap).collect()
+    }
+
+    #[test]
+    fn cycle_lists_only_its_work_items() {
+        let db = acme();
+        db.execute_batch("UPDATE work_items SET cycle_number = 4 WHERE number IN (1, 3); UPDATE work_items SET cycle_number = 5 WHERE number = 2;").unwrap();
+        assert_eq!(listed_with(&db, None, 100, None, None, None, None, Some(4)), [3, 1]);
+        assert_eq!(listed_with(&db, None, 100, None, None, None, None, Some(9)), Vec::<u32>::new());
     }
 
     #[test]

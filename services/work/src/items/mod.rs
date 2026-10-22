@@ -47,6 +47,7 @@ macro_rules! check {
 }
 
 mod changes;
+mod cycles;
 mod dependencies;
 mod labels;
 mod landing;
@@ -66,6 +67,7 @@ pub(crate) mod sql;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use cycles::{DELETED as CYCLES_DELETED, RENAMED as CYCLES_RENAMED, user_deleted as cycles_user_deleted};
 pub(crate) use labels::Labeled;
 pub(crate) use links::MARK_DELETED;
 pub(crate) use landing::{Landing, PastLanding};

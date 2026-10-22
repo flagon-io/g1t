@@ -11,6 +11,9 @@ done.
   the repositories it should land in. See [work items](/work/work-items/).
 - **The plan** says what the workspace is on now, what comes next and what
   can wait. See [the plan](/work/plan/).
+- **Cycles**, when a workspace turns them on, make Now a one- or two-week
+  time box whose unfinished work carries into the next by itself. See
+  [cycles](/work/cycles/).
 - **Projects** give a body of work a home: its brief, lead and people, its
   work items, its repositories and how it is going. See
   [projects](/work/projects/).
@@ -56,17 +59,18 @@ A repository has no Work tab of its own: from one, the command palette
 Work's sidebar has **New work item** first, then its views, then its
 projects. Each row is a view kept in the address, so you can share it.
 
-| Row                 | Opens                                                                        |
-| ------------------- | ---------------------------------------------------------------------------- |
-| **New work item**   | A new work item; see [file a work item](/work/work-items/#file-a-work-item). |
-| **Plan**            | [The plan](/work/plan/), at `-/work`: Now, Next and Later.                   |
-| **Board**           | The [Board](/work/board/): the work as it moves, from Up next to Done.       |
-| **Triage**          | New work items nobody has placed in the plan yet.                            |
-| **All open**        | The [Work list](#the-work-list), at `-/work/all`: the open work items.       |
-| **Assigned to you** | The open work items assigned to you, `?assignee=<you>`.                      |
-| **Closed**          | The closed ones, `?state=closed`.                                            |
-| **Labels**          | The workspace's [labels](/work/labels/).                                     |
-| **Milestones**      | The workspace's [milestones](/work/milestones/).                             |
+| Row                 | Opens                                                                                          |
+| ------------------- | ---------------------------------------------------------------------------------------------- |
+| **New work item**   | A new work item; see [file a work item](/work/work-items/#file-a-work-item).                   |
+| **Plan**            | [The plan](/work/plan/), at `-/work`: Now, Next and Later.                                     |
+| **Cycle 14**        | While [cycles](/work/cycles/) are on: the current cycle, with its days left and done of total. |
+| **Board**           | The [Board](/work/board/): the work as it moves, from Up next to Done.                         |
+| **Triage**          | New work items nobody has placed in the plan yet.                                              |
+| **All open**        | The [Work list](#the-work-list), at `-/work/all`: the open work items.                         |
+| **Assigned to you** | The open work items assigned to you, `?assignee=<you>`.                                        |
+| **Closed**          | The closed ones, `?state=closed`.                                                              |
+| **Labels**          | The workspace's [labels](/work/labels/).                                                       |
+| **Milestones**      | The workspace's [milestones](/work/milestones/).                                               |
 
 Under **Projects**:
 
@@ -148,6 +152,8 @@ See [the phone app's Work](/guides/mobile/#work).
 - [Work items](/work/work-items/): what one has, filing one, its number,
   who sees it and its repositories.
 - [The plan](/work/plan/): Now, Next and Later.
+- [Cycles](/work/cycles/): Now as a time box, carry-over and each cycle's
+  report.
 - [Projects](/work/projects/): homes for bodies of work.
 - [The Board](/work/board/): the stages a work item moves through.
 - [Sub-items](/work/sub-items/): breaking a work item down, and how far

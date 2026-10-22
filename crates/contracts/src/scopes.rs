@@ -1073,6 +1073,11 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("update_milestone", Scope::WorkWrite),
     ("delete_milestone", Scope::WorkWrite),
     // Work's projects: homes for bodies of work.
+    // Cycles: Now as a time box.
+    ("list_cycles", Scope::WorkRead),
+    ("get_cycle", Scope::WorkRead),
+    ("configure_cycles", Scope::WorkWrite),
+    ("cycle_work_item", Scope::WorkWrite),
     ("list_work_projects", Scope::WorkRead),
     ("get_work_project", Scope::WorkRead),
     ("create_work_project", Scope::WorkWrite),

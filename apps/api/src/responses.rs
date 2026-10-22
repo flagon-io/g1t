@@ -186,6 +186,7 @@ fn sample(op: Op, example: &Value) -> Value {
         | Op::CloseWorkItem
         | Op::ReopenWorkItem
         | Op::PlanWorkItem
+        | Op::CycleWorkItem
         | Op::LinkWorkItem
         | Op::UnlinkWorkItem
         | Op::SetWorkItemParent
@@ -193,6 +194,8 @@ fn sample(op: Op, example: &Value) -> Value {
         | Op::RemoveWorkItemSubItem => through::<work::WorkItem>(op, sent),
         Op::CheckWorkItemTask | Op::CheckPullRequestTask => through::<work::CheckedTask>(op, sent),
         Op::GetPlan | Op::ConfigurePlan => through::<work::Plan>(op, sent),
+        Op::ListCycles | Op::ConfigureCycles => through::<work::Cycles>(op, sent),
+        Op::GetCycle => through::<work::CycleDetail>(op, sent),
         Op::NextWorkItem => through::<Option<work::WorkItem>>(op, sent),
         Op::GetWorkItem => through::<work::WorkItemDetail>(op, sent),
         Op::ResolveRef => through::<work::RefTarget>(op, sent),

@@ -1724,6 +1724,98 @@ Examples:
 
 Calls [`update_work_project`](/reference/api/work-projects/update-work-project/), [`add_work_project_member`](/reference/api/work-projects/add-work-project-member/), [`remove_work_project_member`](/reference/api/work-projects/remove-work-project-member/), [`add_work_project_repo`](/reference/api/work-projects/add-work-project-repo/), [`remove_work_project_repo`](/reference/api/work-projects/remove-work-project-repo/), [`archive_work_project`](/reference/api/work-projects/archive-work-project/), [`get_work_project`](/reference/api/work-projects/get-work-project/).
 
+## g1t cycle
+
+Cycles: a workspace's one- or two-week time boxes, whose unfinished work carries over.
+
+Flags every `g1t cycle` command takes:
+
+| Flag | |
+| --- | --- |
+| `--workspace <SLUG>` | The workspace, by its slug; the current repository's when left out. Also `G1T_WORKSPACE`. |
+
+### g1t cycle view
+
+Show a cycle and its report: the current one, or the one numbered N.
+
+```text
+g1t cycle view [OPTIONS] [NUMBER]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `[NUMBER]` | The cycle's number; the current cycle when left out. |
+| `-w, --web` | Open it in the browser. |
+
+Calls [`get_cycle`](/reference/api/cycles/get-cycle/).
+
+### g1t cycle list
+
+List the workspace's cycles: the current one, the next one's days, and past ones.
+
+```text
+g1t cycle list [OPTIONS]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `-L, --limit <LIMIT>` | How many past cycles to list (12 if left out, up to 100). Default: `12`. |
+
+Calls [`list_cycles`](/reference/api/cycles/list-cycles/).
+
+### g1t cycle add
+
+Put a work item in the current cycle (Now), or with --next plan it into the coming one.
+
+```text
+g1t cycle add [OPTIONS] <NUMBER>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<NUMBER>` | The work item's number. |
+| `--next` | Plan it into the coming cycle instead: it waits in Next and moves into Now when this one closes. |
+
+Calls [`cycle_work_item`](/reference/api/cycles/cycle-work-item/).
+
+### g1t cycle remove
+
+Take a work item out of the current or coming cycle, back to Next.
+
+```text
+g1t cycle remove [OPTIONS] <NUMBER>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<NUMBER>` | The work item's number. |
+
+Calls [`cycle_work_item`](/reference/api/cycles/cycle-work-item/).
+
+### g1t cycle settings
+
+Show or change the workspace's cycles: on or off, length, start day and cooldown.
+
+```text
+g1t cycle settings [OPTIONS]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `--on` | Turn cycles on. |
+| `--off` | Turn cycles off: the current cycle closes and nothing carries over. |
+| `--length <DAYS>` | How long a cycle is, in days: 7 or 14. |
+| `--start-day <DAY>` | The day a cycle starts on: monday to sunday. |
+| `--cooldown <DAYS>` | Days between one cycle's end and the next one's start, 0 to 14. |
+
+```text
+Cycles are off, two weeks long, start on Monday and have no cooldown until changed.
+Turning them on opens the first cycle at once, with everything in Now in it. A new length,
+start day or cooldown applies from the next cycle. Needs the Write role in the workspace.
+```
+
+Calls [`configure_cycles`](/reference/api/cycles/configure-cycles/), [`list_cycles`](/reference/api/cycles/list-cycles/).
+
 ## g1t why
 
 Why a file or line is as it is: its commit, pull request, work item, decisions and sessions.

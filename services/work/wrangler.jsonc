@@ -9,7 +9,8 @@
   "main": "build/index.js",
   // Moves repositories' issues into their workspaces' work items, a page
   // at a time, until done (src/items/migration.rs); `migrate_work_items`
-  // runs the same step at once.
+  // runs the same step at once. Also settles session titles, keeps the
+  // plan up, and closes cycles that are over (src/items/cycles.rs).
   "triggers": { "crons": ["*/5 * * * *"] },
   "build": { "command": "node ../../scripts/build-rust-worker.mjs" },
   "workers_dev": false,

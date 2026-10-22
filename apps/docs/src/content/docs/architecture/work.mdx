@@ -36,7 +36,12 @@ workspace's next number, never at or below a number its repository already
 has. Labels and milestones belong to the workspace too, shared by its work
 items and pull requests, and so do its projects (`projects`, with
 `project_members` and `project_repos`): a work item is in one or none, by
-`work_items.project_id`.
+`work_items.project_id`. Its [cycles](/work/cycles/) are kept beside them
+(`cycle_settings`, `cycles`, and `cycle_carries`, one row for each work item
+a cycle ended with open), and a work item's cycle is
+`work_items.cycle_number`. `work`'s five-minute cron closes each cycle whose
+last day is over, in one batch whose statements do nothing once the cycle is
+closed, so a late or repeated run never carries anything twice.
 
 A pull request records where its head is: a fork of its own, `pulls--<id>`
 in the git store, or a branch in the repository

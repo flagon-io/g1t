@@ -1,4 +1,4 @@
-import { Check, CheckCircle2, ChevronRight, Inbox, ListOrdered, ListTree, Plus } from "lucide-react";
+import { Check, CheckCircle2, ChevronRight, Inbox, ListOrdered, ListTree, Plus, Timer } from "lucide-react";
 import { type DragEvent, useEffect, useMemo, useState } from "react";
 import { Link, redirect, useFetcher } from "react-router";
 
@@ -12,6 +12,7 @@ import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../components/ui/collapsible";
 import { cn } from "../../../lib/cn";
+import { cycleDays, cycleName, cyclePath, daysLeftText, utcToday } from "../../../lib/cycles";
 import { page } from "../../../lib/meta";
 import { isFailed, part } from "../../../lib/partial";
 import {
@@ -229,6 +230,8 @@ export default function PlanPage({ loaderData }: Route.ComponentProps) {
   });
 
   const cap = capState(plan.now.length, loaderData.plan.nowCap);
+  // While cycles are on, Now is the current cycle.
+  const cycle = loaderData.plan.cycle ?? null;
   // How each in Now stands, and the week: read with the plan, and left as they are while a move is on its way.
   const { landed, triageWaiting, setAsideRecent } = loaderData.plan;
   const progress = useMemo(() => progressOf(loaderData.plan.progress), [loaderData.plan.progress]);
@@ -264,7 +267,9 @@ export default function PlanPage({ loaderData }: Route.ComponentProps) {
             Plan
           </h1>
           <p className="mt-1 text-sm text-muted">
-            Now is what the workspace has taken on. Next is ranked, and the top is taken first. Later is wanted, and waits.
+            {cycle
+              ? `Now is ${cycleName(cycle)}, what the workspace has taken on. Next is ranked, and the next cycle is drawn from it. Later is wanted, and waits.`
+              : "Now is what the workspace has taken on. Next is ranked, and the top is taken first. Later is wanted, and waits."}
             {!canPlan && loaderData.signedIn && " You can read the plan; placing work takes the Triage role."}
           </p>
         </div>
@@ -323,9 +328,24 @@ export default function PlanPage({ loaderData }: Route.ComponentProps) {
           >
             <header className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 pt-3 pb-2">
               <h2 id="plan-now" className="text-sm font-semibold">
-                Now
+                {cycle ? (
+                  <Link to={cyclePath(workspace)} className="inline-flex items-center gap-1.5 hover:text-accent">
+                    <Timer size={14} className="text-accent" aria-hidden />
+                    {cycleName(cycle)}
+                  </Link>
+                ) : (
+                  "Now"
+                )}
               </h2>
-              <span className="text-xs text-faint">what the workspace is on</span>
+              <span className="text-xs text-faint">
+                {cycle ? (
+                  <>
+                    Now · {cycleDays(cycle)} · {daysLeftText(cycle, utcToday(Date.now()))}
+                  </>
+                ) : (
+                  "what the workspace is on"
+                )}
+              </span>
               <span className="ml-auto">
                 <CapBar cap={cap} />
               </span>
@@ -348,7 +368,10 @@ export default function PlanPage({ loaderData }: Route.ComponentProps) {
               <h2 id="plan-next" className="text-sm font-semibold">
                 Next
               </h2>
-              <span className="text-xs text-faint">{canPlan && !group && <span className="max-sm:hidden">drag to rank · </span>}the top is taken first</span>
+              <span className="text-xs text-faint">
+                {canPlan && !group && <span className="max-sm:hidden">drag to rank · </span>}
+                {cycle ? `the pool for Cycle ${cycle.number + 1}` : "the top is taken first"}
+              </span>
               <span className="ml-auto font-mono text-xs tabular-nums text-faint">{plan.nextTotal}</span>
             </header>
             {plan.next.length === 0 ? (

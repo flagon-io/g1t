@@ -1,7 +1,7 @@
 /**
  * A work item's properties, in the panel at the right of its page: each a
  * row with its value, and for whoever may change it, a fuzzy picker that
- * opens from the row or from its key (A, P, H, M, L, B), driven from the
+ * opens from the row or from its key (A, P, Y, H, M, L, B), driven from the
  * keyboard alone. Each posts to the page's action (routes/workspace/work/
  * item.tsx); a multi-choice picker (assignees, labels, blocked by) saves
  * when it closes, as Linear's do.
@@ -19,6 +19,7 @@ import {
   Plus,
   Sparkles,
   Tag,
+  Timer,
   X,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
@@ -29,6 +30,8 @@ import {
   HORIZONS,
   type Horizon,
   type ItemRepo,
+  type CycleChoice,
+  type Cycles,
   type Label,
   type Milestone,
   type MilestoneRef,
@@ -41,6 +44,7 @@ import {
 } from "@g1t/contracts";
 
 import { cn } from "../lib/cn";
+import { cycleDays, cycleName, cyclePath, dayText, daysLeftText } from "../lib/cycles";
 import { matchLabels, tidyLabelName } from "../lib/labels";
 import { APPETITE_HINTS, HORIZON_HINTS, acceptForm, budgetText, canAccept, planPath, suggestionText } from "../lib/plan";
 import { isLive, projectPath, projectsPath } from "../lib/projects";
@@ -424,6 +428,130 @@ export function ProjectProperty({
               </CommandItem>
             ))}
           </CommandGroup>
+        </CommandList>
+      </Command>
+    </PickerProperty>
+  );
+}
+
+// --- Cycle --------------------------------------------------------------------
+
+/**
+ * Cycle (Y), while the workspace has cycles on: the current cycle (which
+ * is Now), the coming one (it waits in Next until this one closes), or
+ * neither. Shift Y moves it to the coming one without the picker.
+ */
+export function CycleProperty({
+  item,
+  cycles,
+  canEdit,
+  workspace,
+  today,
+  ...toggle
+}: Toggle & {
+  item: Pick<WorkItem, "cycle" | "horizon" | "state">;
+  cycles: Pick<Cycles, "current" | "next">;
+  canEdit: boolean;
+  workspace: string;
+  today: string;
+}) {
+  const fetcher = useFetcher<{ error?: string } | null>({ key: "item-cycle" });
+  const current = cycles.current;
+  const coming = cycles.next;
+  if (!current) return null;
+  const asked = fetcher.state !== "idle" ? (fetcher.formData?.get("cycle") as CycleChoice | null) : null;
+  const shown: CycleChoice =
+    asked ?? (item.cycle === current.number && item.horizon === "now" ? "current" : coming && item.cycle === coming.number ? "next" : "none");
+  const value =
+    shown === "current" ? (
+      <span className="inline-flex min-w-0 items-center gap-2">
+        <Timer size={14} className="shrink-0 text-accent" />
+        <span className="shrink-0">{cycleName(current)}</span>
+        <span className="truncate text-xs text-faint">{daysLeftText(current, today)}</span>
+      </span>
+    ) : shown === "next" && coming ? (
+      <span className="inline-flex min-w-0 items-center gap-2">
+        <Timer size={14} className="shrink-0 text-faint" />
+        <span className="shrink-0">{cycleName(coming)}</span>
+        <span className="truncate text-xs text-faint">planned</span>
+      </span>
+    ) : item.cycle != null && item.state === "closed" ? (
+      <span className="truncate">Cycle {item.cycle}</span>
+    ) : (
+      <Empty>None</Empty>
+    );
+  if (!canEdit || item.state !== "open") {
+    return (
+      <ReadOnlyProperty label="Cycle">
+        {item.cycle != null ? (
+          <Link
+            to={cyclePath(workspace, item.cycle === current.number ? undefined : item.cycle)}
+            className="inline-flex min-w-0 items-center gap-2 hover:text-accent"
+          >
+            {value}
+          </Link>
+        ) : (
+          value
+        )}
+      </ReadOnlyProperty>
+    );
+  }
+  const choose = (choice: CycleChoice) => {
+    toggle.onOpenChange(false);
+    if (choice !== shown) fetcher.submit({ action: "cycle", cycle: choice }, { method: "post" });
+  };
+  return (
+    <PickerProperty
+      label="Cycle"
+      command="cycle"
+      value={value}
+      {...toggle}
+      error={refusal(fetcher)}
+      footer={
+        <span className="flex items-center justify-between gap-2">
+          <Link to={cyclePath(workspace)} className="inline-flex items-center gap-1.5 hover:text-fg">
+            <Timer size={13} />
+            Open {cycleName(current)}
+          </Link>
+          <span className="flex items-center gap-1 pointer-coarse:hidden">
+            <Kbd>Shift Y</Kbd> next cycle
+          </span>
+        </span>
+      }
+    >
+      <Command>
+        <CommandInput placeholder="Move to a cycle…" />
+        <CommandList>
+          <CommandEmpty>No cycle matches.</CommandEmpty>
+          <CommandGroup heading="Cycles">
+            <CommandItem value={`current this now ${cycleName(current)}`} onSelect={() => choose("current")}>
+              <Tick on={shown === "current"} />
+              <span className="min-w-0 grow">
+                <span className="block">{cycleName(current)}</span>
+                <span className="block text-xs text-faint">
+                  Now · {cycleDays(current)} · {daysLeftText(current, today)}
+                </span>
+              </span>
+            </CommandItem>
+            {coming && (
+              <CommandItem value={`next coming ${cycleName(coming)}`} onSelect={() => choose("next")}>
+                <Tick on={shown === "next"} />
+                <span className="min-w-0 grow">
+                  <span className="block">{cycleName(coming)}</span>
+                  <span className="block text-xs text-faint">Waits in Next · from {dayText(coming.startsOn)}</span>
+                </span>
+              </CommandItem>
+            )}
+          </CommandGroup>
+          {shown !== "none" && (
+            <CommandGroup>
+              <CommandItem value="none no cycle out" onSelect={() => choose("none")}>
+                <X />
+                No cycle
+                <span className="ml-auto text-xs text-faint">back to Next</span>
+              </CommandItem>
+            </CommandGroup>
+          )}
         </CommandList>
       </Command>
     </PickerProperty>

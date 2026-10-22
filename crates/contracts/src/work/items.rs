@@ -167,6 +167,11 @@ pub struct WorkItem {
     /// The project it is in, if any.
     #[serde(default)]
     pub project: Option<super::ProjectRef>,
+    /// The number of the cycle it is in, while its workspace has cycles
+    /// on: in Now, the current cycle; in Next, the coming one it is planned
+    /// into. A closed one keeps the cycle it closed in.
+    #[serde(default)]
+    pub cycle: Option<u32>,
     /// The repositories it is linked to: its origin first, then targets,
     /// then those it touched.
     #[serde(default)]
@@ -327,6 +332,9 @@ pub struct ListWorkItemsArgs {
     /// Only those in the project of this slug or id.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
+    /// Only those in the cycle of this number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cycle: Option<u32>,
     /// Only those closed at or after this time (RFC 3339), the most
     /// recently closed first instead of the newest.
     #[serde(default)]

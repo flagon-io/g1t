@@ -5,7 +5,21 @@
  */
 
 /** What a key does on a work item's page. */
-export type ItemCommand = "edit" | "assignee" | "agent" | "project" | "plan" | "milestone" | "labels" | "blocked" | "next" | "previous" | "claim" | "close";
+export type ItemCommand =
+  | "edit"
+  | "assignee"
+  | "agent"
+  | "project"
+  | "cycle"
+  | "cycle-next"
+  | "plan"
+  | "milestone"
+  | "labels"
+  | "blocked"
+  | "next"
+  | "previous"
+  | "claim"
+  | "close";
 
 /** The page's keys, as the shortcuts dialog and the panel's hints write them. */
 export const ITEM_KEYS: { key: string; command: ItemCommand; what: string }[] = [
@@ -13,6 +27,8 @@ export const ITEM_KEYS: { key: string; command: ItemCommand; what: string }[] = 
   { key: "A", command: "assignee", what: "Assignees" },
   { key: "D", command: "agent", what: "Start an agent" },
   { key: "P", command: "project", what: "Project" },
+  { key: "Y", command: "cycle", what: "Cycle, while the workspace has cycles on" },
+  { key: "Shift Y", command: "cycle-next", what: "Move it to the next cycle" },
   { key: "H", command: "plan", what: "Plan: horizon, appetite, budget" },
   { key: "M", command: "milestone", what: "Milestone" },
   { key: "L", command: "labels", what: "Labels" },
@@ -28,6 +44,7 @@ const PLAIN: Record<string, ItemCommand> = {
   a: "assignee",
   d: "agent",
   p: "project",
+  y: "cycle",
   h: "plan",
   m: "milestone",
   l: "labels",
@@ -46,8 +63,8 @@ export function keyFor(command: ItemCommand): string {
  * What a key press does, or null: never while typing in a field
  * (`typing`, components/command-palette.tsx's `inTextField`), with Ctrl,
  * ⌘ or Alt held (those are the browser's and the site's), or repeated by
- * holding the key down. Shift turns C into Close and every other letter
- * into nothing.
+ * holding the key down. Shift turns C into Close, Y into the next cycle,
+ * and every other letter into nothing.
  */
 export function itemCommandOf(
   event: { key: string; shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean; repeat?: boolean },
@@ -56,6 +73,6 @@ export function itemCommandOf(
   if (typing || event.ctrlKey || event.metaKey || event.altKey || event.repeat) return null;
   if (event.key.length !== 1) return null;
   const letter = event.key.toLowerCase();
-  if (event.shiftKey) return letter === "c" ? "close" : null;
+  if (event.shiftKey) return letter === "c" ? "close" : letter === "y" ? "cycle-next" : null;
   return PLAIN[letter] ?? null;
 }

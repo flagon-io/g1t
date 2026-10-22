@@ -137,6 +137,7 @@ test("Workspace mode's sidebar knows which group and page an address is", async 
   const { WORKSPACE_SETTINGS_GROUPS, modeOf, workspaceSettingsPage } = await import("./workspace-nav.ts");
   assert.deepEqual(workspaceSettingsPage("/acme/-/settings", "acme"), { group: "general", page: "settings" });
   assert.deepEqual(workspaceSettingsPage("/acme/-/settings/chat", "acme"), { group: "chat", page: "chat-settings" });
+  assert.deepEqual(workspaceSettingsPage("/acme/-/settings/work", "acme"), { group: "work", page: "work-settings" });
   assert.deepEqual(workspaceSettingsPage("/acme/-/members", "acme"), { group: "access", page: "members" });
   assert.deepEqual(workspaceSettingsPage("/acme/-/members/invitations.data", "acme"), { group: "access", page: "invitations" });
   assert.deepEqual(workspaceSettingsPage("/acme/-/permissions", "acme"), { group: "access", page: "permissions" });

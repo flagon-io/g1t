@@ -179,6 +179,10 @@ pub enum Op {
     GetPlan,
     NextWorkItem,
     ConfigurePlan,
+    ListCycles,
+    GetCycle,
+    ConfigureCycles,
+    CycleWorkItem,
     ListWorkItemLinks,
     LinkWorkItem,
     UnlinkWorkItem,
@@ -983,7 +987,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 448] = [
+    pub const ALL: [Op; 452] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -1045,6 +1049,10 @@ impl Op {
         Op::GetPlan,
         Op::NextWorkItem,
         Op::ConfigurePlan,
+        Op::ListCycles,
+        Op::GetCycle,
+        Op::ConfigureCycles,
+        Op::CycleWorkItem,
         Op::ListWorkItemLinks,
         Op::LinkWorkItem,
         Op::UnlinkWorkItem,
@@ -1502,6 +1510,10 @@ impl Op {
             Op::GetPlan => "get_plan",
             Op::NextWorkItem => "next_work_item",
             Op::ConfigurePlan => "configure_plan",
+            Op::ListCycles => "list_cycles",
+            Op::GetCycle => "get_cycle",
+            Op::ConfigureCycles => "configure_cycles",
+            Op::CycleWorkItem => "cycle_work_item",
             Op::ListWorkItemLinks => "list_work_item_links",
             Op::LinkWorkItem => "link_work_item",
             Op::UnlinkWorkItem => "unlink_work_item",
@@ -1846,7 +1858,7 @@ impl Op {
                 "Create a repository in one of your workspaces, empty or as a copy of a public git repository elsewhere. It gets a project of its own name; description is that project's. With deploy true, its project's g1t.page Deployments are turned on as soon as it is made, as update_deployment_settings with enabled true does: its first push to the default branch deploys production. The repository is made either way: the response has `deployments` (the settings, with production_url) when they are on, or `deploy_error` saying why not (the workspace has no g1t plan, or your role is too low)."
             }
             Op::ListWorkItems => {
-                "A workspace's work items, newest first. A work item is any tracked work (a feature, a bug, a chore) of the workspace, numbered in its sequence with new pull requests, and linked to the repositories it concerns: its `origin` (where it was filed, if it was filed in one), its `target`s (where the work is meant to land) and those it `touched` (where a pull request or commit for it landed or is under way). Filter by state, by a label's name, by a milestone's number, by assignee, and with repo by a repository it is linked to (role narrows it to one kind of link). With horizon, only the open work items on that horizon of the plan, in the plan's order: urgent first, then by rank (triage newest first). limit is how many, 1 to 100 (100 if left out). With parent, only the sub-items of the work item of that number; with project (a slug), only those in that project. Each work item says the `project` it is in (its id, slug, name, color and icon), and where it stands in the plan: `horizon`, `appetite`, `budget_usd`, `urgent` and `planned_at`; and `parent`, the number of the work item it is a sub-item of, and with sub-items `sub_item_progress` (`done` of `total` closed). Members see every work item; anyone who can read a repository sees the work items filed in it."
+                "A workspace's work items, newest first. A work item is any tracked work (a feature, a bug, a chore) of the workspace, numbered in its sequence with new pull requests, and linked to the repositories it concerns: its `origin` (where it was filed, if it was filed in one), its `target`s (where the work is meant to land) and those it `touched` (where a pull request or commit for it landed or is under way). Filter by state, by a label's name, by a milestone's number, by assignee, and with repo by a repository it is linked to (role narrows it to one kind of link). With horizon, only the open work items on that horizon of the plan, in the plan's order: urgent first, then by rank (triage newest first). limit is how many, 1 to 100 (100 if left out). With parent, only the sub-items of the work item of that number; with project (a slug), only those in that project; with cycle (a number), only those in that cycle. Each work item says the `project` it is in (its id, slug, name, color and icon), the `cycle` it is in (while its workspace has cycles on), and where it stands in the plan: `horizon`, `appetite`, `budget_usd`, `urgent` and `planned_at`; and `parent`, the number of the work item it is a sub-item of, and with sub-items `sub_item_progress` (`done` of `total` closed). Members see every work item; anyone who can read a repository sees the work items filed in it."
             }
             Op::ListRepoWorkItems => {
                 "The work items linked to a repository, in any role (origin, target or touched) or in role: the workspace's work list filtered to it. Read only: work items are opened in the workspace (open_work_item, with repo as their origin)."
@@ -1877,6 +1889,18 @@ impl Op {
             }
             Op::ConfigurePlan => {
                 "Set how many work items a workspace's Now holds before its plan says it is over: now_cap, 1 to 50 (6 until it is set). Past the cap, g1t warns; it never refuses a move. Needs the Write role through workspace membership, the right to manage milestones. Returns the plan's settings: `now_cap`, with no work items or counts."
+            }
+            Op::ListCycles => {
+                "A workspace's cycles: `settings` (`enabled`, `length_days` 7 or 14, `starts_weekday` 1 for Monday to 7 for Sunday, `cooldown_days`), `current` (the open cycle while cycles are on, with its `number`, `starts_on` and `ends_on` (YYYY-MM-DD, both in the cycle), `state` upcoming or running, and what it holds: `scope`, `done`, `carried_in`, `carried_out` and `added`, those that joined after its first day), `next` (the days the cycle after it would have) and `past` (closed cycles, the latest first: limit of them, 12 when left out, up to 100). While cycles are on, the plan's Now is the current cycle. Cycles are off until a workspace turns them on."
+            }
+            Op::GetCycle => {
+                "A cycle and its report: the current cycle without cycle, or the one of that number. `cycle` (its days, state and counts), `items` (its work items: open ones in the plan's order, then closed ones; for a closed cycle also those it carried out, as they are now), `members` (for each of items, in the same order: `added_at`, `added` after the first day, `carried_in`, `carried_out`, whether it is `claimed`, has a `live` session, the `agent` behind its newest pull request, and its draft, open and merged pull requests), `planned` (the current cycle's: work items in Next planned into the coming cycle) and `next` (the coming cycle's days). Without cycle, refused with `409` while cycles are off."
+            }
+            Op::ConfigureCycles => {
+                "Change a workspace's cycles: enabled, length_days (7 or 14), starts_weekday (1 for Monday to 7 for Sunday, or the day's name) and cooldown_days (0 to 14). Only those given change; cycles are off, two weeks long, start on Monday and have no cooldown until changed. Turning them on opens the first cycle at once, from the latest start day on or before today, with every open work item in Now in it; turning them off closes the current cycle without carrying anything, and the plan works as it did. A new length, start day or cooldown applies from the next cycle. Needs the Write role through workspace membership, the right to manage milestones, as configure_plan does. Returns the settings and the current cycle."
+            }
+            Op::CycleWorkItem => {
+                "Move an open work item into a cycle: cycle current puts it in the current cycle, which is the plan's Now; next plans it into the coming cycle (it waits in Next, and moves into Now when the current cycle closes); none takes it out of either, back to Next. Refused with `409` while cycles are off, and with `403` for an agent: a person decides what a cycle commits to, and work an agent files waits in Triage. Needs the Write role through workspace membership, the right to manage milestones, as moving into Now does. Returns the work item, with `cycle` its cycle's number. A work_item.planned event."
             }
             Op::ListWorkItemLinks => {
                 "The repositories a work item is linked to: its origin first, then its targets, then those it touched, each with its `role`, its `legacy_number` (the issue number it had in its origin before work items) and whether the work `landed` there. `missing` lists the targets it has not landed in yet. The workspace is `workspace`, its slug."
@@ -3055,6 +3079,7 @@ impl Op {
                     "limit": { "type": "integer", "minimum": 1, "maximum": 100, "description": "At most this many, 1 to 100 (100 if left out)." },
                     "parent": { "type": "integer", "description": "Only the sub-items of the work item of this number." },
                     "project": { "type": "string", "description": "Only work items in the project of this slug." },
+                    "cycle": { "type": "integer", "description": "Only work items in the cycle of this number." },
                 }),
                 &[],
             ),
@@ -3193,6 +3218,43 @@ impl Op {
                     "now_cap": { "type": "integer", "minimum": 1, "maximum": MAX_NOW_CAP, "description": "How many work items Now holds before the plan says it is over, 1 to 50." },
                 }),
                 &["workspace", "now_cap"],
+            ),
+            Op::ListCycles => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "limit": { "type": "integer", "minimum": 0, "maximum": MAX_CYCLES_LISTED, "description": "How many past cycles, 0 to 100 (12 if left out)." },
+                }),
+                &["workspace"],
+            ),
+            Op::GetCycle => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "cycle": { "type": ["integer", "string"], "description": "The cycle's number, or current (the current cycle, as when left out)." },
+                }),
+                &["workspace"],
+            ),
+            Op::ConfigureCycles => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "enabled": { "type": "boolean", "description": "Cycles on or off. Off until turned on." },
+                    "length_days": { "type": "integer", "enum": CYCLE_LENGTHS, "description": "How long a cycle is: 7 or 14 days (14 until changed)." },
+                    "starts_weekday": {
+                        "type": ["integer", "string"],
+                        "description": "The day a cycle starts on: 1 for Monday to 7 for Sunday, or the day's name (Monday until changed).",
+                    },
+                    "cooldown_days": { "type": "integer", "minimum": 0, "maximum": MAX_COOLDOWN_DAYS, "description": "Days between one cycle's end and the next one's start, 0 to 14 (0 until changed)." },
+                }),
+                &["workspace"],
+            ),
+            Op::CycleWorkItem => object(
+                item_numbered(json!({
+                    "cycle": {
+                        "type": "string",
+                        "enum": ["current", "next", "none"],
+                        "description": "current: the current cycle (Now). next: planned into the coming cycle. none: out of either, back to Next.",
+                    },
+                })),
+                &["number", "cycle"],
             ),
             Op::CloseWorkItem => object(
                 json!({
@@ -4442,6 +4504,8 @@ impl Op {
                 | Op::ListWorkItemLinks
                 | Op::GetPlan
                 | Op::NextWorkItem
+                | Op::ListCycles
+                | Op::GetCycle
                 | Op::ResolveRef
                 | Op::ListWorkItemDecisions
                 | Op::ListLabels
@@ -4658,6 +4722,10 @@ impl Op {
                 | Op::GetPlan
                 | Op::NextWorkItem
                 | Op::ConfigurePlan
+                | Op::ListCycles
+                | Op::GetCycle
+                | Op::ConfigureCycles
+                | Op::CycleWorkItem
                 | Op::ListWorkItemLinks
                 | Op::LinkWorkItem
                 | Op::UnlinkWorkItem
@@ -5743,6 +5811,7 @@ impl Op {
                         limit: integer(input, "limit"),
                         parent: integer(input, "parent"),
                         project: optional_text(input, "project"),
+                        cycle: integer(input, "cycle"),
                         before: None,
                         closed_since: None,
                     },
@@ -5897,6 +5966,40 @@ impl Op {
                     return failed(FailureCode::Invalid, &format!("Give now_cap, a number from 1 to {MAX_NOW_CAP}."));
                 };
                 pass(work, "configure_plan", &ConfigurePlanArgs { actor: actor(), workspace: item_ws(), now_cap }).await
+            }
+            Op::ListCycles => {
+                pass(work, "list_cycles", &ListCyclesArgs { workspace: item_ws(), viewer: viewer.clone(), limit: integer(input, "limit") }).await
+            }
+            Op::GetCycle => pass(work, "get_cycle", &GetCycleArgs { workspace: item_ws(), viewer: viewer.clone(), number: integer(input, "cycle") }).await,
+            Op::ConfigureCycles => {
+                let starts_weekday = match &input["starts_weekday"] {
+                    Value::Null => None,
+                    Value::Number(number) => Some(number.as_u64().and_then(|n| u32::try_from(n).ok()).unwrap_or(0)),
+                    Value::String(name) => match parse_weekday(name) {
+                        Some(weekday) => Some(weekday),
+                        None => return failed(FailureCode::Invalid, "starts_weekday is a day of the week: 1 for Monday to 7 for Sunday, or its name."),
+                    },
+                    _ => return failed(FailureCode::Invalid, "starts_weekday is a day of the week: 1 for Monday to 7 for Sunday, or its name."),
+                };
+                pass(
+                    work,
+                    "configure_cycles",
+                    &ConfigureCyclesArgs {
+                        actor: actor(),
+                        workspace: item_ws(),
+                        enabled: yes(input, "enabled"),
+                        length_days: integer(input, "length_days"),
+                        starts_weekday,
+                        cooldown_days: integer(input, "cooldown_days"),
+                    },
+                )
+                .await
+            }
+            Op::CycleWorkItem => {
+                let Some(cycle) = input["cycle"].as_str().and_then(CycleChoice::parse) else {
+                    return failed(FailureCode::Invalid, "cycle is current, next or none.");
+                };
+                pass(work, "cycle_work_item", &CycleWorkItemArgs { actor: actor(), workspace: item_ws(), number, cycle }).await
             }
             Op::LinkWorkItem | Op::UnlinkWorkItem => {
                 let Some(linked) = given_repo() else {

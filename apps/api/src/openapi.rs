@@ -420,6 +420,11 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         ],
     ),
     (
+        "Cycles",
+        "A workspace's time boxes, one or two weeks long. Cycles are off until a workspace turns them on; while they are on, the plan's Now is the current cycle, and when a cycle's last day is over, what is still open in it carries into the next by itself, recorded for the cycle's report.",
+        &[Op::ListCycles, Op::ConfigureCycles, Op::GetCycle, Op::CycleWorkItem],
+    ),
+    (
         "Work projects",
         "A workspace's projects: homes for bodies of work, each with a brief, a lead and its people, the repositories its work lands in, dates, a state and a health. A work item is in one project or none.",
         &[
@@ -771,6 +776,10 @@ fn title(op: Op) -> &'static str {
         Op::GetPlan => "Get a workspace's plan",
         Op::NextWorkItem => "Get the work item to take next",
         Op::ConfigurePlan => "Configure a workspace's plan",
+        Op::ListCycles => "List a workspace's cycles",
+        Op::GetCycle => "Get a cycle and its report",
+        Op::ConfigureCycles => "Configure a workspace's cycles",
+        Op::CycleWorkItem => "Move a work item into a cycle",
         Op::ListWorkItemLinks => "List a work item's repositories",
         Op::LinkWorkItem => "Link a repository to a work item",
         Op::UnlinkWorkItem => "Unlink a repository from a work item",
