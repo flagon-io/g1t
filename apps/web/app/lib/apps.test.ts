@@ -86,7 +86,7 @@ test("installed apps are what the workspace connected, opening where each is man
     apps.map((app) => app.key),
     ["int-github", "int-sentry"],
   );
-  assert.equal(apps[0]!.path("acme"), "/new/github?workspace=acme");
+  assert.equal(apps[0]!.path("acme"), "/acme/-/settings/integrations/github");
   assert.deepEqual(appData(apps[1]!, "acme").href, "/acme/-/settings/integrations/alerts");
   assert.deepEqual(installedApps({}), []);
   assert.deepEqual(

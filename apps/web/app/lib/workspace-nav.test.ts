@@ -160,7 +160,8 @@ test("Workspace mode's sidebar knows which group and page an address is", async 
       assert.ok(!keys.has(page.key), `${page.key} twice`);
       keys.add(page.key);
       assert.ok(page.path.startsWith("settings/"), page.path);
-      assert.equal(modeOf(`/acme/-/${page.path}`, "acme"), "workspace", page.path);
+      // Integrations are Apps's, beside the settings' sidebar.
+      assert.equal(modeOf(`/acme/-/${page.path}`, "acme"), page.key === "integrations" ? "apps" : "workspace", page.path);
     }
   }
 });

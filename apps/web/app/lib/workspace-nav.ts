@@ -348,11 +348,21 @@ export function modeOf(pathname: string, slug: string | null): ModeKey {
   if (SITE_PAGES.has(parts[0] ?? "")) return "site";
   if (slug && parts[0]?.toLowerCase() === slug.toLowerCase()) {
     if (parts.length === 1) return "home";
-    if (parts[1] === "-") return PAGE_MODES[parts[2] ?? ""] ?? "code";
+    if (parts[1] === "-") {
+      // The workspace's integrations are its apps: Apps is lit on them, beside the settings' sidebar.
+      if (parts[2] === "settings" && parts[3] === "integrations") return "apps";
+      return PAGE_MODES[parts[2] ?? ""] ?? "code";
+    }
   }
   // Another workspace's chat, where the viewer is a guest: Chat all the same.
   if (parts[1] === "-" && parts[2] === "chat") return "chat";
   return "code";
+}
+
+/** Whether `pathname` is one of the workspace `slug`'s integrations pages: Apps's mode, with the settings' sidebar. */
+export function isIntegrationsPath(pathname: string, slug: string): boolean {
+  const parts = pagePath(pathname).split("/").filter(Boolean);
+  return parts[0]?.toLowerCase() === slug.toLowerCase() && parts[1] === "-" && parts[2] === "settings" && parts[3] === "integrations";
 }
 
 /** Where each mode's button in the rail goes, in the workspace `slug`. */

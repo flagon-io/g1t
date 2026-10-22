@@ -487,23 +487,8 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
         </HeldSuspense>
       )}
 
-      {/* 4. The workspace's ground truth: what is moving and waiting team by team, and the quiet changes; spend for billing. */}
-      {loaderData.ground && (
-        <HeldSuspense id={`home:${slug}:ground`} fallback={<GroundSkeleton />}>
-          <Await resolve={loaderData.ground}>
-            {(value) =>
-              value && (
-                <Boundary what="What the work says">
-                  <GroundTruth slug={slug} ground={value} pulse={false} money={loaderData.money} />
-                </Boundary>
-              )
-            }
-          </Await>
-        </HeldSuspense>
-      )}
-
       <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_24rem]">
-        {/* 5. What happened in the span: in a sentence, then in plain English, then who did what, then what landed. */}
+        {/* 4. What happened in the span: in a sentence, then in plain English, then who did what, then what landed. */}
         <section aria-labelledby="since" className="rounded-2xl border border-line bg-surface">
           <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-5 pt-4">
             <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -562,7 +547,7 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
           </HeldSuspense>
         </section>
 
-        {/* 6. What the span cost (for billing), and what settled by itself: kept in view beside it. */}
+        {/* 5. What the span cost (for billing), and what settled by itself: kept in view beside it. */}
         <aside aria-label="Cost and settled" className="space-y-5 lg:sticky lg:top-4">
           {spend && (
             <HeldSuspense
@@ -600,6 +585,21 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
           </HeldSuspense>
         </aside>
       </div>
+
+      {/* 6. The workspace: what is moving and waiting team by team, and the quiet changes; spend for billing. Drawn as Home's cards. */}
+      {loaderData.ground && (
+        <HeldSuspense id={`home:${slug}:ground`} fallback={<GroundSkeleton />}>
+          <Await resolve={loaderData.ground}>
+            {(value) =>
+              value && (
+                <Boundary what="What the work says">
+                  <GroundTruth slug={slug} ground={value} pulse={false} money={loaderData.money} compact />
+                </Boundary>
+              )
+            }
+          </Await>
+        </HeldSuspense>
+      )}
 
       {/* 7. The workspace at a glance: who is in it, and the month's usage against its plan (for billing). */}
       <div className={`grid grid-cols-[minmax(0,1fr)] items-start gap-5 ${loaderData.usage ? "lg:grid-cols-[minmax(0,1fr)_24rem]" : "lg:grid-cols-2"}`}>

@@ -62,8 +62,13 @@ repositories**, **Sets your status**, and so on.
 | Monitoring & incidents | [Sentry, Datadog, and any system that sends a webhook](#alerts) |                                                                                                                                                                                                                                                                |
 
 Alerts and trackers each have a setup page under the directory:
-`-/integrations/alerts` and `-/integrations/trackers`. GitHub and webhooks
-keep their own pages; the directory links to them.
+`-/settings/integrations/alerts` and `-/settings/integrations/trackers`.
+GitHub has one too, `-/settings/integrations/github`: the accounts g1t's
+GitHub App is installed on for the workspace, each with **Import from it**
+and **Manage on GitHub**, and **Import repositories**, which goes on to
+the import. Webhooks keep their own page; the directory links to it. On
+every integrations page, **Apps** is lit in the app bar, with the
+workspace's settings beside it.
 
 Secrets are sealed when they are saved and never shown again, to anyone.
 A setup page shows the last four characters of a key, so you can tell keys

@@ -19,15 +19,15 @@ It reads top to bottom, from what you can do now to what already happened:
    the last two weeks day by day (what agents and people landed), and what
    is [worth a look](#worth-a-look), each finding with its evidence and
    pinned to the day it happened where it happened on one.
-4. **[The workspace](#the-workspace)**: what is moving and what is
-   waiting team by team, and the quiet changes in who works where; for
-   owners and billing managers, the quarter's spend threaded to the work.
-5. **Since you were last here**: one card for the span. It shows what people
+4. **Since you were last here**: one card for the span. It shows what people
    did, what changed in plain English when you ask for it, and what landed,
    each change with whether it is live yet. Beside it, kept in view as you
    scroll: **[Spent](#spent)**, what the span cost and the month so far
    (owners and billing managers), and
    **[Settled for you](#settled-for-you)**, what finished by itself.
+5. **[The workspace](#the-workspace)**: what is moving and what is
+   waiting team by team, and the quiet changes in who works where; for
+   owners and billing managers, the quarter's spend threaded to the work.
 6. **Members**, everyone in the workspace, and, for owners and billing
    managers, the month's **Usage** against the plan.
 
@@ -369,7 +369,7 @@ each with its state and how long it has gone:
 
 ## The workspace
 
-Under This week, for members who can see Code: the workspace's
+Under Since you were last here, for members who can see Code: the workspace's
 [ground truth](/guides/workspaces/#the-workspace-overview), what is moving
 and what is waiting team by team (each repository, without teams), with
 the pull requests waiting on a first review, and the quiet changes in who

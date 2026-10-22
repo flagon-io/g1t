@@ -130,7 +130,7 @@ export const CONNECTORS: Connector[] = [
     description: "Import repositories, with their branches, tags and issues, through g1t's GitHub App.",
     scopes: BOTH,
     status: "available",
-    href: { workspace: "/new/github?workspace=:workspace", personal: "/settings/github" },
+    href: { workspace: "/:workspace/-/settings/integrations/github", personal: "/settings/github" },
     capabilities: ["Imports repositories"],
     personal: {
       description: "Sign in with your GitHub account, and reach the repositories you can see there to import them.",
