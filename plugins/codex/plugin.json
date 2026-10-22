@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "g1t",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Work with g1t projects, work items, pull requests and sessions from Codex.",
   "author": {
     "name": "Flagon, Inc.",

@@ -120,18 +120,34 @@ export function instrumented(name: string, binding: ServiceBinding): ServiceBind
  * body here costs nothing and puts it under the deadline too.
  */
 async function answerInTime(binding: ServiceBinding, name: string, method: string, input: string, init?: RequestInit): Promise<Response> {
-  const ms = deadlineFor(name, method, mayWrite(method));
+  const writes = mayWrite(method);
+  const ms = deadlineFor(name, method, writes);
   return withDeadline(
     `${name} ${method || input}`,
     ms,
     async (signal) => {
-      const response = await binding.fetch(input, { ...init, signal });
-      const body = await response.arrayBuffer();
-      // A 204 or 304 may not be rebuilt with a body, even an empty one.
-      return new Response(body.byteLength > 0 ? body : null, response);
+      const call = async () => {
+        const response = await binding.fetch(input, { ...init, signal });
+        const body = await response.arrayBuffer();
+        // A 204 or 304 may not be rebuilt with a body, even an empty one.
+        return new Response(body.byteLength > 0 ? body : null, response);
+      };
+      try {
+        return await call();
+      } catch (error) {
+        // A read cut off by the service's own deploy is asked once more,
+        // of the new version; a write may have landed, so it never is.
+        if (writes || signal.aborted || !lostToDeploy(error)) throw error;
+        return call();
+      }
     },
     init?.signal,
   );
+}
+
+/** What a service binding throws when the Worker it called was replaced (deployed) mid-call. */
+export function lostToDeploy(error: unknown): boolean {
+  return error instanceof Error && /^Network connection lost\.?$/i.test(error.message.trim());
 }
 
 /**

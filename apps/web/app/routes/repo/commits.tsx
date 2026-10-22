@@ -108,7 +108,14 @@ export default function Commits({ loaderData, params }: Route.ComponentProps) {
     <>
       <NewItemsBar held={held.length > 0} count={newCommits(held, branch)} noun={["commit", "commits"]} onShow={show} />
       <Suspense fallback={null}>
-        <Await resolve={comments}>
+        <Await
+          resolve={comments}
+          errorElement={
+            <div className="mb-4">
+              <Unavailable what="Comment counts" compact />
+            </div>
+          }
+        >
           {(counts) =>
             isFailed(counts) ? (
               <div className="mb-4">
@@ -143,7 +150,8 @@ export default function Commits({ loaderData, params }: Route.ComponentProps) {
                           </span>
                           <CommitChecksBadge checks={checks} sha={commit.hash} />
                           <Suspense fallback={null}>
-                            <Await resolve={comments}>
+                            {/* Said once, above the list, when the counts could not be read. */}
+                            <Await resolve={comments} errorElement={null}>
                               {(counts) => (isFailed(counts) ? null : <CommentCount count={counts[commit.hash] ?? 0} to={`${to}#commit-comments`} />)}
                             </Await>
                           </Suspense>

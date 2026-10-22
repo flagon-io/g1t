@@ -380,6 +380,10 @@ work items and pull requests it worked on.
 
 ## Other coding agents
 
+Codex runs these same hooks from g1t's
+[Codex plugin](/guides/bring-your-own-agent/#what-the-codex-plugin-records),
+and records the same things, its cost included.
+
 Agents without plugins use the same CLI commands from their instructions
 file. Put this in the repository's `AGENTS.md`:
 

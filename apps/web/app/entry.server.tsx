@@ -8,11 +8,12 @@ import { NonceContext } from "./lib/nonce";
 import { makeNonce, pagePolicy } from "./lib/page-headers";
 import { recordHandler } from "./lib/perf.server";
 import { agentPage } from "./lib/agent-pages";
+import { STREAM_TIMEOUT_MS } from "./lib/stream-deadline";
 
 // React Router's own server entry, plus the timing of every loader and
 // action for the Server-Timing header (lib/perf.server.ts).
 
-export const streamTimeout = 5_000;
+export const streamTimeout = STREAM_TIMEOUT_MS;
 
 export const instrumentations: ServerInstrumentation[] = [
   {

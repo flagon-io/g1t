@@ -97,6 +97,13 @@ cost") so a missing figure is never mistaken for zero. Usually it is an
 older version of the [g1t plugin](/guides/claude-code-plugin/#what-a-session-cost),
 or a harness that reports no usage.
 
+Claude Code sessions report their usage through the
+[Claude Code plugin](/guides/claude-code-plugin/), and Codex sessions
+through the [Codex plugin](/guides/bring-your-own-agent/#what-the-codex-plugin-records),
+priced at Anthropic's and OpenAI's list prices. A Codex session on a
+ChatGPT plan isn't billed per token: its cost is what those tokens would
+cost at list price, a measure of the work rather than a bill.
+
 ## Who sees each person's spend
 
 Everyone always sees their own. Who else sees each person's is a

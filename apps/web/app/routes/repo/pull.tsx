@@ -1269,7 +1269,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                     <StatusBox>
                       {statuses.length > 0 && (
                         <Suspense fallback={settledChecks({}, true)}>
-                          <Await resolve={workflowJobs}>{(jobs) => settledChecks(jobs)}</Await>
+                          <Await resolve={workflowJobs} errorElement={settledChecks({})}>
+                            {(jobs) => settledChecks(jobs)}
+                          </Await>
                         </Suspense>
                       )}
                       <BranchAfterwards
@@ -1301,7 +1303,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                     <StatusBox>
                       {/* Checks by status at once; job by job when the runs are read. */}
                       <Suspense fallback={checksSection({}, true)}>
-                        <Await resolve={workflowJobs}>{(jobs) => checksSection(jobs)}</Await>
+                        {/* Runs that could not be read leave the checks by status. */}
+                        <Await resolve={workflowJobs} errorElement={checksSection({})}>
+                          {(jobs) => checksSection(jobs)}
+                        </Await>
                       </Suspense>
                       {noChecks && <AddCiPrompt owner={params.owner} repo={params.repo} canAdd={canAddCi} compact />}
                       <StatusRow
