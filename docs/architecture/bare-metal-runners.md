@@ -221,6 +221,15 @@ Blacksmith charges $0.50.
 
 ## Machines and labels
 
+> Since #373, g1t's hosted runners take GitHub's labels (`ubuntu-slim`,
+> `ubuntu-latest` and the rest, at GitHub's private-repository sizes) and
+> the `g1t-2core` and `g1t-4core` labels are gone. A machine larger than
+> the standard one comes as a larger runner, in GitHub's model: a
+> workspace names a runner and picks its size, and jobs target it by name
+> or group (#376). The metal sizes below would be larger-runner sizes, not
+> `g1t-<n>core` labels; the table keeps the labels this proposal was
+> written with.
+
 Two new rows in `INSTANCE_TYPES`, and a new field on every row saying
 where it runs:
 
