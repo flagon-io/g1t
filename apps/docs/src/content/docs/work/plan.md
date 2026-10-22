@@ -27,6 +27,16 @@ finds it.
 A closed work item keeps the horizon it had, so reopening it puts it
 back where it was.
 
+## Now and cycles
+
+When the workspace runs in [cycles](/work/cycles/), **Now is the current
+cycle**: the plan calls it by the cycle's name ("Cycle 14", with its days
+and how many are left), moving a work item into Now puts it in the cycle,
+and moving it out takes it out. **Next** is the pool the next cycle is
+drawn from, and rank is still the only priority. When a cycle ends, what is
+still open in it stays in Now and carries into the next. With cycles off,
+the plan works as this page describes.
+
 ## Place work
 
 On the Plan:
@@ -70,6 +80,7 @@ Home tells those who can plan.
 | Triage work items, and move them within Next, Later and Set aside     | The Triage role or higher on the work item                           |
 | Move work into or out of Now, reorder Now, or mark a work item urgent | The right to manage labels and milestones (the Write role or higher) |
 | Change Now's cap                                                      | The right to manage labels and milestones                            |
+| Put work in a cycle, plan the next cycle, or change cycles' settings  | The right to manage labels and milestones                            |
 
 Anyone who can see the work items can read the plan. Someone who can't
 plan sees it without the controls.

@@ -185,6 +185,7 @@ export default defineConfig({
             { label: "Work", slug: "work" },
             { label: "Work items", slug: "work/work-items" },
             { label: "The plan", slug: "work/plan" },
+            { label: "Cycles", slug: "work/cycles" },
             { label: "The Board", slug: "work/board" },
             { label: "Sub-items", slug: "work/sub-items" },
             { label: "Task lists", slug: "work/task-lists" },

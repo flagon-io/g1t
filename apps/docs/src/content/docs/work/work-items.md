@@ -232,6 +232,7 @@ labels, blocked by), <kbd>Enter</kbd> ticks and <kbd>Esc</kbd> saves.
 | **Assignees**  | <kbd>A</kbd> | People, you first, anyone by username, and **g1t**, which takes it on in a session on the workspace's Claude where that is set up (Triage role).                    |
 | **Agent**      | <kbd>D</kbd> | Who is working on it now: each live session and where it stands. <kbd>D</kbd> opens **Start an agent**.                                                             |
 | **Project**    | <kbd>P</kbd> | The [project](/work/projects/) it is in, or none (Triage role).                                                                                                     |
+| **Cycle**      | <kbd>Y</kbd> | While [cycles](/work/cycles/) are on: the current cycle (which is Now), the coming one, or none. <kbd>Shift</kbd> <kbd>Y</kbd> moves it to the next cycle.          |
 | **Plan**       | <kbd>H</kbd> | Its horizon, appetite, urgent, and a budget: type a number of dollars, such as `5`. In Triage, g1t's suggestion with **Accept**; in Now, how it stands on the hill. |
 | **Milestone**  | <kbd>M</kbd> | One of the workspace's open milestones, or none (Triage role).                                                                                                      |
 | **Labels**     | <kbd>L</kbd> | Tick labels on and off, find one, or make one if you may manage labels.                                                                                             |
@@ -264,15 +265,16 @@ its link. A claim made here has no harness behind it, so it lapses after
 
 None of these work while you type in a field.
 
-| Key                                                                           | Does                                                      |
-| ----------------------------------------------------------------------------- | --------------------------------------------------------- |
-| <kbd>E</kbd>                                                                  | Edit the title and description                            |
-| <kbd>A</kbd> <kbd>P</kbd> <kbd>H</kbd> <kbd>M</kbd> <kbd>L</kbd> <kbd>B</kbd> | Open the property's picker                                |
-| <kbd>D</kbd>                                                                  | Start an agent                                            |
-| <kbd>I</kbd>                                                                  | Claim it                                                  |
-| <kbd>Shift</kbd> <kbd>C</kbd>                                                 | Close it                                                  |
-| <kbd>J</kbd> / <kbd>K</kbd>                                                   | The next and previous work item in the list you came from |
-| <kbd>Ctrl</kbd> <kbd>Enter</kbd>                                              | Send a comment, or save an edit                           |
+| Key                                                                                        | Does                                                      |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| <kbd>E</kbd>                                                                               | Edit the title and description                            |
+| <kbd>A</kbd> <kbd>P</kbd> <kbd>Y</kbd> <kbd>H</kbd> <kbd>M</kbd> <kbd>L</kbd> <kbd>B</kbd> | Open the property's picker                                |
+| <kbd>Shift</kbd> <kbd>Y</kbd>                                                              | Move it to the next cycle, while cycles are on            |
+| <kbd>D</kbd>                                                                               | Start an agent                                            |
+| <kbd>I</kbd>                                                                               | Claim it                                                  |
+| <kbd>Shift</kbd> <kbd>C</kbd>                                                              | Close it                                                  |
+| <kbd>J</kbd> / <kbd>K</kbd>                                                                | The next and previous work item in the list you came from |
+| <kbd>Ctrl</kbd> <kbd>Enter</kbd>                                                           | Send a comment, or save an edit                           |
 
 <kbd>J</kbd> and <kbd>K</kbd> follow the list you opened it from: All
 items, the plan, the board, Triage, or a project's home. Opened from
