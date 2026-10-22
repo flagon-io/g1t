@@ -30,5 +30,8 @@ If you do not have the CLI yet, or have an older one, install it
 Then, in Claude Code, run /mcp and choose plugin:g1t:g1t to sign its tools
 in. The plugin adds g1t's MCP server itself: skip \`claude mcp add\`.
 
+To keep the plugin current, run /plugin, open Marketplaces, choose g1t and
+Enable auto-update: Claude Code doesn't update this marketplace otherwise.
+
 Guide: https://docs.g1t.sh/guides/claude-code-plugin/
 EOF

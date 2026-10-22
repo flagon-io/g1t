@@ -41,6 +41,11 @@ import {
   subagentHarnessId,
   summarizeTool,
   work,
+  checkForUpdate,
+  pluginVersion,
+  takeNotice,
+  UPDATE_CHECK_MS,
+  setProblem,
 } from "../hooks/g1t.mjs";
 
 import { CONTRACT, refusal } from "./fake-g1t.mjs";
@@ -410,7 +415,8 @@ describe("with a working copy", () => {
     log = join(dir, "calls.jsonl");
     git("init", "-q", "-b", "42-fix-login");
     git("remote", "add", "origin", "https://g1t.sh/acme/app.git");
-    env = { PATH: process.env.PATH, G1T_BIN: FAKE, FAKE_G1T_LOG: log, CLAUDE_PLUGIN_DATA: join(dir, ".data") };
+    // Never the network: no look for a newer plugin.
+    env = { PATH: process.env.PATH, G1T_BIN: FAKE, FAKE_G1T_LOG: log, CLAUDE_PLUGIN_DATA: join(dir, ".data"), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" };
   });
   afterEach(() => {
     // Every call the hooks made is one the real CLI takes (the stand-in refuses the rest).
@@ -1196,5 +1202,72 @@ describe("a transcript's usage", () => {
     const path = join(dir, "empty.jsonl");
     writeFileSync(path, "");
     assert.deepEqual(transcriptUsage(path, null), []);
+  });
+});
+
+describe("a newer plugin", () => {
+  let dir, env, root;
+  const catalog = (version) => async () => ({ name: "g1t", plugins: [{ name: "g1t", source: "./plugins/g1t", version }] });
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "g1t-update-"));
+    env = { CLAUDE_PLUGIN_DATA: join(dir, ".data") };
+    // As Claude Code keeps it: cache/g1t/g1t/<version>/.
+    root = join(dir, "cache", "0.3.0");
+    mkdirSync(join(root, ".claude-plugin"), { recursive: true });
+    writeFileSync(join(root, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "g1t", version: "0.3.0" }));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  test("the plugin knows its own version", () => {
+    assert.equal(pluginVersion(root), "0.3.0");
+    assert.match(pluginVersion(), /^\d+\.\d+\.\d+$/);
+    assert.equal(pluginVersion(join(dir, "nowhere")), null);
+  });
+
+  test("a newer published version is said once, with how to update and keep it current", async () => {
+    await checkForUpdate(env, { fetchJson: catalog("0.3.3"), now: 1000 });
+    const said = takeNotice(env, root);
+    assert.match(said, /plugin here is 0\.3\.0, and 0\.3\.3 is out/);
+    assert.match(said, /claude plugin marketplace update g1t/);
+    assert.match(said, /claude plugin update g1t@g1t/);
+    assert.match(said, /Enable auto-update/);
+    assert.equal(takeNotice(env, root), null);
+    // A still newer one is said again.
+    await checkForUpdate(env, { fetchJson: catalog("0.3.4"), now: 1000 + UPDATE_CHECK_MS });
+    assert.match(takeNotice(env, root), /0\.3\.4 is out/);
+  });
+
+  test("it looks at most once a day, and never with nonessential traffic turned off", async () => {
+    let asked = 0;
+    const counting = async () => (asked++, { plugins: [{ name: "g1t", version: "0.3.3" }] });
+    await checkForUpdate(env, { fetchJson: counting, now: 1000 });
+    await checkForUpdate(env, { fetchJson: counting, now: 1000 + UPDATE_CHECK_MS - 1 });
+    assert.equal(asked, 1);
+    await checkForUpdate(env, { fetchJson: counting, now: 1000 + UPDATE_CHECK_MS });
+    assert.equal(asked, 2);
+    await checkForUpdate({ ...env, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" }, { fetchJson: counting, now: 1e12 });
+    assert.equal(asked, 2);
+  });
+
+  test("nothing is said for the same or an older version, an unreadable catalog, or a network failure", async () => {
+    for (const fetchJson of [catalog("0.3.0"), catalog("0.2.9"), catalog("latest"), async () => "<html>", async () => Promise.reject(new Error("offline"))]) {
+      rmSync(env.CLAUDE_PLUGIN_DATA, { recursive: true, force: true });
+      await checkForUpdate(env, { fetchJson, now: 1000 });
+      assert.equal(takeNotice(env, root), null);
+    }
+  });
+
+  test("not when auto-update already downloaded it beside this one", async () => {
+    mkdirSync(join(dir, "cache", "0.3.3"));
+    await checkForUpdate(env, { fetchJson: catalog("0.3.3"), now: 1000 });
+    assert.equal(takeNotice(env, root), null);
+  });
+
+  test("a problem that stops recording is said first", async () => {
+    await checkForUpdate(env, { fetchJson: catalog("0.3.3"), now: 1000 });
+    setProblem(env, "signed_out");
+    assert.match(takeNotice(env, root), /not signed in/);
+    assert.match(takeNotice(env, root), /0\.3\.3 is out/);
   });
 });
