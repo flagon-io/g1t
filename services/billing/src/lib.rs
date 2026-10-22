@@ -34,6 +34,7 @@ mod git_edge;
 mod platform;
 mod pricing;
 mod provider_costs;
+mod provider_people;
 mod report;
 mod details;
 mod credits;
@@ -1533,6 +1534,7 @@ mod tests {
         include_str!("../migrations/0066_drop_issue_caps.sql"),
         include_str!("../migrations/0067_provider_costs.sql"),
         include_str!("../migrations/0068_provider_person_costs.sql"),
+        include_str!("../migrations/0069_provider_people.sql"),
     ];
 
     /// The columns of `table` after the migrations: each with whether an

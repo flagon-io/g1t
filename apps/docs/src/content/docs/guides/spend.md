@@ -30,39 +30,54 @@ Someone else's spend leaves out the names of repositories you can't read,
 and their work items, though what was spent there still counts: it shows
 as **Elsewhere**.
 
-## Beside Anthropic's report
+## Beside the providers' reports
 
-With Anthropic's cost report [connected](/guides/usage-and-billing/#provider-cost-reports),
-Spend also says what Anthropic's own Claude Code usage report puts on the
-person for the same days, and how much of it g1t's sessions saw:
+With a provider's reports [connected](/guides/usage-and-billing/#provider-cost-reports),
+Spend also says what that provider puts on the person for the same days,
+one line for each agent it can tell apart, and how much of it g1t's
+sessions saw:
 
-> Anthropic reported $412.80 for your Claude Code in these days. g1t's
+> Anthropic reported $412.80 for your Claude Code use in these days. g1t's
 > sessions saw $338.50 of it (82%).
+>
+> Cursor reported $96.20 for your Cursor use in these days. g1t's sessions
+> saw $71.40 of it (74%).
 
-g1t's figure is the Claude Code rows of the page: **By harness**, **Claude
-Code**. Anthropic's report is matched to the person only through an email
+g1t's figure is that agent's rows of the page: **By harness**, **Claude
+Code** or **Cursor**. A provider's line has no share where g1t has nothing
+to set beside it:
+
+- **OpenAI** reports use of its API by person, and can't tell Codex from
+  any other use of it, so its line gives OpenAI's figure alone. Where
+  OpenAI can't split the organization's costs by person, the line is g1t's
+  list-price estimate from OpenAI's token counts, and says so.
+- **Amp** and **Devin** report their own agents, which g1t doesn't record
+  sessions of: their figure alone.
+- **Devin** reports ACUs, and Devin Desktop credits; they are shown as they
+  are ("125 credits"), never turned into dollars or put beside them.
+
+A provider's figures are matched to the person only through an email
 address they [verified on g1t](/guides/authentication/#email-addresses),
-so a person with none verified there, or who uses Claude Code under
-another address, has no line until they add and verify it under
-**Account settings**, **Emails**. The line shows on your own spend,
-and on someone else's to an owner or billing manager the workspace lets
-see it. Owners who haven't connected Anthropic see a link to connect it.
+so a person with none verified there, or who uses an agent under another
+address, has no line until they add and verify it under **Account
+settings**, **Emails**. The lines show on your own spend, and on someone
+else's to an owner or billing manager the workspace lets see it. Owners
+who haven't connected a provider see a link to connect one.
 
 **Why the figures differ.**
 
 - g1t prices tokens at list price; Anthropic's figure is its own estimate,
-  and can differ. When g1t's comes out higher, Spend says so plainly rather
-  than as a share over 100%.
+  and Cursor's is what each request was charged, so they can differ. When
+  g1t's comes out higher, Spend says so plainly rather than as a share over
+  100%.
 - Sessions that ran without the [g1t plugin](/guides/claude-code-plugin/),
-  or outside the workspace's repositories, are in Anthropic's report but
+  or outside the workspace's repositories, are in the provider's report but
   not in g1t's.
-- Use on a Claude subscription plan rather than the organization's API
-  isn't in Anthropic's report, though g1t's sessions count it at list
-  price.
-- Anthropic's figure arrives about an hour late and is revised for a week,
-  so the last days may still change; Spend says so while they can.
-
-OpenAI's report can't be split by person yet, so Codex has no line like it.
+- Use on a subscription plan rather than the organization's API isn't in
+  Anthropic's report, though g1t's sessions count it at list price.
+  Cursor's figure includes use within the team's plan.
+- Providers' figures arrive up to a few hours late and are revised for a
+  week, so the last days may still change; Spend says so while they can.
 
 ## How a session's cost is worked out
 

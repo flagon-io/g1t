@@ -5,7 +5,7 @@
  * rows, one per day, repository, work item, harness, model and landed;
  * this only groups and sums them. Pure, so it is tested on its own.
  */
-import type { ProviderPersonCosts, SpendRow, SpendVisibility } from "@g1t/contracts";
+import type { CostProvider, CostUnit, ProviderPersonCosts, SpendRow, SpendVisibility } from "@g1t/contracts";
 
 const DAY_MS = 86_400_000;
 
@@ -88,25 +88,76 @@ export function landedShare(costUsd: number, landedUsd: number): number | null {
 /** Dollars as millionths of one, the way `money` takes them. */
 export const usdMicros = (usd: number) => Math.round(usd * 1_000_000);
 
-/** The harness whose per-person report a provider gives, as the rows name it. */
-const REPORTED_HARNESS = "claude_code";
+/** The harnesses g1t records sessions of, among those a provider's per-person rows name: only these are compared. */
+const RECORDED_HARNESSES = new Set(["claude_code", "codex", "cursor", "copilot"]);
+
+/** What each provider's per-person rows say the use was, in a sentence's words: "your Cursor use". */
+export const REPORTED_HARNESS_NAMES: Record<string, string> = {
+  claude_code: "Claude Code",
+  codex: "Codex",
+  cursor: "Cursor",
+  amp: "Amp",
+  openai: "OpenAI API",
+  devin: "Devin",
+  devin_desktop: "Devin Desktop",
+};
 
 /**
- * What the provider reported for a person's Claude Code in the span beside
- * what g1t's sessions of it cost, in millionths of a dollar. `share` is the
- * whole percent g1t saw; null when it saw more than was reported, which is
- * said plainly rather than as a percent over 100.
+ * What one provider reported for a person's use of one harness in the span, in millionths of `unit`, beside what g1t's
+ * sessions of that harness cost. `sawMicros` is null where g1t can't compare: a unit that isn't dollars, or a harness
+ * g1t doesn't record sessions of (Amp, Devin) or the provider can't tell apart (OpenAI's API, Codex or not). `share` is
+ * the whole percent g1t saw; null when it saw more than was reported, which is said plainly rather than as a percent
+ * over 100, or when there is nothing to compare.
  */
-export type ProviderComparison = { reportedMicros: number; sawMicros: number; share: number | null; complete: boolean };
+export type ProviderComparison = {
+  provider: CostProvider;
+  harness: string;
+  unit: CostUnit;
+  /** The provider gave tokens only, and g1t priced them at list price. */
+  listPrice: boolean;
+  reportedMicros: number;
+  sawMicros: number | null;
+  share: number | null;
+  complete: boolean;
+};
 
-/** The comparison, or null when no per-person report is connected or it holds nothing for the span. */
-export function providerComparison(costs: ProviderPersonCosts | null, rows: SpendRow[]): ProviderComparison | null {
-  if (!costs?.connected) return null;
-  const reportedMicros = costs.days.filter((day) => day.harness === REPORTED_HARNESS).reduce((sum, day) => sum + day.micros, 0);
-  if (reportedMicros <= 0) return null;
-  const sawMicros = usdMicros(rows.filter((row) => row.harness === REPORTED_HARNESS).reduce((sum, row) => sum + row.costUsd, 0));
-  const share = sawMicros > reportedMicros ? null : Math.round((sawMicros / reportedMicros) * 100);
-  return { reportedMicros, sawMicros, share, complete: costs.complete };
+/**
+ * Each provider's figure for each harness the person used in the span, most first, dollars before credits. Empty when
+ * no per-person report is connected or none holds anything for the span.
+ */
+export function providerComparisons(costs: ProviderPersonCosts | null, rows: SpendRow[]): ProviderComparison[] {
+  if (!costs?.connected) return [];
+  const groups = new Map<string, ProviderComparison>();
+  for (const day of costs.days) {
+    const unit = day.unit ?? "usd";
+    const key = [day.provider, day.harness, unit].join(" ");
+    const group = groups.get(key) ?? {
+      provider: day.provider,
+      harness: day.harness,
+      unit,
+      listPrice: false,
+      reportedMicros: 0,
+      sawMicros: null,
+      share: null,
+      complete: costs.complete,
+    };
+    group.reportedMicros += day.micros;
+    group.listPrice ||= day.listPrice === true;
+    groups.set(key, group);
+  }
+  const comparisons = [...groups.values()].filter((group) => group.reportedMicros > 0);
+  for (const c of comparisons) {
+    if (c.unit !== "usd" || !RECORDED_HARNESSES.has(c.harness)) continue;
+    c.sawMicros = usdMicros(rows.filter((row) => row.harness === c.harness).reduce((sum, row) => sum + row.costUsd, 0));
+    c.share = c.sawMicros > c.reportedMicros ? null : Math.round((c.sawMicros / c.reportedMicros) * 100);
+  }
+  return comparisons.sort((a, b) => Number(a.unit !== "usd") - Number(b.unit !== "usd") || b.reportedMicros - a.reportedMicros);
+}
+
+/** Credits or ACUs, as millionths of one, in words: "125 credits", "12.5 ACUs". */
+export function unitAmount(micros: number, unit: Exclude<CostUnit, "usd">): string {
+  const amount = (micros / 1_000_000).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  return unit === "credits" ? `${amount} ${amount === "1" ? "credit" : "credits"}` : `${amount} ${amount === "1" ? "ACU" : "ACUs"}`;
 }
 
 /** Who sees each person's spend, besides that person, in a sentence's words. */

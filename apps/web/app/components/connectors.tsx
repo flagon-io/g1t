@@ -21,7 +21,7 @@ import {
 import { type ReactNode, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
-import { type AiProvider, AI_PROVIDERS, type Provider, PROVIDERS } from "@g1t/contracts";
+import { type AiProvider, AI_PROVIDERS, COST_PROVIDERS, type CostProvider, type Provider, PROVIDERS } from "@g1t/contracts";
 import { type ConnectorScope, type ConnectorView, connectorPath } from "@g1t/contracts/connectors";
 
 import { AI_PROVIDER_LOOKS, isEndpoint } from "../lib/ai-providers";
@@ -145,6 +145,18 @@ export function AiProviderMark({ provider, size = 32 }: { provider: AiProvider; 
     brandMark(provider, size) ?? (
       <MarkTile color={look.color} size={size}>
         {isEndpoint(provider) ? <Bot size={size * 0.5} /> : look.mark || monogram(AI_PROVIDERS[provider].label)}
+      </MarkTile>
+    )
+  );
+}
+
+/** A provider whose cost report g1t reads: an AI provider's mark, else its brand's icon, else its initial. */
+export function CostProviderMark({ provider, size = 32 }: { provider: CostProvider; size?: number }) {
+  if (provider === "anthropic" || provider === "openai") return <AiProviderMark provider={provider} size={size} />;
+  return (
+    brandMark(provider, size) ?? (
+      <MarkTile color={null} size={size}>
+        {COST_PROVIDERS[provider].label.slice(0, 1)}
       </MarkTile>
     )
   );
