@@ -25,6 +25,7 @@ import { accessTo } from "../../../../lib/access.server";
 import {
   type SessionNode,
   TOUCH_KINDS,
+  askedText,
   duration,
   endReasonText,
   harnessName,
@@ -520,7 +521,8 @@ function SessionPage({ loaderData, actionData }: Route.ComponentProps) {
   }, []);
 
   const tools = entries.filter((entry) => entry.kind === "tool_call").length;
-  const prompt = entries.find((entry) => entry.kind === "prompt");
+  // What it was asked: the first prompt with words of its own, without what the harness put ahead of them.
+  const prompt = entries.find((entry) => entry.kind === "prompt" && (entry.withheld || askedText(entry.text) !== ""));
   const firstPrompt = prompt?.text;
   const isSubagent = Boolean(session.parentId);
   const parent = isSubagent && root?.id === session.parentId ? root : null;
@@ -788,8 +790,8 @@ function SessionPage({ loaderData, actionData }: Route.ComponentProps) {
 
       {/* The story: what it was asked, how long it worked, and what it came to. */}
       <div className="mt-8 space-y-5">
-        {prompt && !prompt.withheld && prompt.text.trim() && <AskedBubble text={prompt.text} repo={repoAt(base)} />}
-        {isSubagent && session.prompt && (!prompt || prompt.withheld) && <AskedBubble text={session.prompt} repo={repoAt(base)} />}
+        {prompt && !prompt.withheld && <AskedBubble text={askedText(prompt.text)} repo={repoAt(base)} />}
+        {isSubagent && session.prompt && (!prompt || prompt.withheld) && <AskedBubble text={askedText(session.prompt)} repo={repoAt(base)} />}
         <WorkedFor live={live} span={duration(session, now)} tools={tools} open={transcript} onToggle={() => setTranscript((open) => !open)} />
         {answer ? (
           <SessionAnswer text={answer} repo={repoAt(base)} />

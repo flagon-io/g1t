@@ -8,6 +8,8 @@
  */
 import type { Decision, LinkVia, SessionEntry, SessionLink, SessionTouch, WorkSession } from "@g1t/contracts";
 
+import { isAcknowledgement } from "./coordination.ts";
+
 /**
  * What the session came to, in its own words: what it reported, else, once
  * it has ended, the last thing it said. Null while it is still going and
@@ -78,7 +80,8 @@ export function highlights(
       return to ? [{ text: decision.summary, at: decision.createdAt, cite: { kind: "decision", to } }] : [];
     });
   const notes = entries
-    .filter((entry) => entry.kind === "note" && !entry.withheld && entry.text.trim() !== "")
+    // Acknowledging coordination updates is bookkeeping, not something the session did.
+    .filter((entry) => entry.kind === "note" && !entry.withheld && entry.text.trim() !== "" && !isAcknowledgement(entry.text))
     .map((entry): Highlight => ({ text: entry.text.trim(), at: entry.at, cite: { kind: "entry", seq: entry.seq } }));
   // One decision recorded twice (on the pull request and its work item) is one highlight.
   const seen = new Set<string>();

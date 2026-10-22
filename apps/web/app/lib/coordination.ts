@@ -117,8 +117,29 @@ export const TITLE_LIMIT = 80;
 /** A turn the harness starts itself, as a tag: `<command-name>`, `<task-notification>`, one with attributes. */
 const HARNESS_TAG = /^\s*<[a-z][\w-]*(?:\s[^>]*)?>/i;
 
-/** What an editor adds ahead of a prompt, a whole block at a time: `<ide_opened_file>…</ide_opened_file>`. */
-const IDE_CONTEXT = /^\s*<(ide_[a-z_]+|system-reminder)\b[^>]*>[\s\S]*?<\/\1>/i;
+/**
+ * What a harness or an editor adds ahead of a prompt, a whole block at a
+ * time: `<ide_opened_file>…</ide_opened_file>`, `<system-reminder>…`,
+ * Claude Code's `<browser_instruction>…`. Their names have an underscore
+ * or a hyphen, which a tag someone types (`<div>`) does not.
+ */
+const INJECTED = /^\s*<([a-z][a-z0-9]*[_-][a-z0-9_-]*)\b[^>]*>[\s\S]*?<\/\1\s*>/i;
+
+/**
+ * What someone asked, as they typed it: the prompt without the blocks a
+ * harness or an editor put ahead of it. Empty when the prompt was only
+ * those blocks.
+ */
+export function askedText(prompt: string | null | undefined): string {
+  let text = String(prompt ?? "").replace(/^\uFEFF/, "");
+  while (INJECTED.test(text)) text = text.replace(INJECTED, "");
+  return text.trim();
+}
+
+/** A note `g1t session acknowledge` keeps for the coordination updates it took in: bookkeeping, not a highlight. */
+export function isAcknowledgement(text: string): boolean {
+  return /^Coordination updates? upd_/.test(text.trim());
+}
 
 /**
  * What a prompt is for, as a session's title: its first line or sentence,
@@ -134,9 +155,10 @@ export function intentTitle(prompt: string | null | undefined): string | null {
   // pasted text (Claude Code's <pasted_content id="…">…</pasted_content>)
   // and image placeholders ([Image #1], [Image: source: …]) go first.
   text = text.replace(/<pasted_content\b[^>]*>[\s\S]*?(?:<\/pasted_content[^>]*>|$)/gi, "\n").replace(/\[Image(?: #\d+)?(?::[^\]\n]*)?\]/g, " ");
-  // Context an editor puts before what was typed (VS Code's
-  // <ide_opened_file>, <ide_selection>) is not a turn the harness started.
-  while (IDE_CONTEXT.test(text)) text = text.replace(IDE_CONTEXT, "");
+  // Context a harness or an editor puts before what was typed (VS Code's
+  // <ide_opened_file>, Claude Code's <browser_instruction>) is not a turn
+  // the harness started.
+  while (INJECTED.test(text)) text = text.replace(INJECTED, "");
   if (/^\s*\//.test(text) || HARNESS_TAG.test(text)) return null;
   text = text
     .replace(/```[\s\S]*?(```|$)/g, "\n")

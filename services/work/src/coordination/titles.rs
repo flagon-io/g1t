@@ -239,16 +239,19 @@ fn starts_with_tag(text: &str) -> bool {
     false
 }
 
-/// Context an editor puts before what was typed, a whole block at a time.
+/// Context a harness or an editor puts before what was typed, a whole
+/// block at a time: `<ide_opened_file>`, `<system-reminder>`, Claude Code's
+/// `<browser_instruction>`. Their names have an underscore or a hyphen,
+/// which a tag someone types (`<div>`) does not.
 fn drop_leading_context(mut text: String) -> String {
     loop {
         let trimmed = text.trim_start();
         let lower = trimmed.to_ascii_lowercase();
-        let name: String = if lower.starts_with("<ide_") || lower.starts_with("<system-reminder") {
-            lower[1..].chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-').collect()
-        } else {
+        let Some(after) = lower.strip_prefix('<') else { return text };
+        let name: String = after.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-').collect();
+        if !name.starts_with(|c: char| c.is_ascii_alphabetic()) || !name.contains(['_', '-']) {
             return text;
-        };
+        }
         let close = format!("</{name}>");
         match lower.find(&close) {
             Some(end) => text = trimmed[end + close.len()..].to_owned(),
@@ -1130,6 +1133,11 @@ mod tests {
         );
         assert_eq!(intent_title("<ide_selection>const a = 1;</ide_selection>\n<ide_opened_file>a.ts</ide_opened_file>\nrename this").as_deref(), Some("Rename this"));
         assert_eq!(intent_title("<ide_opened_file>a.ts</ide_opened_file>\n/clear"), None);
+        // What Claude Code injects ahead of the prompt is not what it is for.
+        assert_eq!(
+            intent_title("<browser_instruction># Claude in Chrome\n\nUse the tools.</browser_instruction>Fix the sidebar under the app bar").as_deref(),
+            Some("Fix the sidebar under the app bar")
+        );
         for prompt in ["/clear", "/compact keep the plan", "/g1t:status 4", "<command-name>/clear</command-name>", "<local-command-stdout lang=\"en\">ok</local-command-stdout>", "```\ncode only\n```", "?", ""] {
             assert_eq!(intent_title(prompt), None, "{prompt}");
         }

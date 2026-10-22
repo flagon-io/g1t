@@ -5,6 +5,8 @@ import type { Claim, Decision, G1tEvent, WorkSession } from "@g1t/contracts";
 
 import {
   ENDED_BY_HAND,
+  askedText,
+  isAcknowledgement,
   checkHref,
   endReasonText,
   evidenceOf,
@@ -461,4 +463,23 @@ test("a work item's pull requests are linked in the repository that has them, an
   assert.equal(href(7), null, "two repositories have a #7: neither is guessed");
   assert.equal(href(99), null, "unknown");
   assert.equal(href(50), null, "a deleted repository");
+});
+
+test("what someone asked leaves out what the harness or the editor put ahead of it", () => {
+  const injected = "<browser_instruction># Claude in Chrome browser automation\n\nYou have access to browser tools.</browser_instruction>";
+  assert.equal(askedText(`${injected}Alright, what's next on our work items?`), "Alright, what's next on our work items?");
+  assert.equal(
+    askedText("<system-reminder>Codebase instructions</system-reminder>\n<ide_selection>a.ts</ide_selection>\nWhy is the page crashing?"),
+    "Why is the page crashing?",
+  );
+  // Only the blocks: a prompt that was nothing else asks nothing.
+  assert.equal(askedText(injected), "");
+  // A tag someone types is theirs.
+  assert.equal(askedText("<div> renders twice, why?"), "<div> renders twice, why?");
+  assert.equal(intentTitle(`${injected}Fix the sidebar under the app bar`), "Fix the sidebar under the app bar");
+});
+
+test("acknowledging coordination updates is told apart from a note", () => {
+  assert.ok(isAcknowledgement("Coordination updates upd_c62316db756f071acf8fa1bbff: Unrelated session ended"));
+  assert.ok(!isAcknowledgement("The approvals were declined because nobody watched."));
 });
