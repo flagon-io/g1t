@@ -64152,7 +64152,7 @@
           "Cycles"
         ],
         "summary": "Get a cycle and its report",
-        "description": "A cycle and its report: the current cycle without cycle, or the one of that number. `cycle` (its days, state and counts), `items` (its work items: open ones in the plan's order, then closed ones; for a closed cycle also those it carried out, as they are now), `members` (for each of items, in the same order: `added_at`, `added` after the first day, `carried_in`, `carried_out`, whether it is `claimed`, has a `live` session, and its draft, open and merged pull requests), `planned` (the current cycle's: work items in Next planned into the coming cycle) and `next` (the coming cycle's days). Without cycle, refused with `409` while cycles are off.\n\ncycle is a cycle's number, or current for the current one.",
+        "description": "A cycle and its report: the current cycle without cycle, or the one of that number. `cycle` (its days, state and counts), `items` (its work items: open ones in the plan's order, then closed ones; for a closed cycle also those it carried out, as they are now), `members` (for each of items, in the same order: `added_at`, `added` after the first day, `carried_in`, `carried_out`, whether it is `claimed`, has a `live` session, the `agent` behind its newest pull request, and its draft, open and merged pull requests), `planned` (the current cycle's: work items in Next planned into the coming cycle) and `next` (the coming cycle's days). Without cycle, refused with `409` while cycles are off.\n\ncycle is a cycle's number, or current for the current one.",
         "x-operation": "get_cycle",
         "x-mcp-tool": "work_item",
         "x-mcp-action": "get_cycle",
@@ -64324,6 +64324,7 @@
                       "carried_out": false,
                       "claimed": true,
                       "live": true,
+                      "agent": "claude-code",
                       "draft_pulls": 1,
                       "open_pulls": 0,
                       "merged_pulls": 0
@@ -64336,6 +64337,7 @@
                       "carried_out": false,
                       "claimed": false,
                       "live": false,
+                      "agent": null,
                       "draft_pulls": 0,
                       "open_pulls": 0,
                       "merged_pulls": 1

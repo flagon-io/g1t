@@ -17,6 +17,7 @@ import {
   AgentProperty,
   AssigneeProperty,
   BlockedByProperty,
+  CycleProperty,
   LabelsProperty,
   MilestoneProperty,
   ParentPicker,
@@ -93,7 +94,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // The item is what the page is about: without it there is no page.
   // Everything beside it is a part (lib/partial.ts), which says it could
   // not be loaded in its own place when its service fails.
-  const [found, labels, milestones, members, teams, coordination, ended, agentSetup, workProjects] = await Promise.all([
+  const [found, labels, milestones, members, teams, coordination, ended, agentSetup, workProjects, cycles] = await Promise.all([
     work.getWorkItem(workspace, number, viewer),
     part(work.listLabels(workspace, viewer), "Labels"),
     // Open ones to choose from, and the one it is in, with its progress.
@@ -115,6 +116,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     member ? agentSessions.setup(workspace, viewer).catch(() => null) : null,
     // The projects it can be put in, and the one it is in.
     part(work.listProjects(workspace, viewer), "Projects"),
+    // The current and coming cycles, while the workspace has cycles on.
+    part(work.listCycles(workspace, viewer, 0), "Cycles"),
   ]);
   if (!found.ok) {
     // Work items and pull requests share the workspace's numbers: this may be a pull request.
@@ -166,6 +169,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     labels: isFailed(labels) ? labels : labels.ok ? labels.value : [],
     milestones: isFailed(milestones) ? milestones : milestones.ok ? milestones.value : [],
     projects: isFailed(workProjects) ? workProjects : workProjects.ok ? workProjects.value : [],
+    // Off (or not readable as a refusal): no Cycle row, as before cycles.
+    cycles: isFailed(cycles) ? cycles : cycles.ok && cycles.value.current ? { current: cycles.value.current, next: cycles.value.next ?? null } : null,
+    today: new Date().toISOString().slice(0, 10),
     links,
     subscription,
     coordination: isFailed(coordination) ? coordination : coordination.ok ? coordination.value : null,
@@ -309,6 +315,13 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     // The project it is in, from the sidebar's Project (components/projects.tsx): a slug, or "" for none.
     case "project": {
       const result = await work.updateWorkItem(user, workspace, number, { project: String(form.get("project") ?? "").trim() });
+      return result.ok ? null : { error: result.error.message, action: intent };
+    }
+    // Its cycle, from the panel's Cycle (Y) or Shift Y: current, next or none.
+    case "cycle": {
+      const choice = form.get("cycle");
+      if (choice !== "current" && choice !== "next" && choice !== "none") return { error: "Choose a cycle.", action: intent };
+      const result = await work.cycleWorkItem(user, workspace, number, choice);
       return result.ok ? null : { error: result.error.message, action: intent };
     }
     // Its place in the plan, from the sidebar's Plan (components/plan-box.tsx).
@@ -549,6 +562,9 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
   const [panelOpen, setPanelOpen] = useState(false);
   const edit: EditFetcher = useFetcher();
   const claim = useFetcher<{ error?: string } | null>();
+  // Shift Y: shares the Cycle row's fetcher, so the row shows the move at once.
+  const cycleMove = useFetcher<{ error?: string } | null>({ key: "item-cycle" });
+  const cyclesOn = loaderData.cycles != null && !isFailed(loaderData.cycles);
   const toggle = (command: ItemCommand | "repos") => ({
     open: picker === command,
     onOpenChange: (next: boolean) => setPicker(next ? command : null),
@@ -577,6 +593,13 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
         case "project":
         case "milestone":
           return pick(can.triage);
+        case "cycle":
+          return pick(cyclesOn && open);
+        case "cycle-next":
+          if (!cyclesOn || !open || !can.manage_labels || isFailed(loaderData.cycles) || !loaderData.cycles?.next) return false;
+          if (item.cycle === loaderData.cycles.next.number) return true;
+          cycleMove.submit({ action: "cycle", cycle: "next" }, { method: "post" });
+          return true;
         case "plan":
           return pick(can.triage && open);
         case "labels":
@@ -605,7 +628,7 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- what the page allows, and where J and K go
-    [canManage, can.triage, open, viewer, canStart, canClaim, at?.next, at?.previous, item.number],
+    [canManage, can.triage, can.manage_labels, open, viewer, canStart, canClaim, at?.next, at?.previous, item.number, item.cycle, cyclesOn],
   );
   useItemKeys(run);
 
@@ -746,6 +769,20 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
               <SideUnavailable label="Project" what="Projects" />
             ) : (
               <ProjectProperty projects={loaderData.projects} current={item.project} canEdit={can.triage} workspace={workspace} {...toggle("project")} />
+            )}
+            {isFailed(loaderData.cycles) ? (
+              <SideUnavailable label="Cycle" what="Cycles" />
+            ) : (
+              loaderData.cycles && (
+                <CycleProperty
+                  item={item}
+                  cycles={loaderData.cycles}
+                  canEdit={can.manage_labels}
+                  workspace={workspace}
+                  today={loaderData.today}
+                  {...toggle("cycle")}
+                />
+              )
             )}
             <PlanProperty
               item={item}

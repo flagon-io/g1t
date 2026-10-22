@@ -313,6 +313,8 @@ export type CycleMember = {
   carriedOut: boolean;
   claimed: boolean;
   live: boolean;
+  /** The agent behind its newest pull request made in a fork, such as "g1t", whatever that pull request's state. */
+  agent?: string | null;
   draftPulls: number;
   openPulls: number;
   mergedPulls: number;
@@ -336,40 +338,6 @@ export type CycleChoice = "current" | "next" | "none";
 
 /** A change to a workspace's cycles: whichever fields are given. */
 export type CycleSettingsChange = { enabled?: boolean; lengthDays?: number; startsWeekday?: number; cooldownDays?: number };
-
-const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-
-/** The ISO weekday's name: 1 is Monday. */
-export function weekdayName(weekday: number): string {
-  return WEEKDAYS[weekday - 1] ?? "";
-}
-
-/** The days since the Unix epoch of a day (YYYY-MM-DD); NaN for anything else. */
-export function dayNumber(day: string): number {
-  return Math.floor(Date.parse(`${day.slice(0, 10)}T00:00:00Z`) / 86_400_000);
-}
-
-/** The day (YYYY-MM-DD) `number` days after the Unix epoch. */
-export function dayOf(number: number): string {
-  return new Date(number * 86_400_000).toISOString().slice(0, 10);
-}
-
-/** Days left in a cycle on `today`, counting today: 1 on its last day, 0 once over, all of it before it starts. */
-export function cycleDaysLeft(cycle: Pick<Cycle, "startsOn" | "endsOn">, today: string): number {
-  const start = dayNumber(cycle.startsOn);
-  const end = dayNumber(cycle.endsOn);
-  const now = dayNumber(today);
-  if ([start, end, now].some(Number.isNaN)) return 0;
-  return Math.max(0, end - Math.max(now, start) + 1);
-}
-
-/** "Oct 19 – Nov 1", or with the year when the two days are in different years. */
-export function cycleDays(cycle: Pick<Cycle, "startsOn" | "endsOn">): string {
-  const day = (text: string, year: boolean) =>
-    new Date(`${text}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", ...(year ? { year: "numeric" } : {}), timeZone: "UTC" });
-  const years = cycle.startsOn.slice(0, 4) !== cycle.endsOn.slice(0, 4);
-  return `${day(cycle.startsOn, years)} – ${day(cycle.endsOn, years)}`;
-}
 
 /**
  * A move in the plan (`planWorkItem`): whichever fields are given change.

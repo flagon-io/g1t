@@ -40,8 +40,9 @@ test("each property has its key, and the page's keys are letters alone", () => {
   assert.equal(itemCommandOf({ key: "Enter" }, false), null);
 });
 
-test("Shift C closes, and Shift with any other letter does nothing", () => {
+test("Shift C closes, Shift Y moves to the next cycle, and Shift with any other letter does nothing", () => {
   assert.equal(itemCommandOf({ key: "C", shiftKey: true }, false), "close");
+  assert.equal(itemCommandOf({ key: "Y", shiftKey: true }, false), "cycle-next");
   assert.equal(itemCommandOf({ key: "c" }, false), null);
   assert.equal(itemCommandOf({ key: "A", shiftKey: true }, false), null);
 });
@@ -56,12 +57,13 @@ test("no key fires while typing, with a modifier held, or held down", () => {
 });
 
 test("every command the keys give is listed for the shortcuts dialog", () => {
-  for (const key of "aphmlbdeijk") {
+  for (const key of "aphmlbdeijky") {
     const command = itemCommandOf({ key }, false);
     assert.ok(command && ITEM_KEYS.some((one) => one.command === command), key);
     assert.equal(keyFor(command!), key.toUpperCase());
   }
   assert.equal(keyFor("close"), "Shift C");
+  assert.equal(keyFor("cycle-next"), "Shift Y");
 });
 
 test("the list an item was opened from travels in its link's state and comes back clean", () => {

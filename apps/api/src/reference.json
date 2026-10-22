@@ -2043,6 +2043,7 @@
           "carried_out": false,
           "claimed": true,
           "live": true,
+          "agent": "claude-code",
           "draft_pulls": 1,
           "open_pulls": 0,
           "merged_pulls": 0
@@ -2055,6 +2056,7 @@
           "carried_out": false,
           "claimed": false,
           "live": false,
+          "agent": null,
           "draft_pulls": 0,
           "open_pulls": 0,
           "merged_pulls": 1

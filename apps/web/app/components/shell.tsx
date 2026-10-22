@@ -68,6 +68,7 @@ import {
   Star,
   House,
   Ticket,
+  Timer,
   TrendingUp,
   UserPlus,
   UserRoundKey,
@@ -174,6 +175,7 @@ import { OwnPresenceDot, OwnPresenceItems, StatusDialog } from "./presence";
 import { THEME_COMMANDS, ThemeMenuSwitch } from "./theme-switch";
 import { newItemPath, repoWorkPath, sessionsPath, workPath } from "../lib/work-items";
 import { HEALTH_LABELS, projectPath, projectsJsonPath, projectsPath } from "../lib/projects";
+import { type SidebarCycle, cycleJsonPath, cyclePath } from "../lib/cycle-paths";
 import { HealthDot, ProjectMark } from "./projects";
 
 /**
@@ -1485,6 +1487,7 @@ const WORKSPACE_PAGE_ICONS: Record<string, ReactNode> = {
   secrets: <Lock size={15} />,
   webhooks: <Webhook size={15} />,
   "chat-settings": <MessagesSquare size={15} />,
+  "work-settings": <Timer size={15} />,
   emoji: <Smile size={15} />,
   "security-settings": <Shield size={15} />,
   guardrails: <Gauge size={15} />,
@@ -1596,6 +1599,7 @@ function WorkSidebar({ slug, username }: { slug: string; username: string }) {
           <SidebarLink to={workPath(slug)} icon={<ListOrdered size={15} />} current={path === workPath(slug)}>
             Plan
           </SidebarLink>
+          <WorkCycleRow slug={slug} current={at("cycle") || at("cycles")} />
           <SidebarLink to={workPath(slug, "board")} icon={<Columns3 size={15} />} current={at("board")}>
             Board
           </SidebarLink>
@@ -1622,6 +1626,34 @@ function WorkSidebar({ slug, username }: { slug: string; username: string }) {
         <WorkProjectsGroup slug={slug} />
       </nav>
     </div>
+  );
+}
+
+/**
+ * Work's current cycle, while the workspace has cycles on: "Cycle 14",
+ * the days left and how much is done, to its page. Read by the sidebar
+ * itself (routes/workspace/work/cycle-json.ts), once per workspace and
+ * again after any form on the site is sent; left out while cycles are off
+ * or when it could not be read.
+ */
+function WorkCycleRow({ slug, current }: { slug: string; current: boolean }) {
+  const fetcher = useFetcher<{ cycle: SidebarCycle | null }>({ key: `work-cycle:${slug}` });
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data === undefined) fetcher.load(cycleJsonPath(slug));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug]);
+  const cycle = fetcher.data?.cycle;
+  if (!cycle) return null;
+  return (
+    <SidebarLink to={cyclePath(slug)} icon={<Timer size={15} />} current={current}>
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="shrink-0">Cycle {cycle.number}</span>
+        <span className="min-w-0 truncate text-xs text-faint">{cycle.left}</span>
+        <span className="ml-auto shrink-0 font-mono text-xs tabular-nums text-muted" aria-label={`${cycle.done} of ${cycle.scope} done`}>
+          {cycle.done}/{cycle.scope}
+        </span>
+      </span>
+    </SidebarLink>
   );
 }
 

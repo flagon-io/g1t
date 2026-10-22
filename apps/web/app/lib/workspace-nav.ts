@@ -103,6 +103,11 @@ export const WORKSPACE_SETTINGS_GROUPS: readonly WorkspaceSettingsGroup[] = [
     ],
   },
   {
+    key: "work",
+    title: "Work",
+    pages: [{ key: "work-settings", label: "Work settings", path: "settings/work" }],
+  },
+  {
     key: "chat",
     title: "Chat",
     pages: [

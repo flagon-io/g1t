@@ -189,6 +189,7 @@ export default [
       route("-/settings", "routes/workspace/settings.tsx"),
       // What members may do in chat: channels, emoji, default channels.
       route("-/settings/chat", "routes/workspace/chat-settings.tsx"),
+      route("-/settings/work", "routes/workspace/work-settings.tsx"),
       route("-/repositories", "routes/workspace/repositories.tsx"),
       // Chat mode: channels by name, direct messages by id, and what the page
       // calls as it runs: the live socket and the JSON for sending and reading.
@@ -289,6 +290,13 @@ export default [
       route("-/work/projects.json", "routes/workspace/work/projects-json.ts"),
       route("-/work/projects/:slug", "routes/workspace/work/project.tsx"),
       route("-/work/projects/:slug/items", "routes/workspace/work/project-items.tsx"),
+      // Cycles: the current one (what Now is while cycles are on), planning
+      // the next, the sidebar's row, and each past one with its report.
+      route("-/work/cycle", "routes/workspace/work/cycle.tsx"),
+      route("-/work/cycle.json", "routes/workspace/work/cycle-json.ts"),
+      route("-/work/cycle/plan", "routes/workspace/work/cycle-plan.tsx"),
+      route("-/work/cycles", "routes/workspace/work/cycles-index.ts"),
+      route("-/work/cycles/:number", "routes/workspace/work/cycle.tsx", { id: "routes/workspace/work/cycle-number" }),
       // Work items to choose from in a work item's pickers, and the plan's order for J and K.
       route("-/work/items.json", "routes/workspace/work/items-json.ts"),
       route("-/work/ref/:number", "routes/workspace/work/ref.ts"),

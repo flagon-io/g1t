@@ -87,6 +87,7 @@ const MEMBERS: &str = "SELECT w.number, w.cycle_added_at AS added_at, w.cycle_nu
    EXISTS (SELECT 1 FROM cycle_carries k WHERE k.workspace = ?1 AND k.cycle_number = ?2 AND k.item_number = w.number) AS carried_out,
    EXISTS (SELECT 1 FROM claims cl WHERE cl.item_id = w.id AND cl.state = 'active' AND cl.expires_at > ?3) AS claimed,
    EXISTS (SELECT 1 FROM sessions s WHERE s.item_id = w.id AND s.state = 'active') AS live,
+   (SELECT p.agent FROM pulls p WHERE p.item_id = w.id AND p.fork_repo_id IS NOT NULL ORDER BY p.created_at DESC LIMIT 1) AS agent,
    (SELECT count(*) FROM pulls p WHERE p.item_id = w.id AND p.status = 'draft') AS draft_pulls,
    (SELECT count(*) FROM pulls p WHERE p.item_id = w.id AND p.status = 'open') AS open_pulls,
    (SELECT count(*) FROM pulls p WHERE p.item_id = w.id AND p.status = 'merged') AS merged_pulls
@@ -290,6 +291,8 @@ struct MemberRow {
     #[serde(default)]
     live: u8,
     #[serde(default)]
+    agent: Option<String>,
+    #[serde(default)]
     draft_pulls: u32,
     #[serde(default)]
     open_pulls: u32,
@@ -311,6 +314,7 @@ impl From<MemberRow> for CycleMember {
             carried_out: row.carried_out != 0,
             claimed: row.claimed != 0,
             live: row.live != 0,
+            agent: row.agent.filter(|agent| !agent.is_empty()),
             draft_pulls: row.draft_pulls,
             open_pulls: row.open_pulls,
             merged_pulls: row.merged_pulls,

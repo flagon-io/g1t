@@ -205,6 +205,10 @@ pub struct CycleMember {
     /// A session on it has not ended.
     #[serde(default)]
     pub live: bool,
+    /// The agent behind its newest pull request made in a fork, such as
+    /// `g1t` or `claude-code`, whatever that pull request's state.
+    #[serde(default)]
+    pub agent: Option<String>,
     /// Its own pull requests, by status.
     #[serde(default)]
     pub draft_pulls: u32,
