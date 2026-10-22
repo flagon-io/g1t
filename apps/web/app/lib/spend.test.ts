@@ -73,6 +73,11 @@ test("rows sum by what they went into, the costliest first and none last among e
     ["haiku", "sonnet", null],
   );
   assert.deepEqual(spendBy([], "repo"), []);
+  // Only sessions of no known cost: nothing to show.
+  assert.deepEqual(
+    spendBy([row({ item: 3, costUsd: 0 }), row({ item: 4, costUsd: 0.004 }), row({ item: 5, costUsd: 0.01 })], "item").map((group) => group.key),
+    [5],
+  );
 });
 
 test("the landed share is a whole percent of something spent", () => {
