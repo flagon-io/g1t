@@ -759,8 +759,12 @@ pub struct FileDiff {
     pub status: FileStatus,
     pub additions: u32,
     pub deletions: u32,
-    /// True when the file is binary or too large, so no lines are shown.
+    /// True when the file is binary, so no lines are shown and none counted.
     pub binary: bool,
+    /// True when the file is text too large to compare (or too much of a
+    /// large one changed), so no lines are shown and none counted.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub too_large: bool,
     pub hunks: Vec<Hunk>,
     /// True when the comparison reached its limit on lines before this
     /// file, so it is listed without its lines (and with no counts): ask

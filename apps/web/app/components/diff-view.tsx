@@ -583,8 +583,12 @@ function FileSection({
               {comments.length}
             </span>
           )}
-          {/* Not counted until its lines are read: one the comparison left out. */}
-          {!(deferred && deferred.lines == null && !ready) && <Stat additions={file.additions} deletions={file.deletions} />}
+          {/* Not counted until its lines are read (one the comparison left out), nor ever when binary or too large. */}
+          {file.binary || file.too_large ? (
+            <span className="shrink-0 text-xs text-faint">{file.binary ? "Binary" : "Too large to compare"}</span>
+          ) : (
+            !(deferred && deferred.lines == null && !ready) && <Stat additions={file.additions} deletions={file.deletions} />
+          )}
           {fileBase && file.status !== "deleted" && (
             <span className="hidden items-center gap-0.5 text-xs sm:flex">
               <Link to={`${fileBase}/${file.path}`} className="rounded px-1.5 py-0.5 text-muted hover:bg-raised hover:text-fg">
@@ -626,8 +630,20 @@ function FileSection({
               />
             ) : deferred && got?.file === null ? (
               <p className="px-4 py-6 text-sm text-muted">This file is no longer part of the change; reload the page to see it as it is now.</p>
-            ) : file.binary ? (
-              <p className="px-4 py-6 text-sm text-muted">Binary or large file; its contents are not shown.</p>
+            ) : file.binary || file.too_large ? (
+              <p className="px-4 py-6 text-sm text-muted">
+                {file.binary
+                  ? "Binary file; its contents are not shown."
+                  : "Too large, or too much of it changed, to compare line by line here."}
+                {fileBase && file.status !== "deleted" && (
+                  <>
+                    {" "}
+                    <Link to={`${fileBase}/${file.path}`} className="text-accent hover:underline">
+                      View the file
+                    </Link>
+                  </>
+                )}
+              </p>
             ) : file.hunks.length === 0 ? (
               <p className="px-4 py-6 text-sm text-muted">No line changes{file.status === "added" ? ": an empty file" : ""}.</p>
             ) : (
@@ -735,9 +751,12 @@ export function DiffView({
   empty,
   fileBase,
   repo,
+  actions,
 }: {
   comparison: Comparison | HighlightedComparison;
   review?: LineReview;
+  /** At the end of the toolbar, which stays in sight: a pull request's review buttons. */
+  actions?: React.ReactNode;
   /** What to say when nothing changed. */
   empty?: React.ReactNode;
   /** Where each file can be read as of the change, to link to it. */
@@ -903,8 +922,9 @@ export function DiffView({
   const additions = files.reduce((sum, file) => sum + file.additions, 0);
   const deletions = files.reduce((sum, file) => sum + file.deletions, 0);
   const allCollapsed = files.every((file) => collapsed.has(file.path));
-  // Files the comparison left out have no counts until they are read.
-  const uncounted = files.filter((file) => file.omitted).length;
+  // Files the comparison left out have no counts until they are read; binary
+  // and too large ones have none.
+  const uncounted = files.filter((file) => file.omitted || file.binary || file.too_large).length;
   return (
     <div ref={frame}>
       <div ref={toolbar} className="sticky top-(--topbar-h) z-30 -mx-1 mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 bg-bg/90 px-1 py-2 backdrop-blur">
@@ -968,6 +988,7 @@ export function DiffView({
               </button>
             ))}
           </div>
+          {actions}
         </div>
       </div>
       {files.length > 1 && (

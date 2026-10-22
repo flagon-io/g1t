@@ -1,6 +1,6 @@
 import { Bot, CircleCheck, CircleSlash, Pencil, Trash2 } from "lucide-react";
-import { type CSSProperties, Fragment, type ReactNode } from "react";
-import { Form, Link } from "react-router";
+import { type CSSProperties, Fragment, type ReactNode, useEffect, useRef, useState } from "react";
+import { Form, Link, useNavigation } from "react-router";
 
 import type { AgentRef, Comment, Pull, State, WorkItem } from "@g1t/contracts";
 
@@ -34,6 +34,7 @@ import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { CheckboxOption } from "./ui/checkbox";
 import { Hint } from "./ui/hint";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { UserCard } from "./user-card";
 
 export { ItemIcon, PullIcon };
@@ -711,6 +712,69 @@ export function CommentForm({
         </div>
       </Form>
     </div>
+  );
+}
+
+/**
+ * Approving or requesting changes from where the reviewer is (the changes,
+ * the merge box), not only under the comments: a button that opens a note
+ * and the two verdicts. Approving needs no note; asking for changes does.
+ */
+export function ReviewButton({ mine, asked }: { mine: "approve" | "request_changes" | null; asked: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const navigation = useNavigation();
+  const sent = useRef(false);
+  // Closed once the review it sent has landed and the page has it.
+  useEffect(() => {
+    if (sent.current && navigation.state === "idle") {
+      sent.current = false;
+      setOpen(false);
+      setNote("");
+    }
+  }, [navigation.state]);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" size="xs" variant={asked && !mine ? "accent" : "outline"} className={mine ? "font-normal" : undefined}>
+          {mine === "approve" ? (
+            <>
+              <CircleCheck size={13} className="text-success" /> Approved
+            </>
+          ) : mine === "request_changes" ? (
+            <>
+              <CircleSlash size={13} className="text-danger" /> Changes requested
+            </>
+          ) : (
+            "Review"
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent side="bottom" align="end" sideOffset={6} aria-label="Review" className="w-80 p-3">
+        <Form method="post" className="space-y-2" onSubmit={() => (sent.current = true)}>
+          <input type="hidden" name="action" value="comment" />
+          <MentionTextarea name="body" rows={3} value={note} onChange={(event) => setNote(event.currentTarget.value)} placeholder="A note (needed to request changes)" />
+          <div className="flex flex-wrap gap-2">
+            <SubmitButton size="sm" variant="accent" name="verdict" value="approve" match={{ action: "comment" }} pending="Approving…">
+              <CircleCheck size={14} />
+              Approve
+            </SubmitButton>
+            <SubmitButton
+              size="sm"
+              variant="outline"
+              name="verdict"
+              value="request_changes"
+              match={{ action: "comment" }}
+              pending="Requesting…"
+              disabled={!note.trim()}
+            >
+              <CircleSlash size={14} className="text-danger" />
+              Request changes
+            </SubmitButton>
+          </div>
+        </Form>
+      </PopoverContent>
+    </Popover>
   );
 }
 

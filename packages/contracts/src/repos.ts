@@ -557,8 +557,13 @@ export type FileDiff = {
   status: "added" | "modified" | "deleted";
   additions: number;
   deletions: number;
-  /** True when the file is binary or too large, so no lines are shown. */
+  /** True when the file is binary, so no lines are shown and none counted. */
   binary: boolean;
+  /**
+   * True when the file is text too large to compare (or too much of a large
+   * one changed), so no lines are shown and none counted.
+   */
+  too_large?: boolean;
   hunks: Hunk[];
   /**
    * True when the comparison reached its limit on lines before this file,
