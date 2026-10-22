@@ -44,7 +44,6 @@ import {
   type StatusAdminApi,
   type StatusAuditEntry,
   type StatusBoard,
-  billingClient,
   fail,
   ok,
 } from "@g1t/contracts";
@@ -103,7 +102,7 @@ import {
 } from "./incidents.ts";
 import { INCIDENT_STATUS, type PageModel, SLOW_MS, buildPage, classify, underMaintenance } from "./model.ts";
 import { stamp } from "./postmortem.ts";
-import { type StorageReport, probe } from "./probe.ts";
+import { type StorageReport, limit, probe } from "./probe.ts";
 import { readZone } from "./time.ts";
 import {
   FAVICON,
@@ -232,36 +231,63 @@ function emailOn(env: Env): boolean {
 }
 
 /** Git storage's last five minutes, from the repos service (`store_health`). */
-async function storeHealth(repos: Fetcher): Promise<StorageReport> {
+async function storeHealth(repos: Fetcher, signal: AbortSignal): Promise<StorageReport> {
   const response = await repos.fetch("https://service/rpc/store_health", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ minutes: 5 }),
+    signal,
   });
   if (!response.ok) throw new Error(`store_health failed with status ${response.status}`);
   return (await response.json()) as StorageReport;
 }
+
+/**
+ * Billing's price book, as `billingClient(...).prices()` asks for it, but
+ * given up on when the check is.
+ */
+async function prices(billing: Fetcher, signal: AbortSignal): Promise<unknown> {
+  const response = await billing.fetch("https://service/rpc/prices", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+    signal,
+  });
+  if (!response.ok) throw new Error(`prices failed with status ${response.status}`);
+  return response.json();
+}
+
+/** How many of a round's requests wait on an answer at once: Workers' own limit. */
+const AT_ONCE = 6;
 
 /** One round of checks, kept. Parts under maintenance are checked but not tallied. */
 export async function checkAll(env: Env, now = new Date()): Promise<Observation[]> {
   const billing = env.BILLING;
   const repos = env.REPOS;
   const list = parts(env);
-  const results = await Promise.all(
-    list.map(async (info) => {
-      // A slow answer is asked again at once before it counts (probe.ts `probe`).
-      const result = await probe(
-        info.check,
-        {
-          fetch: (url, init) => fetch(url, init),
-          billing: billing ? () => billingClient(billing).prices() : null,
-          storage: repos ? () => storeHealth(repos) : null,
-        },
-        info.slowMs ?? SLOW_MS,
-      );
-      return { info, result };
-    }),
+  // The checks through a binding ask first: they reach the services
+  // nothing else checks so directly, and wait behind nobody (probe.ts `limit`).
+  const gate = limit(AT_ONCE);
+  const order = [...list].sort((a, b) => Number(a.check.kind === "http") - Number(b.check.kind === "http"));
+  const asked = new Map(
+    await Promise.all(
+      order.map(async (info) => {
+        // A slow answer is asked again at once before it counts (probe.ts `probe`).
+        const result = await probe(
+          info.check,
+          {
+            fetch: (url, init) => fetch(url, init),
+            billing: billing ? (signal) => prices(billing, signal) : null,
+            storage: repos ? (signal) => storeHealth(repos, signal) : null,
+            gate,
+          },
+          info.slowMs ?? SLOW_MS,
+        );
+        return [info.key, result] as const;
+      }),
+    ),
   );
+  const results = list.map((info) => ({ info, result: asked.get(info.key) ?? null }));
   // Checks through a binding have no cf-ray of their own: they ran where the others did.
   const roundColo = results.find((r) => r.result?.colo)?.result?.colo ?? null;
   const observations = results.map(({ info, result }): Observation => {
