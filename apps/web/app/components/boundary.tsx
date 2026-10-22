@@ -14,16 +14,34 @@ export function Unavailable({ what, compact = false }: { what: string; compact?:
       <p className="flex items-center gap-1.5 text-xs text-muted">
         <TriangleAlert size={12} className="shrink-0 text-warn" />
         {what} could not be loaded just now.
+        <TryAgain />
       </p>
     );
   }
   return (
-    <Card asChild tone="plain" className="flex items-center gap-2 border-dashed px-4 py-5 text-sm text-muted">
+    <Card asChild tone="plain" className="flex flex-wrap items-center gap-2 border-dashed px-4 py-5 text-sm text-muted">
       <p>
         <TriangleAlert size={14} className="text-warn" />
-        {what} could not be loaded just now. It will be back on the next refresh.
+        {what} could not be loaded just now.
+        <TryAgain />
       </p>
     </Card>
+  );
+}
+
+/** Loads the page's data again in place: what a section that could not be loaded offers. */
+function TryAgain() {
+  const revalidator = useRevalidator();
+  const busy = revalidator.state !== "idle";
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => void revalidator.revalidate()}
+      className="text-accent underline-offset-4 hover:underline disabled:text-faint disabled:no-underline"
+    >
+      {busy ? "Trying again…" : "Try again"}
+    </button>
   );
 }
 
