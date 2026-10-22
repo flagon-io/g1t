@@ -45,6 +45,7 @@ import { getViewer, roleIn, unwrap } from "../../../lib/session.server";
 import { onItemSessionTitle, runsIn, sessionHref } from "../../../lib/sessions";
 import { useWorkspaceLive } from "../../../lib/use-repo-live";
 import { itemPath, newItemPath, repoFilter, shortPath, workPath } from "../../../lib/work-items";
+import { type WorkTrail, trailState } from "../../../lib/work-trail";
 
 export function meta({ params, location, ...args }: Route.MetaArgs) {
   const repo = new URLSearchParams(location.search).get("repo");
@@ -193,13 +194,18 @@ function PlanMarks({ item }: { item: WorkItem }) {
   );
 }
 
-function ItemCard({ card, workspace }: { card: BoardCard; workspace: string }) {
+function ItemCard({ card, workspace, trail }: { card: BoardCard; workspace: string; trail: WorkTrail }) {
   const { item } = card;
   const marks = item.state === "open" && (item.urgent || item.horizon === "now" || item.appetite);
   return (
     <li>
       <Card className="flex flex-col gap-2 p-3 transition-colors hover:border-line-strong">
-        <Link to={itemPath(workspace, item.number)} prefetch="intent" className="flex min-w-0 items-start gap-2 text-sm font-medium hover:text-accent">
+        <Link
+          to={itemPath(workspace, item.number)}
+          state={trailState(trail)}
+          prefetch="intent"
+          className="flex min-w-0 items-start gap-2 text-sm font-medium hover:text-accent"
+        >
           <span className="mt-0.5">
             <ItemIcon item={item} size={14} />
           </span>
@@ -231,6 +237,8 @@ function ItemCard({ card, workspace }: { card: BoardCard; workspace: string }) {
 
 function Column({ stage, board, workspace }: { stage: Stage; board: Board; workspace: string }) {
   const cards = board[stage];
+  // The board left to right, for J and K on each item's page.
+  const trail = { numbers: STAGES.flatMap((one) => board[one].map((card) => card.item.number)), label: "Board", href: workPath(workspace, "board") };
   return (
     <section aria-label={STAGE_INFO[stage].label} className="flex min-w-0 flex-col">
       <h2 className="mb-2 flex items-center justify-between gap-2 px-1 text-xs font-medium text-muted">
@@ -244,7 +252,7 @@ function Column({ stage, board, workspace }: { stage: Stage; board: Board; works
       ) : (
         <ol className="space-y-2">
           {cards.map((card) => (
-            <ItemCard key={card.item.id} card={card} workspace={workspace} />
+            <ItemCard key={card.item.id} card={card} workspace={workspace} trail={trail} />
           ))}
         </ol>
       )}

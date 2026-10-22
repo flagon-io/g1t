@@ -780,7 +780,9 @@ keyboard's shortcuts, and signing out. Press <kbd>Ctrl</kbd> <kbd>K</kbd>
 text field to see the keyboard's shortcuts; <kbd>/</kbd> is search. In
 Chat, <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>O</kbd> (<kbd>⇧</kbd>
 <kbd>⌘</kbd> <kbd>O</kbd> on a Mac) starts a [new chat with
-g1t](/guides/chat/#start-a-conversation-with-g1t).
+g1t](/guides/chat/#start-a-conversation-with-g1t). On a work item's
+page, single keys change its properties: see
+[its keys](/work/work-items/#keys).
 
 ### Appearance
 

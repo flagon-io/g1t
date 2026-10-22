@@ -604,6 +604,9 @@ export function workClient(service: ServiceBinding): WorkApi {
         state: filter.state ?? null,
         item: filter.item ?? null,
       }),
+    claimWorkItem: (actor, workspace, number, note) => call("claim_work_item", { actor, workspace, number, ...(note ? { note } : {}) }),
+    releaseClaim: (actor, workspace, number) => call("release_claim", { actor, workspace, number }),
+    handOffWorkItem: (actor, workspace, number, note, to) => call("hand_off_work_item", { actor, workspace, number, note, ...(to ? { to } : {}) }),
     listWorkSessions: (repo, viewer, filter = {}) =>
       call("list_work_sessions", {
         repo,

@@ -30,6 +30,7 @@ import {
 import { onItemSessionTitle, runsIn, sessionHref } from "../lib/sessions";
 import { timeAgo } from "../lib/time-ago";
 import { itemPath } from "../lib/work-items";
+import { type WorkTrail, trailState } from "../lib/work-trail";
 
 /** A work item's appetite as its letter in a small square, with what it means on hover. */
 export function AppetiteChip({ appetite }: { appetite: Appetite }) {
@@ -262,6 +263,7 @@ export function PlanRow({
   menu,
   progress,
   depth = 0,
+  trail,
 }: {
   item: WorkItem;
   rank: number | null;
@@ -274,6 +276,8 @@ export function PlanRow({
   progress?: Standing;
   /** How deep it sits under a parent shown above it, when the plan groups sub-items. */
   depth?: number;
+  /** The list it is in, for J and K on its page. */
+  trail?: WorkTrail | null;
 }) {
   const quiet = progress?.quiet ?? false;
   const family = item.parent != null || item.subItemProgress != null;
@@ -307,6 +311,7 @@ export function PlanRow({
         {/* One line on a computer; two on a phone, where the title has less room. */}
         <Link
           to={itemPath(workspace, item.number)}
+          state={trailState(trail ?? null)}
           prefetch="intent"
           className="line-clamp-2 min-w-0 text-sm font-medium wrap-break-word hover:text-accent sm:line-clamp-1"
         >

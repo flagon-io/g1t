@@ -1,58 +1,52 @@
-import { Bot, Check, CircleDashed, CornerLeftUp, ExternalLink, GitCommitHorizontal, GitMerge, Lightbulb, Plus, X } from "lucide-react";
-import { useState } from "react";
-import { Form, Link, data, redirect } from "react-router";
+import { ChevronDown, ExternalLink, MessagesSquare, FolderKanban } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Link, data, redirect, useFetcher, useLocation, useNavigate } from "react-router";
 
-import {
-  AGENT_MODES,
-  type ItemRepo,
-  type LinkRole,
-  type Pull,
-  PROVIDERS,
-  REACTIONS,
-  type SuggestedTarget,
-  type WorkPull,
-  type WorkRepo,
-  missingTargets,
-  workOwner,
-} from "@g1t/contracts";
+import { AGENT_MODES, type ItemRepo, PROVIDERS, REACTIONS, type WorkPull, type WorkRepo, missingTargets, workOwner } from "@g1t/contracts";
 
 import type { Route } from "./+types/item";
 import { excerpt, page } from "../../../lib/meta";
-import { Markdown } from "../../../components/markdown";
-import { CopyLine, EmptyState, ErrorText, Input, SubmitButton, TimeAgo } from "../../../components/ui";
+import { ErrorText, TimeAgo } from "../../../components/ui";
 import { Avatar } from "../../../components/ui/avatar";
-import { Button } from "../../../components/ui/button";
-import { Card } from "../../../components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../../../components/ui/dialog";
-import { Hint } from "../../../components/ui/hint";
-import { SelectField } from "../../../components/ui/select";
-import { CheckBadge } from "../../../components/checks";
-import { LabelChip, LabelsBox, MilestoneBox } from "../../../components/labels";
-import { ProjectBox } from "../../../components/projects";
-import { PlanBox } from "../../../components/plan-box";
-import { Assignee, ChangeSize, CommentForm, CommentList, ItemState, PeoplePicker, PersonLink, PullIcon, plainText } from "../../../components/work";
+import { PersonLink, ItemState } from "../../../components/work";
 import { AttachImages } from "../../../components/attach-images";
-import { RoleBadge } from "../../../components/work-items";
-import { DetailsDisclosure, detailsSummary } from "../../../components/details-disclosure";
-import { DecisionList, IntegrationFailure, ItemWorkPanel, StartSessionDialog, TimelineSession } from "../../../components/coordination";
-import { Reactions } from "../../../components/reactions";
+import { inTextField } from "../../../components/command-palette";
+import { ActivityStream, DecisionsFold, activityLine } from "../../../components/item-activity";
+import { ItemCrumbs, ItemBody, ItemMenu, ItemStepper, ItemTitle, OpenPullDialog, StartAgentButton, type EditFetcher } from "../../../components/item-header";
+import {
+  AgentProperty,
+  AssigneeProperty,
+  BlockedByProperty,
+  LabelsProperty,
+  MilestoneProperty,
+  ParentPicker,
+  PlanProperty,
+  ProjectProperty,
+  PropertyRow,
+  ReposProperty,
+  StageProperty,
+} from "../../../components/item-properties";
+import { ItemWorkSection } from "../../../components/item-work";
 import { SubscriptionBox } from "../../../components/notifications";
+import { CloseDialog, SubItemsSection } from "../../../components/sub-items";
+import { Unavailable } from "../../../components/boundary";
+import { blockerDetail } from "../../../components/coordination";
 import { subscriptionFromForm } from "../../../lib/inbox";
-import { Boundary, Unavailable } from "../../../components/boundary";
 import { notFound } from "../../../lib/not-found.server";
-import { openedBy } from "../../../lib/opened-by";
 import { taskCheckOf } from "../../../lib/task-check";
 import { agentSessions, identity, inbox, integrations, repos, work } from "../../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../../lib/session.server";
 import { useRefreshWhile } from "../../../lib/refresh";
 import { isFailed, part } from "../../../lib/partial";
-import { parseBlockedBy, pullHrefs, resolutionOf } from "../../../lib/coordination";
+import { feedLine, harnessName, mergeSessions, parseBlockedBy, pullHrefs, resolutionOf } from "../../../lib/coordination";
+import { cn } from "../../../lib/cn";
 import { planInput } from "../../../lib/plan";
+import { projectPath } from "../../../lib/projects";
 import { refPath } from "../../../lib/refs.server";
 import { itemAbilities } from "../../../lib/work-access";
+import { type ItemCommand, type WorkTrail, itemCommandOf, itemStage, neighbours, trailOf, trailState } from "../../../lib/work-item-page";
 import {
   LINK_ROLES,
-  ROLE_LABELS,
   closeSubItemsOf,
   itemNumberOf,
   itemPath,
@@ -60,10 +54,10 @@ import {
   originOf,
   repoFilter,
   sessionPath,
+  sessionsPath,
   shortPath,
   workPath,
 } from "../../../lib/work-items";
-import { CloseButton, SubItemsSection } from "../../../components/sub-items";
 import { workspaceProjects } from "../../../lib/workspace-projects.server";
 import { workPages } from "../../../lib/repo-live";
 import { useWorkspaceLive } from "../../../lib/use-repo-live";
@@ -338,6 +332,31 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       const result = await work.reopenWorkItem(user, workspace, number);
       return result.ok ? null : { error: result.error.message };
     }
+    // Its title and description, edited in place (E).
+    case "edit": {
+      const title = String(form.get("title") ?? "").trim();
+      if (!title) return { error: "Give it a title.", action: intent };
+      const result = await work.updateWorkItem(user, workspace, number, { title, body: String(form.get("body") ?? "") });
+      return result.ok ? { edited: true } : { error: result.error.message, action: intent };
+    }
+    // Claiming it from the site (I), with no harness: it lapses unless renewed; releasing or handing off your claim.
+    case "claim": {
+      const result = await work.claimWorkItem(user, workspace, number);
+      return result.ok ? { claimed: true } : { error: result.error.message, action: intent };
+    }
+    case "release": {
+      const result = await work.releaseClaim(user, workspace, number);
+      return result.ok ? null : { error: result.error.message, action: intent };
+    }
+    case "handoff": {
+      const note = String(form.get("note") ?? "").trim();
+      if (!note) return { error: "Say where the work stands, for whoever picks it up.", action: intent };
+      const to = String(form.get("to") ?? "")
+        .trim()
+        .replace(/^@/, "");
+      const result = await work.handOffWorkItem(user, workspace, number, note, to || undefined);
+      return result.ok ? { handedOff: true } : { error: result.error.message, action: intent };
+    }
     // A comment's own text, changed or taken away: its author's to do, or
     // a maintainer's, which work checks.
     case "edit-comment":
@@ -383,209 +402,39 @@ function sitePath(url: string | null | undefined, here: string): string | null {
   }
 }
 
-/** What became of a pull request, in a few words. */
-function outcome(pull: { status: Pull["status"] } & Partial<Pick<Pull, "mergedBy" | "supersededBy">>): string {
-  if (pull.status === "merged") return pull.mergedBy ? `Merged by ${pull.mergedBy}` : "Merged";
-  if (pull.supersededBy != null) return `Closed · #${pull.supersededBy} was merged instead`;
-  if (pull.status === "closed") return "Closed without merging";
-  if (pull.status === "draft") return "Draft · in progress";
-  return "Ready for review";
-}
-
-/** One of a repository's pull requests for the item, as a line under the repository. */
-function RepoPullLine({ repo, pull, full }: { repo: string; pull: WorkPull; full?: Pull }) {
-  const merged = pull.status === "merged";
-  return (
-    <li>
-      <Link
-        to={`/${repo}/pull/${pull.number}`}
-        prefetch="intent"
-        className={`flex min-w-0 items-start gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-raised ${pull.status === "closed" ? "opacity-70" : ""}`}
-      >
-        <span className="mt-0.5">
-          <PullIcon status={pull.status} size={15} />
-        </span>
-        <span className="min-w-0 grow">
-          <span className="block text-sm font-medium wrap-break-word">
-            {pull.title} <span className="font-normal text-faint">#{pull.number}</span>
-          </span>
-          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-            <span className={merged ? "font-medium text-merged" : ""}>
-              {outcome({ status: pull.status, mergedBy: full?.mergedBy, supersededBy: full?.supersededBy })}
-            </span>
-            <span>· {pull.author.username}</span>
-            {full && <ChangeSize files={full.files} />}
-            <CheckBadge status={pull.checkStatus} />
-            {pull.queue && <span>· in the merge queue, {pull.queue.position === 1 ? "next" : `#${pull.queue.position}`}</span>}
-          </span>
-        </span>
-      </Link>
-    </li>
-  );
+/**
+ * The page's keys (lib/work-item-page.ts): never while typing in a field,
+ * nor while a dialog, a menu or a picker is open, which take their own.
+ */
+function useItemKeys(run: (command: ItemCommand) => boolean) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]')) return;
+      const command = itemCommandOf(event, inTextField(event.target));
+      if (command && run(command)) event.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [run]);
 }
 
 /**
- * One repository the item is linked to: its path and role, whether what
- * closes the item has landed there (or, for a target, that it is still
- * missing), and its pull requests for it. With Triage, the cross unlinks
- * it (never its origin).
+ * The list J and K step through: the one the page was opened from, else
+ * the plan's order (Now, then Next) while it is in either, read once the
+ * page is open.
  */
-function RepoCard({ repo, pulls, full, canLink }: { repo: ItemRepo; pulls: WorkPull[]; full: Map<string, Pull>; canLink: boolean }) {
-  const missing = repo.role === "target" && !repo.landed;
-  return (
-    <li className="px-3 py-3 sm:px-4">
-      <div className="flex min-w-0 items-center gap-2">
-        {repo.path && repo.deleted ? (
-          // Deleted, and restorable until it is purged: its name, nothing to open.
-          <Hint label={`${repo.path} was deleted. It can be restored until it is purged.`}>
-            <span className="min-w-0 truncate font-mono text-sm text-muted">
-              {repo.path} <span className="font-sans text-xs text-faint">deleted</span>
-            </span>
-          </Hint>
-        ) : repo.path ? (
-          <Link to={`/${repo.path}`} className="min-w-0 truncate font-mono text-sm font-medium hover:text-accent">
-            {repo.path}
-          </Link>
-        ) : (
-          // Deleted before work items: nothing to link to, and no name kept.
-          <span className="min-w-0 truncate text-sm text-muted">A deleted repository</span>
-        )}
-        <RoleBadge role={repo.role} />
-        {repo.legacyNumber != null && (
-          <Hint
-            label={
-              repo.path
-                ? `It was ${repo.path}#${repo.legacyNumber} before work items, and that still leads here.`
-                : `It was #${repo.legacyNumber} there before work items.`
-            }
-          >
-            <span className="shrink-0 text-xs text-faint">was #{repo.legacyNumber}</span>
-          </Hint>
-        )}
-        <span className="ml-auto flex shrink-0 items-center gap-1">
-          {repo.landed ? (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-merged">
-              <Check size={13} />
-              Landed
-            </span>
-          ) : missing ? (
-            <span className="inline-flex items-center gap-1 text-xs text-warn">
-              <CircleDashed size={13} />
-              Missing
-            </span>
-          ) : null}
-          {canLink && repo.role !== "origin" && (
-            <Form method="post">
-              <input type="hidden" name="action" value="unlink" />
-              <input type="hidden" name="repo" value={repo.path} />
-              <Hint label={`Unlink ${repo.path}`}>
-                <Button type="submit" variant="ghost" size="icon-xs" aria-label={`Unlink ${repo.path}`} className="max-sm:size-9">
-                  <X size={14} />
-                </Button>
-              </Hint>
-            </Form>
-          )}
-        </span>
-      </div>
-      {pulls.length > 0 ? (
-        <ul className="mt-1.5 -mx-2 space-y-0.5">
-          {pulls.map((pull) => (
-            <RepoPullLine key={pull.number} repo={repo.path} pull={pull} full={full.get(`${repo.repoId}#${pull.number}`)} />
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-1 text-xs text-faint">{repo.role === "touched" ? "Touched by a commit." : "No pull request for it here yet."}</p>
-      )}
-    </li>
-  );
-}
-
-/** Link a repository: one of the workspace's, in a role. A sheet from the bottom on a phone. */
-function LinkRepository({
-  workspace,
-  repos,
-  linked,
-  error,
-  wide = false,
-}: {
-  workspace: string;
-  /** The workspace's repositories by name; null when they could not be read. */
-  repos: string[] | null;
-  linked: string[];
-  error?: string | null;
-  wide?: boolean;
-}) {
-  const [open, setOpen] = useState(Boolean(error));
-  const choices = (repos ?? []).filter((name) => !linked.includes(`${workspace}/${name}`.toLowerCase()));
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className={wide ? "h-11 w-full" : undefined}>
-          <Plus size={14} />
-          Link a repository
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <Form method="post" className="grid gap-5" onSubmit={() => setOpen(false)}>
-          <input type="hidden" name="action" value="link" />
-          <DialogHeader>
-            <DialogTitle>Link a repository</DialogTitle>
-            <DialogDescription>
-              A target is where the work is meant to land: the item closes once every target has landed. Touched marks one it reached without having to land
-              there.
-            </DialogDescription>
-          </DialogHeader>
-          {repos == null ? (
-            <Unavailable what="The workspace's repositories" compact />
-          ) : (
-            <SelectField
-              name="repo"
-              aria-label="Repository"
-              defaultValue={choices[0] ?? ""}
-              options={choices.length > 0 ? choices.map((name) => ({ value: name, label: name })) : [{ value: "", label: "No other repository to link" }]}
-            />
-          )}
-          <SelectField
-            name="role"
-            aria-label="Role"
-            defaultValue="target"
-            options={(["target", "touched"] as LinkRole[]).map((role) => ({ value: role, label: ROLE_LABELS[role] }))}
-          />
-          {error && <ErrorText>{error}</ErrorText>}
-          <DialogFooter>
-            <SubmitButton match={{ action: "link" }} pending="Linking…" className="max-sm:h-11">
-              Link
-            </SubmitButton>
-          </DialogFooter>
-        </Form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/** A repository the work may also belong in, with why, and Add as target. */
-function SuggestionLine({ suggestion, workspace, canLink }: { suggestion: SuggestedTarget; workspace: string; canLink: boolean }) {
-  return (
-    <li className="flex items-start gap-3 px-3 py-3 sm:px-4">
-      <Lightbulb size={15} className="mt-0.5 shrink-0 text-faint" />
-      <span className="min-w-0 grow">
-        <Link to={`/${suggestion.path}`} className="font-mono text-sm font-medium hover:text-accent">
-          {shortPath(suggestion.path, workspace)}
-        </Link>
-        <span className="mt-0.5 block text-xs text-muted">{suggestion.why}</span>
-      </span>
-      {canLink && (
-        <Form method="post" className="shrink-0">
-          <input type="hidden" name="action" value="link" />
-          <input type="hidden" name="repo" value={suggestion.path} />
-          <input type="hidden" name="role" value="target" />
-          <SubmitButton variant="outline" size="sm" match={{ action: "link", repo: suggestion.path }} pending="Adding…" className="max-sm:h-10">
-            Add as target
-          </SubmitButton>
-        </Form>
-      )}
-    </li>
-  );
+function useTrail(workspace: string, number: number, inPlan: boolean): WorkTrail | null {
+  const location = useLocation();
+  const opened = trailOf(location.state);
+  const plan = useFetcher<{ plan: number[] | null }>();
+  useEffect(() => {
+    if (!opened && inPlan && plan.state === "idle" && !plan.data) plan.load(`${workPath(workspace, "items.json")}?plan=1`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per work item
+  }, [opened == null, inPlan, workspace, number]);
+  if (opened) return opened;
+  const numbers = plan.data?.plan;
+  return numbers && numbers.includes(number) ? { numbers, label: "Plan", href: workPath(workspace) } : null;
 }
 
 export default function WorkItemPage({ loaderData, actionData }: Route.ComponentProps) {
@@ -602,6 +451,7 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
   // Claims lapse and sessions go idle (after 15 minutes) with no event to say so: looked at again each minute.
   useRefreshWhile((coordination?.claims.length ?? 0) > 0 || (coordination?.sessions.some((session) => session.state !== "ended") ?? false), 60_000);
   const now = Date.now();
+  const navigate = useNavigate();
 
   const open = item.state === "open";
   const reference = `${workspace}#${item.number}`;
@@ -609,7 +459,6 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
   // Each repository with its pull requests for the item: from its work
   // context, else from the item's own pull requests.
   const bySlug = new Map(item.repos.map((repo) => [repo.repoId, repo.path]));
-  const full = new Map(pulls.map((pull) => [`${pull.repoId}#${pull.number}`, pull]));
   const repoRows: { repo: ItemRepo; pulls: WorkPull[] }[] = coordination
     ? coordination.repos.map((repo: WorkRepo) => ({ repo, pulls: repo.pulls }))
     : item.repos.map((repo) => ({
@@ -635,6 +484,8 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
   const suggestions = (coordination?.suggestedTargets ?? []).filter((one) => !item.repos.some((repo) => repo.repoId === one.repoId));
   // Where each session's page is: under the repository it was recorded in.
   const sessionBase = (session: { repoId: string }) => `/${bySlug.get(session.repoId) ?? item.repos[0]?.path ?? workspace}`;
+  // Its sessions with their subagents, each once.
+  const sessions = mergeSessions(coordination?.sessions, sessionTrees);
   // Its decisions as a story, oldest first; the failure that still stands, with what answered it.
   const decisions = coordination ? [...coordination.decisions].reverse() : [];
   const failure = coordination?.lastIntegrationFailure ?? null;
@@ -646,15 +497,10 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
   // A deleted repository takes no pull request.
   const openable = item.repos.filter((repo) => repo.path && !repo.deleted);
   const workIn = missing[0] ?? item.repos.find((repo) => repo.role === "target")?.path ?? originOf(item.repos)?.path ?? null;
-  const linkError = actionData && "action" in actionData && actionData.action === "link" ? actionData.error : null;
-  const sideError =
-    actionData &&
-    "action" in actionData &&
-    ["blocked-by", "parent", "sub-items", "close", "start-session", "react", "link", "open-pull"].includes(String(actionData.action));
   const errorFor = (action: string) => (actionData && "action" in actionData && actionData.action === action ? actionData.error : null);
   // Closing refused for its open sub-items: the close dialog it came from says why, with the choices.
-  const closeError = (reason: "close-completed" | "close-not-planned") =>
-    actionData && "reason" in actionData && actionData.reason === reason ? actionData.error : null;
+  const closeError =
+    actionData && "reason" in actionData && (actionData.reason === "close-completed" || actionData.reason === "close-not-planned") ? actionData.error : null;
   const subItems = loaderData.subItems ?? [];
   const progress = item.subItemProgress ?? null;
   const openSubItems = progress ? progress.total - progress.done : subItems.filter((sub) => sub.state === "open").length;
@@ -662,86 +508,356 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
   const filedFrom = originOf(item.repos);
   const originName = filedFrom?.path && !filedFrom.deleted ? shortPath(filedFrom.path, workspace) : null;
   const newSubItem = newItemPath(workspace, originName && !originName.includes("/") ? originName : null, item.number);
+  const stage = itemStage(
+    item,
+    { repos: repoRows.map(({ repo, pulls: repoPulls }) => ({ path: repo.path, pulls: repoPulls })), claims: coordination?.claims, sessions },
+    now,
+  );
+  const memberNames = isFailed(members) ? null : members;
+  const mine = viewer ? (coordination?.claims ?? []).some((claim) => claim.actor.id === viewer.id) : false;
+  const canStart = loaderData.member && open && workIn != null;
+  const canClaim = viewer != null && loaderData.member && open;
+  const live = sessions
+    .filter((session) => session.state !== "ended" && !session.parentId)
+    .map((session) => ({
+      id: session.id,
+      who: session.harness === "claude_managed_agents" ? "g1t" : session.actor.username,
+      harness: session.harness === "claude_managed_agents" ? null : harnessName(session.harness),
+      state: session.state as "active" | "idle",
+      href: sessionPath(workspace, session.id),
+    }));
+  const lines = (coordination?.recent ?? []).flatMap((event) => {
+    const line = feedLine(event);
+    return line && activityLine(line) ? [line] : [];
+  });
+
+  // What is open: a property's picker, editing, a dialog.
+  const [picker, setPicker] = useState<ItemCommand | "repos" | null>(null);
+  const [editing, setEditing] = useState(false);
+  const startAsked = Boolean(errorFor("start-session") || (actionData && "command" in actionData));
+  const [starting, setStarting] = useState(startAsked);
+  useEffect(() => {
+    if (startAsked) setStarting(true);
+  }, [startAsked, actionData]);
+  const [closing, setClosing] = useState(Boolean(closeError));
+  useEffect(() => {
+    if (closeError) setClosing(true);
+  }, [closeError]);
+  const [moving, setMoving] = useState(false);
+  const [openingPull, setOpeningPull] = useState(Boolean(errorFor("open-pull")));
+  // On a phone, the properties fold under the title until opened.
+  const [panelOpen, setPanelOpen] = useState(false);
+  const edit: EditFetcher = useFetcher();
+  const claim = useFetcher<{ error?: string } | null>();
+  const toggle = (command: ItemCommand | "repos") => ({
+    open: picker === command,
+    onOpenChange: (next: boolean) => setPicker(next ? command : null),
+  });
+
+  const trail = useTrail(workspace, item.number, open && (item.horizon === "now" || item.horizon === "next"));
+  const at = trail ? neighbours(trail.numbers, item.number) : null;
+  const stepState = trailState(trail);
+  const go = (number: number | null) => number != null && navigate(itemPath(workspace, number), { state: stepState });
+
+  const run = useCallback(
+    (command: ItemCommand): boolean => {
+      const pick = (allowed: boolean) => {
+        if (!allowed) return false;
+        setPanelOpen(true);
+        setPicker(command);
+        return true;
+      };
+      switch (command) {
+        case "edit":
+          if (!canManage) return false;
+          setEditing(true);
+          return true;
+        case "assignee":
+          return pick(viewer != null && can.triage && open);
+        case "project":
+        case "milestone":
+          return pick(can.triage);
+        case "plan":
+          return pick(can.triage && open);
+        case "labels":
+        case "blocked":
+          return pick(canManage);
+        case "agent":
+          if (!canStart) return false;
+          setStarting(true);
+          return true;
+        case "claim":
+          if (!canClaim) return false;
+          claim.submit({ action: "claim" }, { method: "post" });
+          return true;
+        case "close":
+          if (!canManage || !open) return false;
+          setClosing(true);
+          return true;
+        case "next":
+          if (!at?.next) return false;
+          go(at.next);
+          return true;
+        case "previous":
+          if (!at?.previous) return false;
+          go(at.previous);
+          return true;
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- what the page allows, and where J and K go
+    [canManage, can.triage, open, viewer, canStart, canClaim, at?.next, at?.previous, item.number],
+  );
+  useItemKeys(run);
+
+  const blockers = coordination
+    ? coordination.blockedBy.map((one) => ({ number: one.number, title: one.title, state: one.state, detail: blockerDetail(one) }))
+    : item.blockedBy.map((number) => ({ number, title: `Work item #${number}`, state: "open" as const }));
+  const summary = [stage.label, item.assignees.length > 0 ? item.assignees.join(", ") : null, item.project?.name ?? null].filter(Boolean).join(" · ");
+  const claimError = claim.state === "idle" ? (claim.data?.error ?? null) : null;
 
   return (
-    // On a phone: the title, then the item, its repositories and the
-    // conversation, then the sidebar as a Details disclosure; beside it
-    // from lg up. Its main actions sit at the bottom, within a thumb's reach.
     <AttachImages to={viewer ? { workspace, number: item.number } : null}>
-      <div className="grid gap-x-8 gap-y-5 lg:grid-cols-[1fr_19rem] lg:grid-rows-[auto_1fr] lg:gap-y-0">
-        <header className="min-w-0 lg:col-start-1">
-          {loaderData.parent && (
-            <p className="mb-1.5 text-sm text-muted">
-              <Link to={itemPath(workspace, loaderData.parent.number)} prefetch="intent" className="inline-flex max-w-full items-center gap-1.5 hover:text-fg">
-                <CornerLeftUp size={14} className="shrink-0" />
-                <span className="truncate">
-                  Sub-item of <span className="font-medium text-fg-soft">#{loaderData.parent.number}</span> {loaderData.parent.title}
-                </span>
-              </Link>
-            </p>
+      {/* Where it is, the list it came from, and what can be done to it. */}
+      <div className="relative mb-5 flex min-h-9 items-center gap-2">
+        <ItemCrumbs workspace={workspace} number={item.number} project={item.project} parent={loaderData.parent ?? null} />
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {at && (
+            <ItemStepper
+              at={at}
+              label={trail!.label}
+              href={trail!.href}
+              previous={at.previous ? itemPath(workspace, at.previous) : null}
+              next={at.next ? itemPath(workspace, at.next) : null}
+              state={stepState}
+            />
           )}
-          <h1 className="text-xl font-semibold tracking-tight text-balance wrap-break-word sm:text-2xl">
-            {item.title} <span className="font-normal text-faint">#{item.number}</span>
-          </h1>
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted">
-            <ItemState item={item} />
-            <span className="flex min-w-0 items-center gap-2">
-              <Avatar name={item.author.username} size={18} />
-              <span className="min-w-0">
-                <PersonLink name={item.author.username} className="font-medium text-fg hover:underline" /> opened this{" "}
-                {item.requestedBy && (
-                  <>
-                    for <PersonLink name={item.requestedBy.username} className="font-medium text-fg-soft hover:underline" />{" "}
-                  </>
-                )}
-                <TimeAgo at={item.createdAt} />
-              </span>
-            </span>
-            {item.labels.map((name) => (
-              // Without the workspace's labels, a chip still names its label, in the plain color.
-              <LabelChip key={name} name={name} color={isFailed(labels) ? undefined : labels.find((label) => label.name === name)?.color} />
-            ))}
-            {open && item.agent && <Assignee agent={item.agent} />}
-          </div>
-        </header>
+          {canStart && (
+            <StartAgentButton
+              setup={loaderData.agentSetupInfo}
+              repo={workIn!}
+              error={errorFor("start-session")}
+              command={actionData && "command" in actionData ? actionData.command : null}
+              setupHref={loaderData.owner ? `/${workspace}/-/ai` : null}
+              open={starting}
+              onOpenChange={setStarting}
+              reference={reference}
+              onOpenPull={
+                viewer && openable.length > 0 && !pulls.some((pull) => pull.status === "open" || pull.status === "draft")
+                  ? () => setOpeningPull(true)
+                  : undefined
+              }
+              branchHref={workIn ? `/${workIn}/pulls/new?item=${item.number}` : null}
+            />
+          )}
+          {viewer && (
+            <ItemMenu
+              open={open}
+              canClaim={canClaim}
+              claimed={mine}
+              canManage={canManage}
+              canMove={canManage}
+              parent={item.parent ?? null}
+              members={memberNames ?? []}
+              onClaim={() => claim.submit({ action: "claim" }, { method: "post" })}
+              onClose={() => setClosing(true)}
+              onMove={() => setMoving(true)}
+              claimError={claimError}
+            />
+          )}
+          {canManage && (
+            <ParentPicker
+              workspace={workspace}
+              number={item.number}
+              parent={loaderData.parent ?? (item.parent ? { number: item.parent } : null)}
+              open={moving}
+              onOpenChange={setMoving}
+            />
+          )}
+        </div>
+      </div>
+      {claimError && (
+        <div className="-mt-3 mb-4">
+          <ErrorText>{claimError}</ErrorText>
+        </div>
+      )}
 
-        <div className="min-w-0 max-lg:order-1 lg:col-start-1">
-          {item.resolutions.length > 0 && (
-            <ul className="space-y-2 lg:mt-5">
-              {item.resolutions.map((landed, index) => (
-                <li key={`${landed.repo}-${landed.pull ?? landed.commit ?? index}`}>
-                  <Link
-                    to={landed.pull != null ? `/${landed.repo}/pull/${landed.pull}` : `/${landed.repo}/commit/${landed.commit ?? ""}`}
-                    className="flex items-start gap-3 rounded-xl border border-merged/40 bg-merged/5 px-4 py-3 text-sm transition-colors hover:border-merged/70"
-                  >
-                    {landed.pull != null ? (
-                      <GitMerge size={18} className="mt-0.5 shrink-0 text-merged" />
-                    ) : (
-                      <GitCommitHorizontal size={18} className="mt-0.5 shrink-0 text-merged" />
+      {/* On a phone: the title, the properties folded under it, then the rest. From lg up, the properties sit at the right. */}
+      <div className="grid gap-y-5 lg:grid-cols-[minmax(0,1fr)_19rem] lg:gap-x-12 lg:gap-y-0">
+        <div className="min-w-0 lg:col-start-1 lg:row-start-1">
+          <ItemTitle
+            fetcher={edit}
+            title={item.title}
+            body={item.body}
+            canEdit={canManage}
+            editing={editing}
+            onEditingChange={setEditing}
+            handles={loaderData.handles}
+            aside={
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted">
+                <ItemState item={item} />
+                <span className="flex min-w-0 items-center gap-2">
+                  <Avatar name={item.author.username} size={18} agent={item.author.kind === "agent"} />
+                  <span className="min-w-0">
+                    <PersonLink name={item.author.username} className="font-medium text-fg hover:underline" /> opened this{" "}
+                    {item.requestedBy && (
+                      <>
+                        for <PersonLink name={item.requestedBy.username} className="font-medium text-fg-soft hover:underline" />{" "}
+                      </>
                     )}
-                    <span className="min-w-0">
-                      Landed in <span className="font-mono font-medium">{landed.repo}</span> by{" "}
-                      {landed.pull != null ? (
-                        <span className="font-medium">#{landed.pull}</span>
-                      ) : (
-                        <span className="font-mono font-medium">{landed.commit?.slice(0, 7)}</span>
-                      )}
-                      {landed.pushedBy && <span className="text-muted">, pushed by {landed.pushedBy}</span>}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
+                    <TimeAgo at={item.createdAt} />
+                  </span>
+                </span>
+                <span className="font-mono text-xs text-faint">#{item.number}</span>
+              </div>
+            }
+          />
+        </div>
 
-          {item.body ? (
-            <div className={`${item.resolutions.length > 0 ? "mt-5" : "lg:mt-5"} rounded-xl border border-line bg-surface p-4 sm:p-5`}>
-              <Markdown source={item.body} workspace={workspace} checkable={canManage} />
-              <Reactions reactions={loaderData.reactions} viewer={viewer?.username ?? null} className="mt-4" />
+        <aside aria-label="Properties" className="min-w-0 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+          <button
+            type="button"
+            aria-expanded={panelOpen}
+            aria-controls="item-properties"
+            onClick={() => setPanelOpen(!panelOpen)}
+            className="flex min-h-11 w-full items-center gap-2.5 rounded-xl border border-line bg-surface px-4 py-2.5 text-left text-sm transition-colors hover:border-line-strong lg:hidden"
+          >
+            <span className="shrink-0 font-medium">Properties</span>
+            <span className="min-w-0 grow truncate text-muted">{summary}</span>
+            <ChevronDown size={15} className={cn("ml-auto shrink-0 text-faint transition-transform", panelOpen && "rotate-180")} />
+          </button>
+          <div
+            id="item-properties"
+            className={cn(
+              panelOpen ? "mt-3 block rounded-xl border border-line bg-surface p-3" : "hidden",
+              "space-y-1 lg:sticky lg:top-[calc(var(--topbar-h)+1.25rem)] lg:mt-0 lg:block lg:rounded-none lg:border-0 lg:border-l lg:bg-transparent lg:p-0 lg:pl-5",
+            )}
+          >
+            <StageProperty stage={stage} />
+            <AssigneeProperty
+              assignees={item.assignees}
+              members={memberNames}
+              viewer={viewer?.username ?? null}
+              canEdit={viewer != null && can.triage && open}
+              canAssignG1t={loaderData.agentSetup != null}
+              {...toggle("assignee")}
+            />
+            <AgentProperty live={live} agent={open ? item.agent : null} onStart={canStart ? () => setStarting(true) : undefined} />
+            {isFailed(loaderData.projects) ? (
+              <SideUnavailable label="Project" what="Projects" />
+            ) : (
+              <ProjectProperty projects={loaderData.projects} current={item.project} canEdit={can.triage} workspace={workspace} {...toggle("project")} />
+            )}
+            <PlanProperty
+              item={item}
+              workspace={workspace}
+              canEdit={can.triage}
+              canNow={can.manage_labels}
+              progress={loaderData.progress}
+              {...toggle("plan")}
+            />
+            {isFailed(loaderData.milestones) ? (
+              <SideUnavailable label="Milestone" what="Milestones" />
+            ) : (
+              <MilestoneProperty
+                milestones={loaderData.milestones}
+                current={item.milestone}
+                canEdit={can.triage}
+                workspace={workspace}
+                {...toggle("milestone")}
+              />
+            )}
+            <LabelsProperty
+              labels={isFailed(labels) ? null : labels}
+              chosen={item.labels}
+              canEdit={canManage}
+              canCreate={can.manage_labels}
+              manageUrl={can.manage_labels ? workPath(workspace, "labels") : undefined}
+              {...toggle("labels")}
+            />
+            {isFailed(loaderData.coordination) && <SideUnavailable label="Blocked by" what="Where what it waits on stands" />}
+            <BlockedByProperty
+              workspace={workspace}
+              number={item.number}
+              blockedBy={item.blockedBy}
+              blockers={blockers}
+              blocks={coordination?.blocks ?? []}
+              itemOpen={open}
+              canEdit={canManage}
+              {...toggle("blocked")}
+            />
+            <ReposProperty workspace={workspace} repos={item.repos} choices={loaderData.repos} canEdit={canLink} {...toggle("repos")} />
+
+            <div className="space-y-4 border-t border-line pt-4 lg:mt-4">
+              <PropertyRow label="Links">
+                <ul className="space-y-1 px-2 py-1 text-sm">
+                  <li>
+                    <Link
+                      to={sessionsPath(workspace, { state: "recent", item: String(item.number) })}
+                      className="inline-flex items-center gap-1.5 text-fg-soft hover:text-accent"
+                    >
+                      <MessagesSquare size={14} className="shrink-0 text-faint" />
+                      Sessions in Chat
+                    </Link>
+                  </li>
+                  {item.project && (
+                    <li>
+                      <Link to={projectPath(workspace, item.project.slug)} className="inline-flex items-center gap-1.5 text-fg-soft hover:text-accent">
+                        <FolderKanban size={14} className="shrink-0 text-faint" />
+                        {item.project.name}
+                      </Link>
+                    </li>
+                  )}
+                  {!isFailed(loaderData.links) &&
+                    loaderData.links.map((link) => (
+                      <li key={`${link.connectionId}-${link.key}`}>
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="group inline-flex min-w-0 max-w-full items-center gap-1.5 text-fg-soft hover:text-accent"
+                        >
+                          <ExternalLink size={14} className="shrink-0 text-faint group-hover:text-accent" />
+                          <span className="truncate">
+                            {PROVIDERS[link.provider].label} <span className="font-mono text-muted">{link.key}</span>
+                          </span>
+                        </a>
+                        <span className="block pl-5 text-xs text-faint">
+                          {link.count > 1 ? `Seen ${link.count} times, last ` : "Linked "}
+                          <TimeAgo at={link.count > 1 ? link.lastSeen : link.firstSeen} />
+                        </span>
+                      </li>
+                    ))}
+                </ul>
+                {isFailed(loaderData.links) && (
+                  <div className="px-2">
+                    <Unavailable what="Its links from outside g1t" compact />
+                  </div>
+                )}
+              </PropertyRow>
+              {viewer &&
+                (isFailed(loaderData.subscription) ? (
+                  <SideUnavailable label="Notifications" what="Your notification settings" />
+                ) : (
+                  <SubscriptionBox action={itemPath(workspace, item.number)} number={item.number} kind="item" subscription={loaderData.subscription} />
+                ))}
             </div>
-          ) : (
-            (loaderData.reactions?.length ?? 0) > 0 && <Reactions reactions={loaderData.reactions} viewer={viewer?.username ?? null} className="mt-3 lg:mt-5" />
-          )}
+          </div>
+        </aside>
+
+        <div className="min-w-0 lg:col-start-1 lg:row-start-2">
+          <div className="mt-5 lg:mt-6">
+            <ItemBody
+              fetcher={edit}
+              workspace={workspace}
+              title={item.title}
+              body={item.body}
+              reactions={loaderData.reactions}
+              viewer={viewer?.username ?? null}
+              canEdit={canManage}
+              editing={editing}
+              onEdit={() => setEditing(true)}
+            />
+          </div>
 
           {(subItems.length > 0 || (progress?.total ?? 0) > 0 || (canManage && open)) && (
             <SubItemsSection
@@ -754,417 +870,76 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
             />
           )}
 
-          <section aria-labelledby="repositories" className="mt-8">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 id="repositories" className="font-semibold tracking-tight">
-                Repositories
-              </h2>
-              <span className="flex items-center gap-3">
-                {missing.length > 0 && open && (
-                  <span className="text-sm text-muted">
-                    {missing.length} {missing.length === 1 ? "target" : "targets"} still to land
-                  </span>
-                )}
-                {canLink && (
-                  <span className="max-sm:hidden">
-                    <LinkRepository
-                      workspace={workspace}
-                      repos={loaderData.repos}
-                      linked={item.repos.map((repo) => repo.path.toLowerCase())}
-                      error={linkError}
-                    />
-                  </span>
-                )}
-              </span>
-            </div>
-            {isFailed(loaderData.coordination) && (
-              <div className="mt-2">
-                <Unavailable what="Each repository's pull requests" compact />
-              </div>
-            )}
-            {repoRows.length === 0 ? (
-              <div className="mt-3">
-                <EmptyState title="No repository yet">
-                  Filed in the workspace itself. Link the repositories it should land in, and it closes once each of them has.
-                </EmptyState>
-              </div>
-            ) : (
-              <Card asChild divided className="mt-3">
-                <ul>
-                  {repoRows.map(({ repo, pulls: repoPulls }) => (
-                    <RepoCard key={repo.repoId} repo={repo} pulls={repoPulls} full={full} canLink={canLink} />
-                  ))}
-                </ul>
-              </Card>
-            )}
-            {suggestions.length > 0 && open && (
-              <>
-                <h3 className="mt-5 text-sm font-medium">Suggested</h3>
-                <p className="mt-0.5 text-xs text-muted">Repositories it may also need, and why.</p>
-                <Card asChild divided className="mt-2">
-                  <ul>
-                    {suggestions.map((suggestion) => (
-                      <SuggestionLine key={suggestion.repoId} suggestion={suggestion} workspace={workspace} canLink={canLink} />
-                    ))}
-                  </ul>
-                </Card>
-              </>
-            )}
-            {linkError && (
-              <div className="mt-2">
-                <ErrorText>{linkError}</ErrorText>
-              </div>
-            )}
-          </section>
-
-          {pulls.length === 0 && open && (
-            <div className="mt-6">
-              <EmptyState title="Nobody has worked on this yet">
-                Point your own agent at <code className="font-mono">{reference}</code>.
-              </EmptyState>
+          <ItemWorkSection
+            workspace={workspace}
+            number={item.number}
+            open={open}
+            repoRows={repoRows}
+            pulls={pulls}
+            resolutions={item.resolutions}
+            missing={missing}
+            suggestions={suggestions}
+            canLink={canLink}
+            workFailed={isFailed(loaderData.coordination)}
+            claims={coordination?.claims ?? []}
+            ended={loaderData.endedClaims}
+            now={now}
+            sessions={sessions}
+            sessionsFailed={isFailed(loaderData.sessionTrees)}
+            base={sessionBase}
+            failure={failure}
+            fixed={resolution?.passed ?? resolution?.fix}
+            failureBase={failureBase}
+            pullHref={pullHref}
+          />
+          {errorFor("link") && (
+            <div className="mt-2">
+              <ErrorText>{errorFor("link")}</ErrorText>
             </div>
           )}
 
-          {failure && (
-            <IntegrationFailure className="mt-4" failure={failure} base={failureBase} pullHref={pullHref} fixed={resolution?.passed ?? resolution?.fix} />
-          )}
+          <DecisionsFold decisions={decisions} failed={isFailed(loaderData.coordination)} base={failureBase} pullHref={pullHref} />
 
-          {isFailed(loaderData.coordination) ? (
-            <>
-              <h2 className="mt-10 font-semibold tracking-tight">Decisions</h2>
-              <div className="mt-3">
-                <Unavailable what="Its decisions" />
-              </div>
-            </>
-          ) : (
-            decisions.length > 0 && (
-              <>
-                <div className="mt-10 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                  <h2 className="font-semibold tracking-tight">Decisions</h2>
-                  <p className="text-sm text-muted">Why the work is the way it is, and how sure that is</p>
-                </div>
-                <div className="mt-3">
-                  <DecisionList decisions={decisions} base={failureBase} pullHref={pullHref} />
-                </div>
-              </>
-            )
-          )}
-
-          <h2 className="mt-10 font-semibold tracking-tight">Discussion</h2>
-          <div className="mt-3">
-            <div className="space-y-4">
-              {isFailed(loaderData.sessionTrees) && <Unavailable what="Its sessions" compact />}
-              <CommentList
-                comments={comments}
-                workspace={workspace}
-                viewerId={viewer?.id ?? null}
-                viewerName={viewer?.username ?? null}
-                extra={(sessionTrees ?? [])
-                  .filter((session) => !session.parentId)
-                  .map((session) => ({ id: session.id, at: session.startedAt, node: <TimelineSession session={session} base={sessionBase(session)} /> }))}
-                canModerate={loaderData.canModerate}
-                failed={actionData && "comment" in actionData ? { comment: String(actionData.comment), error: actionData.error } : null}
-              />
-              <div id="comment">
-                <CommentForm author={viewer?.username ?? null} resetKey={comments.length} handles={loaderData.handles} />
-              </div>
-              {canManage &&
-                (open ? (
-                  // With open sub-items, each asks first what becomes of them.
-                  <div className="flex flex-wrap justify-end gap-2 max-sm:hidden">
-                    <CloseButton reason="not_planned" openSubItems={openSubItems} error={closeError("close-not-planned")}>
-                      Close as not planned
-                    </CloseButton>
-                    <CloseButton reason="completed" openSubItems={openSubItems} error={closeError("close-completed")}>
-                      Close work item
-                    </CloseButton>
-                  </div>
-                ) : (
-                  <Form method="post" className="flex flex-wrap justify-end gap-2 max-sm:hidden">
-                    <SubmitButton variant="outline" name="action" value="reopen" pending="Reopening…">
-                      Reopen work item
-                    </SubmitButton>
-                  </Form>
-                ))}
-            </div>
-          </div>
+          <ActivityStream
+            workspace={workspace}
+            comments={comments}
+            sessions={sessions.filter((session) => !session.parentId)}
+            sessionsFailed={isFailed(loaderData.sessionTrees)}
+            lines={lines}
+            sessionBase={sessionBase}
+            viewer={viewer ? { id: viewer.id, username: viewer.username } : null}
+            canModerate={loaderData.canModerate}
+            failed={actionData && "comment" in actionData ? { comment: String(actionData.comment), error: actionData.error } : null}
+            handles={loaderData.handles}
+          />
           <div className="mt-2">
-            {/* A refused comment edit says so under the comment; the sidebar's own say so there. */}
-            {!(actionData && ("comment" in actionData || sideError)) && <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>}
+            {/* What a dialog or a comment refused says so there; anything else, here. */}
+            {actionData && "error" in actionData && actionData.error && !("action" in actionData) && !("comment" in actionData) && (
+              <ErrorText>{actionData.error}</ErrorText>
+            )}
+            {errorFor("react") && <ErrorText>{errorFor("react")}</ErrorText>}
+            {errorFor("parent") && <ErrorText>{errorFor("parent")}</ErrorText>}
           </div>
-
-          {/* On a phone, its main actions at the bottom, above the tab bar and clear of the keyboard. */}
-          {(canManage || canLink) && (
-            <div className="sticky bottom-(--tabbar-h) z-10 -mx-4 mt-6 flex items-center gap-2 border-t border-line bg-bg/90 px-4 py-3 backdrop-blur in-data-[keyboard=open]:hidden sm:hidden">
-              {canLink && (
-                <div className="min-w-0 grow">
-                  <LinkRepository workspace={workspace} repos={loaderData.repos} linked={item.repos.map((repo) => repo.path.toLowerCase())} error={null} wide />
-                </div>
-              )}
-              {canManage &&
-                (open ? (
-                  // The refusal opens the dialog of the buttons above, which shows on a phone too.
-                  <CloseButton reason="completed" openSubItems={openSubItems} className="min-w-0 grow *:h-11 *:w-full">
-                    Close
-                  </CloseButton>
-                ) : (
-                  <Form method="post" className="min-w-0 grow *:h-11 *:w-full">
-                    <SubmitButton variant="outline" name="action" value="reopen" pending="Reopening…">
-                      Reopen
-                    </SubmitButton>
-                  </Form>
-                ))}
-            </div>
-          )}
         </div>
-
-        <DetailsDisclosure
-          className="max-lg:order-2 lg:col-start-2 lg:row-span-2 lg:row-start-1"
-          summary={detailsSummary([
-            [coordination?.claims.length ?? 0, "claim", "claims"],
-            [item.assignees.length, "assignee", "assignees"],
-            [item.labels.length, "label", "labels"],
-            [item.milestone ? 1 : 0, "milestone", "milestones"],
-            [item.project ? 1 : 0, "project", "projects"],
-          ])}
-        >
-          {isFailed(loaderData.coordination) ? (
-            <section>
-              <h3 className="text-sm font-medium">Work</h3>
-              <div className="mt-2">
-                <Unavailable what="Who is on it" compact />
-              </div>
-            </section>
-          ) : (
-            coordination && (
-              <Boundary what="Work" fallback={<Unavailable what="Who is on it" compact />}>
-                <ItemWorkPanel
-                  work={coordination}
-                  ended={loaderData.endedClaims}
-                  base={sessionBase}
-                  now={now}
-                  canEdit={canManage}
-                  error={errorFor("blocked-by")}
-                  parentError={errorFor("parent")}
-                  sessions={sessionTrees}
-                  start={
-                    loaderData.member && open && workIn ? (
-                      <StartSessionDialog
-                        setup={loaderData.agentSetupInfo}
-                        repo={workIn}
-                        error={actionData && "action" in actionData && actionData.action === "start-session" && "error" in actionData ? actionData.error : null}
-                        command={actionData && "command" in actionData ? actionData.command : null}
-                        setupHref={loaderData.owner ? `/${workspace}/-/ai` : null}
-                      />
-                    ) : undefined
-                  }
-                />
-              </Boundary>
-            )
-          )}
-          {isFailed(loaderData.links) ? (
-            <section>
-              <h3 className="text-sm font-medium">From outside g1t</h3>
-              <div className="mt-2">
-                <Unavailable what="Its links" compact />
-              </div>
-            </section>
-          ) : (
-            loaderData.links.length > 0 && (
-              <section>
-                <h3 className="text-sm font-medium">From outside g1t</h3>
-                <ul className="mt-2 space-y-1.5 text-sm">
-                  {loaderData.links.map((link) => (
-                    <li key={`${link.connectionId}-${link.key}`}>
-                      <a
-                        href={link.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="group flex items-center gap-2 rounded-lg border border-line px-2.5 py-2 transition-colors hover:border-line-strong"
-                      >
-                        <span className="min-w-0 grow">
-                          <span className="block truncate font-medium">
-                            {PROVIDERS[link.provider].label} <span className="font-mono text-muted">{link.key}</span>
-                          </span>
-                          <span className="block text-xs text-faint">
-                            {link.count > 1 ? `Seen ${link.count} times, last ` : "Linked "}
-                            <TimeAgo at={link.count > 1 ? link.lastSeen : link.firstSeen} />
-                          </span>
-                        </span>
-                        <ExternalLink size={13} className="shrink-0 text-faint group-hover:text-fg" />
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )
-          )}
-          <section>
-            <h3 className="text-sm font-medium">Assignees</h3>
-            <ul className="mt-2 space-y-1.5 text-sm">
-              {item.assignees.map((name) => (
-                <li key={name} className="flex items-center gap-2 px-1">
-                  <Avatar name={name} size={20} agent={name === "g1t"} />
-                  <span className="grow truncate font-mono text-xs">{name === "g1t" ? "g1t" : <PersonLink name={name} className="hover:underline" />}</span>
-                </li>
-              ))}
-              {item.assignees.length === 0 && <li className="px-1 text-xs text-faint">Nobody yet</li>}
-            </ul>
-            {!coordination && item.blockedBy.length > 0 && (
-              <p className="mt-3 text-xs text-muted">
-                Depends on{" "}
-                {item.blockedBy.map((number, index) => (
-                  <span key={number}>
-                    {index > 0 && ", "}
-                    <Link to={itemPath(workspace, number)} className="font-medium text-fg hover:underline">
-                      #{number}
-                    </Link>
-                  </span>
-                ))}
-                {open ? ", which has to land first." : "."}
-              </p>
-            )}
-            {viewer && can.triage && open && (
-              <div className="mt-3 space-y-2">
-                {/* g1t takes it on in a session on the workspace's Claude, as whoever assigned it. */}
-                {loaderData.agentSetup && !item.assignees.includes("g1t") && (
-                  <Form method="post">
-                    <input type="hidden" name="action" value="assign" />
-                    {item.assignees.map((name) => (
-                      <input key={name} type="hidden" name="assignee" value={name} />
-                    ))}
-                    <input type="hidden" name="assignee" value="g1t" />
-                    <div className="*:w-full">
-                      <SubmitButton variant="outline" name="who" value="g1t" pending="Assigning…">
-                        <Bot size={14} />
-                        Assign to g1t
-                      </SubmitButton>
-                    </div>
-                  </Form>
-                )}
-                {!item.assignees.includes(viewer.username) && (
-                  <Form method="post">
-                    <input type="hidden" name="action" value="assign" />
-                    {item.assignees.map((name) => (
-                      <input key={name} type="hidden" name="assignee" value={name} />
-                    ))}
-                    <input type="hidden" name="assignee" value={viewer.username} />
-                    <div className="*:w-full">
-                      <SubmitButton variant="outline" name="who" value="self" pending="Assigning…">
-                        Assign yourself
-                      </SubmitButton>
-                    </div>
-                  </Form>
-                )}
-                <details className="group">
-                  <summary className="cursor-pointer text-xs text-faint hover:text-fg">Assign people</summary>
-                  <Form method="post" className="mt-2 space-y-2" key={item.assignees.join()}>
-                    <input type="hidden" name="action" value="assign" />
-                    {/* Without the workspace's people the picker still holds who is
-                        assigned now, so saving never clears them. */}
-                    {isFailed(members) && <Unavailable what="The workspace's people" compact />}
-                    <PeoplePicker name="assignee" members={isFailed(members) ? [] : members} chosen={item.assignees} />
-                    <SubmitButton variant="outline" name="who" value="picked" pending="Saving…">
-                      Save assignees
-                    </SubmitButton>
-                  </Form>
-                </details>
-              </div>
-            )}
-          </section>
-
-          {/* Another way to start the work: not once a pull request is doing it. */}
-          {open && !pulls.some((pull) => pull.status === "open" || pull.status === "draft") && (
-            <Card asChild className="p-4">
-              <section>
-                <h3 className="text-sm font-medium">Bring your own agent</h3>
-                <p className="mt-1 text-xs text-muted">With g1t connected to your agent, ask it to work on this work item.</p>
-                <div className="mt-3">
-                  <CopyLine text={reference} />
-                </div>
-                {viewer && openable.length > 0 ? (
-                  <Form method="post" className="mt-4 space-y-2 border-t border-line pt-4">
-                    <input type="hidden" name="action" value="open-pull" />
-                    <p className="text-xs text-muted">Or open a draft pull request yourself and get a fork to push to.</p>
-                    <SelectField
-                      name="repo"
-                      aria-label="Repository"
-                      defaultValue={openable.some((repo) => repo.path === workIn) ? workIn! : openable[0]!.path}
-                      options={openable.map((repo) => ({ value: repo.path, label: `${repo.path} (${ROLE_LABELS[repo.role].toLowerCase()})` }))}
-                    />
-                    <Input name="agent" placeholder="Who is working, e.g. claude-code" maxLength={60} />
-                    <div className="*:w-full">
-                      <SubmitButton match={{ action: "open-pull" }} pending="Opening…">
-                        Open pull request
-                      </SubmitButton>
-                    </div>
-                    {actionData && "action" in actionData && actionData.action === "open-pull" && <ErrorText>{actionData.error}</ErrorText>}
-                    {workIn && (
-                      <p className="text-xs text-muted">
-                        Already pushed a branch?{" "}
-                        <Link to={`/${workIn}/pulls/new?item=${item.number}`} className="text-fg underline underline-offset-4">
-                          Open a pull request from it
-                        </Link>
-                        .
-                      </p>
-                    )}
-                  </Form>
-                ) : (
-                  !viewer && (
-                    <p className="mt-4 border-t border-line pt-4 text-sm text-muted">
-                      <Link to="/login" className="text-fg underline underline-offset-4">
-                        Sign in
-                      </Link>{" "}
-                      to open a pull request.
-                    </p>
-                  )
-                )}
-              </section>
-            </Card>
-          )}
-
-          {isFailed(labels) ? (
-            <SideUnavailable heading="Labels" what="Labels" />
-          ) : (
-            <LabelsBox
-              labels={labels}
-              chosen={item.labels}
-              canEdit={canManage}
-              canCreate={can.manage_labels}
-              manageUrl={can.manage_labels ? workPath(workspace, "labels") : undefined}
-            />
-          )}
-          {isFailed(loaderData.milestones) ? (
-            <SideUnavailable heading="Milestone" what="Milestones" />
-          ) : (
-            <MilestoneBox milestones={loaderData.milestones} current={item.milestone} canEdit={can.triage} base={workPath(workspace)} />
-          )}
-          {isFailed(loaderData.projects) ? (
-            <SideUnavailable heading="Project" what="Projects" />
-          ) : (
-            <ProjectBox projects={loaderData.projects} current={item.project} canEdit={can.triage} workspace={workspace} />
-          )}
-          <PlanBox item={item} workspace={workspace} canEdit={can.triage} canNow={can.manage_labels} progress={loaderData.progress} />
-          {viewer &&
-            (isFailed(loaderData.subscription) ? (
-              <SideUnavailable heading="Notifications" what="Your notification settings" />
-            ) : (
-              <SubscriptionBox action={itemPath(workspace, item.number)} number={item.number} kind="item" subscription={loaderData.subscription} />
-            ))}
-        </DetailsDisclosure>
       </div>
+
+      {canManage && open && (
+        <CloseDialog reason="completed" chooseReason openSubItems={openSubItems} error={closeError} open={closing} onOpenChange={setClosing} />
+      )}
+      {viewer && openable.length > 0 && (
+        <OpenPullDialog repos={openable} defaultRepo={workIn} error={errorFor("open-pull")} open={openingPull} onOpenChange={setOpeningPull} />
+      )}
     </AttachImages>
   );
 }
 
-/** A sidebar section, under its usual heading, that could not be loaded. */
-function SideUnavailable({ heading, what }: { heading: string; what: string }) {
+/** A property that could not be loaded, under its usual name. */
+function SideUnavailable({ label, what }: { label: string; what: string }) {
   return (
-    <section>
-      <h3 className="text-sm font-medium">{heading}</h3>
-      <div className="mt-2">
+    <PropertyRow label={label}>
+      <div className="px-2 py-1.5">
         <Unavailable what={what} compact />
       </div>
-    </section>
+    </PropertyRow>
   );
 }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { mayChangeComment } from "./comments.ts";
+import { interleave, mayChangeComment } from "./comments.ts";
 
 const ana = { id: "usr_1" };
 
@@ -31,4 +31,23 @@ test("an agent's comment is answered for by whoever it acted for; its review is 
   assert.deepEqual(mayChangeComment(comment, "agt_1", false), { edit: false, delete: false });
   const review = { ...comment, advisory: true };
   assert.deepEqual(mayChangeComment(review, "usr_1", false), { edit: true, delete: false });
+});
+
+test("a conversation interleaves its sessions and claims where each happened, oldest first", () => {
+  const comments = [
+    { id: "c1", createdAt: "2026-10-01T10:00:00Z" },
+    { id: "c2", createdAt: "2026-10-01T12:00:00Z" },
+  ];
+  const extras = [
+    { id: "late", at: "2026-10-02T09:00:00Z" },
+    { id: "between", at: "2026-10-01T11:00:00Z" },
+    { id: "first", at: "2026-10-01T09:00:00Z" },
+    { id: "same", at: "2026-10-01T12:00:00Z" },
+  ];
+  const order = interleave(comments, extras).map((one) => (one.comment ? one.comment.id : one.extra.id));
+  assert.deepEqual(order, ["first", "c1", "between", "same", "c2", "late"]);
+  assert.deepEqual(
+    interleave([], extras.slice(0, 1)).map((one) => one.extra?.id),
+    ["late"],
+  );
 });

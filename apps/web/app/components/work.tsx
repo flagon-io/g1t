@@ -4,7 +4,7 @@ import { Form, Link } from "react-router";
 
 import type { AgentRef, Comment, Pull, State, WorkItem } from "@g1t/contracts";
 
-import { mayChangeComment } from "../lib/comments";
+import { interleave, mayChangeComment } from "../lib/comments";
 import { messageParts } from "../lib/commit-message";
 import { chipStyle } from "../lib/labels";
 import { repoAt } from "../lib/markdown-plugins";
@@ -585,23 +585,11 @@ export function CommentList({
   extra?: TimelineExtra[];
 }) {
   // Each extra goes before the first comment written after it.
-  const later = [...extra].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
-  const before = (at: string) => {
-    const due: TimelineExtra[] = [];
-    while (later.length > 0 && Date.parse(later[0].at) <= Date.parse(at)) due.push(later.shift()!);
-    return due.map((one) => <Fragment key={one.id}>{one.node}</Fragment>);
-  };
   return (
     <>
-      {comments.map((comment) => (
-        <Fragment key={comment.id}>
-          {before(comment.createdAt)}
-          {entry(comment)}
-        </Fragment>
-      ))}
-      {later.map((one) => (
-        <Fragment key={one.id}>{one.node}</Fragment>
-      ))}
+      {interleave(comments, extra).map((one) =>
+        one.comment ? <Fragment key={one.comment.id}>{entry(one.comment)}</Fragment> : <Fragment key={one.extra.id}>{one.extra.node}</Fragment>,
+      )}
     </>
   );
 
@@ -660,6 +648,7 @@ export function CommentForm({
   resetKey,
   review,
   handles,
+  hint,
 }: {
   /** The viewer's username, or null if they are signed out. */
   author: string | null;
@@ -668,6 +657,8 @@ export function CommentForm({
   review?: Review;
   /** Teams the box offers to mention, as `@workspace/team`. */
   handles?: readonly string[];
+  /** Beside the buttons, at the right: the key that sends it. */
+  hint?: ReactNode;
 }) {
   if (!author) {
     return (
@@ -689,6 +680,13 @@ export function CommentForm({
         <MentionTextarea
           name="body"
           handles={handles}
+          // ⌘ Enter or Ctrl Enter sends it, as Comment does.
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey) || event.defaultPrevented) return;
+            event.preventDefault();
+            const submit = event.currentTarget.form?.querySelector<HTMLButtonElement>('button[type="submit"][value="comment"]');
+            if (event.currentTarget.value.trim()) event.currentTarget.form?.requestSubmit(submit ?? undefined);
+          }}
           rows={3}
           placeholder={review?.canJudge ? "Leave a comment, or a review. Markdown works." : "Leave a comment. Markdown works."}
         />
@@ -709,6 +707,7 @@ export function CommentForm({
               </SubmitButton>
             </>
           )}
+          {hint && <span className="ml-auto self-center">{hint}</span>}
         </div>
       </Form>
     </div>

@@ -17,3 +17,22 @@ export function mayChangeComment(
   const allowed = comment.kind === "comment" && viewerId != null && (answerable === viewerId || canModerate);
   return { edit: allowed, delete: allowed && comment.verdict == null && !comment.advisory };
 }
+
+/** One entry of a conversation: a comment, or an extra (a session, a claim) drawn between them. */
+export type Interleaved<C, X> = { comment: C; extra?: undefined } | { extra: X; comment?: undefined };
+
+/**
+ * A conversation in the order things happened, oldest first: its comments
+ * as they come (already oldest first), with each extra before the first
+ * comment written after it, and those after the last at the end.
+ */
+export function interleave<C extends { createdAt: string }, X extends { at: string }>(comments: readonly C[], extras: readonly X[]): Interleaved<C, X>[] {
+  const later = [...extras].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  const out: Interleaved<C, X>[] = [];
+  for (const comment of comments) {
+    while (later.length > 0 && Date.parse(later[0]!.at) <= Date.parse(comment.createdAt)) out.push({ extra: later.shift()! });
+    out.push({ comment });
+  }
+  for (const extra of later) out.push({ extra });
+  return out;
+}

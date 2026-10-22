@@ -235,6 +235,8 @@ export default function PlanPage({ loaderData }: Route.ComponentProps) {
   const quiet = quietLine(loaderData.plan.progress.filter((one) => one.quiet).length);
   const letGo = setAsideLine(setAsideRecent);
   const nextMore = moreText(plan.next.length, plan.nextTotal);
+  // Now then Next, as they show, for J and K on each item's page.
+  const trail = { numbers: [...plan.now, ...plan.next].map((item) => item.number), label: "Plan", href: workPath(workspace) };
   // A horizon's rows, each sub-item under its parent when the plan groups them; each keeps its rank.
   const rows = (items: WorkItem[]) => (group ? groupSubItems(items) : items.map((item, index) => ({ item, depth: 0, index })));
   const row = (lane: "now" | "next", item: WorkItem, index: number, rank: number, depth = 0) => (
@@ -249,6 +251,7 @@ export default function PlanPage({ loaderData }: Route.ComponentProps) {
       drag={rowDrag(lane, item, index)}
       menu={canPlan ? <PlanRowMenu item={item} list={lists[lane]} canNow={canNow} onMove={(move) => submit(move, item)} /> : undefined}
       progress={lane === "now" ? progress[item.number] : undefined}
+      trail={trail}
     />
   );
 
