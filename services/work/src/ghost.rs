@@ -26,6 +26,11 @@ pub(crate) fn statements() -> Vec<String> {
     sql.push(format!(
         "UPDATE pulls SET requested_by_id = '{GHOST_ID}', requested_by_name = '{GHOST_USERNAME}' WHERE requested_by_id = ?1"
     ));
+    // What a coding agent did for it (cloud_agents.rs).
+    sql.push(format!("UPDATE pulls SET agent_by_id = '{GHOST_ID}', agent_by_name = '{GHOST_USERNAME}' WHERE agent_by_id = ?1"));
+    sql.push(format!(
+        "UPDATE agent_commits SET person_id = '{GHOST_ID}', person_name = '{GHOST_USERNAME}' WHERE person_id = ?1"
+    ));
     for (table, column) in [("pulls", "assignees"), ("pulls", "reviewers")] {
         sql.push(format!(
             "UPDATE {table} SET {column} = (SELECT json_group_array(value) FROM json_each({table}.{column}) WHERE value <> ?2)
@@ -60,6 +65,8 @@ mod tests {
             );
         }
         assert!(sql.iter().any(|s| s.contains("UPDATE pulls SET requested_by_id = 'usr_ghost'")));
+        assert!(sql.iter().any(|s| s.contains("UPDATE pulls SET agent_by_id = 'usr_ghost'")));
+        assert!(sql.iter().any(|s| s.contains("UPDATE agent_commits SET person_id = 'usr_ghost'")));
         assert!(sql.iter().any(|s| s.contains("UPDATE pulls SET reviewers")));
         assert!(sql.iter().any(|s| s.contains("team_review_requests")));
     }

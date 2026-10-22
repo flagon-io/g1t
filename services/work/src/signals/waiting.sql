@@ -2,7 +2,7 @@
 -- first review yet, oldest first: their work item's number, and the
 -- numbers of the workspace's open work items blocked by it, as a JSON
 -- array.
-SELECT pr.repo_id, pr.number, pr.title, pr.created_at, pr.agent, pr.draft_seconds,
+SELECT pr.repo_id, pr.number, pr.title, pr.created_at, pr.agent, pr.agent_rule, pr.draft_seconds,
   i.number AS item,
   CASE WHEN i.id IS NULL THEN '[]' ELSE (SELECT json_group_array(number) FROM (
     SELECT b.number FROM work_items b

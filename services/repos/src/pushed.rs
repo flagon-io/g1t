@@ -148,7 +148,11 @@ pub(crate) async fn brought_in<R: GitRepo>(git: &R, a: PushedArgs) -> Result<Pus
         new.iter()
             .take(MAX_PUSHED)
             .rev()
-            .map(|commit| PushedCommit { hash: commit.hash.clone(), message: commit.message.clone() })
+            .map(|commit| PushedCommit {
+                hash: commit.hash.clone(),
+                message: commit.message.clone(),
+                author_email: Some(commit.author.email.clone()),
+            })
             .collect()
     } else {
         Vec::new()

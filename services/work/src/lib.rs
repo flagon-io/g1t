@@ -9,6 +9,7 @@ mod authored;
 mod automerge;
 mod checks;
 mod closing;
+mod cloud_agents;
 mod ghost;
 mod codeowners;
 mod commit_checks;
@@ -1117,6 +1118,8 @@ impl Work {
         }
         // Its head and merge refs in the repository, before its events go out.
         self.keep_pull_refs(&pull).await;
+        // A coding agent's commits make it that agent's (cloud_agents.rs).
+        self.mark_agent_pull(&pull, None).await;
         self.publish(
             "pull.opened",
             &repo.id,

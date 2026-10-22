@@ -92,6 +92,8 @@ pub struct WaitingPull {
     pub title: String,
     pub created_at: String,
     pub agent: bool,
+    /// For an agent's: why g1t says so, as [`SignalPull::agent_rule`].
+    pub agent_rule: Option<String>,
     /// For an agent's: seconds from its first session's start to opening.
     pub draft_seconds: Option<f64>,
     /// The work item it is for, and the open work items blocked by that one.
@@ -109,6 +111,12 @@ pub struct SignalPull {
     /// draft, open, merged or closed.
     pub status: String,
     pub agent: bool,
+    /// For an agent's: why g1t says so. `g1t` (g1t's agent opened it, or
+    /// it was opened as an agent's), `session` (a harness session is tied
+    /// to it), else the rule its commits matched (`AgentWork::rule`).
+    pub agent_rule: Option<String>,
+    /// Whoever asked for it, else the person who started the coding agent
+    /// whose commits it holds (`AgentWork::started_by`), else its author.
     pub owner_id: String,
     pub owner_name: String,
     pub created_at: String,

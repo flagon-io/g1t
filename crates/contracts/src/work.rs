@@ -493,6 +493,11 @@ pub struct Pull {
     /// would. See [`owner`](Pull::owner).
     #[serde(default)]
     pub requested_by: Option<User>,
+    /// When its commits say a coding agent made it (a cloud agent's
+    /// trailer, the agent's address as author or co-author): which, by
+    /// what rule, and for whom. Absent otherwise. See [`AgentWork`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_work: Option<AgentWork>,
     /// RFC 3339.
     pub created_at: String,
     /// RFC 3339.
@@ -504,6 +509,25 @@ pub struct Pull {
     pub head_pushed_by: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub head_pushed_at: Option<String>,
+}
+
+/// A coding agent's work on a pull request, as its commits tell it
+/// (`coding_agents::agent_mark`): the strongest rule any of its commits
+/// matched, and of those commits the oldest.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentWork {
+    /// The coding agent's id (`coding_agents::CODING_AGENTS`), such as
+    /// `copilot` or `cursor`.
+    pub agent: String,
+    /// The rule that matched, such as `trailer:agent-logs-url`,
+    /// `author:copilot`, `coauthor:cursor` or `trailer:made-with-cursor`.
+    pub rule: String,
+    /// The member it counts for: whoever started the agent, when the
+    /// address the commit names for them is one they verified. Absent
+    /// when g1t can't tell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_by: Option<User>,
 }
 
 /// One file a pull request changes, and by how much.

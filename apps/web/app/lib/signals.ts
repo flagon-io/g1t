@@ -981,7 +981,18 @@ export function agentStep(share: number): 0 | 1 | 2 | 3 | 4 {
   return 4;
 }
 
-export type FlowPull = { key: string; repo: string; number: number; title: string; agent: boolean; micros: number; status: SignalPull["status"]; to: string };
+export type FlowPull = {
+  key: string;
+  repo: string;
+  number: number;
+  title: string;
+  agent: boolean;
+  /** For an agent's: why g1t says so (`SignalPull.agentRule`). */
+  agentRule?: string | null;
+  micros: number;
+  status: SignalPull["status"];
+  to: string;
+};
 
 export type FlowNode = {
   key: string;
@@ -1091,6 +1102,7 @@ export function spendFlow(ctx: Pick<SignalContext, "slug" | "repos" | "signals" 
       number: pull.number,
       title: pull.title,
       agent: pull.agent,
+      agentRule: pull.agentRule ?? null,
       micros,
       status: pull.status,
       to: pullPath(repo, pull.number),

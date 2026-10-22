@@ -26,6 +26,7 @@ import { Suspense, useState } from "react";
 import { Await, Form, Link, redirect } from "react-router";
 
 import {
+  type AgentWork,
   type Capability,
   type Comment,
   type Comparison,
@@ -43,16 +44,19 @@ import {
   REACTIONS,
   workOwner,
 } from "@g1t/contracts";
+import { codingAgentById } from "@g1t/contracts/coding-agents";
 
 import type { Route } from "./+types/pull";
 import { firstScreens } from "../../lib/diff";
 import { highlightFirstFiles } from "../../lib/highlight.server";
 import { excerpt, page } from "../../lib/meta";
 import { openedBy } from "../../lib/opened-by";
+import { agentTitle } from "../../lib/agent-rule";
 import { taskCheckOf } from "../../lib/task-check";
 import { useArrived } from "../../lib/use-arrived";
 import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { DiffView } from "../../components/diff-view";
+import { AgentCard, AgentMark } from "../../components/coding-agent";
 import { DetailsDisclosure, detailsSummary } from "../../components/details-disclosure";
 import { BaseBranch } from "../../components/base-branch";
 import { LabelChip, LabelsBox, MilestoneBox } from "../../components/labels";
@@ -597,6 +601,37 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 /** How many, beside a tab's name, when there are any. */
+/**
+ * A coding agent's work, as the pull request's commits tell it: the agent's
+ * mark and name (its card on hover), the person it counts for, and the rule
+ * that matched, in a hint and for screen readers.
+ */
+function AgentWorkBadge({ work }: { work: AgentWork }) {
+  const agent = codingAgentById(work.agent);
+  const title = agentTitle(work.rule);
+  return (
+    <span className="flex items-center gap-1.5 text-xs">
+      <Hint label={title}>
+        <span className="inline-flex text-accent">
+          <Bot size={14} aria-hidden="true" />
+        </span>
+      </Hint>
+      <AgentCard agentId={work.agent}>
+        <span className="flex items-center gap-1.5 font-medium text-fg-soft">
+          {agent && <AgentMark agent={agent} size={16} />}
+          {agent?.name ?? work.agent}
+        </span>
+      </AgentCard>
+      {work.startedBy && (
+        <span>
+          for <PersonLink name={work.startedBy.username} className="font-medium text-fg-soft hover:underline" />
+        </span>
+      )}
+      <span className="sr-only">{title}</span>
+    </span>
+  );
+}
+
 function TabCount({ n }: { n: number }) {
   if (n <= 0) return null;
   return <span className="rounded-full bg-raised px-1.5 py-px text-xs tabular-nums text-muted ring-1 ring-line">{n.toLocaleString("en-US")}</span>;
@@ -981,6 +1016,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                 {pull.runtime === "hosted" && <span className="text-faint">on g1t</span>}
               </span>
             )}
+            {/* Its commits say a coding agent made it: which, for whom, and why g1t says so. */}
+            {pull.agentWork && <AgentWorkBadge work={pull.agentWork} />}
           </div>
 
           {reviews.length > 0 && (

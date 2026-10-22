@@ -61,20 +61,56 @@ whom, and the sessions started. A finding that happened on one day, such
 as a milestone that closed, is pinned over it with the number it has in
 [Worth a look](#worth-a-look).
 
-| Figure                    | What it counts                                                                                                                                                                                                                                                                                                                               |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Landed by agents**      | Pull requests that merged in the week and were an [agent's](#whose-work-is-an-agents), and the commits agent sessions pushed outside any pull request (to the default branch, most of all), each once. A workspace that pushes straight to main lands most of its work the second way.                                                       |
-| **Cost per agent change** | The week's agent [usage](/guides/usage-and-billing/#the-usage-page) at price, plus what the [sessions](/guides/sessions/) started in it cost (estimated at list price from their token usage), divided by the agent changes that landed in it: an average, not what any one cost. A dash when usage can't be read or no agent change landed. |
-| **Gone quiet**            | Pull requests open at the end of each week (now, for this one), opened three days or more before, with nothing in the three days before: no push, comment, review, timeline event, check or session. Drafts count.                                                                                                                           |
-| **Sent back**             | Of the agent pull requests that merged in the week (direct commits get no review, so they're not counted here), the share a person asked for changes on before they merged.                                                                                                                                                                  |
+| Figure                    | What it counts                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Landed by agents**      | Pull requests that merged in the week and were an [agent's](#whose-work-is-an-agents), and the commits agents pushed outside any pull request (to the default branch, most of all), each once: those sessions recorded, and those whose trailers or addresses say a coding agent made them. A workspace that pushes straight to main lands most of its work the second way. |
+| **Cost per agent change** | The week's agent [usage](/guides/usage-and-billing/#the-usage-page) at price, plus what the [sessions](/guides/sessions/) started in it cost (estimated at list price from their token usage), divided by the agent changes that landed in it: an average, not what any one cost. A dash when usage can't be read or no agent change landed.                                |
+| **Gone quiet**            | Pull requests open at the end of each week (now, for this one), opened three days or more before, with nothing in the three days before: no push, comment, review, timeline event, check or session. Drafts count.                                                                                                                                                          |
+| **Sent back**             | Of the agent pull requests that merged in the week (direct commits get no review, so they're not counted here), the share a person asked for changes on before they merged.                                                                                                                                                                                                 |
 
 ### Whose work is an agent's
 
-A pull request is an agent's when g1t's agent opened it, it was opened as
-an agent's, or a [session](/guides/sessions/) is tied to it: linked to it,
-started for it, or pushing its branch. Its owner is the person who asked
-for it, else its author, so an agent's work counts toward the person it
-was for.
+g1t decides a change is an agent's by the first of these rules that
+matches, strongest first, and keeps the rule it matched:
+
+1. **g1t's agent**: g1t's agent opened the pull request, or it was opened
+   as an agent's.
+2. **A session**: a [session](/guides/sessions/) is tied to the pull
+   request (linked to it, started for it, or pushing its branch), or
+   recorded the commit.
+3. **The commits say so.** A coding agent g1t didn't start, such as one
+   running in the cloud, leaves its mark on the commits it makes. g1t reads
+   the commits of each pull request when it opens and after each push, and
+   the commits pushed straight to a default branch:
+
+| Rule                       | What the commit carries                                                                                                                                                   | Who it counts for                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `trailer:agent-logs-url`   | An `Agent-Logs-Url:` trailer, which GitHub Copilot's cloud agent writes on every commit it makes, linking to its session.                                                 | The co-author: the person who gave the agent the task. |
+| `trailer:claude-session`   | A `Claude-Session:` trailer, which Claude Code writes on commits from a cloud or Remote Control session.                                                                  | The author.                                            |
+| `author:<agent>`           | A coding agent's address as the commit's author: Copilot, Cursor's cloud agents (`cursoragent@cursor.com`), Devin, Claude, Codex, Gemini or Jules.                        | The first co-author who isn't an agent.                |
+| `coauthor:<agent>`         | A `Co-authored-by:` trailer with a coding agent's address, such as `Co-Authored-By: Claude <noreply@anthropic.com>` or `Co-authored-by: Cursor <cursoragent@cursor.com>`. | The author.                                            |
+| `trailer:made-with-cursor` | A `Made with Cursor` line (or `Made-with: Cursor` trailer), which Cursor's editor and CLI agents add.                                                                     | The author.                                            |
+
+Only addresses are read, never names: anyone can write "Copilot" as their
+name. Dependabot, Renovate and GitHub Actions keep things running rather
+than doing someone's work, so their commits match no rule. A commit
+whose `G1t-Session` trailer names a session counts as that session's
+work, once.
+
+The person a commit counts for is matched to a member only through an
+email address they have verified on g1t, in the workspace the repository
+is in. When nobody has verified the address, the work is still an
+agent's, and counts for nobody in particular. GitHub's
+`@users.noreply.github.com` addresses aren't matched yet: to have a
+cloud agent's work counted as yours, commit with an address you've
+verified, or have the agent's co-author line use it.
+
+A pull request's owner is the person who asked for it, else the person
+who started the coding agent whose commits it holds, else its author, so
+an agent's work counts toward the person it was for. Its page names the
+agent and the person beside its title; point at the agent mark there, or
+next to an agent's pull request on the workspace overview, to see which
+rule matched.
 
 ### Worth a look
 
