@@ -242,7 +242,7 @@ export async function upload(env = process.env, { run = wrangler, fetchImpl = fe
   if (!/^[0-9a-f]{40}$/.test(sha ?? "")) throw new Error("The event names no head commit.");
   const token = env.CLOUDFLARE_API_TOKEN;
   if (!token) {
-    const note = 'No preview: the repository has no CLOUDFLARE_API_TOKEN (CONTRIBUTING.md, "Previewing a change to the site").';
+    const note = 'No preview: the production environment has no CLOUDFLARE_API_TOKEN (CONTRIBUTING.md, "Previewing a change to the site").';
     console.log(`::notice::${note}`);
     summary(env, note);
     output(env, { url: "" });

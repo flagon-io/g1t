@@ -5,7 +5,7 @@
   "compilerOptions": {
     "composite": true,
     "strict": true,
-    "lib": ["DOM", "DOM.Iterable", "ES2022", "ESNext.Disposable"],
+    "lib": ["DOM", "DOM.Iterable", "ES2023", "ESNext.Disposable"],
     "types": ["vite/client"],
     "target": "ES2022",
     "module": "ES2022",

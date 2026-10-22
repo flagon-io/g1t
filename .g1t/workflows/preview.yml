@@ -20,7 +20,7 @@
 # secrets anyway. The preview has the production Worker's bindings and
 # secrets: it reads and writes g1t.sh's real data.
 #
-# Uses the repository's CLOUDFLARE_API_TOKEN, the one Deploy uses: anyone
+# Uses production's CLOUDFLARE_API_TOKEN, the one Deploy uses: anyone
 # who can push a branch here can already change a workflow on their pull
 # request and read the repository's secrets, so a token of its own would
 # protect nothing (fork pull requests get neither). And the variable
@@ -93,6 +93,11 @@ jobs:
     needs: [build]
     if: ${{ needs.build.outputs.preview == 'true' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
+    # The deploy token is production's: read with `deployment: false`, as
+    # Deploy's plan job reads it, so a preview makes no deployment.
+    environment:
+      name: production
+      deployment: false
     # Sets the commit status that links the preview.
     permissions:
       contents: read

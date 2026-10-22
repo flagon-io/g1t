@@ -120,7 +120,7 @@ What to know:
 
 Setting it up, once:
 
-1. The repository's `CLOUDFLARE_API_TOKEN`, the secret Deploy uses: anyone
+1. The `production` environment's `CLOUDFLARE_API_TOKEN`, the secret Deploy uses (read with `deployment: false`): anyone
    who can push a branch here can already read the repository's secrets
    from a workflow on their pull request, so a token of its own would
    protect nothing. Fork pull requests get no secrets and no preview.
