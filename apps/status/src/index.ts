@@ -260,8 +260,21 @@ async function prices(billing: Fetcher, signal: AbortSignal): Promise<unknown> {
 /** How many of a round's requests wait on an answer at once: Workers' own limit. */
 const AT_ONCE = 6;
 
-/** One round of checks, kept. Parts under maintenance are checked but not tallied. */
-export async function checkAll(env: Env, now = new Date()): Promise<Observation[]> {
+/**
+ * A cron round that starts this long after its scheduled time is late,
+ * and its checks through a binding do not count (`checkAll`). Rounds start
+ * within 2 s nine times in ten. On 2026-10-22, after #372, none of 122
+ * rounds that started within 8 s had billing or storage fail; 9 of 12 that
+ * started later did, their calls never reaching either service (#380).
+ */
+export const LATE_MS = 8_000;
+
+/**
+ * One round of checks, kept. Parts under maintenance are checked but not
+ * tallied. In a `late` round the checks through a binding are asked but
+ * not kept: what they said is logged, and their parts keep their state.
+ */
+export async function checkAll(env: Env, now = new Date(), { late = false }: { late?: boolean } = {}): Promise<Observation[]> {
   const billing = env.BILLING;
   const repos = env.REPOS;
   const list = parts(env);
@@ -300,7 +313,13 @@ export async function checkAll(env: Env, now = new Date()): Promise<Observation[
   }
   // Checks through a binding have no cf-ray of their own: they ran where the others did.
   const roundColo = results.find((r) => r.result?.colo)?.result?.colo ?? null;
-  const observations = results.map(({ info, result }): Observation => {
+  const left = late ? results.filter(({ info }) => info.check.kind === "billing" || info.check.kind === "storage") : [];
+  if (left.length) {
+    const said = left.map(({ info, result }) => ({ part: info.key, ...classify(result, info.slowMs), ms: result ? Math.round(result.ms) : null }));
+    console.log(JSON.stringify({ event: "status.late_round", colo: roundColo, left_out: said }));
+  }
+  const kept = late ? results.filter((r) => !left.includes(r)) : results;
+  const observations = kept.map(({ info, result }): Observation => {
     const { state, detail } = classify(result, info.slowMs);
     return {
       component: info.key,
@@ -837,10 +856,11 @@ export default {
       });
     }
   },
-  async scheduled(_controller, env, ctx) {
+  async scheduled(controller, env, ctx) {
     const now = new Date();
+    const late = now.getTime() - controller.scheduledTime >= LATE_MS;
     ctx.waitUntil(
-      checkAll(env, now)
+      checkAll(env, now, { late })
         .then(async (observations) => {
           const failing = observations.filter((o) => o.state === "down" || o.state === "degraded");
           if (failing.length) console.warn(JSON.stringify({ event: "status.trouble", parts: failing }));

@@ -390,3 +390,14 @@ test("slow and down are said apart, with the run's own start", () => {
     "Recovered after 4 minutes, at 6 Oct 07:29 UTC, and stayed healthy for 10 minutes; dismissed automatically. It never appeared on the status page.",
   );
 });
+
+test("a part a round did not check keeps its run as it was", () => {
+  // Billing two checks into a run; a late round checks only the site (index.ts `checkAll`).
+  const billing: Streak = { component: "billing", state: "down", count: 2, checks: 2, recent: "xx", since: at(0).toISOString(), alerted: false };
+  const found = detect(new Map([["billing", billing]]), [{ component: "site", state: "up" }], [], new Set(), at(2));
+  assert.deepEqual(found.streaks, [billing]);
+  assert.deepEqual([found.draft, found.recovered], [[], []]);
+  // The next round that does check it carries on from there.
+  const next = detect(new Map([["billing", billing]]), [{ component: "billing", state: "down" }], [], new Set(), at(3));
+  assert.equal(next.streaks[0]!.count, 3);
+});
