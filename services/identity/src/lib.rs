@@ -159,17 +159,30 @@ impl Identity {
         let Some(mut user) = user else {
             return Ok(None);
         };
+        // Read together, in one trip to the database: every signed-in page
+        // waits on this before its loaders start.
+        let read = self
+            .db
+            .batch(vec![
+                self.user_suspension_statement(&user.id)?,
+                self.memberships_statement(&user.id)?,
+                self.grants_statement(&user.id)?,
+            ])
+            .await?;
+        let [suspension, memberships, grants] = read.as_slice() else {
+            return Err(worker::Error::RustError("the account's batch came back short".into()));
+        };
         // A suspended account is nobody, however it is presented
         // (suspension.rs): its sessions, tokens, keys and password.
-        if self.user_suspension(&user.id).await?.is_some() {
+        if suspension::user_suspension_from(suspension)?.is_some() {
             return Ok(None);
         }
-        let policed = self.memberships_and_policies(&user.id).await?;
+        let policed = workspaces::policed_from(memberships)?;
         let sso_required: Vec<(String, g1t_contracts::Role)> =
             policed.iter().filter(|m| m.require_sso).map(|m| (m.membership.slug.clone(), m.membership.role)).collect();
         let memberships = policed.into_iter().map(|m| (m.membership, m.require_two_factor)).collect();
         // Roles on single repositories, under the same policy (access.rs).
-        let grants = self.grants_of(&user.id).await?;
+        let grants = access::grants_from(grants)?;
         // Access to a workspace is used only within its policy; see security.rs.
         let within = self.within_policy(&user.id, memberships, grants).await?;
         user.workspaces = within.memberships;

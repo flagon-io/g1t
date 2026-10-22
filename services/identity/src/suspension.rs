@@ -69,6 +69,11 @@ impl SuspensionRow {
     }
 }
 
+/// The account's suspension, from what `user_suspension_statement` read.
+pub(crate) fn user_suspension_from(result: &worker::D1Result) -> Result<Option<Suspension>> {
+    Ok(result.results::<SuspensionRow>()?.into_iter().next().and_then(SuspensionRow::shown))
+}
+
 #[derive(Deserialize)]
 struct DomainRow {
     domain: String,
@@ -80,13 +85,14 @@ struct DomainRow {
 impl Identity {
     /// The account's suspension, if it has one.
     pub(crate) async fn user_suspension(&self, user_id: &str) -> Result<Option<Suspension>> {
-        Ok(self
-            .db
+        user_suspension_from(&self.user_suspension_statement(user_id)?.all().await?)
+    }
+
+    /// What `user_suspension` reads, to batch with other reads.
+    pub(crate) fn user_suspension_statement(&self, user_id: &str) -> Result<worker::D1PreparedStatement> {
+        self.db
             .prepare("SELECT suspended_at, suspended_reason, suspended_by FROM users WHERE id = ?")
-            .bind(&[user_id.into()])?
-            .first::<SuspensionRow>(None)
-            .await?
-            .and_then(SuspensionRow::shown))
+            .bind(&[user_id.into()])
     }
 
     /// The workspace's suspension, if it has one, by slug.
