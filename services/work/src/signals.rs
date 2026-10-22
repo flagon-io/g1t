@@ -174,7 +174,7 @@ fn window(a: &WorkspaceSignalsArgs, now: u64) -> Option<Window> {
 
 /// Whether an owner is a person: not g1t's agent, a workspace agent, a
 /// workspace or g1t itself.
-fn is_person(id: &str) -> bool {
+pub(crate) fn is_person(id: &str) -> bool {
     id != AGENT_ID && !id.starts_with("agt_") && !id.starts_with("wsp_") && !g1t_contracts::system::is_system_id(id)
 }
 
