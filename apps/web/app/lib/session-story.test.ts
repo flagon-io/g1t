@@ -70,6 +70,8 @@ test("highlights are the tree's decisions and its notes, oldest first, each citi
     entry(5, "note", "The approvals were declined because nobody watched.", "2026-10-21T10:01:00Z"),
     entry(6, "note", "", "2026-10-21T10:03:00Z"),
     entry(8, "message", "Not a highlight.", "2026-10-21T10:03:30Z"),
+    // Acknowledging coordination updates is bookkeeping.
+    entry(9, "note", "Coordination updates upd_c62316db756f071acf8fa1bbff: Unrelated session ended", "2026-10-21T10:03:40Z"),
   ];
   const where = (d: Decision) => (d.pull != null ? `/acme/web/pull/${d.pull}` : `/acme/-/work/${d.item}`);
   assert.deepEqual(highlights(decisions, entries, new Set(["ses_a", "ses_sub"]), where), [
