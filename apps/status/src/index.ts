@@ -288,6 +288,16 @@ export async function checkAll(env: Env, now = new Date()): Promise<Observation[
     ),
   );
   const results = list.map((info) => ({ info, result: asked.get(info.key) ?? null }));
+  // A page slow at first and asked again: where each try spent its time,
+  // loader by loader and service by service, for telling what a data
+  // centre g1t had not run in lately costs (#374).
+  for (const { info, result } of results) {
+    if (!result?.tries) continue;
+    const [first, again] = result.tries;
+    console.log(
+      JSON.stringify({ event: "status.slow_first", part: info.key, colo: result.colo ?? null, first_ms: result.first_ms, ms: result.ms, first, again }),
+    );
+  }
   // Checks through a binding have no cf-ray of their own: they ran where the others did.
   const roundColo = results.find((r) => r.result?.colo)?.result?.colo ?? null;
   const observations = results.map(({ info, result }): Observation => {

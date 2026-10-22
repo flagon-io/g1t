@@ -319,7 +319,11 @@ the databases, so start calls together and add no rounds.
 - Targets from the US: signed-out pages under 200 ms to first byte,
   signed-in pages under 400 ms, streamed panels within a second.
 - Workers run without Smart Placement; `scripts/perf/placement-probe.mjs`
-  measures a placement before you pin one.
+  measures a placement before you pin one, warm (`measure`) and cold
+  (`cold`, with `--wasm` loading a real service's module).
+- A page is slowest in a data centre g1t has not run in lately: when
+  Page speed's first try is slow, the status worker logs both tries'
+  `Server-Timing` (`status.slow_first`), which says what the cold cost was.
 - A TypeScript service reports its database time too (`db;dur`, from
   `openD1` in `@g1t/contracts`): the round trips a method makes are what
   it costs, so start them together (`Promise.all`), keep what never

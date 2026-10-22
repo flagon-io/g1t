@@ -9,8 +9,17 @@
 // the way the site calls the services. Then it measures them from this
 // machine, prints a table, and deletes them.
 //
+// `measure` times warm Workers. `cold` times what a data centre g1t has
+// not run in lately pays: each round deploys every probe again, so none is
+// running anywhere, and times the first call through each binding against
+// the calls after it. A probe is a few lines; with `--wasm` each one also
+// loads a real service's module (loaded, never run, as at a cold start),
+// so its start costs what a g1t service's does.
+//
 //   node scripts/perf/placement-probe.mjs deploy     # make the probes (needs `wrangler login`)
+//   node scripts/perf/placement-probe.mjs deploy --wasm services/billing/build/index_bg.wasm
 //   node scripts/perf/placement-probe.mjs measure    # 1 warm-up + 7 requests each, a table
+//   node scripts/perf/placement-probe.mjs cold 3     # 3 rounds: deploy again, one cold call, three warm
 //   node scripts/perf/placement-probe.mjs delete     # remove them all
 //   node scripts/perf/placement-probe.mjs apply '{"region":"aws:us-west-1"}'
 //                                                    # write a placement into every config that should have it
@@ -18,7 +27,7 @@
 //
 // Nothing here runs in CI.
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -62,7 +71,8 @@ export const PLACED = [
   "services/work/wrangler.jsonc",
 ];
 
-const PROBE = `
+/** The probe's source; with `wasm`, it loads `ballast.wasm` too, as a service loads its own. */
+const probe = (wasm) => `${wasm ? 'import ballast from "./ballast.wasm";\nglobalThis.ballast = ballast;\n' : ""}
 const QUERIES = 5;
 async function ranIn() {
   const trace = await (await fetch("https://cloudflare.com/cdn-cgi/trace")).text();
@@ -104,7 +114,7 @@ export default {
 };
 `;
 
-function configFor(variant, bindings = []) {
+function configFor(variant, bindings = [], deployed = 0) {
   return {
     name: `g1t-probe-${variant.name}`,
     main: "worker.js",
@@ -113,7 +123,8 @@ function configFor(variant, bindings = []) {
     workers_dev: true,
     preview_urls: false,
     placement: variant.placement,
-    vars: { NAME: variant.name },
+    // A new value each deploy, so each is a new version running nowhere yet.
+    vars: { NAME: variant.name, DEPLOYED: String(deployed) },
     d1_databases: [{ binding: "DB", database_name: DATABASE.name, database_id: DATABASE.id }],
     services: bindings,
   };
@@ -125,8 +136,14 @@ async function wrangler(args, cwd) {
 }
 
 const URLS = join(tmpdir(), "g1t-placement-probe", "urls.json");
+/** How the probes were last deployed (`--wasm`), for `cold` to deploy them again alike. */
+const OPTIONS = join(tmpdir(), "g1t-placement-probe", "options.json");
 
-async function deploy() {
+async function deploy({ wasm = null, quiet = false } = {}) {
+  if (wasm && !existsSync(wasm)) throw new Error(`no such module: ${wasm}`);
+  mkdirSync(join(tmpdir(), "g1t-placement-probe"), { recursive: true });
+  writeFileSync(OPTIONS, JSON.stringify({ wasm }));
+  const deployed = Date.now();
   const urls = {};
   const edge = { name: "edge", placement: { mode: "off" } };
   const bindings = VARIANTS.map((v) => ({ binding: `TO_${v.name.toUpperCase().replaceAll("-", "_")}`, service: `g1t-probe-${v.name}` }));
@@ -134,16 +151,18 @@ async function deploy() {
     const dir = join(tmpdir(), "g1t-placement-probe", variant.name);
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "worker.js"), PROBE);
-    writeFileSync(join(dir, "wrangler.json"), JSON.stringify(configFor(variant, extra), null, 2));
-    process.stdout.write(`deploying g1t-probe-${variant.name} ${JSON.stringify(variant.placement)} … `);
+    writeFileSync(join(dir, "worker.js"), probe(wasm));
+    if (wasm) copyFileSync(wasm, join(dir, "ballast.wasm"));
+    writeFileSync(join(dir, "wrangler.json"), JSON.stringify(configFor(variant, extra, deployed), null, 2));
+    if (!quiet) process.stdout.write(`deploying g1t-probe-${variant.name} ${JSON.stringify(variant.placement)} … `);
     const { code, out } = await wrangler(["deploy", "--config", "wrangler.json"], dir);
     const url = /https:\/\/g1t-probe-[\w-]+\.[\w-]+\.workers\.dev/.exec(out)?.[0];
-    console.log(code === 0 ? (url ?? "deployed (no URL printed)") : "FAILED");
+    if (!quiet || code !== 0) console.log(code === 0 ? (url ?? "deployed (no URL printed)") : `g1t-probe-${variant.name} FAILED`);
     if (code !== 0) console.log(out.split("\n").slice(-15).join("\n"));
     if (url) urls[variant.name] = url;
   }
   writeFileSync(URLS, JSON.stringify(urls, null, 2));
+  if (quiet) return;
   console.log("\nSmart Placement needs traffic from several places and up to 15 minutes before it moves anything;");
   console.log("the region variants are placed at once. Wait a minute, then: node scripts/perf/placement-probe.mjs measure");
 }
@@ -201,6 +220,54 @@ async function measure() {
   console.log(`  node scripts/perf/placement-probe.mjs apply '{"region":"<it>"}'`);
 }
 
+/**
+ * Cold against warm, through a service binding as the site calls a
+ * service: each round deploys every probe again (nothing running), calls
+ * the edge's `/chain` once (cold: the edge and every target start), then
+ * three times more (warm). The rpc times are the edge's own, so the way
+ * from here is left out of them.
+ */
+async function cold(rounds) {
+  const { wasm = null } = existsSync(OPTIONS) ? JSON.parse(readFileSync(OPTIONS, "utf8")) : {};
+  if (wasm) console.log(`each probe loads ${wasm} (${(statSync(wasm).size / 1024 / 1024).toFixed(1)} MB)`);
+  const samples = { cold: [], warm: [], edgeCold: [], edgeWarm: [] };
+  let ranIn = null;
+  for (let round = 1; round <= rounds; round++) {
+    process.stdout.write(`round ${round}/${rounds}: deploying … `);
+    await deploy({ wasm, quiet: true });
+    const urls = JSON.parse(readFileSync(URLS, "utf8"));
+    if (!urls.edge) throw new Error("g1t-probe-edge did not deploy");
+    // A new version takes a moment to be served everywhere.
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+    const first = await timedFetch(`${urls.edge}/chain`);
+    ranIn = first.body.ran_in;
+    samples.cold.push(first.body.chain);
+    samples.edgeCold.push(first.ttfb);
+    for (let i = 0; i < 3; i++) {
+      const again = await timedFetch(`${urls.edge}/chain`);
+      samples.warm.push(again.body.chain);
+      samples.edgeWarm.push(again.ttfb);
+    }
+    console.log(`cold call ${first.ttfb} ms from here`);
+  }
+  const names = Object.keys(samples.cold[0]);
+  console.log(`\nFrom g1t-probe-edge (runs in ${ranIn}) through a service binding, ${rounds} cold rounds:`);
+  console.table(
+    names.map((name) => {
+      const coldMs = median(samples.cold.map((c) => c[name]?.rpc_ms));
+      const warmMs = median(samples.warm.map((c) => c[name]?.rpc_ms));
+      return {
+        target: name,
+        "target ran in": samples.warm.at(-1)[name]?.ran_in,
+        "cold rpc ms (p50)": coldMs,
+        "warm rpc ms (p50)": warmMs,
+        "cold costs ms": coldMs != null && warmMs != null ? coldMs - warmMs : null,
+      };
+    }),
+  );
+  console.log(`The edge itself, from here: cold ${median(samples.edgeCold)} ms, warm ${median(samples.edgeWarm)} ms (p50).`);
+}
+
 async function remove() {
   for (const name of [...VARIANTS.map((v) => v.name), "edge"]) {
     const { code } = await wrangler(["delete", "--name", `g1t-probe-${name}`, "--force"], ROOT);
@@ -229,12 +296,14 @@ function apply(json) {
 
 const [command, argument] = process.argv.slice(2);
 if (process.argv[1]?.replaceAll("\\", "/").endsWith("scripts/perf/placement-probe.mjs")) {
-  if (command === "deploy") await deploy();
+  const wasmAt = process.argv.indexOf("--wasm");
+  if (command === "deploy") await deploy({ wasm: wasmAt > 0 ? process.argv[wasmAt + 1] : null });
+  else if (command === "cold") await cold(Number(argument) || 3);
   else if (command === "measure") await measure();
   else if (command === "delete") await remove();
   else if (command === "apply" && argument) apply(argument);
   else {
-    console.log("usage: node scripts/perf/placement-probe.mjs deploy | measure | delete | apply '<placement json>'");
+    console.log("usage: node scripts/perf/placement-probe.mjs deploy [--wasm <module>] | measure | cold [rounds] | delete | apply '<placement json>'");
     process.exitCode = 1;
   }
 }

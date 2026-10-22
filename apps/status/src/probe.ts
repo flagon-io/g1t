@@ -25,7 +25,18 @@ export type ProbeResult = {
    * long the site took, without the way here. Slowness is judged on this.
    */
   server_ms?: number;
+  /**
+   * Each page's `Server-Timing` header as it came, by address: each
+   * loader's and service's time, for telling where a slow page spent it.
+   * Logged when a check is slow and asked again, never kept.
+   */
+  timings?: Timings;
+  /** Slow at first and asked again (`confirmSlow`): both tries' headers, the first's first. */
+  tries?: [Timings, Timings];
 };
+
+/** `Server-Timing` headers by the address that sent them. */
+export type Timings = Record<string, string>;
 
 /** The time a result is judged on: the site's own when there is one, else the whole time. */
 export function judgedMs(result: Pick<ProbeResult, "ms" | "server_ms">): number {
@@ -161,6 +172,7 @@ export async function step(
 ): Promise<ProbeResult> {
   let colo: string | null = null;
   let total: number | null = null;
+  let timing: string | null = null;
   const result = await gate(() =>
     timed(async (signal) => {
       const response = await fetcher(url, {
@@ -170,13 +182,14 @@ export async function step(
       });
       // Timed to the answer's headers: the body is never read.
       colo = coloOf(response.headers.get("cf-ray"));
-      total = serverTotal(response.headers.get("server-timing"));
+      timing = response.headers.get("server-timing");
+      total = serverTotal(timing);
       await response.body?.cancel().catch(() => undefined);
       const good = expect == null ? response.ok : response.status === expect;
       return good || `HTTP ${response.status}`;
     }, timeoutMs),
   );
-  const out = colo ? { ...result, colo } : result;
+  const out: ProbeResult = { ...result, ...(colo ? { colo } : {}), ...(timing ? { timings: { [url]: timing } } : {}) };
   return total != null && result.ok ? { ...out, server_ms: total } : out;
 }
 
@@ -220,8 +233,9 @@ export function combine(results: ProbeResult[]): ProbeResult {
   const ms = Math.max(0, ...results.map((r) => r.ms));
   const failed = results.find((r) => !r.ok);
   const colo = results.find((r) => r.colo)?.colo;
+  const timings = Object.assign({}, ...results.map((r) => r.timings ?? {})) as Timings;
   const out: ProbeResult = failed ? { ok: false, ms, error: failed.error ?? "no answer" } : { ok: true, ms };
-  return colo ? { ...out, colo } : out;
+  return { ...out, ...(colo ? { colo } : {}), ...(Object.keys(timings).length ? { timings } : {}) };
 }
 
 /** Whether a result is only slow: it worked, with nothing else wrong, but over `slowMs`. */
@@ -237,10 +251,11 @@ export function onlySlow(result: ProbeResult | null, slowMs: number): boolean {
  * make a slow check worse. `first_ms` keeps the first try's time.
  */
 export function confirmSlow(first: ProbeResult, again: ProbeResult | null): ProbeResult {
-  if (!again || !again.ok || again.degraded) return { ...first, first_ms: first.ms };
+  const tries: Pick<ProbeResult, "tries"> = first.timings || again?.timings ? { tries: [first.timings ?? {}, again?.timings ?? {}] } : {};
+  if (!again || !again.ok || again.degraded) return { ...first, first_ms: first.ms, ...tries };
   const better = judgedMs(again) < judgedMs(first) ? again : first;
   const colo = better.colo ?? first.colo ?? again.colo;
-  return { ...better, ...(colo ? { colo } : {}), first_ms: first.ms };
+  return { ...better, ...(colo ? { colo } : {}), first_ms: first.ms, ...tries };
 }
 
 /**

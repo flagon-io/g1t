@@ -323,3 +323,23 @@ test("git storage is asked again only when the call got no answer, not for what 
   assert.equal(unanswered({ ok: false, ms: 5000, error: "timed out" }), true);
   assert.equal(unanswered({ ok: false, ms: 10, error: "HTTP 502" }), false);
 });
+
+test("a page slow at first keeps both tries' Server-Timing, for telling where the time went", async () => {
+  let round = 0;
+  const site = async (url: string) => {
+    if (url.endsWith("/favicon.ico")) return new Response("x");
+    const total = round === 0 ? 1900 : 400;
+    return new Response("x", { headers: { "server-timing": `total;dur=${total};desc="web to first byte", repos;dur=${total - 100}` } });
+  };
+  const speed = components({ SITE_URL: "https://g1t.sh", PROBE_REPO: "flagon-io/g1t" }).find((p) => p.key === "speed")!;
+  const first = await runCheck(speed.check, { fetch: site, billing: null });
+  assert.deepEqual(Object.keys(first!.timings!).sort(), ["https://g1t.sh/explore", "https://g1t.sh/flagon-io/g1t"], "each page's header, and only theirs");
+  round = 1;
+  const again = await runCheck(speed.check, { fetch: site, billing: null });
+  const result = confirmSlow(first!, again);
+  assert.equal(result.server_ms, 400);
+  assert.match(result.tries![0]["https://g1t.sh/flagon-io/g1t"]!, /repos;dur=1800/);
+  assert.match(result.tries![1]["https://g1t.sh/flagon-io/g1t"]!, /repos;dur=300/);
+  // A check whose answers carry no header has nothing to keep.
+  assert.equal(confirmSlow({ ok: true, ms: 2400 }, { ok: true, ms: 300 }).tries, undefined);
+});
