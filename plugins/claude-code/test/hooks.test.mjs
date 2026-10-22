@@ -1775,3 +1775,35 @@ describe("other harnesses", () => {
     }
   });
 });
+
+test("an older Copilot CLI's session, with only its totals at shutdown, reports its last totals, the main agent's apart", () => {
+  const dir = mkdtempSync(join(tmpdir(), "g1t-copilot-old-"));
+  try {
+    const transcript = join(dir, "events.jsonl");
+    const shutdown = (main, sub) =>
+      JSON.stringify({
+        type: "session.shutdown",
+        data: {
+          modelMetrics: { "claude-sonnet-5.5": { usage: { inputTokens: main + sub, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 } } },
+          agentMetrics: {
+            main: { modelMetrics: { "claude-sonnet-5.5": { usage: { inputTokens: main, outputTokens: 6, cacheReadTokens: 0, cacheWriteTokens: 0 } } } },
+            call_1: { modelMetrics: { "claude-sonnet-5.5": { usage: { inputTokens: sub, outputTokens: 4, cacheReadTokens: 0, cacheWriteTokens: 0 } } } },
+          },
+        },
+      });
+    writeFileSync(transcript, [shutdown(100, 10), shutdown(300, 20), ""].join("\n"));
+    const row = (input, output) => ({
+      model: "claude-sonnet-5-5",
+      input_tokens: input,
+      output_tokens: output,
+      cache_write_5m_tokens: 0,
+      cache_write_1h_tokens: 0,
+      cache_read_tokens: 0,
+    });
+    assert.deepEqual(transcriptUsage(transcript, null, { harness: "copilot", agent: "" }), [row(300, 6)]);
+    assert.deepEqual(transcriptUsage(transcript, null, { harness: "copilot", agent: "call_1" }), [row(20, 4)]);
+    assert.deepEqual(transcriptUsage(transcript, null, { harness: "copilot" }), [row(320, 10)]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

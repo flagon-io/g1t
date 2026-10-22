@@ -1254,6 +1254,10 @@ export function usageList(state) {
     const row = { model: state.lastTotal.model, ...state.lastTotal.counts };
     return COUNTS.some((name) => row[name] > 0) ? [row] : [];
   }
+  // An older Copilot CLI's events, with no record per call: its last totals, per model.
+  if (!Object.keys(state.totals).length && Array.isArray(state.lastTotals)) {
+    return state.lastTotals.filter((row) => COUNTS.some((name) => row[name] > 0));
+  }
   return Object.values(state.totals).filter((row) => COUNTS.some((name) => row[name] > 0));
 }
 
@@ -1343,6 +1347,19 @@ export function geminiCountLine(state, line) {
   countMessage(state, { id: typeof entry.id === "string" ? entry.id : null, model, counts });
 }
 
+/** Copilot CLI's token counts as g1t prices them: its inputTokens holds the cache reads and writes. */
+export function copilotCounts(usage) {
+  const read = whole(usage?.cacheReadTokens);
+  const written = whole(usage?.cacheWriteTokens);
+  return {
+    input_tokens: Math.max(0, whole(usage?.inputTokens) - read - written),
+    output_tokens: whole(usage?.outputTokens),
+    cache_write_5m_tokens: written,
+    cache_write_1h_tokens: 0,
+    cache_read_tokens: read,
+  };
+}
+
 /** A model as the price list names it: Copilot names Claude's with dots (claude-sonnet-4.6). */
 export function copilotModel(model) {
   const name = typeof model === "string" ? model.trim() : "";
@@ -1355,29 +1372,39 @@ export function copilotModel(model) {
  * id. Its inputTokens holds the cache reads and writes, which are taken
  * out; its outputTokens holds the reasoning. A subagent's calls carry its
  * agentId: `state.agent` ("" for the main agent's) keeps only one's.
+ * An older Copilot CLI writes no record per call, only the session's
+ * totals so far as it shuts down (`session.shutdown`, across resumes):
+ * the last ones are kept (lastTotals), the main agent's or a subagent's
+ * from agentMetrics where they are split.
  */
 export function copilotCountLine(state, line) {
-  if (!line.includes('"session.usage_record"')) return;
+  const record = line.includes('"session.usage_record"');
+  if (!record && !line.includes('"session.shutdown"')) return;
   let entry;
   try {
     entry = JSON.parse(line);
   } catch {
     return;
   }
-  if (entry?.type !== "session.usage_record") return;
+  if (entry?.type === "session.shutdown" && entry.data?.modelMetrics) {
+    const agents = entry.data.agentMetrics;
+    const metrics =
+      typeof state.agent === "string" && agents && typeof agents === "object"
+        ? agents[state.agent || "main"]?.modelMetrics
+        : state.agent
+          ? null
+          : entry.data.modelMetrics;
+    state.lastTotals = Object.entries(metrics ?? {})
+      .map(([name, metric]) => ({ model: copilotModel(name), ...copilotCounts(metric?.usage) }))
+      .filter((row) => row.model);
+    return;
+  }
+  if (!record || entry?.type !== "session.usage_record") return;
   if (typeof state.agent === "string" && String(entry.agentId ?? "") !== state.agent) return;
   const usage = entry.data?.usage;
   const model = copilotModel(usage?.model);
   if (!usage || !model) return;
-  const read = whole(usage.cacheReadTokens);
-  const written = whole(usage.cacheWriteTokens);
-  const counts = {
-    input_tokens: Math.max(0, whole(usage.inputTokens) - read - written),
-    output_tokens: whole(usage.outputTokens),
-    cache_write_5m_tokens: written,
-    cache_write_1h_tokens: 0,
-    cache_read_tokens: read,
-  };
+  const counts = copilotCounts(usage);
   const id = [usage.accounting?.usageId, usage.apiCallId, entry.id].find((value) => typeof value === "string") ?? null;
   countMessage(state, { id, model, counts });
 }
