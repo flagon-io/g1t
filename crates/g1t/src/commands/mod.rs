@@ -15,6 +15,7 @@ pub mod repo;
 pub mod run;
 pub mod secret;
 pub mod session;
+pub mod spend;
 pub mod status;
 pub mod upgrade;
 pub mod why;
@@ -54,6 +55,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Work(command) => work::run(&Ctx::new(cli.global)?, command),
         Command::Project(command) => project::run(&Ctx::new(cli.global)?, command),
         Command::Cycle(command) => cycle::run(&Ctx::new(cli.global)?, command),
+        Command::Spend(args) => spend::run(&Ctx::new(cli.global)?, args),
         Command::Why(args) => why::run(&Ctx::new(cli.global)?, args),
         Command::Attach(args) => attach::run(&Ctx::new(cli.global)?, args),
         Command::Api(args) => api::run(&Ctx::new(cli.global)?, args),

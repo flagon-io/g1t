@@ -179,6 +179,8 @@ pub enum Op {
     GetPlan,
     NextWorkItem,
     ConfigurePlan,
+    GetSpend,
+    ConfigureSpend,
     ListCycles,
     GetCycle,
     ConfigureCycles,
@@ -987,7 +989,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 452] = [
+    pub const ALL: [Op; 454] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -1049,6 +1051,8 @@ impl Op {
         Op::GetPlan,
         Op::NextWorkItem,
         Op::ConfigurePlan,
+        Op::GetSpend,
+        Op::ConfigureSpend,
         Op::ListCycles,
         Op::GetCycle,
         Op::ConfigureCycles,
@@ -1510,6 +1514,8 @@ impl Op {
             Op::GetPlan => "get_plan",
             Op::NextWorkItem => "next_work_item",
             Op::ConfigurePlan => "configure_plan",
+            Op::GetSpend => "get_spend",
+            Op::ConfigureSpend => "configure_spend",
             Op::ListCycles => "list_cycles",
             Op::GetCycle => "get_cycle",
             Op::ConfigureCycles => "configure_cycles",
@@ -1889,6 +1895,12 @@ impl Op {
             }
             Op::ConfigurePlan => {
                 "Set how many work items a workspace's Now holds before its plan says it is over: now_cap, 1 to 50 (6 until it is set). Past the cap, g1t warns; it never refuses a move. Needs the Write role through workspace membership, the right to manage milestones. Returns the plan's settings: `now_cap`, with no work items or counts."
+            }
+            Op::GetSpend => {
+                "What one person's harness sessions (their subagents too) that started from since through until cost in a workspace's repositories: the viewer's own when person is left out, else person's, by username. Your own spend you always see in full; someone else's only as the workspace's setting allows: its owners and billing managers (the default), every member, or nobody; otherwise refused with `403`. since and until are UTC days (YYYY-MM-DD): the last 30 days through today when left out, at most 400 days. Returns `person`, the span, `cost_usd`, `landed_usd` (of it, what went into work that landed: a merged pull request, or a work item a push landed), `sessions` and `unknown_sessions` (those that reported no usage, so cost no known amount), and `rows` by day, repository (`repo` null for one you cannot read), work item, harness, model and `landed`, the costliest first. Then the setting (`visibility`) and `can_see_people`: when you may see others' spend, `people` lists each person with spend in the span by name, never ranked by what they spent. `workspace_usd`, everyone's spend, with `workspace_people`, shows to those who may see each person's, or when it covers 3 people or more. Cost is an estimate at list price, from the tokens each session reported."
+            }
+            Op::ConfigureSpend => {
+                "Who sees each person's spend in a workspace, besides that person: visibility owners (its owners and billing managers, for budgets and plan fit; the default), members (every member) or nobody (each person sees only their own). Needs an owner. Returns the workspace's `visibility`."
             }
             Op::ListCycles => {
                 "A workspace's cycles: `settings` (`enabled`, `length_days` 7 or 14, `starts_weekday` 1 for Monday to 7 for Sunday, `cooldown_days`), `current` (the open cycle while cycles are on, with its `number`, `starts_on` and `ends_on` (YYYY-MM-DD, both in the cycle), `state` upcoming or running, and what it holds: `scope`, `done`, `carried_in`, `carried_out` and `added`, those that joined after its first day), `next` (the days the cycle after it would have) and `past` (closed cycles, the latest first: limit of them, 12 when left out, up to 100). While cycles are on, the plan's Now is the current cycle. Cycles are off until a workspace turns them on."
@@ -3218,6 +3230,22 @@ impl Op {
                     "now_cap": { "type": "integer", "minimum": 1, "maximum": MAX_NOW_CAP, "description": "How many work items Now holds before the plan says it is over, 1 to 50." },
                 }),
                 &["workspace", "now_cap"],
+            ),
+            Op::GetSpend => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "person": { "type": "string", "description": "Whose spend, by username; yours when left out. Someone else's needs the workspace's setting to allow it." },
+                    "since": { "type": "string", "format": "date", "description": "The first UTC day, YYYY-MM-DD; 30 days before until when left out." },
+                    "until": { "type": "string", "format": "date", "description": "The last UTC day, YYYY-MM-DD; today when left out. At most 400 days after since." },
+                }),
+                &["workspace"],
+            ),
+            Op::ConfigureSpend => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "visibility": { "type": "string", "enum": ["owners", "members", "nobody"], "description": "Who sees each person's spend besides them: owners (owners and billing managers), members (every member) or nobody." },
+                }),
+                &["workspace", "visibility"],
             ),
             Op::ListCycles => object(
                 json!({
@@ -4722,6 +4750,8 @@ impl Op {
                 | Op::GetPlan
                 | Op::NextWorkItem
                 | Op::ConfigurePlan
+                | Op::GetSpend
+                | Op::ConfigureSpend
                 | Op::ListCycles
                 | Op::GetCycle
                 | Op::ConfigureCycles
@@ -5971,6 +6001,22 @@ impl Op {
                     return failed(FailureCode::Invalid, &format!("Give now_cap, a number from 1 to {MAX_NOW_CAP}."));
                 };
                 pass(work, "configure_plan", &ConfigurePlanArgs { actor: actor(), workspace: item_ws(), now_cap }).await
+            }
+            Op::GetSpend => {
+                let asked = GetSpendArgs {
+                    workspace: item_ws(),
+                    viewer: viewer.clone(),
+                    person: optional_text(input, "person").map(|person| person.trim().trim_start_matches('@').to_owned()),
+                    since: optional_text(input, "since"),
+                    until: optional_text(input, "until"),
+                };
+                pass(work, "get_spend", &asked).await
+            }
+            Op::ConfigureSpend => {
+                let Some(visibility) = input["visibility"].as_str().and_then(SpendVisibility::parse) else {
+                    return failed(FailureCode::Invalid, "Give visibility: owners, members or nobody.");
+                };
+                pass(work, "configure_spend", &ConfigureSpendArgs { actor: actor(), workspace: item_ws(), visibility }).await
             }
             Op::ListCycles => {
                 pass(work, "list_cycles", &ListCyclesArgs { workspace: item_ws(), viewer: viewer.clone(), limit: integer(input, "limit") }).await

@@ -23,7 +23,8 @@ It reads top to bottom, from what you can do now to what already happened:
    did, what changed in plain English when you ask for it, and what landed,
    each change with whether it is live yet. Beside it, kept in view as you
    scroll: **[Spent](#spent)**, what the span cost and the month so far
-   (owners and billing managers), and
+   (owners and billing managers), **See your spend**, what your own agent
+   sessions cost ([Spend](/guides/spend/)), and
    **[Settled for you](#settled-for-you)**, what finished by itself.
 5. **[The workspace](#the-workspace)**: what is moving and what is
    waiting team by team, and the quiet changes in who works where; for
@@ -395,6 +396,11 @@ from the start of the UTC day the span began: a span since 3 p.m. UTC
 yesterday counts all of yesterday. Usage that g1t measures through the
 month, such as hosting requests and storage, shows on the day it is added
 to the statement.
+
+Under it, for everyone, **See your spend** opens [Spend](/guides/spend/):
+what your own agent sessions cost over the last 30 days, by day and by
+work item, repository, harness and model, and how much of it went into
+work that landed.
 
 ## Settled for you
 

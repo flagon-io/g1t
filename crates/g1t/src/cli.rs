@@ -114,6 +114,8 @@ pub enum Command {
     Project(ProjectArgs),
     /// Cycles: a workspace's one- or two-week time boxes, whose unfinished work carries over.
     Cycle(CycleArgs),
+    /// What your sessions cost in a workspace, by work item, repository, harness, model or day.
+    Spend(SpendArgs),
     /// Why a file or line is as it is: its commit, pull request, work item, decisions and sessions.
     Why(WhyArgs),
     /// Upload images, such as a screenshot, to show in a work item, a pull request or a comment; prints their Markdown.
@@ -1986,6 +1988,48 @@ pub struct ProjectEditArgs {
     /// Bring it back from the archive.
     #[arg(long)]
     pub unarchive: bool,
+}
+
+// --- spend ------------------------------------------------------------
+
+#[derive(Debug, Args)]
+#[command(after_help = "
+Cost is an estimate at list price, from the tokens each session reported; a session that reported
+none (an older plugin, or a harness that reports no usage) counts with no known cost. Your own spend
+you always see in full. Someone else's (--person) only as the workspace's setting allows: its owners
+and billing managers by default, every member, or nobody. People are listed by name, never ranked.
+Examples:
+  g1t spend
+  g1t spend --since 7d --by repo
+  g1t spend --since 2026-09-01 --until 2026-09-30 --by day
+  g1t spend --person ada --workspace flagon-io
+  g1t spend --json --jq '.rows[] | select(.landed | not)'")]
+pub struct SpendArgs {
+    /// Whose spend, by username; yours when left out.
+    #[arg(long, value_name = "USERNAME")]
+    pub person: Option<String>,
+    /// The first day: YYYY-MM-DD, or a number of days such as 7d (the last 7 days, today among them). 30 days before --until when left out.
+    #[arg(long, value_name = "DAY|Nd")]
+    pub since: Option<String>,
+    /// The last day, YYYY-MM-DD (UTC); today when left out.
+    #[arg(long, value_name = "DAY")]
+    pub until: Option<String>,
+    /// What to group the table by.
+    #[arg(long, value_enum, default_value_t = SpendBy::Item)]
+    pub by: SpendBy,
+    /// The workspace, by its slug; the current repository's when left out.
+    #[arg(long, value_name = "SLUG", env = "G1T_WORKSPACE")]
+    pub workspace: Option<String>,
+}
+
+/// What `g1t spend` groups its table by.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum SpendBy {
+    Repo,
+    Item,
+    Harness,
+    Model,
+    Day,
 }
 
 // --- cycle ------------------------------------------------------------

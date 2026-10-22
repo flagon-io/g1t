@@ -90,9 +90,9 @@ export function OverviewSkeleton() {
 export function WorkspacePageSkeleton({ page }: { page: WorkspacePageKey }) {
   if (page === "overview") return <OverviewSkeleton />;
   if (page === "code/repositories") return <ProjectsSkeleton />;
-  if (page === "insights")
+  if (page === "insights" || page === "spend")
     return (
-      <div aria-busy="true" aria-label="Loading insights" className="space-y-6">
+      <div aria-busy="true" aria-label={`Loading ${page}`} className="space-y-6">
         <Skeleton className="h-10 w-80 max-w-full rounded-md" />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }, (_, i) => (

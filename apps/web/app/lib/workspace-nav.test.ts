@@ -13,6 +13,7 @@ test("a path is one of the workspace's pages, or none", () => {
   assert.equal(workspacePage("/acme/-/packages", "acme"), "packages");
   assert.equal(workspacePage("/acme/-/teams", "acme"), "teams");
   assert.equal(workspacePage("/acme/-/insights", "acme"), "insights");
+  assert.equal(workspacePage("/acme/-/spend", "acme"), "spend");
   // One package or team has a page of its own; settings and the rest have headings.
   assert.equal(workspacePage("/acme/-/packages/npm/web", "acme"), null);
   assert.equal(workspacePage("/acme/-/teams/web", "acme"), null);

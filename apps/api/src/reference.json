@@ -1826,6 +1826,68 @@
     },
     "notes": "Only now_cap is meaningful in the answer: get_plan reads the plan itself."
   },
+  "get_spend": {
+    "params": {
+      "workspace": "flagon-io",
+      "since": "2026-09-23",
+      "until": "2026-10-22"
+    },
+    "response": {
+      "workspace": "flagon-io",
+      "person": {
+        "id": "usr_01m3xbq8r2ef0a8m6n2vkxgq7t",
+        "username": "ada",
+        "own": true
+      },
+      "since": "2026-09-23",
+      "until": "2026-10-22",
+      "cost_usd": 12.34,
+      "landed_usd": 9.1,
+      "sessions": 41,
+      "unknown_sessions": 3,
+      "rows": [
+        {
+          "day": "2026-10-21",
+          "repo": "flagon-io/web",
+          "item": 318,
+          "harness": "claude_code",
+          "model": "claude-opus-4-1",
+          "landed": true,
+          "sessions": 6,
+          "cost_usd": 4.82
+        },
+        {
+          "day": "2026-10-20",
+          "repo": "flagon-io/api",
+          "item": null,
+          "harness": "codex",
+          "model": null,
+          "landed": false,
+          "sessions": 2,
+          "cost_usd": 0.71
+        }
+      ],
+      "visibility": "owners",
+      "can_see_people": false,
+      "people": [],
+      "workspace_usd": 214.6,
+      "workspace_people": 5
+    },
+    "notes": "Your own spend over the last 30 days. Someone else's needs person and the workspace's setting to allow it. Only owners and billing managers see others' here, so people is empty; the workspace's total shows because it covers 5 people. Figures are estimates at list price from the tokens each session reported; unknown_sessions reported none."
+  },
+  "configure_spend": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "request": {
+      "visibility": "members"
+    },
+    "response": {
+      "workspace": "flagon-io",
+      "visibility": "members"
+    },
+    "notes": "Every member now sees each person's spend, listed by name. Owners only."
+  },
   "list_cycles": {
     "params": {
       "workspace": "flagon-io"

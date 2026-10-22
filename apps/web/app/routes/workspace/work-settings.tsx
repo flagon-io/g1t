@@ -2,7 +2,7 @@ import { Timer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Form, Link, data, useNavigation } from "react-router";
 
-import type { CycleSettings, Cycles } from "@g1t/contracts";
+import type { CycleSettings, Cycles, SpendVisibility } from "@g1t/contracts";
 
 import type { Route } from "./+types/work-settings";
 import { ErrorText } from "../../components/ui";
@@ -14,6 +14,7 @@ import { SelectField } from "../../components/ui/select";
 import { SwitchCard } from "../../components/ui/switch";
 import { cycleDays, cycleName, cyclePath, daysLeftText, firstCycle, utcToday, weekdayName } from "../../lib/cycles";
 import { page } from "../../lib/meta";
+import { SPEND_VISIBILITY } from "../../lib/spend";
 import { work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, roleIn } from "../../lib/session.server";
 import { canItem } from "../../lib/work-access";
@@ -23,26 +24,50 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 }
 
 /**
- * Settings, Work: the workspace's cycles. Every member can read them;
- * whoever may manage milestones (the Write role) changes them, as with
- * the plan's own settings. The work service checks it again.
+ * Settings, Work: the workspace's cycles, and who sees each person's
+ * spend. Every member can read them; whoever may manage milestones (the
+ * Write role) changes the cycles, as with the plan's own settings, and
+ * only owners the spend. The work service checks both again.
  */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
+  const role = roleIn(viewer, params.owner);
+  if (!role) throw data(null, { status: 404 });
   const slug = params.owner.toLowerCase();
-  const found = await work.listCycles(slug, viewer, 0).catch(() => null);
-  const canEdit = canItem(viewer, slug, null, "manage_labels");
   const today = utcToday(Date.now());
-  if (!found?.ok) return { slug, cycles: null, canEdit, today, error: found ? found.error.message : "Work didn't answer. Try again in a moment." };
-  return { slug, cycles: found.value, canEdit, today, error: null };
+  // There is no read of the setting alone: the viewer's own spend for today carries it.
+  const [found, spend] = await Promise.all([
+    work.listCycles(slug, viewer, 0).catch(() => null),
+    work.getSpend(slug, viewer, { since: today, until: today }).catch(() => null),
+  ]);
+  const canEdit = canItem(viewer, slug, null, "manage_labels");
+  const spendSettings = { visibility: spend?.ok ? spend.value.visibility : null, canEdit: role === "owner" };
+  if (!found?.ok)
+    return { slug, cycles: null, canEdit, today, spend: spendSettings, error: found ? found.error.message : "Work didn't answer. Try again in a moment." };
+  return { slug, cycles: found.value, canEdit, today, spend: spendSettings, error: null };
 }
+
+const VISIBILITIES: SpendVisibility[] = ["owners", "members", "nobody"];
 
 export async function action({ params, context, request }: Route.ActionArgs) {
   assertSameOrigin(request);
   const viewer = requireUser(context, request);
   const slug = params.owner.toLowerCase();
   const form = await request.formData();
+  // The Spend section's own form.
+  if (form.get("intent") === "spend") {
+    const visibility = VISIBILITIES.find((value) => value === form.get("visibility"));
+    if (!visibility) return { intent: "spend" as const, ok: false as const, error: "Choose who sees each person's spend." };
+    try {
+      const saved = await work.configureSpend(viewer, slug, visibility);
+      return saved.ok
+        ? { intent: "spend" as const, ok: true as const, visibility: saved.value.visibility }
+        : { intent: "spend" as const, ok: false as const, error: saved.error.message };
+    } catch (error) {
+      console.error("work settings: the work service did not answer", error);
+      return { intent: "spend" as const, ok: false as const, error: "Work didn't answer. Try again in a moment." };
+    }
+  }
   const cooldown = Number(form.get("cooldown_days"));
   if (!Number.isInteger(cooldown) || cooldown < 0 || cooldown > 14) return { ok: false as const, error: "A cooldown is a whole number of days, 0 to 14." };
   try {
@@ -73,17 +98,24 @@ const draftOf = (settings: CycleSettings): Draft => ({
 export default function WorkSettingsPage({ loaderData, actionData }: Route.ComponentProps) {
   const { slug, canEdit, today } = loaderData;
   const navigation = useNavigation();
-  const saving = navigation.state !== "idle" && navigation.formMethod === "POST";
-  const cycles: Cycles | null = actionData?.ok ? actionData.cycles : loaderData.cycles;
+  const sending = navigation.state !== "idle" && navigation.formMethod === "POST";
+  const spendSending = sending && navigation.formData?.get("intent") === "spend";
+  const saving = sending && !spendSending;
+  // What the cycles' form sent back; the Spend section's form answers it alone.
+  const cyclesData = actionData?.intent === "spend" ? undefined : actionData;
+  const spendData = actionData?.intent === "spend" ? actionData : undefined;
+  const cycles: Cycles | null = cyclesData?.ok ? cyclesData.cycles : loaderData.cycles;
   const [draft, setDraft] = useState<Draft | null>(cycles ? draftOf(cycles.settings) : null);
   useEffect(() => {
-    if (actionData?.ok) setDraft(draftOf(actionData.cycles.settings));
-  }, [actionData]);
+    if (cyclesData?.ok) setDraft(draftOf(cyclesData.cycles.settings));
+  }, [cyclesData]);
+  const spend = <SpendSection settings={loaderData.spend} saved={spendData} saving={spendSending} />;
   if (!cycles || !draft) {
     return (
       <div className="max-w-2xl">
         <Header />
         <ErrorText>{loaderData.error}</ErrorText>
+        <div className="mt-8 border-t border-line pt-8">{spend}</div>
       </div>
     );
   }
@@ -196,8 +228,8 @@ export default function WorkSettingsPage({ loaderData, actionData }: Route.Compo
             <Button type="submit" variant="accent" disabled={saving || !changed}>
               {saving ? "Saving…" : "Save"}
             </Button>
-            {actionData && !actionData.ok && <ErrorText>{actionData.error}</ErrorText>}
-            {actionData?.ok && !changed && (
+            {cyclesData && !cyclesData.ok && <ErrorText>{cyclesData.error}</ErrorText>}
+            {cyclesData?.ok && !changed && (
               <p role="status" className="text-xs text-muted">
                 Saved.
               </p>
@@ -205,7 +237,89 @@ export default function WorkSettingsPage({ loaderData, actionData }: Route.Compo
           </div>
         )}
       </Form>
+      <div className="mt-8 border-t border-line pt-8">{spend}</div>
     </div>
+  );
+}
+
+/**
+ * Spend: who sees each person's spend (routes/workspace/spend.tsx),
+ * besides that person. Owners change it; everyone else sees how it is.
+ */
+function SpendSection({
+  settings,
+  saved,
+  saving,
+}: {
+  settings: { visibility: SpendVisibility | null; canEdit: boolean };
+  saved: { ok: true; visibility: SpendVisibility } | { ok: false; error: string } | undefined;
+  saving: boolean;
+}) {
+  const current = saved?.ok ? saved.visibility : settings.visibility;
+  const [choice, setChoice] = useState<SpendVisibility | null>(current);
+  useEffect(() => {
+    if (saved?.ok) setChoice(saved.visibility);
+  }, [saved]);
+  return (
+    <section>
+      <h2 className="font-medium">Spend</h2>
+      <p className="mt-1.5 text-xs text-faint">
+        What each person&apos;s agent sessions cost is for budgets and plan fit. Everyone always sees their own, and people are listed by name, never ranked by
+        what they spent.
+      </p>
+      {!current || !choice ? (
+        <div className="mt-5">
+          <ErrorText>Work didn&apos;t answer, so this setting can&apos;t be shown. Try again in a moment.</ErrorText>
+        </div>
+      ) : (
+        <Form method="post" className="mt-5">
+          <input type="hidden" name="intent" value="spend" />
+          {!settings.canEdit && (
+            <Card asChild radius="lg" className="mb-5 px-4 py-3 text-sm text-muted">
+              <p>Only the workspace&apos;s owners can change who sees each person&apos;s spend. It is shown so you know who sees yours.</p>
+            </Card>
+          )}
+          <fieldset disabled={!settings.canEdit}>
+            <legend id="spend-visibility" className="text-sm font-medium">
+              Who sees each person&apos;s spend
+            </legend>
+            <RadioGroup
+              name="visibility"
+              aria-labelledby="spend-visibility"
+              value={choice}
+              onValueChange={(value) => setChoice(value as SpendVisibility)}
+              disabled={!settings.canEdit}
+              className="mt-3"
+            >
+              <RadioOption
+                value="owners"
+                label={SPEND_VISIBILITY.owners.label}
+                description="The default: whoever looks after the workspace's budget and plan."
+              />
+              <RadioOption value="members" label={SPEND_VISIBILITY.members.label} description="Every member sees each person's spend, listed by name." />
+              <RadioOption
+                value="nobody"
+                label={SPEND_VISIBILITY.nobody.label}
+                description="Each person sees only their own; a total over everyone shows once it covers 3 people or more."
+              />
+            </RadioGroup>
+          </fieldset>
+          {settings.canEdit && (
+            <div className="mt-6 flex items-center gap-3">
+              <Button type="submit" variant="accent" disabled={saving || choice === current}>
+                {saving ? "Saving…" : "Save"}
+              </Button>
+              {saved && !saved.ok && <ErrorText>{saved.error}</ErrorText>}
+              {saved?.ok && choice === current && (
+                <p role="status" className="text-xs text-muted">
+                  Saved.
+                </p>
+              )}
+            </div>
+          )}
+        </Form>
+      )}
+    </section>
   );
 }
 
@@ -213,7 +327,9 @@ function Header() {
   return (
     <header className="mb-8 border-b border-line pb-6">
       <h1 className="text-2xl font-semibold tracking-tight">Work</h1>
-      <p className="mt-1.5 text-sm text-muted">How the workspace plans its work: in cycles, or on Now, Next and Later alone.</p>
+      <p className="mt-1.5 text-sm text-muted">
+        How the workspace plans its work, in cycles or on Now, Next and Later alone, and who sees what each person&apos;s agent sessions cost.
+      </p>
     </header>
   );
 }

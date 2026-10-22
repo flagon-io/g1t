@@ -441,7 +441,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "workspace",
         title: "Workspaces",
-        description: "Workspaces own repositories (g1t.sh/{workspace}/{repo}) and work items (g1t.sh/{workspace}/-/work): read what happened across its repositories (`activity`: what merged, shipped and deployed, by whom, over a span), create, update or delete one, invite members, manage its labels and milestones (which its work items and pull requests carry) and how many work items its plan's Now holds, connect integrations, set rulesets that hold across its repositories, read and change what each of its repositories is, where it runs and its links (the `*_project` actions), and keep your own pinned repositories at the top of its sidebar.",
+        description: "Workspaces own repositories (g1t.sh/{workspace}/{repo}) and work items (g1t.sh/{workspace}/-/work): read what happened across its repositories (`activity`: what merged, shipped and deployed, by whom, over a span), create, update or delete one, invite members, manage its labels and milestones (which its work items and pull requests carry) and how many work items its plan's Now holds, read what your sessions cost in it (`spend`) and set who else sees each person's, connect integrations, set rulesets that hold across its repositories, read and change what each of its repositories is, where it runs and its links (the `*_project` actions), and keep your own pinned repositories at the top of its sidebar.",
         default_action: None,
         actions: &[
             a("get", Op::GetWorkspace, "A workspace's details and settings"),
@@ -468,6 +468,8 @@ pub const TOOLS: &[Tool] = &[
             a("delete_milestone", Op::DeleteMilestone, "Delete a milestone"),
             a("configure_plan", Op::ConfigurePlan, "Set now_cap, how many work items its plan's Now holds before it says it is over (1 to 50)"),
             a("configure_cycles", Op::ConfigureCycles, "Turn cycles on or off, and set length_days (7 or 14), starts_weekday (1 Monday to 7 Sunday) and cooldown_days"),
+            a("spend", Op::GetSpend, "What your harness sessions cost in it over a span (since, until), estimated at list price, and how much went into work that landed; someone else's (person) only as its setting allows"),
+            a("configure_spend", Op::ConfigureSpend, "Set who sees each person's spend besides them: visibility owners (owners and billing managers), members or nobody"),
             a("list_integrations", Op::ListIntegrations, "Alert sources and issue trackers"),
             a("connect_integration", Op::ConnectIntegration, "Connect one"),
             a("update_integration", Op::UpdateIntegration, "Change one: rotate its key or its settings"),

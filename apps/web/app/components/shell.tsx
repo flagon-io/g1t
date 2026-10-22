@@ -74,6 +74,7 @@ import {
   UserRoundKey,
   Users,
   UsersRound,
+  Wallet,
   Webhook,
   X,
 } from "lucide-react";
@@ -1417,7 +1418,8 @@ export function ModeHeader({ title, action, tabbed = false }: { title: ReactNode
 /**
  * Code's own list (beside the rail): only code. Its Overview (Mission
  * control's code panels), the repositories, what spans them, and what is
- * coming. The workspace's people, money and settings are elsewhere.
+ * coming, and what its agent sessions cost (Spend). The workspace's
+ * people, billing and settings are elsewhere.
  */
 function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
   const { pathname: path } = useSidebarLocation();
@@ -1442,6 +1444,9 @@ function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
         </SidebarLink>
         <SidebarLink to={`/${slug}/-/insights`} icon={<TrendingUp size={15} />} current={at("insights")}>
           Insights
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/spend`} icon={<Wallet size={15} />} current={at("spend")}>
+          Spend
         </SidebarLink>
       </NavRows>
       <Rule />

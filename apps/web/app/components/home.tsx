@@ -837,6 +837,16 @@ export function SpendCard({ spend, slug, span }: { spend: Spend | null; slug: st
   );
 }
 
+/** Everyone's way to what their own agent sessions cost (routes/workspace/spend.tsx), billing or not. */
+export function YourSpendLink({ slug }: { slug: string }) {
+  return (
+    <Link to={`/${slug}/-/spend`} className="inline-flex items-center gap-1 px-1 text-xs text-muted hover:text-fg">
+      See your spend
+      <ArrowRight size={12} />
+    </Link>
+  );
+}
+
 export function SpendSkeleton() {
   return (
     <div className="space-y-3 px-5 pb-5" aria-busy="true">

@@ -1,17 +1,17 @@
 /**
  * A workspace's pages and where the sidebar finds them. `g1t.sh/<workspace>`
  * is the workspace's own page, its header and overview; Repositories
- * (Code's, at `-/code/repositories`), Packages, Teams, People, Insights and
- * Settings are pages of their own under `-/`,
+ * (Code's, at `-/code/repositories`), Packages, Teams, People, Insights, Spend
+ * and Settings are pages of their own under `-/`,
  * each reached from the sidebar and each with its own heading. The sidebar
  * is always the current workspace's.
  */
 
 /** The workspace's pages a person moves between, and which the sidebar lists. */
-export type WorkspacePageKey = "overview" | "code/repositories" | "packages" | "teams" | "people" | "insights";
+export type WorkspacePageKey = "overview" | "code/repositories" | "packages" | "teams" | "people" | "insights" | "spend";
 
 /** Those pages under `-/`: the overview is the workspace's own address, and Repositories is Code's. */
-export const WORKSPACE_PAGES = ["code/repositories", "packages", "teams", "people", "insights"] as const;
+export const WORKSPACE_PAGES = ["code/repositories", "packages", "teams", "people", "insights", "spend"] as const;
 
 /** Code's list of a workspace's repositories, with an optional query (without its `?`). */
 export function repositoriesPath(slug: string, query?: string): string {

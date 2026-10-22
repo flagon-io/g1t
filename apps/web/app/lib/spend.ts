@@ -1,0 +1,90 @@
+/**
+ * Spend's arithmetic (routes/workspace/spend.tsx): the span a page asks
+ * for, a person's rows summed by day and by what they went into, and the
+ * words for who sees each person's spend. Work's `get_spend` returns the
+ * rows, one per day, repository, work item, harness, model and landed;
+ * this only groups and sums them. Pure, so it is tested on its own.
+ */
+import type { SpendRow, SpendVisibility } from "@g1t/contracts";
+
+const DAY_MS = 86_400_000;
+
+/** The spans the page offers, in days; 30 is the default. */
+export const SPEND_DAYS = [7, 30, 90] as const;
+export type SpendDays = (typeof SPEND_DAYS)[number];
+
+/** The span asked for: one of `SPEND_DAYS` ending today, or the days `since` through `until`. */
+export type SpendSpan = { days: SpendDays | null; since: string; until: string };
+
+const isDay = (value: string | null): value is string => value != null && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+
+const dayOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+/**
+ * The span in a page's query (`?days=7`, or `?since=…&until=…`) on the UTC
+ * day `today`: two valid days in order win, else a span of `SPEND_DAYS`
+ * ending today, else the last 30 days.
+ */
+export function spendSpan(query: URLSearchParams, today: string): SpendSpan {
+  const since = query.get("since");
+  const until = query.get("until") ?? (isDay(since) ? today : null);
+  if (isDay(since) && isDay(until) && since <= until) return { days: null, since, until };
+  const asked = Number(query.get("days"));
+  const days = SPEND_DAYS.find((n) => n === asked) ?? 30;
+  return { days, since: dayOf(Date.parse(`${today}T00:00:00Z`) - (days - 1) * DAY_MS), until: today };
+}
+
+/** One day's cost, and what of it went into work that landed. */
+export type SpendDay = { day: string; costUsd: number; landedUsd: number };
+
+/** Every day from `since` through `until`, a day without sessions at nothing. */
+export function spendDays(since: string, until: string, rows: SpendRow[]): SpendDay[] {
+  const byDay = new Map<string, SpendDay>();
+  for (let at = Date.parse(`${since}T00:00:00Z`), end = Date.parse(`${until}T00:00:00Z`); at <= end; at += DAY_MS) {
+    const day = dayOf(at);
+    byDay.set(day, { day, costUsd: 0, landedUsd: 0 });
+  }
+  for (const row of rows) {
+    const day = byDay.get(row.day);
+    if (!day) continue;
+    day.costUsd += row.costUsd;
+    if (row.landed) day.landedUsd += row.costUsd;
+  }
+  return [...byDay.values()];
+}
+
+/** What the rows can be summed by. */
+export type SpendKey = "item" | "repo" | "harness" | "model";
+
+/** One work item, repository, harness or model: null for none (no work item, a repository the viewer can't read, no model reported). */
+export type SpendGroup = { key: string | number | null; costUsd: number; landedUsd: number };
+
+/** The rows summed by `key`, the costliest first, then by name, with none last among equals. */
+export function spendBy(rows: SpendRow[], key: SpendKey): SpendGroup[] {
+  const groups = new Map<string | number | null, SpendGroup>();
+  for (const row of rows) {
+    const value = row[key];
+    const group = groups.get(value) ?? { key: value, costUsd: 0, landedUsd: 0 };
+    group.costUsd += row.costUsd;
+    if (row.landed) group.landedUsd += row.costUsd;
+    groups.set(value, group);
+  }
+  return [...groups.values()].sort(
+    (a, b) => b.costUsd - a.costUsd || Number(a.key == null) - Number(b.key == null) || String(a.key ?? "").localeCompare(String(b.key ?? ""), "en"),
+  );
+}
+
+/** Of `costUsd`, the share `landedUsd` is, as a whole percent; null when nothing was spent. */
+export function landedShare(costUsd: number, landedUsd: number): number | null {
+  return costUsd > 0 ? Math.round((Math.min(landedUsd, costUsd) / costUsd) * 100) : null;
+}
+
+/** Dollars as millionths of one, the way `money` takes them. */
+export const usdMicros = (usd: number) => Math.round(usd * 1_000_000);
+
+/** Who sees each person's spend, besides that person, in a sentence's words. */
+export const SPEND_VISIBILITY: Record<SpendVisibility, { label: string; who: string }> = {
+  owners: { label: "Owners and billing managers", who: "its owners and billing managers" },
+  members: { label: "Every member", who: "every member" },
+  nobody: { label: "Nobody", who: "nobody but each person" },
+};

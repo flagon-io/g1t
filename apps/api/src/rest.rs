@@ -642,6 +642,9 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/workspaces/:workspace/plan", Op::GetPlan, &[("repo", "repo"), ("all", "all")]),
     route("PATCH", "/workspaces/:workspace/plan", Op::ConfigurePlan, &[]),
     route("GET", "/workspaces/:workspace/plan/next", Op::NextWorkItem, &[("repo", "repo")]),
+    // Spend: what a person's sessions cost, and who else may see it.
+    route("GET", "/workspaces/:workspace/spend", Op::GetSpend, &[("person", "person"), ("since", "since"), ("until", "until")]),
+    route("PATCH", "/workspaces/:workspace/spend", Op::ConfigureSpend, &[]),
     // Cycles: Now as a time box. `cycles/current` is the current one.
     route("GET", "/workspaces/:workspace/cycles", Op::ListCycles, &[("limit", "limit")]),
     route("PATCH", "/workspaces/:workspace/cycles", Op::ConfigureCycles, &[]),
@@ -1711,6 +1714,11 @@ mod tests {
         assert_eq!(op("GET", "/workspaces/acme/plan"), Op::GetPlan);
         assert_eq!(op("PATCH", "/workspaces/acme/plan"), Op::ConfigurePlan);
         assert_eq!(op("GET", "/workspaces/acme/plan/next"), Op::NextWorkItem);
+        let query = [("person".to_owned(), "ada".to_owned()), ("since".to_owned(), "2026-10-01".to_owned())];
+        let (route, input) = resolve("GET", "/workspaces/acme/spend", &query, Value::Null).unwrap();
+        assert_eq!(route.op, Op::GetSpend);
+        assert_eq!(input, json!({ "person": "ada", "since": "2026-10-01", "workspace": "acme" }));
+        assert_eq!(op("PATCH", "/workspaces/acme/spend"), Op::ConfigureSpend);
         assert_eq!(op("GET", "/workspaces/acme/cycles"), Op::ListCycles);
         assert_eq!(op("PATCH", "/workspaces/acme/cycles"), Op::ConfigureCycles);
         assert_eq!(op("GET", "/workspaces/acme/cycles/current"), Op::GetCycle);
