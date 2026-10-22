@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Publishes g1t's Claude Code and Codex plugin marketplace to its own repository,
+// Publishes g1t's plugin marketplace (Claude Code, Codex, Cursor, GitHub
+// Copilot CLI, and the Gemini CLI extension) to its own repository,
 // flagon-io/g1t-plugins on g1t.sh, so adding the marketplace clones a few
 // files rather than this monorepo:
 //
@@ -22,7 +23,15 @@
 //   README.md                         written here (readme())
 //   .agents/plugins/marketplace.json  Codex catalog, generated below
 //   plugins/g1t-codex/                plugins/codex/, with its own version
+//   .cursor-plugin/marketplace.json   Cursor catalog, generated below
+//   plugins/g1t-cursor/               plugins/cursor/, with its own version
+//   .github/plugin/marketplace.json   Copilot CLI catalog, generated below
+//   plugins/g1t-copilot/              plugins/copilot/, with its own version
+//   gemini-extension.json, hooks/     plugins/gemini/: Gemini CLI installs the repository's top
 //   LICENSE                           this repository's
+//
+// Each harness plugin gets the Claude Code plugin's hooks/g1t.mjs (see
+// HARNESS_PLUGINS), so a change to it is a new version of every plugin.
 //
 // A file added to plugins/claude-code/ that PLUGIN_FILES does not name
 // stops the build, so nothing is published or left out without a change
@@ -55,12 +64,43 @@ export const SOURCE = "plugins/claude-code";
 export const CODEX_SOURCE = "plugins/codex";
 export const CODEX_PUBLISHED = "plugins/g1t-codex";
 export const CODEX_FILES = ["plugin.json", "mcp.json", "skills", "hooks"];
-// The Codex plugin's hooks run the Claude Code plugin's g1t.mjs, one core
-// for both harnesses: the build copies it in beside hooks/hooks.json.
+// Every other harness's hooks run the Claude Code plugin's g1t.mjs, one
+// core for all of them: the build copies it in beside each hooks/hooks.json.
 export const CODEX_HOOK = "hooks/g1t.mjs";
 export const CODEX_INSTALL = "codex plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git";
 export const PUBLISHED = "plugins/g1t";
 export const REMOTE = "https://g1t.sh/flagon-io/g1t-plugins.git";
+
+/**
+ * The plugins of the other harnesses, each with its own version (in its
+ * `manifest`) and its own version guard, published from `source` to
+ * `published` with `files` and the hook core, and listed in its harness's
+ * own catalog (`catalog`, see catalogs()). Gemini CLI installs an
+ * extension from a repository's top, so its files are published there.
+ */
+export const HARNESS_PLUGINS = [
+  { name: "Codex", source: CODEX_SOURCE, published: CODEX_PUBLISHED, files: CODEX_FILES, manifest: "plugin.json", catalog: ".agents/plugins/marketplace.json" },
+  {
+    name: "Cursor",
+    source: "plugins/cursor",
+    published: "plugins/g1t-cursor",
+    files: [".cursor-plugin", "hooks"],
+    manifest: ".cursor-plugin/plugin.json",
+    catalog: ".cursor-plugin/marketplace.json",
+  },
+  {
+    name: "GitHub Copilot CLI",
+    source: "plugins/copilot",
+    published: "plugins/g1t-copilot",
+    files: ["plugin.json", "hooks"],
+    manifest: "plugin.json",
+    catalog: ".github/plugin/marketplace.json",
+  },
+  { name: "Gemini CLI", source: "plugins/gemini", published: "", files: ["gemini-extension.json", "hooks"], manifest: "gemini-extension.json", catalog: null },
+];
+
+/** A path under a harness plugin's published folder ("" is the repository's top). */
+const under = (plugin, path) => (plugin.published ? `${plugin.published}/${path}` : path);
 export const INSTALL = ["claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git", "claude plugin install g1t@g1t"];
 
 // What of plugins/claude-code/ is the plugin: entries published whole.
@@ -181,12 +221,44 @@ export function codexMarketplace() {
   };
 }
 
-function codexManifest(root) {
-  const plugin = readJson(root, `${CODEX_SOURCE}/plugin.json`);
-  if (plugin.name !== "g1t" || !/^\d+\.\d+\.\d+$/.test(plugin.version ?? "")) throw new Error("Invalid Codex plugin identity or version");
-  const extra = readdirSync(join(root, CODEX_SOURCE)).filter((name) => !CODEX_FILES.includes(name));
-  if (extra.length) throw new Error(`Unlisted Codex plugin files: ${extra.join(", ")}`);
-  return plugin;
+/** Cursor's catalog: its multi-plugin manifest, each source a folder from the repository's top. */
+export function cursorMarketplace(root = ROOT) {
+  const plugin = pluginManifest(HARNESS_PLUGINS[1], root);
+  return {
+    name: "g1t",
+    owner: { name: "Flagon, Inc." },
+    metadata: { description: "g1t's plugins: records your sessions on g1t." },
+    plugins: [{ name: "g1t", source: HARNESS_PLUGINS[1].published, description: plugin.description, version: plugin.version }],
+  };
+}
+
+/** Copilot CLI's catalog, which it looks for in .github/plugin/ before Claude Code's. */
+export function copilotMarketplace(root = ROOT) {
+  const plugin = pluginManifest(HARNESS_PLUGINS[2], root);
+  return {
+    name: "g1t",
+    owner: { name: "Flagon, Inc." },
+    metadata: { description: "g1t's plugins: records your sessions on g1t." },
+    plugins: [{ name: "g1t", source: `./${HARNESS_PLUGINS[2].published}`, description: plugin.description, version: plugin.version }],
+  };
+}
+
+/** Each harness plugin's catalog, by its published path. */
+export function catalogs(root = ROOT) {
+  return {
+    ".agents/plugins/marketplace.json": codexMarketplace(),
+    ".cursor-plugin/marketplace.json": cursorMarketplace(root),
+    ".github/plugin/marketplace.json": copilotMarketplace(root),
+  };
+}
+
+/** A harness plugin's manifest, checked: named g1t, with an x.y.z version, and no file it does not list. */
+export function pluginManifest(plugin, root = ROOT) {
+  const manifest = readJson(root, `${plugin.source}/${plugin.manifest}`);
+  if (manifest.name !== "g1t" || !/^\d+\.\d+\.\d+$/.test(manifest.version ?? "")) throw new Error(`Invalid ${plugin.name} plugin identity or version`);
+  const extra = readdirSync(join(root, plugin.source)).filter((name) => !plugin.files.includes(name));
+  if (extra.length) throw new Error(`Unlisted ${plugin.name} plugin files: ${extra.join(", ")}`);
+  return manifest;
 }
 
 /** A release's tag: `claude plugin tag`'s {name}--v{version}. */
@@ -214,33 +286,15 @@ export function expectedFiles(root = ROOT) {
     const path = join(root, SOURCE, name);
     return statSync(path).isDirectory() ? walk(path).map((f) => `${PUBLISHED}/${name}/${f}`) : [`${PUBLISHED}/${name}`];
   });
-  const codex = [...walk(join(root, CODEX_SOURCE)), CODEX_HOOK].map((f) => `${CODEX_PUBLISHED}/${f}`);
-  return [".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json", "LICENSE", "README.md", ...plugin, ...new Set(codex)].sort();
+  const harnesses = HARNESS_PLUGINS.flatMap((p) => [...walk(join(root, p.source)), CODEX_HOOK].map((f) => under(p, f)));
+  const listed = HARNESS_PLUGINS.map((p) => p.catalog).filter(Boolean);
+  return [...new Set([".claude-plugin/marketplace.json", ...listed, "LICENSE", "README.md", ...plugin, ...harnesses])].sort();
 }
 
-/** Writes the published tree to `out`, replacing what was there, and checks it. */
-export function build(out = join(ROOT, "target", "g1t-plugins"), root = ROOT) {
-  const { marketplace, version } = manifests(root);
-  codexManifest(root);
-  const extra = unlisted(root);
-  if (extra.length)
-    throw new Error(
-      `${SOURCE}/ has ${extra.join(", ")}, which scripts/plugins-release.mjs neither publishes nor keeps back: add each to PLUGIN_FILES or DEV_FILES.`,
-    );
-  for (const name of PLUGIN_FILES) if (!existsSync(join(root, SOURCE, name))) throw new Error(`${SOURCE}/${name} is missing`);
-
-  rmSync(out, { recursive: true, force: true });
-  mkdirSync(join(out, ".claude-plugin"), { recursive: true });
-  writeFileSync(join(out, ".claude-plugin", "marketplace.json"), `${JSON.stringify(publishedMarketplace(marketplace), null, 2)}\n`);
-  for (const name of PLUGIN_FILES) cpSync(join(root, SOURCE, name), join(out, PUBLISHED, name), { recursive: true });
-  mkdirSync(join(out, ".agents/plugins"), { recursive: true });
-  writeFileSync(join(out, ".agents/plugins/marketplace.json"), JSON.stringify(codexMarketplace(), null, 2) + "\n");
-  for (const name of CODEX_FILES) cpSync(join(root, CODEX_SOURCE, name), join(out, CODEX_PUBLISHED, name), { recursive: true });
-  cpSync(join(root, SOURCE, "hooks", "g1t.mjs"), join(out, CODEX_PUBLISHED, CODEX_HOOK));
-  writeFileSync(
-    join(out, "README.md"),
-    readme(version, minimumCli(root)) +
-      `
+/** What the README says of the other harnesses' plugins: how each is installed. */
+function harnessReadme(root) {
+  const version = (i) => pluginManifest(HARNESS_PLUGINS[i], root).version;
+  return `
 ## Codex
 
 Add this marketplace with:
@@ -252,14 +306,73 @@ codex plugin add g1t@g1t
 
 In the ChatGPT desktop app's Plugins directory, choose the g1t marketplace,
 install g1t and authorize its MCP connection. Restart the app if needed.
-The Codex plugin (${codexManifest(root).version}) bundles the remote MCP server, a
+The Codex plugin (${version(0)}) bundles the remote MCP server, a
 work item/session workflow skill, and hooks that record each Codex session on
 g1t with what it cost, through the g1t CLI. Codex asks you to review and trust
 its hooks (\`/hooks\`) before they run. Disable a duplicate standalone g1t MCP
 connection if installed.
 Direct MCP setup and ChatGPT instructions: https://docs.g1t.sh/guides/bring-your-own-agent/
-`,
-  );
+
+## Cursor
+
+The Cursor plugin (${version(1)}) records each Cursor agent session on g1t
+through the g1t CLI. Add this marketplace in the Cursor CLI and install it:
+
+\`\`\`sh
+agent plugin marketplace add ${REMOTE}
+\`\`\`
+
+Then run \`/plugin\` and install **g1t**. Cursor's hooks carry no token
+counts, so what a Cursor session cost comes from Cursor's own usage reports.
+
+## GitHub Copilot CLI
+
+The Copilot CLI plugin (${version(2)}) records each Copilot CLI session on
+g1t with what it cost, through the g1t CLI:
+
+\`\`\`sh
+copilot plugin marketplace add ${REMOTE}
+copilot plugin install g1t@g1t
+\`\`\`
+
+## Gemini CLI
+
+This repository is also a Gemini CLI extension (${version(3)}) that records
+each Gemini CLI session on g1t with what it cost, through the g1t CLI:
+
+\`\`\`sh
+gemini extensions install ${REMOTE} --auto-update
+\`\`\`
+
+Each plugin needs the [g1t CLI](https://docs.g1t.sh/guides/cli/) and Node 18
+or later. The guide: https://docs.g1t.sh/guides/bring-your-own-agent/
+`;
+}
+
+/** Writes the published tree to `out`, replacing what was there, and checks it. */
+export function build(out = join(ROOT, "target", "g1t-plugins"), root = ROOT) {
+  const { marketplace, version } = manifests(root);
+  for (const plugin of HARNESS_PLUGINS) pluginManifest(plugin, root);
+  const extra = unlisted(root);
+  if (extra.length)
+    throw new Error(
+      `${SOURCE}/ has ${extra.join(", ")}, which scripts/plugins-release.mjs neither publishes nor keeps back: add each to PLUGIN_FILES or DEV_FILES.`,
+    );
+  for (const name of PLUGIN_FILES) if (!existsSync(join(root, SOURCE, name))) throw new Error(`${SOURCE}/${name} is missing`);
+
+  rmSync(out, { recursive: true, force: true });
+  mkdirSync(join(out, ".claude-plugin"), { recursive: true });
+  writeFileSync(join(out, ".claude-plugin", "marketplace.json"), `${JSON.stringify(publishedMarketplace(marketplace), null, 2)}\n`);
+  for (const name of PLUGIN_FILES) cpSync(join(root, SOURCE, name), join(out, PUBLISHED, name), { recursive: true });
+  for (const [path, catalog] of Object.entries(catalogs(root))) {
+    mkdirSync(dirname(join(out, path)), { recursive: true });
+    writeFileSync(join(out, path), JSON.stringify(catalog, null, 2) + "\n");
+  }
+  for (const plugin of HARNESS_PLUGINS) {
+    for (const name of plugin.files) cpSync(join(root, plugin.source, name), join(out, under(plugin, name)), { recursive: true });
+    cpSync(join(root, SOURCE, "hooks", "g1t.mjs"), join(out, under(plugin, CODEX_HOOK)));
+  }
+  writeFileSync(join(out, "README.md"), readme(version, minimumCli(root)) + harnessReadme(root));
   cpSync(join(root, "LICENSE"), join(out, "LICENSE"));
   verify(out, root);
   return { out, version };
@@ -283,15 +396,18 @@ export function verify(dir, root = ROOT) {
   if (entry.version !== version || plugin.version !== version)
     problems.push(`versions: marketplace ${entry.version}, plugin ${plugin.version}, source ${version}`);
   for (const file of [`${PUBLISHED}/.mcp.json`, `${PUBLISHED}/hooks/hooks.json`]) readJson(dir, file);
-  const codex = readJson(dir, `${CODEX_PUBLISHED}/plugin.json`);
-  if (codex.name !== "g1t" || codex.version !== codexManifest(root).version) problems.push("Codex plugin identity or version differs from source");
-  if (JSON.stringify(readJson(dir, ".agents/plugins/marketplace.json")) !== JSON.stringify(codexMarketplace()))
-    problems.push("Codex marketplace differs from expected catalog");
+  for (const harness of HARNESS_PLUGINS) {
+    const published = readJson(dir, under(harness, harness.manifest));
+    if (published.name !== "g1t" || published.version !== pluginManifest(harness, root).version)
+      problems.push(`${harness.name} plugin identity or version differs from source`);
+    readJson(dir, under(harness, "hooks/hooks.json"));
+    if (readFileSync(join(dir, under(harness, CODEX_HOOK)), "utf8") !== readFileSync(join(root, SOURCE, "hooks", "g1t.mjs"), "utf8"))
+      problems.push(`The ${harness.name} plugin's g1t.mjs differs from the Claude Code plugin's`);
+  }
+  for (const [path, catalog] of Object.entries(catalogs(root)))
+    if (JSON.stringify(readJson(dir, path)) !== JSON.stringify(catalog)) problems.push(`${path} differs from the expected catalog`);
   const mcp = readJson(dir, `${CODEX_PUBLISHED}/mcp.json`);
   if (mcp.mcpServers?.g1t?.url !== "https://mcp.g1t.sh" || mcp.mcpServers?.g1t?.type !== "streamable-http") problems.push("Invalid Codex MCP server");
-  readJson(dir, `${CODEX_PUBLISHED}/hooks/hooks.json`);
-  if (readFileSync(join(dir, CODEX_PUBLISHED, CODEX_HOOK), "utf8") !== readFileSync(join(root, SOURCE, "hooks", "g1t.mjs"), "utf8"))
-    problems.push("The Codex plugin's g1t.mjs differs from the Claude Code plugin's");
   problems.push(...scan(dir));
   if (problems.length) throw new Error(`The published tree is wrong:\n- ${problems.join("\n- ")}`);
 }
@@ -336,7 +452,9 @@ export function publish({
   if (hasMain) git(clone, ["checkout", "--quiet", "-B", "main", "origin/main"]);
   else git(clone, ["checkout", "--quiet", "--orphan", "main"]);
 
-  const codexBefore = hasMain && existsSync(join(clone, CODEX_PUBLISHED, "plugin.json")) ? readJson(clone, `${CODEX_PUBLISHED}/plugin.json`).version : null;
+  const harnessBefore = HARNESS_PLUGINS.map((p) =>
+    hasMain && existsSync(join(clone, under(p, p.manifest))) ? readJson(clone, under(p, p.manifest)).version : null,
+  );
   const before =
     hasMain && existsSync(join(clone, PUBLISHED, ".claude-plugin", "plugin.json")) ? readJson(clone, `${PUBLISHED}/.claude-plugin/plugin.json`).version : null;
   for (const name of readdirSync(clone)) if (name !== ".git") rmSync(join(clone, name), { recursive: true, force: true });
@@ -352,9 +470,13 @@ export function publish({
     );
   }
 
-  const codexChanged = hasMain ? git(clone, ["diff", "--cached", "--quiet", "--", CODEX_PUBLISHED], { allowFail: true }).status !== 0 : true;
-  if (codexChanged && codexBefore === codexManifest(root).version)
-    throw new Error("Codex plugin files changed without a version bump in plugins/codex/plugin.json");
+  // Each harness updates an installed plugin by its version: a change to one's files needs a new one.
+  HARNESS_PLUGINS.forEach((p, i) => {
+    const paths = p.published ? [p.published] : p.files;
+    const pChanged = hasMain ? git(clone, ["diff", "--cached", "--quiet", "--", ...paths], { allowFail: true }).status !== 0 : true;
+    if (pChanged && harnessBefore[i] === pluginManifest(p, root).version)
+      throw new Error(`${p.name} plugin files changed without a version bump in ${p.source}/${p.manifest}`);
+  });
   const tag = tagName(version);
   const remoteTag = git(clone, ["ls-remote", "--tags", "origin", `refs/tags/${tag}`], { env }).stdout.trim();
   let commit = hasMain ? git(clone, ["rev-parse", "HEAD"]).stdout.trim() : null;
