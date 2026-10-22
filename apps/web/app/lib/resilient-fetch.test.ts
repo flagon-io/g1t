@@ -10,6 +10,7 @@ import {
   refreshesCurrent,
   retriable,
   retryDelay,
+  tabOutdated,
   watchBuildNavigation,
 } from "./resilient-fetch.ts";
 import { reconnectDelay } from "./reconnect.ts";
@@ -59,6 +60,15 @@ test("only an active navigation carries its build; fetchers, refreshes and write
       late = undefined;
       assert.equal((await browser.fetch("/newer.data")).status, 200);
     }
+    // A background refresh answered by the tab's own build leaves it current;
+    // one answered by a newer build marks it out of date.
+    late = Promise.resolve(new Response(null, { headers: { "x-g1t-build": "old-build" } }));
+    await browser.fetch("/edit.data");
+    assert.equal(tabOutdated(), false);
+    late = Promise.resolve(new Response(null, { headers: { "x-g1t-build": "new-build" } }));
+    await browser.fetch("/edit.data");
+    assert.equal(tabOutdated(), true);
+    late = undefined;
   } finally {
     stop();
     if (previous) Object.defineProperty(globalThis, "window", previous);

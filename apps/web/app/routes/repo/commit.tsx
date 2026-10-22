@@ -277,7 +277,14 @@ export default function CommitPage({ loaderData, actionData, params }: Route.Com
                 </div>
               }
             >
-              <Await resolve={pull}>
+              <Await
+                resolve={pull}
+                errorElement={
+                  <div className="border-t border-line px-5 py-3">
+                    <Unavailable what="Its pull request" compact />
+                  </div>
+                }
+              >
                 {(pull) =>
                   isFailed(pull) ? (
                     <div className="border-t border-line px-5 py-3">

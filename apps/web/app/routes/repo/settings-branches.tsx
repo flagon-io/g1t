@@ -163,7 +163,9 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
 
         <Section id="codeowners" title="CODEOWNERS" about={`Who owns which files, read from ${branch}. Owners are asked to review changes to their files.`}>
           <Suspense fallback={<CodeownersReportSkeleton />}>
-            <Await resolve={codeowners}>{(report) => <CodeownersReportPanel report={report} base={base} branch={branch} />}</Await>
+            <Await resolve={codeowners} errorElement={<Unavailable what="The CODEOWNERS report" />}>
+              {(report) => <CodeownersReportPanel report={report} base={base} branch={branch} />}
+            </Await>
           </Suspense>
         </Section>
 

@@ -20,6 +20,7 @@ import { receiveSaml } from "./sso-saml";
 import { samlPath } from "../app/lib/sso";
 import { serveArchivedAsset } from "../app/lib/asset-archive";
 import { needsBuildRefresh } from "../app/lib/build-version";
+import { CLIENT_ERROR_PATH, logClientError } from "../app/lib/client-errors";
 import { developerResource, pageRepresentation } from "../app/lib/agent-pages";
 import { previewAccessSettings, refusePreview } from "../app/lib/preview-access";
 
@@ -138,6 +139,9 @@ async function site(request: Request, env: Env, ctx: ExecutionContext): Promise<
   // session signed in (app/lib/front-door-limits.ts).
   const limited = await pageLimited(env, request, pathname);
   if (limited) return limited;
+  // An error page a browser showed, logged so it can be read without the
+  // person's developer mode (app/lib/client-errors.ts).
+  if (pathname === CLIENT_ERROR_PATH && request.method === "POST") return logClientError(request);
   // A workspace's identity provider posting a SAML response, from its own
   // site: React Router refuses cross-site posts (workers/sso-saml.ts).
   const saml = request.method === "POST" ? samlPath(pathname) : null;

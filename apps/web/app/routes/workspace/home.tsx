@@ -72,6 +72,7 @@ import {
 } from "../../lib/home.server";
 import { HOME_WATCH_MAX, type HomeRepo } from "../../lib/home-live";
 import { readCookie } from "../../lib/mission";
+import { inTime } from "../../lib/stream-deadline";
 import { dailySignal, providerQuarter, signalsRange } from "../../lib/signals";
 import { loadGroups, loadSignalData } from "../../lib/signals.server";
 import { shapeGround } from "../../lib/ground";
@@ -85,7 +86,7 @@ import { page } from "../../lib/meta";
 import { billing, identity, inbox, work } from "../../lib/services.server";
 import { managesBilling, requireUser, roleIn } from "../../lib/session.server";
 import { canItem } from "../../lib/work-access";
-import { Boundary } from "../../components/boundary";
+import { Boundary, Unavailable } from "../../components/boundary";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Home · ${params.owner} · g1t` });
@@ -320,6 +321,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     )
     .catch(() => []);
 
+  // Each section settles before the page's stream closes (lib/stream-deadline.ts):
+  // one still waiting on a slow service shows as unavailable, as a failed one
+  // does, rather than failing the page.
+  const unread = { rows: [], start: null, missing: ["Code", "Notifications", "Chat", "Work"] } satisfies Attention;
+  const notRunning = { rows: [], missing: ["Workflows", "Deployments"] };
   return {
     slug,
     code,
@@ -328,25 +334,25 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     now,
     tz,
     span,
-    digest,
-    happened,
-    attention: waiting,
-    away,
+    digest: inTime(digest, null),
+    happened: inTime(happened, null),
+    attention: inTime(waiting, unread),
+    away: inTime(away, null),
     /**
      * Live's agents, and its runs and builds. Joined here, not while drawing:
      * a promise made on each render is new each time, so `<Await>` suspends
      * again on every render, and no router update commits while Home is shown.
      */
-    live: Promise.all([live, runningNow]),
+    live: Promise.all([inTime(live, null), inTime(runningNow, notRunning)]),
     /** The sentence about the span needs the digest and what landed. */
-    head: Promise.all([digest, happened]),
-    spend,
-    signal,
-    ground,
-    members,
-    usage,
-    watch,
-    onboarding,
+    head: Promise.all([inTime(digest, null), inTime(happened, null)]),
+    spend: spend && inTime(spend, null),
+    signal: signal && inTime(signal, null),
+    ground: ground && inTime(ground, null),
+    members: inTime(members, null),
+    usage: usage && inTime(usage, null),
+    watch: inTime(watch, []),
+    onboarding: inTime(onboarding, null),
     setupAsked,
     /** Whether Getting started is for the viewer (an owner), so Home offers it again once dismissed. */
     guide: guideIsFor(viewer, slug),
@@ -448,7 +454,14 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
             }
           >
             {/* Each section's data says what did not answer; a section that fails to draw keeps that to itself. */}
-            <Await resolve={waiting}>
+            <Await
+              resolve={waiting}
+              errorElement={
+                <Card title="Your move">
+                  <Unavailable what="What needs you" />
+                </Card>
+              }
+            >
               {(att) => (
                 <Card title="Your move" hint={waitingSentence(att.rows.length)} link={{ label: "Notifications", to: "/notifications" }}>
                   <Boundary what="Your move">
@@ -463,7 +476,7 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
         {/* 2. Live: agents at work, then workflow runs and builds, as they go. */}
         <Card title="Live" hint="Agents, runs and builds going now">
           <HeldSuspense id={`home:${slug}:live`} fallback={<RowsSkeleton rows={2} />}>
-            <Await resolve={live}>
+            <Await resolve={live} errorElement={<Unavailable what="What is running" />}>
               {([sessions, value]) => (
                 <Boundary what="Live">
                   <LiveSessions sessions={sessions} slug={slug} now={now} />
@@ -478,7 +491,7 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
       {/* 3. The week's work, for members who see Code: its figures, its days, and what is worth a look. */}
       {signal && (
         <HeldSuspense id={`home:${slug}:week`} fallback={<HomeWeekSkeleton />}>
-          <Await resolve={signal}>
+          <Await resolve={signal} errorElement={<Unavailable what="This week" />}>
             {(value) => (
               <Boundary what="This week">
                 <HomeWeek view={value} />
@@ -504,7 +517,9 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
           </header>
           <p className="px-5 pt-2 text-sm text-muted">
             <Suspense fallback={<Skeleton className="inline-block h-3.5 w-72 align-middle" />}>
-              <Await resolve={head}>{([digest, happened]) => spanSentence(span, digest, happened?.landed?.length ?? null)}</Await>
+              <Await resolve={head} errorElement={null}>
+                {([digest, happened]) => spanSentence(span, digest, happened?.landed?.length ?? null)}
+              </Await>
             </Suspense>
           </p>
           {/* Summarize leads: the plain-English account is what most people come for. */}
@@ -513,7 +528,14 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
           </div>
           <div className="border-t border-line">
             <HeldSuspense id={`home:${slug}:${span.key}:people`} fallback={<SpanSkeleton />}>
-              <Await resolve={digest}>
+              <Await
+                resolve={digest}
+                errorElement={
+                  <div className="px-5 py-4">
+                    <Unavailable what="Who did what" compact />
+                  </div>
+                }
+              >
                 {(value) => (
                   <Boundary what="Who did what">
                     <PeopleSummary digest={value} span={span} code={loaderData.code} />
@@ -530,7 +552,14 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
               </div>
             }
           >
-            <Await resolve={happened}>
+            <Await
+              resolve={happened}
+              errorElement={
+                <div className="border-t border-line px-5 py-4">
+                  <Unavailable what="What landed" compact />
+                </div>
+              }
+            >
               {(value) => (
                 <Boundary what="What landed">
                   <LandedFeed
@@ -559,7 +588,14 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
                 </Card>
               }
             >
-              <Await resolve={spend}>
+              <Await
+                resolve={spend}
+                errorElement={
+                  <Card title="Spent">
+                    <Unavailable what="What was spent" compact />
+                  </Card>
+                }
+              >
                 {(value) => (
                   <Boundary what="Spent">
                     <SpendCard spend={value} slug={slug} span={span} />
@@ -578,7 +614,14 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
               </Card>
             }
           >
-            <Await resolve={away}>
+            <Await
+              resolve={away}
+              errorElement={
+                <Card title="Settled for you">
+                  <Unavailable what="What settled" compact />
+                </Card>
+              }
+            >
               {(value) => (
                 <Boundary what="Settled for you">
                   <SettledCard away={value} now={now} />
@@ -592,7 +635,7 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
       {/* 6. The workspace: what is moving and waiting team by team, and the quiet changes; spend for billing. Drawn as Home's cards. */}
       {loaderData.ground && (
         <HeldSuspense id={`home:${slug}:ground`} fallback={<GroundSkeleton />}>
-          <Await resolve={loaderData.ground}>
+          <Await resolve={loaderData.ground} errorElement={<Unavailable what="What the work says" />}>
             {(value) =>
               value && (
                 <Boundary what="What the work says">
@@ -608,7 +651,7 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
       <div className={`grid grid-cols-[minmax(0,1fr)] items-start gap-5 ${loaderData.usage ? "lg:grid-cols-[minmax(0,1fr)_24rem]" : "lg:grid-cols-2"}`}>
         {loaderData.usage && (
           <HeldSuspense id={`home:${slug}:usage`} fallback={<Skeleton className="h-48 rounded-2xl" />}>
-            <Await resolve={loaderData.usage}>
+            <Await resolve={loaderData.usage} errorElement={<Unavailable what="Usage" />}>
               {(value) =>
                 value ? (
                   <Boundary what="Usage">
@@ -620,7 +663,9 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
           </HeldSuspense>
         )}
         <HeldSuspense id={`home:${slug}:members`} fallback={<Skeleton className="h-48 rounded-2xl" />}>
-          <Await resolve={loaderData.members}>{(value) => <MembersCard slug={slug} owner={loaderData.owner} members={value} />}</Await>
+          <Await resolve={loaderData.members} errorElement={<Unavailable what="The member list" />}>
+            {(value) => <MembersCard slug={slug} owner={loaderData.owner} members={value} />}
+          </Await>
         </HeldSuspense>
       </div>
     </div>

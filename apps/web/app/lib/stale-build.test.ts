@@ -23,6 +23,18 @@ test("a document load, or any other error, shows the error page", () => {
   assert.equal(reloadFixes({ error: {}, status: 500, clientNavigation: true, caughtByCatchAll: false }), false);
 });
 
+test("a tab a newer build has answered reloads on any error, even from a background refresh", () => {
+  // Old code drawing the new build's data: a TypeError no message list names.
+  const drawn = new TypeError("Cannot read properties of undefined (reading 'map')");
+  assert.equal(reloadFixes({ error: drawn, clientNavigation: false, caughtByCatchAll: false, outdated: true }), true);
+  assert.equal(reloadFixes({ error: {}, status: 500, clientNavigation: false, caughtByCatchAll: false, outdated: true }), true);
+  // The same error in a tab no deploy has passed is a real one.
+  assert.equal(reloadFixes({ error: drawn, clientNavigation: false, caughtByCatchAll: false, outdated: false }), false);
+  // A 404 the new build sent is real; one the old build's catch-all made is not.
+  assert.equal(reloadFixes({ error: {}, status: 404, clientNavigation: true, caughtByCatchAll: false, outdated: true }), false);
+  assert.equal(reloadFixes({ error: {}, status: 404, clientNavigation: true, caughtByCatchAll: true, outdated: true }), true);
+});
+
 test("the location a tab's document loaded at is no client navigation, whatever its key", () => {
   // ScrollRestoration's inline script gives the first entry a random key.
   assert.equal(clientNavigated("kvhli4udgd", "kvhli4udgd"), false);

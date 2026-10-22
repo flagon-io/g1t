@@ -157,6 +157,19 @@ function pause(ms: number, signal: AbortSignal | null | undefined): Promise<void
 }
 
 let installed = false;
+/** Set once a read is answered by a build other than this tab's: the tab runs old code against new data. */
+let outdated = false;
+
+/** Whether g1t has been deployed since this tab loaded (a read said so). */
+export function tabOutdated(): boolean {
+  return outdated;
+}
+
+/** Whether the build that answered (its `x-g1t-build`) is another than the tab's. */
+export function answeredByOtherBuild(answered: string | null, build: string | undefined): boolean {
+  return Boolean(build && answered && answered !== build);
+}
+
 type NavigationLocation = { pathname: string; search: string };
 let navigationLocation: () => NavigationLocation | undefined = () => undefined;
 
@@ -208,6 +221,7 @@ export function installResilientFetch(build?: string) {
             void response.body?.cancel().catch(() => {});
             signal.throwIfAborted();
           }
+          if (answeredByOtherBuild(response.headers.get(BUILD_HEADER), build)) outdated = true;
           return response;
         } catch (error) {
           const wait = retryDelay(attempt);
