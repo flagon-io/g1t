@@ -42,12 +42,16 @@ import {
   wranglerError,
 } from "./cloudflare.mjs";
 import { changedNames, parseCargoLock, parseNpmLock, reaches } from "./lockfiles.mjs";
-import { decide, git, planJson, pool } from "./plan.mjs";
+import { decide, git, planJson, pool, waitsOn, workflowOutputs } from "./plan.mjs";
 import {
   ROOT,
   STACK_FILE,
   TOOL_NOT_INPUTS,
   buildGroups,
+  BUILD_SECONDS,
+  BUILD_SECONDS_DEFAULT,
+  RUST_JOB_SECONDS,
+  rustShards,
   buildOutputs,
   cargoWorkspace,
   findWranglerConfigs,
@@ -788,26 +792,106 @@ test("the plan as data: migrations, and each stage's units in jobs that share a 
   assert.deepEqual(data.migrations, [{ unit: "events", database: "g1t-events", pending: ["0003_x.sql"] }]);
   // Rust Workers and sites are built before any stage deploys; TypeScript
   // Workers are bundled by Wrangler as they deploy.
+  // `awaited`: a unit deploying in a later stage calls one of the job's.
   assert.deepEqual(data.stages.core.jobs, [
-    { group: "rust", units: "events,repos", rust: true, image: false, prebuilt: true },
-    { group: "ts", units: "projects", rust: false, image: false, prebuilt: false },
+    // Each a job of its own: together they would pass RUST_JOB_SECONDS.
+    { group: "rust-1", units: "events", rust: true, image: false, prebuilt: true, awaited: true },
+    { group: "rust-2", units: "repos", rust: true, image: false, prebuilt: true, awaited: true },
+    { group: "ts", units: "projects", rust: false, image: false, prebuilt: false, awaited: true },
   ]);
-  assert.deepEqual(data.stages.edge.jobs, [{ group: "rust", units: "api", rust: true, image: false, prebuilt: true }]);
+  // The site does not call the API.
+  assert.deepEqual(data.stages.edge.jobs, [{ group: "rust", units: "api", rust: true, image: false, prebuilt: true, awaited: false }]);
   assert.deepEqual(data.stages.front.jobs, [
-    { group: "web", units: "web", rust: false, image: false, prebuilt: true },
-    { group: "docs", units: "docs", rust: false, image: false, prebuilt: true },
+    { group: "web", units: "web", rust: false, image: false, prebuilt: true, awaited: false },
+    { group: "docs", units: "docs", rust: false, image: false, prebuilt: true, awaited: false },
   ]);
   assert.deepEqual(data.stage_order, ["core", "edge", "front"]);
   assert.deepEqual(buildGroups([]), []);
-  // Eleven Rust workers go to three jobs; a unit whose image rebuilds gets its own.
+  // Eleven Rust workers go to jobs of at most RUST_JOB_SECONDS of building,
+  // balanced by what each takes; a unit whose image rebuilds gets its own.
   const core = stack.units.filter((u) => u.stage === "core");
   const jobs = buildGroups(core, ["runner"]);
+  const rust = jobs.filter((j) => j.rust);
+  const seconds = (j) => j.units.split(",").reduce((sum, id) => sum + (BUILD_SECONDS[id] ?? BUILD_SECONDS_DEFAULT), 0);
+  assert.equal(
+    rust
+      .map((j) => j.units)
+      .join(",")
+      .split(",").length,
+    11,
+  );
+  for (const job of rust) assert.ok(seconds(job) <= RUST_JOB_SECONDS || !job.units.includes(","), job.units);
+  // The slowest alone; the small ones share.
+  assert.ok(rust.some((j) => j.units === "events"));
+  assert.ok(rust.some((j) => j.units.split(",").includes("webhooks") && j.units.includes(",")));
+  assert.ok(rust.length >= 6 && rust.length <= 9, String(rust.length));
   assert.deepEqual(
-    jobs.filter((j) => j.rust).map((j) => j.units.split(",").length),
-    [4, 4, 3],
+    rustShards(
+      ["a", "b", "c", "d"].map((id) => ({ id })),
+      150,
+    ).map((s) => s.map((u) => u.id)),
+    [["a"], ["b"], ["c"], ["d"]],
   );
   assert.ok(jobs.some((j) => j.group === "runner-image" && j.units === "runner" && j.image && !j.rust && !j.prebuilt));
   assert.ok(!jobs.find((j) => j.group === "ts").units.includes("runner"));
+});
+
+test("the workflow's matrices: a stage waits only for the jobs a later unit calls", () => {
+  const outputs = (ids, images = []) => {
+    const decisions = stack.units.map((u) => ({ unit: u, deploy: ids.includes(u.id), reason: "x", since: null, image: images.includes(u.id) }));
+    const lines = workflowOutputs(planJson(stack, decisions, {}, HEAD));
+    return Object.fromEntries(lines.map((line) => line.split(/=(.*)/s).slice(0, 2)));
+  };
+  const groups = (value) => JSON.parse(value).include.map((job) => `${job.stage}:${job.group}:${job.units}`);
+  // The runner, a core service and the site: the site calls projects, not
+  // the runner, so the runner's image deploys beside the rest.
+  const some = outputs(["projects", "runner", "web"], ["runner"]);
+  assert.deepEqual(groups(some.core), ["core:ts:projects"]);
+  assert.deepEqual(groups(some.core_rest), ["core:runner-image:runner"]);
+  assert.equal(some.has_core_rest, "true");
+  assert.equal(some.has_edge, "false");
+  assert.deepEqual(groups(some.front), ["front:web:web"]);
+  // The API calls the runner: then the runner's image is awaited, and it
+  // goes first in core's matrix, as it takes longest. The site does not
+  // call the API, so the API deploys beside the site.
+  const all = outputs(
+    stack.units.map((u) => u.id),
+    ["runner"],
+  );
+  assert.equal(groups(all.core)[0], "core:runner-image:runner");
+  assert.equal(all.has_core_rest, "false");
+  assert.deepEqual(groups(all.edge_rest), ["edge:rust:api"]);
+  // sudo calls status: status's job is awaited.
+  assert.ok(groups(all.edge).some((g) => g.includes("status")));
+  // The last stage has no rest: everything in it is the front job.
+  assert.equal(all.front_rest, undefined);
+  assert.deepEqual(groups(all.front), ["front:web:web", "front:sudo:sudo", "front:docs:docs"]);
+  // Builds are unchanged: every prebuilt job, each naming its stage.
+  assert.ok(groups(all.builds).includes("edge:rust:api"));
+  assert.ok(!JSON.parse(all.builds).include.some((job) => "awaited" in job));
+  // The site alone: nothing before it, and empty matrices hold one entry.
+  const web = outputs(["web"]);
+  assert.equal(web.has_core, "false");
+  assert.equal(web.has_core_rest, "false");
+  assert.deepEqual(JSON.parse(web.core).include, [{ group: "none", units: "", stage: "core" }]);
+  assert.equal(web.has_front, "true");
+});
+
+test("a deploy of what was built installs only Wrangler for it", () => {
+  // `install --prebuilt`: a site's deploy reads no package of its own.
+  const npm = npmWorkspace();
+  const prebuilt = (ids) =>
+    npmCiArgs(
+      stack.units.filter((u) => ids.includes(u.id) && !buildOutputs(u).length),
+      npm,
+    );
+  assert.deepEqual(prebuilt(["web", "sudo", "docs"]), ["ci", "--prefer-offline", "--no-audit", "--no-fund", "--workspaces=false"]);
+  assert.ok(prebuilt(["status"]).includes("@g1t/status"));
+});
+
+test("a tail consumer counts as a call", () => {
+  assert.deepEqual(waitsOn({ bindsTo: ["a"], config: { tail_consumers: [{ service: "t" }, { service: "a" }] } }), ["a", "t"]);
+  assert.deepEqual(waitsOn({ bindsTo: [] }), []);
 });
 
 test("what a build leaves for the deploy, by kind of unit", () => {
@@ -951,6 +1035,41 @@ test("the API's answers: the live commit as Wrangler's would give it", async () 
   assert.match(liveFromApi("w", deploymentsAnswer("v2").result, null).why, /not among/);
   // No deployment at all is an error, as `deployments status` made it.
   assert.match(liveFromApi("w", { deployments: [] }, versionsAnswer.result).error, /no deployments/);
+});
+
+test("the API's answers: a live version pushed off the recent page by preview uploads is read by its id", async () => {
+  // Pull requests' previews upload versions that never deploy; the page of
+  // recent versions can hold only those, newer than the live one.
+  const previews = ok({ items: [3, 4, 5].map((n) => version(`p${n}`, n, `g1t-preview pr-${n}`, "upload")) });
+  const calls = [];
+  const fetchImpl = fakeFetch(
+    {
+      [`GET ${SCRIPT}/deployments`]: [200, deploymentsAnswer("v1")],
+      [`GET ${SCRIPT}/versions?deployable=true`]: [200, previews],
+      [`GET ${SCRIPT}/versions/v1`]: [200, ok(version("v1", 1, annotation(OLD).message))],
+    },
+    calls,
+  );
+  const found = await readLive(unit("events"), { auth: AUTH, fetchImpl });
+  assert.equal(found.sha, OLD);
+  assert.equal(found.version, "v1");
+  // On the page, it is not asked for again.
+  calls.length = 0;
+  const listed = fakeFetch(
+    { [`GET ${SCRIPT}/deployments`]: [200, deploymentsAnswer("v2")], [`GET ${SCRIPT}/versions?deployable=true`]: [200, versionsAnswer] },
+    calls,
+  );
+  assert.equal((await readLive(unit("events"), { auth: AUTH, fetchImpl: listed })).sha, OLD);
+  assert.equal(calls.length, 2);
+  // Unreadable by id too: unknown, so the unit deploys, as before.
+  const lost = fakeFetch({
+    [`GET ${SCRIPT}/deployments`]: [200, deploymentsAnswer("v1")],
+    [`GET ${SCRIPT}/versions?deployable=true`]: [200, previews],
+    [`GET ${SCRIPT}/versions/v1`]: [404, refused(10000, "not found")],
+  });
+  const unknown = await readLive(unit("events"), { auth: AUTH, fetchImpl: lost });
+  assert.equal(unknown.sha, null);
+  assert.match(unknown.why, /not among/);
 });
 
 test("the API's answers: a Worker never deployed, and a refusal, never throw", async () => {

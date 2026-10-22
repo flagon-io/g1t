@@ -11,12 +11,20 @@
 #   core, edge, front   the units of each stage, deployed from what build
 #            made (`deploy --prebuilt`), so a stage only uploads; a stage
 #            starts only when the one before it succeeded
+#   core_rest, edge_rest   the jobs of a stage that no unit deploying in a
+#            later stage calls (binds to): the runner's image when the API
+#            is not deploying, the API (the site does not call it). Nothing
+#            waits for them but smoke, so the next stage starts without them
 #   smoke    sign-in and sign-up still work on g1t.sh
 #
 # Building every stage before any deploys keeps the stages' order (core
 # before edge before front) without making edge wait for core to compile:
 # a deploy used to take each stage's build in turn, and the Rust stage's
-# 15 minutes held up everything after it.
+# 15 minutes held up everything after it. The order is there so new code
+# never calls a service that has not shipped yet (deploy/stack.jsonc), so
+# a stage waits only for the jobs before it that a unit deploying after
+# them calls: the plan says which (its `<stage>` and `<stage>_rest`
+# outputs, workflowOutputs in scripts/deploy/plan.mjs).
 #
 # Each run that deploys is one production deployment of g1t.sh, made by the
 # jobs that name `environment: production` (one per run, however many jobs):
@@ -79,12 +87,16 @@ concurrency:
 env:
   CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
   CARGO_TERM_COLOR: never
+  # Every job runs on ubuntu-latest's 2 vCPU and 8 GiB; Cargo is held to
+  # two compilers at once even where the machine reports more cores, so a
+  # Worker's link (thin LTO) has the memory to itself.
+  CARGO_BUILD_JOBS: "2"
   WRANGLER_SEND_METRICS: "false"
 
 jobs:
   check:
     name: Check
-    runs-on: g1t-2core # builds nothing: the 2-vCPU machine is enough
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -109,7 +121,7 @@ jobs:
   # Runs beside check: nothing deploys until both have succeeded.
   plan:
     name: Plan
-    runs-on: g1t-2core # builds nothing: the 2-vCPU machine is enough
+    runs-on: ubuntu-latest
     # Production's secrets, without a deployment: planning deploys nothing.
     environment:
       name: production
@@ -124,6 +136,10 @@ jobs:
       core: ${{ steps.plan.outputs.core }}
       has_edge: ${{ steps.plan.outputs.has_edge }}
       edge: ${{ steps.plan.outputs.edge }}
+      has_core_rest: ${{ steps.plan.outputs.has_core_rest }}
+      core_rest: ${{ steps.plan.outputs.core_rest }}
+      has_edge_rest: ${{ steps.plan.outputs.has_edge_rest }}
+      edge_rest: ${{ steps.plan.outputs.edge_rest }}
       has_front: ${{ steps.plan.outputs.has_front }}
       front: ${{ steps.plan.outputs.front }}
     steps:
@@ -161,7 +177,6 @@ jobs:
     name: build ${{ matrix.stage }} (${{ matrix.group }})
     needs: [plan]
     if: ${{ needs.plan.outputs.has_builds == 'true' && inputs.dry_run != true }}
-    # ubuntu-latest: 4 vCPU in this public repository, as on GitHub.
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -271,7 +286,7 @@ jobs:
     name: Migrations
     needs: [check, plan]
     if: ${{ needs.plan.outputs.migrate == 'true' && inputs.dry_run != true }}
-    runs-on: g1t-2core # builds nothing: the 2-vCPU machine is enough
+    runs-on: ubuntu-latest
     environment:
       name: production
       url: https://g1t.sh
@@ -301,7 +316,6 @@ jobs:
     # nothing to apply is not a failure, nor a build skipped for having
     # nothing to build.
     if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_core == 'true' && inputs.dry_run != true }}
-    # ubuntu-latest: 4 vCPU in this public repository, as on GitHub.
     runs-on: ubuntu-latest
     environment:
       name: production
@@ -311,7 +325,9 @@ jobs:
       # A deploy cut off halfway is worse than one that finishes: the other
       # jobs of a stage run on when one fails, and the next stage does not.
       fail-fast: false
-      max-parallel: 4
+      # A full deploy's core at once: eight Rust groups, the TypeScript
+      # Workers and the runner's image (listed first: it takes longest).
+      max-parallel: 12
       matrix: ${{ fromJSON(needs.plan.outputs.core) }}
     steps: &deploy
       # The deploy compares this commit with each Worker's live one, so it
@@ -370,8 +386,16 @@ jobs:
           path: ~/.npm
           key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-full-${{ runner.os }}-
+      # A prebuilt job deploys what its build job made, which needs only
+      # Wrangler: a site's packages are not installed again (the web's took
+      # up to 47s of each of its deploys).
       - name: Install
-        run: node scripts/deploy.mjs install --only "${{ matrix.units }}"
+        env:
+          PREBUILT: ${{ matrix.prebuilt }}
+        run: |
+          args=(--only "${{ matrix.units }}")
+          if [ "$PREBUILT" = "true" ]; then args+=(--prebuilt); fi
+          node scripts/deploy.mjs install "${args[@]}"
       # What the build job made for these units, back where it was built.
       - name: Fetch what was built
         if: ${{ matrix.prebuilt }}
@@ -415,6 +439,23 @@ jobs:
         if: ${{ always() && matrix.image }}
         run: bash scripts/sccache.sh stats
 
+  # Core's jobs that no unit deploying later calls, beside core: nothing
+  # but smoke waits for them, and one that fails stops only smoke.
+  core_rest:
+    name: core (${{ matrix.group }})
+    needs: [check, plan, build, migrate]
+    if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_core_rest == 'true' && inputs.dry_run != true }}
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://g1t.sh
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix: ${{ fromJSON(needs.plan.outputs.core_rest) }}
+    steps: *deploy
+
   edge:
     name: edge (${{ matrix.group }})
     needs: [check, plan, build, migrate, core]
@@ -426,8 +467,25 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 12
       matrix: ${{ fromJSON(needs.plan.outputs.edge) }}
+    steps: *deploy
+
+  # Edge's jobs that no front unit calls (the API: the site binds only to
+  # core's services), beside front.
+  edge_rest:
+    name: edge (${{ matrix.group }})
+    needs: [check, plan, build, migrate, core]
+    if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_edge_rest == 'true' && inputs.dry_run != true }}
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://g1t.sh
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix: ${{ fromJSON(needs.plan.outputs.edge_rest) }}
     steps: *deploy
 
   front:
@@ -441,7 +499,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 12
       matrix: ${{ fromJSON(needs.plan.outputs.front) }}
     steps: *deploy
 
@@ -451,9 +509,9 @@ jobs:
   # anything, so no account is made. scripts/ops/smoke.mjs.
   smoke:
     name: Smoke
-    needs: [check, plan, core, edge, front]
-    if: ${{ !failure() && !cancelled() && inputs.dry_run != true && (needs.plan.outputs.has_core == 'true' || needs.plan.outputs.has_edge == 'true' || needs.plan.outputs.has_front == 'true') }}
-    runs-on: g1t-2core # builds nothing: the 2-vCPU machine is enough
+    needs: [check, plan, core, core_rest, edge, edge_rest, front]
+    if: ${{ !failure() && !cancelled() && inputs.dry_run != true && (needs.plan.outputs.has_core == 'true' || needs.plan.outputs.has_core_rest == 'true' || needs.plan.outputs.has_edge == 'true' || needs.plan.outputs.has_edge_rest == 'true' || needs.plan.outputs.has_front == 'true') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
