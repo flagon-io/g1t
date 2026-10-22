@@ -467,3 +467,52 @@ test("the last two weeks day by day: every repository added up, agents' and peop
     { day: "2026-10-11", agent: 0, people: 0, sessions: 0 },
   );
 });
+
+test("sessions with no pull request count in the quarter's spend, by work item, else by repository", () => {
+  const signals: WorkspaceSignals = {
+    ...emptySignals(),
+    items: [{ number: 7, title: "Plugin updates", state: "closed", milestone: null }],
+    pulls: [pull({ number: 1, sessionCostUsd: 1 })],
+    sessionSpend: [
+      { repoId: "r1", item: 7, day: "2026-10-16", sessionCostUsd: 3 },
+      { repoId: "r1", item: 7, day: "2026-10-17", sessionCostUsd: 1.5 },
+      { repoId: "r1", item: null, day: "2026-10-17", sessionCostUsd: 0.5 },
+      // Last quarter's, and an unknown repository's: left out.
+      { repoId: "r1", item: 7, day: "2026-09-30", sessionCostUsd: 9 },
+      { repoId: "r9", item: null, day: "2026-10-17", sessionCostUsd: 9 },
+    ],
+  };
+  const spend = quarterSpend({ repos, signals, quarterUsage: usage(), quarter: "2026-10-01" })!;
+  assert.deepEqual(spend.loose, [
+    { repoId: "r1", item: 7, micros: 4_500_000 },
+    { repoId: "r1", item: null, micros: 500_000 },
+  ]);
+  assert.equal(spend.total, 6_000_000);
+  assert.equal(spend.sessions, 6_000_000);
+
+  // Spread among work items, as a direct-push workspace's is.
+  const signal = spendSignal(ctx({ signals, quarterUsage: usage() }))!;
+  assert.equal(signal.headline, "Plugin updates took more than half of the agent spend this quarter.");
+  assert.deepEqual(signal.facts, ["$4.50 of $6.00", "quarter to date"]);
+
+  // The flow: under the work item, in its repository, with no pull requests.
+  const flow = spendFlow({ slug: "acme", repos, signals, quarter: "2026-10-01", quarterUsage: usage() });
+  const set = flow[0]!.children.find((node) => node.label === "Plugin updates")!.children[0]!;
+  assert.deepEqual([set.label, set.pulls, set.micros, set.direct, set.list], ["web", 0, 4_500_000, 4_500_000, undefined]);
+
+  // An older work service sends none: nothing changes.
+  const { sessionSpend: _, ...older } = signals;
+  assert.equal(quarterSpend({ repos, signals: older, quarterUsage: usage(), quarter: "2026-10-01" })!.total, 1_000_000);
+});
+
+test("one group of spend is a finding only where one person does the work", () => {
+  const signals: WorkspaceSignals = {
+    ...emptySignals(),
+    items: [{ number: 7, title: "Plugin updates", state: "closed", milestone: null }],
+    sessionSpend: [{ repoId: "r1", item: 7, day: "2026-10-16", sessionCostUsd: 3 }],
+    harnesses: [{ repoId: "r1", ownerId: "u1", ownerName: "ana", harness: "claude_code", firstAt: "2026-09-01T00:00:00Z", sessions: 40 }],
+  };
+  assert.equal(spendSignal(ctx({ signals, quarterUsage: usage() }))!.headline, "Plugin updates took all of the agent spend this quarter.");
+  const two = { ...signals, authors: [author({ ownerId: "u2", ownerName: "bo" })] };
+  assert.equal(spendSignal(ctx({ signals: two, quarterUsage: usage() })), null);
+});

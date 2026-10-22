@@ -2426,6 +2426,14 @@ export type SignalPull = {
    */
   sessionCostUsd: number;
 };
+/**
+ * What one repository's harness sessions that started on UTC day `day` and
+ * count with no pull request (neither they nor their root session is tied
+ * to one) cost, for one work item, or none (`item` null): the work items a
+ * session claimed, landed by a push whose commit names it, or said it works
+ * on (a subagent with none has its root's), its cost split evenly among them.
+ */
+export type SignalSessionSpend = { repoId: string; item: number | null; day: string; sessionCostUsd: number };
 /** One person's use of one harness in one repository, root sessions only. */
 export type SignalHarness = { repoId: string; ownerId: string; ownerName: string; harness: string; firstAt: string; sessions: number };
 /** One person's merged pull requests in one repository over its history; `recent`: in the 90 days ending with `until`. */
@@ -2438,6 +2446,9 @@ export type WorkspaceSignals = {
   waiting: WaitingPull[];
   pulls: SignalPull[];
   pullsCapped: boolean;
+  /** Newest first; absent from a work service older than it. */
+  sessionSpend?: SignalSessionSpend[];
+  sessionSpendCapped?: boolean;
   authors: SignalAuthor[];
   harnesses: SignalHarness[];
   items: SignalItem[];

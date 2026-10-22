@@ -12,7 +12,7 @@ import { type CSSProperties, useState } from "react";
 import { Link } from "react-router";
 
 import { cn } from "../lib/cn";
-import { type FlowNode, type FlowPull, agentStep, dollars, percent } from "../lib/signals";
+import { type FlowNode, type FlowPull, agentStep, flowAgentShare, dollars, percent } from "../lib/signals";
 
 /** The five steps of agent use: the accent, from a wash to full. */
 const STEP_FILL = [
@@ -87,8 +87,10 @@ function Legend() {
 }
 
 function figures(node: FlowNode, sized: "spend" | "pulls"): string {
-  const share = node.pulls > 0 ? node.agent / node.pulls : 0;
-  return `${node.pulls} ${node.pulls === 1 ? "PR" : "PRs"} · ${percent(share)} agent${sized === "spend" && node.micros > 0 ? ` · ${dollars(node.micros)}` : ""}`;
+  const cost = sized === "spend" && node.micros > 0 ? ` · ${dollars(node.micros)}` : "";
+  // Only sessions that opened no pull request: what they cost is all there is to say.
+  if (node.pulls === 0 && node.direct > 0) return `No PRs${cost}`;
+  return `${node.pulls} ${node.pulls === 1 ? "PR" : "PRs"} · ${percent(flowAgentShare(node))} agent${cost}`;
 }
 
 function NodeBox({
@@ -104,7 +106,7 @@ function NodeBox({
   onChoose?: () => void;
   style?: CSSProperties;
 }) {
-  const step = agentStep(node.pulls > 0 ? node.agent / node.pulls : 0);
+  const step = agentStep(flowAgentShare(node));
   const dark = step >= DARK_STEP;
   return (
     <button
@@ -156,6 +158,7 @@ export function SpendFlow({ flow, sized }: { flow: FlowNode[]; sized: "spend" | 
     if (level < depth - 1) columns.push(pick.children);
   }
   const pulls = chosen[depth - 1]?.list ?? [];
+  const direct = chosen[depth - 1]?.direct ?? 0;
   const choose = (level: number, key: string) => setPath([...chosen.slice(0, level).map((node) => node.key), key]);
   const boxes = columns.map((nodes) => stack(nodes.map(weight)));
   const rowHeight = pulls.length > 0 ? HEIGHT / Math.max(pulls.length, 5) : 0;
@@ -216,7 +219,9 @@ export function SpendFlow({ flow, sized }: { flow: FlowNode[]; sized: "spend" | 
             style={{ left: `${left(depth)}%`, width: `${100 - left(depth)}%`, top: 0, height: pulls.length * rowHeight || MIN_BOX }}
           >
             {pulls.length === 0 ? (
-              <p className="px-3 py-4 text-sm text-muted">No pull requests here.</p>
+              <p className="px-3 py-4 text-sm text-muted">
+                {direct > 0 ? `No pull requests: ${dollars(direct)} of agent sessions pushed straight to a branch, or opened none.` : "No pull requests here."}
+              </p>
             ) : (
               pulls.map((pull, i) => <PullRow key={pull.key} pull={pull} style={{ height: rows[i]!.height }} />)
             )}
@@ -241,6 +246,9 @@ export function SpendFlow({ flow, sized }: { flow: FlowNode[]; sized: "spend" | 
             {pulls.map((pull) => (
               <PullRow key={pull.key} pull={pull} style={{ height: 48 }} />
             ))}
+            {pulls.length === 0 && direct > 0 && (
+              <p className="px-3 py-4 text-sm text-muted">No pull requests: {dollars(direct)} of agent sessions pushed straight to a branch, or opened none.</p>
+            )}
           </div>
         </div>
       </div>

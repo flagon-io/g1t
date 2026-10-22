@@ -1,11 +1,11 @@
 use g1t_contracts::work::{
-    SignalAuthor, SignalDay, SignalHarness, SignalPull, SignalWeek, WaitingPull, WorkspaceSignalsArgs,
+    SignalAuthor, SignalDay, SignalHarness, SignalPull, SignalSessionSpend, SignalWeek, WaitingPull, WorkspaceSignalsArgs,
 };
 use rusqlite::types::ValueRef;
 use rusqlite::{Connection, ToSql, params};
 use serde::de::DeserializeOwned;
 
-use super::{AUTHORS, DAYS, HARNESSES, PULLS, PullRow, WAITING, WEEKS, WaitingRow, Window, is_person};
+use super::{AUTHORS, DAYS, HARNESSES, PULLS, PullRow, SESSIONS, WAITING, WEEKS, WaitingRow, Window, is_person};
 
 const IDS: &str = r#"["a"]"#;
 
@@ -26,12 +26,13 @@ fn schema() -> Connection {
            kind TEXT NOT NULL DEFAULT 'comment');
          CREATE TABLE sessions (id TEXT, repo_id TEXT, pull INTEGER, started_at TEXT, parent_id TEXT,
            actor_id TEXT DEFAULT 'usr_ana', actor_name TEXT DEFAULT 'ana', harness TEXT DEFAULT 'claude_code',
-           last_seen_at TEXT, cost_usd REAL);
+           last_seen_at TEXT, cost_usd REAL, item_id TEXT);
          CREATE TABLE session_entries (pull_id TEXT, seq INTEGER, at TEXT);
          CREATE TABLE check_runs (id TEXT, pull_id TEXT, head_commit TEXT, created_at TEXT, finished_at TEXT);
          CREATE TABLE commit_statuses (repo_id TEXT, sha TEXT, context TEXT, updated_at TEXT);
          CREATE TABLE commit_check_runs (id TEXT, repo_id TEXT, head_sha TEXT, created_at TEXT, updated_at TEXT);
-         CREATE TABLE session_links (session_id TEXT, repo_id TEXT, kind TEXT, number INTEGER);
+         CREATE TABLE session_links (session_id TEXT, repo_id TEXT, kind TEXT, number INTEGER, item_id TEXT DEFAULT '',
+           via TEXT DEFAULT 'ref');
          CREATE TABLE session_touches (session_id TEXT, repo_id TEXT, kind TEXT, value TEXT, at TEXT);
          CREATE TABLE work_items (id TEXT, workspace TEXT, number INTEGER, title TEXT, state TEXT,
            blocked_by TEXT DEFAULT '[]', milestone INTEGER);
@@ -196,7 +197,7 @@ fn an_agents_pull_request_is_one_a_session_is_tied_to() {
          UPDATE pulls SET author_id = 'usr_g1t_agent', requested_by_id = 'usr_ana', requested_by_name = 'ana' WHERE number = 2;
          -- 3 by a link, 4 by the session saying so, 5 by a push to its branch.
          INSERT INTO sessions (id, repo_id, pull, started_at) VALUES ('ses_3', 'a', NULL, '2026-10-06T11:00:00Z');
-         INSERT INTO session_links VALUES ('ses_3', 'a', 'pull', 3);
+         INSERT INTO session_links (session_id, repo_id, kind, number) VALUES ('ses_3', 'a', 'pull', 3);
          INSERT INTO sessions (id, repo_id, pull, started_at) VALUES ('ses_4', 'a', 4, '2026-10-06T13:00:00Z');
          INSERT INTO sessions (id, repo_id, pull, started_at) VALUES ('ses_5', 'a', NULL, '2026-10-06T11:30:00Z');
          INSERT INTO sessions (id, repo_id, pull, started_at) VALUES ('ses_5b', 'a', NULL, '2026-10-06T10:00:00.500Z');
@@ -731,7 +732,7 @@ fn a_pull_requests_session_cost_is_its_share() {
     db.execute_batch(
         "-- A root session tied to 1 by saying so and to 2 by a link.
          INSERT INTO sessions (id, repo_id, pull, started_at, cost_usd) VALUES ('ses_r', 'a', 1, '2026-10-06T00:00:00Z', 4);
-         INSERT INTO session_links VALUES ('ses_r', 'a', 'pull', 2);
+         INSERT INTO session_links (session_id, repo_id, kind, number) VALUES ('ses_r', 'a', 'pull', 2);
          -- Its subagent tied to nothing counts with it; so does that one's.
          INSERT INTO sessions (id, repo_id, parent_id, started_at, cost_usd)
            VALUES ('ses_a', 'a', 'ses_r', '2026-10-06T00:00:00Z', 1);
@@ -750,6 +751,57 @@ fn a_pull_requests_session_cost_is_its_share() {
     let mut costs: Vec<(u32, f64)> = pulls(&db).iter().map(|p| (p.number, p.session_cost_usd)).collect();
     costs.sort_by_key(|(number, _)| *number);
     assert_eq!(costs, [(1, 3.5), (2, 3.5), (3, 3.0), (4, 0.0)]);
+}
+
+fn session_spend(db: &Connection) -> Vec<(Option<u32>, String, f64)> {
+    let mut found: Vec<(Option<u32>, String, f64)> =
+        rows::<SignalSessionSpend>(db, SESSIONS, &[&IDS, &"acme", &"2026-10-01T00:00:00"])
+            .into_iter()
+            .map(|row| (row.item, row.day, row.session_cost_usd))
+            .collect();
+    found.sort_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)));
+    found
+}
+
+#[test]
+fn session_spend_with_no_pull_request_counts_by_work_item_else_repository() {
+    let db = schema();
+    pull(&db, 1, "open", "2026-10-06T00:00:00Z", None, "2026-10-06T00:00:00Z");
+    db.execute_batch(
+        "INSERT INTO work_items (id, workspace, number, title, state) VALUES ('wki_7', 'acme', 7, 'Seven', 'open');
+         INSERT INTO work_items (id, workspace, number, title, state) VALUES ('wki_8', 'acme', 8, 'Eight', 'closed');
+         INSERT INTO work_items (id, workspace, number, title, state) VALUES ('wki_x', 'other', 9, 'Theirs', 'open');
+         -- Tied to a pull request: pulls.sql counts it, and its untied subagent with it.
+         INSERT INTO sessions (id, repo_id, pull, started_at, cost_usd) VALUES ('ses_p', 'a', 1, '2026-10-06T09:00:00Z', 5);
+         INSERT INTO sessions (id, repo_id, parent_id, started_at, cost_usd) VALUES ('ses_pa', 'a', 'ses_p', '2026-10-06T09:00:00Z', 1);
+         -- Claimed 7, and landed 8 by a push whose commit named it: split between them.
+         INSERT INTO sessions (id, repo_id, started_at, cost_usd) VALUES ('ses_c', 'a', '2026-10-06T10:00:00Z', 4);
+         INSERT INTO session_links (session_id, repo_id, kind, number, item_id, via) VALUES ('ses_c', 'a', 'item', 0, 'wki_7', 'claim');
+         INSERT INTO session_links (session_id, repo_id, kind, number, item_id, via) VALUES ('ses_c', 'a', 'item', 0, 'wki_8', 'trailer');
+         -- Its subagent with none of its own counts with its root's work items.
+         INSERT INTO sessions (id, repo_id, parent_id, started_at, cost_usd) VALUES ('ses_ca', 'a', 'ses_c', '2026-10-07T10:00:00Z', 2);
+         -- Said it works on 7 when it started.
+         INSERT INTO sessions (id, repo_id, item_id, started_at, cost_usd) VALUES ('ses_i', 'a', 'wki_7', '2026-10-06T11:00:00Z', 0.5);
+         -- Only named 8 in a prompt, or works on another workspace's: its repository's.
+         INSERT INTO sessions (id, repo_id, started_at, cost_usd) VALUES ('ses_r', 'a', '2026-10-06T12:00:00Z', 3);
+         INSERT INTO session_links (session_id, repo_id, kind, number, item_id, via) VALUES ('ses_r', 'a', 'item', 0, 'wki_8', 'ref');
+         INSERT INTO sessions (id, repo_id, item_id, started_at, cost_usd) VALUES ('ses_o', 'a', 'wki_x', '2026-10-06T13:00:00Z', 1);
+         -- Of no known cost, before since, or another repository's: left out.
+         INSERT INTO sessions (id, repo_id, started_at, cost_usd) VALUES ('ses_n', 'a', '2026-10-06T14:00:00Z', NULL);
+         INSERT INTO sessions (id, repo_id, started_at, cost_usd) VALUES ('ses_e', 'a', '2026-09-30T23:00:00Z', 8);
+         INSERT INTO sessions (id, repo_id, started_at, cost_usd) VALUES ('ses_b', 'b', '2026-10-06T14:00:00Z', 8);",
+    )
+    .unwrap();
+    assert_eq!(
+        session_spend(&db),
+        [
+            (None, "2026-10-06".to_owned(), 4.0),
+            (Some(7), "2026-10-06".to_owned(), 2.5),
+            (Some(7), "2026-10-07".to_owned(), 1.0),
+            (Some(8), "2026-10-06".to_owned(), 2.0),
+            (Some(8), "2026-10-07".to_owned(), 1.0),
+        ]
+    );
 }
 
 #[test]
