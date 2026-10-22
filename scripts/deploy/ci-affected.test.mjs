@@ -13,6 +13,7 @@ import {
   WORKFLOW,
   affected,
   checks,
+  CONFORMANCE_WORKSPACES,
   needs,
   npmAffected,
   npmClosure,
@@ -93,6 +94,7 @@ const NPM = [
   { name: "@g1t/runner", dir: "services/runner", deps: ["@g1t/contracts"], scripts: { typecheck: "tsc", test: "node --test" } },
   { name: "@g1t/og", dir: "services/og", deps: ["@g1t/contracts"], scripts: { typecheck: "tsc", test: "node --test" } },
   { name: "@g1t/desktop", dir: "apps/desktop", deps: [], scripts: {} },
+  { name: "@g1t/artifacts", dir: "services/artifacts", deps: ["@g1t/contracts"], scripts: {} },
 ];
 const ALL = NPM.map((w) => w.name).sort();
 
@@ -115,6 +117,7 @@ test("the site, sudo and the docs build when a change reaches their workspaces o
 test("a workspace's change checks it and every workspace that depends on it, however far", () => {
   // A contracts change reaches the apps and the services.
   assert.deepEqual(npmAffected(NPM, ["packages/contracts/src/work.ts"]), [
+    "@g1t/artifacts",
     "@g1t/contracts",
     "@g1t/docs",
     "@g1t/mobile",
@@ -174,10 +177,13 @@ test("the TypeScript job type checks, tests and installs only what a change reac
   const rust = plan(["crates/kit/src/lib.rs"]);
   assert.deepEqual([rust.typecheck, rust.test, rust.checks, rust.install], [[], [], [], "none"]);
   // ...but a Rust service the conformance suite runs installs the root's
-  // packages (Miniflare) and no workspace's.
+  // packages (Miniflare) and the TypeScript services the suite bundles,
+  // with what they depend on (#391: a change to services/actions alone
+  // failed, 'yjs' and '@g1t/contracts' not installed).
   const billing = plan(["services/billing/src/ledger.rs"]);
   assert.deepEqual(billing.checks, ["conformance", "ops"]);
-  assert.equal(billing.install, "--workspaces=false");
+  assert.deepEqual(billing.typecheck, []);
+  assert.equal(billing.install, "--include-workspace-root -w @g1t/artifacts -w @g1t/contracts");
   // A push the merge queue tested only type checks, every workspace.
   const landed = npmPlan(NPM, { reached: null, checks: checks(null), tested: true });
   assert.deepEqual([landed.test, landed.checks, landed.install, landed.whole], [[], [], "all", true]);
@@ -446,5 +452,19 @@ test("what READS and EVERYTHING name is there, and read by crates of the workspa
   for (const path of EVERYTHING) {
     if (/^(rust-toolchain|\.cargo\/)/.test(path)) continue;
     assert.ok(existsSync(join(ROOT, path)), path);
+  }
+});
+
+test("the conformance check installs every TypeScript service a conformance test bundles", () => {
+  const graph = repoNpm().map((w) => w.name);
+  const bundled = new Set();
+  for (const file of readdirSync(join(ROOT, "conformance")).filter((f) => f.endsWith(".mjs"))) {
+    for (const [, service] of readFileSync(join(ROOT, "conformance", file), "utf8").matchAll(/services\/([a-z-]+)\/src\/[\w-]+\.ts/g))
+      bundled.add(`@g1t/${service}`);
+  }
+  assert.ok(bundled.size > 0);
+  for (const name of bundled) {
+    assert.ok(graph.includes(name), `${name} is not an npm workspace`);
+    assert.ok(CONFORMANCE_WORKSPACES.includes(name), `conformance reads ${name}'s source: add it to CONFORMANCE_WORKSPACES`);
   }
 });
