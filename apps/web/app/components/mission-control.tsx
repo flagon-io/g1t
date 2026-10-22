@@ -515,12 +515,7 @@ const TAB_LABEL: Record<Tab, string> = { needs: "Needs you", landed: "Landed tod
 const TAB_SHORT: Record<Tab, string> = { needs: "Needs you", landed: "Today" };
 const SORT_LABEL: Record<Sort, string> = { impact: "By impact", newest: "Newest" };
 
-/**
- * Code's Overview, laid out. `children` follow the work and the week on the
- * same page: what the work says and the workspace at a glance
- * (routes/workspace/code-overview.tsx).
- */
-export default function MissionControl({ loaderData, children }: { loaderData: Loaded; children?: ReactNode }) {
+export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
   const { pathname } = useLocation();
   const shell = useRouteLoaderData("root")?.shell as ShellData | null | undefined;
   const loaded: Loaded = loaderData;
@@ -836,7 +831,6 @@ export default function MissionControl({ loaderData, children }: { loaderData: L
           </Card>
         </aside>
       </div>
-      {children}
     </main>
   );
 }

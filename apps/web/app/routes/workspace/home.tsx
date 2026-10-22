@@ -20,6 +20,9 @@ import {
 } from "../../components/home";
 import { HomeAsk, WhatChangedCard } from "../../components/home-ask";
 import { HomeWeek, HomeWeekSkeleton } from "../../components/home-week";
+import { GroundSkeleton, GroundTruth } from "../../components/ground-truth";
+import { MembersCard } from "../../components/members-card";
+import { UsageCard } from "../../components/usage-card";
 import { HeldSuspense, Skeleton } from "../../components/ui/skeleton";
 import { sidebarOrNull } from "../../lib/chat.server";
 import {
@@ -68,15 +71,18 @@ import {
 } from "../../lib/home.server";
 import { HOME_WATCH_MAX, type HomeRepo } from "../../lib/home-live";
 import { readCookie } from "../../lib/mission";
-import { dailySignal } from "../../lib/signals";
-import { loadSignalData } from "../../lib/signals.server";
+import { dailySignal, providerQuarter, signalsRange } from "../../lib/signals";
+import { loadGroups, loadSignalData } from "../../lib/signals.server";
+import { shapeGround } from "../../lib/ground";
+import { isFailed, part } from "../../lib/partial";
+import { usageFor } from "../../lib/workspace-usage.server";
 import { useHomeLive } from "../../lib/use-home-live";
 import { guideIsFor, loadOnboarding } from "../../lib/onboarding.server";
 import { GettingStartedButton, OnboardingOnPage } from "../../components/onboarding";
 import { loadMissionControl } from "../../lib/mission-control.server";
 import { page } from "../../lib/meta";
-import { inbox, work } from "../../lib/services.server";
-import { requireUser, roleIn } from "../../lib/session.server";
+import { billing, identity, inbox, work } from "../../lib/services.server";
+import { managesBilling, requireUser, roleIn } from "../../lib/session.server";
 import { canItem } from "../../lib/work-access";
 import { isPhone } from "../../lib/phone";
 import { Boundary } from "../../components/boundary";
@@ -105,7 +111,12 @@ const LIVE_READ = 12;
  * did, from the events service's digest of the span and chat's, then what
  * landed; beside it what the span cost and what settled by itself. The last visit is kept by notify, per
  * person and workspace, and marked by the page once it has been looked
- * at (routes/workspace/home-seen.ts), so a refresh never wipes it. Only
+ * at (routes/workspace/home-seen.ts), so a refresh never wipes it. Then
+ * the workspace itself, for every member: what is moving and waiting team
+ * by team and the quiet changes in who works where (lib/ground.ts), the
+ * month's usage against its plan, and who is in it. Dollars (what the span
+ * cost, the quarter's spend threaded to the work, usage) are only for
+ * those who look after billing: owners and billing managers. Only
  * the last visit (for the span) is waited for; every section streams in
  * on its own, and one whose service does not answer says so.
  * The page refreshes itself as the workspace moves (lib/home-live.ts),
@@ -115,7 +126,9 @@ const LIVE_READ = 12;
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
   const slug = params.owner.toLowerCase();
-  if (!roleIn(viewer, slug)) throw data(null, { status: 404 });
+  const role = roleIn(viewer, slug);
+  if (!role) throw data(null, { status: 404 });
+  const money = managesBilling(viewer, slug);
   const membership = viewer.workspaces?.find((m) => m.slug === slug) ?? null;
   const code = hasCodeAccess(membership);
   const now = Date.now();
@@ -267,14 +280,43 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
         .then((result) => (result.ok ? result.value.sessions : null))
         .catch(() => null)
     : Promise.resolve([]);
-  const spend = loadSpend(viewer, slug, span).catch(() => null);
-  // What the workspace's work says: the pulse and the findings, for members who see Code.
-  const signal = code
-    ? reposP
-        .then((owned) => loadSignalData(viewer, slug, now, owned))
+  const spend = money ? loadSpend(viewer, slug, span).catch(() => null) : null;
+  // What the workspace's work says, for members who see Code: read once, for
+  // the week (the pulse and the findings) and for the workspace's ground truth.
+  const signalData = code ? reposP.then((owned) => loadSignalData(viewer, slug, now, owned)).catch(() => null) : null;
+  // Its spend (a tile and a finding) is in dollars: only for billing.
+  const signal = signalData
+    ? signalData
         .then((value) => (value ? dailySignal(value) : null))
+        .then((value) =>
+          value && !money
+            ? { ...value, tiles: value.tiles.filter((tile) => tile.key !== "spend"), findings: value.findings.filter((finding) => finding.key !== "spend") }
+            : value,
+        )
         .catch(() => null)
     : null;
+  const ground = signalData
+    ? Promise.all([
+        signalData,
+        reposP.then((owned) => (owned ? loadGroups(viewer, slug, owned) : null)).catch(() => null),
+        // What the connected providers say was spent: only where dollars are shown.
+        money
+          ? billing
+              .providerCosts(slug, viewer, signalsRange(now).quarter)
+              .then((result) => (result.ok ? result.value : null))
+              .catch(() => null)
+          : null,
+      ])
+        .then(([found, groups, providers]) =>
+          found ? { ...shapeGround(found, groups, now), providers: providerQuarter(providers, found.range.quarter) } : null,
+        )
+        .catch(() => null)
+    : null;
+  // Who is in the workspace, for everyone; the month's usage against the plan, in dollars.
+  const members = part(identity.listMembers(slug, viewer), "The member list")
+    .then((result) => (isFailed(result) ? result : result.ok ? result.value : null))
+    .catch(() => null);
+  const usage = money ? usageFor(slug, viewer).catch(() => null) : null;
   // The projects the page watches, so it refreshes as they move (lib/home-live.ts).
   const watch: Promise<HomeRepo[]> = reposP
     .then((owned) =>
@@ -287,6 +329,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   return {
     slug,
     code,
+    owner: role === "owner",
+    money,
     now,
     tz,
     span,
@@ -304,6 +348,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     head: Promise.all([digest, happened]),
     spend,
     signal,
+    ground,
+    members,
+    usage,
     watch,
     onboarding,
     setupAsked,
@@ -449,8 +496,23 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
         </HeldSuspense>
       )}
 
+      {/* 4. The workspace's ground truth: what is moving and waiting team by team, and the quiet changes; spend for billing. */}
+      {loaderData.ground && (
+        <HeldSuspense id={`home:${slug}:ground`} fallback={<GroundSkeleton />}>
+          <Await resolve={loaderData.ground}>
+            {(value) =>
+              value && (
+                <Boundary what="What the work says">
+                  <GroundTruth slug={slug} ground={value} pulse={false} money={loaderData.money} />
+                </Boundary>
+              )
+            }
+          </Await>
+        </HeldSuspense>
+      )}
+
       <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_24rem]">
-        {/* 4. What happened in the span: in a sentence, then in plain English, then who did what, then what landed. */}
+        {/* 5. What happened in the span: in a sentence, then in plain English, then who did what, then what landed. */}
         <section aria-labelledby="since" className="rounded-2xl border border-line bg-surface">
           <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-5 pt-4">
             <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -509,24 +571,26 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
           </HeldSuspense>
         </section>
 
-        {/* 5. What the span cost, and what settled by itself: kept in view beside it. */}
+        {/* 6. What the span cost (for billing), and what settled by itself: kept in view beside it. */}
         <aside aria-label="Cost and settled" className="space-y-5 lg:sticky lg:top-4">
-          <HeldSuspense
-            id={`home:${slug}:${span.key}:spent`}
-            fallback={
-              <Card title="Spent">
-                <SpendSkeleton />
-              </Card>
-            }
-          >
-            <Await resolve={spend}>
-              {(value) => (
-                <Boundary what="Spent">
-                  <SpendCard spend={value} slug={slug} span={span} />
-                </Boundary>
-              )}
-            </Await>
-          </HeldSuspense>
+          {spend && (
+            <HeldSuspense
+              id={`home:${slug}:${span.key}:spent`}
+              fallback={
+                <Card title="Spent">
+                  <SpendSkeleton />
+                </Card>
+              }
+            >
+              <Await resolve={spend}>
+                {(value) => (
+                  <Boundary what="Spent">
+                    <SpendCard spend={value} slug={slug} span={span} />
+                  </Boundary>
+                )}
+              </Await>
+            </HeldSuspense>
+          )}
           <HeldSuspense
             id={`home:${slug}:settled`}
             fallback={
@@ -544,6 +608,26 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
             </Await>
           </HeldSuspense>
         </aside>
+      </div>
+
+      {/* 7. The workspace at a glance: who is in it, and the month's usage against its plan (for billing). */}
+      <div className={`grid grid-cols-[minmax(0,1fr)] items-start gap-5 ${loaderData.usage ? "lg:grid-cols-[minmax(0,1fr)_24rem]" : "lg:grid-cols-2"}`}>
+        {loaderData.usage && (
+          <HeldSuspense id={`home:${slug}:usage`} fallback={<Skeleton className="h-48 rounded-2xl" />}>
+            <Await resolve={loaderData.usage}>
+              {(value) =>
+                value ? (
+                  <Boundary what="Usage">
+                    <UsageCard slug={slug} glance={value} owner />
+                  </Boundary>
+                ) : null
+              }
+            </Await>
+          </HeldSuspense>
+        )}
+        <HeldSuspense id={`home:${slug}:members`} fallback={<Skeleton className="h-48 rounded-2xl" />}>
+          <Await resolve={loaderData.members}>{(value) => <MembersCard slug={slug} owner={loaderData.owner} members={value} />}</Await>
+        </HeldSuspense>
       </div>
     </div>
   );

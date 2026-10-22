@@ -226,7 +226,7 @@ export function HomeWeek({ view }: { view: DailySignal | null }) {
         <p className="text-sm text-muted">{view.summary}</p>
       </header>
       {view.tiles.length > 0 && (
-        <div className="mt-2 grid grid-cols-2 gap-1 px-2 lg:grid-cols-4">
+        <div className={`mt-2 grid grid-cols-2 gap-1 px-2 ${view.tiles.length === 3 ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
           {view.tiles.map((tile) => (
             <Figure key={tile.key} tile={tile} />
           ))}

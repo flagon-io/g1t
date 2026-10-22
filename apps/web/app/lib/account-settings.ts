@@ -32,10 +32,17 @@ export const ACCOUNT_SETTINGS: Record<AccountSettingsPage, { title: string; abou
     about: "What you are also emailed for, and how you watch repositories. Everything comes to your notifications either way.",
   },
   // Invite a friend: an invite to g1t, not a workspace's invitation (lib/invites.ts, G1T_INVITES).
+  // Read when asked, not as the module loads: a bundle can load lib/invites.ts after this module.
   invites: {
-    title: G1T_INVITES.nav,
-    heading: G1T_INVITES.heading,
-    about: G1T_INVITES.about,
+    get title() {
+      return G1T_INVITES.nav;
+    },
+    get heading() {
+      return G1T_INVITES.heading;
+    },
+    get about() {
+      return G1T_INVITES.about;
+    },
   },
   keys: { title: "SSH keys", about: "Keys that let git on your computers reach g1t as you." },
   tokens: {
