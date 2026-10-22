@@ -246,8 +246,6 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
   // are columns of their own (components/chat/channel.tsx). Its sessions
   // are pages like any other, with the page's margins.
   if (parts[0] === "chat" && parts[1] !== "sessions" && !next) return <Outlet />;
-  // Code's Overview lays itself out, as Mission control did.
-  if (parts[0] === "overview" && parts.length === 1 && !next) return <Outlet />;
   // An open artifact, or a repository's doc, fills the panel: its header runs edge to edge right under
   // the top bar (components/folios/shell.tsx), and its page sets its own width.
   if (isArtifactPage(parts) && !next) {

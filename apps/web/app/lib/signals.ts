@@ -323,7 +323,7 @@ export function pulse({ slug, weeks, spend }: PulseInput): PulseTile[] {
       series: weeks.map(agentChanges),
       points: weeks.map((week, i) => `${labels[i]}: ${week.agentMerged} merged, ${week.agentCommits ?? 0} pushed directly, of ${allChanges(week)} changes`),
       hint: "Agents' merged pull requests, and the commits their sessions pushed outside one",
-      to: `/${slug}/-/overview?tab=landed`,
+      to: `/${slug}/-/home?window=7d#since`,
     },
     {
       key: "spend",
@@ -343,7 +343,7 @@ export function pulse({ slug, weeks, spend }: PulseInput): PulseTile[] {
       series: weeks.map((week) => week.stalled),
       points: weeks.map((week, i) => `${labels[i]}: ${week.stalled} with nothing for three days`),
       hint: "Open pull requests with no push, comment, review, check or session for three days",
-      to: `/${slug}/-/overview?tab=needs#work`,
+      to: `/${slug}/-/home#needed`,
     },
     {
       key: "rework",
@@ -453,7 +453,7 @@ export function reviewSignal(ctx: SignalContext): Signal | null {
     caption: "Time to first review",
     range: `${short(first)} → ${short(wait)} over ${weeks.length} weeks`,
   };
-  const link = { label: "See the review queue", to: `/${ctx.slug}/-/overview?tab=needs#work` };
+  const link = { label: "See the review queue", to: `/${ctx.slug}/-/home#needed` };
   if (draft != null && wait >= 4 * draft && wait >= 4 * 3600) {
     return {
       key: "review",
@@ -611,7 +611,7 @@ export function stalledSignal(ctx: SignalContext): Signal | null {
     key: "stalled",
     headline: `${countWord(now.stalled)} open changes have gone three days with nothing happening, ${more} more than last week.`,
     facts: [`${before.stalled} last week`, `${now.stalled} now`],
-    link: { label: "See what's stalled", to: `/${ctx.slug}/-/overview?tab=needs#work` },
+    link: { label: "See what's stalled", to: `/${ctx.slug}/-/home#needed` },
     trend: {
       values: ctx.weeks.map((week) => week.stalled),
       points: ctx.weeks.map((week) => `Week of ${weekLabel(week.start)}: ${week.stalled}`),

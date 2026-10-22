@@ -1,26 +1,24 @@
-import { ArrowRight, ArrowUpRight, Box, CircleDot, GitBranch, GitPullRequest, KeyRound, Lock, Pin, Plus, Rocket } from "lucide-react";
-import { Link, redirect } from "react-router";
+import { ArrowRight, ArrowUpRight, Box, CircleDot, GitBranch, GitPullRequest, Lock, Pin, Plus, Rocket } from "lucide-react";
+import { Link } from "react-router";
 
 import type { PackageSummary, Project, ProjectDeploys } from "@g1t/contracts";
 
 import type { Route } from "./+types/overview";
 import { DeployLink, host, StatusDot } from "../../components/deploy";
 import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
-import { Avatar } from "../../components/ui/avatar";
 import { Badge } from "../../components/ui/badge";
 import { Card } from "../../components/ui/card";
-import { UsageCard } from "../../components/usage-card";
 import { PullIcon } from "../../components/work-icons";
 import { openedBy } from "../../lib/opened-by";
 import { kindLabel, libraryPackages, packageLine, packagePath, primaryLink } from "../../lib/project-kind";
 import { PinButton } from "../../components/pin-button";
 import { sortProjects } from "../../lib/project-list";
-import { usageFor } from "../../lib/workspace-usage.server";
 import { deployments, identity, packages, projects as projectsApi, work } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 import { workspaceProjects } from "../../lib/workspace-projects.server";
 import { repositoriesPath } from "../../lib/workspace-nav";
 import { Unavailable } from "../../components/boundary";
+import { MembersCard } from "../../components/members-card";
 import { isFailed, part } from "../../lib/partial";
 
 /** Projects whose open work items and pull requests are counted: the most active. */
@@ -30,20 +28,25 @@ const MAX_ACTIVE = 6;
 /** Projects whose pull requests are listed under "In progress". */
 const MAX_LISTED = 8;
 const MAX_PULLS = 8;
-const MAX_FACES = 8;
+
+/**
+ * The workspace's own page, and Code's front page, as an organization's is
+ * on GitHub: under its profile (the layout's header), how many
+ * repositories it has, what is live, open and in progress; then the
+ * viewer's pinned repositories, the recently active ones and every one;
+ * the pull requests in progress; and who is in it. The same page for a
+ * member and a visitor, who sees what is public and nothing to pin.
+ * Where you're needed and what happened while you were away are Home's.
+ */
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const slug = params.owner.toLowerCase();
   const role = roleIn(viewer, slug);
-  // A member's way in is Home; this page
-  // is the workspace as a visitor sees it.
-  if (role) throw redirect(`/${slug}/-/home`);
-  const [listed, members, deploys, usage, published, shortcuts, items] = await Promise.all([
+  const [listed, members, deploys, published, shortcuts, items] = await Promise.all([
     // The listing the sidebar and the Projects tab share.
     workspaceProjects(slug, viewer),
     role ? identity.listMembers(slug, viewer) : null,
     role ? deployments.overview(slug, viewer) : null,
-    role ? usageFor(slug, viewer) : null,
     // One listing for every card: a library's card shows its package where an app's shows production.
     packages.list(slug, viewer).catch(() => null),
     // The viewer's pins lead the page, as they lead the sidebar.
@@ -118,7 +121,6 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     openItems: !isFailed(items) && items.ok ? items.value.length : 0,
     pullsFailed,
     members: members?.ok ? members.value : null,
-    usage,
   };
 }
 
@@ -245,7 +247,7 @@ function ProjectCard({
 }
 
 export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) {
-  const { slug, role, total, pinned, active, open, deploys, pulls, members, usage } = loaderData;
+  const { slug, role, total, pinned, active, open, deploys, pulls, members } = loaderData;
   const card = (project: Project, isPinned: boolean) => (
     <ProjectCard
       key={project.id}
@@ -370,66 +372,12 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
       </div>
 
       <aside className="space-y-6">
-        {role && usage && <UsageCard slug={slug} glance={usage} owner={role === "owner"} />}
-
         {members ? (
-          <section>
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium">Members</h2>
-              <Link to={role === "owner" ? `/${slug}/-/settings/members` : `/${slug}/-/people`} className="text-xs text-muted hover:text-fg">
-                {role === "owner" ? "Manage" : "See all"}
-              </Link>
-            </div>
-            <ul className="mt-3 space-y-1.5">
-              {members.slice(0, MAX_FACES).map((member) => (
-                <li key={member.username} className="flex items-center gap-2 text-sm">
-                  <Avatar name={member.username} />
-                  <span className="grow truncate font-mono">{member.username}</span>
-                  {member.role === "owner" && <Badge size="md">owner</Badge>}
-                </li>
-              ))}
-            </ul>
-            {members.length > MAX_FACES && <p className="mt-2 text-xs text-faint">and {members.length - MAX_FACES} more</p>}
-          </section>
+          <MembersCard slug={slug} owner={role === "owner"} members={members} />
         ) : (
           <p className="text-sm text-muted">
             Members of this workspace build its repositories. Anyone can file a work item or open a pull request on a public one.
           </p>
-        )}
-
-        {role && (
-          <Card asChild className="p-5">
-            <section>
-              <h2 className="flex items-center gap-2 font-medium">
-                <Rocket size={15} className="text-faint" />
-                Deploy on g1t.page
-              </h2>
-              <p className="mt-1.5 text-sm text-muted">
-                Off until you turn them on for a repository, under its Settings. Then production builds from its default branch, with a live preview for every
-                pull request. Apps cost nothing while no one visits.
-              </p>
-              <Link prefetch="intent" to={`/${slug}/-/settings/billing`} className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline">
-                Billing and plans <ArrowRight size={13} />
-              </Link>
-            </section>
-          </Card>
-        )}
-
-        {role && (
-          <Card asChild className="p-5">
-            <section>
-              <h2 className="flex items-center gap-2 font-medium">
-                <KeyRound size={15} className="text-faint" />
-                Automate without a service account
-              </h2>
-              <p className="mt-1.5 text-sm text-muted">
-                A workspace has access tokens of its own for CI, integrations and agents. They act as the workspace, not as a person.
-              </p>
-              <Link prefetch="intent" to={`/${slug}/-/settings/tokens`} className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline">
-                Access tokens <ArrowRight size={13} />
-              </Link>
-            </section>
-          </Card>
         )}
       </aside>
     </div>

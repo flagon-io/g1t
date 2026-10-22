@@ -1228,7 +1228,7 @@ function CodeSidebar({
       ? { to: repositoriesPath(home.slug), label: "All repositories" }
       : browsing
         ? { to: repositoriesPath(menuRepo.namespace), label: "Repositories", context: menuRepo.namespace }
-        : { to: ws ? `/${ws.slug}/-/overview` : "/explore", label: "Code" };
+        : { to: ws ? `/${ws.slug}` : "/explore", label: "Code" };
     trail.push({
       key,
       node: (
@@ -1426,7 +1426,7 @@ function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
   return (
     <nav aria-label="Code" className={PANEL}>
       <NavRows>
-        <SidebarLink to={`/${slug}/-/overview`} icon={<LayoutDashboard size={15} />} current={at("overview")}>
+        <SidebarLink to={`/${slug}`} icon={<LayoutDashboard size={15} />} current={path === `/${slug}`}>
           Overview
         </SidebarLink>
       </NavRows>
@@ -2077,7 +2077,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
           { label: "Labels", hint: "Work", to: workPath(ws.slug, "labels"), icon: <ListTodo size={15} /> },
           { label: "Milestones", hint: "Work", to: workPath(ws.slug, "milestones"), icon: <ListTodo size={15} /> },
           { label: "Chat", to: `/${ws.slug}/-/chat`, icon: <MessagesSquare size={15} /> },
-          ...(hasCodeAccess(ws) ? [{ label: "Code overview", to: `/${ws.slug}/-/overview`, icon: <Code2 size={15} /> }] : []),
+          ...(hasCodeAccess(ws) ? [{ label: "Code overview", to: `/${ws.slug}`, icon: <Code2 size={15} /> }] : []),
           { label: "Library", to: `/${ws.slug}/-/library/artifacts`, icon: <LibraryBig size={15} /> },
           { label: "Routines", hint: "Standing work for @g1t (soon)", to: `/${ws.slug}/-/routines`, icon: <Repeat size={15} /> },
           { label: "Apps", hint: "Everything installed that you can use", to: `/${ws.slug}/-/apps`, icon: <LayoutGrid size={15} /> },

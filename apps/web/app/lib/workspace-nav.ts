@@ -347,7 +347,8 @@ export function modeOf(pathname: string, slug: string | null): ModeKey {
   const parts = path.split("/").filter(Boolean);
   if (SITE_PAGES.has(parts[0] ?? "")) return "site";
   if (slug && parts[0]?.toLowerCase() === slug.toLowerCase()) {
-    if (parts.length === 1) return "home";
+    // The workspace's own page is Code's front page, as an organization's is on GitHub.
+    if (parts.length === 1) return "code";
     if (parts[1] === "-") {
       // The workspace's integrations are its apps: Apps is lit on them, beside the settings' sidebar.
       if (parts[2] === "settings" && parts[3] === "integrations") return "apps";
@@ -381,7 +382,7 @@ export function modeHome(mode: ModeKey, slug: string): string {
     case "routines":
       return `/${slug}/-/routines`;
     case "code":
-      return `/${slug}/-/overview`;
+      return `/${slug}`;
     case "people":
       return `/${slug}/-/people`;
     case "workspace":
@@ -515,7 +516,6 @@ export function homePath(slug: string, search = ""): string {
   params.delete("_routes");
   params.delete("index");
   const query = params.toString();
-  if (params.has("tab") || params.has("sort")) return `/${slug}/-/overview?${query}`;
   return homePagePath(slug);
 }
 
@@ -528,7 +528,7 @@ export function codeAccessPath(slug: string, from?: string): string {
 const WORK_REDIRECTS = new Set(["issues", "labels", "milestones", "ref"]);
 
 /** The workspace pages under `-/` that are Code's: closed to a member without Code access. */
-const CODE_PAGES = new Set(["overview", "code", "projects", "repositories", "packages", "security", "rules", "runners", "actions", "insights", "soon"]);
+const CODE_PAGES = new Set(["code", "projects", "repositories", "packages", "security", "rules", "runners", "actions", "insights", "soon"]);
 
 /** The workspace's settings pages (under `-/settings/`) that are Code's, closed as Code's pages are. */
 const CODE_SETTINGS = new Set(["repositories", "rules", "runners", "actions", "security"]);

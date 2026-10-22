@@ -45,7 +45,8 @@ export const BUILTINS: BuiltinInfo[] = [
   { key: "work", name: "Work", path: under("work") },
   { key: "chat", name: "Chat", path: under("chat") },
   { key: "notifications", name: "Notifications", path: () => "/notifications" },
-  { key: "code", name: "Code", path: under("overview"), code: true },
+  // The workspace's own page, as an organization's is on GitHub.
+  { key: "code", name: "Code", path: (slug) => `/${slug}`, code: true },
   // Artifacts are the Library's: docs now, and slides, designs and dashboards next.
   { key: "artifacts", name: "Library", path: under("library/artifacts") },
   { key: "routines", name: "Routines", path: under("routines") },

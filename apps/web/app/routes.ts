@@ -143,7 +143,6 @@ export default [
       // it or skipping a step (components/onboarding.tsx).
       route("-/onboarding", "routes/workspace/onboarding.ts"),
       // Code's Overview: Mission control's code panels, for this workspace.
-      route("-/overview", "routes/workspace/code-overview.tsx"),
       // The workspace itself, at a glance: members, plan and spend.
       // The workspace's settings, every page under `-/settings/`, open on its Profile.
       route("-/settings", "routes/workspace/settings-index.ts"),
