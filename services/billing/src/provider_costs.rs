@@ -31,6 +31,12 @@
 //!   `members_by_email`). It is kept apart from the cost report: an
 //!   organization without Claude Code data, or a key that can't read it,
 //!   leaves the cost report working, and says so in `people_error`.
+//! - **Everyone else, per person** (`provider_people`): OpenAI's costs per
+//!   user, with the same key, and Cursor, Amp and Devin, which have no
+//!   cost report apart from their people's: their per-person read is the
+//!   whole read, and each day's total per model is kept as their cost
+//!   report too, in the provider's unit (Devin's ACUs and credits are
+//!   never dollars).
 //!
 //! Once a day (`keeper::DAILY`) every connection is read again: the last
 //! [`REVISE_DAYS`] days, since providers revise recent days (further back
@@ -49,7 +55,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use g1t_contracts::billing::{
-    ConnectProviderArgs, CostProvider, DisconnectProviderArgs, ProviderConnection, ProviderConnectionsArgs,
+    ConnectProviderArgs, CostProvider, CostUnit, DisconnectProviderArgs, ProviderConnection, ProviderConnectionsArgs,
     ProviderCostDay, ProviderCosts, ProviderCostsArgs, ProviderPersonCosts, ProviderPersonCostsArgs, ProviderPersonDay,
 };
 use g1t_contracts::identity::{MemberEmail, MembersByEmailArgs};
@@ -61,8 +67,9 @@ use serde_json::Value;
 use worker::{Fetch, Headers, Method, Request, RequestInit, Result};
 
 use crate::Billing;
+use crate::provider_people::{PeopleRead, PersonRow};
 
-const DAY_MS: u64 = 24 * 60 * 60 * 1000;
+pub(crate) const DAY_MS: u64 = 24 * 60 * 60 * 1000;
 /// How far back the first read goes, today included.
 pub(crate) const BACKFILL_DAYS: u64 = 90;
 /// How many recent days every read asks for again, today included.
@@ -82,7 +89,7 @@ const ANTHROPIC_VERSION: &str = "2023-06-01";
 const ANTHROPIC_CLAUDE_CODE: &str = "https://api.anthropic.com/v1/organizations/usage_report/claude_code";
 /// The harness the per-person report is about: the only one a provider
 /// reports per person.
-const CLAUDE_CODE: &str = "claude_code";
+pub(crate) const CLAUDE_CODE: &str = "claude_code";
 /// The most pages of one day's Claude Code report read: 5,000 rows.
 const MAX_DAY_PAGES: u32 = 5;
 /// Days of the Claude Code report asked for at once.
@@ -91,7 +98,7 @@ const DAYS_AT_ONCE: usize = 4;
 const MAX_EMAILS: usize = 500;
 const OPENAI_COSTS: &str = "https://api.openai.com/v1/organization/costs";
 /// As Anthropic asks of integrations.
-const USER_AGENT: &str = "g1t/1.0 (https://g1t.sh)";
+pub(crate) const USER_AGENT: &str = "g1t/1.0 (https://g1t.sh)";
 
 const NO_SEALER: &str = "Provider cost reports are not set up on this g1t: it has no key to keep secrets with.";
 const MEMBERS_ONLY: &str = "Only members can see a workspace's provider costs.";
@@ -112,6 +119,14 @@ pub(crate) const UPSERT_COST: &str =
      ON CONFLICT (workspace, provider, day, item, scope) DO UPDATE SET
        micros = excluded.micros, currency = excluded.currency, synced_at = excluded.synced_at";
 
+/// One day's use of one model, for a provider whose days are its
+/// people's: in `?8`, US dollars (`USD`) or the provider's own unit.
+pub(crate) const UPSERT_COST_IN: &str =
+    "INSERT INTO provider_costs (workspace, provider, day, item, scope, micros, currency, synced_at)
+     VALUES (?1, ?2, ?3, ?4, '', ?5, ?6, ?7)
+     ON CONFLICT (workspace, provider, day, item, scope) DO UPDATE SET
+       micros = excluded.micros, currency = excluded.currency, synced_at = excluded.synced_at";
+
 /// A read that worked: the first day asked for moves back, never forward.
 pub(crate) const NOTE_SYNCED: &str = "UPDATE provider_connections SET last_synced_at = ?1, last_error = ?2,
        synced_from = CASE WHEN synced_from IS NULL OR synced_from > ?3 THEN ?3 ELSE synced_from END
@@ -121,34 +136,47 @@ pub(crate) const NOTE_SYNCED: &str = "UPDATE provider_connections SET last_synce
 pub(crate) const DELETE_PERSON_DAY: &str =
     "DELETE FROM provider_person_costs WHERE workspace = ?1 AND provider = ?2 AND day = ?3";
 
+/// One read's day of the conversations, replaced with the per-person rows.
+pub(crate) const DELETE_CONVERSATION_DAY: &str =
+    "DELETE FROM provider_conversations WHERE workspace = ?1 AND provider = ?2 AND day = ?3";
+
+/// One day's charge of one conversation, written again if it is there
+/// already.
+pub(crate) const UPSERT_CONVERSATION: &str =
+    "INSERT INTO provider_conversations (workspace, provider, day, actor_kind, actor, conversation, micros, events, synced_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+     ON CONFLICT (workspace, provider, day, actor_kind, actor, conversation) DO UPDATE SET
+       micros = excluded.micros, events = excluded.events, synced_at = excluded.synced_at";
+
 /// One day's cost of one actor's use of one model, written again if it is
 /// there already.
 pub(crate) const UPSERT_PERSON_COST: &str =
-    "INSERT INTO provider_person_costs (workspace, provider, day, actor_kind, actor, harness, model, micros, sessions, customer_type, synced_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+    "INSERT INTO provider_person_costs (workspace, provider, day, actor_kind, actor, harness, model, micros, sessions, customer_type, synced_at, unit, list_price)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
      ON CONFLICT (workspace, provider, day, actor_kind, actor, harness, model) DO UPDATE SET
        micros = excluded.micros, sessions = excluded.sessions, customer_type = excluded.customer_type,
-       synced_at = excluded.synced_at";
+       synced_at = excluded.synced_at, unit = excluded.unit, list_price = excluded.list_price";
 
 /// A per-person read that worked, as [`NOTE_SYNCED`].
 pub(crate) const NOTE_PEOPLE_SYNCED: &str = "UPDATE provider_connections SET people_synced_at = ?1, people_error = ?2,
        people_synced_from = CASE WHEN people_synced_from IS NULL OR people_synced_from > ?3 THEN ?3 ELSE people_synced_from END
      WHERE id = ?4";
 
-/// Each actor's total in a span: to match the addresses, and to count
-/// what matched nobody.
-pub(crate) const ACTOR_TOTALS: &str = "SELECT actor_kind, actor, SUM(micros) AS micros FROM provider_person_costs
-     WHERE workspace = ?1 AND provider = ?2 AND day >= ?3 AND day <= ?4
-     GROUP BY actor_kind, actor";
+/// Each actor's total in a span, at every provider, in each unit: to
+/// match the addresses, and to count what matched nobody.
+pub(crate) const ACTOR_TOTALS: &str = "SELECT provider, actor_kind, actor, unit, SUM(micros) AS micros FROM provider_person_costs
+     WHERE workspace = ?1 AND day >= ?2 AND day <= ?3
+     GROUP BY provider, actor_kind, actor, unit";
 
-/// One person's days, by model, over the addresses that are theirs (`?5`,
-/// a JSON array). Sessions add up without counting a day twice: each
-/// actor's day keeps them on one row.
-pub(crate) const PERSON_DAYS: &str = "SELECT day, harness, model, SUM(micros) AS micros, SUM(sessions) AS sessions
+/// One person's days at every provider, by harness and model, over the
+/// addresses that are theirs (`?4`, a JSON array). Sessions add up
+/// without counting a day twice: each actor's day keeps them on one row.
+pub(crate) const PERSON_DAYS: &str = "SELECT day, provider, harness, model, unit, MAX(list_price) AS list_price,
+       SUM(micros) AS micros, SUM(sessions) AS sessions
      FROM provider_person_costs
-     WHERE workspace = ?1 AND provider = ?2 AND day >= ?3 AND day <= ?4
-       AND actor_kind = 'user' AND actor IN (SELECT value FROM json_each(?5))
-     GROUP BY day, harness, model ORDER BY day, harness, model LIMIT ?6";
+     WHERE workspace = ?1 AND day >= ?2 AND day <= ?3
+       AND actor_kind = 'user' AND actor IN (SELECT value FROM json_each(?4))
+     GROUP BY day, provider, harness, model, unit ORDER BY day, provider, harness, model LIMIT ?5";
 
 /// A connection as the list reads it.
 #[derive(Deserialize)]
@@ -229,7 +257,7 @@ pub(crate) fn window(now: u64, last_synced_at: Option<&str>) -> (String, u64) {
 }
 
 /// Percent-encodes a query value: a page token may hold `=`, `+` or `/`.
-fn encode(value: &str) -> String {
+pub(crate) fn encode(value: &str) -> String {
     value
         .bytes()
         .map(|b| match b {
@@ -296,11 +324,12 @@ pub(crate) fn days_back(from: &str, until: u64) -> Vec<String> {
 }
 
 /// The smallest request that proves a key can read the report: yesterday,
-/// one bucket, ungrouped.
-fn check_url(provider: CostProvider, now: u64) -> String {
+/// one bucket, ungrouped. None for a provider with no cost report of its
+/// own (`provider_people::check` asks those).
+fn check_url(provider: CostProvider, now: u64) -> Option<String> {
     let today = now - now % DAY_MS;
     let yesterday = today - DAY_MS;
-    match provider {
+    Some(match provider {
         CostProvider::Anthropic => format!(
             "{ANTHROPIC_COSTS}?starting_at={}&ending_at={}&bucket_width=1d&limit=1",
             encode(&format!("{}Z", &rfc3339(yesterday)[..19])),
@@ -311,7 +340,8 @@ fn check_url(provider: CostProvider, now: u64) -> String {
             yesterday / 1000,
             today / 1000
         ),
-    }
+        CostProvider::Cursor | CostProvider::Amp | CostProvider::Devin => return None,
+    })
 }
 
 /// One cost as the provider reported it.
@@ -366,7 +396,7 @@ pub(crate) fn dollars_to_micros(dollars: f64) -> Option<i64> {
     dollars.is_finite().then(|| (dollars * 1_000_000.0).round() as i64)
 }
 
-fn text(value: &Value) -> String {
+pub(crate) fn text(value: &Value) -> String {
     value.as_str().unwrap_or_default().to_owned()
 }
 
@@ -641,29 +671,46 @@ pub(crate) fn whose<'a>(
     }
 }
 
-/// An actor's total in a span.
+/// An actor's total in a span, at one provider, in one unit.
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct ActorTotal {
     pub actor_kind: String,
     pub actor: String,
+    #[serde(default)]
+    pub unit: String,
     pub micros: Option<f64>,
 }
 
-/// What matched nobody: the cost of every actor with any that is not one
-/// of `linked` (members' confirmed addresses), API keys included, and how
-/// many such actors there were. An actor that cost nothing isn't counted.
+/// What matched nobody, in US dollars: the cost of every actor with any
+/// that is not one of `linked` (members' confirmed addresses), API keys
+/// included, and how many such actors there were (one seen at two
+/// providers counts once). An actor that cost nothing isn't counted;
+/// credits and ACUs aren't dollars, and are left out.
 pub(crate) fn unlinked(actors: &[ActorTotal], linked: &HashSet<String>) -> (i64, u32) {
     let mut micros = 0i64;
-    let mut count = 0u32;
+    let mut seen = HashSet::new();
     for actor in actors {
         let cost = actor.micros.unwrap_or(0.0) as i64;
-        if cost == 0 || (actor.actor_kind == ActorKind::User.name() && linked.contains(&actor.actor)) {
+        let dollars = actor.unit.is_empty() || actor.unit == CostUnit::Usd.name();
+        if cost == 0 || !dollars || (actor.actor_kind == ActorKind::User.name() && linked.contains(&actor.actor)) {
             continue;
         }
         micros += cost;
-        count += 1;
+        seen.insert((actor.actor_kind.as_str(), actor.actor.as_str()));
     }
-    (micros, count)
+    (micros, u32::try_from(seen.len()).unwrap_or(u32::MAX))
+}
+
+/// A provider whose days are its people's: each day's total per model and
+/// unit, over everyone, as its cost report.
+pub(crate) fn organization_days(rows: &[&PersonRow]) -> BTreeMap<(String, String, CostUnit), i64> {
+    let mut days = BTreeMap::new();
+    for row in rows {
+        *days
+            .entry((row.day.clone(), row.model.clone(), row.unit))
+            .or_insert(0i64) += row.micros;
+    }
+    days
 }
 
 /// The rows summed by day, item and scope (a description can repeat across
@@ -701,6 +748,7 @@ pub(crate) fn precheck(provider: CostProvider, credential: &str) -> std::result:
     if credential.len() > MAX_KEY || !credential.bytes().all(|b| b.is_ascii_graphic()) {
         return Err("That isn't a key: a key is one line of letters, digits and dashes, with no spaces.".to_owned());
     }
+    let foreign = credential.starts_with("sk-");
     match provider {
         CostProvider::Anthropic if credential.starts_with("sk-ant-api") => Err(
             "This is an Anthropic API key. The cost report needs an Admin API key (it starts sk-ant-admin), made in the Claude Console under Settings, Admin keys."
@@ -716,6 +764,16 @@ pub(crate) fn precheck(provider: CostProvider, credential: &str) -> std::result:
         CostProvider::Openai if credential.starts_with("sk-ant-") => {
             Err("This looks like an Anthropic key. Connect it as Anthropic, or paste an OpenAI admin key (sk-admin-…).".to_owned())
         }
+        CostProvider::Cursor if foreign => Err(
+            "This looks like an Anthropic or OpenAI key. Cursor's Admin API needs an API key a team admin makes in the Cursor dashboard, under API Keys (it starts crsr_)."
+                .to_owned(),
+        ),
+        CostProvider::Amp if crate::provider_people::amp_client(credential).is_none() => Err(
+            "Paste the Amp application's client ID and client secret, both: make an External API application in your Amp workspace's settings.".to_owned(),
+        ),
+        CostProvider::Devin if foreign => Err(
+            "This looks like an Anthropic or OpenAI key. Use a Devin service user key (cog_…) or a Devin Desktop service key.".to_owned(),
+        ),
         _ => Ok(()),
     }
 }
@@ -725,8 +783,11 @@ pub(crate) fn precheck(provider: CostProvider, credential: &str) -> std::result:
 /// scrubbed out of them.
 pub(crate) fn explain(provider: CostProvider, status: u16, body: &Value, credential: &str) -> String {
     let label = provider.label();
-    let said = body["error"]["message"]
-        .as_str()
+    // Each provider words its errors its own way: `error.message`,
+    // `message`, `error` or `detail`.
+    let said = [&body["error"]["message"], &body["message"], &body["error"], &body["detail"]]
+        .into_iter()
+        .find_map(|said| said.as_str().filter(|s| !s.is_empty()))
         .map(|m| scrub(m, credential))
         .map(|m| m.chars().take(200).collect::<String>());
     let base = match (provider, status) {
@@ -746,6 +807,27 @@ pub(crate) fn explain(provider: CostProvider, status: u16, body: &Value, credent
             "This key can't read the organization's costs. Use an organization admin key, not a project or user API key.".to_owned()
         }
         (CostProvider::Openai, 404) => "OpenAI has no costs for this key. Use an organization admin key.".to_owned(),
+        (CostProvider::Cursor, 401) => {
+            "Cursor didn't accept this key. Use an API key a team admin makes in the Cursor dashboard, under API Keys (crsr_…).".to_owned()
+        }
+        (CostProvider::Cursor, 403) => {
+            "This key can't read the team's usage. Cursor's Admin API is for Enterprise teams, with a team admin's API key.".to_owned()
+        }
+        (CostProvider::Cursor, 404) => "Cursor has no team usage for this key.".to_owned(),
+        (CostProvider::Amp, 400 | 401) => {
+            "Amp didn't accept this application's client ID and secret. Make an External API application in your Amp workspace's settings, under Applications.".to_owned()
+        }
+        (CostProvider::Amp, 403) => {
+            "This application can't read the workspace's analytics. Give it the workspace analytics and members view scopes.".to_owned()
+        }
+        (CostProvider::Amp, 404) => "Amp has no workspace analytics for this application.".to_owned(),
+        (CostProvider::Devin, 401) => {
+            "Devin didn't accept this key. Use a Devin service user key (cog_…) that may view consumption and members, or a Devin Desktop service key with Teams Read-only.".to_owned()
+        }
+        (CostProvider::Devin, 403) => {
+            "This key can't read usage. Devin's usage APIs are for Enterprise plans, with a key that may view the enterprise's consumption and members.".to_owned()
+        }
+        (CostProvider::Devin, 404) => "Devin has no usage for this key.".to_owned(),
         (_, 429) => format!("{label} is limiting requests just now. g1t tries again at the next daily read."),
         (_, 500..=599) => format!("{label} didn't answer ({status}). g1t tries again at the next daily read."),
         _ => format!("{label} refused the request ({status})."),
@@ -802,7 +884,7 @@ async fn send(provider: CostProvider, credential: &str, url: &str) -> std::resul
                 headers.set("x-api-key", credential)?;
                 headers.set("anthropic-version", ANTHROPIC_VERSION)?;
             }
-            CostProvider::Openai => headers.set("authorization", &format!("Bearer {credential}"))?,
+            _ => headers.set("authorization", &format!("Bearer {credential}"))?,
         }
         headers.set("user-agent", USER_AGENT)?;
         headers.set("accept", "application/json")?;
@@ -836,11 +918,12 @@ async fn read_report(
         let url = match provider {
             CostProvider::Anthropic => anthropic_url(from, until, token.as_deref()),
             CostProvider::Openai => openai_url(from, until, token.as_deref()),
+            CostProvider::Cursor | CostProvider::Amp | CostProvider::Devin => return Ok(all),
         };
         let body = get(provider, credential, &url).await?;
         let page = match provider {
             CostProvider::Anthropic => parse_anthropic(&body)?,
-            CostProvider::Openai => parse_openai(&body)?,
+            _ => parse_openai(&body)?,
         };
         all.days.extend(page.days);
         all.rows.extend(page.rows);
@@ -871,6 +954,55 @@ async fn read_claude_code_day(credential: &str, day: &str) -> std::result::Resul
         }
     }
     Ok((uses, true))
+}
+
+/// Anthropic's Claude Code report, one day a call from `from` to `until`,
+/// [`DAYS_AT_ONCE`] at a time, newest first: a refusal stops the read and
+/// keeps the days before it.
+async fn read_claude_code(credential: &str, from: &str, until: u64) -> PeopleRead {
+    let wanted = days_back(from, until);
+    let mut read: Vec<String> = Vec::new();
+    let mut uses: Vec<PersonUse> = Vec::new();
+    let mut cut = false;
+    let mut problem: Option<String> = None;
+    for days in wanted.chunks(DAYS_AT_ONCE) {
+        let answers =
+            futures_util::future::join_all(days.iter().map(|day| read_claude_code_day(credential, day))).await;
+        for (day, answer) in days.iter().zip(answers) {
+            match answer {
+                Ok((day_uses, more)) => {
+                    read.push(day.clone());
+                    uses.extend(day_uses);
+                    cut |= more;
+                }
+                Err(message) => {
+                    problem.get_or_insert(message);
+                }
+            }
+        }
+        if problem.is_some() {
+            break;
+        }
+    }
+    let (costs, other) = aggregate_people(&uses);
+    let note = if cut {
+        Some("Anthropic's Claude Code report had more people on some days than g1t reads at once; some may be missing.".to_owned())
+    } else if !other.is_empty() {
+        let currencies: Vec<String> = other.into_iter().collect();
+        Some(format!(
+            "Some Claude Code costs were reported in {}, not US dollars, and are left out.",
+            currencies.join(", ")
+        ))
+    } else {
+        None
+    };
+    PeopleRead {
+        days: read,
+        rows: costs.into_iter().map(PersonRow::claude_code).collect(),
+        conversations: Vec::new(),
+        note,
+        problem,
+    }
 }
 
 impl Billing {
@@ -910,7 +1042,11 @@ impl Billing {
             return Ok(Outcome::fail(FailureCode::Invalid, problem));
         }
         let now = now_ms();
-        if let Err(problem) = get(provider, credential, &check_url(provider, now)).await {
+        let checked = match check_url(provider, now) {
+            Some(url) => get(provider, credential, &url).await.map(|_| ()),
+            None => crate::provider_people::check(provider, credential, now).await,
+        };
+        if let Err(problem) = checked {
             return Ok(Outcome::fail(FailureCode::Invalid, problem));
         }
         // A new id every time, and the key sealed to it: connecting again
@@ -925,6 +1061,9 @@ impl Billing {
                     .bind(&[workspace.as_str().into(), provider.name().into()])?,
                 self.db
                     .prepare("DELETE FROM provider_person_costs WHERE workspace = ?1 AND provider = ?2")
+                    .bind(&[workspace.as_str().into(), provider.name().into()])?,
+                self.db
+                    .prepare("DELETE FROM provider_conversations WHERE workspace = ?1 AND provider = ?2")
                     .bind(&[workspace.as_str().into(), provider.name().into()])?,
                 self.db
                     .prepare(
@@ -989,6 +1128,9 @@ impl Billing {
                 self.db
                     .prepare("DELETE FROM provider_person_costs WHERE workspace = ?1 AND provider = ?2")
                     .bind(&bind())?,
+                self.db
+                    .prepare("DELETE FROM provider_conversations WHERE workspace = ?1 AND provider = ?2")
+                    .bind(&bind())?,
             ])
             .await?;
         Ok(Outcome::Ok(was))
@@ -1014,30 +1156,42 @@ impl Billing {
         }
         #[derive(Deserialize)]
         struct ReadRow {
+            provider: String,
             people_synced_at: Option<String>,
             people_error: Option<String>,
             people_synced_from: Option<String>,
         }
-        let provider = CostProvider::Anthropic;
-        let read = self
+        let reads = self
             .db
             .prepare(
-                "SELECT people_synced_at, people_error, people_synced_from FROM provider_connections
-                 WHERE workspace = ?1 AND provider = ?2",
+                "SELECT provider, people_synced_at, people_error, people_synced_from FROM provider_connections
+                 WHERE workspace = ?1 ORDER BY provider",
             )
-            .bind(&[workspace.as_str().into(), provider.name().into()])?
-            .first::<ReadRow>(None)
-            .await?;
-        let Some(read) = read else {
+            .bind(&[workspace.as_str().into()])?
+            .all()
+            .await?
+            .results::<ReadRow>()?;
+        // Every provider reports per person; each read's state, to say
+        // whether the span is complete.
+        let reads: Vec<(CostProvider, bool)> = reads
+            .into_iter()
+            .filter_map(|read| {
+                Some((
+                    CostProvider::parse(&read.provider)?,
+                    read_back(
+                        read.people_synced_at.as_deref(),
+                        read.people_error.as_deref(),
+                        read.people_synced_from.as_deref(),
+                        &since,
+                    ),
+                ))
+            })
+            .collect();
+        if reads.is_empty() {
             return Ok(Outcome::Ok(ProviderPersonCosts::default()));
-        };
+        }
         let span = || -> Vec<worker::wasm_bindgen::JsValue> {
-            vec![
-                workspace.as_str().into(),
-                provider.name().into(),
-                since.as_str().into(),
-                until.as_str().into(),
-            ]
+            vec![workspace.as_str().into(), since.as_str().into(), until.as_str().into()]
         };
         let actors = self
             .db
@@ -1052,6 +1206,8 @@ impl Billing {
             .iter()
             .filter(|actor| actor.actor_kind == ActorKind::User.name())
             .map(|actor| actor.actor.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
             .collect();
         let mut members: Vec<MemberEmail> = Vec::new();
         if !emails.is_empty() {
@@ -1074,8 +1230,11 @@ impl Billing {
         #[derive(Deserialize)]
         struct DayRow {
             day: String,
+            provider: String,
             harness: String,
             model: String,
+            unit: String,
+            list_price: Option<f64>,
             micros: Option<f64>,
             sessions: Option<f64>,
         }
@@ -1096,13 +1255,17 @@ impl Billing {
         let days = rows
             .into_iter()
             .take(MAX_ROWS)
-            .map(|row| ProviderPersonDay {
-                day: row.day,
-                provider,
-                harness: row.harness,
-                model: row.model,
-                micros: row.micros.unwrap_or(0.0) as i64,
-                sessions: row.sessions.unwrap_or(0.0) as u32,
+            .filter_map(|row| {
+                Some(ProviderPersonDay {
+                    day: row.day,
+                    provider: CostProvider::parse(&row.provider)?,
+                    harness: row.harness,
+                    model: row.model,
+                    micros: row.micros.unwrap_or(0.0) as i64,
+                    sessions: row.sessions.unwrap_or(0.0) as u32,
+                    unit: CostUnit::parse(&row.unit).unwrap_or_default(),
+                    list_price: row.list_price.unwrap_or(0.0) > 0.0,
+                })
             })
             .collect();
         let (unlinked_micros, unlinked_actors) = if manages {
@@ -1112,15 +1275,10 @@ impl Billing {
         } else {
             (None, 0)
         };
-        let complete = !cut
-            && read_back(
-                read.people_synced_at.as_deref(),
-                read.people_error.as_deref(),
-                read.people_synced_from.as_deref(),
-                &since,
-            );
+        let complete = !cut && reads.iter().all(|(_, read)| *read);
         Ok(Outcome::Ok(ProviderPersonCosts {
             connected: true,
+            providers: reads.into_iter().map(|(provider, _)| provider).collect(),
             days,
             unlinked_micros,
             unlinked_actors,
@@ -1142,15 +1300,16 @@ impl Billing {
             day: String,
             provider: String,
             item: String,
+            currency: String,
             micros: Option<f64>,
         }
         let connections = self.listed(&workspace).await?;
         let rows = self
             .db
             .prepare(
-                "SELECT day, provider, item, SUM(micros) AS micros FROM provider_costs
+                "SELECT day, provider, item, currency, SUM(micros) AS micros FROM provider_costs
                  WHERE workspace = ?1 AND day >= ?2
-                 GROUP BY day, provider, item ORDER BY day, provider, item LIMIT ?3",
+                 GROUP BY day, provider, item, currency ORDER BY day, provider, item LIMIT ?3",
             )
             .bind(&[
                 workspace.as_str().into(),
@@ -1170,6 +1329,9 @@ impl Billing {
                     provider: CostProvider::parse(&row.provider)?,
                     item: row.item,
                     micros: row.micros.unwrap_or(0.0) as i64,
+                    // Stored as the cost report gave it (`USD`), or a
+                    // provider's own unit.
+                    unit: CostUnit::parse(&row.currency)?,
                 })
             })
             .collect();
@@ -1182,7 +1344,8 @@ impl Billing {
     }
 
     /// Reads one connection's report and keeps it. A provider's refusal is
-    /// kept on the connection; only a failure to write is an error.
+    /// kept on the connection; only a failure to write is an error. A
+    /// provider with no cost report of its own is read per person only.
     async fn sync_connection(&self, row: &SealedRow, now: u64) -> Result<std::result::Result<usize, String>> {
         let Some(provider) = CostProvider::parse(&row.provider) else {
             return Ok(Err("Unknown provider.".to_owned()));
@@ -1201,6 +1364,9 @@ impl Billing {
         let Some(credential) = sealer.open(&row.credential, &row.id) else {
             return problem("g1t can't open the saved key. Connect the provider again.".to_owned()).await;
         };
+        if !provider.has_cost_report() {
+            return self.sync_people(row, provider, &credential, now).await;
+        }
         let (from, until) = window(now, row.last_synced_at.as_deref());
         let page = match read_report(provider, &credential, &from, until).await {
             Ok(page) => page,
@@ -1262,17 +1428,19 @@ impl Billing {
             ])?
             .run()
             .await?;
-        // Anthropic's per-person report, with the same key. Its failing is
-        // kept on the connection apart and never fails the cost report.
-        if provider == CostProvider::Anthropic {
-            match self.sync_people(row, &credential, now).await {
-                Ok(Ok(_)) => {}
-                Ok(Err(message)) => {
-                    worker::console_error!("provider costs: {} claude code: {message}", row.workspace)
-                }
-                Err(error) => {
-                    worker::console_error!("provider costs: {} claude code: writing failed: {error}", row.workspace)
-                }
+        // The per-person report, with the same key. Its failing is kept on
+        // the connection apart and never fails the cost report.
+        match self.sync_people(row, provider, &credential, now).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(message)) => {
+                worker::console_error!("provider costs: {} {} people: {message}", row.workspace, row.provider)
+            }
+            Err(error) => {
+                worker::console_error!(
+                    "provider costs: {} {} people: writing failed: {error}",
+                    row.workspace,
+                    row.provider
+                )
             }
         }
         Ok(match note {
@@ -1281,105 +1449,128 @@ impl Billing {
         })
     }
 
-    /// Reads Anthropic's Claude Code report, one day a call over the same
-    /// window as the cost report (counted from the last good read of this
-    /// report), and keeps it: each day read replaces that day. A refusal
-    /// is kept in `people_error` and the days read before it are kept, but
-    /// the read doesn't count as done, so the next one reaches back again.
+    /// Reads a provider's per-person report over the same window as the
+    /// cost report (counted from the last good read of this report), and
+    /// keeps it: each day read replaces that day, its conversations too.
+    /// A provider with no cost report of its own also keeps each day's
+    /// total per model as its cost report, and its read's state as the
+    /// connection's. A refusal is kept in `people_error` and the days read
+    /// before it are kept, but the read doesn't count as done, so the next
+    /// one reaches back again.
     async fn sync_people(
         &self,
         row: &SealedRow,
+        provider: CostProvider,
         credential: &str,
         now: u64,
     ) -> Result<std::result::Result<usize, String>> {
         let (from, until) = window(now, row.people_synced_at.as_deref());
-        let wanted = days_back(&from, until);
-        let mut read: Vec<String> = Vec::new();
-        let mut uses: Vec<PersonUse> = Vec::new();
-        let mut cut = false;
-        let mut problem: Option<String> = None;
-        for days in wanted.chunks(DAYS_AT_ONCE) {
-            let answers =
-                futures_util::future::join_all(days.iter().map(|day| read_claude_code_day(credential, day))).await;
-            for (day, answer) in days.iter().zip(answers) {
-                match answer {
-                    Ok((day_uses, more)) => {
-                        read.push(day.clone());
-                        uses.extend(day_uses);
-                        cut |= more;
-                    }
-                    Err(message) => {
-                        problem.get_or_insert(message);
-                    }
-                }
-            }
-            if problem.is_some() {
-                break;
-            }
-        }
-        let (costs, other) = aggregate_people(&uses);
+        let read = match provider {
+            CostProvider::Anthropic => read_claude_code(credential, &from, until).await,
+            _ => crate::provider_people::read_people(provider, credential, &from, until).await,
+        };
+        let own_report = !provider.has_cost_report();
         let at = rfc3339(now);
-        let provider = CostProvider::Anthropic.name();
+        let name = provider.name();
+        let workspace = row.workspace.as_str();
         let mut statements = vec![];
-        for day in &read {
-            statements.push(self.db.prepare(DELETE_PERSON_DAY).bind(&[
-                row.workspace.as_str().into(),
-                provider.into(),
-                day.as_str().into(),
-            ])?);
+        for day in &read.days {
+            let bind = || -> Vec<worker::wasm_bindgen::JsValue> { vec![workspace.into(), name.into(), day.as_str().into()] };
+            statements.push(self.db.prepare(DELETE_PERSON_DAY).bind(&bind())?);
+            statements.push(self.db.prepare(DELETE_CONVERSATION_DAY).bind(&bind())?);
+            if own_report {
+                statements.push(self.db.prepare(DELETE_DAYS).bind(&[
+                    workspace.into(),
+                    name.into(),
+                    day.as_str().into(),
+                    day.as_str().into(),
+                ])?);
+            }
         }
-        let read: HashSet<&String> = read.iter().collect();
-        for cost in costs.iter().filter(|cost| read.contains(&cost.day)) {
+        let days: HashSet<&String> = read.days.iter().collect();
+        let rows: Vec<&PersonRow> = read.rows.iter().filter(|cost| days.contains(&cost.day)).collect();
+        for cost in &rows {
             statements.push(self.db.prepare(UPSERT_PERSON_COST).bind(&[
-                row.workspace.as_str().into(),
-                provider.into(),
+                workspace.into(),
+                name.into(),
                 cost.day.as_str().into(),
                 cost.kind.name().into(),
                 cost.actor.as_str().into(),
-                CLAUDE_CODE.into(),
+                cost.harness.as_str().into(),
                 cost.model.as_str().into(),
                 (cost.micros as f64).into(),
                 f64::from(cost.sessions).into(),
                 cost.customer_type.as_str().into(),
                 at.as_str().into(),
+                cost.unit.name().into(),
+                f64::from(u8::from(cost.list_price)).into(),
             ])?);
         }
+        for conversation in read.conversations.iter().filter(|c| days.contains(&c.day)) {
+            statements.push(self.db.prepare(UPSERT_CONVERSATION).bind(&[
+                workspace.into(),
+                name.into(),
+                conversation.day.as_str().into(),
+                conversation.kind.name().into(),
+                conversation.actor.as_str().into(),
+                conversation.conversation.as_str().into(),
+                (conversation.micros as f64).into(),
+                f64::from(conversation.events).into(),
+                at.as_str().into(),
+            ])?);
+        }
+        if own_report {
+            for ((day, model, unit), micros) in organization_days(&rows) {
+                statements.push(self.db.prepare(UPSERT_COST_IN).bind(&[
+                    workspace.into(),
+                    name.into(),
+                    day.as_str().into(),
+                    model.as_str().into(),
+                    (micros as f64).into(),
+                    unit.name().to_uppercase().into(),
+                    at.as_str().into(),
+                ])?);
+            }
+        }
+        let written = rows.len();
         let mut statements = statements.into_iter().peekable();
         while statements.peek().is_some() {
             self.db.batch(statements.by_ref().take(BATCH).collect()).await?;
         }
-        if let Some(problem) = problem {
+        if let Some(problem) = read.problem {
+            let sql = if own_report {
+                "UPDATE provider_connections SET people_error = ?1, last_error = ?1 WHERE id = ?2"
+            } else {
+                "UPDATE provider_connections SET people_error = ?1 WHERE id = ?2"
+            };
             self.db
-                .prepare("UPDATE provider_connections SET people_error = ?1 WHERE id = ?2")
+                .prepare(sql)
                 .bind(&[problem.as_str().into(), row.id.as_str().into()])?
                 .run()
                 .await?;
             return Ok(Err(problem));
         }
-        let note = if cut {
-            Some("Anthropic's Claude Code report had more people on some days than g1t reads at once; some may be missing.".to_owned())
-        } else if !other.is_empty() {
-            let currencies: Vec<String> = other.into_iter().collect();
-            Some(format!(
-                "Some Claude Code costs were reported in {}, not US dollars, and are left out.",
-                currencies.join(", ")
-            ))
-        } else {
-            None
-        };
-        self.db
-            .prepare(NOTE_PEOPLE_SYNCED)
-            .bind(&[
-                at.as_str().into(),
-                crate::optional(note.as_deref()),
-                from.as_str().into(),
-                row.id.as_str().into(),
-            ])?
-            .run()
-            .await?;
-        Ok(match note {
+        // The first day read: where a read cut short stopped.
+        let first = read.days.iter().min().cloned().unwrap_or(from);
+        let mut notes = vec![NOTE_PEOPLE_SYNCED];
+        if own_report {
+            notes.push(NOTE_SYNCED);
+        }
+        for sql in notes {
+            self.db
+                .prepare(sql)
+                .bind(&[
+                    at.as_str().into(),
+                    crate::optional(read.note.as_deref()),
+                    first.as_str().into(),
+                    row.id.as_str().into(),
+                ])?
+                .run()
+                .await?;
+        }
+        Ok(match read.note {
             Some(note) => Err(note),
-            None => Ok(costs.len()),
+            None => Ok(written),
         })
     }
 
@@ -1611,9 +1802,12 @@ mod tests {
         let now = parse_rfc3339("2026-10-18T09:30:00.000Z").unwrap();
         assert!(
             check_url(CostProvider::Anthropic, now)
+                .unwrap()
                 .contains("starting_at=2026-10-17T00%3A00%3A00Z&ending_at=2026-10-18T00%3A00%3A00Z")
         );
-        assert!(check_url(CostProvider::Openai, now).ends_with("&limit=1"));
+        assert!(check_url(CostProvider::Openai, now).unwrap().ends_with("&limit=1"));
+        // Cursor, Amp and Devin have no cost report: they are checked per person.
+        assert!(check_url(CostProvider::Cursor, now).is_none());
     }
 
     #[test]
@@ -1637,6 +1831,13 @@ mod tests {
         assert!(precheck(CostProvider::Openai, "sk-admin-abcd").is_ok());
         assert!(precheck(CostProvider::Openai, "").is_err());
         assert!(precheck(CostProvider::Openai, "sk-admin abcd").is_err());
+        assert!(precheck(CostProvider::Cursor, "crsr_abcd").is_ok());
+        assert!(precheck(CostProvider::Cursor, "sk-admin-abcd").unwrap_err().contains("crsr_"));
+        // Amp takes the application's client ID and secret, both.
+        assert!(precheck(CostProvider::Amp, "client_1:secret").is_ok());
+        assert!(precheck(CostProvider::Amp, "secret").unwrap_err().contains("client ID and client secret"));
+        assert!(precheck(CostProvider::Devin, "cog_abcd").is_ok());
+        assert!(precheck(CostProvider::Devin, "sk-ant-admin01-abcd").is_err());
     }
 
     #[test]
@@ -1654,6 +1855,14 @@ mod tests {
         assert!(explain(CostProvider::Openai, 403, &Value::Null, key).contains("not a project or user API key"));
         assert!(explain(CostProvider::Openai, 429, &body, key).contains("tries again"));
         assert!(!explain(CostProvider::Openai, 503, &body, key).contains("SECRET"));
+        // Each provider's own wording of an error is read, key scrubbed.
+        let cursor = json!({ "error": "Forbidden", "message": format!("Enterprise access required for {key}") });
+        let said = explain(CostProvider::Cursor, 403, &cursor, key);
+        assert!(said.contains("Enterprise") && said.contains("Cursor said: Enterprise access required"), "{said}");
+        assert!(!said.contains("SECRET"), "{said}");
+        let amp = json!({ "error": "Forbidden: missing client scope(s)" });
+        assert!(explain(CostProvider::Amp, 403, &amp, key).ends_with("Amp said: Forbidden: missing client scope(s)"));
+        assert!(explain(CostProvider::Devin, 401, &json!({ "detail": "bad key" }), key).contains("cog_"));
     }
 
     #[test]
@@ -2033,6 +2242,7 @@ mod tests {
         let actor = |kind: &str, actor: &str, micros: f64| ActorTotal {
             actor_kind: kind.into(),
             actor: actor.into(),
+            unit: "usd".into(),
             micros: Some(micros),
         };
         let actors = [
@@ -2046,6 +2256,12 @@ mod tests {
         ];
         let linked: HashSet<String> = ["ada@example.com".to_owned()].into();
         assert_eq!(unlinked(&actors, &linked), (530_001, 3));
+        // The same address at a second provider counts once; credits are
+        // not dollars, and are left out.
+        let mut more = actors.to_vec();
+        more.push(actor("user", "stranger@example.com", 100.0));
+        more.push(ActorTotal { unit: "credits".into(), ..actor("user", "credits@example.com", 9_000_000.0) });
+        assert_eq!(unlinked(&more, &linked), (530_101, 3));
         assert_eq!(unlinked(&actors, &HashSet::new()), (2_530_001, 4));
         assert_eq!(unlinked(&[], &linked), (0, 0));
     }
@@ -2056,6 +2272,8 @@ mod tests {
         db.execute_batch(include_str!("../migrations/0067_provider_costs.sql"))
             .unwrap();
         db.execute_batch(include_str!("../migrations/0068_provider_person_costs.sql"))
+            .unwrap();
+        db.execute_batch(include_str!("../migrations/0069_provider_people.sql"))
             .unwrap();
         let write = |cost: &PersonCost, at: &str| {
             db.execute(
@@ -2071,7 +2289,9 @@ mod tests {
                     cost.micros,
                     cost.sessions,
                     cost.customer_type,
-                    at
+                    at,
+                    "usd",
+                    0
                 ],
             )
             .unwrap();
@@ -2103,15 +2323,8 @@ mod tests {
             let mut statement = db.prepare(PERSON_DAYS).unwrap();
             statement
                 .query_map(
-                    rusqlite::params![
-                        "acme",
-                        "anthropic",
-                        since,
-                        until,
-                        serde_json::to_string(emails).unwrap(),
-                        1000
-                    ],
-                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+                    rusqlite::params!["acme", since, until, serde_json::to_string(emails).unwrap(), 1000],
+                    |r| Ok((r.get(0)?, r.get(2)?, r.get(3)?, r.get(6)?, r.get(7)?)),
                 )
                 .unwrap()
                 .map(Result::unwrap)
@@ -2134,16 +2347,14 @@ mod tests {
         let totals: Vec<ActorTotal> = {
             let mut statement = db.prepare(&format!("{ACTOR_TOTALS} ORDER BY actor_kind, actor")).unwrap();
             statement
-                .query_map(
-                    rusqlite::params!["acme", "anthropic", "2025-09-01", "2025-09-02"],
-                    |r| {
-                        Ok(ActorTotal {
-                            actor_kind: r.get(0)?,
-                            actor: r.get(1)?,
-                            micros: Some(r.get::<_, i64>(2)? as f64),
-                        })
-                    },
-                )
+                .query_map(rusqlite::params!["acme", "2025-09-01", "2025-09-02"], |r| {
+                    Ok(ActorTotal {
+                        actor_kind: r.get(1)?,
+                        actor: r.get(2)?,
+                        unit: r.get(3)?,
+                        micros: Some(r.get::<_, i64>(4)? as f64),
+                    })
+                })
                 .unwrap()
                 .map(Result::unwrap)
                 .collect()

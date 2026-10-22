@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { SignalAuthor, SignalPull, SignalWeek, Usage, WorkspaceSignals } from "@g1t/contracts";
+import type { ProviderCosts, SignalAuthor, SignalPull, SignalWeek, Usage, WorkspaceSignals } from "@g1t/contracts";
 
 import {
   type SignalContext,
@@ -16,6 +16,7 @@ import {
   newGround,
   newHabits,
   namesWords,
+  providerQuarter,
   pulse,
   quarterSpend,
   quarterStart,
@@ -515,4 +516,36 @@ test("one group of spend is a finding only where one person does the work", () =
   assert.equal(spendSignal(ctx({ signals, quarterUsage: usage() }))!.headline, "Plugin updates took all of the agent spend this quarter.");
   const two = { ...signals, authors: [author({ ownerId: "u2", ownerName: "bo" })] };
   assert.equal(spendSignal(ctx({ signals: two, quarterUsage: usage() })), null);
+});
+
+test("what the providers reported this quarter is in dollars: credits are left out, never added to them", () => {
+  const connection = (provider: ProviderCosts["connections"][number]["provider"]) => ({
+    provider,
+    hint: "…abcd",
+    connectedBy: "ada",
+    connectedAt: "2026-10-01T00:00:00Z",
+    lastSyncedAt: "2026-10-22T04:17:00Z",
+    lastError: null,
+  });
+  const costs: ProviderCosts = {
+    connections: [connection("anthropic"), connection("cursor"), connection("devin")],
+    days: [
+      { day: "2026-10-02", provider: "anthropic", item: "Opus", micros: 3_000_000 },
+      { day: "2026-10-02", provider: "cursor", item: "claude-4.5-sonnet", micros: 1_000_000, unit: "usd" },
+      { day: "2026-10-02", provider: "devin", item: "", micros: 125_000_000, unit: "credits" },
+      // Before the quarter.
+      { day: "2026-09-30", provider: "cursor", item: "claude-4.5-sonnet", micros: 9_000_000, unit: "usd" },
+    ],
+    complete: true,
+  };
+  assert.deepEqual(providerQuarter(costs, "2026-10-01"), {
+    providers: [
+      { provider: "anthropic", micros: 3_000_000 },
+      { provider: "cursor", micros: 1_000_000 },
+    ],
+    total: 4_000_000,
+    complete: true,
+  });
+  // Devin alone: nothing in dollars to say.
+  assert.equal(providerQuarter({ ...costs, connections: [connection("devin")] }, "2026-10-01"), null);
 });
