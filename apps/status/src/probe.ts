@@ -99,6 +99,34 @@ export const BROWSER_USER_AGENT =
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 
+/** Runs a request when there is room for it (see [`limit`]). */
+export type Gate = <T>(run: () => Promise<T>) => Promise<T>;
+
+const ungated: Gate = (run) => run();
+
+/**
+ * At most `n` requests at once, the rest waiting their turn in the order
+ * they were asked. A Worker may wait on six answers at once, its service
+ * bindings among them; Cloudflare queues a seventh with its time already
+ * running, so a round of a dozen checks timed out the ones at the back.
+ * Each check's clock starts when its turn comes.
+ */
+export function limit(n: number): Gate {
+  let running = 0;
+  const waiting: (() => void)[] = [];
+  return async (run) => {
+    if (running < n) running += 1;
+    else await new Promise<void>((resolve) => waiting.push(resolve));
+    try {
+      return await run();
+    } finally {
+      const next = waiting.shift();
+      if (next) next();
+      else running -= 1;
+    }
+  };
+}
+
 class Timeout extends Error {}
 
 /** Runs `work`, timing it, and failing it after `timeoutMs`. */
@@ -125,22 +153,29 @@ export async function timed(work: (signal: AbortSignal) => Promise<true | string
 }
 
 /** One request, answered with the status that means it works. */
-export async function step(fetcher: Fetch, { url, headers = {}, expect, browser = false }: Step, timeoutMs = TIMEOUT_MS): Promise<ProbeResult> {
+export async function step(
+  fetcher: Fetch,
+  { url, headers = {}, expect, browser = false }: Step,
+  timeoutMs = TIMEOUT_MS,
+  gate: Gate = ungated,
+): Promise<ProbeResult> {
   let colo: string | null = null;
   let total: number | null = null;
-  const result = await timed(async (signal) => {
-    const response = await fetcher(url, {
-      signal,
-      redirect: "manual",
-      headers: { "user-agent": browser ? BROWSER_USER_AGENT : USER_AGENT, "cache-control": "no-cache", ...headers },
-    });
-    // Timed to the answer's headers: the body is never read.
-    colo = coloOf(response.headers.get("cf-ray"));
-    total = serverTotal(response.headers.get("server-timing"));
-    await response.body?.cancel().catch(() => undefined);
-    const good = expect == null ? response.ok : response.status === expect;
-    return good || `HTTP ${response.status}`;
-  }, timeoutMs);
+  const result = await gate(() =>
+    timed(async (signal) => {
+      const response = await fetcher(url, {
+        signal,
+        redirect: "manual",
+        headers: { "user-agent": browser ? BROWSER_USER_AGENT : USER_AGENT, "cache-control": "no-cache", ...headers },
+      });
+      // Timed to the answer's headers: the body is never read.
+      colo = coloOf(response.headers.get("cf-ray"));
+      total = serverTotal(response.headers.get("server-timing"));
+      await response.body?.cancel().catch(() => undefined);
+      const good = expect == null ? response.ok : response.status === expect;
+      return good || `HTTP ${response.status}`;
+    }, timeoutMs),
+  );
   const out = colo ? { ...result, colo } : result;
   return total != null && result.ok ? { ...out, server_ms: total } : out;
 }
@@ -208,40 +243,49 @@ export function confirmSlow(first: ProbeResult, again: ProbeResult | null): Prob
   return { ...better, ...(colo ? { colo } : {}), first_ms: first.ms };
 }
 
-/** What runs a check. `billing` is null when there is no binding to it. */
+/**
+ * What runs a check. `billing` is null when there is no binding to it.
+ * A call through a binding takes the signal that gives up on it, so one
+ * that timed out does not keep its place among the six (`limit`).
+ */
 export type Probers = {
   fetch: Fetch;
-  billing: (() => Promise<unknown>) | null;
+  billing: ((signal: AbortSignal) => Promise<unknown>) | null;
   /** Git storage's recent health, through the repos service; null when not bound. */
-  storage?: (() => Promise<StorageReport>) | null;
+  storage?: ((signal: AbortSignal) => Promise<StorageReport>) | null;
   timeoutMs?: number;
+  /** Room for each request; none waits when left out. */
+  gate?: Gate;
 };
 
 /** Runs one part's check. Null for a part with no check. */
 export async function runCheck(check: Check, probers: Probers): Promise<ProbeResult | null> {
   const timeoutMs = probers.timeoutMs ?? TIMEOUT_MS;
+  const gate = probers.gate ?? ungated;
   switch (check.kind) {
     case "http": {
-      const asked = Promise.all(check.steps.map((s) => step(probers.fetch, s, timeoutMs)));
+      const asked = Promise.all(check.steps.map((s) => step(probers.fetch, s, timeoutMs, gate)));
       if (!check.serverTime) return combine(await asked);
       // The baseline goes with the pages, so it takes the same way here at the same moment.
-      const [pages, baseline] = await Promise.all([asked, step(probers.fetch, { url: check.serverTime.baseline }, timeoutMs)]);
+      const [pages, baseline] = await Promise.all([asked, step(probers.fetch, { url: check.serverTime.baseline }, timeoutMs, gate)]);
       const result = combine(pages);
       return result.ok ? { ...result, server_ms: serverOf(pages, baseline) } : result;
     }
     case "billing": {
       const billing = probers.billing;
       if (!billing) return null;
-      return timed(async () => ((await billing()) ? true : "no price book"), timeoutMs);
+      return gate(() => timed(async (signal) => ((await billing(signal)) ? true : "no price book"), timeoutMs));
     }
     case "storage": {
       const storage = probers.storage;
       if (!storage) return null;
       let report: StorageReport | null = null;
-      const asked = await timed(async () => {
-        report = await storage();
-        return true;
-      }, timeoutMs);
+      const asked = await gate(() =>
+        timed(async (signal) => {
+          report = await storage(signal);
+          return true;
+        }, timeoutMs),
+      );
       return report ? judgeStorage(report) : asked;
     }
     case "none":
@@ -249,14 +293,32 @@ export async function runCheck(check: Check, probers: Probers): Promise<ProbeRes
   }
 }
 
+/** A call that got no answer at all: it timed out, or never connected. */
+export function unanswered(result: ProbeResult): boolean {
+  return !result.ok && (result.error === "timed out" || result.error === "could not connect");
+}
+
 /**
  * Runs one part's check as the cron does: an address that answered, but
  * slowly, is asked once more straight away (`confirmSlow`) before the slow
- * answer counts. Checks through a binding are not repeated: git storage
- * reports the minutes gone by, and asking twice says the same.
+ * answer counts.
+ *
+ * A call through a binding that got no answer is asked once more too, and
+ * the second answer counts: the cron runs in a different data centre each
+ * minute, where billing and repos are seldom running yet, and starting
+ * one there can take longer than the check waits. Billing answering slowly
+ * is confirmed as an address is. What git storage reports is not asked
+ * twice: it covers the minutes gone by, and asking again says the same.
  */
 export async function probe(check: Check, probers: Probers, slowMs: number): Promise<ProbeResult | null> {
   const first = await runCheck(check, probers);
-  if (check.kind !== "http" || !first || !onlySlow(first, slowMs)) return first;
-  return confirmSlow(first, await runCheck(check, probers));
+  if (!first) return first;
+  if (check.kind === "http" || check.kind === "billing") {
+    if (onlySlow(first, slowMs)) return confirmSlow(first, await runCheck(check, probers));
+  }
+  if (check.kind !== "http" && unanswered(first)) {
+    const again = await runCheck(check, probers);
+    return again ? { ...again, first_ms: first.ms } : first;
+  }
+  return first;
 }

@@ -123,6 +123,9 @@ the checks.
 
 A brief blip does not become an incident. A slow answer is checked again
 straight away, and counts as slow only if the second answer is slow too.
+Billing and git storage, which are asked from inside g1t, are also asked
+again when they do not answer at all, and count as down only if the
+second call goes unanswered too.
 If the part recovers and stays healthy for 10 minutes before anyone
 confirms the draft, the draft is dismissed and never appears on the page.
 While g1t is deploying, and for 3 minutes after, a slow restart is not

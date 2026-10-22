@@ -4,7 +4,22 @@ import { test } from "node:test";
 import { isbot } from "isbot";
 
 import { components } from "./components.ts";
-import { BROWSER_USER_AGENT, USER_AGENT, coloOf, combine, confirmSlow, judgeStorage, judgedMs, probe, runCheck, serverOf, serverTotal, step } from "./probe.ts";
+import {
+  BROWSER_USER_AGENT,
+  USER_AGENT,
+  coloOf,
+  combine,
+  confirmSlow,
+  judgeStorage,
+  judgedMs,
+  limit,
+  probe,
+  runCheck,
+  serverOf,
+  serverTotal,
+  step,
+  unanswered,
+} from "./probe.ts";
 
 const answer = (status: number) => async () => new Response("x", { status });
 
@@ -220,4 +235,91 @@ test("page speed is judged on the site's time; a cached page on its time less th
   // A page that failed is a failure, with no time of the site's to judge.
   const failed = await runCheck(speed.check, { fetch: async (url) => new Response("x", { status: url.endsWith(".ico") ? 200 : 502 }), billing: null });
   assert.deepEqual([failed!.ok, failed!.server_ms], [false, undefined]);
+});
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test("a round waits on six answers at most, the rest in the order asked", async () => {
+  const gate = limit(2);
+  let running = 0;
+  let most = 0;
+  const started: number[] = [];
+  const job = (n: number) =>
+    gate(async () => {
+      started.push(n);
+      running += 1;
+      most = Math.max(most, running);
+      await sleep(5);
+      running -= 1;
+      return n;
+    });
+  assert.deepEqual(await Promise.all([1, 2, 3, 4, 5].map(job)), [1, 2, 3, 4, 5]);
+  assert.equal(most, 2);
+  assert.deepEqual(started, [1, 2, 3, 4, 5]);
+  // A job that fails gives its place up.
+  await assert.rejects(gate(async () => Promise.reject(new Error("no"))));
+  assert.equal(await job(6), 6);
+});
+
+test("a request's time starts when its turn comes, not while it waits", async () => {
+  const gate = limit(1);
+  const slowly = async () => {
+    await sleep(40);
+    return new Response("x");
+  };
+  // Each takes 40 ms of a 100 ms limit; the second waits 40 ms first, and still makes it.
+  const [a, b] = await Promise.all([step(slowly, { url: "https://a/" }, 100, gate), step(slowly, { url: "https://b/" }, 100, gate)]);
+  assert.deepEqual([a.ok, b.ok], [true, true]);
+  assert.ok(b.ms < 90, `timed from its turn: ${b.ms} ms`);
+});
+
+test("a binding that does not answer is given up on, and asked once more", async () => {
+  // The first call hangs until it is given up on; the second answers.
+  const signals: AbortSignal[] = [];
+  let calls = 0;
+  const billing = (signal: AbortSignal) => {
+    signals.push(signal);
+    calls += 1;
+    if (calls === 1) return new Promise<unknown>((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted"))));
+    return Promise.resolve({ version: 1 });
+  };
+  const result = await probe({ kind: "billing" }, { fetch: answer(200), billing, timeoutMs: 20 }, 800);
+  assert.equal(calls, 2);
+  assert.equal(signals[0]!.aborted, true, "the call that timed out was given up on");
+  assert.equal(result!.ok, true);
+  assert.ok(result!.first_ms! >= 15);
+  // Unanswered twice is down.
+  const never = (signal: AbortSignal) => new Promise<unknown>((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted"))));
+  const down = await probe({ kind: "billing" }, { fetch: answer(200), billing: never, timeoutMs: 10 }, 800);
+  assert.deepEqual([down!.ok, down!.error], [false, "timed out"]);
+  // An answer that says something is wrong is not asked again.
+  calls = 0;
+  const empty = async () => {
+    calls += 1;
+    return null;
+  };
+  assert.equal((await probe({ kind: "billing" }, { fetch: answer(200), billing: empty }, 800))!.error, "no price book");
+  assert.equal(calls, 1);
+});
+
+test("git storage is asked again only when the call got no answer, not for what it reported", async () => {
+  let calls = 0;
+  const failing = { minutes: 5, stores: [{ store: "g1t", calls: 10, errors: 5, rate_limited: 0, rejected: 0, ms_total: 100 }] };
+  const storage = async () => {
+    calls += 1;
+    return failing;
+  };
+  assert.equal((await probe({ kind: "storage" }, { fetch: answer(200), billing: null, storage }, 800))!.ok, false);
+  assert.equal(calls, 1, "a report of failing calls says the same twice");
+  calls = 0;
+  const flaky = async () => {
+    calls += 1;
+    if (calls === 1) throw new Error("store_health failed with status 503");
+    return { minutes: 5, stores: [] };
+  };
+  const again = await probe({ kind: "storage" }, { fetch: answer(200), billing: null, storage: flaky }, 800);
+  assert.equal(calls, 2);
+  assert.equal(again!.ok, true);
+  assert.equal(unanswered({ ok: false, ms: 5000, error: "timed out" }), true);
+  assert.equal(unanswered({ ok: false, ms: 10, error: "HTTP 502" }), false);
 });
