@@ -997,6 +997,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
             }
             reply(&outcome)
         }
+        "workspace_billing_email" => reply(&identity.workspace_billing_email(args(body)?).await?),
         "rename_workspace" => reply(&identity.rename_workspace(args(body)?).await?),
         "check_workspace_rename" => reply(&identity.check_workspace_rename(args(body)?).await?),
         "resolve_slug" => reply(&identity.resolve_slug(args(body)?).await?),

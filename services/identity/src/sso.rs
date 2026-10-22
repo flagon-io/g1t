@@ -70,7 +70,7 @@ const MAX_FIELD: usize = 2048;
 
 /// What to say to a free workspace.
 fn plan_needed(slug: &str) -> String {
-    format!("Single sign-on comes with every paid plan. An owner of {slug} can start the plan at /{slug}/-/billing#plan.")
+    format!("Single sign-on comes with every paid plan. An owner of {slug} can start the plan at /{slug}/-/settings/billing#plan.")
 }
 
 /// What to tell a member a workspace holds out until they sign in through

@@ -1075,6 +1075,13 @@ export interface BillingApi {
    * email and address. g1t never handles card numbers. Owners only.
    */
   billingPortal(actor: User, workspace: string, returnUrl: string): Promise<Result<{ url: string }>>;
+  /**
+   * Owners and billing managers only: gives the workspace's Stripe customer
+   * `email` after its billing email changes. False when nothing changed at
+   * Stripe (an empty email, no customer yet, or payments not set up); the
+   * first customer is made with the billing email.
+   */
+  setCustomerEmail(actor: User, workspace: string, email: string): Promise<Result<boolean>>;
   /** Credits a payment once the processor says it was made. Safe to repeat. */
   confirm(workspace: string, viewer: Viewer, session: string): Promise<Result<BillingAccount>>;
   /** A workspace's free trial allowance; `exempt` workspaces are open anyway. */

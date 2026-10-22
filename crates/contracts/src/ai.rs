@@ -2,7 +2,7 @@
 //! answers with. Kept by the integrations service (`src/ai.rs`), but not an
 //! integration: integrations connect outside products, from a directory
 //! others will publish to; a workspace's AI is one of its own settings, at
-//! `/:workspace/-/ai`.
+//! `/:workspace/-/settings/ai`.
 //!
 //! - **AI providers.** A frontier lab or a model platform at a known
 //!   address, or a model the workspace hosts itself behind an Anthropic- or

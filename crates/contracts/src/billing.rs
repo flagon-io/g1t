@@ -115,6 +115,19 @@ pub struct BillingPortalArgs {
     pub return_url: String,
 }
 
+/// `set_customer_email`: gives the workspace's Stripe customer `email`,
+/// where its receipts and invoices go, after the billing email changes on
+/// the workspace's profile. Owners and billing managers only. Returns
+/// `Outcome<bool>`: false when nothing changed at Stripe (an empty email,
+/// no customer yet, or payments not set up); the first customer is made
+/// with the billing email.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetCustomerEmailArgs {
+    pub actor: User,
+    pub workspace: String,
+    pub email: String,
+}
+
 /// `admin_billing_link`: for staff to send a customer: their Stripe billing
 /// page. Returns `Outcome<BillingLink>`.
 #[derive(Debug, Serialize, Deserialize)]
@@ -1148,7 +1161,7 @@ pub struct Spike {
 ///   it, is spent this month.
 ///
 /// The message says exactly what to do, with the page to do it on (such as
-/// `/acme/-/billing`).
+/// `/acme/-/settings/billing`).
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReserveArgs {

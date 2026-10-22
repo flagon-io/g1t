@@ -69,7 +69,7 @@ impl PaidFeature {
 pub fn needs_activation(feature: PaidFeature, workspace: &str) -> String {
     format!(
         "{} on private repositories comes with the g1t plan, which {workspace} does not have; its scans are charged at cost plus 20%. \
-         An owner can start the plan at /{workspace}/-/billing. Public repositories have it free.",
+         An owner can start the plan at /{workspace}/-/settings/billing. Public repositories have it free.",
         feature.title()
     )
 }
@@ -1236,6 +1236,6 @@ mod tests {
     fn the_refusal_says_how_to_start_the_plan() {
         let message = needs_activation(PaidFeature::CodeScanning, "acme");
         assert!(message.starts_with("Code scanning on private repositories comes with the g1t plan"));
-        assert!(message.contains("/acme/-/billing") && message.contains("Public repositories have it free"));
+        assert!(message.contains("/acme/-/settings/billing") && message.contains("Public repositories have it free"));
     }
 }
