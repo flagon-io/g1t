@@ -1000,6 +1000,7 @@ fn g1t_with(mock: &Mock, dir: &PathBuf, args: &[&str], env: &[(&str, &str)]) -> 
         .env_remove("G1T_REPO")
         .env_remove("G1T_HOST")
         .env_remove("G1T_SESSION")
+        .env_remove("G1T_TOUCH")
         .stdin(Stdio::null());
     for (k, v) in env {
         command.env(k, v);
