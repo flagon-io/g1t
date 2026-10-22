@@ -214,6 +214,13 @@ branch, and its report once it ends, linked to its page. Mention `@g1t`
 in a comment to have g1t carry on with the pull request; see
 [assign g1t, or ask it in the thread](/guides/sessions/#assign-g1t-or-ask-it-in-the-thread).
 
+A pull request whose commits say a coding agent made them, such as
+GitHub Copilot's `Agent-Logs-Url` trailer or Cursor's address as a
+co-author, names the agent beside its title, with the person it counts
+for: whoever started the agent, when they've verified the address the
+commit names. Point at the agent mark to see which rule matched. See
+[whose work is an agent's](/guides/home/#whose-work-is-an-agents).
+
 A coding agent that works on a pull request can record how it made the
 change, entry by entry, with the `pull_request` tool's `record_session`
 action. Read it on the pull request's **Session** tab, or with
