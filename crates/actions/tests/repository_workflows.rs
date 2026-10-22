@@ -393,7 +393,8 @@ fn main_saves_every_cache_that_pull_requests_and_releases_restore() {
     // a release tag's run never reads another tag's entries. So every
     // entry any step restores is saved by a workflow that runs on pushes
     // to main, and the release workflows only restore.
-    let on_main = ["ci.yml", "caches.yml", "deploy.yml"];
+    // self-host.yml saves its image's build on main's pushes and nightly.
+    let on_main = ["ci.yml", "caches.yml", "deploy.yml", "self-host.yml"];
     for file in on_main {
         let push = read(file).trigger("push").cloned().unwrap();
         assert!(push.branches.allows("main"), "{file}");

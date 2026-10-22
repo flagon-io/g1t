@@ -75,11 +75,11 @@ jobs:
           services:
             g1t:
               build:
-                cache_from: [type=local,src=/tmp/self-host-cache]
-                cache_to: [type=local,dest=/tmp/self-host-cache-new,mode=max]
+                cache_from: ["type=local,src=/tmp/self-host-cache"]
+                cache_to: ["type=local,dest=/tmp/self-host-cache-new,mode=max"]
             status:
               build:
-                cache_from: [type=local,src=/tmp/self-host-cache]
+                cache_from: ["type=local,src=/tmp/self-host-cache"]
           EOF
       - name: Build and start the stack
         run: $COMPOSE up --build -d
