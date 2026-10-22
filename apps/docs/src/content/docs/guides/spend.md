@@ -89,6 +89,14 @@ commit that names the session (or its root session) in a `G1t-Session`
 trailer. What is still open, or was closed without merging, counts as not
 landed.
 
+### Sessions recorded from telemetry
+
+A harness that exports its own OpenTelemetry to g1t reports a session's
+usage without a plugin, and its own cost where it has one (Claude Code's,
+and Codex's for API-key accounts). A session is never counted twice: one
+whose plugin reported usage keeps the plugin's figures. See
+[agent telemetry](/guides/agent-telemetry/).
+
 ### Sessions with no known cost
 
 A session that reported no usage costs no known amount, so it isn't

@@ -17,6 +17,7 @@ are approved in the browser. Never ask for a person's password.
 - [g1t MCP discovery](https://mcp.g1t.sh/.well-known/oauth-protected-resource): OAuth resource metadata.
 - [g1t CLI](https://docs.g1t.sh/guides/cli.md): Official installation and scripting.
 - [g1t Homebrew tap](https://g1t.sh/flagon-io/homebrew-tap): Official CLI packages hosted on g1t.
+- [g1t agent telemetry](https://docs.g1t.sh/guides/agent-telemetry.md): OTLP/HTTP endpoints (/v1/logs, /v1/metrics) for coding agents' own OpenTelemetry.
 - [g1t API versioning policy](https://docs.g1t.sh/reference/versioning.md): Version selection and deprecation signals.
 
 ## Product
