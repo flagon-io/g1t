@@ -1,0 +1,14 @@
+{
+  "name": "g1t",
+  "version": "0.1.0",
+  "description": "Records your GitHub Copilot CLI sessions on g1t through the g1t CLI: prompts, tool calls and what they were called with (never what they returned), the files, commits and branches touched, each subagent as a session of its own, and what each cost, from the token counts Copilot CLI writes.",
+  "author": {
+    "name": "Flagon, Inc.",
+    "url": "https://g1t.sh"
+  },
+  "homepage": "https://docs.g1t.sh/guides/bring-your-own-agent/#github-copilot-cli",
+  "repository": "https://g1t.sh/flagon-io/g1t",
+  "license": "MIT",
+  "keywords": ["g1t", "sessions", "work-items"],
+  "hooks": "hooks/hooks.json"
+}

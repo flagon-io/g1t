@@ -15,7 +15,10 @@
 # when the version changes.
 #
 # Codex is sourced from plugins/codex/, with its own version guard, and
-# published as plugins/g1t-codex/ with .agents/plugins/marketplace.json.
+# published as plugins/g1t-codex/ with .agents/plugins/marketplace.json;
+# Cursor's (plugins/cursor/) and Copilot CLI's (plugins/copilot/) likewise,
+# with their own catalogs, and the Gemini CLI extension (plugins/gemini/)
+# at the published repository's top, where Gemini CLI installs it from.
 #
 # Runs on a push to main that changes the plugin, its manifest or the
 # script, and by hand.
@@ -36,6 +39,9 @@ on:
       - .claude-plugin/**
       - plugins/claude-code/**
       - plugins/codex/**
+      - plugins/cursor/**
+      - plugins/copilot/**
+      - plugins/gemini/**
       - scripts/plugins-release.mjs
       - LICENSE
   workflow_dispatch:

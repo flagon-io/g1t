@@ -3,8 +3,10 @@
 //!
 //! The prices are list prices in US dollars per million tokens:
 //! Anthropic's first-party prices, from the pricing page of Anthropic's API
-//! documentation, checked on 2026-10-06, and OpenAI's Standard tier, from
-//! OpenAI's API pricing page, checked on 2026-10-22. Writing to the prompt
+//! documentation, checked on 2026-10-06, OpenAI's Standard tier, from
+//! OpenAI's API pricing page, checked on 2026-10-22, and Google's Gemini
+//! API paid Standard tier, from its pricing page, checked on 2026-10-22
+//! (Gemini's implicit caching has no write price). Writing to the prompt
 //! cache costs 1.25 times the input price for Anthropic's 5-minute lifetime
 //! and OpenAI's 30-minute one, and twice it for Anthropic's 1-hour one. An
 //! OpenAI prompt over 272,000 input tokens costs more on its larger models;
@@ -44,15 +46,17 @@ const fn price(input: f64, output: f64, cache_read: f64) -> ModelPrice {
 }
 
 /// The tier of claude-haiku-5-5 for a request whose prompt (input, cache
-/// read and cache write tokens) is over [`LONG_PROMPT_TOKENS`].
+/// read and cache write tokens) is over [`LONG_PROMPT_TOKENS`], and of
+/// gemini-2.5-pro and gemini-3.1-pro-preview for one over 200,000 tokens.
 pub const LONG_TIER: &str = "long";
 
 /// The prompt size above which claude-haiku-5-5 is priced as [`LONG_TIER`].
 pub const LONG_PROMPT_TOKENS: u64 = 100_000;
 
 /// Every model priced, by its id: from Anthropic's pricing documentation,
-/// checked on 2026-10-06, and OpenAI's, checked on 2026-10-22.
-/// claude-haiku-5-5 has a second row for its [`LONG_TIER`].
+/// checked on 2026-10-06, and OpenAI's and Google's, checked on 2026-10-22.
+/// claude-haiku-5-5, gemini-2.5-pro and gemini-3.1-pro-preview have a
+/// second row for their [`LONG_TIER`].
 pub const MODEL_PRICES: &[(&str, Option<&str>, ModelPrice)] = &[
     ("claude-fable-5-1", None, price(10.0, 50.0, 0.25)),
     ("claude-mythos-5-1", None, price(10.0, 50.0, 0.25)),
@@ -80,6 +84,23 @@ pub const MODEL_PRICES: &[(&str, Option<&str>, ModelPrice)] = &[
     ("gpt-5.5", None, price(5.0, 30.0, 0.50)),
     ("gpt-5.4", None, price(2.50, 15.0, 0.25)),
     ("gpt-5.3-codex", None, price(1.75, 14.0, 0.175)),
+    // Google's Gemini API, Paid tier, Standard, for text, as Gemini CLI uses
+    // them. Thinking tokens are billed as output; caching is implicit, with
+    // no write price. The Pro models cost more for a prompt over 200,000
+    // tokens: their LONG_TIER. gemini-3.6-flash and gemini-3.8-flash double
+    // on 2027-01-01. gemini-3-pro-preview and gemini-3.5-flash, which Gemini
+    // CLI also names, have no list price there.
+    ("gemini-3.1-pro-preview", None, price(2.0, 12.0, 0.20)),
+    ("gemini-3.1-pro-preview", Some(LONG_TIER), price(4.0, 18.0, 0.40)),
+    ("gemini-2.5-pro", None, price(1.25, 10.0, 0.125)),
+    ("gemini-2.5-pro", Some(LONG_TIER), price(2.50, 15.0, 0.25)),
+    ("gemini-3.8-flash", None, price(0.75, 3.75, 0.075)),
+    ("gemini-3.6-flash", None, price(0.75, 3.75, 0.075)),
+    ("gemini-3-flash-preview", None, price(0.50, 3.0, 0.05)),
+    ("gemini-2.5-flash", None, price(0.30, 2.50, 0.03)),
+    ("gemini-3.5-flash-lite", None, price(0.30, 2.50, 0.03)),
+    ("gemini-3.1-flash-lite", None, price(0.25, 1.50, 0.025)),
+    ("gemini-2.5-flash-lite", None, price(0.10, 0.40, 0.01)),
 ];
 
 /// A model id as the price table names it: lowercase, without a provider
@@ -273,6 +294,12 @@ mod tests {
         assert_eq!(model_price("gpt-5.6-sol", None), Some(price(4.0, 20.0, 0.40)));
         assert_eq!(model_price("gpt-5.3-codex", None), Some(price(1.75, 14.0, 0.175)));
         assert!(close(model_price("gpt-6-sol", None).unwrap().cache_write_5m(), 2.50));
+        // Google's, as Gemini CLI uses them, with the Pro models' long prompts dearer.
+        assert_eq!(model_price("gemini-2.5-pro", None), Some(price(1.25, 10.0, 0.125)));
+        assert_eq!(model_price("gemini-2.5-pro", Some("long")), Some(price(2.50, 15.0, 0.25)));
+        assert_eq!(model_price("gemini-3.1-pro-preview", Some("long")), Some(price(4.0, 18.0, 0.40)));
+        assert_eq!(model_price("gemini-3-flash-preview", None), Some(price(0.50, 3.0, 0.05)));
+        assert_eq!(model_price("gemini-3.8-flash", Some("long")), Some(price(0.75, 3.75, 0.075)));
     }
 
     #[test]
@@ -289,7 +316,8 @@ mod tests {
     #[test]
     fn other_models_are_priced_as_unknown() {
         // Codex's own review model has no list price.
-        for model in ["gpt-5.1-codex", "codex-auto-review", "claude-opus-3", "o3", "<synthetic>", "claude-opus-5-5x"] {
+        // Gemini CLI's gemini-3-pro-preview and gemini-3.5-flash have no list price.
+        for model in ["gpt-5.1-codex", "codex-auto-review", "claude-opus-3", "o3", "<synthetic>", "claude-opus-5-5x", "gemini-3-pro-preview", "gemini-3.5-flash"] {
             assert_eq!(model_price(model, None), None, "{model}");
         }
     }
