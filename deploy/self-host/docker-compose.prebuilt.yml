@@ -1,0 +1,20 @@
+# For CI (.g1t/workflows/self-host.yml): the image takes its Rust services
+# built beforehand, from ../../.self-host-prebuilt (services/<name>/build and
+# apps/api/build), instead of compiling them. Not for a self-hosted
+# installation, which builds from source:
+#
+#   docker compose -f deploy/self-host/docker-compose.yml \
+#     -f deploy/self-host/docker-compose.prebuilt.yml up --build
+services:
+  g1t:
+    build:
+      args:
+        RUST_BUILD: rust-prebuilt
+      additional_contexts:
+        prebuilt: ../../.self-host-prebuilt
+  status:
+    build:
+      args:
+        RUST_BUILD: rust-prebuilt
+      additional_contexts:
+        prebuilt: ../../.self-host-prebuilt

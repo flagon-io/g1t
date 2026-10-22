@@ -2,6 +2,13 @@
 # `wrangler dev`, with D1, KV and Queues kept on the /data volume.
 # Build context: the repository root (see docker-compose.yml).
 
+# Where the Rust services come from: compiled here (rust, the default), or
+# built beforehand and handed in as the build context named "prebuilt"
+# (rust-prebuilt): CI builds them in parallel with the deploy's caches
+# (.g1t/workflows/self-host.yml, docker-compose.prebuilt.yml). Only the
+# stage named here is built.
+ARG RUST_BUILD=rust
+
 # ── The Rust services, compiled to WebAssembly as they are for Workers ──
 FROM rust:1-slim-bookworm AS rust
 RUN apt-get update \
@@ -26,6 +33,12 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     done \
  && (cd apps/api && worker-build --release)
 
+# ── Or the same builds, made beforehand: services/<name>/build and apps/api/build ──
+FROM scratch AS rust-prebuilt
+COPY --from=prebuilt / /src/
+
+FROM ${RUST_BUILD} AS rust-out
+
 # ── The site, built by React Router; the TypeScript services' packages ──
 FROM node:24-bookworm-slim AS node
 WORKDIR /app
@@ -42,8 +55,8 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=node --chown=node:node /app /app
-COPY --from=rust /src/services /tmp/rust-services
-COPY --from=rust --chown=node:node /src/apps/api/build apps/api/build
+COPY --from=rust-out /src/services /tmp/rust-services
+COPY --from=rust-out --chown=node:node /src/apps/api/build apps/api/build
 RUN for service in identity repos work events search billing security actions webhooks integrations packages; do \
       cp -r /tmp/rust-services/$service/build services/$service/build; \
     done \

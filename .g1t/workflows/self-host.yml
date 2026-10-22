@@ -48,18 +48,115 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  smoke:
-    name: Smoke test
+  # The Rust services the stack runs, split into jobs as a deploy splits
+  # its own (scripts/deploy/self-host-builds.mjs, rustShards).
+  plan:
+    name: Plan
     runs-on: ubuntu-latest
-    # The most g1t's own machines give a job; building every Rust service
-    # to WebAssembly and the site is most of it. Docker inside the job's
-    # sandbox cannot start a builder of its own (BuildKit in a container),
-    # so the build's layers are not kept between runs.
-    timeout-minutes: 60
-    env:
-      COMPOSE: docker compose -p g1t-selfhost -f deploy/self-host/docker-compose.yml
+    timeout-minutes: 5
+    outputs:
+      builds: ${{ steps.plan.outputs.builds }}
     steps:
       - uses: actions/checkout@v5
+      - id: plan
+        run: node scripts/deploy/self-host-builds.mjs
+
+  # Each job builds its services as the deploy builds them, with the same
+  # caches: worker-build and its tools, the crates, the compiled
+  # dependencies and sccache. Docker in a job's sandbox keeps no layers
+  # between runs, so compiling them in the image took ~15 of the job's
+  # ~25 minutes, one service after another (#417).
+  build:
+    name: build (${{ matrix.group }})
+    needs: [plan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: true
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.builds) }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Rust for Workers
+        run: rustup target add wasm32-unknown-unknown
+      - name: Cache worker-build
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/worker-build
+          key: worker-build-${{ runner.os }}-${{ hashFiles('scripts/build-rust-worker.mjs') }}
+      - name: Cache worker-build's tools (wasm-bindgen, esbuild)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/worker-build
+          key: worker-build-tools-${{ runner.os }}-${{ hashFiles('scripts/build-rust-worker.mjs') }}
+      - name: Cache keys
+        id: keys
+        run: node scripts/deploy/ci-cache.mjs keys
+      - name: Cache crates
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+          key: cargo-crates-${{ runner.os }}-${{ steps.keys.outputs.cargo }}
+          restore-keys: cargo-crates-${{ runner.os }}-
+      # The deploy's own entries for these services are the best start;
+      # this job saves under its own name, so it never stands in for them.
+      - name: Cache the Cargo target
+        uses: actions/cache@v4
+        with:
+          path: |
+            target/release
+            target/wasm32-unknown-unknown/release
+            !target/**/incremental
+            !target/**/*.wasm
+          key: cargo-workers-${{ runner.os }}-${{ steps.keys.outputs.rust }}-self-host-${{ matrix.group }}-${{ steps.keys.outputs.cargo }}
+          restore-keys: |
+            cargo-workers-${{ runner.os }}-${{ steps.keys.outputs.rust }}-self-host-${{ matrix.group }}-
+            cargo-workers-${{ runner.os }}-${{ steps.keys.outputs.rust }}-
+      - name: sccache
+        run: bash scripts/sccache.sh install
+      - name: Cache npm's downloads
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.npm
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-full-${{ runner.os }}-
+      - name: Install
+        run: node scripts/deploy.mjs install --only "${{ matrix.units }}"
+      - name: Build ${{ matrix.units }}
+        run: node scripts/deploy.mjs build --only "${{ matrix.units }}" --concurrency 2
+      - name: Keep what was built
+        run: tar -cf build.tar $(node scripts/deploy.mjs outputs --only "${{ matrix.units }}")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: self-host-${{ matrix.group }}
+          path: build.tar
+          if-no-files-found: error
+          retention-days: 1
+      - name: sccache's hits and misses
+        if: ${{ always() }}
+        run: bash scripts/sccache.sh stats
+
+  smoke:
+    name: Smoke test
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # The image takes the Rust services built above (RUST_BUILD=rust-prebuilt).
+      COMPOSE: docker compose -p g1t-selfhost -f deploy/self-host/docker-compose.yml -f deploy/self-host/docker-compose.prebuilt.yml
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: self-host-*
+          path: self-host-builds
+      - name: Unpack the Rust services
+        run: |
+          mkdir -p .self-host-prebuilt
+          for tar in self-host-builds/*/build.tar; do tar -xf "$tar" -C .self-host-prebuilt; done
+          ls .self-host-prebuilt/services .self-host-prebuilt/apps/api
       - name: Build and start the stack
         run: |
           started=$(date +%s)

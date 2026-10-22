@@ -183,7 +183,10 @@ Cloudflare resources: a new binding is optional in code, or the self-host
 stack provides it. `.g1t/workflows/self-host.yml` builds the stack from
 the commit and runs `deploy/self-host/smoke.sh` against it, on every change
 to what it builds and nightly on `main`; a failure names the step, and the
-stack's logs are the run's artifact. Run it yourself with:
+stack's logs are the run's artifact. CI builds the Rust services first, in
+parallel jobs with the deploy's caches (`scripts/deploy/self-host-builds.mjs`),
+and the image takes them as built (`docker-compose.prebuilt.yml`); on your
+own machine the image compiles them. Run it yourself with:
 
 ```sh
 docker compose -p g1t-selfhost -f deploy/self-host/docker-compose.yml up --build -d
