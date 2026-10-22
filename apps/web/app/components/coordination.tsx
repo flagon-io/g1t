@@ -1350,7 +1350,7 @@ export function StartHere({ title }: { title: string }) {
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>Connect your agent</DialogTitle>
-            <DialogDescription>Choose your client, connect it to g1t, then ask it to work on this project.</DialogDescription>
+            <DialogDescription>Choose your client, connect it to g1t, then ask it to work on this repository.</DialogDescription>
           </DialogHeader>
           <AgentSetup />
           <p className="text-xs text-muted">Ask your agent to claim a work item and record its session so the team can follow along.</p>

@@ -629,7 +629,7 @@ function CodeSide() {
       <div className="px-2 pt-2">
         <div className="flex h-7 items-center gap-1 px-1 text-[12px] font-medium text-fg">
           <ChevronLeft size={14} className="text-faint" />
-          All projects
+          All repositories
         </div>
         <div className="mt-1 flex items-center gap-2 rounded-md px-2 py-1">
           <span className="flex size-5 items-center justify-center rounded-md bg-raised text-muted ring-1 ring-line">
@@ -1117,7 +1117,7 @@ function PeopleCardMock() {
     { name: "g1t", agent: true, parts: { shipped: 3, chat: 4 } },
   ];
   const legend: [WorkKind, string][] = [
-    ["pushes", "23 commits to 2 projects"],
+    ["pushes", "23 commits to 2 repositories"],
     ["pulls", "4 opened, 3 merged"],
     ["items", "3 opened, 2 closed"],
     ["shipped", "3 deploys"],

@@ -16,7 +16,7 @@ export type RoadmapItem = {
    * in the project's sidebar ("Project"), or the workspace, for what spans
    * projects (Insights).
    */
-  section: "Code" | "Deployments" | "Observability" | "Security" | "Insights" | "Project" | "Workspace";
+  section: "Code" | "Deployments" | "Observability" | "Security" | "Insights" | "Repository" | "Workspace";
   /** One line, for the menu's tooltip and the page's lead. */
   summary: string;
   /** Why it matters, in two or three sentences. */
@@ -36,11 +36,11 @@ export const ROADMAP: RoadmapItem[] = [
   {
     key: "storage",
     title: "Storage",
-    section: "Project",
-    summary: "Configure databases and storage for your project.",
+    section: "Repository",
+    summary: "Configure databases and storage for your repository.",
     why: "Manage the data services your app depends on alongside its deployments, with connections scoped to the right environment.",
     plans: [
-      "Connect databases and storage to a project",
+      "Connect databases and storage to a repository",
       "Configure connections for production and preview environments",
       "Manage connection credentials alongside environment variables",
     ],
@@ -49,8 +49,8 @@ export const ROADMAP: RoadmapItem[] = [
   {
     key: "daemons",
     title: "Daemons",
-    section: "Project",
-    summary: "Long-running background processes for your project.",
+    section: "Repository",
+    summary: "Long-running background processes for your repository.",
     why: "Keep queue consumers and background workers running alongside your app, with their configuration and activity in the same project.",
     plans: [
       "Run containerized background processes",
@@ -61,7 +61,7 @@ export const ROADMAP: RoadmapItem[] = [
   {
     key: "analytics",
     title: "Analytics",
-    section: "Project",
+    section: "Repository",
     summary: "Who visits the deployed apps, without cookies.",
     why: "Visits, pages and referrers for each app, private by design, from Cloudflare's own analytics.",
     plans: ["Visits, pages, referrers and countries", "No cookies, no personal data", "Per deployment and per preview"],
@@ -69,8 +69,8 @@ export const ROADMAP: RoadmapItem[] = [
   {
     key: "firewall",
     title: "Firewall",
-    section: "Project",
-    summary: "Rules for who may reach the project's deployed apps.",
+    section: "Repository",
+    summary: "Rules for who may reach the repository's deployed apps.",
     why: "Deployed apps run on Cloudflare. Rate limits, bot protection and IP rules, per app and environment.",
     plans: ["Rate limits and bot protection", "IP and country rules", "Password-protected previews"],
     today: { label: "Deployments", path: "deployments" },
@@ -78,7 +78,7 @@ export const ROADMAP: RoadmapItem[] = [
   {
     key: "flags",
     title: "Flags",
-    section: "Project",
+    section: "Repository",
     summary: "Turn features on per environment or per user, without a deploy.",
     why: "Ship code dark and turn it on when ready, for some users first, at the edge, with no deploy.",
     plans: ["Flags read at the edge by deployed apps", "Rollouts by percentage, user or environment", "Reminders to clean up flags once fully on"],
@@ -106,15 +106,15 @@ export const ROADMAP: RoadmapItem[] = [
     section: "Insights",
     summary: "Lead time, deploy frequency, change failure rate and time to restore.",
     why: "The four numbers that say how well a team ships, measured from what actually happened in g1t.",
-    plans: ["DORA metrics from merges and deployments", "Review and queue time", "Trends by week and by project"],
+    plans: ["DORA metrics from merges and deployments", "Review and queue time", "Trends by week and by repository"],
   },
   {
     key: "costs",
     title: "Costs",
     section: "Insights",
-    summary: "What the project costs, by workflow run, sandbox, build and app.",
-    why: "Usage is charged by the workspace; here it is broken down for one project, so you can see what each part of the work costs.",
-    plans: ["Cost by kind of work and by work item", "Cost per merged change", "Budgets per project"],
+    summary: "What the repository costs, by workflow run, sandbox, build and app.",
+    why: "Usage is charged by the workspace; here it is broken down for one repository, so you can see what each part of the work costs.",
+    plans: ["Cost by kind of work and by work item", "Cost per merged change", "Budgets per repository"],
   },
 ];
 

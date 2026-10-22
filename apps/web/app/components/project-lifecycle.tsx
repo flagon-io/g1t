@@ -71,7 +71,7 @@ function ArchiveAction({ full, archived, error }: { full: string; archived: bool
       error={error}
       trigger={(open) => (
         <DangerAction
-          title={archived ? "Unarchive this project" : "Archive this project"}
+          title={archived ? "Unarchive this repository" : "Archive this repository"}
           action={
             <Button type="button" variant="destructive" onClick={open}>
               {archived ? "Unarchive" : "Archive"}
@@ -111,12 +111,12 @@ function DeleteAction({ full, error }: { full: string; error: string | null }) {
       title={`Delete ${full}?`}
       description={`You can restore it for ${RESTORE_DAYS} days.`}
       confirm={full}
-      submit="Delete project"
+      submit="Delete repository"
       busy="Deleting…"
       error={error}
       trigger={(open) => (
         <DangerAction
-          title="Delete this project"
+          title="Delete this repository"
           action={
             <Button type="button" variant="destructive" onClick={open}>
               Delete
@@ -151,7 +151,7 @@ function TransferAction({ repo, destinations, error }: { repo: string; destinati
   const name = repo.split("/")[1];
   return (
     <DangerAction
-      title="Transfer this project"
+      title="Transfer this repository"
       action={
         <Button type="button" variant="destructive" disabled={destinations.length === 0} onClick={() => setOpen(true)}>
           Transfer

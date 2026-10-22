@@ -209,9 +209,7 @@ export default function WorkspaceRepositories({ loaderData, actionData }: Route.
         )}
 
         {list.length === 0 ? (
-          <EmptyState title="No repositories yet">
-            A repository is made with each new project, or the first time you push to a new address in {slug}.
-          </EmptyState>
+          <EmptyState title="No repositories yet">A repository is made with New repository, or the first time you push to a new address in {slug}.</EmptyState>
         ) : shown.length === 0 ? (
           <Card asChild tone="plain" className="border-dashed px-4 py-8 text-center text-sm text-muted">
             <p>

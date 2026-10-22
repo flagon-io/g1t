@@ -17,7 +17,7 @@ export function meta({ loaderData, ...args }: Route.MetaArgs) {
   const filter = loaderData?.language ?? (loaderData?.topic ? `#${loaderData.topic}` : null);
   return page(args, {
     title: filter ? `${filter} · Explore · g1t` : "Explore · g1t",
-    description: filter ? `Public projects on g1t in ${filter}.` : "Public projects on g1t: recently active, newly created, and by language and topic.",
+    description: filter ? `Public repositories on g1t in ${filter}.` : "Public repositories on g1t: recently active, newly created, and by language and topic.",
   });
 }
 
@@ -129,7 +129,7 @@ export default function ExplorePage({ loaderData }: Route.ComponentProps) {
     <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
       <h1 className="text-2xl font-semibold tracking-tight">Explore</h1>
       <p className="mt-1 text-muted">
-        Public projects on g1t{language ? ` in ${language}` : ""}
+        Public repositories on g1t{language ? ` in ${language}` : ""}
         {topic ? ` about ${topic}` : ""}.
       </p>
       <Form action="/search" role="search" className="relative mt-6 max-w-2xl">
@@ -177,8 +177,8 @@ export default function ExplorePage({ loaderData }: Route.ComponentProps) {
             </div>
           ) : explore.repos.length === 0 ? (
             <div className="mt-4">
-              <EmptyState title="No public projects here yet">
-                {filtered ? "Try another language or topic." : "Public projects appear here as they are made."}
+              <EmptyState title="No public repositories here yet">
+                {filtered ? "Try another language or topic." : "Public repositories appear here as they are made."}
               </EmptyState>
             </div>
           ) : (

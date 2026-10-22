@@ -595,7 +595,7 @@ export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
           <Plus size={14} /> New work item
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
-          <DropdownMenuLabel>Filed from which project?</DropdownMenuLabel>
+          <DropdownMenuLabel>Filed from which repository?</DropdownMenuLabel>
           {repos.map((repo) => (
             <DropdownMenuItem key={repo.name} asChild>
               <Link to={newItemPath(repo.namespace, repo.name)}>
@@ -611,7 +611,7 @@ export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
         to={"/new"}
         className="inline-flex items-center gap-1.5 rounded-md border border-line-strong px-3 py-2 text-sm font-medium text-fg/90 hover:bg-raised hover:text-fg"
       >
-        <Plus size={14} /> New project
+        <Plus size={14} /> New repository
       </Link>
     );
 
@@ -642,7 +642,7 @@ export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
       <Card asChild tone="plain" className="grid grid-cols-2 gap-px overflow-hidden bg-line lg:grid-cols-4">
         <section aria-label="At a glance">
           <Stat
-            label="Projects"
+            label="Repositories"
             value={stats.projects == null ? "—" : String(stats.projects)}
             hint={
               stats.projectsThisMonth == null
@@ -729,11 +729,11 @@ export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
                   <Empty
                     action={
                       <Link to={"/new"} className="rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg hover:bg-fg-hover">
-                        Create or import a project
+                        Create or import a repository
                       </Link>
                     }
                   >
-                    <p className="font-medium text-fg">No projects yet</p>
+                    <p className="font-medium text-fg">No repositories yet</p>
                     <p className="mt-1">Create a repository or import one. Reviews, failed deploys and invitations for you show up here.</p>
                   </Empty>
                 ) : (

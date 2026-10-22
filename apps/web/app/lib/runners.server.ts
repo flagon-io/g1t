@@ -154,7 +154,7 @@ export async function actOnRunners(owner: RunnersOwner, actor: User, form: FormD
     }
     case "inherit": {
       const saved = await runners.setSettings(actor, owner, { inherit: true });
-      return saved.ok ? { notice: "This project follows the workspace's runner settings again." } : { error: saved.error.message };
+      return saved.ok ? { notice: "This repository follows the workspace's runner settings again." } : { error: saved.error.message };
     }
     default:
       return { error: "Nothing to do." };

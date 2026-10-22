@@ -1,10 +1,10 @@
 ---
 title: Deployments
-description: A project's production on every push and a live preview of every branch with a pull request, on g1t.page. Scales to zero, and billed to the workspace.
+description: A repository's production on every push and a live preview of every branch with a pull request, on g1t.page. Scales to zero, and billed to the workspace.
 ---
 
-Deployments put your [project](/guides/projects/) on the web. They are off
-for every project until you turn them on. Once they are on, every branch
+Deployments put your [repository](/guides/repositories/) on the web. They are off
+for every repository until you turn them on. Once they are on, every branch
 with a pull request gets its own live preview, linked on the pull request,
 and the default branch goes to production on every push. Reviewers
 click through the change instead of reading a diff.
@@ -12,13 +12,13 @@ click through the change instead of reading a diff.
 Apps run on Cloudflare Workers, on `g1t.page`: sites, Workers projects,
 and Node.js servers such as Express apps. A server that cannot run as a
 Worker runs as a container on Cloudflare Containers behind one; see
-[What a project is built as](#what-a-project-is-built-as) and
+[What an app is built as](#what-an-app-is-built-as) and
 [Docker deployments](#docker-deployments):
 
-|                                   | Address                                                |
-| --------------------------------- | ------------------------------------------------------ |
-| Production                        | `https://<project>-<workspace>.g1t.page`               |
-| Preview of the branch `fix-login` | `https://<project>-git-fix-login-<workspace>.g1t.page` |
+|                                   | Address                                                   |
+| --------------------------------- | --------------------------------------------------------- |
+| Production                        | `https://<repository>-<workspace>.g1t.page`               |
+| Preview of the branch `fix-login` | `https://<repository>-git-fix-login-<workspace>.g1t.page` |
 
 A preview's address follows its branch, so it stays the same for every push
 to it. A pull request from a fork, as coding agents make them, is named
@@ -57,7 +57,7 @@ container wakes in seconds, and sleeps again after five minutes without a
 request.
 
 Deployments are part of the [g1t plan](/guides/usage-and-billing/#the-g1t-plan),
-and are opt-in per project. A project set to deploy on g1t, with
+and are opt-in per repository. A repository set to deploy on g1t, with
 deployments off, says **Deployments are off** on its overview, with **Turn on deployments** for
 people with the Admin [role](/guides/access-and-roles/) on its repository. Nothing builds or runs until you turn them on, and one click turns
 them off again.
@@ -69,9 +69,9 @@ them off again.
    and chooses **Start the g1t plan** on the **g1t** card. Back on
    Billing, the card says **On the g1t plan**. The trial does not pay for
    deployments.
-2. **Turn on deployments for a project.** Someone with the Admin role on
-   its repository opens the project's
-   **Settings → Deployments**, `g1t.sh/<workspace>/<project>/settings/deployments`,
+2. **Turn on deployments for a repository.** Someone with the Admin role on
+   it opens its
+   **Settings → Deployments**, `g1t.sh/<workspace>/<repository>/settings/deployments`,
    or chooses **Deploy** on its overview,
    and chooses **Turn on deployments**.
 
@@ -91,7 +91,7 @@ the Admin role on the repository; the workspace still needs the g1t plan.
   made even when deployments can't be turned on: the response has
   `deployments` (the settings, with `production_url`) when they are on, or
   `deploy_error` saying why not, such as the workspace having no g1t plan.
-- **For a project that exists.** `g1t deploy enable` in its checkout
+- **For a repository that exists.** `g1t deploy enable` in its checkout
   (`--project acme/web` from anywhere), the MCP `workflow` tool's
   `update_deployment_settings` with `enabled: true`, or:
 
@@ -102,10 +102,10 @@ curl -X PATCH https://api.g1t.sh/workspaces/acme/projects/web/deployments/settin
   -d '{"enabled": true}'
 ```
 
-It answers with the project's settings, `production_url` among them.
+It answers with the repository's settings, `production_url` among them.
 Without the g1t plan it is refused with `402 payment_required`, saying
 where an owner starts it; without the Admin role, with `403`. Turning them
-on for an existing project needs a token with `repo:admin`; turning them
+on for an existing repository needs a token with `repo:admin`; turning them
 on as you make a repository needs only `repo:create`, which the
 [Agent preset](/guides/authentication/#presets) gives, since you are the
 new repository's admin. `g1t deploy disable` (or `enabled: false`) turns
@@ -113,14 +113,14 @@ them off. The other [settings](#settings) change the same way:
 `g1t deploy settings` shows them, and takes flags such as
 `--build-command` and `--previews off`.
 
-Deployments are for projects g1t.page hosts. Not every project is one: a
+Deployments are for repositories g1t.page hosts. Not every repository is one: a
 library, a tool or documentation is published rather than deployed, and
 an app may deploy itself, with [a workflow](#deploying-from-a-workflow)
-or another pipeline, to hosting of its own. Only a project that is
-[an app or site hosted on g1t.page](/guides/projects/#what-a-project-is)
-is asked to turn deployments on. Any other project's **Deployments** page
+or another pipeline, to hosting of its own. Only a repository that is
+[an app or site hosted on g1t.page](/guides/repositories/#what-a-repository-is)
+is asked to turn deployments on. Any other repository's **Deployments** page
 still turns them on; doing so makes it an app hosted on g1t.page,
-including one that deployed itself. A project set to be a library, a tool or
+including one that deployed itself. A repository set to be a library, a tool or
 something else cannot have deployments turned on until that setting
 changes.
 
@@ -131,10 +131,10 @@ payments, the card you enter is charged.
 
 ## What deploys
 
-g1t looks at the project's root directory and builds it the way it is meant to be built.
+g1t looks at the repository's root directory and builds it the way it is meant to be built.
 You do not configure anything for the common cases.
 
-| The project has                                                                                                                                                         | g1t                                                                                                                                                                                                                                                                     |
+| The repository has                                                                                                                                                      | g1t                                                                                                                                                                                                                                                                     |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `wrangler.jsonc`, `wrangler.json` or `wrangler.toml`                                                                                                                    | Builds it as a **Workers project**: installs dependencies, runs `wrangler deploy --dry-run` to bundle it (which runs the config's own `build` command), and deploys the bundle with the config's static assets, `compatibility_date`, `compatibility_flags` and `vars`. |
 | A framework from the table below, even beside a `Dockerfile`                                                                                                            | Installs dependencies, builds it with the framework's command, and serves the folder it writes as a **static site**, or deploys the Worker its Cloudflare adapter writes as a **Workers project**.                                                                      |
@@ -146,12 +146,12 @@ You do not configure anything for the common cases.
 | A `Dockerfile` and nothing else to serve                                                                                                                                | Builds the image and runs it as a **container**.                                                                                                                                                                                                                        |
 | Nothing g1t recognises                                                                                                                                                  | Fails, saying to add a `Dockerfile`, a `build` script or an `index.html`.                                                                                                                                                                                               |
 
-### What a project is built as
+### What an app is built as
 
 A site or a Worker is always preferred: it runs nothing while no one
 visits, so it costs nothing then, and it wakes in milliseconds. A
 container is the fallback. With **Build as** on **Auto** (the default),
-the first of these that fits is what the project is built as:
+the first of these that fits is what the app is built as:
 
 1. **A Workers project**: a Wrangler config (`wrangler.jsonc`,
    `wrangler.json` or `wrangler.toml`), or a framework's Cloudflare
@@ -175,12 +175,12 @@ the first of these that fits is what the project is built as:
 When a site is built beside a `Dockerfile`, the build's log says the
 `Dockerfile` is not used, near its top: "Built as a Vite site; Dockerfile
 is not used (a container is only the fallback; choose **Build as**:
-Container to use it)." To run the project's `Dockerfile` instead, set
+Container to use it)." To run the repository's `Dockerfile` instead, set
 **Build as** to **Container** under **Settings → Deployments**. **Build
 as** set to **Static site**, **Workers** or **Container** is what the
-project is built as, whatever else it has.
+app is built as, whatever else it has.
 
-**Settings → Deployments** shows what g1t detected at the project's last
+**Settings → Deployments** shows what g1t detected at the repository's last
 finished build and what it was built with, such as **Static site ·
 Astro**, **Workers project**, **Container · Dockerfile** or **Container ·
 Flask, with a Dockerfile g1t wrote**, and what running it costs. Before
@@ -242,9 +242,9 @@ your own, under **Settings → Deployments**, always wins over the table.
 - **Hugo and mdBook** use the `hugo` or `mdbook` on the machine's `PATH`.
   Without one, the build fetches Hugo 0.166.0 (the extended edition, with
   npm) or builds mdBook 0.5.4 with cargo, which takes a minute or two.
-  Jekyll's gems are installed into `vendor/bundle` in the project.
+  Jekyll's gems are installed into `vendor/bundle` in the repository.
 
-A project that is none of these is served from the first of these that
+A repository that is none of these is served from the first of these that
 exists after the build: `dist`, `build`, `out`, `public`, `_site`,
 `.output/public`. Set **Output directory** to choose another.
 
@@ -269,11 +269,11 @@ exists after the build: `dist`, `build`, `out`, `public`, `_site`,
   is stopped and answered with a 503 page that says so. Static assets are
   served without running your Worker, and count toward neither.
 - `vars` are deployed as plain-text bindings (or JSON, for objects). Rows
-  of the project's [secrets and variables](/guides/secrets-and-variables/)
+  of the repository's [secrets and variables](/guides/secrets-and-variables/)
   available to Deployments are bound too, and replace a `var` of the same
   name: secrets as secret bindings.
 - **Not provisioned yet:** D1, KV, R2, Durable Objects, Queues, service
-  bindings, Vectorize, Hyperdrive, Workers AI and Workflows. A project that
+  bindings, Vectorize, Hyperdrive, Workers AI and Workflows. A repository that
   declares any of them still deploys, without them, and its deployment
   lists each one it left out. Code that needs them should check that the
   binding is there.
@@ -293,7 +293,7 @@ script with no `build` script or `index.html` beside it.
    runs with `node`, `tsx` or `ts-node` (`node server.js`,
    `NODE_ENV=production node dist/index.js`), else `main` in
    `package.json`, else `server.js`, `index.js`, `app.js` or the like.
-2. **It installs and builds** as for any project: the lockfile's install,
+2. **It installs and builds** as for any repository: the lockfile's install,
    then `npm run build` when there is a `build` script (a TypeScript app
    compiled to `dist`, say).
 3. **It writes a Worker entry** that imports that file, keeps the server
@@ -301,11 +301,11 @@ script with no `build` script or `index.html` beside it.
    whose default export has a `fetch` method (a Hono app) is answered by
    that `fetch` directly. `listen` may name any port and address: on
    Workers the port only names the server. `PORT` is `8080` unless the
-   project's variables set it. The entry is printed whole in the build's
+   repository's variables set it. The entry is printed whole in the build's
    log.
 4. **It bundles the Worker** with `wrangler deploy --dry-run`, with the
    compatibility date `2026-09-26` and `nodejs_compat`.
-5. **It starts the Worker once** with `wrangler dev`, with the project's
+5. **It starts the Worker once** with `wrangler dev`, with the repository's
    [variables and secrets](#secrets-and-variables), and asks it for `/`. A
    Worker that fails as it starts (a top-level `await` that never settles,
    a module that cannot load, a server that never calls `listen`) is not
@@ -326,7 +326,7 @@ with the reason in the build's log:
 | Is a Fastify, NestJS or Sails app                                                                                                                       | They start on timers or read their modules from disk as they start, which a Worker cannot do before its first request. |
 | Accepts WebSocket connections with `socket.io`, `express-ws`, `WebSocketServer` or an `upgrade` handler                                                 | Workers do not support Node's `upgrade` event.                                                                         |
 | Uses `child_process`, `cluster` or `worker_threads`                                                                                                     | A Worker cannot start processes or threads.                                                                            |
-| Reads or writes files while it runs: `readFile`, `writeFile`, `createReadStream`, `sendFile`, `res.render` and a view engine, `multer`'s disk storage   | A Worker has no disk with the project's files.                                                                         |
+| Reads or writes files while it runs: `readFile`, `writeFile`, `createReadStream`, `sendFile`, `res.render` and a view engine, `multer`'s disk storage   | A Worker has no disk with the repository's files.                                                                      |
 | Serves files from disk under a path (`app.use("/static", express.static("public"))`), from a folder that does not exist, or from more than one folder   | g1t can serve one folder, at the top, for it.                                                                          |
 | Has a `start` script g1t cannot read (`nest start`, `pm2-runtime …`)                                                                                    | g1t cannot tell which file starts it.                                                                                  |
 
@@ -347,7 +347,7 @@ behind the app's Worker, at the same addresses, custom domains and
 previews as any other app.
 
 A container is the fallback, for what cannot be served as a site or run
-as a Worker ([What a project is built as](#what-a-project-is-built-as)):
+as a Worker ([What an app is built as](#what-an-app-is-built-as)):
 a Python, Go, Ruby, PHP or Rust server, a Node.js server with a
 `Dockerfile` of its own or one that cannot run as a Worker, a framework
 set up to need a server, or a `Dockerfile` with nothing else to serve.
@@ -363,7 +363,7 @@ Worker cannot load; deploying as a container."
 
 g1t writes a Dockerfile for these, when there is none:
 
-| The project has                                                                                                                                         | Runs with                                                                                                                                                                                                              |
+| The repository has                                                                                                                                      | Runs with                                                                                                                                                                                                              |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `package.json` with a `start` script, or a server package (`express`, `fastify`, `koa`, `@nestjs/core`, `@hono/node-server` and others) and a main file | `npm start`, or `node <main>`, on `node:22-slim` (or the major release in `.nvmrc` or `.node-version`), after `npm run build` when there is one                                                                        |
 | Next.js, Astro with `@astrojs/node`, SvelteKit with `adapter-node`, React Router or Remix                                                               | `next start` (or `node .next/standalone/server.js`, with its static files beside it, for `output: 'standalone'`), `node ./dist/server/entry.mjs`, `node build`, `react-router-serve` or `remix-serve`, after the build |
@@ -389,7 +389,7 @@ What a container gets, and what it must do:
   to `0.0.0.0` too. The first request
   waits up to 90 seconds for it to answer there; one that never does gets
   a 503 page saying so.
-- **The project's [secrets and variables](#secrets-and-variables)** are
+- **The repository's [secrets and variables](#secrets-and-variables)** are
   its environment variables, set by g1t when it starts, never baked into
   the image. The image's build gets none of them: a step that needs one
   belongs in the app's start.
@@ -441,31 +441,31 @@ live address, the commit it runs and when it went up.
 ### The production screenshot
 
 When production goes live, g1t takes a screenshot of its home page, as a
-1280 by 800 browser window sees it, and shows it on the project's
-[overview](/guides/projects/#the-overview). Choosing it opens the site.
+1280 by 800 browser window sees it, and shows it on the repository's
+[overview](/guides/repositories/#the-overview). Choosing it opens the site.
 
 - One screenshot is taken per production deploy. g1t waits up to 12
   seconds for the page to settle, then takes it as it is.
 - The screenshot is of the app's `g1t.page` address. A custom domain
   serves the same app, so it looks the same.
 - Until it is ready, or if it could not be taken, the overview shows the
-  project's uploaded image, if it has one, or else a plain frame with the
+  repository's uploaded image, if it has one, or else a plain frame with the
   address. A failed screenshot is tried again when the overview is next
   opened, at most every five minutes.
-- Only people with a role on the project's repository see it, like the
-  rest of its deployments; anyone else who can see the project sees its
+- Only people with a role on the repository see it, like the
+  rest of its deployments; anyone else who can see the repository sees its
   uploaded image or the frame.
 - With **Use the uploaded image instead of a screenshot** on, the
   uploaded image shows instead.
 - Screenshots are not charged.
 
 An app that deploys itself gets a screenshot of its production address
-too, and any project can show an uploaded image instead. See
-[production's picture](/guides/projects/#productions-picture).
+too, and any repository can show an uploaded image instead. See
+[production's picture](/guides/repositories/#productions-picture).
 
 ## Deploying from a workflow
 
-A [workflow](/guides/actions/) job can build and deploy the project
+A [workflow](/guides/actions/) job can build and deploy the repository
 itself, with g1t's own action, `g1t/deploy`. Use it when the build needs
 steps of yours first (generated code, a test that must pass, a tool the
 default build lacks), or to deploy from a branch without a pull request.
@@ -502,7 +502,7 @@ jobs:
       - run: echo "Live at ${{ steps.deploy.outputs.url }}"
 ```
 
-1. Turn Deployments on for the project, as in
+1. Turn Deployments on for the repository, as in
    [Turn on deployments](#turn-on-deployments).
 2. Add a workflow like the one above. The job needs `deployments: write`
    (or `pages: write`) in its `permissions:`.
@@ -511,23 +511,23 @@ jobs:
 
 What the run builds:
 
-| The run                                                                              | Builds                                                                                     |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| On the project's production branch (a push, `workflow_dispatch` or `schedule` there) | Production                                                                                 |
-| For a pull request (`pull_request`, `pull_request_target`)                           | That pull request's preview, at its branch's address, or `pr-<number>` for one from a fork |
-| On another branch                                                                    | That branch's preview                                                                      |
-| For a tag                                                                            | Nothing: the step fails and says to run the workflow on a branch                           |
+| The run                                                                                 | Builds                                                                                     |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| On the repository's production branch (a push, `workflow_dispatch` or `schedule` there) | Production                                                                                 |
+| For a pull request (`pull_request`, `pull_request_target`)                              | That pull request's preview, at its branch's address, or `pr-<number>` for one from a fork |
+| On another branch                                                                       | That branch's preview                                                                      |
+| For a tag                                                                               | Nothing: the step fails and says to run the workflow on a branch                           |
 
 `g1t/deploy` takes these inputs:
 
-| Input           | Default                                                         |                                                             |
-| --------------- | --------------------------------------------------------------- | ----------------------------------------------------------- |
-| `project`       | The repository's one project with Deployments on                | The project's slug. Needed when the repository has several. |
-| `root-dir`      | The project's **Root directory**                                | Where the project is in the checkout.                       |
-| `build-command` | The project's **Build command**, else what the build finds      | What builds it, run after the install.                      |
-| `output-dir`    | The project's **Output directory**, else the first folder found | The folder a static build writes.                           |
-| `sha`           | The run's commit                                                | The commit the `g1t / deploy` check goes on.                |
-| `token`         | `${{ github.token }}`                                           | The job's own token. No other token can open a build.       |
+| Input           | Default                                                            |                                                         |
+| --------------- | ------------------------------------------------------------------ | ------------------------------------------------------- |
+| `project`       | The repository's one app with Deployments on                       | The app's slug. Needed when the repository has several. |
+| `root-dir`      | The repository's **Root directory**                                | Where its code is in the checkout.                      |
+| `build-command` | The repository's **Build command**, else what the build finds      | What builds it, run after the install.                  |
+| `output-dir`    | The repository's **Output directory**, else the first folder found | The folder a static build writes.                       |
+| `sha`           | The run's commit                                                   | The commit the `g1t / deploy` check goes on.            |
+| `token`         | `${{ github.token }}`                                              | The job's own token. No other token can open a build.   |
 
 Its outputs are `url` (the app's address), `deployment-id` (`dpl_…`) and
 `kind` (`production` or `preview`).
@@ -536,7 +536,7 @@ The action calls
 [`POST /repos/{owner}/{repo}/deployments/builds`](/reference/api/deployments/start-deployment-build/),
 which checks the plan and the spend limit as any build does, sets the
 commit's `g1t / deploy` check to pending, and answers with a token for
-that build alone and the project's
+that build alone and the repository's
 [variables and secrets](#secrets-and-variables) for production or
 previews. The action masks the token and every secret in the log, then
 runs `g1t-runner deploy` in the checkout, which installs, builds and
@@ -550,7 +550,7 @@ as the job ends, saying how it ended, rather than staying **Building**.
 - **Secrets.** A pull request from a fork or from someone without the
   Write role, and a run that had to be
   [approved](/guides/actions/#pull-requests), build without
-  the project's secrets, as previews of them always have. Their token is
+  the repository's secrets, as previews of them always have. Their token is
   read-only, so they cannot open a build at all unless the workflow runs
   on `pull_request_target`.
 - **Cost.** The build runs in the job, so its time is the job's
@@ -586,22 +586,22 @@ them to cache, or to fail early:
 ### Build with a workflow
 
 Turn on **Build with a workflow** under **Settings → Deployments** and the
-project's builds run as a workflow g1t manages for it, instead of as
+repository's builds run as a workflow g1t manages for it, instead of as
 builds Deployments starts by itself. Nothing else changes: the same
 previews and production, at the same addresses, with the same
 **g1t / deploy** check, which is now the check of the workflow's job.
 
 - The workflow is listed on the repository's **Actions** page, named
   `g1t`, with its runs, logs and re-runs like any other. It is not a file
-  in the repository: it is made from the project's settings, and follows
+  in the repository: it is made from the repository's settings, and follows
   them when they change.
 - It calls g1t's reusable deploy workflow,
   `g1t/workflows/.g1t/workflows/deploy.yml@v1`, which checks out the
   commit and runs [`g1t/deploy`](#deploying-from-a-workflow). As g1t
-  improves how projects are built, that workflow improves for every
-  project that uses it.
+  improves how repositories are built, that workflow improves for every
+  repository that uses it.
 - A pull request from a fork runs it with a read-only token, as on
-  GitHub, and still gets its preview, without the project's build
+  GitHub, and still gets its preview, without the repository's build
   secrets.
 - To change it, commit a workflow named `g1t` to `.g1t/workflows/`: that
   file runs in its place. Start from the one the **Actions** page shows,
@@ -638,12 +638,12 @@ cost nothing.
 
 Production can be served at a domain of your own, such as `example.com` or
 `www.example.com`, as well as at its address on g1t.page. A domain belongs
-to the project, not to a build: every redeploy is served on it with nothing
+to the repository, not to a build: every redeploy is served on it with nothing
 to change.
 
 ### Add a domain
 
-1. Open the project's **Settings → Domains**,
+1. Open the repository's **Settings → Domains**,
    `g1t.sh/<workspace>/<repo>/settings/domains`.
 2. Enter the domain and choose **Add domain**. Leave **Also add the www
    (or apex) twin** checked to add both `example.com` and
@@ -657,7 +657,7 @@ to change.
 
 Custom domains need the workspace's g1t plan, and are $0.12 a month each
 (their cost plus 20%), as many as you like. Adding or removing one needs
-the Admin [role](/guides/access-and-roles/) on the project's repository.
+the Admin [role](/guides/access-and-roles/) on the repository.
 
 ### A subdomain, such as www
 
@@ -705,7 +705,7 @@ leftover `A` or `AAAA` record beside the new one, or (on Cloudflare DNS) a
 
 ### Remove a domain
 
-Choose **Remove** beside it. It stops serving the project at once, and any
+Choose **Remove** beside it. It stops serving the repository at once, and any
 domain redirecting to it goes too. Your DNS records are left as they are.
 
 ## When apps come down
@@ -713,22 +713,22 @@ domain redirecting to it goes too. Your DNS records are left as they are.
 Nothing keeps running unasked. An app comes down, and stops costing
 anything, when:
 
-|                                                             |                                                                                                                                                                                                                                                                  |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Its pull request is merged or closed                        | That preview, at once.                                                                                                                                                                                                                                           |
-| No one visits a preview for the project's **idle days**     | That preview, at the next sweep (every 10 minutes). The default is 7 days.                                                                                                                                                                                       |
-| You choose **Take down** on the Deployments page            | That app, at once.                                                                                                                                                                                                                                               |
-| You turn off previews or production                         | All of that kind, at once.                                                                                                                                                                                                                                       |
-| You choose **Turn off deployments**                         | Every app of the project, at once, and no more builds.                                                                                                                                                                                                           |
-| The workspace's plan ends or its payment fails              | Every app of the workspace, at the next sweep.                                                                                                                                                                                                                   |
-| The repository is [deleted](/guides/managing-repositories/) | Every app of its projects, at once. Custom domains stay set up and serve nothing. If you restore the repository, production is built again and its domains serve it; previews come back with their next push. When it is purged, its custom domains are removed. |
+|                                                             |                                                                                                                                                                                                                                                        |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Its pull request is merged or closed                        | That preview, at once.                                                                                                                                                                                                                                 |
+| No one visits a preview for the repository's **idle days**  | That preview, at the next sweep (every 10 minutes). The default is 7 days.                                                                                                                                                                             |
+| You choose **Take down** on the Deployments page            | That app, at once.                                                                                                                                                                                                                                     |
+| You turn off previews or production                         | All of that kind, at once.                                                                                                                                                                                                                             |
+| You choose **Turn off deployments**                         | Every app of the repository, at once, and no more builds.                                                                                                                                                                                              |
+| The workspace's plan ends or its payment fails              | Every app of the workspace, at the next sweep.                                                                                                                                                                                                         |
+| The repository is [deleted](/guides/managing-repositories/) | Every app of it, at once. Custom domains stay set up and serve nothing. If you restore the repository, production is built again and its domains serve it; previews come back with their next push. When it is purged, its custom domains are removed. |
 
 A preview that came down comes back with the next push to its pull
 request, or **Redeploy** on the Deployments page.
 
 ## Who can do what
 
-What you can do with a project's deployments follows your
+What you can do with a repository's deployments follows your
 [role](/guides/access-and-roles/) on its repository:
 
 |                                                             | Needs |
@@ -745,20 +745,20 @@ people with a role on it.
 
 ## Settings
 
-Under the project's **Settings → Deployments**,
+Under the repository's **Settings → Deployments**,
 `g1t.sh/<workspace>/<repo>/settings/deployments`:
 
-| Setting               | Default                         |                                                                                                                                                                                       |
-| --------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Production            | On                              | Deploy the default branch on every push.                                                                                                                                              |
-| Previews              | On                              | A preview for every branch with an open pull request.                                                                                                                                 |
-| Build as              | Auto                            | **Auto** (found from its files, a site or a Worker before a container), **Static site**, **Workers** or **Container**; see [What a project is built as](#what-a-project-is-built-as). |
-| Dockerfile            | `Dockerfile` or `Containerfile` | For a container: its Dockerfile's path, inside the project.                                                                                                                           |
-| Container size        | `lite`                          | For a container: the instance it runs at, with its price an hour awake.                                                                                                               |
-| Build command         | The project's own               | Runs instead of `npm run build`, or before bundling a Workers project. Not used for a container.                                                                                      |
-| Output directory      | Found by itself                 | What a static site serves.                                                                                                                                                            |
-| Idle days             | 7                               | 1 to 90. A preview no one visits this long comes down.                                                                                                                                |
-| Build with a workflow | Off                             | Build through the deploy workflow g1t manages for the project; see [build with a workflow](#build-with-a-workflow).                                                                   |
+| Setting               | Default                         |                                                                                                                                                                                 |
+| --------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Production            | On                              | Deploy the default branch on every push.                                                                                                                                        |
+| Previews              | On                              | A preview for every branch with an open pull request.                                                                                                                           |
+| Build as              | Auto                            | **Auto** (found from its files, a site or a Worker before a container), **Static site**, **Workers** or **Container**; see [What an app is built as](#what-an-app-is-built-as). |
+| Dockerfile            | `Dockerfile` or `Containerfile` | For a container: its Dockerfile's path, inside the repository.                                                                                                                  |
+| Container size        | `lite`                          | For a container: the instance it runs at, with its price an hour awake.                                                                                                         |
+| Build command         | The repository's own            | Runs instead of `npm run build`, or before bundling a Workers project. Not used for a container.                                                                                |
+| Output directory      | Found by itself                 | What a static site serves.                                                                                                                                                      |
+| Idle days             | 7                               | 1 to 90. A preview no one visits this long comes down.                                                                                                                          |
+| Build with a workflow | Off                             | Build through the deploy workflow g1t manages for the repository; see [build with a workflow](#build-with-a-workflow).                                                          |
 
 The same settings are read and changed with
 [`get_deployment_settings`](/reference/api/deployments/get-deployment-settings/) and
@@ -770,18 +770,18 @@ the MCP `workflow` tool's actions of those names, and `g1t deploy settings`), as
 
 ## Logs, traces and errors
 
-Every request an app answers shows under the project's
+Every request an app answers shows under the repository's
 [Observability](/guides/observability/) within seconds: its status,
 duration, CPU time and the lines it wrote, with its exceptions grouped into
 errors and its numbers by deployment. Nothing to set up. Each request
 reaches the app with an `x-g1t-request-id` header, its id there, and a
 `traceparent`, and the app is deployed with OpenTelemetry's
 `OTEL_EXPORTER_OTLP_*` variables set, so an OpenTelemetry SDK in it sends
-its spans to the project without configuration.
+its spans to the repository without configuration.
 
 ## Secrets and variables
 
-Builds and running apps read the project's
+Builds and running apps read the repository's
 [secrets and variables](/guides/secrets-and-variables/) that are
 available to Deployments, and the workspace's that reach it:
 
@@ -809,7 +809,7 @@ key.
 Deployments come with the
 [g1t plan](/guides/usage-and-billing/#the-g1t-plan), $21 a month per
 workspace with $10 of usage included. There are **no quotas**: as many
-projects and previews as you like, and no count of builds, requests or
+repositories and previews as you like, and no count of builds, requests or
 domains ever stops or pauses an app. What deployments cost g1t is metered
 from the first unit, at Cloudflare's price plus 20%, and paid from the
 plan's $10 of included usage first; past it, it is charged up to your
@@ -817,7 +817,7 @@ plan's $10 of included usage first; past it, it is charged up to your
 
 |                                                                                                                                                   | Costs g1t                     | You pay                                                         |
 | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | --------------------------------------------------------------- |
-| Projects, previews and the apps behind them                                                                                                       | Next to nothing               | Not charged                                                     |
+| Repositories, previews and the apps behind them                                                                                                   | Next to nothing               | Not charged                                                     |
 | Builds g1t runs, by the second, whether they succeed or fail (a [workflow's build](#deploying-from-a-workflow) is its job's Actions time instead) | About $0.001 a minute         | About $0.0012 a minute                                          |
 | Requests, to all of the workspace's apps                                                                                                          | $0.30 a million               | $0.36 a million                                                 |
 | CPU time your code spends computing (waiting on the network is not counted)                                                                       | $0.02 a million ms            | $0.024 a million ms                                             |
@@ -888,7 +888,7 @@ renewed.
 
 ## Turn it off
 
-- **For a project:** **Turn off deployments** under its **Settings →
+- **For a repository:** **Turn off deployments** under its **Settings →
   Deployments**. Every app comes down at once. Turning it on again
   rebuilds production.
 - **For the workspace:** when an owner ends the g1t plan on Billing,
@@ -943,10 +943,10 @@ you sign in to.
 3. g1t runs only an image by digest in that app's repository, and asks
    the registry, with a pull login of its own, that the digest is there.
    It puts the app's Worker in the namespace: g1t's own code, never the
-   project's, with a Durable Object class that holds the container, the
-   project's secrets and variables, and a token for the app to report its
+   repository's, with a Durable Object class that holds the container, the
+   repository's secrets and variables, and a token for the app to report its
    running time with. Then it creates the app's Container application
-   (at most one instance, at the project's size, attached to that class),
+   (at most one instance, at the repository's size, attached to that class),
    or rolls it out to the new image.
 4. A request reaches the app's Worker through the dispatcher, as any
    app's does. The Worker hands it to the app's Durable Object, which
@@ -1004,7 +1004,7 @@ own code (October 2026):
 | A deployment **Skipped**, saying it reached its spend limit or that new compute is paused | The build was refused before it started. Follow the link in the message: raise the spend limit, prepay, or answer the spike, on Billing.                                                                                                                                          |
 | "Stopped: unusual CPU use"                                                                | The build looked like it was mining. Contact support if it was a real build; see [abuse and mining](/guides/guardrails/#abuse-and-mining).                                                                                                                                        |
 | "found nothing to serve"                                                                  | Add a `build` script, an `index.html`, a Workers config or a `Dockerfile`; or set **Output directory**.                                                                                                                                                                           |
-| "Docker deployments are switched off on this g1t"                                         | The project is a container, and this g1t (a self-hosted one) runs none. Set **Build as** to Static site or Workers if it can be built as one. See [Docker deployments](#docker-deployments).                                                                                      |
+| "Docker deployments are switched off on this g1t"                                         | The app is a container, and this g1t (a self-hosted one) runs none. Set **Build as** to Static site or Workers if it can be built as one. See [Docker deployments](#docker-deployments).                                                                                          |
 | "**Build as** is Container, but this project has no Dockerfile"                           | Add a `Dockerfile`, or set **Dockerfile** to its path.                                                                                                                                                                                                                            |
 | "Could not run as a Worker: …; deploying as a container"                                  | The Node.js server cannot run as a Worker, for the reason given; it deploys as a container. See [Node.js servers as Workers](#nodejs-servers-as-workers) for what to change, or set **Build as** to **Container** to skip the attempt.                                            |
 | "Built as a … site; Dockerfile is not used"                                               | A site is preferred to a container. Set **Build as** to **Container** to deploy the `Dockerfile` instead.                                                                                                                                                                         |
@@ -1016,10 +1016,10 @@ own code (October 2026):
 | A preview page says "This preview is not up"                                              | It came down (see [When apps come down](#when-apps-come-down)). Push, or choose **Redeploy**.                                                                                                                                                                                     |
 | "Custom domains are being switched on"                                                    | Custom domains are not on for g1t.page yet. Domains you add are kept, and set up by themselves once they are.                                                                                                                                                                     |
 | A domain stays at **Waiting for DNS**                                                     | Check the record against the one listed, remove other `A`/`AAAA` records for the same name, then choose **Check now**.                                                                                                                                                            |
-| A domain says "This domain is not set up"                                                 | It points at g1t, but no project has added it. Add it under **Settings → Domains**.                                                                                                                                                                                               |
+| A domain says "This domain is not set up"                                                 | It points at g1t, but no repository has added it. Add it under **Settings → Domains**.                                                                                                                                                                                            |
 | "This pull request's commit no longer exists"                                             | The pull request's head was force-pushed over, or its branch deleted, after the build was asked for. Push to the pull request again, or close it. g1t does not try that commit again.                                                                                             |
 | g1t/deploy says "The job's token needs `deployments: write`"                              | Add `deployments: write` to the workflow's or the job's `permissions:`. A pull request's run from outside gets a read-only token and cannot deploy.                                                                                                                               |
-| g1t/deploy says "Name the project to build"                                               | The repository has several projects with Deployments on: give `project:`.                                                                                                                                                                                                         |
+| g1t/deploy says "Name the project to build"                                               | The repository has several apps with Deployments on: give `project:`.                                                                                                                                                                                                             |
 | g1t/deploy says "g1t.page deploys branches and pull requests"                             | The run is for a tag. Run the workflow on a branch, such as on a push to `main`.                                                                                                                                                                                                  |
 | "The workflow job was cancelled before the build finished"                                | The job that opened the build (`g1t/deploy`) was cancelled, or ended another way the message names, before `g1t-runner deploy` reported. Run the job again.                                                                                                                       |
 | "The build did not finish in 45 minutes"                                                  | The build stopped reporting: a build stops at 30 minutes, and one not heard from after 45 is failed. Make the build faster, or build less for previews with **Build command**.                                                                                                    |

@@ -34,7 +34,7 @@ function HeaderLink({ to, children }: { to: string; children: React.ReactNode })
 /** What the palette offers someone without the app's sidebar. */
 const PUBLIC_COMMANDS: PaletteCommand[] = [
   { label: "Features", to: "/features", icon: <BookOpen size={15} /> },
-  { label: "Explore", hint: "Public projects", to: "/explore", icon: <Compass size={15} /> },
+  { label: "Explore", hint: "Public repositories", to: "/explore", icon: <Compass size={15} /> },
   { label: "Search g1t", hint: "Repositories, code, work items, people", to: "/search", icon: <Search size={15} /> },
   { label: "Pricing", to: "/pricing", icon: <CreditCard size={15} /> },
   { label: "Documentation", to: "https://docs.g1t.sh/", icon: <BookOpen size={15} /> },

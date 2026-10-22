@@ -144,7 +144,7 @@ yet.
 ## Managed workflows
 
 Some workflows run in a repository without a file in it: g1t installs
-them for a feature you turn on, such as a project's
+them for a feature you turn on, such as a repository's
 [build with a workflow](/guides/deployments/#build-with-a-workflow). A
 managed workflow runs like any other: on the **Actions** page, with its
 runs, logs, re-runs and checks, on g1t's machines or your
@@ -314,14 +314,14 @@ the workspace of Flagon, Inc., which builds g1t: `g1t/deploy@v1` is the
 repository `flagon-io/deploy`, and its page and the job's log name it
 that way. Write `g1t/`; it keeps working wherever g1t's actions are kept.
 
-| Action                                       | What it does                                                                                                                                                                                                                                                                                |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`g1t/deploy@v1`](https://g1t.sh/g1t/deploy) | Builds the checkout and puts it on [g1t.page](/guides/deployments/): production from the project's production branch, a preview from a pull request or another branch. The job needs `deployments: write`. See [deploying from a workflow](/guides/deployments/#deploying-from-a-workflow). |
-| [`g1t/detect@v1`](https://g1t.sh/g1t/detect) | Says what that build would find (`kind`, `install`, `build`, `output-dir`, `framework`) without building anything.                                                                                                                                                                          |
+| Action                                       | What it does                                                                                                                                                                                                                                                                                   |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`g1t/deploy@v1`](https://g1t.sh/g1t/deploy) | Builds the checkout and puts it on [g1t.page](/guides/deployments/): production from the repository's production branch, a preview from a pull request or another branch. The job needs `deployments: write`. See [deploying from a workflow](/guides/deployments/#deploying-from-a-workflow). |
+| [`g1t/detect@v1`](https://g1t.sh/g1t/detect) | Says what that build would find (`kind`, `install`, `build`, `output-dir`, `framework`) without building anything.                                                                                                                                                                             |
 
 g1t's reusable workflows are in `g1t/workflows` the same way, such as
 `g1t/workflows/.g1t/workflows/deploy.yml@v1`, which a
-[project's](/guides/projects/) deployments run.
+[repository's](/guides/repositories/) deployments run.
 
 A `g1t/` name always means g1t's own: it answers even where GitHub has a
 repository of the same name, only its public repositories answer for it,
@@ -1769,13 +1769,13 @@ with an **Add CI** button. Anyone who can push to the repository can use it:
    writes a starter workflow with a job for each stack it finds, up to
    three: Node (npm, pnpm, Yarn or Bun), Rust, Go, Python (pip or uv), Ruby,
    Java (Maven or Gradle), .NET, or Make. Each job installs, lints where
-   the project says how, builds and tests. When it finds none, the job is a
+   the repository says how, builds and tests. When it finds none, the job is a
    placeholder that fails until you replace its last step with your own
    commands.
 2. The workflow is committed as `.g1t/workflows/ci.yml` on a new branch,
    `add-ci`, and opened as a pull request, by you. It is named `CI` and runs
    on `pull_request`, on `push` to the default branch, and on `merge_group`.
-3. Change it on the pull request if the steps are not how your project
+3. Change it on the pull request if the steps are not how your code
    builds, and merge it.
 4. Once it has run, `CI` is offered under **Require status checks to pass
    before merging**.

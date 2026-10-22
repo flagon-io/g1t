@@ -1,12 +1,12 @@
 ---
 title: Guardrails
-description: How long a project's checks, merge queue and merge checks may run on g1t's machines, how a sandbox reaches the internet, and how g1t watches for mining.
+description: How long a repository's checks, merge queue and merge checks may run on g1t's machines, how a sandbox reaches the internet, and how g1t watches for mining.
 ---
 
-Guardrails decide how long a project's work may run in g1t's sandboxes. A
-workspace sets defaults, and each project can override them.
+Guardrails decide how long a repository's work may run in g1t's sandboxes. A
+workspace sets defaults, and each repository can override them.
 
-They apply to the runs g1t starts for a project: its checks, its merge
+They apply to the runs g1t starts for a repository: its checks, its merge
 queue and its merge checks. Actions jobs and deploy builds keep their own
 time limits. Every sandbox, whatever it runs, is watched for
 [mining](#abuse-and-mining).
@@ -15,14 +15,14 @@ time limits. Every sandbox, whatever it runs, is watched for
 
 - **Workspace defaults**: the workspace's **Settings**, **Guardrails**.
   Owners can change them; members can read them.
-- **A project's overrides**: the project's **Settings**, **Guardrails**.
+- **A repository's overrides**: the repository's **Settings**, **Guardrails**.
   People with the Admin [role](/guides/access-and-roles/) on
   its repository can see and change them; the page is not shown to anyone
   else.
 
-A time left empty on a project's page follows the workspace's default,
+A time left empty on a repository's page follows the workspace's default,
 whatever it is now, shown faded. Enter a number to override it for that
-project only.
+repository only.
 
 Changes apply to runs that start after you save. A run that is under way
 keeps the guardrails it started with. Each change is recorded in the
@@ -97,7 +97,7 @@ CPU, and g1t's sandboxes watch for it:
 - **Miners by name.** A check, a build command, a workflow step or a container a job starts whose image or
   command names a known miner (`xmrig`, `cpuminer`, `t-rex` and others), a
   pool address (`stratum+tcp://`) or a miner's flags (`--donate-level`,
-  `--algo=rx/0`) is refused, whatever the project's rules. A running process whose command line names one stops
+  `--algo=rx/0`) is refused, whatever the repository's rules. A running process whose command line names one stops
   the sandbox at once.
 - **The CPU signature.** Every sandbox samples itself every 30 seconds:
   CPU use, file and disk I/O, network bytes, new processes, and whether the

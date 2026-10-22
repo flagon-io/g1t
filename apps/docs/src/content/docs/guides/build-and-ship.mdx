@@ -10,7 +10,7 @@ Claude Code, with g1t's [plugin](/guides/claude-code-plugin/), can take an
 app from an empty folder to a merged pull request on g1t: it creates the
 repository, pushes the code, opens a pull request, watches its checks and
 merges it. Two things stay with you, because no agent can do them: putting
-the workspace on the g1t plan, and turning deployments on for the project.
+the workspace on the g1t plan, and turning deployments on for the repository.
 You do both once. From then on, every pull request the agent opens gets a
 live preview, and every merge goes to production on its own.
 
@@ -75,9 +75,8 @@ choose **Change access** on Claude Code, tick `repo:create` and choose
    A repository is private unless `--public` is given. `--source .` adds
    the new repository as the `origin` remote of this folder and pushes the
    current branch to it. The CLI prints `✓ Made acme/my-app` and the
-   repository's address, `https://g1t.sh/acme/my-app`. The description is
-   its [project's](/guides/projects/): every repository has a project of
-   its own name.
+   repository's address, `https://g1t.sh/acme/my-app`. Its description, like its
+   deployments, is on the [repository's](/guides/repositories/) settings.
 
    Through MCP, the same is the `repository` tool's `create` action with
    `workspace`, `name` and `description`. There too a repository is
@@ -132,10 +131,10 @@ choose **Change access** on Claude Code, tick `repo:create` and choose
    1. If the workspace is not on the g1t plan, an owner opens
       **Settings → Billing and plans**, `g1t.sh/acme/-/billing`, and
       chooses **Start the g1t plan**.
-   2. Open the project, `g1t.sh/acme/my-app`. Its overview asks **Where
+   2. Open the repository, `g1t.sh/acme/my-app`. Its overview asks **Where
       does my-app run?**: choose **Deploy on g1t**. (An overview that says
       **Deployments are off** has **Turn on deployments** instead.) Both
-      open the project's **Settings → Deployments**,
+      open the repository's **Settings → Deployments**,
       `g1t.sh/acme/my-app/settings/deployments`.
    3. Choose **Turn on deployments**. You need the Admin role on the
       repository.
@@ -143,7 +142,7 @@ choose **Change access** on Claude Code, tick `repo:create` and choose
    The page says **Deployments are on. Production is building.**
    Production builds from the default branch and goes up at
    `https://my-app-acme.g1t.page`. [Deployments](/guides/deployments/#what-deploys)
-   says what g1t builds a project as, and what it costs.
+   says what g1t builds a repository as, and what it costs.
 
 </Steps>
 
@@ -194,19 +193,19 @@ to yourself, say so in the repository's `CLAUDE.md`, and leave
 
 ## What the agent can and can't do
 
-|                                                      | The agent                          | How                                                                                                                                                             | Needs                                                           |
-| ---------------------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| Create a repository                                  | Yes                                | `g1t repo create`, or `repository` `create`                                                                                                                     | `repo:create`, which the Agent preset gives                     |
-| Push code                                            | Yes                                | git, with the CLI's credentials (`g1t auth setup-git`) or an [access token](/guides/authentication/#access-tokens)                                              | `code:write`; a workflow file also needs `workflow_files:write` |
-| Open and claim a work item                           | Yes                                | `g1t work claim`, or `work_item` `claim`                                                                                                                        | `work:write`                                                    |
-| Open a pull request and mark it ready                | Yes                                | `g1t pr create` and `g1t pr ready`, or `pull_request` `create` and `ready`                                                                                      | `pull_requests:write`                                           |
-| Watch checks and the preview                         | Yes                                | `g1t pr checks --watch`, or `pull_request` `get`                                                                                                                | `pull_requests:read`                                            |
-| Merge                                                | Yes, within the repository's rules | `g1t pr merge`, or `pull_request` `merge`                                                                                                                       | `pull_requests:write`, and the Write role                       |
-| Approve its own pull request                         | No                                 | Someone else approves                                                                                                                                           |                                                                 |
-| Read deployments, logs and errors                    | Yes                                | `g1t deploy list` and `g1t logs`, or `workflow` `list_deployments` and `observability`                                                                          | `deployments:read`, `observability:read`                        |
-| Start the g1t plan                                   | No                                 | An owner, under **Settings → Billing and plans**                                                                                                                |                                                                 |
-| Turn deployments on or off, or change their settings | No                                 | You, under the project's **Settings → Deployments**, with the Admin role, or by starting [Ask's card for a new repository](/guides/ask/#building-something-new) |                                                                 |
-| Build production again                               | No                                 | **Redeploy** on the project's overview, with the Write role, or a push to the default branch                                                                    |                                                                 |
+|                                                      | The agent                          | How                                                                                                                                                                | Needs                                                           |
+| ---------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| Create a repository                                  | Yes                                | `g1t repo create`, or `repository` `create`                                                                                                                        | `repo:create`, which the Agent preset gives                     |
+| Push code                                            | Yes                                | git, with the CLI's credentials (`g1t auth setup-git`) or an [access token](/guides/authentication/#access-tokens)                                                 | `code:write`; a workflow file also needs `workflow_files:write` |
+| Open and claim a work item                           | Yes                                | `g1t work claim`, or `work_item` `claim`                                                                                                                           | `work:write`                                                    |
+| Open a pull request and mark it ready                | Yes                                | `g1t pr create` and `g1t pr ready`, or `pull_request` `create` and `ready`                                                                                         | `pull_requests:write`                                           |
+| Watch checks and the preview                         | Yes                                | `g1t pr checks --watch`, or `pull_request` `get`                                                                                                                   | `pull_requests:read`                                            |
+| Merge                                                | Yes, within the repository's rules | `g1t pr merge`, or `pull_request` `merge`                                                                                                                          | `pull_requests:write`, and the Write role                       |
+| Approve its own pull request                         | No                                 | Someone else approves                                                                                                                                              |                                                                 |
+| Read deployments, logs and errors                    | Yes                                | `g1t deploy list` and `g1t logs`, or `workflow` `list_deployments` and `observability`                                                                             | `deployments:read`, `observability:read`                        |
+| Start the g1t plan                                   | No                                 | An owner, under **Settings → Billing and plans**                                                                                                                   |                                                                 |
+| Turn deployments on or off, or change their settings | No                                 | You, under the repository's **Settings → Deployments**, with the Admin role, or by starting [Ask's card for a new repository](/guides/ask/#building-something-new) |                                                                 |
+| Build production again                               | No                                 | **Redeploy** on the repository's overview, with the Write role, or a push to the default branch                                                                    |                                                                 |
 
 Scopes are explained under [scopes](/guides/authentication/#scopes);
 [MCP tools](/reference/mcp/) and the [CLI reference](/reference/cli/) list

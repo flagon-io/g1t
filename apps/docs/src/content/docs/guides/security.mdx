@@ -5,7 +5,7 @@ description: How g1t keeps secrets out of your repositories, finds vulnerable de
 
 import Aside from "../../../components/Aside.astro";
 
-Every project has a **Security** section at `g1t.sh/<owner>/<project>/security`.
+Every repository has a **Security** section at `g1t.sh/<owner>/<repository>/security`.
 It shows what g1t has found, and what is being done about each alert:
 
 - **Secrets.** A push that adds a key or a token is refused before it lands,
@@ -35,7 +35,7 @@ of the g1t plan, as Security and quality, on private ones. See
 workspace's [security overview](/guides/security/security-overview/).
 
 Alerts are the workspace's to fix, so the Security page needs a
-[role](/guides/access-and-roles/) on the repository, whether the project
+[role](/guides/access-and-roles/) on the repository, whether it
 is public or private:
 
 |                                                                                                                             | Needs                                                                                               |
@@ -52,7 +52,7 @@ security settings, whatever their role; owners can too.
 
 Someone with Read or Triage is told the page needs Write. The workspace's
 own page, `g1t.sh/<owner>/-/security`, lists the open alerts of every
-project the member can see them on, most severe first.
+repository the member can see them on, most severe first.
 
 Anyone else who can see a public repository sees its public face at the
 same address: the security policy, the published advisories, and, when the
@@ -89,7 +89,7 @@ dismissed alert is not counted. Below the counts:
 - **Re-scan now** (on **Vulnerabilities**) reads the dependencies again at
   once and scans the history again from the start.
 - **Security updates** (on **Vulnerabilities**) turns
-  [security updates](#security-updates) on or off for the project. It is on
+  [security updates](#security-updates) on or off for the repository. It is on
   unless someone turns it off.
 
 **Secret scanning** and **Vulnerabilities** list each alert. Filter either
@@ -215,7 +215,7 @@ looks exactly like a real one. Two ways to let it through:
 - **Dismiss the alert.** Open the alert on **Secret scanning**, choose
   **Dismiss** with the reason **False positive** or **Used in tests**, and
   push again, unchanged: that secret no longer stops a push to this
-  project.
+  repository.
 
 Dismissing a secret alert needs the Admin [role](/guides/access-and-roles/)
 on the repository. Someone without it sees the same message and asks
@@ -405,7 +405,7 @@ for it:
 If the vulnerable code is never reached, dismiss the alert with a reason.
 
 Turn **Security updates** off under **Vulnerabilities** to stop g1t opening
-these pull requests for a project. Alerts are still listed.
+these pull requests for a repository. Alerts are still listed.
 
 ## Version updates
 

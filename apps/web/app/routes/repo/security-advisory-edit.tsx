@@ -97,7 +97,7 @@ export default function SecurityAdvisoryEdit({ loaderData, actionData, params }:
         <Card className="space-y-4 p-4">
           <p className="text-sm font-medium">What is affected</p>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Ecosystem" hint="npm, crates.io, Go, PyPI, or how the project ships.">
+            <Field label="Ecosystem" hint="npm, crates.io, Go, PyPI, or how the repository ships.">
               <Input name="ecosystem" defaultValue={advisory?.ecosystem ?? ""} maxLength={50} {...notACredential()} />
             </Field>
             <Field label="Package">

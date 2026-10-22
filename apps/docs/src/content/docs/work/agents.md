@@ -108,7 +108,7 @@ into the default branch, it lands the work item there; see
 
 Most of what an agent is asked starts without a work item, and a question,
 a look around or a quick fix never needs one. The session is recorded
-anyway, and shows on [Sessions](/work/sessions/) and the project's
+anyway, and shows on [Sessions](/work/sessions/) and the repository's
 **Live now**. When the work becomes a change others should know about (a
 branch to push, a pull request), the agent looks for its work item
 (`g1t work list`, `work_item` `list` or `list_claims`), and claims it. If

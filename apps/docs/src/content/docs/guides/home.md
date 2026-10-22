@@ -78,16 +78,16 @@ it. A finding with a trend has its line beside it. When nothing stands
 out against the workspace's last weeks, it says so. None of it is about
 what needs you: that is [Your move](#your-move).
 
-| Finding                                   | When it shows                                                                                                                                                                                                                                |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **One unreviewed change holding up work** | An open pull request no one has reviewed is for a work item that other open work items are blocked by. The one holding up the most leads.                                                                                                    |
-| **Agent drafts waiting for review**       | This week's first reviews waited at least four times as long as agents took to open the pull requests (from their session starting), and at least four hours. Without that gap: first reviews took half as long again as the weeks before.   |
-| **A milestone closed**                    | A milestone closed in the last seven days, against its due date, with its weeks in build, its merged pull requests and its projects.                                                                                                         |
-| **Where agent spend is going**            | More than a third of the quarter's agent spend by pull request went into one milestone (else one work item, else one project). Spend is g1t's usage on each pull request and its share of its sessions' cost.                                |
-| **More changes gone quiet**               | At least three more stalled changes than last week, and a quarter more.                                                                                                                                                                      |
-| **Agent rework moving**                   | People asked for changes on agents' merged work at least 8 points more, or less, often than over the four weeks before (with five agent merges or more).                                                                                     |
-| **A practice catching on**                | Two or more people started using a harness (Claude Code, Codex, Cursor and so on) this month, at least two weeks after the first person did.                                                                                                 |
-| **Who works where**                       | In a workspace where three people or more merged lately, someone started merging to a project one person has carried (three quarters of its last 90 days' merges); or merged to a project for the first time this week after work elsewhere. |
+| Finding                                   | When it shows                                                                                                                                                                                                                                      |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **One unreviewed change holding up work** | An open pull request no one has reviewed is for a work item that other open work items are blocked by. The one holding up the most leads.                                                                                                          |
+| **Agent drafts waiting for review**       | This week's first reviews waited at least four times as long as agents took to open the pull requests (from their session starting), and at least four hours. Without that gap: first reviews took half as long again as the weeks before.         |
+| **A milestone closed**                    | A milestone closed in the last seven days, against its due date, with its weeks in build, its merged pull requests and its repositories.                                                                                                           |
+| **Where agent spend is going**            | More than a third of the quarter's agent spend by pull request went into one milestone (else one work item, else one repository). Spend is g1t's usage on each pull request and its share of its sessions' cost.                                   |
+| **More changes gone quiet**               | At least three more stalled changes than last week, and a quarter more.                                                                                                                                                                            |
+| **Agent rework moving**                   | People asked for changes on agents' merged work at least 8 points more, or less, often than over the four weeks before (with five agent merges or more).                                                                                           |
+| **A practice catching on**                | Two or more people started using a harness (Claude Code, Codex, Cursor and so on) this month, at least two weeks after the first person did.                                                                                                       |
+| **Who works where**                       | In a workspace where three people or more merged lately, someone started merging to a repository one person has carried (three quarters of its last 90 days' merges); or merged to a repository for the first time this week after work elsewhere. |
 
 Findings are ordered by how much they hold up: blocked work first, then
 waits, then what closed and where spend went. Up to four show, and the
@@ -258,13 +258,13 @@ owner.
 
 Under What changed, **People** shows what people did in the span, one line
 per kind of thing with its count, and each line opens the place that lists
-them: a project's Activity tab for pushes, its pull requests, **Work** for
+them: a repository's Activity tab for pushes, its pull requests, **Work** for
 work items, Artifacts, Chat. Beside the heading are the faces of the five most active,
 and how many more there were.
 
 | Line                                                         | What counts                                                                                                                                                                                                                                                                                                                                        | From   |
 | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| _3 people pushed 41 commits to 4 projects_                   | Every push to a branch of one of the workspace's repositories (`git.push`; tags are not pushes). The commits are the ones each push brought to its branch, along the branch's first-parent line from where it is now back to where it was, at most 50, and one for a new branch. A push recorded before commits were counted counts as one commit. | Events |
+| _3 people pushed 41 commits to 4 repositories_               | Every push to a branch of one of the workspace's repositories (`git.push`; tags are not pushes). The commits are the ones each push brought to its branch, along the branch's first-parent line from where it is now back to where it was, at most 50, and one for a new branch. A push recorded before commits were counted counts as one commit. | Events |
 | _opened 2 pull requests, merged 5, closed 1 without merging_ | `pull.opened`, `pull.merged`, `pull.closed`                                                                                                                                                                                                                                                                                                        | Events |
 | _reviewed 3 pull requests_                                   | A review is a comment with a verdict                                                                                                                                                                                                                                                                                                               | Events |
 | _opened 4 work items, closed 6_                              | `work_item.opened`, `work_item.closed`                                                                                                                                                                                                                                                                                                             | Events |
@@ -284,13 +284,13 @@ answer (Code or Chat) so an empty list never reads as a quiet day.
 The rest of the span's card is everything that landed in the span,
 newest first:
 
-| Row                         | What it is                                                                                                                                                                                                                                                                                                |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A pull request merged       | With who wrote it, and who merged it when that was someone else                                                                                                                                                                                                                                           |
-| A push to a default branch  | One row per push a person made straight to a default branch: its commit's first line when it brought one, else how many commits, and who pushed. For the ten projects pushed to most in the span; past those, one row per project with how many commits and pushes                                        |
-| A production build          | Only one that no merge or push on the list already speaks for: a redeploy, a rollback, a build of a project whose pushes weren't read, or one that failed. A build that shipped a merge is that merge's [live label](#live-after-merge), not a row of its own. Previews stay on the project's Deployments |
-| A release published         | Its tag and name, and who released it                                                                                                                                                                                                                                                                     |
-| A package version published | Its name and version, and who published it                                                                                                                                                                                                                                                                |
+| Row                         | What it is                                                                                                                                                                                                                                                                                                      |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A pull request merged       | With who wrote it, and who merged it when that was someone else                                                                                                                                                                                                                                                 |
+| A push to a default branch  | One row per push a person made straight to a default branch: its commit's first line when it brought one, else how many commits, and who pushed. For the ten repositories pushed to most in the span; past those, one row per repository with how many commits and pushes                                       |
+| A production build          | Only one that no merge or push on the list already speaks for: a redeploy, a rollback, a build of a repository whose pushes weren't read, or one that failed. A build that shipped a merge is that merge's [live label](#live-after-merge), not a row of its own. Previews stay on the repository's Deployments |
+| A release published         | Its tag and name, and who released it                                                                                                                                                                                                                                                                           |
+| A package version published | Its name and version, and who published it                                                                                                                                                                                                                                                                      |
 
 Its line counts them by kind, and how many of the merges and pushes are
 live, deploying, waiting to deploy, or failed to deploy. The first five
@@ -315,7 +315,7 @@ The answer is kept in your direct message with @g1t, like everything you
 
 #### Live after merge
 
-Each merge and push says whether it is live yet, for a project that
+Each merge and push says whether it is live yet, for a repository that
 deploys to production. Landing on `main` is not shipping: a change is
 shipped once a production deployment that contains it succeeds.
 
@@ -333,7 +333,7 @@ commit no production deployment shipped before as shipped by this one.
 So a commit's first production deployment is the one that took it live,
 and a rollback to an older commit ships nothing new. Home reads only what
 was written down, so this costs nothing when the page loads. A change
-that landed before g1t began writing this down for its project goes live
+that landed before g1t began writing this down for its repository goes live
 with the first production deployment that succeeded after it.
 
 #### Made with an agent
@@ -356,10 +356,10 @@ gone, its subagents, and what it has cost so far, estimated at list price
 from its token usage. Then workflow runs and builds, longest-going first,
 each with its state and how long it has gone:
 
-| Kind         | What it is                                                                                                                                                               |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Workflow run | A [workflow](/guides/actions/) run that is queued, waiting, running, or waiting for approval, in the ten projects pushed to most in the span (their newest 20 runs each) |
-| Build        | A project's newest build, queued or building                                                                                                                             |
+| Kind         | What it is                                                                                                                                                                   |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workflow run | A [workflow](/guides/actions/) run that is queued, waiting, running, or waiting for approval, in the ten repositories pushed to most in the span (their newest 20 runs each) |
+| Build        | A repository's newest build, queued or building                                                                                                                              |
 
 ## Spent
 
@@ -394,13 +394,13 @@ running, finishes or comes to need you while you are on the page joins its
 list, sliding in at its place and lit for a moment; counts and the
 lines update with it. Sessions that end and runs that finish leave Live.
 
-| Home updates when                                                                                                     | From                                    |
-| --------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| Commits are pushed to a project's default branch, or a tag is pushed                                                  | The workspace's projects (the first 25) |
-| A pull request is opened, reviewed, merged or closed, a comment changes, or a work item linked to one of them changes | The same projects                       |
-| A workflow run or a job in it starts or finishes, a build or deployment moves, or a release or package is published   | The same projects                       |
-| A [session](/work/sessions/) starts or ends                                                                           | The same projects                       |
-| Something comes to need you, or you deal with it elsewhere                                                            | Your notifications                      |
+| Home updates when                                                                                                     | From                                        |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| Commits are pushed to a repository's default branch, or a tag is pushed                                               | The workspace's repositories (the first 25) |
+| A pull request is opened, reviewed, merged or closed, a comment changes, or a work item linked to one of them changes | The same repositories                       |
+| A workflow run or a job in it starts or finishes, a build or deployment moves, or a release or package is published   | The same repositories                       |
+| A [session](/work/sessions/) starts or ends                                                                           | The same repositories                       |
+| Something comes to need you, or you deal with it elsewhere                                                            | Your notifications                          |
 
 A busy workspace sends changes all the time, so Home refreshes a second
 after the last one and at most every five seconds. It works like the
@@ -439,7 +439,7 @@ When one does not answer:
   deployments or sessions can't be read, Landed shows its rows without
   their live labels or agent markers.
 - Settled for you says when your notifications can't be read.
-- This week says when the work couldn't be read. When some projects
+- This week says when the work couldn't be read. When some repositories
   didn't answer, it says the week leaves them out.
 - What changed says when Ask can't be reached or isn't set up, or when
   the question could not be sent.
@@ -447,8 +447,8 @@ When one does not answer:
   page says why.
 
 When a list g1t reads is longer than it reads at once (100 pull requests
-per project and state, 50 projects, builds
-of 20 projects, 5,000 events of the span), the page says that some work
+per repository and state, 50 repositories, builds
+of 20 repositories, 5,000 events of the span), the page says that some work
 may be missing or some counts are low.
 
 ## How it scales

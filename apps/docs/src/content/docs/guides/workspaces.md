@@ -69,7 +69,7 @@ what you clicked, so a step you did elsewhere is ticked here as well:
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Add an AI provider**   | The workspace has an [AI provider](/guides/ai/) whose key passed its last check. You can add one in the guide: choose a provider, paste its key, and **Add and check the key** saves it and checks it at once, as the AI page does. **Test** checks one again.   |
 | **Choose Ask's model**   | [Ask g1t](/guides/ask/) answers with one of the workspace's providers, and has no problem with it. Choose the provider and a model, or Auto, and **Use for Ask**.                                                                                                |
-| **Bring your code**      | The workspace has a project, or [GitHub is connected](/guides/github/). **New project** starts one; **Connect GitHub** installs g1t's GitHub App in one step, then you choose the repositories to bring across.                                                  |
+| **Bring your code**      | The workspace has a repository, or [GitHub is connected](/guides/github/). **New repository** starts one; **Connect GitHub** installs g1t's GitHub App in one step, then you choose the repositories to bring across.                                            |
 | **Connect your harness** | You signed in the [g1t CLI](/guides/cli/) (`g1t auth login`), or signed in an [AI client](/guides/bring-your-own-agent/) with g1t through MCP. The guide shows the install commands for macOS and Linux and for Windows, ready to copy.                          |
 | **Invite your team**     | The workspace has another member, or an invitation waiting for an answer. Workspace invites come with the plan: on a free workspace the step says so, links to the plan, and offers [inviting a friend to g1t](/guides/authentication/#invite-a-friend) instead. |
 | **Add a runner**         | The workspace has a [self-hosted runner](/guides/self-hosted-runners/), such as [the desktop app](/guides/desktop/).                                                                                                                                             |
@@ -165,14 +165,14 @@ work items and the rest move with it within a few seconds.
 
 ### What changes
 
-|                    | Before                                        | After                                         |
-| ------------------ | --------------------------------------------- | --------------------------------------------- |
-| Pages              | `g1t.sh/old/<repo>`                           | `g1t.sh/new/<repo>`                           |
-| Git remotes        | `https://g1t.sh/old/<repo>.git`               | `https://g1t.sh/new/<repo>.git`               |
-| API paths          | `https://api.g1t.sh/repos/old/<repo>`         | `https://api.g1t.sh/repos/new/<repo>`         |
-| MCP tool arguments | `"owner": "old"`                              | `"owner": "new"`                              |
-| Production apps    | `https://<project>-old.g1t.page`              | `https://<project>-new.g1t.page`              |
-| Previews           | `https://<project>-git-<branch>-old.g1t.page` | `https://<project>-git-<branch>-new.g1t.page` |
+|                    | Before                                           | After                                            |
+| ------------------ | ------------------------------------------------ | ------------------------------------------------ |
+| Pages              | `g1t.sh/old/<repo>`                              | `g1t.sh/new/<repo>`                              |
+| Git remotes        | `https://g1t.sh/old/<repo>.git`                  | `https://g1t.sh/new/<repo>.git`                  |
+| API paths          | `https://api.g1t.sh/repos/old/<repo>`            | `https://api.g1t.sh/repos/new/<repo>`            |
+| MCP tool arguments | `"owner": "old"`                                 | `"owner": "new"`                                 |
+| Production apps    | `https://<repository>-old.g1t.page`              | `https://<repository>-new.g1t.page`              |
+| Previews           | `https://<repository>-git-<branch>-old.g1t.page` | `https://<repository>-git-<branch>-new.g1t.page` |
 
 These stay the same: the display name, description and icon, members and
 roles, access tokens, secrets and variables, integrations, webhooks,
@@ -277,7 +277,7 @@ Changing the setting is recorded in the
 ## Delete a workspace
 
 Deleting a workspace takes everything in it with it, in one step: its
-repositories, projects, apps, members' access and tokens. Only an owner can,
+repositories and their apps, members' access and tokens. Only an owner can,
 signed in as a person, typing the workspace's slug to confirm.
 
 It is not gone at once. For **30 days** g1t keeps all of it, so that a
@@ -286,7 +286,7 @@ to support@g1t.sh, and support restores the workspace as it was. After 30
 days it is purged for good.
 
 1. Open the workspace's **Settings → General** and go to **Danger zone**.
-   It lists what will go with the workspace: its repositories, projects,
+   It lists what will go with the workspace: its repositories,
    live apps and members.
 2. Choose **Delete workspace**, read what happens, type the workspace's
    slug to confirm, and choose **Delete workspace** again. You are taken
@@ -322,18 +322,18 @@ A comped workspace owes nothing; only its plan is ended.
 
 At once, when an owner deletes it:
 
-|                   |                                                                                                                                                                  |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Members           | Lose access, and the workspace leaves their list. Their own accounts are not touched: a person with no workspace left can still sign in, and create or join one. |
-| Access tokens     | The workspace's own tokens stop working. Personal tokens are not affected.                                                                                       |
-| Repositories      | Deleted with it: git refuses them, and their pages answer 404. Workflow runs stop. Ones deleted on their own earlier stay deleted.                               |
-| Projects and apps | Hidden. Its apps are taken offline and nothing builds. Custom domains are kept for a restore.                                                                    |
-| Its pages         | Answer 404, and it drops out of search.                                                                                                                          |
-| Billing           | What it owes is charged, and its plan ends, as [billing needs](#what-billing-needs). Nothing more is charged.                                                    |
-| The audit log     | Records the deletion.                                                                                                                                            |
+|               |                                                                                                                                                                  |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Members       | Lose access, and the workspace leaves their list. Their own accounts are not touched: a person with no workspace left can still sign in, and create or join one. |
+| Access tokens | The workspace's own tokens stop working. Personal tokens are not affected.                                                                                       |
+| Repositories  | Deleted with it: git refuses them, and their pages answer 404. Workflow runs stop. Ones deleted on their own earlier stay deleted.                               |
+| Apps          | Hidden. Its apps are taken offline and nothing builds. Custom domains are kept for a restore.                                                                    |
+| Its pages     | Answer 404, and it drops out of search.                                                                                                                          |
+| Billing       | What it owes is charged, and its plan ends, as [billing needs](#what-billing-needs). Nothing more is charged.                                                    |
+| The audit log | Records the deletion.                                                                                                                                            |
 
-Within 30 days, support can restore it: its members, tokens, repositories,
-projects and apps come back as they were, and its apps go back up as its
+Within 30 days, support can restore it: its members, tokens, repositories
+and apps come back as they were, and its apps go back up as its
 limit allows. Its plan does not come back by itself: an owner starts it
 again from **Billing**. A repository deleted on its own before the
 workspace was stays in **Recently deleted**.
@@ -343,7 +343,7 @@ After 30 days it is purged:
 |                                               |                                                                                                                                                                                                                                                                                          |
 | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Repositories                                  | Purged, their git data with them, including any that were in Recently deleted.                                                                                                                                                                                                           |
-| Projects, apps and custom domains             | Removed.                                                                                                                                                                                                                                                                                 |
+| Apps and custom domains                       | Removed.                                                                                                                                                                                                                                                                                 |
 | Webhooks, integrations, secrets and variables | The workspace's own are removed.                                                                                                                                                                                                                                                         |
 | Guardrails                                    | The workspace's own are removed.                                                                                                                                                                                                                                                         |
 | Statements, invoices and the ledger           | Kept, for accounting.                                                                                                                                                                                                                                                                    |
@@ -595,52 +595,52 @@ provider.
 
 A workspace's own page, `g1t.sh/<workspace>`, has its icon, name, address
 and description at the top, then its overview: your
-[pinned projects](#pinned-and-recent-projects), then the most active ones,
-the pull requests in progress across them, and **All projects**. Members
+[pinned repositories](#pinned-and-recent-repositories), then the most active ones,
+the pull requests in progress across them, and **All repositories**. Members
 also see a **Usage** card with this month's spend, and who belongs.
 
 The workspace's other pages each have a heading of their own and a row in
 [the sidebar](#the-sidebar), lit while you are on them. The trail in the
-top bar, such as _acme / Projects_, leads back to the workspace's page.
+top bar, such as _acme / Repositories_, leads back to the workspace's page.
 
-| Page                                    | Address              | Who      |                                                                                                                                                                       |
-| --------------------------------------- | -------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Overview**                            | `g1t.sh/<workspace>` | Everyone | The page above.                                                                                                                                                       |
-| **Projects**                            | `/-/projects`        | Everyone | Every project you can see. See [the Projects page](#the-projects-page).                                                                                               |
-| [**Packages**](/guides/packages/)       | `/-/packages`        | Everyone | What the workspace publishes. A visitor opens it from **Packages** on the workspace's page.                                                                           |
-| [**Teams**](/guides/teams/)             | `/-/teams`           | Members  | Groups of members given roles on repositories together, mentioned as `@workspace/team` and asked to review together. Each team has its own page at `/-/teams/<team>`. |
-| [**People**](/guides/people-and-teams/) | `/-/people`          | Members  | The workspace's people, with their titles, teams and what they own. Each has a profile at `/-/people/<username>`.                                                     |
-| **Members and invites**                 | `/-/members`         | Members  | Who belongs. Owners invite, change roles and remove people here.                                                                                                      |
-| **Insights**                            | `/-/insights`        | Members  | How the workspace delivers, what waits and what it costs. See [Insights](#insights).                                                                                  |
-| **Settings**                            | `/-/settings`        | Owners   | How the workspace is set up and connected (below).                                                                                                                    |
+| Page                                    | Address                | Who      |                                                                                                                                                                       |
+| --------------------------------------- | ---------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Overview**                            | `g1t.sh/<workspace>`   | Everyone | The page above.                                                                                                                                                       |
+| **Repositories**                        | `/-/code/repositories` | Everyone | Every repository you can see. See [the Repositories page](#the-repositories-page).                                                                                    |
+| [**Packages**](/guides/packages/)       | `/-/packages`          | Everyone | What the workspace publishes. A visitor opens it from **Packages** on the workspace's page.                                                                           |
+| [**Teams**](/guides/teams/)             | `/-/teams`             | Members  | Groups of members given roles on repositories together, mentioned as `@workspace/team` and asked to review together. Each team has its own page at `/-/teams/<team>`. |
+| [**People**](/guides/people-and-teams/) | `/-/people`            | Members  | The workspace's people, with their titles, teams and what they own. Each has a profile at `/-/people/<username>`.                                                     |
+| **Members and invites**                 | `/-/members`           | Members  | Who belongs. Owners invite, change roles and remove people here.                                                                                                      |
+| **Insights**                            | `/-/insights`          | Members  | How the workspace delivers, what waits and what it costs. See [Insights](#insights).                                                                                  |
+| **Settings**                            | `/-/settings`          | Owners   | How the workspace is set up and connected (below).                                                                                                                    |
 
-Each person sees the projects they can read: a member whose base permission
+Each person sees the repositories they can read: a member whose base permission
 is None, an [outside collaborator](/guides/access-and-roles/#outside-collaborators)
 or a visitor sees the public ones and those shared with them, without the
 workspace's people, deployments or settings.
 
-`g1t.sh/<workspace>?tab=projects` (or `repositories`, `packages`,
+`g1t.sh/<workspace>?tab=repositories` (or `packages`,
 `teams`, `people`, `members`, `insights` or `settings`) opens that page.
 
-### The Projects page
+### The Repositories page
 
-The Projects page, `g1t.sh/<workspace>/-/projects`, is made for workspaces with hundreds of projects:
+The Repositories page, `g1t.sh/<workspace>/-/code/repositories`, is made for workspaces with hundreds of repositories. Its old address, `g1t.sh/<workspace>/-/projects`, still leads there.
 
-- **Find a project** matches every word you type in a project's name, its
+- **Find a repository** matches every word you type in a repository's name, its
   address or its description. Press <kbd>/</kbd> anywhere on the page to
   start typing.
-- **Filters**: public or private; [what it is](/guides/projects/#what-a-project-is)
+- **Filters**: public or private; [what it is](/guides/repositories/#what-a-repository-is)
   (apps, libraries, and tools, docs or other when the workspace has any); the language its
-  manifests say it is written in; only projects with
-  [Deployments](/guides/deployments/) on; and archived projects, which are
-  left out unless you ask for them. Each choice shows how many projects it
+  manifests say it is written in; only repositories with
+  [Deployments](/guides/deployments/) on; and archived repositories, which are
+  left out unless you ask for them. Each choice shows how many repositories it
   holds.
 - **Sort** by recently updated (its settings or its last push, whichever is
   later), recently pushed, most active, or name. Most active counts each
   push, work item or pull request opened or closed, review, comment and
   deployment, and what happened a week ago counts half as much.
-- **List** or **grid**, 30 projects to a page.
-- The arrow keys (or <kbd>j</kbd> and <kbd>k</kbd>) move between projects,
+- **List** or **grid**, 30 repositories to a page.
+- The arrow keys (or <kbd>j</kbd> and <kbd>k</kbd>) move between repositories,
   and <kbd>Enter</kbd> opens one.
 
 Everything you choose is in the address, so a filtered list can be
@@ -648,41 +648,41 @@ bookmarked or shared.
 
 ### Insights
 
-Insights, `g1t.sh/<workspace>/-/insights`, puts the workspace's projects
+Insights, `g1t.sh/<workspace>/-/insights`, puts the workspace's repositories
 side by side: how much they ship, how long changes take, what is waiting
 now, and what the work cost. Choose the last 7, 30 or 90 days and all
-projects or one; both are in the address (`?period=7d&project=api`).
+repositories or one; both are in the address (`?period=7d&project=api`).
 
-|                                           | What it counts                                                                                                                                                                                                                                                      |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Merged changes**                        | Pull requests merged in the period, with a bar for each day. The daily values are in a table under the chart.                                                                                                                                                       |
-| **Average lead time**                     | From a pull request's opening to its merge, for those merged in the period.                                                                                                                                                                                         |
-| **Average first review** (per project)    | From opening to the first approval or request for changes by a person other than its owner, for first reviews given in the period. Reviews by g1t and by workspace agents do not count.                                                                             |
-| **Opened** and **Open now** (per project) | Pull requests opened in the period, and those open or in draft now.                                                                                                                                                                                                 |
-| **Awaiting a first review**               | Open pull requests (not drafts) no person has reviewed yet.                                                                                                                                                                                                         |
-| **In the merge queue**                    | Open pull requests waiting, being tested or passed in the [merge queue](/guides/merge-queue/).                                                                                                                                                                      |
-| **Checks running** and **Checks failed**  | Open pull requests by their latest commit's checks: statuses, check runs and g1t Actions jobs, as the pull request shows them. One with a failed check counts as failed, else one with a check still going counts as running; one with no checks counts in neither. |
-| **Usage at price** and **Cost**           | [Usage](/guides/usage-and-billing/#the-usage-page) at price, before what the plan, credit or discounts paid. A project's cost is its repository's usage; with all projects shown, the total also holds usage that is no project's.                                  |
-| **Cost per merged change**                | The period's usage divided by its merged changes: an average, not what any one change cost.                                                                                                                                                                         |
+|                                              | What it counts                                                                                                                                                                                                                                                      |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Merged changes**                           | Pull requests merged in the period, with a bar for each day. The daily values are in a table under the chart.                                                                                                                                                       |
+| **Average lead time**                        | From a pull request's opening to its merge, for those merged in the period.                                                                                                                                                                                         |
+| **Average first review** (per repository)    | From opening to the first approval or request for changes by a person other than its owner, for first reviews given in the period. Reviews by g1t and by workspace agents do not count.                                                                             |
+| **Opened** and **Open now** (per repository) | Pull requests opened in the period, and those open or in draft now.                                                                                                                                                                                                 |
+| **Awaiting a first review**                  | Open pull requests (not drafts) no person has reviewed yet.                                                                                                                                                                                                         |
+| **In the merge queue**                       | Open pull requests waiting, being tested or passed in the [merge queue](/guides/merge-queue/).                                                                                                                                                                      |
+| **Checks running** and **Checks failed**     | Open pull requests by their latest commit's checks: statuses, check runs and g1t Actions jobs, as the pull request shows them. One with a failed check counts as failed, else one with a check still going counts as running; one with no checks counts in neither. |
+| **Usage at price** and **Cost**              | [Usage](/guides/usage-and-billing/#the-usage-page) at price, before what the plan, credit or discounts paid. A repository's cost is its usage; with all repositories shown, the total also holds usage that is no repository's.                                     |
+| **Cost per merged change**                   | The period's usage divided by its merged changes: an average, not what any one change cost.                                                                                                                                                                         |
 
 The days are UTC days, and the waiting counts are as of now and can
-overlap. Each person sees only the projects they can read. When part of
+overlap. Each person sees only the repositories they can read. When part of
 it cannot be read, such as one service being briefly unavailable, Insights
 says so and shows a dash in place of numbers it cannot vouch for. **Explore
-costs** opens [Usage](/guides/usage-and-billing/#the-usage-page) with the same period and project.
+costs** opens [Usage](/guides/usage-and-billing/#the-usage-page) with the same period and repository.
 
 ### The workspace overview
 
 The workspace's **Overview**, `g1t.sh/<workspace>/-/workspace`, opens with
 what its work says, for members who can see Code. It is worked out the
 same way as [Home's week](/guides/home/#this-week), and
-each person sees only the projects they can read.
+each person sees only the repositories they can read.
 
 1. **[The past week](/guides/home/#this-week)**: the same four
    figures as Home.
 2. **Spend, threaded to the work**: the quarter's work in four columns:
    each milestone, its work items, each work item's change set in each
-   project, and that change set's pull requests (with no milestones in
+   repository, and that change set's pull requests (with no milestones in
    the workspace, it starts at the work items). Each box is sized by
    what agents cost on its pull requests (g1t's metered usage, and each
    pull request's share of its sessions' cost estimated at list price),
@@ -694,7 +694,7 @@ each person sees only the projects they can read.
    much of it is threaded to the work. Their figure holds everything the
    organization ran, so it is never added to g1t's.
 3. **What's moving and what's waiting**: each team's last two weeks, day
-   by day, by the projects the team works on (each project, when the
+   by day, by the repositories the team works on (each repository, when the
    workspace has no teams). Above the line are changes (pull requests
    opened and merged, and commits agents pushed outside one) and agent
    sessions started; below it, reviews and comments and
@@ -703,11 +703,11 @@ each person sees only the projects they can read.
    row is drawn to its own scale. Beside it, **Waiting on a first
    review** lists the oldest open pull requests no one has reviewed.
 4. **Quiet changes**: places to look, not verdicts.
-   - **Knowledge silos**: projects where one person merged three quarters
+   - **Knowledge silos**: repositories where one person merged three quarters
      or more of the last 90 days' changes (six or more), and whoever has
      started there this month. Only in a workspace where three people or
-     more merged lately: with fewer, every project rests on someone.
-   - **New ground**: people who merged to a project for the first time in
+     more merged lately: with fewer, every repository rests on someone.
+   - **New ground**: people who merged to a repository for the first time in
      the last two weeks, after three or more merges elsewhere.
    - **Spreading**: a harness two or more people in a team started using
      this month, at least two weeks after the first person did (across
@@ -715,27 +715,27 @@ each person sees only the projects they can read.
    - **New habits**: people whose first agent-made change merged in the
      last two weeks, after three or more of their own.
 
-Under it are the members and projects, the month's usage against the
+Under it are the members and repositories, the month's usage against the
 plan, and the workspace's policies.
 
 ## The app bar, the sidebar and the page
 
 Signed in, g1t is always about one workspace: the one you are in. On a
-workspace's pages, and on a project in one of your workspaces, that is the
-workspace the page belongs to, so opening a project in another of your
+workspace's pages, and on a repository in one of your workspaces, that is the
+workspace the page belongs to, so opening a repository in another of your
 workspaces switches you to it; anywhere else, even on public pages such as
 [Explore](https://g1t.sh/explore), someone's profile or another
-workspace's public project, it stays the one you chose last.
+workspace's public repository, it stays the one you chose last.
 
 Those pages beyond your workspaces are browsing g1t: the app bar lights
 **Explore**, and Explore's sidebar sits beside them. It has **Back to**
 your workspace at the top, which goes to its [Home](/guides/home/); then
-**Recently active**, **New projects** and **Search**; **Your stars** and
+**Recently active**, **New repositories** and **Search**; **Your stars** and
 **Your profile**; and under **You are viewing**, whose page this is: a
-workspace with its overview and **Projects**, or a person with their
-profile and **Stars**. In one of their public projects, the sidebar is
-that project's own list, as in Code, with **Projects** at its top to go
-back to the rest of theirs. A project shared with you stays in Code, under
+workspace with its overview and **Repositories**, or a person with their
+profile and **Stars**. In one of their public repositories, the sidebar is
+that repository's own list, as in Code, with **Repositories** at its top to go
+back to the rest of theirs. A repository shared with you stays in Code, under
 **Shared with you**. On a phone, the button at the top left opens the same
 sidebar, and **More** starts with **Explore**.
 
@@ -757,7 +757,7 @@ its name on hover below that):
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Chat**     | Where the workspace opens. On a computer it opens on [Home](/guides/home/): where you're needed across the workspace, and what happened while you were away. Beside it, **Needs attention**, the workspace's [sessions](/work/sessions/) (what agents are doing, at `g1t.sh/<workspace>/-/chat/sessions`), your channels, your direct messages, and your recent sessions. See [Chat](/guides/chat/). |
 | **Work**     | The workspace's work items, their [Board](/work/board/), and its labels and milestones, at `g1t.sh/<workspace>/-/work`.                                                                                                                                                                                                                                                                              |
-| **Code**     | Projects, pull requests and checks. Not shown to a member without Code access.                                                                                                                                                                                                                                                                                                                       |
+| **Code**     | Repositories, pull requests and checks. Not shown to a member without Code access.                                                                                                                                                                                                                                                                                                                   |
 | **Library**  | Your artifacts: documents, decks and pages, at `g1t.sh/<workspace>/-/library/artifacts`. See [artifacts](/guides/artifacts/).                                                                                                                                                                                                                                                                        |
 | **Routines** | Standing work g1t will run by itself, on a schedule or when something happens. Not available yet: the page shows what it will hold.                                                                                                                                                                                                                                                                  |
 
@@ -766,7 +766,7 @@ After them come the apps you pinned, then:
 | App           | Opens                                                                                                                                                                                    |
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Apps**      | Every app the workspace has, to open one or pin it to the app bar.                                                                                                                       |
-| **Explore**   | g1t beyond your workspaces: public projects, people and other workspaces.                                                                                                                |
+| **Explore**   | g1t beyond your workspaces: public repositories, people and other workspaces.                                                                                                            |
 | **People**    | In the workspace's menu: everyone in the workspace, and its [teams](/guides/teams/). See [people and teams](/guides/people-and-teams/).                                                  |
 | **Workspace** | In the workspace's menu, as **Workspace settings**: the workspace's settings: who has access, money, compute, and how each part of g1t is set up. See [Workspace mode](#workspace-mode). |
 
@@ -846,8 +846,8 @@ sidebars search their own lists, it stays in the page's header.
 
 Below it are the lists of the app you are in, each group under a small
 heading. Code's lists the workspace's
-[projects](#pinned-and-recent-projects), and drills into a project's own
-list when you open one, with **‹ All projects** at the top to go back. Its
+[repositories](#pinned-and-recent-repositories), and drills into a repository's own
+list when you open one, with **‹ All repositories** at the top to go back. Its
 **Settings** opens one level further: **General**, **Deployments**,
 **Domains**, **Guardrails**, **Repository**, **Access**,
 **Branches and merging**, **Secrets and variables** and **Webhooks**, each
@@ -880,7 +880,7 @@ open is left out for members.
 |                  | [**Single sign-on**](/guides/single-sign-on/)               | Owners  | Your identity provider over SAML 2.0, OpenID Connect or OAuth 2.0, the people linked to it, and requiring it. Every paid plan. `-/sso`                                                                                             |
 |                  | [**Access tokens**](#workspace-access-tokens)               | Members | The workspace's own tokens. Owners create and delete them. `-/tokens`                                                                                                                                                              |
 |                  | **Personal access tokens**                                  | Owners  | The workspace's rules for members' tokens, and approving them. `-/personal-access-tokens`                                                                                                                                          |
-| **Money**        | [**Usage**](/guides/usage-and-billing/#the-usage-page)      | Members | What the workspace used, by product, project and day. `-/usage`                                                                                                                                                                    |
+| **Money**        | [**Usage**](/guides/usage-and-billing/#the-usage-page)      | Members | What the workspace used, by product, repository and day. `-/usage`                                                                                                                                                                 |
 |                  | [**Billing and plans**](/guides/usage-and-billing/)         | Members | The plan, the spend limit and budget alerts, prepaying and every charge. `-/billing`                                                                                                                                               |
 | **Compute**      | [**Runners**](/guides/self-hosted-runners/)                 | Owners  | The workspace's self-hosted machines, their groups and registration tokens. `-/runners`                                                                                                                                            |
 | **Code**         | **Repositories**                                            | Members | Every repository, and for owners **Recently deleted**, where a [deleted repository](/guides/managing-repositories/#restore-a-repository) can be restored, or purged, for 30 days. `-/repositories`                                 |
@@ -891,7 +891,7 @@ open is left out for members.
 |                  | **Emoji**                                                   | Members | The workspace's own emoji. `-/emoji`                                                                                                                                                                                               |
 | **Security**     | **Security settings**                                       | Members | The workspace's security policies. `-/security/settings`                                                                                                                                                                           |
 |                  | [**Guardrails**](/guides/guardrails/)                       | Members | How long checks, the merge queue and merge checks may run. `-/guardrails`                                                                                                                                                          |
-|                  | [**Rules**](/guides/rules/)                                 | Members | Rulesets across projects. `-/rules`                                                                                                                                                                                                |
+|                  | [**Rules**](/guides/rules/)                                 | Members | Rulesets across repositories. `-/rules`                                                                                                                                                                                            |
 |                  | [**Audit log**](/guides/audit-log/)                         | Members | Every change, by whom, to what. `-/audit`                                                                                                                                                                                          |
 | **Integrations** | [**Integrations**](/guides/integrations/)                   | Members | The tools connected for everyone. `-/integrations`                                                                                                                                                                                 |
 
@@ -901,23 +901,23 @@ Every address that was there before this layout still works. To find
 someone, and what they work on, use the
 [People directory](/guides/people-and-teams/#the-directory).
 
-### Pinned and recent projects
+### Pinned and recent repositories
 
-However many projects a workspace has, Code's sidebar lists a few:
+However many repositories a workspace has, Code's sidebar lists a few:
 
-- **Pinned**: the projects you pinned, in your order, up to eight a
+- **Pinned**: the repositories you pinned, in your order, up to eight a
   workspace. Pin one with **Pin** on its page, or the pin on its row of the
-  Projects page or its card on the Overview. Drag a pinned project to move
+  Repositories page or its card on the Overview. Drag a pinned repository to move
   it, or hold <kbd>Alt</kbd> and press the up or down arrow.
-- **Recent**: the projects you opened last that you have not pinned, up to
+- **Recent**: the repositories you opened last that you have not pinned, up to
   five.
-- **All projects**, with how many there are, opens the Projects page.
+- **All repositories**, with how many there are, opens the Repositories page.
 
-Pins and recent projects are yours: nobody else sees them, and each
-workspace has its own. Search (<kbd>/</kbd>) finds any project in the workspace, pinned or not.
+Pins and recent repositories are yours: nobody else sees them, and each
+workspace has its own. Search (<kbd>/</kbd>) finds any repository in the workspace, pinned or not.
 From the API, use
 [`GET /user/pinned_projects/{workspace}`](/reference/api/pinned-projects/list-pinned-projects/)
-and the other [pinned projects](/reference/api/pinned-projects/list-pinned-projects/)
+and the other [pinned repositories](/reference/api/pinned-projects/list-pinned-projects/)
 operations, or the `workspace` tool's `list_pinned_projects`,
 `pin_project`, `unpin_project` and `reorder_pinned_projects` actions
 over MCP.
@@ -935,7 +935,7 @@ them within reach of your thumb:
 | **The tab you are already on**                           | Tap it again to open that app's sidebar too: for **Work**, its views (**New work item**, **Plan**, **Board**, **Triage**, **All open**, **Assigned to you**, **Closed**, **Labels** and **Milestones**) and **Projects** (each project under way, and **New project**).                                                                                   |
 | **The workspace's name** in the page's header            | Switches workspace, or opens your profile or settings.                                                                                                                                                                                                                                                                                                    |
 
-Inside a [project](/guides/projects/), its pages (**Overview**, **Code**,
+Inside a [repository](/guides/repositories/), its pages (**Overview**, **Code**,
 **Work**, **Pull requests**, **Workflows**, **Deployments**,
 **Insights** and, for the roles that see them, **Security** and
 **Settings**) run in a row under its name that scrolls sideways, with the
@@ -953,8 +953,8 @@ Signing in, signing up, an invite link, the two-factor step, choosing a new
 password and making your first workspace each stand on their own: the g1t
 logo, the form, and links to the terms, privacy policy, docs, status and
 support at the foot. Someone who is not signed in reads public pages, such
-as Explore, a profile or a public project, under a plain header with
-**Explore**, **Docs**, **Sign in** and **Sign up**; a project's pages run in
+as Explore, a profile or a public repository, under a plain header with
+**Explore**, **Docs**, **Sign in** and **Sign up**; a repository's pages run in
 the row under its name.
 
 ## Mission control
@@ -965,8 +965,8 @@ Signed in, `g1t.sh` itself opens [Home](/guides/home/) in the workspace
 you are in.
 
 **Review N that need you** jumps to the list, and **New work item** opens
-a new [work item](/work/work-items/) of the workspace, filed in the
-project you pick.
+a new [work item](/work/work-items/) of the workspace, filed from the
+repository you pick.
 
 | Tab              | What it lists                                                                                                                                                     |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1081,15 +1081,15 @@ shown** to clear it.
 **Who sees what.** A profile is public, but the work and workspaces on it
 are filtered for whoever is looking:
 
-| On the profile                            | Shown to a visitor when                                                                        |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| A pull request, and its title             | They can read its repository: it is public, or they are a member of its workspace              |
-| A work item, and its title                | They are a member of its workspace, or can read the repository it was filed in                 |
-| The counts, and the contribution calendar | Only what they could see is counted                                                            |
-| A workspace                               | They are a member of it too, or you made a public project in it, whose page shows that already |
+| On the profile                            | Shown to a visitor when                                                                           |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| A pull request, and its title             | They can read its repository: it is public, or they are a member of its workspace                 |
+| A work item, and its title                | They are a member of its workspace, or can read the repository it was filed in                    |
+| The counts, and the contribution calendar | Only what they could see is counted                                                               |
+| A workspace                               | They are a member of it too, or you made a public repository in it, whose page shows that already |
 
 Someone signed out sees your public work and the workspaces where you made
-a public project; nothing else, and their calendar counts only work in
+a public repository; nothing else, and their calendar counts only work in
 public repositories. The link preview for a profile uses only public work.
 
 **How it is laid out.** Signed out, a profile, Explore and Search are

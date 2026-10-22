@@ -146,6 +146,7 @@ import {
   homePagePath,
   modeOf,
   pagePath,
+  repositoriesPath,
   workspaceSettingsPage,
 } from "../lib/workspace-nav";
 import { useSidebarLocation } from "../lib/use-sidebar-location";
@@ -177,21 +178,21 @@ import { HealthDot, ProjectMark } from "./projects";
 
 /**
  * What the sidebar needs, worked out by the root loader. For a visitor who
- * is not signed in there is no workspace, no projects and no usage: only
- * the project being looked at, if they can see it.
+ * is not signed in there is no workspace, no repositories and no usage:
+ * only the repository being looked at, if they can see it.
  */
 export type ShellData = {
   /** The workspace the sidebar is about: the one being looked at, or their first. */
   workspace: Membership | null;
-  /** All its projects, by name, for the palette: `name` is the slug in their address. */
+  /** All its repositories, by name, for the palette: `name` is the slug in their address. */
   repos: ShortcutProject[];
-  /** The person's pinned projects in it, in their order (lib/pins.ts). */
+  /** The person's pinned repositories in it, in their order (lib/pins.ts). */
   pinned?: ShortcutProject[];
   /** What they opened there last, latest first, leaving out the pinned. */
   recent?: ShortcutProject[];
   /** Repositories shared with them in workspaces they do not belong to. */
   shared?: { namespace: string; name: string; isPrivate: boolean }[];
-  /** The project being looked at, if any, whoever owns it. */
+  /** The repository being looked at, if any, whoever owns it. */
   repo: {
     namespace: string;
     name: string;
@@ -275,7 +276,7 @@ function SidebarLink({
   current?: boolean;
   /** A small button at the row's end, beside the words (a pin). */
   action?: ReactNode;
-  /** The row alone, for a list item that is drawn by the list (a pinned project, which drags). */
+  /** The row alone, for a list item that is drawn by the list (a pinned repository, which drags). */
   bare?: boolean;
   children: ReactNode;
 }) {
@@ -616,7 +617,7 @@ function AccountMenu({ user, on = "page" }: { user: User; on?: "bar" | "page" })
   );
 }
 
-/** A project's settings pages, which the project's menu drills into. */
+/** A repository's settings pages, which the repository's menu drills into. */
 const REPO_SETTINGS_PAGE = /^\/([^/]+)\/([^/-][^/]*)\/settings(\/|$)/;
 
 /**
@@ -722,10 +723,10 @@ function SidebarSubhead({ children }: { children: ReactNode }) {
 }
 
 /**
- * The workspace's projects as the sidebar keeps them, however many there
+ * The workspace's repositories as the sidebar keeps them, however many there
  * are: the person's pins in their order, what they opened last, and the
  * way to all of them. Pins move by dragging, or with Alt and the arrow
- * keys; the projects service keeps the order.
+ * keys; g1t keeps the order.
  */
 function SidebarProjects({ slug, shell, current }: { slug: string; shell: ShellData; current: boolean }) {
   const reorder = useFetcher({ key: `pins:${slug}` });
@@ -775,11 +776,11 @@ function SidebarProjects({ slug, shell, current }: { slug: string; shell: ShellD
       {/* The label and its button share a row, so the button stays level with the words at any text size. */}
       <div className="flex items-center justify-between gap-2 pr-1">
         <SidebarGroupLabel asChild>
-          <h2>Projects</h2>
+          <h2>Repositories</h2>
         </SidebarGroupLabel>
-        <Hint label="New project">
+        <Hint label="New repository">
           <SidebarGroupAction asChild className="relative top-auto right-auto">
-            <Link to="/new" aria-label="New project">
+            <Link to="/new" aria-label="New repository">
               <Plus />
             </Link>
           </SidebarGroupAction>
@@ -790,7 +791,7 @@ function SidebarProjects({ slug, shell, current }: { slug: string; shell: ShellD
         {pinned.length > 0 && (
           <>
             <SidebarSubhead>Pinned</SidebarSubhead>
-            <SidebarMenu aria-label="Pinned projects">
+            <SidebarMenu aria-label="Pinned repositories">
               {pinned.map((project, index) => (
                 <SidebarMenuItem
                   key={project.name}
@@ -831,7 +832,7 @@ function SidebarProjects({ slug, shell, current }: { slug: string; shell: ShellD
         {recent.length > 0 && (
           <>
             <SidebarSubhead>Recent</SidebarSubhead>
-            <SidebarMenu aria-label="Recent projects">
+            <SidebarMenu aria-label="Recent repositories">
               {recent.map((project) => (
                 <Fragment key={`${project.namespace}/${project.name}`}>{row(project, false)}</Fragment>
               ))}
@@ -839,8 +840,8 @@ function SidebarProjects({ slug, shell, current }: { slug: string; shell: ShellD
           </>
         )}
         <SidebarMenu className="pt-1">
-          <SidebarLink to={`/${slug}/-/projects`} icon={<LayoutGrid />} count={shell.repos.length} current={current}>
-            All projects
+          <SidebarLink to={repositoriesPath(slug)} icon={<LayoutGrid />} count={shell.repos.length} current={current}>
+            All repositories
           </SidebarLink>
         </SidebarMenu>
       </SidebarGroupContent>
@@ -849,8 +850,8 @@ function SidebarProjects({ slug, shell, current }: { slug: string; shell: ShellD
 }
 
 /**
- * A page a project will have that is a page of its own, not a tab: its own
- * faint row in the project's list, leading to what it will be.
+ * A page a repository will have that is a page of its own, not a tab: its
+ * own faint row in the repository's list, leading to what it will be.
  */
 function ProjectSoonRow({ base, feature, icon }: { base: string; feature: string; icon: ReactNode }) {
   const item = roadmapItem(feature);
@@ -885,8 +886,8 @@ function sameRepo(a: { namespace: string; name: string } | null, b: { namespace:
 }
 
 /**
- * A project's own list, drilled into while you are in it: everything about
- * the project, running and its code, and nothing else, with the way back
+ * A repository's own list, drilled into while you are in it: everything
+ * about the repository, running and its code, and nothing else, with the way back
  * out to all of them.
  */
 function RepoMenu({
@@ -896,11 +897,11 @@ function RepoMenu({
 }: {
   repo: MenuRepo;
   isPrivate: boolean;
-  /** Where the way back leads: the workspace's projects, mission control, or the projects of the workspace being browsed. */
+  /** Where the way back leads: the workspace's repositories, mission control, or the repositories of the workspace being browsed. */
   back: { to: string; label: string; context?: string };
 }) {
   const base = `/${repo.namespace}/${repo.name}`;
-  // What a member sees, and what everyone who can see the project does
+  // What a member sees, and what everyone who can see the repository does
   // (lib/chrome.ts).
   const shows = new Set(projectPages(repo.member, repo.can));
   const { current: atOverview, pending: toOverview } = useRowState(base, { end: true });
@@ -924,7 +925,7 @@ function RepoMenu({
           </Hint>
         </SidebarMenuItem>
       </NavRows>
-      {/* A project's pages, in the order people use them. A page with more
+      {/* A repository's pages, in the order people use them. A page with more
           than one view shows them as tabs across its top. */}
       <Rule />
       <NavRows>
@@ -1023,7 +1024,7 @@ function RepoMenu({
 
 /**
  * Administrative settings: repository policy, access and workflow permissions.
- * Day-to-day operations stay in the main project menu.
+ * Day-to-day operations stay in the main repository menu.
  */
 function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
   const base = `/${repo.namespace}/${repo.name}`;
@@ -1126,10 +1127,10 @@ function AccountSettingsMenu({ username }: { username: string }) {
 }
 
 /**
- * Code's sidebar: its Overview, the projects, what spans them and what is
- * coming; in a project, drilled into the project's own list, and its
- * settings one level further in. The address says which, so a link
- * straight to a project opens the sidebar already drilled in.
+ * Code's sidebar: its Overview, the repositories, what spans them and what
+ * is coming; in a repository, drilled into the repository's own list, and
+ * its settings one level further in. The address says which, so a link
+ * straight to a repository opens the sidebar already drilled in.
  */
 function CodeSidebar({
   user,
@@ -1151,7 +1152,7 @@ function CodeSidebar({
   // moves as the link is followed, not once the page arrives.
   const target = destination.pathname;
   // On a 404, the address is not a place: no list is drilled into from it,
-  // except the project's own when the project is real and visible and only
+  // except the repository's own when the repository is real and visible and only
   // something inside it is missing (a file, a commit, a work item).
   const lost = missing && destination.key === location.key;
   const active = shell.repo;
@@ -1190,7 +1191,7 @@ function CodeSidebar({
     repoPath[2] !== "-" &&
     !/^\/[^/]+\/[^/]+\/invitations\/?$/.test(target) &&
     (!lost || sameRepo(active, { namespace: repoPath[1]!, name: repoPath[2]! }));
-  // A project's settings, one level further in.
+  // A repository's settings, one level further in.
   const inRepoSettings = inRepo && REPO_SETTINGS_PAGE.test(target) && projectPageAt(target.split("/").slice(3).join("/")) === "settings";
   // The repository the menu is for: the one loaded if it is the one being
   // gone to, else what the address says, at once.
@@ -1215,13 +1216,13 @@ function CodeSidebar({
   const trail: Level[] = [{ key: browsing ? "browse" : "main", node: main }];
   if (menuRepo) {
     const key = `repo:${menuRepo.namespace}/${menuRepo.name}`.toLowerCase();
-    // Out of a project: to its workspace's projects when they are yours, or
-    // when browsing, to the projects of the workspace it is in.
+    // Out of a repository: to its workspace's repositories when they are
+    // yours, or when browsing, to the repositories of the workspace it is in.
     const home = (user.workspaces ?? []).find((m) => m.slug === menuRepo.namespace.toLowerCase());
     const back = home
-      ? { to: `/${home.slug}/-/projects`, label: "All projects" }
+      ? { to: repositoriesPath(home.slug), label: "All repositories" }
       : browsing
-        ? { to: `/${menuRepo.namespace}/-/projects`, label: "Projects", context: menuRepo.namespace }
+        ? { to: repositoriesPath(menuRepo.namespace), label: "Repositories", context: menuRepo.namespace }
         : { to: ws ? `/${ws.slug}/-/overview` : "/explore", label: "Code" };
     trail.push({
       key,
@@ -1286,9 +1287,9 @@ function useBrowsedOwner(owner: BrowsedOwner | null): { name: string; avatar: st
 
 /**
  * Explore's list, beside g1t beyond your workspaces (lib/workspace-nav.ts
- * `browsingOf`): public projects across g1t, recently active and new,
+ * `browsingOf`): public repositories across g1t, recently active and new,
  * search, and what you starred; then whose page this is, with their own
- * pages. A project of theirs drills into its own list, as in Code.
+ * pages. A repository of theirs drills into its own list, as in Code.
  */
 function BrowseMenu({ user, owner }: { user: User; owner: BrowsedOwner | null }) {
   const location = useSidebarLocation();
@@ -1319,7 +1320,7 @@ function BrowseMenu({ user, owner }: { user: User; owner: BrowsedOwner | null })
           </SidebarLink>
         </NavRows>
         <Rule />
-        <NavGroup title="Projects">
+        <NavGroup title="Repositories">
           {projects.slice(0, 8).map((project) => (
             <SidebarLink
               key={project.name}
@@ -1329,8 +1330,8 @@ function BrowseMenu({ user, owner }: { user: User; owner: BrowsedOwner | null })
               {project.title}
             </SidebarLink>
           ))}
-          <SidebarLink to={`${base}/-/projects`} icon={<LayoutGrid size={15} />} count={projects.length || undefined}>
-            All projects
+          <SidebarLink to={repositoriesPath(owner.name)} icon={<LayoutGrid size={15} />} count={projects.length || undefined}>
+            All repositories
           </SidebarLink>
         </NavGroup>
         <Rule />
@@ -1355,7 +1356,7 @@ function BrowseMenu({ user, owner }: { user: User; owner: BrowsedOwner | null })
           Recently active
         </SidebarLink>
         <SidebarLink to="/explore?sort=new" icon={<Sparkles size={15} />} current={fresh}>
-          New projects
+          New repositories
         </SidebarLink>
         <SidebarLink to="/search" icon={<Search size={15} />} current={path === "/search"}>
           Search
@@ -1410,7 +1411,7 @@ export function ModeHeader({ title, action, tabbed = false }: { title: ReactNode
 
 /**
  * Code's own list (beside the rail): only code. Its Overview (Mission
- * control's code panels), the projects, what spans them, and what is
+ * control's code panels), the repositories, what spans them, and what is
  * coming. The workspace's people, money and settings are elsewhere.
  */
 function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
@@ -1425,7 +1426,7 @@ function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
         </SidebarLink>
       </NavRows>
       <Rule />
-      <SidebarProjects slug={slug} shell={shell} current={at("projects")} />
+      <SidebarProjects slug={slug} shell={shell} current={at("code/repositories")} />
       <Rule />
       <NavRows>
         <SidebarLink to={`/${slug}/-/security`} icon={<ShieldCheck size={15} />} current={at("security") && !at("security/settings")}>
@@ -1668,7 +1669,11 @@ function WorkProjectsGroup({ slug }: { slug: string }) {
         </SidebarMenuItem>
       ) : (
         projects.map((project) => (
-          <SidebarLink key={project.slug} to={projectPath(slug, project.slug)} icon={<ProjectMark project={project} size={16} className="rounded text-[0.625rem]" />}>
+          <SidebarLink
+            key={project.slug}
+            to={projectPath(slug, project.slug)}
+            icon={<ProjectMark project={project} size={16} className="rounded text-[0.625rem]" />}
+          >
             <span className="flex min-w-0 items-center justify-between gap-2">
               <span className="truncate">{project.name}</span>
               <span className="mr-0.5 inline-flex" aria-label={project.health ? HEALTH_LABELS[project.health] : undefined}>
@@ -1797,7 +1802,6 @@ const SECTIONS: Record<string, string> = {
   people: "People",
   members: "Members",
   permissions: "Permissions",
-  projects: "Projects",
   teams: "Teams",
   tokens: "Access tokens",
   "personal-access-tokens": "Personal access tokens",
@@ -1849,7 +1853,7 @@ function Breadcrumbs({
   /** The workspace you are in: the switcher names it, so the trail starts after it. */
   workspace: string | null;
 }) {
-  // A 404 names nothing from the address, unless the project is real and
+  // A 404 names nothing from the address, unless the repository is real and
   // visible and only something inside it is missing.
   const visibleRepo = /^\/([^/]+)\/([^/-][^/]*)(\/|$)/.exec(pathname);
   if (missing && !(visibleRepo && sameRepo(repo ?? null, { namespace: visibleRepo[1]!, name: visibleRepo[2]! }))) {
@@ -1869,7 +1873,7 @@ function Breadcrumbs({
     const words: Record<string, string> = {
       settings: "Account",
       explore: "Explore",
-      new: "New project",
+      new: "New repository",
       search: "Search",
       workspaces: "New workspace",
       policies: "Policies",
@@ -1891,6 +1895,9 @@ function Breadcrumbs({
     if (third === "settings" && fourth === "chat") {
       // Chat settings is a page of its own, not one of General's.
       trail.push({ label: "Chat settings", to: `${page}/chat` });
+    } else if (third === "code" && fourth === "repositories") {
+      // Code's Repositories, one of Code's pages like Security or Packages.
+      trail.push({ label: "Repositories", to: `${page}/repositories` });
     } else if (third === "chat" && fourth === "sessions") {
       // Chat's sessions: Chat / Sessions / Session.
       trail.push({ label: "Chat", to: page }, { label: "Sessions", to: `${page}/sessions` });
@@ -2054,7 +2061,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
     { label: "Explore repositories", to: "/explore", icon: <Compass size={15} /> },
     { label: "Search g1t", hint: "Repositories, code, work items, people", to: "/search", icon: <Search size={15} /> },
     { label: "Notifications", hint: "What needs you", to: "/notifications", icon: <Bell size={15} /> },
-    { label: "New project", to: "/new", icon: <Plus size={15} /> },
+    { label: "New repository", to: "/new", icon: <Plus size={15} /> },
     { label: "Your settings", to: FIRST_SETTINGS_PAGE, icon: <Settings size={15} /> },
     ...(Object.keys(ACCOUNT_SETTINGS) as AccountSettingsPage[])
       .filter((page) => page !== "profile")
@@ -2077,7 +2084,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
         ? [
             { label: "Deployments", hint: name, to: `${base}/deployments`, icon: <Rocket size={15} /> },
             { label: "Environment variables", hint: name, to: `${base}/settings/secrets`, icon: <Lock size={15} /> },
-            { label: "Project settings", hint: name, to: `${base}/settings`, icon: <Settings size={15} /> },
+            { label: "General settings", hint: name, to: `${base}/settings`, icon: <Settings size={15} /> },
             { label: "Repository settings", hint: name, to: `${base}/settings/repository`, icon: <Settings size={15} /> },
           ]
         : []),
@@ -2091,7 +2098,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
         to: `/${membership.slug}`,
         icon: <Avatar name={membership.slug} image={membership.avatar} size={15} square />,
       },
-      { label: "All projects", hint: membership.slug, to: `/${membership.slug}/-/projects`, icon: <LayoutGrid size={15} /> },
+      { label: "All repositories", hint: membership.slug, to: repositoriesPath(membership.slug), icon: <LayoutGrid size={15} /> },
       { label: "People", hint: membership.slug, to: `/${membership.slug}/-/people`, icon: <Users size={15} /> },
       { label: "Usage", hint: membership.slug, to: `/${membership.slug}/-/usage`, icon: <BarChart3 size={15} /> },
       { label: "Billing and plans", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/billing`, icon: <CreditCard size={15} /> },
@@ -2111,7 +2118,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
   for (const listed of shell.repos) {
     commands.push({
       label: listed.title ?? listed.name,
-      hint: `${listed.namespace} · Project`,
+      hint: `${listed.namespace} · Repository`,
       to: `/${listed.namespace}/${listed.name}`,
       icon: <Box size={15} />,
     });
@@ -2340,7 +2347,7 @@ export function AppShell({
   const target = useSidebarLocation().pathname;
   const ws = shell.workspace;
   // Beyond your workspaces (Explore, a profile, another workspace's
-  // projects), the shell is Explore's; anything of yours is its mode's.
+  // repositories), the shell is Explore's; anything of yours is its mode's.
   const browsing = browsingOf(target, {
     slug: ws?.slug ?? null,
     memberships: (user.workspaces ?? []).map((membership) => membership.slug),
@@ -2504,7 +2511,7 @@ export function AppShell({
       )}
 
       <div className={`min-h-dvh pt-[calc(var(--frame-top)+var(--appbar-h))] pb-(--tabbar-h) ${pad}`}>
-        {/* The top bar always has its line, so a page's own header (data-page-head: a conversation's, a project's,
+        {/* The top bar always has its line, so a page's own header (data-page-head: a conversation's, a repository's,
             a sticky one under an open artifact) sits under it as its own band. */}
         <div className="flex min-h-[calc(100dvh-var(--frame-top)-var(--appbar-h)-var(--tabbar-h))] min-w-0 flex-col bg-bg">
           <header
@@ -2550,7 +2557,7 @@ export function AppShell({
   );
 }
 
-/** Create new: a work item (from the project you are in), a project, a workspace or a team. */
+/** Create new: a work item (from the repository you are in), a repository, a workspace or a team. */
 function CreateMenu({ shell }: { shell: ShellData }) {
   return (
     <DropdownMenu>
@@ -2590,7 +2597,7 @@ function CreateMenu({ shell }: { shell: ShellData }) {
         <DropdownMenuItem asChild>
           <Link to="/new">
             <Box />
-            New project
+            New repository
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>

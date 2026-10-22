@@ -13,6 +13,7 @@ import { OnboardingOnPage } from "../../components/onboarding";
 import { getViewer, roleIn } from "../../lib/session.server";
 import { usageFor } from "../../lib/workspace-usage.server";
 import { workspaceProjects } from "../../lib/workspace-projects.server";
+import { repositoriesPath } from "../../lib/workspace-nav";
 import { page } from "../../lib/meta";
 import { Avatar } from "../../components/ui/avatar";
 import { Badge } from "../../components/ui/badge";
@@ -119,7 +120,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
           to={role === "owner" ? `/${slug}/-/members` : `/${slug}/-/people`}
           action={role === "owner" ? "Manage people" : "See everyone"}
         />
-        <Tile icon={<Box size={12} />} label="Projects" value={projects == null ? "—" : String(projects)} to={`/${slug}/-/projects`} action="Open Code" />
+        <Tile icon={<Box size={12} />} label="Repositories" value={projects == null ? "—" : String(projects)} to={repositoriesPath(slug)} action="Open Code" />
       </div>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-6">

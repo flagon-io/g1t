@@ -2,10 +2,10 @@ import { useLocation } from "react-router";
 
 /** Each of a project's settings pages: its name and what it is for. */
 const PAGES: Record<string, { title: string; about: string }> = {
-  "": { title: "General", about: "The project's name, where its code lives, what it is for, and archiving, moving or deleting it." },
-  deployments: { title: "Build configuration", about: "How the project builds, where it runs, and its previews." },
+  "": { title: "General", about: "The repository's name, where its code lives, what it is for, and archiving, moving or deleting it." },
+  deployments: { title: "Build configuration", about: "How the repository builds, where it runs, and its previews." },
   domains: { title: "Domains", about: "Addresses of your own for the production deployment." },
-  guardrails: { title: "Guardrails", about: "How long this project's runs may take." },
+  guardrails: { title: "Guardrails", about: "How long this repository's runs may take." },
   repository: { title: "Repository", about: "Its name, details and default branch, and who can see it." },
   access: { title: "Access", about: "Who can see and change the repository, with which role, and invitations to it." },
   keys: { title: "Deploy keys", about: "SSH keys that let a machine clone this repository, or push to it, and reach nothing else." },
@@ -20,8 +20,8 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   actions: { title: "Actions", about: "What workflows' tokens may do, and whose pull requests' runs wait for approval." },
   environments: { title: "Environments", about: "Protection rules for the environments jobs deploy to: reviews, wait timers and branches." },
-  runners: { title: "Runners", about: "Machines of your own for this project's workflow jobs and sandbox runs." },
-  webhooks: { title: "Webhooks", about: "Addresses g1t calls when something happens in the project." },
+  runners: { title: "Runners", about: "Machines of your own for this repository's workflow jobs and sandbox runs." },
+  webhooks: { title: "Webhooks", about: "Addresses g1t calls when something happens in the repository." },
 };
 
 /**

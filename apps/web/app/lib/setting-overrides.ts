@@ -8,5 +8,5 @@ export function settingOverride(row: Setting, rows: Setting[]): string | null {
   if (readers.length === 0) return null;
   const labels = readers.map((reader) => (reader === "workflows" ? "Workflows" : reader === "deployments" ? "Deployments" : reader)).join(", ");
   if (row.scope === "project") return `Overrides workspace: ${labels}`;
-  return readers.length === row.availableTo.length ? "Overridden by project" : `Partially overridden: ${labels}`;
+  return readers.length === row.availableTo.length ? "Overridden by repository" : `Partially overridden: ${labels}`;
 }

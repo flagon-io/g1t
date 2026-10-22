@@ -160,9 +160,9 @@ export function SpaceForm({
           />
         </Row>
       )}
-      <Row label="Projects" hint="owner/name, comma separated. Artifacts can be filtered by project.">
+      <Row label="Repositories" hint="owner/name, comma separated. Artifacts can be filtered by repository.">
         <input
-          aria-label="Projects"
+          aria-label="Repositories"
           value={v.projects}
           onChange={(e) => set("projects", e.target.value)}
           placeholder="acme/web, acme/api"

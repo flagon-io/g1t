@@ -408,7 +408,7 @@ export function digestColumn(input: DigestInput): DigestColumn {
     if (pushes > 0) {
       lines.push({
         key: "pushes",
-        text: `${plural(commits, "commit")} to ${plural(pushed.size, "project")}`,
+        text: `${plural(commits, "commit")} to ${plural(pushed.size, "repository", "repositories")}`,
         count: pushes,
         to: placeFor(slug, repos, pushed, "activity"),
       });

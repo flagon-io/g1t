@@ -17,7 +17,7 @@ opened it, and reports a check named after the
 workflow. A workflow named `CI` reports the check `CI`; its status context
 is `CI / pull_request`, the workflow's name and the event it ran for. Other
 parts of g1t report under their own names, such as `g1t / deploy` (or
-`g1t / deploy (<project>)`) for a [deployment](/guides/deployments/), and
+`g1t / deploy (<repository>)`) for a [deployment](/guides/deployments/), and
 your own CI and integrations report statuses and check runs through the
 API: see [Checks](/guides/checks/).
 

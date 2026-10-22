@@ -47,7 +47,7 @@ export function NotFound({ data }: { data?: unknown }) {
           <ButtonLink to="/">Go home</ButtonLink>
         ) : null}
         <ButtonLink to="/explore" variant="outline">
-          {user ? "Explore" : "Explore public projects"}
+          {user ? "Explore" : "Explore public repositories"}
         </ButtonLink>
       </div>
 

@@ -27,10 +27,10 @@ and picks up jobs that ask for it with `runs-on: self-hosted`.
 | Where | Page | Who manages it |
 | --- | --- | --- |
 | A workspace | **Workspace settings → Runners** in the workspace's menu, `g1t.sh/<workspace>/-/runners` | Owners only. |
-| A project | **Settings → Runners**, `g1t.sh/<workspace>/<project>/settings/runners` | People with the Admin [role](/guides/access-and-roles/) on its repository |
+| A repository | **Settings → Runners**, `g1t.sh/<workspace>/<repository>/settings/runners` | People with the Admin [role](/guides/access-and-roles/) on it         |
 
 A workspace's runners serve the repositories their [group](#groups) allows.
-A project's own runners serve only that project.
+A repository's own runners serve only that repository.
 
 ## Run it as a container
 
@@ -492,7 +492,7 @@ by side, with what each is running now and this month's time on each.
 | --- | --- |
 | **g1t cloud** | How many workflow jobs are running in g1t's sandboxes now, this month's runner minutes and what they came to at price, and each machine's price a minute ([runner minutes](/guides/usage-and-billing/#runner-minutes)). |
 | **Your runners** | How many are online, busy, idle and offline, this month's self-hosted time (always $0), how many jobs are waiting for one of them, and whether they take [g1t's work](#g1ts-work-on-your-runners). |
-| **On g1t cloud now** | Each running workflow job, linked to its run, with its kind, project and when it started. Work handed to one of your runners is listed under that runner instead. |
+| **On g1t cloud now** | Each running workflow job, linked to its run, with its kind, repository and when it started. Work handed to one of your runners is listed under that runner instead. |
 | **Machine time** | This month's time on g1t cloud against your runners', from your [usage](/guides/usage-and-billing/). |
 | **Your runners** list | Each runner's status, labels, OS, architecture, `g1t-runner` version and when it was last heard from, and what it is running, linked to its run. |
 | **Where work runs** | What decides where each kind of work runs, and whether [g1t's work](#g1ts-work-on-your-runners) runs on your runners. |
@@ -531,7 +531,7 @@ see [getting the runner running](/guides/desktop/#getting-the-runner-running).
 On Linux, [run it as a container](#run-it-as-a-container). To install
 `g1t-runner` on a machine instead, as on macOS and Windows:
 
-1. Open **Runners** (a project's: **Settings → Runners**) and click **New runner**. g1t makes a
+1. Open **Runners** (a repository's: **Settings → Runners**) and click **New runner**. g1t makes a
    registration token and shows the commands for Linux, macOS, Windows and
    Docker with it filled in. The token lasts an hour, can register any
    number of runners until then, and is shown once.
@@ -600,7 +600,7 @@ isolation with `--no-docker`. See [isolation](#isolation).
 | --- | --- |
 | `--url` | The g1t you register with: `https://g1t.sh`. |
 | `--token` | The registration token. |
-| `--name` | What to call it. The machine's name if left out. Names are unique within a workspace (or project). |
+| `--name` | What to call it. The machine's name if left out. Names are unique within a workspace (or repository). |
 | `--labels` | Extra labels, comma-separated: `gpu,cuda-12`. See [labels](#labels). |
 | `--group` | A workspace runner's [group](#groups). The default group, or the one the token was made for, if left out. |
 | `--ephemeral` | Take one job, then remove itself. For [autoscaling](#autoscaling). |
@@ -729,7 +729,7 @@ give the labels a runner needs to take it (`self-hosted` is always one).
   that repository, revoked when it ends.
 - Its machine time is free, as for every job on your runners.
 
-A project can have its own setting, or follow the workspace's.
+A repository can have its own setting, or follow the workspace's.
 
 ## Billing
 

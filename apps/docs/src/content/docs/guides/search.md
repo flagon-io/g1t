@@ -1,6 +1,6 @@
 ---
 title: Search and Explore
-description: Search all of g1t at once (repositories, code, work items, pull requests, people and workspaces) with qualifiers, and browse public projects on Explore.
+description: Search all of g1t at once (repositories, code, work items, pull requests, people and workspaces) with qualifiers, and browse public repositories on Explore.
 ---
 
 **Search** looks through all of g1t at once: repositories, the code on
@@ -9,7 +9,7 @@ covers everything public, and everything private in the workspaces you
 belong to. Signed out, you see public results only.
 
 **Explore**, at [g1t.sh/explore](https://g1t.sh/explore), lists public
-projects: the recently active ones, the new ones, and the ones in a
+repositories: the recently active ones, the new ones, and the ones in a
 language or about a topic.
 
 ## Search from anywhere
@@ -19,17 +19,17 @@ There are two ways in:
 | Where                                                                                    | What it does                                                                                                                                                                                                                                                                                                                                            |
 | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Search or jump to…** at the top of the sidebar, or **/** anywhere outside a text field | Opens the command palette. As you type it shows matching repositories, work items, pull requests and people, the pages you can go to, and rows that search all of g1t (the full results at [g1t.sh/search](https://g1t.sh/search)) or only code for what you typed. On a phone, where the sidebar is folded away, the magnifier in the top bar opens it |
-| A project's **Code** page                                                                | **Search this repository's code** searches the project's repository, with `repo:` filled in                                                                                                                                                                                                                                                             |
+| A repository's **Code** page                                                             | **Search this repository's code** searches the repository, with `repo:` filled in                                                                                                                                                                                                                                                                       |
 
 The search page has a tab for each kind of result, each with its count:
 
-| Tab               | Searches                                                                                           |
-| ----------------- | -------------------------------------------------------------------------------------------------- |
-| **Repositories**  | Each repository's name, workspace, its project's description, topics and the opening of its README |
-| **Code**          | The file names and contents of every repository's default branch                                   |
-| **Work items**    | Work item titles and descriptions, in each workspace                                               |
-| **Pull requests** | Pull request titles and descriptions                                                               |
-| **People**        | Usernames and names of people, and the slugs, names and descriptions of workspaces                 |
+| Tab               | Searches                                                                                 |
+| ----------------- | ---------------------------------------------------------------------------------------- |
+| **Repositories**  | Each repository's name, workspace, its description, topics and the opening of its README |
+| **Code**          | The file names and contents of every repository's default branch                         |
+| **Work items**    | Work item titles and descriptions, in each workspace                                     |
+| **Pull requests** | Pull request titles and descriptions                                                     |
+| **People**        | Usernames and names of people, and the slugs, names and descriptions of workspaces       |
 
 Results show the part that matched, highlighted. A code result shows the
 lines that matched with their line numbers, and each line links to that
@@ -93,13 +93,13 @@ router repo:acme/web repo:acme/api
 
 Search is kept current as things change:
 
-| What                                               | When it is indexed                                                                                                                               |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| A repository's name, topics and README             | When it is created or its settings change, and on every push to its default branch                                                               |
-| A repository's description, which is its project's | When the project's name or description changes                                                                                                   |
-| Code                                               | On every push to the default branch: only the files the push changed                                                                             |
-| Work items and pull requests                       | When they are opened, edited, assigned, closed, reopened, marked ready or merged; a work item also when a repository is linked to it or unlinked |
-| People and workspaces                              | When an account or a workspace is made, or its name, description or avatar changes                                                               |
+| What                                   | When it is indexed                                                                                                                               |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| A repository's name, topics and README | When it is created or its settings change, and on every push to its default branch                                                               |
+| A repository's description             | When its name or description changes                                                                                                             |
+| Code                                   | On every push to the default branch: only the files the push changed                                                                             |
+| Work items and pull requests           | When they are opened, edited, assigned, closed, reopened, marked ready or merged; a work item also when a repository is linked to it or unlinked |
+| People and workspaces                  | When an account or a workspace is made, or its name, description or avatar changes                                                               |
 
 Code is indexed from default branches only. Some files are left out:
 
@@ -116,7 +116,7 @@ background, so very large pushes appear in search over a few minutes. A
 repository's first 5,000 files are indexed.
 
 Set a repository's **topics** in **Settings → Repository**. Topics show on
-the project's page and in search results, and each opens Explore for that
+the repository's page and in search results, and each opens Explore for that
 topic.
 
 ## Who sees what
@@ -145,18 +145,18 @@ private results on their next search.
 
 ## Explore
 
-[Explore](https://g1t.sh/explore) lists public projects only:
+[Explore](https://g1t.sh/explore) lists public repositories only:
 
-| View                | Shows                                                                                              |
-| ------------------- | -------------------------------------------------------------------------------------------------- |
-| **Recently active** | Projects by their last push to the default branch                                                  |
-| **New**             | Projects by when they were created                                                                 |
-| **Languages**       | The languages public projects are mostly written in, with how many; choose one to see its projects |
-| **Topics**          | The topics public projects have, with how many; choose one to see its projects                     |
+| View                | Shows                                                                                                      |
+| ------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Recently active** | Repositories by their last push to the default branch                                                      |
+| **New**             | Repositories by when they were created                                                                     |
+| **Languages**       | The languages public repositories are mostly written in, with how many; choose one to see its repositories |
+| **Topics**          | The topics public repositories have, with how many; choose one to see its repositories                     |
 
-A project's language is the one most of its indexed code is written in,
+A repository's language is the one most of its indexed code is written in,
 leaving out prose and data such as Markdown, JSON and YAML. An
-[archived](/guides/managing-repositories/#archive-a-repository) project is
+[archived](/guides/managing-repositories/#archive-a-repository) repository is
 still listed, labeled **archived**.
 
 ## From the API and agents

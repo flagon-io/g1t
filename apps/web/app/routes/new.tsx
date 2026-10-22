@@ -17,7 +17,7 @@ import { Unavailable } from "../components/boundary";
 import { isFailed, part } from "../lib/partial";
 
 export function meta(args: Route.MetaArgs) {
-  return page(args, { title: "New project · g1t" });
+  return page(args, { title: "New repository · g1t" });
 }
 
 export async function loader({ request, context }: Route.LoaderArgs) {
@@ -97,9 +97,9 @@ export default function NewProject({ loaderData, actionData }: Route.ComponentPr
       <span className="flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent ring-1 ring-accent/30">
         <Box size={18} />
       </span>
-      <h1 className="mt-4 text-2xl font-semibold tracking-tight">New project</h1>
+      <h1 className="mt-4 text-2xl font-semibold tracking-tight">New repository</h1>
       <p className="mt-1.5 text-sm text-muted">
-        A project is what you build and run. Its code lives in its source; its deployments, environments, secrets and variables belong to the project.
+        A repository is what you build and run: its code, and its deployments, environments, secrets and variables beside it.
       </p>
 
       <Form method="post" className="mt-8 space-y-8">
@@ -148,7 +148,7 @@ export default function NewProject({ loaderData, actionData }: Route.ComponentPr
             />
           </InputGroup>
           <FieldDescription>
-            The project and its repository share it:{" "}
+            Its address on g1t:{" "}
             <span className="font-mono text-muted">
               g1t.sh/{workspace}/<span className={name ? "text-fg" : undefined}>{name || "name"}</span>
             </span>
@@ -172,7 +172,7 @@ export default function NewProject({ loaderData, actionData }: Route.ComponentPr
 
         <ErrorText>{actionData?.error}</ErrorText>
         <SubmitButton variant="accent" pending={source === "import" ? "Importing…" : "Creating…"}>
-          Create project
+          Create repository
         </SubmitButton>
       </Form>
     </main>

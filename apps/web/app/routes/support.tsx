@@ -170,7 +170,7 @@ export default function Support() {
         <Section title="What to include">
           <ul className="list-disc space-y-1.5 pl-5 text-[0.9375rem] text-fg/90">
             <li>
-              Your username, and the workspace and project, such as{" "}
+              Your username, and the workspace and repository, such as{" "}
               <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[0.85em]">g1t.sh/acme/web</code>.
             </li>
             <li>A link to where it happened: the page, work item, pull request or workflow run.</li>

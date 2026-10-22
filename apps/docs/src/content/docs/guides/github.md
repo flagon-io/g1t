@@ -70,7 +70,7 @@ workspace you belong to, as `github.sign_in`, `github.linked` and
 
 ## Import a repository
 
-1. Choose **New project**, then **Import from GitHub**. You can also go to
+1. Choose **New repository**, then **Import from GitHub**. You can also go to
    `g1t.sh/new/github`.
 2. A workspace owner chooses **Connect GitHub**. In one trip to GitHub,
    g1t links your GitHub account (if it is not linked yet) and installs
@@ -87,7 +87,7 @@ workspace you belong to, as `github.sign_in`, `github.linked` and
 6. Choose **Bring to g1t**.
 
 Each repository becomes a repository on g1t with the same name, private if
-it is private on GitHub, and a [project](/guides/projects/) of its own. It
+it is private on GitHub, with its own [overview, deployments and settings](/guides/repositories/). It
 is copied once: the g1t repository is then its own, and you push to g1t.
 Nothing on GitHub changes.
 
@@ -120,7 +120,7 @@ import page.
 |                                  |                                                                                                                                                                                                               |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Every branch and tag             | Yes, with full history                                                                                                                                                                                        |
-| Its description                  | Yes, as its [project's](/guides/projects/) description, since a repository on g1t has none of its own. Change it later in the project's **Settings → General**.                                               |
+| Its description                  | Yes. Change it later in the repository's **Settings → General**.                                                                                                                                              |
 | Issues                           | When **Copy issues too** is ticked: up to 200, oldest first, open or closed as on GitHub, with their labels (up to 10 each). Each becomes a work item of the workspace, with the new repository as its origin |
 | Who opened an issue              | Named in the work item: by their g1t username if they have linked GitHub, otherwise by their GitHub login. The work item itself is opened by you.                                                             |
 | Milestones                       | Named in each work item; not copied                                                                                                                                                                           |

@@ -254,7 +254,7 @@ test("a milestone closed this week says when against its due date, and what it t
   const signal = shippedSignal(ctx({ signals }))!;
   assert.equal(signal.headline, "Single sign-on closed Tuesday, three weeks ahead of schedule.");
   assert.equal(signal.day, "2026-10-13");
-  assert.deepEqual(signal.facts, ["11 weeks in build", "2 changes", "2 projects"]);
+  assert.deepEqual(signal.facts, ["11 weeks in build", "2 changes", "2 repositories"]);
   const old = { ...signals, milestones: [{ ...signals.milestones[0]!, closedAt: "2026-09-01T00:00:00Z" }] };
   assert.equal(shippedSignal(ctx({ signals: old })), null, "only the last week's");
 });

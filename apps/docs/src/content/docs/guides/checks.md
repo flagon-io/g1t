@@ -19,15 +19,15 @@ how long it took, and a **Details** link.
 
 ## Where checks show
 
-| Page                 | Where                                                                                                          |
-| -------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **Code**             | Beside the latest commit, above the files                                                                      |
-| **Commits**          | Beside each commit                                                                                             |
-| A commit's page      | Beside its hash                                                                                                |
-| **Branches**         | Beside each branch's latest commit                                                                             |
-| **Tags**             | Beside each tagged commit                                                                                      |
-| A pull request       | Beside its head commit, in the sidebar; its merge box lists them too                                           |
-| A project's overview | For an app that deploys itself and has reported no deployment, beside the latest commit in its production card |
+| Page                    | Where                                                                                                          |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **Code**                | Beside the latest commit, above the files                                                                      |
+| **Commits**             | Beside each commit                                                                                             |
+| A commit's page         | Beside its hash                                                                                                |
+| **Branches**            | Beside each branch's latest commit                                                                             |
+| **Tags**                | Beside each tagged commit                                                                                      |
+| A pull request          | Beside its head commit, in the sidebar; its merge box lists them too                                           |
+| A repository's overview | For an app that deploys itself and has reported no deployment, beside the latest commit in its production card |
 
 A page reads the checks of all its commits at once, after the page itself
 has loaded: each mark shows a placeholder until they arrive.

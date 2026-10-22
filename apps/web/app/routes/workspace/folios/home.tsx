@@ -167,10 +167,10 @@ export default function FoliosHome({ loaderData, params }: Route.ComponentProps)
       />
       {projects.length > 0 && (
         <SelectField
-          aria-label="Project"
+          aria-label="Repository"
           value={search.get("project") ?? "any"}
           onValueChange={(v) => set({ project: v === "any" ? null : v })}
-          options={[{ value: "any", label: "Any project" }, ...projects.map((p) => ({ value: p, label: p }))]}
+          options={[{ value: "any", label: "Any repository" }, ...projects.map((p) => ({ value: p, label: p }))]}
           className="h-9 w-44 max-md:w-full"
         />
       )}

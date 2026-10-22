@@ -42,7 +42,7 @@ and LibreChat; connecting a client does not copy your workspace API keys into it
 
 Connection guides initially choose a client based on the first configured
 provider. Your explicit tab choice takes precedence and is remembered across
-projects and docs in the same browser. The inferred choice is cached, so
+repository pages and docs in the same browser. The inferred choice is cached, so
 browsing setup instructions does not fetch provider settings each time.
 
 ## Choose where models come from

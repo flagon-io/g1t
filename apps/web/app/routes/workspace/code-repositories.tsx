@@ -2,7 +2,7 @@ import { ArrowUpRight, ChevronLeft, ChevronRight, LayoutGrid, List, Rocket, Sear
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Form, Link, useLocation, useNavigation, useSubmit } from "react-router";
 
-import type { Route } from "./+types/projects";
+import type { Route } from "./+types/code-repositories";
 import { host } from "../../components/deploy";
 import { PinButton } from "../../components/pin-button";
 import { EmptyState, TimeAgo, notACredential } from "../../components/ui";
@@ -36,7 +36,7 @@ import { Unavailable } from "../../components/boundary";
 import { isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
-  return pageMeta(args, { title: `Projects · ${params.owner} · g1t` });
+  return pageMeta(args, { title: `Repositories · ${params.owner} · g1t` });
 }
 
 /**
@@ -324,7 +324,7 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
 
   return (
     <div>
-      <Form ref={form} id="project-filters" method="get" role="search" aria-label="Find projects" className="flex flex-wrap items-center gap-2">
+      <Form ref={form} id="project-filters" method="get" role="search" aria-label="Find repositories" className="flex flex-wrap items-center gap-2">
         <div className="relative w-full sm:w-72">
           <Search size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
           <input
@@ -333,8 +333,8 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
             name="q"
             defaultValue={query.q}
             {...notACredential()}
-            placeholder="Find a project…"
-            aria-label="Find a project"
+            placeholder="Find a repository…"
+            aria-label="Find a repository"
             aria-keyshortcuts="/"
             onChange={() => apply(250)}
             onKeyDown={onSearchKey}
@@ -430,7 +430,7 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
         <p className="text-muted" aria-live="polite">
           {filtered ? (
             <>
-              <span className="font-medium text-fg tabular-nums">{matched}</span> of {total} {total === 1 ? "project" : "projects"}
+              <span className="font-medium text-fg tabular-nums">{matched}</span> of {total} {total === 1 ? "repository" : "repositories"}
               {query.q && (
                 <>
                   {" "}
@@ -440,7 +440,7 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
             </>
           ) : (
             <>
-              <span className="font-medium text-fg tabular-nums">{total}</span> {total === 1 ? "project" : "projects"}
+              <span className="font-medium text-fg tabular-nums">{total}</span> {total === 1 ? "repository" : "repositories"}
             </>
           )}
           {page.pages > 1 && (
@@ -506,9 +506,9 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
           </div>
         )}
         {failed ? (
-          <EmptyState title="Projects cannot be listed right now">Try again in a moment.</EmptyState>
+          <EmptyState title="Repositories cannot be listed right now">Try again in a moment.</EmptyState>
         ) : total === 0 ? (
-          <EmptyState title="No projects yet">
+          <EmptyState title="No repositories yet">
             {member ? (
               <>
                 <Link to={`/new?workspace=${slug}`} className="text-accent hover:underline">
@@ -517,11 +517,11 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
                 , or push a repository and it becomes one.
               </>
             ) : (
-              "This workspace has no public projects."
+              "This workspace has no public repositories."
             )}
           </EmptyState>
         ) : items.length === 0 ? (
-          <EmptyState title="No projects match">
+          <EmptyState title="No repositories match">
             Try other words or filters, or{" "}
             <Link
               to={projectQueryString({ ...query, q: "", visibility: "all", kind: "all", language: null, deployments: false, archived: "hide" })}
@@ -532,14 +532,14 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
             .
           </EmptyState>
         ) : query.view === "grid" ? (
-          <ul aria-label="Projects" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <ul aria-label="Repositories" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {items.map((project) => (
               <ProjectTile key={project.id} project={project} slug={slug} pinned={pins.has(project.id)} member={member} />
             ))}
           </ul>
         ) : (
           <Card asChild divided className="overflow-hidden">
-            <ul aria-label="Projects">
+            <ul aria-label="Repositories">
               {items.map((project) => (
                 <ProjectRow key={project.id} project={project} slug={slug} pinned={pins.has(project.id)} member={member} />
               ))}

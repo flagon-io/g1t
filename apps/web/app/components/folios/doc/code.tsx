@@ -189,7 +189,7 @@ export function RepoDocsDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FolderGit2 size={16} /> Show a project&apos;s docs
+            <FolderGit2 size={16} /> Show a repository&apos;s docs
           </DialogTitle>
           <DialogDescription>
             The repository&apos;s docs folder and README, read from its default branch, appear beside your spaces and in search, and follow every push. Only

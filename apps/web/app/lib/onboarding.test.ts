@@ -48,7 +48,7 @@ test("a step is done from the workspace's state, not from clicks", () => {
   assert.ok(steps.every((step) => step.done));
   assert.equal(finished(steps), true);
   assert.equal(steps.find((step) => step.key === "ask")?.summary, "Anthropic · Auto");
-  assert.equal(steps.find((step) => step.key === "code")?.summary, "3 projects");
+  assert.equal(steps.find((step) => step.key === "code")?.summary, "3 repositories");
 });
 
 test("a provider whose check failed is not a working one", () => {

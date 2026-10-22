@@ -24,13 +24,13 @@ service's data, call that service; never read its tables.
 | `security`     | `g1t-security`     |                                                                                                                            |
 | `search`       | `g1t-search`       | The `g1t-search-jobs` queue                                                                                                |
 | `packages`     | `g1t-packages`     | The `g1t-packages` bucket                                                                                                  |
-| `projects`     | `g1t-projects`     | Writes project images to the avatars KV                                                                                    |
+| `projects`     | `g1t-projects`     | Writes production images to the avatars KV                                                                                 |
 | `chat`         | `g1t-chat`         | A `ChannelRoom` Durable Object per channel; writes custom emoji to the avatars KV                                          |
 | `artifacts`    | `g1t-docs`         | The `g1t-docs-files` bucket, the `g1t-docs` and `g1t-folios` Vectorize indexes, `PageRoom` and `FolioRoom` Durable Objects |
 | `deployments`  | `g1t-deployments`  | Writes the domains KV; the `g1t-deployments` dispatch namespace                                                            |
 | `apps/status`  | `g1t-status`       |                                                                                                                            |
 | `notify`       |                    | `Feed`, `Room` and `Topic` Durable Objects                                                                                 |
-| `telemetry`    |                    | A `TelemetryStore` Durable Object per project                                                                              |
+| `telemetry`    |                    | A `TelemetryStore` Durable Object per repository                                                                           |
 | `runner`       |                    | The sandbox Container classes                                                                                              |
 | `og`           |                    | The `g1t-screenshots` bucket                                                                                               |
 | `apps/web`     |                    | The `g1t-downloads` bucket                                                                                                 |
@@ -50,7 +50,7 @@ prefix:
 
 Durable Objects are used where something has to be live, or where data
 belongs to one thing and grows on its own: a chat channel, an open doc, a
-person's open tabs, a project's telemetry. Each object keeps its own
+person's open tabs, a repository's telemetry. Each object keeps its own
 SQLite storage. A rule from CONTRIBUTING.md: never wake an object for a
 read that D1 can answer.
 

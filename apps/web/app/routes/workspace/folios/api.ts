@@ -295,7 +295,7 @@ async function embed(slug: string, address: string, viewer: User, origin: string
     value: {
       kind: "project",
       title: `${repo.namespace}/${repo.name}`,
-      subtitle: (found.value as { description?: string | null }).description ?? "Project",
+      subtitle: (found.value as { description?: string | null }).description ?? "Repository",
       state: null,
       href: `/${repo.namespace}/${repo.name}`,
     },

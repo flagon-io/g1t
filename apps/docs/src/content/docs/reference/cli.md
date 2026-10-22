@@ -875,11 +875,11 @@ g1t deploy settings [OPTIONS]
 
 | Argument or flag | |
 | --- | --- |
-| `-p, --project <PROJECT>` | The project, as SLUG or WORKSPACE/SLUG; the current repository's when left out. |
+| `-p, --project <PROJECT>` | The repository, as NAME or WORKSPACE/NAME; the current one's when left out. |
 | `--production <SWITCH>` | Deploy the default branch on every push. One of `on`, `off`. |
 | `--previews <SWITCH>` | A preview for every branch with an open pull request. One of `on`, `off`. |
 | `--build-as <KIND>` | auto, static, workers or docker. |
-| `--build-command <COMMAND>` | Runs instead of the project's own build script; "" for its own. |
+| `--build-command <COMMAND>` | Runs instead of the repository's own build script; "" for its own. |
 | `--output-dir <DIR>` | What a static site serves; "" to find it by itself. |
 | `--dockerfile <PATH>` | A container's Dockerfile, inside the project; "" for Dockerfile or Containerfile. |
 | `--instance-type <SIZE>` | A container's size: lite, basic, standard-1 to standard-4. |
@@ -898,7 +898,7 @@ g1t deploy enable [OPTIONS]
 
 | Argument or flag | |
 | --- | --- |
-| `-p, --project <PROJECT>` | The project, as SLUG or WORKSPACE/SLUG; the current repository's when left out. |
+| `-p, --project <PROJECT>` | The repository, as NAME or WORKSPACE/NAME; the current one's when left out. |
 
 Calls [`update_deployment_settings`](/reference/api/deployments/update-deployment-settings/).
 
@@ -912,7 +912,7 @@ g1t deploy disable [OPTIONS]
 
 | Argument or flag | |
 | --- | --- |
-| `-p, --project <PROJECT>` | The project, as SLUG or WORKSPACE/SLUG; the current repository's when left out. |
+| `-p, --project <PROJECT>` | The repository, as NAME or WORKSPACE/NAME; the current one's when left out. |
 
 Calls [`update_deployment_settings`](/reference/api/deployments/update-deployment-settings/).
 
@@ -926,7 +926,7 @@ g1t logs [OPTIONS]
 
 | Argument or flag | |
 | --- | --- |
-| `-p, --project <PROJECT>` | The project; the current repository's when left out. |
+| `-p, --project <PROJECT>` | The repository, as NAME or WORKSPACE/NAME; the current one's when left out. |
 | `--errors` | Grouped errors instead of log lines. |
 | `-q, --query <QUERY>` | Lines holding all of these words, or a "quoted phrase". |
 | `-l, --level <LEVEL>` | Levels: trace, debug, info, warn, error, fatal (comma-separated). |

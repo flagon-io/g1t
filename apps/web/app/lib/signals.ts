@@ -592,7 +592,7 @@ export function shippedSignal(ctx: SignalContext): Signal | null {
     facts: [
       `${weeksIn} ${weeksIn === 1 ? "week" : "weeks"} in build`,
       `${pulls.length} ${pulls.length === 1 ? "change" : "changes"}`,
-      ...(projects > 0 ? [`${projects} ${projects === 1 ? "project" : "projects"}`] : []),
+      ...(projects > 0 ? [`${projects} ${projects === 1 ? "repository" : "repositories"}`] : []),
     ],
     link: { label: "See the work", to: milestonePath(ctx.slug, recent.number) },
     weight,
@@ -818,7 +818,7 @@ export function groundSignal(ctx: SignalContext): Signal | null {
     key: "ground",
     headline:
       others > 0
-        ? `${first.name} and ${others === 1 ? "one other person" : `${others} others`} merged their first change to a project new to them this week.`
+        ? `${first.name} and ${others === 1 ? "one other person" : `${others} others`} merged their first change to a repository new to them this week.`
         : `${first.name} merged a first change to ${repo.name} this week, new ground for them.`,
     facts: [`${first.elsewhere} merges elsewhere before`, `first in ${repo.name}`],
     link: { label: "See the people", to: `/${ctx.slug}/-/workspace#quiet` },
@@ -1029,7 +1029,7 @@ export function spendFlow(ctx: Pick<SignalContext, "slug" | "repos" | "signals" 
     fold(
       [...nodes.values()].map(({ index, ...node }) => ({
         ...node,
-        children: depth < 2 ? finish(index, depth === 0 ? "Other work items" : "Other projects", depth + 1) : [],
+        children: depth < 2 ? finish(index, depth === 0 ? "Other work items" : "Other repositories", depth + 1) : [],
         list: node.list?.sort((a, b) => b.micros - a.micros || b.number - a.number).slice(0, FLOW_PULLS),
       })),
       label,

@@ -17,15 +17,15 @@ const workspace: Setting = {
 const project: Setting = { ...workspace, id: "p", scope: "project" };
 
 test("full overrides remain visible on both scopes", () => {
-  assert.equal(settingOverride(workspace, [workspace, project]), "Overridden by project");
+  assert.equal(settingOverride(workspace, [workspace, project]), "Overridden by repository");
   assert.match(settingOverride(project, [workspace, project])!, /^Overrides workspace/);
 });
 
 test("environment-restricted project keys still suppress workspace fallback", () => {
-  assert.equal(settingOverride(workspace, [workspace, { ...project, environments: ["production"] }]), "Overridden by project");
+  assert.equal(settingOverride(workspace, [workspace, { ...project, environments: ["production"] }]), "Overridden by repository");
   assert.equal(
     settingOverride({ ...workspace, environments: ["production"] }, [workspace, { ...project, environments: ["preview"] }]),
-    "Overridden by project",
+    "Overridden by repository",
   );
 });
 
@@ -33,7 +33,7 @@ test("only shared readers are overridden", () => {
   assert.equal(settingOverride(workspace, [workspace, { ...project, availableTo: ["workflows"] }]), "Partially overridden: Workflows");
   assert.equal(
     settingOverride(workspace, [workspace, { ...project, availableTo: ["workflows"] }, { ...project, availableTo: ["deployments"] }]),
-    "Overridden by project",
+    "Overridden by repository",
   );
 });
 

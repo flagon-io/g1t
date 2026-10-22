@@ -314,7 +314,7 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
         <DesktopRunners desktops={data.desktops} slug={slug} runners={own} />
       </Section>
 
-      <Section title="Where work runs" about="For every project in the workspace, unless a project says otherwise in its own settings.">
+      <Section title="Where work runs" about="For every repository in the workspace, unless a repository says otherwise in its own settings.">
         <div className="grid gap-3 md:grid-cols-3">
           <WhereCard icon={<Workflow size={15} />} title="Workflow jobs">
             Each job&apos;s <code className="font-mono text-fg-soft">runs-on</code> decides. <code className="font-mono text-fg-soft">ubuntu-latest</code>,{" "}

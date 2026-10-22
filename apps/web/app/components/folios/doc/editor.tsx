@@ -291,8 +291,8 @@ function LiveEditor({
       },
       {
         title: "Embed from g1t",
-        subtext: "A work item, pull request, channel, project or artifact, live",
-        aliases: ["embed", "item", "work", "pull", "pr", "channel", "project"],
+        subtext: "A work item, pull request, channel, repository or artifact, live",
+        aliases: ["embed", "item", "work", "pull", "pr", "channel", "repository", "repo", "project"],
         group: "g1t",
         icon: <GitPullRequest size={18} />,
         onItemClick: insert({ type: "embed" }),

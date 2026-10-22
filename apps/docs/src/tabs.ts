@@ -13,7 +13,7 @@ export const TABS: Tab[] = [
   { label: "Coding agents", groups: ["Coding agents"] },
   { label: "Chat", groups: ["Chat"] },
   { label: "Code", groups: ["Landing changes", "Security"] },
-  { label: "Projects", groups: ["Projects"] },
+  { label: "Repositories", groups: ["Repositories"] },
   { label: "Workspaces", groups: ["Workspaces", "Connect your tools"] },
   { label: "Self-hosting", groups: ["Run g1t yourself"] },
   { label: "Architecture", groups: ["Architecture"] },

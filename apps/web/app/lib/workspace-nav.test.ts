@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { pagePath, underWorkspace, workspacePage, workspaceRedirect } from "./workspace-nav.ts";
+import { movedCodePath, pagePath, repositoriesPath, underWorkspace, workspacePage, workspaceRedirect } from "./workspace-nav.ts";
 
 test("a path is one of the workspace's pages, or none", () => {
   assert.equal(workspacePage("/acme", "acme"), "overview");
   assert.equal(workspacePage("/Acme/", "acme"), "overview");
   assert.equal(workspacePage("/acme.data", "acme"), "overview");
-  assert.equal(workspacePage("/acme/-/projects", "acme"), "projects");
+  assert.equal(workspacePage("/acme/-/code/repositories", "acme"), "code/repositories");
+  assert.equal(workspacePage("/acme/-/projects", "acme"), null);
   assert.equal(workspacePage("/acme/-/people", "acme"), "people");
   assert.equal(workspacePage("/acme/-/packages", "acme"), "packages");
   assert.equal(workspacePage("/acme/-/teams", "acme"), "teams");
@@ -40,9 +41,19 @@ test("old addresses go to where their pages are now", () => {
   assert.equal(workspaceRedirect("/acme/web"), null);
 });
 
+test("Code's Repositories are at -/code/repositories, and its old Projects address goes there, query and all", () => {
+  assert.equal(repositoriesPath("acme"), "/acme/-/code/repositories");
+  assert.equal(repositoriesPath("acme", "q=api&sort=name"), "/acme/-/code/repositories?q=api&sort=name");
+  assert.equal(movedCodePath("/acme/-/projects"), "/acme/-/code/repositories");
+  assert.equal(movedCodePath("/acme/-/projects/", "?q=api&kind=app"), "/acme/-/code/repositories?q=api&kind=app");
+  assert.equal(movedCodePath("/acme/-/projects.data", "?q=api&_routes=x"), "/acme/-/code/repositories?q=api");
+  assert.equal(movedCodePath("/acme/-/work/projects"), null);
+  assert.equal(movedCodePath("/acme/projects"), null);
+});
+
 test("?tab= opens that page, keeping the rest of the query", () => {
-  assert.equal(workspaceRedirect("/acme", "?tab=repositories"), "/acme/-/projects");
-  assert.equal(workspaceRedirect("/acme", "?tab=projects&q=api"), "/acme/-/projects?q=api");
+  assert.equal(workspaceRedirect("/acme", "?tab=repositories"), "/acme/-/code/repositories");
+  assert.equal(workspaceRedirect("/acme", "?tab=projects&q=api"), "/acme/-/code/repositories?q=api");
   assert.equal(workspaceRedirect("/acme", "?tab=members"), "/acme/-/members");
   assert.equal(workspaceRedirect("/acme", "?tab=people"), "/acme/-/people");
   assert.equal(workspaceRedirect("/acme", "?tab=overview"), "/acme");
@@ -93,6 +104,7 @@ test("the rail's mode follows the address", async () => {
   assert.equal(modeOf("/acme/-/docs", "acme"), "code");
   assert.equal(modeOf("/acme/-/overview", "acme"), "code");
   assert.equal(modeOf("/acme/-/projects", "acme"), "code");
+  assert.equal(modeOf("/acme/-/code/repositories", "acme"), "code");
   assert.equal(modeOf("/acme/-/security", "acme"), "code");
   assert.equal(modeOf("/acme/-/security/settings", "acme"), "workspace");
   assert.equal(modeOf("/acme/-/people", "acme"), "people");
@@ -155,6 +167,7 @@ test("a member without Code access is sent around Code's pages", async () => {
   assert.equal(codeGate("/acme", "", none, "acme"), "/acme/-/chat");
   assert.equal(codeGate("/acme/web/pull/3", "?x=1", none, "acme"), "/acme/-/code-access?from=%2Facme%2Fweb%2Fpull%2F3%3Fx%3D1");
   assert.equal(codeGate("/acme/-/projects", "", none, "acme"), "/acme/-/code-access?from=%2Facme%2F-%2Fprojects");
+  assert.equal(codeGate("/acme/-/code/repositories", "", none, "acme"), "/acme/-/code-access?from=%2Facme%2F-%2Fcode%2Frepositories");
   assert.equal(codeGate("/acme/-/chat/general", "", none, "acme"), null);
   assert.equal(codeGate("/acme/-/code-access", "", none, "acme"), null);
   assert.equal(codeGate("/other/web", "", none, "acme"), null);

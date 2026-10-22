@@ -146,7 +146,7 @@ export function UsageFilterBar({
         <span className="px-1 text-sm text-muted tabular-nums">{rangeLabel(filters.from, filters.until)}</span>
       )}
       <MultiSelect name="product" label="Products" options={products.map((p) => ({ value: p.key, label: p.label }))} chosen={filters.products} />
-      {!fixedProject && <MultiSelect name="project" label="Projects" options={projects.map((p) => ({ value: p, label: p }))} chosen={filters.projects} />}
+      {!fixedProject && <MultiSelect name="project" label="Repositories" options={projects.map((p) => ({ value: p, label: p }))} chosen={filters.projects} />}
       <SelectField
         key={`group-${filters.group}`}
         name="group"
@@ -157,7 +157,7 @@ export function UsageFilterBar({
         aria-label="Group by"
         options={[
           { value: "product", label: "Group by product" },
-          ...(fixedProject ? [] : [{ value: "project", label: "Group by project" }]),
+          ...(fixedProject ? [] : [{ value: "project", label: "Group by repository" }]),
           { value: "day", label: "Group by day" },
         ]}
       />
@@ -557,7 +557,7 @@ function MeterRow({ meter, color, projectHref }: { meter: MeterLine; color: stri
                     part.project
                   )
                 ) : (
-                  "Not tied to a project"
+                  "Not tied to a repository"
                 )}
               </span>
               <span className="flex gap-4 tabular-nums">
@@ -598,7 +598,7 @@ export function Breakdown({
       <Card asChild className="overflow-hidden">
         <section>
           <div className="grid grid-cols-[minmax(0,1fr)_auto] border-b border-line px-4 py-2 text-xs text-muted">
-            <span>Project</span>
+            <span>Repository</span>
             <span>Charge at price</span>
           </div>
           {rows.length === 0 ? (
@@ -618,7 +618,7 @@ export function Breakdown({
                           row.project
                         )
                       ) : (
-                        "Not tied to a project"
+                        "Not tied to a repository"
                       )}
                     </span>
                     <span className="tabular-nums">{money(row.micros)}</span>

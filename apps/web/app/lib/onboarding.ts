@@ -95,7 +95,7 @@ function judge(key: OnboardingStep, facts: OnboardingFacts): { done: boolean; su
       return { done: false, summary: "Which model answers Ask" };
     case "code": {
       const projects = facts.projects ?? 0;
-      if (projects > 0) return { done: true, summary: plural(projects, "project") };
+      if (projects > 0) return { done: true, summary: plural(projects, "repository", "repositories") };
       if (facts.github?.connected) return { done: true, summary: "GitHub connected" };
       return { done: false, summary: "New, or from GitHub" };
     }

@@ -19,6 +19,7 @@ import { usageFor } from "../../lib/workspace-usage.server";
 import { deployments, identity, packages, projects as projectsApi, work } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 import { workspaceProjects } from "../../lib/workspace-projects.server";
+import { repositoriesPath } from "../../lib/workspace-nav";
 import { Unavailable } from "../../components/boundary";
 import { isFailed, part } from "../../lib/partial";
 
@@ -133,10 +134,10 @@ function Stat({ value, label }: { value: number; label: string }) {
 /** What a member sees in a workspace with no projects yet. */
 function NoProjects({ slug }: { slug: string }) {
   return (
-    <EmptyState title="No projects yet">
+    <EmptyState title="No repositories yet">
       <ButtonLink to={`/new?workspace=${slug}`} variant="accent" className="mt-3">
         <Plus size={14} />
-        New project
+        New repository
       </ButtonLink>
     </EmptyState>
   );
@@ -267,7 +268,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Stat value={total} label={total === 1 ? "Project" : "Projects"} />
+              <Stat value={total} label={total === 1 ? "Repository" : "Repositories"} />
               <Stat value={liveApps} label="In production" />
               <Stat value={loaderData.openItems} label="Open work items" />
               <Stat value={totals.pulls} label="Pull requests in progress" />
@@ -285,7 +286,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
                   <Card asChild tone="plain" className="mt-3 flex items-center gap-2 border-dashed px-4 py-3 text-sm text-muted">
                     <p>
                       <Pin size={14} className="shrink-0 text-faint" />
-                      Pin the projects you use most, from their page or from Projects, to keep them here and in your sidebar.
+                      Pin the repositories you use most, from their page or from Repositories, to keep them here and in your sidebar.
                     </p>
                   </Card>
                 )}
@@ -296,12 +297,12 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
               <section aria-labelledby="active">
                 <div className="flex items-center justify-between">
                   <h2 id="active" className="text-sm font-medium text-muted">
-                    {role ? "Recently active" : "Projects"}
+                    {role ? "Recently active" : "Repositories"}
                   </h2>
                   {role && (
                     <Link to={`/new?workspace=${slug}`} className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
                       <Plus size={13} />
-                      New project
+                      New repository
                     </Link>
                   )}
                 </div>
@@ -310,12 +311,12 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
             )}
 
             <Link
-              to={`/${slug}/-/projects`}
+              to={repositoriesPath(slug)}
               prefetch="intent"
               className="flex items-center justify-between rounded-xl border border-line bg-surface px-4 py-3 text-sm transition-colors hover:border-line-strong"
             >
               <span>
-                All projects <span className="tabular-nums text-muted">({total})</span>
+                All repositories <span className="tabular-nums text-muted">({total})</span>
               </span>
               <span className="flex items-center gap-1 text-xs text-muted">
                 Search, filter and sort
@@ -392,7 +393,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
           </section>
         ) : (
           <p className="text-sm text-muted">
-            Members of this workspace build its projects. Anyone can file a work item or open a pull request on a public one.
+            Members of this workspace build its repositories. Anyone can file a work item or open a pull request on a public one.
           </p>
         )}
 
@@ -404,8 +405,8 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
                 Deploy on g1t.page
               </h2>
               <p className="mt-1.5 text-sm text-muted">
-                Off until you turn them on for a project, under its Settings. Then production builds from its default branch, with a live preview for every pull
-                request. Apps cost nothing while no one visits.
+                Off until you turn them on for a repository, under its Settings. Then production builds from its default branch, with a live preview for every
+                pull request. Apps cost nothing while no one visits.
               </p>
               <Link prefetch="intent" to={`/${slug}/-/billing`} className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline">
                 Billing and plans <ArrowRight size={13} />

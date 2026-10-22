@@ -64,7 +64,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     insider ? part(billing.features(params.owner, viewer), "The plan") : null,
     // Builds are compute: said before a deploy is refused for it.
     insider ? part(computeNoteFor(params.owner, "deploy"), "Compute") : null,
-    part(projects.get(params.owner, params.repo, viewer), "The project"),
+    part(projects.get(params.owner, params.repo, viewer), "The repository"),
   ]);
   // Set not to deploy, in General settings: turning them on waits for that
   // to change. Unread, it is left out: the deployments service refuses to
@@ -733,8 +733,8 @@ function PagesOff({ pages, base, can, quiet }: { pages: Pages; base: string; can
       </p>
       {pages.notDeploying ? (
         <p className="mt-4 max-w-2xl text-sm text-muted">
-          This project is set to be something that doesn't deploy here, such as a library, a tool or an app that deploys itself. To host it on g1t.page, choose
-          App or site, hosted on g1t.page, in{" "}
+          This repository is set to be something that doesn't deploy here, such as a library, a tool or an app that deploys itself. To host it on g1t.page,
+          choose App or site, hosted on g1t.page, in{" "}
           <Link to={`${base}/settings#kind`} className="text-fg underline underline-offset-4">
             its settings
           </Link>{" "}
@@ -759,7 +759,7 @@ function PlanNeeded({ plan, owner, quiet }: { plan: FeatureState | null; owner: 
     <div className={quiet ? "mt-1.5" : "mt-2 rounded-xl border border-accent/30 bg-accent/5 p-6"}>
       {!quiet && <h2 className="font-medium">Deployments are part of a paid plan</h2>}
       <p className="max-w-2xl text-sm text-muted">
-        Hosting on g1t.page is part of a paid plan. Turn on Deployments for the {owner} workspace and every project in it can have a preview for each pull
+        Hosting on g1t.page is part of a paid plan. Turn on Deployments for the {owner} workspace and every repository in it can have a preview for each pull
         request and production on g1t.page.
         {plan && ` $${(plan.plan.monthlyCents / 100).toFixed(0)} a month, including:`}
       </p>

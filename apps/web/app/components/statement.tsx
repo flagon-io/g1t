@@ -81,7 +81,7 @@ export function StatementView({ slug, statement, group }: { slug: string; statem
         <Tabs value={group} onValueChange={(by) => go(statement.month, by)}>
           <TabsList>
             <TabsTrigger value="day">By day</TabsTrigger>
-            <TabsTrigger value="project">By project</TabsTrigger>
+            <TabsTrigger value="project">By repository</TabsTrigger>
           </TabsList>
         </Tabs>
         {totals.entries > 0 && (

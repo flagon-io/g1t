@@ -40,7 +40,7 @@ was last edited in your time zone: **Today**, **Yesterday**, then the date.
 
 - **Search** (press <kbd>/</kbd>) matches words and meaning: "how do we roll
   back?" finds a doc titled "Reverting a deploy".
-- **Filters** narrow the list by kind, space, owner and project. On a phone
+- **Filters** narrow the list by kind, space, owner and repository. On a phone
   they're under **Filters**.
 - The list and grid buttons switch between rows and cards with a preview.
   On a phone, Home shows the list, and the sidebar's sections follow it.
@@ -66,7 +66,7 @@ Slides, Design and Dashboards say **Coming soon**.
 | **Private**                                  | Your artifacts in no space. Only you see this section.                                                                                   |
 | **Shared**                                   | The highest artifact of each tree someone shared with you.                                                                               |
 | **Possibly out of date**                     | Docs whose cited code changed. Shown when there are any.                                                                                 |
-| **Projects' docs**                           | Repositories' `docs/` folders, read-only.                                                                                                |
+| **Repositories' docs**                       | Repositories' `docs/` folders, read-only.                                                                                                |
 | **Trash**                                    | What was moved to the trash, with how many.                                                                                              |
 
 The sidebar follows every change at once: an artifact you move to the trash
@@ -154,7 +154,7 @@ open one. Whoever makes a space has full access to it. Workspace owners have
 full access to open and team spaces.
 
 A space's **Settings** (the gear beside it) change its name, address, who it's
-for, the base role, its members and their roles, and the projects it's about. **Editors can share**, off by default, lets people
+for, the base role, its members and their roles, and the repositories it's about. **Editors can share**, off by default, lets people
 who can edit what's in the space share it too, up to **Can edit**. Only
 people with full access give full access, change general access, or change
 someone else's full access.
@@ -180,21 +180,21 @@ in its owner's **Private**.
 Make a doc, give it a title, and press **Enter** to start writing. Type `/`
 anywhere for the block menu.
 
-| Block                              | How to add it                                                                         | In Markdown                             |
-| ---------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------- |
-| Text, Heading 1–3                  | `/text`, `/h1`, or type `#`, `##`, `###` and a space                                  | `#`, `##`, `###`                        |
-| Bulleted, numbered and to-do lists | `/bullet`, `/numbered`, `/todo`, or type `-`, `1.`, `[]`                              | `-`, `1.`, `- [ ]`                      |
-| Toggle                             | `/toggle`                                                                             | `<details>`                             |
-| Quote                              | `/quote`, or type `>`                                                                 | `>`                                     |
-| Callout (info, warning, success)   | `/callout`, `/warning`, `/tip`                                                        | `> [!NOTE]`, `> [!WARNING]`, `> [!TIP]` |
-| Code, with syntax highlighting     | `/code`, or type ` ``` ` and a language                                               | fenced code                             |
-| Table                              | `/table`                                                                              | GitHub tables                           |
-| Image, video, audio, file          | `/image`, `/video`, `/audio`, `/file`                                                 | `![]()`, links                          |
-| Diagram                            | `/diagram` or `/mermaid`                                                              | ` ```mermaid `                          |
-| Math                               | `/math` or `/latex`                                                                   | `$$ … $$`                               |
-| Embed from g1t                     | `/embed`, then the address of a work item, pull request, channel, project or artifact | a link                                  |
-| Date                               | `/date`                                                                               | the date                                |
-| Cite code                          | `/cite`: a repository, a path, and what there the doc describes                       | a link to the file                      |
+| Block                              | How to add it                                                                            | In Markdown                             |
+| ---------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------- |
+| Text, Heading 1–3                  | `/text`, `/h1`, or type `#`, `##`, `###` and a space                                     | `#`, `##`, `###`                        |
+| Bulleted, numbered and to-do lists | `/bullet`, `/numbered`, `/todo`, or type `-`, `1.`, `[]`                                 | `-`, `1.`, `- [ ]`                      |
+| Toggle                             | `/toggle`                                                                                | `<details>`                             |
+| Quote                              | `/quote`, or type `>`                                                                    | `>`                                     |
+| Callout (info, warning, success)   | `/callout`, `/warning`, `/tip`                                                           | `> [!NOTE]`, `> [!WARNING]`, `> [!TIP]` |
+| Code, with syntax highlighting     | `/code`, or type ` ``` ` and a language                                                  | fenced code                             |
+| Table                              | `/table`                                                                                 | GitHub tables                           |
+| Image, video, audio, file          | `/image`, `/video`, `/audio`, `/file`                                                    | `![]()`, links                          |
+| Diagram                            | `/diagram` or `/mermaid`                                                                 | ` ```mermaid `                          |
+| Math                               | `/math` or `/latex`                                                                      | `$$ … $$`                               |
+| Embed from g1t                     | `/embed`, then the address of a work item, pull request, channel, repository or artifact | a link                                  |
+| Date                               | `/date`                                                                                  | the date                                |
+| Cite code                          | `/cite`: a repository, a path, and what there the doc describes                          | a link to the file                      |
 
 - **`@`** mentions a person. **`[[`** links to another artifact
   by title; it lists yours under **Linked from**.
@@ -305,14 +305,14 @@ access to, with its history, comments and everything inside it. Artifacts
 you can only edit stay; the page says how many go and how many stay before
 you confirm. Emptying the trash can't be undone.
 
-## Projects' docs
+## Repositories' docs
 
 A repository's own docs (its `docs/` folder and its README) can sit in the
 sidebar, read-only, so one search covers them and your artifacts.
 
 <Steps>
 
-1. Press **+** beside **Projects' docs** in the sidebar.
+1. Press **+** beside **Repositories' docs** in the sidebar.
 2. Choose a repository you can read. Its README and every Markdown file under
    `docs/` on the default branch appear, in their folders.
 

@@ -16,8 +16,8 @@ workflow run.
 
 ## Turn it on
 
-1. Open the project's **Settings → Rules**. You need the Admin
-   [role](/guides/access-and-roles/) on its repository.
+1. Open the repository's **Settings → Rules**. You need the Admin
+   [role](/guides/access-and-roles/) on it.
 2. Open the ruleset that covers the default branch, or create one.
 3. Choose **Add a rule**, then **Require the merge queue**. Set how many
    pull requests it tests at once, the smallest batch it starts with and

@@ -18,7 +18,7 @@ alerts and [security updates](/guides/security/#security-updates).
 
 ## The dependency graph
 
-`g1t.sh/<owner>/<project>/security/dependency-graph` lists every package the
+`g1t.sh/<owner>/<repository>/security/dependency-graph` lists every package the
 lockfiles resolve, per lockfile, with:
 
 | Column          |                                                                                                                                         |
@@ -43,7 +43,7 @@ What each lockfile says:
 
 **Export SBOM (SPDX)** downloads the graph as an
 [SPDX 2.3](https://spdx.github.io/spdx-spec/v2.3/) JSON document,
-`<owner>-<project>.spdx.json`:
+`<owner>-<repository>.spdx.json`:
 
 - The repository is the document's one described package, versioned by the
   commit the lockfiles were read at.
@@ -77,7 +77,7 @@ adds:
 
 The review's summary is commented on the pull request, a table per
 lockfile of what was added and removed, and the check links to
-`g1t.sh/<owner>/<project>/security/pulls/<number>`. To block merges on it,
+`g1t.sh/<owner>/<repository>/security/pulls/<number>`. To block merges on it,
 add **Dependency review** to a ruleset's **Require status checks to pass**
 rule under **Settings → Rules** (see
 [required status checks](/guides/pull-requests/#required-status-checks)).
@@ -116,7 +116,7 @@ curl -s -H "Authorization: Bearer $G1T_TOKEN" \
 
 ## Vulnerability alerts
 
-Vulnerability alerts are at `g1t.sh/<owner>/<project>/security/vulnerabilities`.
+Vulnerability alerts are at `g1t.sh/<owner>/<repository>/security/vulnerabilities`.
 How they are found, dismissed and fixed by security updates is in
 [Security](/guides/security/#dependencies). Like the other alerts, each can
 be dismissed with a reason and reopened.

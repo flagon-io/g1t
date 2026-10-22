@@ -52,7 +52,7 @@ export default function More() {
         <Row
           leading={<Compass size={22} color={colors.accent} />}
           title="Explore"
-          subtitle="g1t beyond your workspaces: public projects, people and topics"
+          subtitle="g1t beyond your workspaces: public repositories, people and topics"
           trailing={<ExternalLink size={16} color={colors.faint} />}
           chevron={false}
           onPress={() => WebBrowser.openBrowserAsync(siteUrl(server, "/explore"))}

@@ -40,7 +40,7 @@ Push protection stays on whatever this says.
 
 ## The Secret scanning page
 
-`g1t.sh/<owner>/<project>/security/secret-scanning` lists the
+`g1t.sh/<owner>/<repository>/security/secret-scanning` lists the
 repository's secret alerts. Filter them by:
 
 | Filter   | Values                                                        |

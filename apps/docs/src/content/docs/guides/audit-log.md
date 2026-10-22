@@ -89,11 +89,11 @@ Open the workspace's settings and choose **Audit log**, or go to
 `g1t.sh/<workspace>/-/audit`.
 
 - **Owners** see everything in the workspace.
-- **Members** see what was done to the workspace's projects, and anything
+- **Members** see what was done to the workspace's repositories, and anything
   they did. Changes owners made to the
   workspace itself are for owners.
 
-Filter by actor, action, project, outcome, who acted (people or workspace
+Filter by actor, action, repository, outcome, who acted (people or workspace
 tokens), and a range of days.
 The filters are part of the page's address, so a filtered view can be
 shared with anyone who can see it.

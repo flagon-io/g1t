@@ -25,9 +25,8 @@ token, cannot transfer. Your email address must be confirmed.
 
 ## Transfer a repository
 
-1. Open the project's **Settings → General**.
-2. Under **Danger zone**, choose **Transfer**. The project moves with its
-   repository.
+1. Open the repository's **Settings → General**.
+2. Under **Danger zone**, choose **Transfer**.
 3. Pick the workspace to move it to. Only workspaces where you can create
    a repository like it are listed.
 4. Read what changes, type the repository's full name (`<old>/<repo>`) to
@@ -69,7 +68,7 @@ Everything that belongs to the repository moves with it:
 | Code                          | Every branch and tag. The git data does not move or copy; only the address changes.                                                                                                              |
 | Pull requests                 | With their numbers, comments, reviews, sessions and merge queue. A new pull request takes the new workspace's next number, always above the numbers the repository's pull requests already have. |
 | Workflows                     | Workflow runs, their jobs, logs and artifacts.                                                                                                                                                   |
-| Deployments                   | The repository's project, its deployments and its custom domains. See [deployments](#deployments).                                                                                               |
+| Deployments                   | The repository's apps, its deployments and its custom domains. See [deployments](#deployments).                                                                                                  |
 | Its own settings              | Merge rules, branch protection and guardrails.                                                                                                                                                   |
 | Its own secrets and variables | Set on the repository, they move with it.                                                                                                                                                        |
 | Its own webhooks              | They now name the repository by its new path.                                                                                                                                                    |
@@ -116,12 +115,12 @@ its name is never given to anyone else, so the redirects keep working.
 ## Deployments
 
 A `g1t.page` address ends in its workspace's name: production is at
-`<project>-<workspace>.g1t.page`. After a transfer, each of the project's
+`<repository>-<workspace>.g1t.page`. After a transfer, each of the repository's
 apps (production and every open preview, including one paused by the old
 workspace's usage limit) is built again from the same commit under the new
 workspace's name. The old address keeps serving until the new one is live,
 then redirects to it for 90 days, whatever the old workspace's plan or
-limit. Custom domains move with the project and serve the new build.
+limit. Custom domains move with the repository and serve the new build.
 
 From the transfer on, the apps are the new workspace's: its plan and usage
 limit decide whether they build and serve. If the new workspace cannot

@@ -129,7 +129,7 @@ export function LinkFields({ links, compact = false }: { links: ProjectLinks; co
             Add a link
           </button>
         ) : (
-          <p className="mt-2 text-xs text-faint">{MAX_PROJECT_LINKS} links is the most a project keeps.</p>
+          <p className="mt-2 text-xs text-faint">{MAX_PROJECT_LINKS} links is the most a repository keeps.</p>
         )}
         <p className="mt-1.5 text-xs text-faint">A status page, a registry listing, a chat: anything with an http or https address.</p>
       </fieldset>
@@ -266,7 +266,7 @@ export function AboutEditor({ project, action }: { project: Pick<Project, "descr
     <Dialog open={open} onOpenChange={setOpen}>
       <Hint label="Edit the description and links">
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm" aria-label="Edit project details">
+          <Button variant="outline" size="sm" aria-label="Edit repository details">
             <Pencil size={14} /> Edit details
           </Button>
         </DialogTrigger>
@@ -274,7 +274,7 @@ export function AboutEditor({ project, action }: { project: Pick<Project, "descr
       <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>Edit {project.name}'s About</DialogTitle>
-          <DialogDescription>Its description and links show here, on its cards, and in its workspace's Projects.</DialogDescription>
+          <DialogDescription>Its description and links show here, on its cards, and in its workspace's Repositories.</DialogDescription>
         </DialogHeader>
         <fetcher.Form method="post" action={action} className="space-y-5">
           <input type="hidden" name="intent" value="about" />

@@ -1,12 +1,12 @@
 ---
 title: Observability
-description: A project's requests, logs, traces, metrics and errors, from its apps on g1t.page with nothing to set up, and from anything else over OpenTelemetry.
+description: A repository's requests, logs, traces, metrics and errors, from its apps on g1t.page with nothing to set up, and from anything else over OpenTelemetry.
 ---
 
-Observability shows what a [project](/guides/projects/)'s running software
+Observability shows what a [repository](/guides/repositories/)'s running software
 does: every request it answers, every line it writes, every trace through
 the services it calls, the metrics it reports, and its errors, grouped. It
-is on every project's menu, under **Observability**.
+is on every repository's menu, under **Observability**.
 
 It has two sources, and they meet in one place:
 
@@ -19,7 +19,7 @@ It has two sources, and they meet in one place:
   app the endpoint and a token.
 - **Anything else, over OpenTelemetry.** Software running on another host,
   a server of your own, a phone app or a background worker sends traces,
-  logs and metrics to `https://otel.g1t.sh` with one of the project's
+  logs and metrics to `https://otel.g1t.sh` with one of the repository's
   ingest tokens, in OTLP over HTTP, JSON or protobuf. Any OpenTelemetry SDK
   or collector does this already.
 
@@ -36,7 +36,7 @@ the API it called elsewhere are one trace.
 | **Traces**   | Each trace, with the services it touched, its spans and errors. A trace opens as a waterfall, with each span's attributes and events, and the logs written under it                                                                                                   |
 | **Errors**   | Exceptions grouped by what they are and where they were thrown, with how often and since which deployment. Each can become a work item                                                                                                                                |
 | **Metrics**  | Every metric sent over OpenTelemetry, over time, averaged, summed or as a percentile, and grouped by service or any attribute                                                                                                                                         |
-| **Settings** | Ingest tokens, exports, retention, and what the project used this month                                                                                                                                                                                               |
+| **Settings** | Ingest tokens, exports, retention, and what the repository used this month                                                                                                                                                                                            |
 
 Every page narrows by period (the last 15 minutes to the last 30 days),
 environment, service and deployment, and the address says what it shows,
@@ -89,7 +89,7 @@ Nothing to set up. Every request reaches an app through g1t.page's
 dispatcher, which gives it an id and a trace and records it, so even a
 request a site's files answered without running its code is counted. When
 the app's code runs, Cloudflare hands g1t what it wrote and threw. Both
-halves are filed under the project and the deployment that served it.
+halves are filed under the repository and the deployment that served it.
 
 Each request the app receives carries two headers it can use:
 
@@ -106,9 +106,9 @@ set:
 | Variable                      | Value                                                                                            |
 | ----------------------------- | ------------------------------------------------------------------------------------------------ |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `https://otel.g1t.sh`                                                                            |
-| `OTEL_EXPORTER_OTLP_HEADERS`  | `authorization=Bearer <the project's deployments token>`, a secret                               |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | `authorization=Bearer <the repository's deployments token>`, a secret                            |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/json`                                                                                      |
-| `OTEL_SERVICE_NAME`           | the project's name                                                                               |
+| `OTEL_SERVICE_NAME`           | the repository's name                                                                            |
 | `OTEL_RESOURCE_ATTRIBUTES`    | `deployment.environment.name`, `g1t.deployment.id`, `g1t.project.id` and `vcs.ref.head.revision` |
 
 An OpenTelemetry SDK that reads them sends its spans, logs and metrics
@@ -147,21 +147,21 @@ Object call, and its cache, under the request. They arrive in the
 request's trace, next to any spans of the app's own SDK. Its logs are not
 sent this way: they already arrive with each request.
 
-Set `OTEL_EXPORTER_OTLP_ENDPOINT` yourself, under the project's
+Set `OTEL_EXPORTER_OTLP_ENDPOINT` yourself, under the repository's
 [secrets and variables](/guides/secrets-and-variables/), to send the
 app's OpenTelemetry somewhere else instead: g1t then sets none of these.
 Requests and logs still arrive from g1t.page either way. A build that is
 not trusted (a pull request from a fork) gets no token.
 
 To stop apps on g1t.page reporting, turn off **Apps on g1t.page report
-here** under the project's **Observability**, **Settings**. What is
+here** under the repository's **Observability**, **Settings**. What is
 already here stays.
 
 ## Sending from anywhere else
 
-1. Under the project's **Observability**, **Settings**, choose **New
+1. Under the repository's **Observability**, **Settings**, choose **New
    token**, name it after what will send with it, and copy it: it is shown
-   once. Tokens start with `g1to_`, and each can only send to its project.
+   once. Tokens start with `g1to_`, and each can only send to its repository.
 2. Point your software at the endpoint, with the token:
 
    ```sh
@@ -234,7 +234,7 @@ sum, minimum and maximum.
 An **export** sends everything that arrives on to any OTLP/HTTP endpoint
 as well: a collector of your own, or any tool that takes OpenTelemetry.
 Requests on g1t.page go as server spans, and their logs as log records, so
-the tool shows the project's apps as it shows any other service.
+the tool shows the repository's apps as it shows any other service.
 
 Under **Observability**, **Settings**, choose **New export**, give its
 address (g1t adds `/v1/traces`, `/v1/logs` and `/v1/metrics`), the signals
@@ -245,14 +245,14 @@ shows under it. Exports go to addresses on the internet over `https` only.
 ## Retention
 
 Requests, logs, spans and metric points are kept for 7 days, or 1, 3, 14 or
-30, as the project's **Observability**, **Settings** say. The Overview's
+30, as the repository's **Observability**, **Settings** say. The Overview's
 per-minute numbers are kept for 90 days whatever the retention, so its
-charts reach back further than its requests do. A project's store holds up
+charts reach back further than its requests do. A repository's store holds up
 to 4 GB; past that, its oldest day goes first.
 
 ## On the free plan
 
-A project in a workspace on the free plan can send **1 GB a month**, held a
+A repository in a workspace on the free plan can send **1 GB a month**, held a
 day at a time: about 34 MB a day (UTC), a thirtieth of the month, so a burst
 cannot use the month up in an hour. What counts is what arrives: an OTLP
 request's body once unzipped, and the rows kept from an app's tail events.
@@ -267,12 +267,12 @@ address; see [rate limits](/reference/rate-limits/).
 
 ## Who can do what
 
-|                                                    | Who                                                                                                                                                   |
-| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| See the pages                                      | People with a role on the project's repository, even when its code is public: logs and addresses can hold what only the people running it should read |
-| Resolve, ignore or reopen errors                   | Triage and up                                                                                                                                         |
-| Make a work item of an error                       | Anyone who can open work items in the project's repository                                                                                            |
-| Tokens, exports, retention and the g1t.page switch | Admin                                                                                                                                                 |
+|                                                    | Who                                                                                                                                         |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| See the pages                                      | People with a role on the repository, even when its code is public: logs and addresses can hold what only the people running it should read |
+| Resolve, ignore or reopen errors                   | Triage and up                                                                                                                               |
+| Make a work item of an error                       | Anyone who can open work items in the repository                                                                                            |
+| Tokens, exports, retention and the g1t.page switch | Admin                                                                                                                                       |
 
 ## The API and MCP
 
@@ -288,23 +288,23 @@ request and its trace the same way you do.
 ## What it costs
 
 Nothing yet, while g1t is in alpha. **Observability**, **Settings**,
-**This month** shows what the project sent and keeps: the bytes received,
+**This month** shows what the repository sent and keeps: the bytes received,
 requests, log lines, spans and metric points.
 
 ## How it works
 
-Each project's telemetry is kept in a store of its own, a Durable Object
-with its own SQLite database, so one project's volume never slows another's
+Each repository's telemetry is kept in a store of its own, a Durable Object
+with its own SQLite database, so one repository's volume never slows another's
 pages. Log bodies are indexed for full-text search.
 
 - **g1t.page.** The dispatcher in front of every app names the telemetry
   service as its Tail Worker, and so does each app. Each app's own
   Cloudflare tracing is exported to the service too, over OTLP, and filed
-  under the app's project and deployment. The dispatcher's half
+  under the app's repository and deployment. The dispatcher's half
   of a request (status, time, place) and the app's half (logs, exceptions,
   CPU time) arrive apart and are joined by the request's id.
-- **OTLP.** The endpoint reads the project from the token, checks it
-  against the project's tokens (kept as hashes), decodes the request, and
+- **OTLP.** The endpoint reads the repository from the token, checks it
+  against the repository's tokens (kept as hashes), decodes the request, and
   files each record by its resource: `service.name`,
   `deployment.environment.name` and `g1t.deployment.id`.
 - **Counting.** Each minute, the requests of the minute before are counted

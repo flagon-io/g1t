@@ -425,7 +425,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
             </ul>
             <div className="mt-4 space-y-1.5 border-t border-line pt-4 text-sm">
               <Link to={`/${slug}/-/usage`} className="flex items-center gap-2 text-muted hover:text-fg">
-                <FileText size={14} /> Usage, by product and project
+                <FileText size={14} /> Usage, by product and repository
               </Link>
               <Link to="/pricing" className="flex items-center gap-2 text-muted hover:text-fg">
                 <CreditCard size={14} /> Pricing and today's prices

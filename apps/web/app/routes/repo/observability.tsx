@@ -44,7 +44,7 @@ export default function Observability({ loaderData, params }: Route.ComponentPro
     <div className="mx-auto max-w-7xl">
       <ObservabilityHeader
         title="Observability"
-        about="What the project's running software does: its requests, errors and latency, by deployment. Apps on g1t.page report on their own; anything else sends OpenTelemetry."
+        about="What the repository's running software does: its requests, errors and latency, by deployment. Apps on g1t.page report on their own; anything else sends OpenTelemetry."
       />
       <FilterBar path={path} view={view} environments={facets?.environments ?? []} services={facets?.services ?? []} />
 
@@ -362,7 +362,7 @@ function NothingYet({ base, canManage }: { base: string; canManage: boolean }) {
         <div className="border-b border-line px-6 py-5">
           <h2 className="font-medium">Nothing has arrived yet</h2>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Requests, logs, traces and metrics show here as the project's software sends them, kept for its retention and counted for its charts.
+            Requests, logs, traces and metrics show here as the repository's software sends them, kept for its retention and counted for its charts.
           </p>
         </div>
         <div className="grid divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
@@ -385,7 +385,7 @@ function NothingYet({ base, canManage }: { base: string; canManage: boolean }) {
               Running anywhere else
             </h3>
             <p className="mt-1.5 text-sm text-muted">
-              Send OpenTelemetry (OTLP over HTTP, JSON or protobuf) from any SDK or collector, with one of the project's ingest tokens.
+              Send OpenTelemetry (OTLP over HTTP, JSON or protobuf) from any SDK or collector, with one of the repository's ingest tokens.
             </p>
             <div className="mt-3">
               <CopyLine text={TELEMETRY_OTLP_ENDPOINT} />

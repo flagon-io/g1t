@@ -414,7 +414,7 @@ number is many times the first.
 Container apps ([Docker deployments](/guides/deployments/#docker-deployments))
 run when `CONTAINERS` is `on` in `services/deployments/wrangler.jsonc`, as
 it is for g1t.sh. On an account without Containers, set it to `off`: a
-container build then fails, saying so, and a project with a site beside
+container build then fails, saying so, and an app with a site beside
 its `Dockerfile` is built as that site.
 
 The calls follow Cloudflare's API reference and Wrangler's own client.

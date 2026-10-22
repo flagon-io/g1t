@@ -89,7 +89,7 @@ export function kindLabel(project: Pick<Project, "kind" | "runs">): string {
     case "docs":
       return project.runs === "g1t" ? "Docs on g1t.page" : "Docs";
     default:
-      return "Project";
+      return "Other";
   }
 }
 

@@ -255,7 +255,7 @@ export function HomeWeek({ view }: { view: DailySignal | null }) {
       {!view.complete && (
         <p className="flex items-center gap-1.5 border-t border-line px-5 py-2.5 text-xs text-faint">
           <TriangleAlert size={12} className="shrink-0" />
-          Some projects didn&apos;t answer, so the week leaves them out.
+          Some repositories didn&apos;t answer, so the week leaves them out.
         </p>
       )}
       <div className="h-2" />

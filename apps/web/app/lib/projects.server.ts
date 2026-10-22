@@ -55,7 +55,7 @@ export async function projectAction(request: Request, params: { owner?: string; 
     case "create": {
       const change = projectChangeOf(form);
       if (typeof change === "string") return failed(change);
-      if (!change.name) return failed("A project needs a name.");
+      if (!change.name) return failed("A repository needs a name.");
       // No lead chosen on a new project is "You": the work service makes the actor its lead.
       if (change.lead === "") delete change.lead;
       const made = await work.createProject(user, workspace, { ...change, name: change.name });
@@ -98,5 +98,5 @@ export async function projectAction(request: Request, params: { owner?: string; 
       return done.ok ? { intent, slug } : failed(done.error.message);
     }
   }
-  return failed("That is not something a project's page can do.");
+  return failed("That is not something a repository's page can do.");
 }

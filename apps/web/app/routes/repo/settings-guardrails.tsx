@@ -37,7 +37,7 @@ export default function RepoGuardrails({ loaderData, actionData, params }: Route
     <>
       <RepoSettingsHeading base={base} />
       <p className="mb-8 max-w-3xl text-sm text-muted">
-        How long this project's checks, merge queue and merge checks may run. Anything left as the workspace's follows the{" "}
+        How long this repository's checks, merge queue and merge checks may run. Anything left as the workspace's follows the{" "}
         <Link to={`/${params.owner}/-/guardrails`} className="text-fg underline-offset-2 hover:underline">
           workspace's defaults
         </Link>

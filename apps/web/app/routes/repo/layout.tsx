@@ -89,7 +89,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // A repository made a moment ago, before its project: make it now.
   if (!project && repo.ok && !repo.value.forkOf) {
     // The repository still has its page when its project cannot be read: drawn by its own name.
-    const own = orElse(await part(projects.byRepo(repo.value.id), "Its project"), []);
+    const own = orElse(await part(projects.byRepo(repo.value.id), "Its repository"), []);
     project = own.find((p) => p.slug === params.repo.toLowerCase()) ?? own[0] ?? null;
   }
   // Opened just now: it leads their Recent, recorded after the page is sent.

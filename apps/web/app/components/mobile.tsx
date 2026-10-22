@@ -627,7 +627,7 @@ export function ProjectStrip({
     ...((settings ?? member) ? (["settings"] as const) : []),
   ];
   return (
-    <NavTabs label="Project" className={always ? undefined : "md:hidden"}>
+    <NavTabs label="Repository" className={always ? undefined : "md:hidden"}>
       {pages.map((page) => {
         const link = page === "overview" ? { label: "Overview", path: "" } : PROJECT_PAGE_LINKS[page];
         const to = link.path ? `${base}/${link.path}` : base;

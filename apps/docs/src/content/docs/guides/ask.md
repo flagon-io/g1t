@@ -97,10 +97,10 @@ a work item or a pull request, g1t sends its title, state and description, so
 you can ask "what is left to do here?" without pasting anything. Some
 questions it answers well:
 
-- What shipped today across all our projects?
+- What shipped today across all our repositories?
 - Why did the last Deploy fail?
 - Summarize this pull request.
-- How do I run this project's tests?
+- How do I run this repository's tests?
 - What changed in this file recently, and why?
 
 For a question about the whole workspace, Ask reads the workspace's
@@ -115,7 +115,7 @@ A change ships when it reaches a repository's default branch, pushed or
 merged from a pull request, and then production. Production is a
 successful deployment:
 
-- a project's production deployment on g1t.page, or
+- a repository's production deployment on g1t.page, or
 - for a repository that deploys itself, a successful run of its deploy
   workflow on the default branch: a workflow whose name or file says
   deploy, such as `.g1t/workflows/deploy.yml`, and not one for previews.
@@ -186,7 +186,7 @@ that, and deployments are left off if you ask for that too.
 
 Choosing **Start session** or **Copy Claude Code command**:
 
-1. Creates the repository as you, with the work item's title as its project's
+1. Creates the repository as you, with the work item's title as its
    description.
 2. Turns on its [deployments](/guides/deployments/). This needs the
    workspace on the g1t plan and the Admin role on the repository, which

@@ -1,16 +1,35 @@
 /**
  * A workspace's pages and where the sidebar finds them. `g1t.sh/<workspace>`
- * is the workspace's own page, its header and overview; Projects, Packages,
- * Teams, People, Insights and Settings are pages of their own under `-/`,
+ * is the workspace's own page, its header and overview; Repositories
+ * (Code's, at `-/code/repositories`), Packages, Teams, People, Insights and
+ * Settings are pages of their own under `-/`,
  * each reached from the sidebar and each with its own heading. The sidebar
  * is always the current workspace's.
  */
 
 /** The workspace's pages a person moves between, and which the sidebar lists. */
-export type WorkspacePageKey = "overview" | "projects" | "packages" | "teams" | "people" | "insights";
+export type WorkspacePageKey = "overview" | "code/repositories" | "packages" | "teams" | "people" | "insights";
 
-/** Those pages under `-/`: the overview is the workspace's own address. */
-export const WORKSPACE_PAGES = ["projects", "packages", "teams", "people", "insights"] as const;
+/** Those pages under `-/`: the overview is the workspace's own address, and Repositories is Code's. */
+export const WORKSPACE_PAGES = ["code/repositories", "packages", "teams", "people", "insights"] as const;
+
+/** Code's list of a workspace's repositories, with an optional query (without its `?`). */
+export function repositoriesPath(slug: string, query?: string): string {
+  return `/${slug}/-/code/repositories${query ? `?${query}` : ""}`;
+}
+
+/**
+ * Where an address of Code's that moved is now, keeping its query: Code
+ * called repositories projects, at `-/projects`, until Work's projects took
+ * the word. Null for anything else.
+ */
+export function movedCodePath(pathname: string, search = ""): string | null {
+  const parts = pagePath(pathname).split("/").filter(Boolean);
+  if (parts.length !== 3 || parts[1] !== "-" || parts[2]!.toLowerCase() !== "projects") return null;
+  const params = new URLSearchParams(search);
+  params.delete("_routes");
+  return repositoriesPath(parts[0]!, params.toString());
+}
 
 /**
  * Which of those pages a path is, under `/<workspace>`: null for the
@@ -21,8 +40,9 @@ export function workspacePage(pathname: string, slug: string): WorkspacePageKey 
   const parts = pagePath(pathname).split("/").filter(Boolean);
   if (parts[0]?.toLowerCase() !== slug.toLowerCase()) return null;
   if (parts.length === 1) return "overview";
-  if (parts[1] !== "-" || parts.length !== 3) return null;
-  return (WORKSPACE_PAGES as readonly string[]).includes(parts[2]!) ? (parts[2] as WorkspacePageKey) : null;
+  if (parts[1] !== "-") return null;
+  const rest = parts.slice(2).join("/");
+  return (WORKSPACE_PAGES as readonly string[]).includes(rest) ? (rest as WorkspacePageKey) : null;
 }
 
 /**
@@ -133,9 +153,9 @@ export function workspaceSettingsPage(pathname: string, slug: string): { group: 
 /** `?tab=` as people write it, from the tabs the workspace page once had: the page it means. */
 const TAB_WORDS: Record<string, string> = {
   overview: "",
-  projects: "-/projects",
-  repositories: "-/projects",
-  repos: "-/projects",
+  projects: "-/code/repositories",
+  repositories: "-/code/repositories",
+  repos: "-/code/repositories",
   packages: "-/packages",
   people: "-/people",
   members: "-/members",
@@ -189,7 +209,7 @@ export function underWorkspace(pathname: string, search: string, slug: string): 
 
 /**
  * Where an old address of a workspace's pages is now, keeping its query;
- * null when it has not moved. `/<workspace>?tab=projects` and the like
+ * null when it has not moved. `/<workspace>?tab=repositories` and the like
  * open that page.
  */
 export function workspaceRedirect(pathname: string, search = ""): string | null {
@@ -225,7 +245,7 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
  * g1t's own pages (policies, support, a new workspace): no workspace's, so
  * no mode is lit and no mode's sidebar sits beside them. `browse` is g1t
  * beyond your workspaces (Explore, search, a profile, another workspace
- * and its public projects): the rail lights Explore, and Explore's sidebar
+ * and its public repositories): the rail lights Explore, and Explore's sidebar
  * sits beside them (`browsingOf`). Each mode has a sidebar of its own, or
  * none, and which one is lit follows the address.
  */
@@ -284,7 +304,7 @@ const SITE_PAGES = new Set(["explore", "search", "support", "policies", "securit
 
 /**
  * The mode a path is in, for the workspace `slug`. A repository (anyone's)
- * and a new project are Code's; g1t's own pages (Explore, search, a
+ * and a new repository are Code's; g1t's own pages (Explore, search, a
  * profile) are `site`: public, and no workspace's mode.
  */
 export function modeOf(pathname: string, slug: string | null): ModeKey {
@@ -410,9 +430,9 @@ export type Viewer = {
  * Whether `pathname` is g1t beyond the viewer's own workspaces, and whose
  * (`owner`, null for Explore, search and their own profile). Null for
  * anything of theirs. A workspace they belong to is never browsed, even
- * when it is not the one they are in: its pages and projects switch the
+ * when it is not the one they are in: its pages and repositories switch the
  * shell to it (lib/workspace-choice.ts `workspaceFor`), so they are that
- * workspace's modes. A project shared with them is Code's, whose sidebar
+ * workspace's modes. A repository shared with them is Code's, whose sidebar
  * lists it. Without a workspace there is no rail, and nothing is browsed.
  */
 export function browsingOf(pathname: string, viewer: Viewer): { owner: BrowsedOwner | null } | null {
@@ -474,7 +494,7 @@ export function codeAccessPath(slug: string, from?: string): string {
 const WORK_REDIRECTS = new Set(["issues", "labels", "milestones", "ref"]);
 
 /** The workspace pages under `-/` that are Code's: closed to a member without Code access. */
-const CODE_PAGES = new Set(["overview", "projects", "repositories", "packages", "security", "rules", "runners", "actions", "insights", "soon"]);
+const CODE_PAGES = new Set(["overview", "code", "projects", "repositories", "packages", "security", "rules", "runners", "actions", "insights", "soon"]);
 
 /**
  * Where a member without Code access goes instead of `pathname`, or null
