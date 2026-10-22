@@ -66,6 +66,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -105,14 +106,45 @@ const INSTALL = "`curl -fsSL https://g1t.sh/install | sh` (on Windows, `irm http
 export function howToUpdate(version) {
   return version && !older(version, UPGRADE_CLI) ? "`g1t upgrade`" : `the installer again: ${INSTALL}`;
 }
-/** The tools that run shell commands. */
-const SHELL_TOOLS = new Set(["Bash", "PowerShell"]);
+/** The tools that run shell commands: Claude Code's, and Codex's. */
+const SHELL_TOOLS = new Set(["Bash", "PowerShell", "exec", "exec_command", "shell", "shell_command", "local_shell"]);
+/** Codex's tool that writes files: its input is a patch that names them. */
+const PATCH_TOOLS = new Set(["apply_patch"]);
 /** The tool that starts subagents (Task before Claude Code renamed it). */
 const AGENT_TOOLS = new Set(["Agent", "Task"]);
 /** Tools that write a file, and where they say which. */
 const WRITERS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
 const SELF = fileURLToPath(import.meta.url);
+
+/**
+ * The harness running these hooks: `codex` when Codex's hooks.json runs
+ * this file (it passes `codex`, which main keeps in G1T_HOOK_HARNESS for
+ * the background half), else Claude Code's `claude_code`. Codex gives its
+ * hooks the same events and fields Claude Code does; what differs is its
+ * tools' names (SHELL_TOOLS, PATCH_TOOLS), its transcript (codexCountLine)
+ * and its subagents, which it names itself (no pairing).
+ */
+export function harnessOf(env = process.env) {
+  return env.G1T_HOOK_HARNESS === "codex" ? "codex" : "claude_code";
+}
+
+/** A shell tool's command as one line of text: Codex may give the input as a string, or the command as argv. */
+export function commandOf(input) {
+  if (typeof input === "string") return input;
+  const command = input?.command ?? input?.cmd;
+  if (typeof command === "string") return command;
+  if (Array.isArray(command)) return command.map(String).join(" ");
+  return typeof input?.input === "string" ? input.input : "";
+}
+
+/** The files a patch names: `*** Add File: path`, `*** Update File: path`, `*** Delete File: path`, `*** Move to: path`. */
+export function patchFiles(input) {
+  const text = typeof input === "string" ? input : ([input?.input, input?.patch, input?.command].find((value) => typeof value === "string") ?? "");
+  const files = new Set();
+  for (const match of text.matchAll(/^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$/gm)) files.add(match[1].trim());
+  return [...files];
+}
 
 // --- what to send ------------------------------------------------------
 
@@ -202,7 +234,12 @@ const PREFIX = /^(?:export G1T_SESSION=[A-Za-z0-9_]+; |\$env:G1T_SESSION='[A-Za-
 
 /** One line on what a tool was called with: never what it returned. */
 export function summarizeTool(name, input, cwd) {
-  const i = input && typeof input === "object" ? input : {};
+  const i =
+    input && typeof input === "object"
+      ? { ...input, ...(Array.isArray(input.command) ? { command: commandOf(input) } : {}) }
+      : typeof input === "string"
+        ? { command: input }
+        : {};
   const path = (p) => {
     if (typeof p !== "string") return "";
     return repoPath(p, cwd) ?? p;
@@ -305,8 +342,8 @@ export function g1tTool(name) {
  * `only`: sent only with usage to report (before the session ends);
  * otherwise a plain heartbeat when there is none.
  */
-function usageStep(transcript, { only = false } = {}) {
-  return { args: ["session", "heartbeat"], usage: String(transcript), ...(only ? { only: true } : {}) };
+function usageStep(transcript, { only = false, model = null } = {}) {
+  return { args: ["session", "heartbeat"], usage: String(transcript), ...(only ? { only: true } : {}), ...(model ? { model: String(model) } : {}) };
 }
 
 /**
@@ -350,7 +387,7 @@ export function plan(event, env = process.env) {
       if (!job.agent) return null;
       // Its own transcript: its parent's leaves out what it used.
       const transcript = event.agent_transcript_path ?? subagentPaths(event.transcript_path, event.agent_id)?.transcript;
-      if (transcript) job.steps.push(usageStep(transcript, { only: true }));
+      if (transcript) job.steps.push(usageStep(transcript, { only: true, model: event.model }));
       const args = ["session", "end", "--reason", "done"];
       const result = typeof event.last_assistant_message === "string" ? event.last_assistant_message.trim() : "";
       // --flag=VALUE throughout for text: one that starts with a dash ("- Found …") is still a value.
@@ -361,7 +398,9 @@ export function plan(event, env = process.env) {
     case "PostToolUse": {
       if (!event.tool_name) return null;
       const tool = event.tool_name;
-      const input = event.tool_input ?? {};
+      const given = event.tool_input ?? {};
+      // A shell tool's command as text, whatever shape the harness gives it in.
+      const input = SHELL_TOOLS.has(tool) ? { ...(typeof given === "object" ? given : {}), command: commandOf(given) } : given;
       if (tool === "Skill") {
         const skill = typeof input.skill === "string" ? input.skill.trim() : "";
         if (!skill) return null;
@@ -374,6 +413,12 @@ export function plan(event, env = process.env) {
       if (WRITERS.has(tool)) {
         const file = repoPath(input.file_path ?? input.notebook_path, cwd);
         if (file) touch.push(`--file=${file}`);
+      }
+      if (PATCH_TOOLS.has(tool)) {
+        for (const named of patchFiles(given).slice(0, 100)) {
+          const file = repoPath(named, cwd);
+          if (file) touch.push(`--file=${file}`);
+        }
       }
       if (AGENT_TOOLS.has(tool) && !job.agent) {
         const response = event.tool_response ?? {};
@@ -425,10 +470,10 @@ export function plan(event, env = process.env) {
       return job;
     }
     case "Stop":
-      job.steps.push(event.transcript_path ? usageStep(event.transcript_path) : { args: ["session", "heartbeat"] });
+      job.steps.push(event.transcript_path ? usageStep(event.transcript_path, { model: event.model }) : { args: ["session", "heartbeat"] });
       return job;
     case "SessionEnd":
-      if (event.transcript_path) job.steps.push(usageStep(event.transcript_path, { only: true }));
+      if (event.transcript_path) job.steps.push(usageStep(event.transcript_path, { only: true, model: event.model }));
       job.steps.push({ args: ["session", "end", "--reason", String(event.reason || "other")] });
       job.end = true;
       return job;
@@ -529,7 +574,7 @@ function cli(bin, args, options) {
 
 /** Where the plugin keeps its state: Claude Code's data folder for it. */
 export function dataDir(env = process.env) {
-  return env.CLAUDE_PLUGIN_DATA || join(homedir(), ".g1t", "claude-code");
+  return env.CLAUDE_PLUGIN_DATA || join(homedir(), ".g1t", harnessOf(env) === "codex" ? "codex" : "claude-code");
 }
 
 function readJson(path, fallback) {
@@ -578,6 +623,7 @@ export function sessionFiles(sid, env = process.env) {
     task: (key) => join(dir, `${safe}.task.${safeName(key)}.json`),
     shell: (toolUseId) => join(dir, `${safe}.shell.${safeName(toolUseId)}.json`),
     unrecorded: join(dir, `${safe}.unrecorded.json`),
+    told: join(dir, `${safe}.told`),
     agent: (agentId) => join(dir, `${safe}.agent.${safeName(String(agentId).replace(/^agent-/, ""))}.id`),
     usage: (transcript) => join(dir, `${safe}.usage.${createHash("sha256").update(String(transcript)).digest("hex").slice(0, 16)}.json`),
   };
@@ -829,7 +875,69 @@ export function countLine(state, line) {
 
 /** The usage counted so far, as `g1t session heartbeat --usage-json` takes it: models with tokens. */
 export function usageList(state) {
+  // A Codex transcript with no response of its own counted: its last running total.
+  if (!Object.keys(state.totals).length && state.lastTotal) {
+    const row = { model: state.lastTotal.model, ...state.lastTotal.counts };
+    return COUNTS.some((name) => row[name] > 0) ? [row] : [];
+  }
   return Object.values(state.totals).filter((row) => COUNTS.some((name) => row[name] > 0));
+}
+
+/**
+ * Codex's token counts as g1t prices them. Its `input_tokens` holds the
+ * cached input and the cache writes, and its `output_tokens` the reasoning
+ * (`total_tokens` is input plus output), so they are taken apart, never
+ * counted twice. A cache write is priced as the shorter-lived kind.
+ */
+export function codexCounts(usage) {
+  const cached = whole(usage?.cached_input_tokens);
+  const written = whole(usage?.cache_write_input_tokens);
+  return {
+    input_tokens: Math.max(0, whole(usage?.input_tokens) - cached - written),
+    output_tokens: whole(usage?.output_tokens),
+    cache_write_5m_tokens: written,
+    cache_write_1h_tokens: 0,
+    cache_read_tokens: cached,
+  };
+}
+
+/**
+ * Counts one line of a Codex transcript (a rollout) into `state`. Each
+ * model response writes a `token_usage_record` with what it used, counted
+ * once by its response_id under the model of the turn it is in (from the
+ * last `turn_context`). A transcript with none (an older Codex) keeps the
+ * last `token_count` event's running total, `info.total_token_usage`.
+ * Subagents write rollouts of their own: none of theirs is here.
+ */
+export function codexCountLine(state, line) {
+  if (!line.includes('"turn_context"') && !line.includes('"token_usage_record"') && !line.includes('"token_count"')) return;
+  let entry;
+  try {
+    entry = JSON.parse(line);
+  } catch {
+    return;
+  }
+  const payload = entry?.payload;
+  if (entry?.type === "turn_context") {
+    if (typeof payload?.model === "string" && payload.model.trim()) state.model = payload.model.trim();
+    return;
+  }
+  const model = state.model || state.hookModel;
+  if (!model) return;
+  if (entry?.type === "token_usage_record" && payload?.usage) {
+    const id = typeof payload.response_id === "string" ? payload.response_id : null;
+    if (id && state.recent[id]) return;
+    addTo(state.totals, model, codexCounts(payload.usage), 1);
+    if (id) {
+      state.recent[id] = 1;
+      const ids = Object.keys(state.recent);
+      for (const old of ids.slice(0, Math.max(0, ids.length - RECENT_MESSAGES))) delete state.recent[old];
+    }
+    return;
+  }
+  if (entry?.type === "event_msg" && payload?.type === "token_count" && payload.info?.total_token_usage) {
+    state.lastTotal = { model, counts: codexCounts(payload.info.total_token_usage) };
+  }
 }
 
 /**
@@ -839,13 +947,24 @@ export function usageList(state) {
  * counted. A transcript that got shorter is counted again from the top.
  * Null when it cannot be read; never throws.
  */
-export function transcriptUsage(transcript, statePath) {
+export function transcriptUsage(transcript, statePath, { harness = "claude_code", model = null } = {}) {
   let fd;
+  const count = harness === "codex" ? codexCountLine : countLine;
   try {
     const size = statSync(transcript).size;
     let state = statePath ? readJson(statePath, null) : null;
     if (!state || state.path !== transcript || !(state.offset <= size) || typeof state.totals !== "object" || typeof state.recent !== "object") {
       state = { path: transcript, offset: 0, totals: {}, recent: {} };
+    }
+    // The model the hook says, for a Codex transcript that has not said one yet.
+    if (model) state.hookModel = String(model);
+    // Codex compresses a rollout it is done with: read whole, when this Node can.
+    if (/\.zst$/.test(transcript)) {
+      const zlib = createRequire(import.meta.url)("node:zlib");
+      if (typeof zlib.zstdDecompressSync !== "function") return null;
+      state = { path: transcript, offset: 0, totals: {}, recent: {}, hookModel: state.hookModel };
+      for (const line of zlib.zstdDecompressSync(readFileSync(transcript)).toString("utf8").split("\n")) count(state, line);
+      return usageList(state);
     }
     fd = openSync(transcript, "r");
     const buffer = Buffer.alloc(USAGE_CHUNK);
@@ -859,7 +978,7 @@ export function transcriptUsage(transcript, statePath) {
       const end = chunk.lastIndexOf(10);
       rest = chunk;
       if (end < 0) continue;
-      for (const line of chunk.subarray(0, end).toString("utf8").split("\n")) countLine(state, line);
+      for (const line of chunk.subarray(0, end).toString("utf8").split("\n")) count(state, line);
       // Counted up to and with the last newline; the rest is read again with what follows.
       state.offset = at - (chunk.length - end - 1);
       rest = chunk.subarray(end + 1);
@@ -961,6 +1080,8 @@ export async function checkForUpdate(env = process.env, { fetchJson = fetchMarke
  * the next start of Claude Code loads it).
  */
 export function updateNotice(env = process.env, root = PLUGIN_ROOT) {
+  // Codex's plugins update as its marketplace does; this is Claude Code's.
+  if (harnessOf(env) !== "claude_code") return null;
   const path = join(dataDir(env), "plugin.json");
   const kept = readJson(path, {}) ?? {};
   const own = pluginVersion(root);
@@ -1043,7 +1164,7 @@ function startSubagent(bin, job, files, agent, parentId, opts) {
     "session",
     "start",
     "--harness",
-    "claude_code",
+    harnessOf(opts.env),
     "--harness-session-id",
     subagentHarnessId(job.sid, agent.id),
     "--parent",
@@ -1076,7 +1197,7 @@ export function work(job, env = process.env) {
   let id = readText(files.id);
   if (job.start || !id) {
     const item = job.item ?? readText(files.item);
-    const args = ["session", "start", "--harness", "claude_code", "--harness-session-id", job.sid];
+    const args = ["session", "start", "--harness", harnessOf(env), "--harness-session-id", job.sid];
     if (item) args.push("--item", String(item));
     args.push("--json");
     const out = cli(bin, args, opts);
@@ -1104,7 +1225,7 @@ export function work(job, env = process.env) {
   if (job.agent) {
     let child = readText(files.agent(job.agent.id));
     // A subagent starting: the task and prompt of the Agent call that started it.
-    if (job.agent.start && job.pair) pairSubagent(job.agent, files, job.transcript, env);
+    if (job.agent.start && job.pair && harnessOf(env) === "claude_code") pairSubagent(job.agent, files, job.transcript, env);
     if (job.agent.start || !child) {
       const started = startSubagent(bin, job, files, job.agent, id, opts);
       if (started.auth) return setProblem(env, "signed_out");
@@ -1120,7 +1241,8 @@ export function work(job, env = process.env) {
       let args = step.key ? [...step.args.slice(0, -2), `--key=${step.key}`, ...step.args.slice(-2)] : step.args;
       if (step.usage) {
         // Only a CLI that takes it is given usage: the counts, never what the transcript says.
-        const usage = version && !older(version, USAGE_CLI) ? transcriptUsage(step.usage, files.usage(step.usage)) : null;
+        const usage =
+          version && !older(version, USAGE_CLI) ? transcriptUsage(step.usage, files.usage(step.usage), { harness: harnessOf(env), model: step.model }) : null;
         if (usage?.length) args = [...args, `--usage-json=${JSON.stringify(usage)}`];
         else if (step.only) continue;
       }
@@ -1176,8 +1298,32 @@ export function work(job, env = process.env) {
 // --- the hooks ---------------------------------------------------------
 
 /** What every session is told about trailers, so commits find their way back. */
-const TRAILER =
+export const TRAILER =
   "Add the trailer `G1t-Session: $G1T_SESSION` to the commits you make (git commit --trailer), so g1t ties them to this session. A commit pushed straight to the default branch that finishes a work item says `Closes #N` in its message (`Part of #N` when it does only part of it): a bare `(#N)` only links it, and the item stays open.";
+
+/**
+ * Codex's: it has no environment file to set G1T_SESSION in, so its hooks
+ * say the session's id at the first prompt after it starts (codexIdContext).
+ */
+export const CODEX_TRAILER =
+  "Add the trailer `G1t-Session: ID` to the commits you make (git commit --trailer), with this session's id, which g1t says at your first prompt (`g1t session view --json --jq .id` prints it too), so g1t ties them to this session. A commit pushed straight to the default branch that finishes a work item says `Closes #N` in its message (`Part of #N` when it does only part of it): a bare `(#N)` only links it, and the item stays open.";
+
+/** What a session of this harness is told about trailers. */
+export function trailerFor(env = process.env) {
+  return harnessOf(env) === "codex" ? CODEX_TRAILER : TRAILER;
+}
+
+/**
+ * Codex: the session's id, said once, at the first prompt after it has
+ * one, for the commits' trailer. Null when said, or when it has none yet.
+ */
+export function codexIdContext(files, env = process.env) {
+  if (!files || harnessOf(env) !== "codex") return null;
+  const id = readText(files.id);
+  if (!id || existsSync(files.told)) return null;
+  write(files.told, id);
+  return `g1t: this session is ${id} on g1t. Add the trailer \`G1t-Session: ${id}\` to the commits you make.`;
+}
 
 /**
  * What the agent is told of its session's title, once: g1t names the
@@ -1217,28 +1363,28 @@ export function sessionStart(event, env = process.env, bin = findCli(env)) {
     const where = remembered ? "this session's claim" : handedOff ? "the work handed to it" : `the branch ${branch}`;
     const out = cli(bin, ["work", "view", String(item)], { cwd, timeout: CONTEXT_WAIT_MS, env });
     if (out.status === 0 && out.stdout.trim()) {
-      context = `g1t: this session is working on work item #${item} (from ${where}). Its work context on g1t:\n\n${clip(out.stdout.trim(), CONTEXT_LIMIT)}\n\nIf it is not claimed by this session yet, claim it with \`g1t work claim ${item}\` before you start. ${TRAILER}`;
+      context = `g1t: this session is working on work item #${item} (from ${where}). Its work context on g1t:\n\n${clip(out.stdout.trim(), CONTEXT_LIMIT)}\n\nIf it is not claimed by this session yet, claim it with \`g1t work claim ${item}\` before you start. ${trailerFor(env)}`;
     } else if (out.status === EXIT_AUTH) {
       setProblem(env, "signed_out");
       const now = takeNotice(env);
       if (now) output.systemMessage = now;
     } else {
-      context = `g1t: ${where} points at work item #${item}. Load what is known about it with \`g1t work view ${item}\`, and claim it with \`g1t work claim ${item}\` before you start. ${TRAILER}`;
+      context = `g1t: ${where} points at work item #${item}. Load what is known about it with \`g1t work view ${item}\`, and claim it with \`g1t work claim ${item}\` before you start. ${trailerFor(env)}`;
     }
   } else {
-    context = `g1t: this session is recorded on g1t and shows to the team. Just work. If it turns into a change others should know about (a branch to push, a pull request), first look for its work item (\`g1t work list\`) and claim it with \`g1t work claim N\`; if there is none, open a work item and claim it with \`g1t work claim --title "…"\`. Never open work items for questions, exploration or trivial fixes. ${TITLE_NOTE} ${TRAILER}`;
+    context = `g1t: this session is recorded on g1t and shows to the team. Just work. If it turns into a change others should know about (a branch to push, a pull request), first look for its work item (\`g1t work list\`) and claim it with \`g1t work claim N\`; if there is none, open a work item and claim it with \`g1t work claim --title "…"\`. Never open work items for questions, exploration or trivial fixes. ${TITLE_NOTE} ${trailerFor(env)}`;
   }
   if (context) output.hookSpecificOutput = { hookEventName: "SessionStart", additionalContext: context };
   return output;
 }
 
 /** What a subagent is told as it starts: it is a session of its own, beside its siblings. */
-export function subagentContext(item) {
+export function subagentContext(item, env = process.env) {
   const on = item ? ` on work item #${item}` : "";
   const see = item
     ? `Before you change anything, run \`g1t work view ${item}\` and \`g1t session list --item ${item} --subagents\`: other subagents of the same session may be on it, and you see what each touches.`
     : "Before you change anything, run `g1t session list --subagents` to see the other subagents at work here.";
-  return `g1t: you are a subagent of a session recorded on g1t${on}, and g1t records you as a session of your own under it: the g1t commands and g1t tools you use act as that session. ${see} Claim only the work item you take on (\`g1t work claim N --note "what you are doing"\`), and if g1t reports an overlap with another session, settle it before going on. ${TRAILER}`;
+  return `g1t: you are a subagent of a session recorded on g1t${on}, and g1t records you as a session of your own under it: the g1t commands and g1t tools you use act as that session. ${see} Claim only the work item you take on (\`g1t work claim N --note "what you are doing"\`), and if g1t reports an overlap with another session, settle it before going on. ${trailerFor(env)}`;
 }
 
 /**
@@ -1263,7 +1409,7 @@ export function preToolUse(event, env = process.env) {
   // A subagent's g1t commands act as its own session. Only these commands
   // are changed. Claude Code checks its permission rules against the
   // changed command; no permission decision is made here.
-  if (SHELL_TOOLS.has(tool) && event.agent_id && namesG1t && !setsIt && /^[A-Za-z0-9_]+$/.test(session)) {
+  if (SHELL_TOOLS.has(tool) && harnessOf(env) === "claude_code" && event.agent_id && namesG1t && !setsIt && /^[A-Za-z0-9_]+$/.test(session)) {
     updated = { ...input, command: `${sessionPrefix(tool, session)}${input.command}` };
   }
   const g1t = g1tTool(tool);
@@ -1381,10 +1527,14 @@ export function hook(event, env = process.env) {
     job.pair = true;
     if (event.transcript_path) job.transcript = String(event.transcript_path);
     const item = Number(readText(files.item)) || null;
-    return { output: { hookSpecificOutput: { hookEventName: "SubagentStart", additionalContext: subagentContext(item) } }, job };
+    return { output: { hookSpecificOutput: { hookEventName: "SubagentStart", additionalContext: subagentContext(item, env) } }, job };
   }
   const notice = late?.output.systemMessage ?? (name === "UserPromptSubmit" ? takeNotice(env) : null);
-  const context = [late?.output.hookSpecificOutput?.additionalContext, name === "UserPromptSubmit" ? updateContext(event, env) : null]
+  const context = [
+    late?.output.hookSpecificOutput?.additionalContext,
+    name === "UserPromptSubmit" ? codexIdContext(files, env) : null,
+    name === "UserPromptSubmit" ? updateContext(event, env) : null,
+  ]
     .filter(Boolean)
     .join("\n\n");
   return {
@@ -1417,9 +1567,11 @@ async function main() {
     const job = JSON.parse(Buffer.from(process.argv[3], "base64url").toString("utf8"));
     work(job);
     // Once a session has started: said at a later prompt, or the next session's start.
-    if (job.start && !job.agent) await checkForUpdate();
+    if (job.start && !job.agent && harnessOf() === "claude_code") await checkForUpdate();
     return;
   }
+  // Codex's hooks.json runs `node g1t.mjs codex`: the background half inherits it.
+  if (process.argv[2] === "codex") process.env.G1T_HOOK_HARNESS = "codex";
   let raw = "";
   for await (const chunk of process.stdin) raw += chunk;
   const event = JSON.parse(raw || "{}");

@@ -244,8 +244,9 @@ a session starts (or, with no work item, when to claim or open one), g1t's
 MCP server, and commands to claim and hand off work items. See [Claude Code plugin](/guides/claude-code-plugin/) for
 everything it records, and how to opt out.
 
-Other agents record a session with the same CLI commands, from their
-instructions file: see
+With Codex, the [Codex plugin](#codex-marketplace) records sessions the
+same way, with the same hooks. Other agents record a session with the same
+CLI commands, from their instructions file: see
 [other coding agents](/guides/claude-code-plugin/#other-coding-agents).
 
 ## Staying out of each other's way
@@ -426,10 +427,38 @@ codex plugin add g1t@g1t
 
 In the ChatGPT desktop app's Plugins directory, select the **g1t** marketplace,
 install **g1t**, and authorize its MCP connection. Restart the app if the source
-has not appeared. The plugin bundles the MCP server and a skill for working on
-g1t work items and recording sessions. It does not install Claude Code's hooks.
+has not appeared. The plugin bundles the MCP server, a skill for working on
+g1t work items, and hooks that record each Codex session in a g1t repository.
 If you already added the standalone `g1t` MCP server, disable that duplicate
 connection when using the plugin.
+
+### What the Codex plugin records
+
+Its hooks are the [Claude Code plugin's](/guides/claude-code-plugin/#what-it-records),
+run by Codex, and record the same things through the [g1t CLI](/guides/cli/),
+which must be installed and signed in (`g1t auth login`):
+
+- the session, as a Codex session, and each subagent as a session of its own
+  under it, with its final message;
+- your prompts, the tools Codex runs and what it ran them with (a shell
+  command, the files a patch writes), never what they returned;
+- the commits, branches and pushes it makes;
+- what it cost: the tokens each response used, read from the session's own
+  transcript (`~/.codex/sessions`), priced at OpenAI's list prices. Only the
+  counts leave your machine, never the transcript.
+
+Codex runs a plugin's hooks only once you have reviewed and trusted them: run
+`/hooks` in Codex after installing the plugin. Codex has no way for a hook to
+set an environment variable in the session, so at your first prompt g1t tells
+the agent its session's id for the `G1t-Session` trailer on its commits
+(`g1t session view --json --jq .id` prints it too). With the hooks running,
+the agent doesn't start a second session through MCP.
+
+On a ChatGPT plan, Codex's use is part of the plan, not billed per token: its
+cost on g1t is what those tokens would cost at list price, a measure of the
+work rather than a bill. Codex's own review model has no list price, so its
+tokens are left out. `G1T_RECORD=0` and `G1T_RECORD_PROMPTS=0` work as they do
+for Claude Code.
 
 The direct Codex MCP commands above work without a marketplace. ChatGPT's
 **Add custom MCP server** flow is also available independently; a Git marketplace

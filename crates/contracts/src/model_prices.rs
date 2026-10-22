@@ -1,12 +1,15 @@
 //! What a model's tokens cost at list price, for estimating what a
 //! harness session cost from the token usage it reports.
 //!
-//! The prices are Anthropic's first-party list prices in US dollars per
-//! million tokens, from the pricing page of Anthropic's API documentation,
-//! checked on 2026-10-06. Writing to the prompt cache costs 1.25 times the input price
-//! for the 5-minute lifetime and twice the input price for the 1-hour one,
-//! on every model. Any other model, another provider's included, is priced
-//! as unknown: its cost is not estimated.
+//! The prices are list prices in US dollars per million tokens:
+//! Anthropic's first-party prices, from the pricing page of Anthropic's API
+//! documentation, checked on 2026-10-06, and OpenAI's Standard tier, from
+//! OpenAI's API pricing page, checked on 2026-10-22. Writing to the prompt
+//! cache costs 1.25 times the input price for Anthropic's 5-minute lifetime
+//! and OpenAI's 30-minute one, and twice it for Anthropic's 1-hour one. An
+//! OpenAI prompt over 272,000 input tokens costs more on its larger models;
+//! it is priced as any other here, so such a session's estimate is low.
+//! Any other model is priced as unknown: its cost is not estimated.
 //!
 //! A session reports its usage as a list of [`ModelUsage`], one per model
 //! (and tier) it used, cumulative for the session. [`parse_usage`] reads
@@ -48,8 +51,8 @@ pub const LONG_TIER: &str = "long";
 pub const LONG_PROMPT_TOKENS: u64 = 100_000;
 
 /// Every model priced, by its id: from Anthropic's pricing documentation,
-/// checked on 2026-10-06. claude-haiku-5-5 has a second row for its
-/// [`LONG_TIER`].
+/// checked on 2026-10-06, and OpenAI's, checked on 2026-10-22.
+/// claude-haiku-5-5 has a second row for its [`LONG_TIER`].
 pub const MODEL_PRICES: &[(&str, Option<&str>, ModelPrice)] = &[
     ("claude-fable-5-1", None, price(10.0, 50.0, 0.25)),
     ("claude-mythos-5-1", None, price(10.0, 50.0, 0.25)),
@@ -66,6 +69,17 @@ pub const MODEL_PRICES: &[(&str, Option<&str>, ModelPrice)] = &[
     ("claude-haiku-5-5", None, price(0.10, 0.50, 0.01)),
     ("claude-haiku-5-5", Some(LONG_TIER), price(0.50, 2.50, 0.05)),
     ("claude-haiku-4-5", None, price(1.0, 5.0, 0.10)),
+    // OpenAI's, as Codex uses them. Reasoning tokens are billed as output.
+    ("gpt-6.1-sol", None, price(2.0, 10.0, 0.10)),
+    ("gpt-6-astra", None, price(10.0, 50.0, 1.00)),
+    ("gpt-6-sol", None, price(2.0, 10.0, 0.20)),
+    ("gpt-6-luna", None, price(0.10, 0.50, 0.01)),
+    ("gpt-5.6-sol", None, price(4.0, 20.0, 0.40)),
+    ("gpt-5.6-terra", None, price(2.0, 12.0, 0.20)),
+    ("gpt-5.6-luna", None, price(0.20, 1.20, 0.02)),
+    ("gpt-5.5", None, price(5.0, 30.0, 0.50)),
+    ("gpt-5.4", None, price(2.50, 15.0, 0.25)),
+    ("gpt-5.3-codex", None, price(1.75, 14.0, 0.175)),
 ];
 
 /// A model id as the price table names it: lowercase, without a provider
@@ -253,6 +267,12 @@ mod tests {
         assert_eq!(model_price("claude-haiku-4-5", None), Some(price(1.0, 5.0, 0.10)));
         let opus = model_price("claude-opus-4-7", None).unwrap();
         assert!(close(opus.cache_write_5m(), 6.25) && close(opus.cache_write_1h(), 10.0));
+        // OpenAI's, as Codex uses them: a cache write is 1.25 times input there too.
+        assert_eq!(model_price("gpt-6.1-sol", None), Some(price(2.0, 10.0, 0.10)));
+        assert_eq!(model_price("gpt-6-astra", None), Some(price(10.0, 50.0, 1.00)));
+        assert_eq!(model_price("gpt-5.6-sol", None), Some(price(4.0, 20.0, 0.40)));
+        assert_eq!(model_price("gpt-5.3-codex", None), Some(price(1.75, 14.0, 0.175)));
+        assert!(close(model_price("gpt-6-sol", None).unwrap().cache_write_5m(), 2.50));
     }
 
     #[test]
@@ -268,7 +288,8 @@ mod tests {
 
     #[test]
     fn other_models_are_priced_as_unknown() {
-        for model in ["gpt-5.1-codex", "claude-opus-3", "o3", "<synthetic>", "claude-opus-5-5x"] {
+        // Codex's own review model has no list price.
+        for model in ["gpt-5.1-codex", "codex-auto-review", "claude-opus-3", "o3", "<synthetic>", "claude-opus-5-5x"] {
             assert_eq!(model_price(model, None), None, "{model}");
         }
     }

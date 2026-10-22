@@ -54,7 +54,10 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const SOURCE = "plugins/claude-code";
 export const CODEX_SOURCE = "plugins/codex";
 export const CODEX_PUBLISHED = "plugins/g1t-codex";
-export const CODEX_FILES = ["plugin.json", "mcp.json", "skills"];
+export const CODEX_FILES = ["plugin.json", "mcp.json", "skills", "hooks"];
+// The Codex plugin's hooks run the Claude Code plugin's g1t.mjs, one core
+// for both harnesses: the build copies it in beside hooks/hooks.json.
+export const CODEX_HOOK = "hooks/g1t.mjs";
 export const CODEX_INSTALL = "codex plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git";
 export const PUBLISHED = "plugins/g1t";
 export const REMOTE = "https://g1t.sh/flagon-io/g1t-plugins.git";
@@ -211,8 +214,8 @@ export function expectedFiles(root = ROOT) {
     const path = join(root, SOURCE, name);
     return statSync(path).isDirectory() ? walk(path).map((f) => `${PUBLISHED}/${name}/${f}`) : [`${PUBLISHED}/${name}`];
   });
-  const codex = walk(join(root, CODEX_SOURCE)).map((f) => `${CODEX_PUBLISHED}/${f}`);
-  return [".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json", "LICENSE", "README.md", ...plugin, ...codex].sort();
+  const codex = [...walk(join(root, CODEX_SOURCE)), CODEX_HOOK].map((f) => `${CODEX_PUBLISHED}/${f}`);
+  return [".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json", "LICENSE", "README.md", ...plugin, ...new Set(codex)].sort();
 }
 
 /** Writes the published tree to `out`, replacing what was there, and checks it. */
@@ -233,6 +236,7 @@ export function build(out = join(ROOT, "target", "g1t-plugins"), root = ROOT) {
   mkdirSync(join(out, ".agents/plugins"), { recursive: true });
   writeFileSync(join(out, ".agents/plugins/marketplace.json"), JSON.stringify(codexMarketplace(), null, 2) + "\n");
   for (const name of CODEX_FILES) cpSync(join(root, CODEX_SOURCE, name), join(out, CODEX_PUBLISHED, name), { recursive: true });
+  cpSync(join(root, SOURCE, "hooks", "g1t.mjs"), join(out, CODEX_PUBLISHED, CODEX_HOOK));
   writeFileSync(
     join(out, "README.md"),
     readme(version, minimumCli(root)) +
@@ -248,9 +252,11 @@ codex plugin add g1t@g1t
 
 In the ChatGPT desktop app's Plugins directory, choose the g1t marketplace,
 install g1t and authorize its MCP connection. Restart the app if needed.
-The Codex plugin (${codexManifest(root).version}) bundles the remote MCP server and
-a work item/session workflow skill. It records sessions through MCP calls, not
-Claude Code hooks. Disable a duplicate standalone g1t MCP connection if installed.
+The Codex plugin (${codexManifest(root).version}) bundles the remote MCP server, a
+work item/session workflow skill, and hooks that record each Codex session on
+g1t with what it cost, through the g1t CLI. Codex asks you to review and trust
+its hooks (\`/hooks\`) before they run. Disable a duplicate standalone g1t MCP
+connection if installed.
 Direct MCP setup and ChatGPT instructions: https://docs.g1t.sh/guides/bring-your-own-agent/
 `,
   );
@@ -283,6 +289,9 @@ export function verify(dir, root = ROOT) {
     problems.push("Codex marketplace differs from expected catalog");
   const mcp = readJson(dir, `${CODEX_PUBLISHED}/mcp.json`);
   if (mcp.mcpServers?.g1t?.url !== "https://mcp.g1t.sh" || mcp.mcpServers?.g1t?.type !== "streamable-http") problems.push("Invalid Codex MCP server");
+  readJson(dir, `${CODEX_PUBLISHED}/hooks/hooks.json`);
+  if (readFileSync(join(dir, CODEX_PUBLISHED, CODEX_HOOK), "utf8") !== readFileSync(join(root, SOURCE, "hooks", "g1t.mjs"), "utf8"))
+    problems.push("The Codex plugin's g1t.mjs differs from the Claude Code plugin's");
   problems.push(...scan(dir));
   if (problems.length) throw new Error(`The published tree is wrong:\n- ${problems.join("\n- ")}`);
 }

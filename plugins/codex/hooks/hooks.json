@@ -1,0 +1,103 @@
+{
+  "description": "Records the Codex session on g1t through the g1t CLI, as g1t's Claude Code plugin does: prompts, tool names and what they were called with (never what they returned), the files, commits and branches touched, each subagent as a session of its own, when it starts and ends, and what it cost, from the token usage in its own transcript. g1t.mjs is the Claude Code plugin's hooks/g1t.mjs, published here with it.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/hooks/g1t.mjs\" codex",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\hooks\\g1t.mjs\" codex",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/hooks/g1t.mjs\" codex",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\hooks\\g1t.mjs\" codex",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/hooks/g1t.mjs\" codex",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\hooks\\g1t.mjs\" codex",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/hooks/g1t.mjs\" codex",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\hooks\\g1t.mjs\" codex",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/hooks/g1t.mjs\" codex",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\hooks\\g1t.mjs\" codex",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/hooks/g1t.mjs\" codex",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\hooks\\g1t.mjs\" codex",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/hooks/g1t.mjs\" codex",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\hooks\\g1t.mjs\" codex",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/hooks/g1t.mjs\" codex",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\hooks\\g1t.mjs\" codex",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}

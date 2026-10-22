@@ -6,7 +6,7 @@
     {
       "command": ["session", "start"],
       "flags": {
-        "--harness": ["claude_code"],
+        "--harness": ["claude_code", "codex"],
         "--harness-session-id": "text",
         "--item": "number",
         "--parent": "text",
