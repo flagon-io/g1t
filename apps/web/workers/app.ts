@@ -21,6 +21,7 @@ import { samlPath } from "../app/lib/sso";
 import { serveArchivedAsset } from "../app/lib/asset-archive";
 import { needsBuildRefresh } from "../app/lib/build-version";
 import { developerResource, pageRepresentation } from "../app/lib/agent-pages";
+import { previewAccessSettings, refusePreview } from "../app/lib/preview-access";
 
 const loadBuild = () => import("virtual:react-router/server-build");
 
@@ -74,6 +75,10 @@ export default {
     if (usercontent !== null) {
       return (await usercontentLimited(env, request, usercontent)) ?? serveUsercontent(env, ctx, request, usercontent);
     }
+    // A pull request's preview is for g1t staff, signed in through
+    // Cloudflare Access (app/lib/preview-access.ts).
+    const refused = await refusePreview(request, previewAccessSettings(env));
+    if (refused) return withSiteHeaders(refused);
     // Every answer: no sniffing, a referrer of the origin alone, and no
     // framing of pages (app/lib/page-headers.ts).
     return withSiteHeaders(await site(request, env, ctx));
