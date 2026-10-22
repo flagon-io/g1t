@@ -72,6 +72,7 @@ import {
 } from "../../lib/home.server";
 import { HOME_WATCH_MAX, type HomeRepo } from "../../lib/home-live";
 import { readCookie } from "../../lib/mission";
+import { inTime } from "../../lib/stream-deadline";
 import { dailySignal, providerQuarter, signalsRange } from "../../lib/signals";
 import { loadGroups, loadSignalData } from "../../lib/signals.server";
 import { shapeGround } from "../../lib/ground";
@@ -320,6 +321,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     )
     .catch(() => []);
 
+  // Each section settles before the page's stream closes (lib/stream-deadline.ts):
+  // one still waiting on a slow service shows as unavailable, as a failed one
+  // does, rather than failing the page.
+  const unread = { rows: [], start: null, missing: ["Code", "Notifications", "Chat", "Work"] } satisfies Attention;
+  const notRunning = { rows: [], missing: ["Workflows", "Deployments"] };
   return {
     slug,
     code,
@@ -328,25 +334,25 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     now,
     tz,
     span,
-    digest,
-    happened,
-    attention: waiting,
-    away,
+    digest: inTime(digest, null),
+    happened: inTime(happened, null),
+    attention: inTime(waiting, unread),
+    away: inTime(away, null),
     /**
      * Live's agents, and its runs and builds. Joined here, not while drawing:
      * a promise made on each render is new each time, so `<Await>` suspends
      * again on every render, and no router update commits while Home is shown.
      */
-    live: Promise.all([live, runningNow]),
+    live: Promise.all([inTime(live, null), inTime(runningNow, notRunning)]),
     /** The sentence about the span needs the digest and what landed. */
-    head: Promise.all([digest, happened]),
-    spend,
-    signal,
-    ground,
-    members,
-    usage,
-    watch,
-    onboarding,
+    head: Promise.all([inTime(digest, null), inTime(happened, null)]),
+    spend: spend && inTime(spend, null),
+    signal: signal && inTime(signal, null),
+    ground: ground && inTime(ground, null),
+    members: inTime(members, null),
+    usage: usage && inTime(usage, null),
+    watch: inTime(watch, []),
+    onboarding: inTime(onboarding, null),
     setupAsked,
     /** Whether Getting started is for the viewer (an owner), so Home offers it again once dismissed. */
     guide: guideIsFor(viewer, slug),

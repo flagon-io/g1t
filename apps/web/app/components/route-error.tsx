@@ -25,6 +25,9 @@ import { usePageNavigation } from "../lib/use-page-navigation";
  * a 404 is the not-found page; anything else says what went wrong, with
  * a way to try again, and in developer mode the error in full.
  */
+/** Addresses whose "Server Timeout" was already tried again, so it is tried once. */
+const retriedTimeouts = new Set<string>();
+
 export function RouteError({ error, contained = false }: { error: unknown; contained?: boolean }) {
   const location = useLocation();
   const { owns } = usePageNavigation();
@@ -68,6 +71,14 @@ export function RouteError({ error, contained = false }: { error: unknown; conta
   useEffect(() => {
     if (shown) reportClientError(clientErrorReport(error, location.pathname, import.meta.env.G1T_BUILD_ID ?? "", tabOutdated()));
   }, [shown, error, location.pathname]);
+  // A section that outlasted the page's stream (lib/stream-deadline.ts) is
+  // a slow moment, not a broken page: its data is asked for again, once.
+  const timedOut = shown && error instanceof Error && error.message === "Server Timeout";
+  useEffect(() => {
+    if (!timedOut || retriedTimeouts.has(href)) return;
+    retriedTimeouts.add(href);
+    void revalidator.revalidate();
+  }, [timedOut, href, revalidator]);
 
   const space = contained ? "py-16" : "py-32";
   if (reload) {
