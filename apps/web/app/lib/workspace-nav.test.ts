@@ -57,7 +57,7 @@ test("?tab= opens that page, keeping the rest of the query", () => {
   assert.equal(workspaceRedirect("/acme", "?tab=members"), "/acme/-/members");
   assert.equal(workspaceRedirect("/acme", "?tab=people"), "/acme/-/people");
   assert.equal(workspaceRedirect("/acme", "?tab=overview"), "/acme");
-  assert.equal(workspaceRedirect("/acme", "?tab=settings"), "/acme/-/settings");
+  assert.equal(workspaceRedirect("/acme", "?tab=settings"), "/acme/-/settings/profile");
   assert.equal(workspaceRedirect("/acme", "?tab=nonsense"), null);
   assert.equal(workspaceRedirect("/acme", ""), null);
 });
@@ -106,18 +106,18 @@ test("the rail's mode follows the address", async () => {
   assert.equal(modeOf("/acme/-/projects", "acme"), "code");
   assert.equal(modeOf("/acme/-/code/repositories", "acme"), "code");
   assert.equal(modeOf("/acme/-/security", "acme"), "code");
-  assert.equal(modeOf("/acme/-/security/settings", "acme"), "workspace");
+  assert.equal(modeOf("/acme/-/settings/security", "acme"), "workspace");
   assert.equal(modeOf("/acme/-/people", "acme"), "people");
   assert.equal(modeOf("/acme/-/teams/web", "acme"), "people");
   assert.equal(modeOf("/acme/-/people/ana", "acme"), "people");
   // Members, invitations and permissions are the workspace's settings.
-  assert.equal(modeOf("/acme/-/members", "acme"), "workspace");
-  assert.equal(modeOf("/acme/-/members/invitations", "acme"), "workspace");
-  assert.equal(modeOf("/acme/-/permissions", "acme"), "workspace");
+  assert.equal(modeOf("/acme/-/settings/members", "acme"), "workspace");
+  assert.equal(modeOf("/acme/-/settings/members/invitations", "acme"), "workspace");
+  assert.equal(modeOf("/acme/-/settings/permissions", "acme"), "workspace");
   assert.equal(modeOf("/acme/-/apps", "acme"), "apps");
-  assert.equal(modeOf("/acme/-/billing", "acme"), "workspace");
-  assert.equal(modeOf("/acme/-/tokens", "acme"), "workspace");
-  assert.equal(modeOf("/acme/-/workspace", "acme"), "workspace");
+  assert.equal(modeOf("/acme/-/settings/billing", "acme"), "workspace");
+  assert.equal(modeOf("/acme/-/settings/tokens", "acme"), "workspace");
+  assert.equal(modeOf("/acme/-/settings/profile", "acme"), "workspace");
   assert.equal(modeOf("/acme/web/pulls", "acme"), "code");
   assert.equal(modeOf("/new", "acme"), "code");
   // Another workspace's chat is Chat (a guest in its channels); its repositories are Code's.
@@ -128,33 +128,38 @@ test("the rail's mode follows the address", async () => {
   assert.equal(modeHome("people", "acme"), "/acme/-/people");
   assert.equal(modeHome("apps", "acme"), "/acme/-/apps");
   assert.equal(modeHome("code", "acme"), "/acme/-/overview");
-  assert.equal(modeHome("workspace", "acme"), "/acme/-/workspace");
+  assert.equal(modeHome("workspace", "acme"), "/acme/-/settings/profile");
   assert.equal(homePath("acme"), "/acme/-/chat");
   assert.equal(homePath("acme", "?tab=landed&_routes=x"), "/acme/-/overview?tab=landed");
 });
 
 test("Workspace mode's sidebar knows which group and page an address is", async () => {
   const { WORKSPACE_SETTINGS_GROUPS, modeOf, workspaceSettingsPage } = await import("./workspace-nav.ts");
-  assert.deepEqual(workspaceSettingsPage("/acme/-/settings", "acme"), { group: "general", page: "settings" });
-  assert.deepEqual(workspaceSettingsPage("/acme/-/settings/chat", "acme"), { group: "chat", page: "chat-settings" });
-  assert.deepEqual(workspaceSettingsPage("/acme/-/settings/work", "acme"), { group: "work", page: "work-settings" });
-  assert.deepEqual(workspaceSettingsPage("/acme/-/members", "acme"), { group: "access", page: "members" });
-  assert.deepEqual(workspaceSettingsPage("/acme/-/members/invitations.data", "acme"), { group: "access", page: "invitations" });
-  assert.deepEqual(workspaceSettingsPage("/acme/-/permissions", "acme"), { group: "access", page: "permissions" });
-  assert.deepEqual(workspaceSettingsPage("/acme/-/rules/rs_1", "acme"), { group: "security", page: "rules" });
-  assert.deepEqual(workspaceSettingsPage("/acme/-/security/settings", "acme"), { group: "security", page: "security-settings" });
-  assert.deepEqual(workspaceSettingsPage("/acme/-/usage", "acme"), { group: "money", page: "usage" });
-  assert.deepEqual(workspaceSettingsPage("/acme/-/provider-costs", "acme"), { group: "money", page: "provider-costs" });
-  // The overview, Code's security page and another workspace are no settings page.
-  assert.equal(workspaceSettingsPage("/acme/-/workspace", "acme"), null);
+  const at = (group: string, page: string, parent = page) => ({ group, page, parent });
+  assert.deepEqual(workspaceSettingsPage("/acme/-/settings/profile", "acme"), at("profile", "profile"));
+  assert.deepEqual(workspaceSettingsPage("/acme/-/settings/chat", "acme"), at("automation", "chat-settings"));
+  assert.deepEqual(workspaceSettingsPage("/acme/-/settings/emoji", "acme"), at("automation", "emoji", "chat-settings"));
+  assert.deepEqual(workspaceSettingsPage("/acme/-/settings/work", "acme"), at("automation", "work-settings"));
+  assert.deepEqual(workspaceSettingsPage("/acme/-/settings/members", "acme"), at("access", "members"));
+  assert.deepEqual(workspaceSettingsPage("/acme/-/settings/members/invitations.data", "acme"), at("access", "invitations", "members"));
+  assert.deepEqual(workspaceSettingsPage("/acme/-/settings/permissions", "acme"), at("access", "permissions"));
+  assert.deepEqual(workspaceSettingsPage("/acme/-/settings/rules/rs_1", "acme"), at("automation", "rules", "repositories"));
+  assert.deepEqual(workspaceSettingsPage("/acme/-/settings/security", "acme"), at("security", "security-settings"));
+  assert.deepEqual(workspaceSettingsPage("/acme/-/settings/sso", "acme"), at("security", "sso", "authentication"));
+  assert.deepEqual(workspaceSettingsPage("/acme/-/settings/usage", "acme"), at("access", "usage", "billing"));
+  assert.deepEqual(workspaceSettingsPage("/acme/-/settings/billing/entries", "acme"), at("access", "billing"));
+  // The overview, Code's security page, an old address and another workspace are no settings page.
+  assert.equal(workspaceSettingsPage("/acme/-/overview", "acme"), null);
   assert.equal(workspaceSettingsPage("/acme/-/security", "acme"), null);
-  assert.equal(workspaceSettingsPage("/other/-/settings", "acme"), null);
-  // Every real page is in Workspace mode, and every key is unique.
+  assert.equal(workspaceSettingsPage("/acme/-/members", "acme"), null);
+  assert.equal(workspaceSettingsPage("/other/-/settings/profile", "acme"), null);
+  // Every real page is in Workspace mode, under `-/settings/`, and every key is unique.
   const keys = new Set<string>();
   for (const group of WORKSPACE_SETTINGS_GROUPS) {
-    for (const page of group.pages) {
+    for (const page of group.pages.flatMap((top) => [top, ...(top.pages ?? [])])) {
       assert.ok(!keys.has(page.key), `${page.key} twice`);
       keys.add(page.key);
+      assert.ok(page.path.startsWith("settings/"), page.path);
       assert.equal(modeOf(`/acme/-/${page.path}`, "acme"), "workspace", page.path);
     }
   }
@@ -171,6 +176,11 @@ test("a member without Code access is sent around Code's pages", async () => {
   assert.equal(codeGate("/acme/-/code/repositories", "", none, "acme"), "/acme/-/code-access?from=%2Facme%2F-%2Fcode%2Frepositories");
   assert.equal(codeGate("/acme/-/chat/general", "", none, "acme"), null);
   assert.equal(codeGate("/acme/-/code-access", "", none, "acme"), null);
+  // The settings of Code's parts are closed with them; the rest of the settings are not.
+  assert.equal(codeGate("/acme/-/settings/rules/rs_1", "", none, "acme"), "/acme/-/code-access?from=%2Facme%2F-%2Fsettings%2Frules%2Frs_1");
+  assert.equal(codeGate("/acme/-/settings/actions", "", none, "acme"), "/acme/-/code-access?from=%2Facme%2F-%2Fsettings%2Factions");
+  assert.equal(codeGate("/acme/-/settings/members", "", none, "acme"), null);
+  assert.equal(codeGate("/acme/-/settings/profile", "", none, "acme"), null);
   assert.equal(codeGate("/other/web", "", none, "acme"), null);
   assert.equal(codeGate("/acme/web", "", [], "acme"), null);
   // Work is every member's: its pages, and a repository's old issue, label

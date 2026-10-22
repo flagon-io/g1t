@@ -581,8 +581,8 @@ test("the digest: what was done, by kind with counts, and who, agents marked", (
   assert.deepEqual(
     digest.people.lines.map((line) => [line.key, line.text, line.to]),
     [
-      ["pushes", "47 commits to 4 repositories", "/acme/-/repositories"],
-      ["pulls", "5 opened, 5 merged, 4 reviewed", "/acme/-/repositories"],
+      ["pushes", "47 commits to 4 repositories", "/acme/-/settings/repositories"],
+      ["pulls", "5 opened, 5 merged, 4 reviewed", "/acme/-/settings/repositories"],
       ["items", "2 opened, 2 closed, 7 comments", "/acme/-/work/all?repo=web"],
       ["shipped", "2 deploys, 1 release, 1 package version", "/acme/web/deployments"],
       ["docs", "1 doc created, 7 docs edited", "/acme/-/library/artifacts"],

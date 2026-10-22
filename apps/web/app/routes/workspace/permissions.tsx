@@ -220,7 +220,7 @@ export default function WorkspacePermissions({ loaderData, actionData, params }:
 
       <p className="text-xs text-faint">
         Each change is recorded in the{" "}
-        <Link to={`/${slug}/-/audit`} className="underline underline-offset-4 hover:text-fg">
+        <Link to={`/${slug}/-/settings/audit`} className="underline underline-offset-4 hover:text-fg">
           audit log
         </Link>
         . Every other setting of the workspace is in this sidebar.

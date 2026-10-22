@@ -707,7 +707,7 @@ impl Billing {
             &subject,
             &intro,
             "Open billing",
-            &format!("https://g1t.sh/{workspace}/-/billing#credits"),
+            &format!("https://g1t.sh/{workspace}/-/settings/billing#credits"),
             "You get this because you own this workspace on g1t. Credits are explained at https://docs.g1t.sh/guides/usage-and-billing/#credits-from-g1t",
         )
         .await;

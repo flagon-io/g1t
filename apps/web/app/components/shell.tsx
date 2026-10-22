@@ -102,7 +102,6 @@ import { NotificationsBell } from "./inbox";
 import { desktopBridge, useDesktopApp, useTitleBarSearch } from "../lib/notify-client";
 import { PinButton } from "./pin-button";
 import { Hint } from "./ui/hint";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import {
   Sidebar,
   SidebarGroup,
@@ -114,6 +113,9 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarMobile,
   SidebarProvider,
   SidebarSeparator,
@@ -630,9 +632,9 @@ const REPO_SETTINGS_PAGE = /^\/([^/]+)\/([^/-][^/]*)\/settings(\/|$)/;
  * Going back reverses it.
  */
 const LAYER =
-  "absolute inset-0 [transition:translate_380ms_cubic-bezier(0.32,0.72,0,1),opacity_220ms_ease-out] will-change-[translate,opacity] motion-reduce:transition-none";
+  "absolute inset-0 flex flex-col [transition:translate_380ms_cubic-bezier(0.32,0.72,0,1),opacity_220ms_ease-out] will-change-[translate,opacity] motion-reduce:transition-none";
 /** One list, filling its layer. */
-const PANEL = "h-full overflow-y-auto px-1 pt-1 pb-4 scrollbar-thin";
+const PANEL = "min-h-0 flex-1 overflow-y-auto px-1 pt-1 pb-4 scrollbar-thin";
 
 /** One list in the stack: what it is, and its rows. */
 type Level = { key: string; node: ReactNode };
@@ -1472,7 +1474,9 @@ function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
 
 /** The icon of each of Workspace mode's pages, by its key (lib/workspace-nav.ts). */
 const WORKSPACE_PAGE_ICONS: Record<string, ReactNode> = {
-  settings: <Settings size={15} />,
+  profile: <Building2 size={15} />,
+  authentication: <Fingerprint size={15} />,
+  sso: <KeyRound size={15} />,
   members: <Users size={15} />,
   invitations: <Mail size={15} />,
   permissions: <ShieldCheck size={15} />,
@@ -1498,77 +1502,66 @@ const WORKSPACE_PAGE_ICONS: Record<string, ReactNode> = {
 };
 
 /**
- * A group of Workspace mode's rows that folds: its name is the button, with
- * a chevron that turns when it is open. The group holding the current page
- * is always open, and its button does nothing. Every group starts open, so
- * the server and the browser draw the same list.
- */
-function FoldingGroup({ title, current, children }: { title: string; current: boolean; children: ReactNode }) {
-  const [open, setOpen] = useState(true);
-  return (
-    <Collapsible open={open || current} onOpenChange={setOpen}>
-      <SidebarGroup>
-        <CollapsibleTrigger
-          disabled={current}
-          aria-label={`${title}: ${open || current ? "fold" : "unfold"}`}
-          className="flex h-7 w-full shrink-0 items-center justify-between rounded-md px-2 text-[0.6875rem] font-medium tracking-wide text-faint uppercase hover:text-muted focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-default disabled:text-faint data-[state=open]:[&_svg]:rotate-90"
-        >
-          <span>{title}</span>
-          {!current && <ChevronRight size={12} aria-hidden="true" className="text-faint/70" />}
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <SidebarGroupContent>
-            <SidebarMenu>{children}</SidebarMenu>
-          </SidebarGroupContent>
-        </CollapsibleContent>
-      </SidebarGroup>
-    </Collapsible>
-  );
-}
-
-/**
- * The Workspace mode's sidebar: the workspace's settings area, every page
- * one click away. Its overview, then the groups in lib/workspace-nav.ts
- * (General, Access, Money, Compute, Code, Chat, Security, Integrations),
- * each folding, the one you are in held open. Pages only owners open are
- * left out for members, and a group with none left goes with them.
+ * The Workspace mode's sidebar: the workspace's settings, laid out as
+ * GitHub lays out an organization's (lib/workspace-nav.ts). The Profile on
+ * top, then each section under its heading, between rules. A page with
+ * pages of its own (Billing's Usage, Members' Invitations) shows them
+ * under it while you are on it or one of them. Pages only owners open are
+ * left out for members, and a section with none left goes with them.
  */
 export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean }) {
   const { pathname: path } = useSidebarLocation();
   const here = workspaceSettingsPage(path, slug);
-  const overview = path === `/${slug}/-/workspace` || path.startsWith(`/${slug}/-/workspace/`);
   const shown = (page: WorkspaceSettingsPage) => owner || !page.owner;
+  const rows = (pages: readonly WorkspaceSettingsPage[]) =>
+    pages.filter(shown).map((page) => {
+      const subpages = (page.pages ?? []).filter(shown);
+      const open = subpages.length > 0 && here?.parent === page.key;
+      return (
+        <SidebarMenuItem key={page.key}>
+          <SidebarLink
+            bare
+            to={`/${slug}/-/${page.path}`}
+            icon={WORKSPACE_PAGE_ICONS[page.key] ?? <Settings size={15} />}
+            current={here?.page === page.key}
+            drill={subpages.length > 0 && !open ? "hover" : undefined}
+          >
+            {page.label}
+          </SidebarLink>
+          {open && (
+            <SidebarMenuSub>
+              {subpages.map((sub) => (
+                <SidebarMenuSubItem key={sub.key}>
+                  <SidebarMenuSubButton asChild isActive={here?.page === sub.key}>
+                    <Link to={`/${slug}/-/${sub.path}`} prefetch="intent" aria-current={here?.page === sub.key ? "page" : undefined}>
+                      <span>{sub.label}</span>
+                    </Link>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              ))}
+            </SidebarMenuSub>
+          )}
+        </SidebarMenuItem>
+      );
+    });
   return (
     <div className="flex h-full flex-col">
       <ModeHeader title="Workspace" />
-      <nav aria-label="Workspace" className={PANEL}>
-        <NavRows>
-          <SidebarLink to={`/${slug}/-/workspace`} icon={<LayoutGrid size={15} />} current={overview}>
-            Overview
-          </SidebarLink>
-        </NavRows>
-        {WORKSPACE_SETTINGS_GROUPS.filter((group) => group.pages.some(shown)).map((group) => (
-          <Fragment key={group.key}>
-            <Rule />
-            <FoldingGroup title={group.title} current={here?.group === group.key}>
-              {group.pages.filter(shown).map((page) => (
-                <SidebarLink
-                  key={page.key}
-                  to={`/${slug}/-/${page.path}`}
-                  icon={WORKSPACE_PAGE_ICONS[page.key] ?? <Settings size={15} />}
-                  current={here?.page === page.key}
-                >
-                  {page.label}
-                </SidebarLink>
-              ))}
-            </FoldingGroup>
-          </Fragment>
-        ))}
+      <nav aria-label="Workspace settings" className={PANEL}>
+        {WORKSPACE_SETTINGS_GROUPS.filter((group) => group.pages.some(shown)).map((group) =>
+          group.title == null ? (
+            <NavRows key={group.key}>{rows(group.pages)}</NavRows>
+          ) : (
+            <Fragment key={group.key}>
+              <Rule />
+              <NavGroup title={group.title}>{rows(group.pages)}</NavGroup>
+            </Fragment>
+          ),
+        )}
       </nav>
     </div>
   );
 }
-
 /**
  * Work's sidebar, and its menu on a phone (the Work tab tapped again): a new
  * work item first, then its work items: the plan, the board of them as they
@@ -2087,7 +2080,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
           { label: "Library", to: `/${ws.slug}/-/library/artifacts`, icon: <LibraryBig size={15} /> },
           { label: "Routines", hint: "Standing work for @g1t (soon)", to: `/${ws.slug}/-/routines`, icon: <Repeat size={15} /> },
           { label: "Apps", hint: "Everything installed that you can use", to: `/${ws.slug}/-/apps`, icon: <LayoutGrid size={15} /> },
-          { label: "Workspace", hint: "Billing, policies, settings", to: `/${ws.slug}/-/workspace`, icon: <Building2 size={15} /> },
+          { label: "Workspace settings", hint: "Profile, billing, members, policies", to: `/${ws.slug}/-/settings/profile`, icon: <Building2 size={15} /> },
         ]
       : []),
     { label: "Explore repositories", to: "/explore", icon: <Compass size={15} /> },
@@ -2132,17 +2125,17 @@ function commandsFor(user: User, shell: ShellData): Command[] {
       },
       { label: "All repositories", hint: membership.slug, to: repositoriesPath(membership.slug), icon: <LayoutGrid size={15} /> },
       { label: "People", hint: membership.slug, to: `/${membership.slug}/-/people`, icon: <Users size={15} /> },
-      { label: "Usage", hint: membership.slug, to: `/${membership.slug}/-/usage`, icon: <BarChart3 size={15} /> },
-      { label: "Billing and plans", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/billing`, icon: <CreditCard size={15} /> },
-      { label: "Access tokens", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/tokens`, icon: <KeyRound size={15} /> },
-      { label: "Integrations", hint: membership.slug, to: `/${membership.slug}/-/integrations`, icon: <Plug size={15} /> },
-      { label: "AI models", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/ai`, icon: <Sparkles size={15} /> },
-      { label: "Members", hint: `${membership.slug} · Access`, to: `/${membership.slug}/-/members`, icon: <Users size={15} /> },
+      { label: "Usage", hint: membership.slug, to: `/${membership.slug}/-/settings/usage`, icon: <BarChart3 size={15} /> },
+      { label: "Billing and plans", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/settings/billing`, icon: <CreditCard size={15} /> },
+      { label: "Access tokens", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/settings/tokens`, icon: <KeyRound size={15} /> },
+      { label: "Integrations", hint: membership.slug, to: `/${membership.slug}/-/settings/integrations`, icon: <Plug size={15} /> },
+      { label: "AI models", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/settings/ai`, icon: <Sparkles size={15} /> },
+      { label: "Members", hint: `${membership.slug} · Access`, to: `/${membership.slug}/-/settings/members`, icon: <Users size={15} /> },
       ...(membership.role === "owner"
         ? [
             { label: "Getting started", hint: `${membership.slug} · Set up the workspace`, to: setupPath(membership.slug), icon: <Rocket size={15} /> },
-            { label: "Invitations", hint: `${membership.slug} · Access`, to: `/${membership.slug}/-/members/invitations`, icon: <Mail size={15} /> },
-            { label: "Permissions", hint: `${membership.slug} · Access`, to: `/${membership.slug}/-/permissions`, icon: <ShieldCheck size={15} /> },
+            { label: "Invitations", hint: `${membership.slug} · Access`, to: `/${membership.slug}/-/settings/members/invitations`, icon: <Mail size={15} /> },
+            { label: "Permissions", hint: `${membership.slug} · Access`, to: `/${membership.slug}/-/settings/permissions`, icon: <ShieldCheck size={15} /> },
           ]
         : []),
     );
@@ -2527,10 +2520,10 @@ export function AppShell({
         <Sidebar
           role="complementary"
           aria-label={`${MODE_MENU[panel]} sidebar`}
-          className="fixed top-[calc(var(--frame-top)+var(--appbar-h))] bottom-0 left-0 z-30 max-lg:hidden"
+          className="fixed top-[calc(var(--frame-top)+var(--appbar-h))] bottom-0 left-0 z-30 h-auto max-lg:hidden"
         >
           {!barred && sidebarTop(false)}
-          <div className={`min-h-0 grow ${barred ? "pt-2" : ""}`}>{sidebarNode()}</div>
+          <div className={`flex min-h-0 grow flex-col ${barred ? "pt-2" : ""}`}>{sidebarNode()}</div>
         </Sidebar>
       )}
       {/* The drawer is a sheet: a dialog that holds focus, closes on Escape or
@@ -2538,7 +2531,7 @@ export function AppShell({
       {panel && (
         <SidebarMobile title={`${MODE_MENU[panel]} menu`} className="pb-[env(safe-area-inset-bottom)] max-md:[&_nav_a]:min-h-10">
           {sidebarTop(true)}
-          <div className="min-h-0 grow">{sidebarNode()}</div>
+          <div className="flex min-h-0 grow flex-col">{sidebarNode()}</div>
         </SidebarMobile>
       )}
 

@@ -48,7 +48,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   if (!role) throw data(null, { status: 404 });
   const slug = params.owner.toLowerCase();
   const url = new URL(request.url);
-  const here = `/${slug}/-/billing`;
+  const here = `/${slug}/-/settings/billing`;
 
   // Back from Stripe: record what happened, then drop the ids from the address.
   const cardCheck = url.searchParams.get("card_check");
@@ -157,10 +157,10 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const form = await request.formData();
   const slug = params.owner.toLowerCase();
   // Spelled out: a form post arrives at a data address, not the page's.
-  const here = `${new URL(request.url).origin}/${slug}/-/billing`;
+  const here = `${new URL(request.url).origin}/${slug}/-/settings/billing`;
   const intent = String(form.get("intent") ?? "");
   const fail = (section: string, error: string) => data<SectionError>({ section, error }, { status: 422 });
-  const done = (key: string, anchor = "") => redirect(`/${slug}/-/billing?done=${key}${anchor}`);
+  const done = (key: string, anchor = "") => redirect(`/${slug}/-/settings/billing?done=${key}${anchor}`);
 
   switch (intent) {
     case "portal": {
@@ -424,7 +424,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
               <li>No seats: add as many people as you like, once the workspace is on the plan.</li>
             </ul>
             <div className="mt-4 space-y-1.5 border-t border-line pt-4 text-sm">
-              <Link to={`/${slug}/-/usage`} className="flex items-center gap-2 text-muted hover:text-fg">
+              <Link to={`/${slug}/-/settings/usage`} className="flex items-center gap-2 text-muted hover:text-fg">
                 <FileText size={14} /> Usage, by product and repository
               </Link>
               <Link to="/pricing" className="flex items-center gap-2 text-muted hover:text-fg">

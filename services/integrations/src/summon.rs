@@ -278,7 +278,7 @@ impl Integrations {
             let mut body = format!("@{}, I can't take this on: {}.", actor.username, failure.message.trim().trim_end_matches('.'));
             // No Anthropic account to start on: where to add one.
             if failure.code == FailureCode::Conflict {
-                body.push_str(&format!(" Add an Anthropic key in [the workspace's AI settings]({site}/{workspace}/-/ai), then ask again."));
+                body.push_str(&format!(" Add an Anthropic key in [the workspace's AI settings]({site}/{workspace}/-/settings/ai), then ask again."));
             }
             self.comment(&system, &workspace, in_repo.as_ref(), number, body).await?;
         }

@@ -186,7 +186,7 @@ function ProvidersLine({ slug, providers, threaded }: { slug: string; providers:
   if (!providers) {
     return (
       <p className="-mt-2 mb-5 text-sm text-muted">
-        <Link to={`/${slug}/-/provider-costs`} className="text-accent hover:underline">
+        <Link to={`/${slug}/-/settings/provider-costs`} className="text-accent hover:underline">
           Connect a provider&apos;s cost report
         </Link>{" "}
         to see everything your organization spent with Anthropic or OpenAI, not only what g1t can tie to the work.
@@ -205,7 +205,7 @@ function ProvidersLine({ slug, providers, threaded }: { slug: string; providers:
         <span className="text-xs text-muted">{Math.min(100, Math.round((threaded / providers.total) * 100))}% of it is threaded to the work below</span>
       )}
       {!providers.complete && <span className="text-xs text-faint">Some of the quarter isn&apos;t read yet</span>}
-      <Link to={`/${slug}/-/provider-costs`} className="ml-auto text-xs text-muted hover:text-fg">
+      <Link to={`/${slug}/-/settings/provider-costs`} className="ml-auto text-xs text-muted hover:text-fg">
         Provider costs
       </Link>
     </div>

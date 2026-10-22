@@ -333,7 +333,7 @@ export function pulse({ slug, weeks, spend }: PulseInput): PulseTile[] {
       series: perMerge,
       points: perMerge.map((micros, i) => `${labels[i]}: ${micros == null ? "no agent changes" : dollars(micros)}`),
       hint: "g1t's agent usage at price and harness sessions' cost at list price, over what agents landed",
-      to: `/${slug}/-/usage`,
+      to: `/${slug}/-/settings/usage`,
     },
     {
       key: "stalled",
@@ -554,7 +554,7 @@ export function spendSignal(ctx: SignalContext): Signal | null {
     key: "spend",
     headline: `${top.label.charAt(0).toUpperCase()}${top.label.slice(1)} took ${amount} of the agent spend this quarter.`,
     facts: [`${dollars(top.micros)} of ${dollars(total)}`, "quarter to date"],
-    link: { label: "See the spend", to: `/${ctx.slug}/-/workspace#spend` },
+    link: { label: "See the spend", to: `/${ctx.slug}/-/overview#spend` },
     weight: 25 + share * 40,
     ask: `What has the agent spend on ${top.label} produced this quarter?`,
   };
@@ -804,7 +804,7 @@ export function groundSignal(ctx: SignalContext): Signal | null {
       key: "ground",
       headline: `${joiner.name} is starting to work in ${repo.name}, which ${spreading.name} has carried almost alone.`,
       facts: [`${spreading.theirs} of ${spreading.recent} merges in 90 days were ${spreading.name}'s`, `${joiner.name} started this month`],
-      link: { label: "See the people", to: `/${ctx.slug}/-/workspace#quiet` },
+      link: { label: "See the people", to: `/${ctx.slug}/-/overview#quiet` },
       weight: 28,
       ask: `What has ${joiner.name} worked on in ${repo.namespace}/${repo.name} so far?`,
     };
@@ -821,7 +821,7 @@ export function groundSignal(ctx: SignalContext): Signal | null {
         ? `${first.name} and ${others === 1 ? "one other person" : `${others} others`} merged their first change to a repository new to them this week.`
         : `${first.name} merged a first change to ${repo.name} this week, new ground for them.`,
     facts: [`${first.elsewhere} merges elsewhere before`, `first in ${repo.name}`],
-    link: { label: "See the people", to: `/${ctx.slug}/-/workspace#quiet` },
+    link: { label: "See the people", to: `/${ctx.slug}/-/overview#quiet` },
     weight: 20 + Math.min(10, others * 3),
     day: first.firstMergedAt.slice(0, 10),
     ask: `What did ${first.name} change in ${repo.namespace}/${repo.name}?`,

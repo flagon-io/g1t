@@ -160,7 +160,7 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
   const online = own.filter((runner) => runner.status !== "offline").length;
   const cost = data.cost;
   const running = data.cloud?.running.length ?? null;
-  const usage = `/${slug}/-/usage`;
+  const usage = `/${slug}/-/settings/usage`;
   return (
     <div className="space-y-10">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

@@ -431,7 +431,7 @@ function AiStep({ view }: { view: OnboardingView }) {
       )}
       <p className="text-xs text-faint">
         Keys are sealed when saved and never shown again. Everything here is on the{" "}
-        <Link to={`/${view.slug}/-/ai`} className="text-muted underline-offset-2 hover:text-fg hover:underline">
+        <Link to={`/${view.slug}/-/settings/ai`} className="text-muted underline-offset-2 hover:text-fg hover:underline">
           AI page
         </Link>{" "}
         too.
@@ -464,7 +464,7 @@ function ProviderRow({ slug, connection }: { slug: string; connection: AiConnect
         <Badge tone={working ? "success" : "warn"} size="md">
           {working ? "Working" : "Check failed"}
         </Badge>
-        <tester.Form method="post" action={`/${slug}/-/ai`}>
+        <tester.Form method="post" action={`/${slug}/-/settings/ai`}>
           <input type="hidden" name="id" value={connection.id} />
           <SubmitButton fetcher={tester} variant="outline" size="xs" name="intent" value="test" pending="Testing…">
             Test
@@ -547,7 +547,7 @@ function AddProvider({ slug }: { slug: string }) {
           </div>
         </div>
         {/* Keyed by provider so its fields start empty for each. */}
-        <adder.Form key={provider} method="post" action={`/${slug}/-/ai`} className="grid gap-4">
+        <adder.Form key={provider} method="post" action={`/${slug}/-/settings/ai`} className="grid gap-4">
           <input type="hidden" name="provider" value={provider} />
           <ModelProviderFields provider={provider} />
           {adder.data?.provider === provider && <ErrorText>{adder.data.error}</ErrorText>}
@@ -585,7 +585,7 @@ function AskStep({ view, onStep }: { view: OnboardingView; onStep: (step: Onboar
     );
   }
   return (
-    <saver.Form method="post" action={`/${view.slug}/-/ai`} className="grid gap-4">
+    <saver.Form method="post" action={`/${view.slug}/-/settings/ai`} className="grid gap-4">
       <input type="hidden" name="intent" value="ask" />
       {setup?.problem && (
         <Alert tone="warn">
@@ -790,7 +790,7 @@ function PeopleStep({ view }: { view: OnboardingView }) {
           </AlertDescription>
         </Alert>
         <div className="flex flex-wrap gap-2">
-          <ButtonLink to={`/${view.slug}/-/billing#plan`} variant="accent" size="sm">
+          <ButtonLink to={`/${view.slug}/-/settings/billing#plan`} variant="accent" size="sm">
             See the plan
           </ButtonLink>
           <ButtonLink to="/settings/invites" variant="outline" size="sm">
@@ -809,12 +809,12 @@ function PeopleStep({ view }: { view: OnboardingView }) {
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        <ButtonLink to={`/${view.slug}/-/members`} variant="accent" size="sm">
+        <ButtonLink to={`/${view.slug}/-/settings/members`} variant="accent" size="sm">
           <Users size={14} />
           Invite people
         </ButtonLink>
         {people && people.pending > 0 && (
-          <ButtonLink to={`/${view.slug}/-/members/invitations`} variant="outline" size="sm">
+          <ButtonLink to={`/${view.slug}/-/settings/members/invitations`} variant="outline" size="sm">
             See invitations
           </ButtonLink>
         )}
@@ -832,7 +832,7 @@ function RunnerStep({ view }: { view: OnboardingView }) {
         <Laptop size={14} />
         Get the desktop app
       </ButtonLink>
-      <ButtonLink to={`/${view.slug}/-/runners`} variant="outline" size="sm">
+      <ButtonLink to={`/${view.slug}/-/settings/runners`} variant="outline" size="sm">
         {(view.facts.runners ?? 0) > 0 ? "See its runners" : "Other ways to add one"}
       </ButtonLink>
     </div>

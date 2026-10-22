@@ -660,7 +660,7 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
               repo={workIn!}
               error={errorFor("start-session")}
               command={actionData && "command" in actionData ? actionData.command : null}
-              setupHref={loaderData.owner ? `/${workspace}/-/ai` : null}
+              setupHref={loaderData.owner ? `/${workspace}/-/settings/ai` : null}
               open={starting}
               onOpenChange={setStarting}
               reference={reference}

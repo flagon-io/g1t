@@ -74,6 +74,6 @@ test("a connector shows its personal side to you", () => {
 });
 
 test("a setup path names the workspace", () => {
-  assert.equal(connectorPath("/:workspace/-/integrations/alerts?add=sentry#add", "acme"), "/acme/-/integrations/alerts?add=sentry#add");
+  assert.equal(connectorPath("/:workspace/-/settings/integrations/alerts?add=sentry#add", "acme"), "/acme/-/settings/integrations/alerts?add=sentry#add");
   assert.equal(connectorPath("/new/github?workspace=:workspace", "acme"), "/new/github?workspace=acme");
 });

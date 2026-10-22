@@ -112,9 +112,9 @@ test("what needs a real sign-in is refused with a token, whatever the method", a
     "/device",
     "/oauth/authorize",
     "/auth/github/callback",
-    "/acme/-/tokens",
-    "/acme/-/tokens/new.data",
-    "/acme/-/personal-access-tokens",
+    "/acme/-/settings/tokens",
+    "/acme/-/settings/tokens/new.data",
+    "/acme/-/settings/personal-access-tokens",
     // As routes match them: any case, encoded, doubled or trailing slashes.
     "/Settings/Tokens",
     "/settings/%74okens",
@@ -129,7 +129,7 @@ test("what needs a real sign-in is refused with a token, whatever the method", a
     "/settings/notifications",
     "/settings/security-log",
     "/acme/-/settings",
-    "/acme/-/billing",
+    "/acme/-/settings/billing",
     "/acme/rocket/settings",
   ]) {
     assert.ok(!alwaysNeedsSignIn(path), path);
@@ -142,29 +142,29 @@ test("deleting or giving away a workspace and payment methods are refused; other
   const post = (path: string, fields: Record<string, string>) =>
     request(path, { method: "POST", headers: bearer("g1t_web"), body: new URLSearchParams(fields) });
   for (const [path, fields] of [
-    ["/acme/-/settings.data", { intent: "delete" }],
-    ["/acme/-/members", { action: "transfer", member: "bob" }],
-    ["/acme/-/billing.data", { intent: "portal" }],
-    ["/acme/-/billing", { intent: "card-check" }],
-    ["/acme/-/billing", { intent: "subscribe" }],
-    ["/acme/-/billing", { intent: "buy-ai-credit", amount: "10" }],
+    ["/acme/-/settings/profile.data", { intent: "delete" }],
+    ["/acme/-/settings/members", { action: "transfer", member: "bob" }],
+    ["/acme/-/settings/billing.data", { intent: "portal" }],
+    ["/acme/-/settings/billing", { intent: "card-check" }],
+    ["/acme/-/settings/billing", { intent: "subscribe" }],
+    ["/acme/-/settings/billing", { intent: "buy-ai-credit", amount: "10" }],
   ] as const) {
     assert.equal((await tokenVerdict(post(path, fields), tokens)).kind, "refused", `${path} ${JSON.stringify(fields)}`);
   }
   for (const [path, fields] of [
-    ["/acme/-/settings", { intent: "rename", slug: "acme2" }],
-    ["/acme/-/members", { action: "role", member: "bob", role: "member" }],
-    ["/acme/-/billing", { intent: "budget" }],
+    ["/acme/-/settings/profile", { intent: "rename", slug: "acme2" }],
+    ["/acme/-/settings/members", { action: "role", member: "bob", role: "member" }],
+    ["/acme/-/settings/billing", { intent: "budget" }],
   ] as const) {
     assert.equal((await tokenVerdict(post(path, fields), tokens)).kind, "signed-in", `${path} ${JSON.stringify(fields)}`);
   }
   // Looking at those pages is fine.
-  assert.ok(!needsRealSignIn("/acme/-/billing", "GET", null));
-  assert.ok(!needsRealSignIn("/acme/-/settings", "POST", null));
+  assert.ok(!needsRealSignIn("/acme/-/settings/billing", "GET", null));
+  assert.ok(!needsRealSignIn("/acme/-/settings/profile", "POST", null));
   // A multipart post is read too.
   const multipart = new FormData();
   multipart.set("intent", "delete");
-  const deleting = request("/acme/-/settings", { method: "POST", headers: bearer("g1t_web"), body: multipart });
+  const deleting = request("/acme/-/settings/profile", { method: "POST", headers: bearer("g1t_web"), body: multipart });
   assert.equal((await tokenVerdict(deleting, tokens)).kind, "refused");
   // The action still reads the same body afterwards.
   assert.equal((await deleting.formData()).get("intent"), "delete");

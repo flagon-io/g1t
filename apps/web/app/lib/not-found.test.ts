@@ -21,7 +21,7 @@ test("without one, the shape of the address decides", () => {
     ["/acme/web/pull/12", "pull"],
     ["/acme/web/issues", "page"],
     ["/acme/web/settings", "page"],
-    ["/acme/-/billing", "page"],
+    ["/acme/-/settings/billing", "page"],
     ["/u/ada", "person"],
     ["/explore/nothing", "page"],
     ["/", "page"],

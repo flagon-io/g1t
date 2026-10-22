@@ -511,7 +511,7 @@ function Reason({ text, workspace }: { text: string; workspace: string }) {
       ) : (
         <>
           {before}
-          <Link to={`/${workspace}/-/integrations`} className="text-accent hover:underline">
+          <Link to={`/${workspace}/-/settings/integrations`} className="text-accent hover:underline">
             Integrations
           </Link>
           {after}
@@ -535,7 +535,7 @@ function RanOn({ job, workspace }: { job: Job; workspace: string }) {
     // A link to the runners for those who manage them, a label for everyone else.
     return runnersPage ? (
       <Hint label="Self-hosted runner">
-        <Link to={`/${workspace}/-/runners`} className={`${badge} hover:text-fg`}>
+        <Link to={`/${workspace}/-/settings/runners`} className={`${badge} hover:text-fg`}>
           {label}
         </Link>
       </Hint>

@@ -70,7 +70,7 @@ pub fn message(workspace: &str, refusal: &Refusal) -> String {
     let kind = if refusal.public { "public" } else { "private" };
     format!(
         "{workspace}'s {kind} packages may hold {} without the g1t plan; they hold {} and this push adds {}. \
-         The g1t plan lifts the limit: https://g1t.sh/{workspace}/-/billing",
+         The g1t plan lifts the limit: https://g1t.sh/{workspace}/-/settings/billing",
         bytes(refusal.limit),
         bytes(refusal.used),
         bytes(refusal.adding)
@@ -110,7 +110,7 @@ mod tests {
         assert_eq!(
             message("acme", &refusal),
             "acme's private packages may hold 500 MB without the g1t plan; they hold 480.3 MB and this push adds 30 MB. \
-             The g1t plan lifts the limit: https://g1t.sh/acme/-/billing"
+             The g1t plan lifts the limit: https://g1t.sh/acme/-/settings/billing"
         );
         assert_eq!(bytes(999), "999 bytes");
         assert_eq!(bytes(1_500), "1.5 KB");

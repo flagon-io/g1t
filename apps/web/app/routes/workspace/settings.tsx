@@ -1,3 +1,4 @@
+import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Form, Link, data, redirect, useFetcher, useNavigation } from "react-router";
 
@@ -18,7 +19,7 @@ import { AvatarField } from "../../components/avatar-field";
 import { GettingStartedButton } from "../../components/onboarding";
 import { ConfirmName } from "../../components/confirm-name";
 import { DangerAction, DangerZone } from "../../components/danger-zone";
-import { ErrorText, Field, Input, SubmitButton } from "../../components/ui";
+import { ErrorText, SubmitButton, usePending } from "../../components/ui";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -29,38 +30,48 @@ import {
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
 import { Button } from "../../components/ui/button";
-import { FieldDescription, FieldLabel, Field as FormField } from "../../components/ui/field";
+import { FieldDescription, FieldError, FieldLabel, Field as FormField } from "../../components/ui/field";
 import { InputAddon, InputGroup, Input as TextInput } from "../../components/ui/input";
 import { RadioGroup, RadioOption } from "../../components/ui/radio-group";
-import { SwitchCard } from "../../components/ui/switch";
+import { Textarea } from "../../components/ui/textarea";
 import { readAvatarUpload } from "../../lib/avatar-upload";
-import { accounts, deployments, identity, repos } from "../../lib/services.server";
+import { billing, deployments, identity, repos } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 import { forgetWorkspace } from "../../lib/workspace-choice";
+import { settingsPath } from "../../lib/workspace-nav";
 import { confirmsSlug, deletionRefusal, whatGoes } from "../../lib/workspace-deletion";
 import { Unavailable } from "../../components/boundary";
 import { isFailed, part, type Failed } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
-  return page(args, { title: `Settings · ${params.owner} · g1t` });
+  return page(args, { title: `Profile · Settings · ${params.owner} · g1t` });
 }
+
+/** How many social accounts a workspace lists, as GitHub's organizations do. */
+const SOCIAL_ACCOUNTS = 4;
 
 /** What the address field shows about a new slug, asked for with `?check=`. */
 type Check = { slug: string; available: boolean; message: string | null };
 
+/**
+ * The workspace's Profile, where its settings open, as GitHub's
+ * organization settings open on General: who the workspace is (its name,
+ * picture, description, links, location, a public email) and, for owners,
+ * where its invoices go, its address, where its data lives and deleting
+ * it. Every member reads it; only owners change it.
+ */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
-  // Owners only; to anyone else the page does not exist.
   const viewer = getViewer(context);
-  if (roleIn(viewer, params.owner) !== "owner") {
-    throw data(null, { status: 404 });
-  }
+  const role = roleIn(viewer, params.owner);
+  if (!viewer || !role) throw data(null, { status: 404 });
   const workspace = await identity.getWorkspace(params.owner);
   if (!workspace) throw data(null, { status: 404 });
+  if (role !== "owner") return { workspace, owner: false as const };
   // The address field asks whether a new slug is free as the owner types.
   // It is a read, so a GET: nothing else on the page reloads for it.
   const wanted = new URL(request.url).searchParams.get("check");
   let check: Check | null = null;
-  if (wanted != null && viewer) {
+  if (wanted != null) {
     const slug = wanted.trim().toLowerCase();
     const result = await identity.checkWorkspaceRename(viewer, params.owner, slug);
     check = result.ok
@@ -72,43 +83,28 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // When that cannot be read, Delete says so in its place rather than
   // offering itself without saying what would go. How many apps go is only
   // a count in that list, which reads without it.
-  let deletion: WorkspaceDeletion | Failed | null = null;
-  let apps: number | null = null;
-  if (viewer) {
-    const [found, usage] = await Promise.all([
-      part(identity.checkWorkspaceDeletion(viewer, params.owner), "What deleting it would take with it"),
-      deployments.usage(params.owner, viewer).catch(() => null),
-    ]);
-    deletion = isFailed(found) ? found : found.ok ? found.value : null;
-    apps = usage?.ok ? usage.value.apps : null;
-  }
   // Where its repositories are kept: offered once g1t can keep them in the
   // EU, and shown to a workspace that chose it whatever happens since.
   // Each of these is a section's: one that cannot be read says so in its
-  // place, rather than show a choice that saving would put over the real
-  // one, or say no one would be held out when that is not known.
-  const [storage, residency, members, twoFactor] = await Promise.all([
+  // place, rather than show a choice that saving would put over the real one.
+  const [found, usage, storage, residency, billingEmail] = await Promise.all([
+    part(identity.checkWorkspaceDeletion(viewer, params.owner), "What deleting it would take with it"),
+    deployments.usage(params.owner, viewer).catch(() => null),
     // Whether the EU is offered: without it, only a workspace that chose it sees the choice.
     repos.storageOptions().catch(() => ({ euAvailable: false })),
     part(identity.workspaceResidency(params.owner), "Data residency"),
-    // Who would be held out by requiring two-factor authentication.
-    viewer ? part(identity.listMembers(params.owner, viewer), "Two-factor authentication") : null,
-    viewer ? part(accounts.twoFactorStatus(viewer), "Two-factor authentication") : null,
+    part(identity.workspaceBillingEmail(viewer, params.owner), "The billing email"),
   ]);
-  const without = isFailed(members)
-    ? members
-    : members?.ok
-      ? members.value.filter((member) => member.two_factor === false).map((member) => member.username)
-      : [];
+  const deletion: WorkspaceDeletion | Failed | null = isFailed(found) ? found : found.ok ? found.value : null;
   return {
     workspace,
+    owner: true as const,
     check,
     deletion,
-    apps,
+    apps: usage?.ok ? usage.value.apps : null,
     euAvailable: storage.euAvailable,
     residency: isFailed(residency) ? residency : (residency ?? "anywhere"),
-    withoutTwoFactor: without,
-    ownTwoFactor: isFailed(twoFactor) ? twoFactor : twoFactor?.ok ? twoFactor.value.enabled : false,
+    billingEmail: isFailed(billingEmail) ? billingEmail : billingEmail.ok ? billingEmail.value : null,
   };
 }
 
@@ -117,7 +113,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const user = requireUser(context, request);
   const form = await request.formData();
   const intent = form.get("intent");
-  // The icon: identity checks the owner and the image's bytes again.
+  // The picture: identity checks the owner and the image's bytes again.
   if (intent === "avatar" || intent === "remove-avatar") {
     let image: string | null = null;
     if (intent === "avatar") {
@@ -129,8 +125,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     if (!result.ok) return { avatarError: result.error.message };
     return { saved: "avatar" as const };
   }
-  // A new address: identity checks the owner, the name and the cooldown,
-  // and keeps the old one as a redirect.
   // Deletion: identity checks the owner, the typed name, that it is not
   // protected and that billing has settled it. Everything in it goes with
   // it; the owner goes back to their own home, where it is no longer listed.
@@ -147,209 +141,288 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     if (!result.ok) return { residencyError: result.error.message };
     return { saved: "residency" as const };
   }
-  // Requiring two-factor authentication: identity checks the owner has it.
-  if (intent === "two-factor-requirement") {
-    const result = await identity.setTwoFactorRequirement(user, params.owner, form.get("required") === "on");
-    if (!result.ok) return { twoFactorError: result.error.message };
-    return { saved: "two-factor-requirement" as const };
-  }
+  // A new address: identity checks the owner, the name and the cooldown,
+  // and keeps the old one as a redirect.
   if (intent === "rename") {
     const newSlug = String(form.get("newSlug") ?? "")
       .trim()
       .toLowerCase();
     const result = await identity.renameWorkspace(user, params.owner, newSlug);
     if (!result.ok) return { renameError: result.error.message };
-    throw redirect(`/${result.value.slug}/-/settings`);
+    throw redirect(settingsPath(result.value.slug));
   }
+  // Where invoices go: kept by identity, and handed to Stripe's customer
+  // when the workspace has one (a new one is made with it).
+  if (intent === "billing-email") {
+    const email = String(form.get("billingEmail") ?? "").trim();
+    const result = await identity.updateWorkspace(user, params.owner, { ...detailsOf(form), billingEmail: email });
+    if (!result.ok) return { billingError: result.error.message };
+    if (email) {
+      const told = await billing.setCustomerEmail(user, params.owner, email).catch(() => null);
+      if (told && !told.ok) return { billingError: told.error.message };
+    }
+    return { saved: "billing-email" as const };
+  }
+  // The profile: identity checks every field again, the links most of all.
+  const text = (name: string) => String(form.get(name) ?? "");
   const result = await identity.updateWorkspace(user, params.owner, {
-    name: String(form.get("displayName") ?? ""),
-    description: String(form.get("description") ?? ""),
+    name: text("displayName"),
+    description: text("description"),
+    website: text("website"),
+    email: text("email"),
+    location: text("location"),
+    socialAccounts: form
+      .getAll("social")
+      .map((value) => String(value).trim())
+      .filter(Boolean),
   });
   if (!result.ok) return { error: result.error.message };
-  throw redirect(`/${result.value.slug}`);
+  return { saved: "profile" as const };
 }
 
-export default function WorkspaceSettings({ loaderData, actionData }: Route.ComponentProps) {
+/** The name and description as they are, sent beside a change that only touches one other field. */
+function detailsOf(form: FormData): { name: string; description: string } {
+  return { name: String(form.get("displayName") ?? ""), description: String(form.get("description") ?? "") };
+}
+
+export default function WorkspaceProfile({ loaderData, actionData }: Route.ComponentProps) {
   const { workspace } = loaderData;
+  const saved = actionData && "saved" in actionData ? actionData.saved : null;
   return (
-    <div className="max-w-lg space-y-10">
-      <section>
-        <h2 className="font-medium">Getting started</h2>
-        <p className="mt-1.5 text-sm text-muted">
-          The setup guide that opened on Home: an AI provider, Ask&apos;s model, your code, your coding agent, your team and a runner, each ticked off as the
-          workspace has it. Open it again any time.
-        </p>
-        <div className="mt-3">
-          <GettingStartedButton slug={workspace.slug} />
-        </div>
-      </section>
-
-      <section>
-        <h2 className="font-medium">Icon</h2>
-        <div className="mt-4">
-          <AvatarField
-            name={workspace.slug}
-            image={workspace.avatar}
-            square
-            error={actionData && "avatarError" in actionData ? actionData.avatarError : undefined}
-            about="Shown beside the workspace's name everywhere on g1t, and on its link previews. Without one, g1t draws its first letter."
-          />
-        </div>
-      </section>
-
-      <section>
-        <h2 className="font-medium">Workspace details</h2>
-        <Form method="post" className="mt-5 space-y-4">
-          <input type="hidden" name="intent" value="details" />
-          <Field
-            label="Display name"
-            hint="How people see the workspace: in the sidebar, at the top of its page and in link previews. Up to 80 characters; spaces and capitals are fine."
-          >
-            <Input name="displayName" maxLength={80} defaultValue={workspace.name} placeholder={workspace.slug} />
-          </Field>
-          <Field label="Description" hint="One line, shown at the top of the workspace's page.">
-            <Input name="description" maxLength={160} defaultValue={workspace.description ?? ""} />
-          </Field>
-          <ErrorText>{actionData && "error" in actionData ? actionData.error : undefined}</ErrorText>
-          <SubmitButton match={{ intent: "details" }} pending="Saving…">
-            Save
-          </SubmitButton>
-        </Form>
-      </section>
-
-      <AddressSection
-        // A new address starts it again, so the dialog is closed on the renamed page.
-        key={workspace.slug}
-        workspace={workspace}
-        error={actionData && "renameError" in actionData ? actionData.renameError : undefined}
-      />
-
-      {isFailed(loaderData.withoutTwoFactor) || isFailed(loaderData.ownTwoFactor) ? (
-        <section id="two-factor" className="scroll-mt-[calc(var(--topbar-h)+1rem)]">
-          <h2 className="font-medium">Authentication security</h2>
-          <div className="mt-5">
-            <Unavailable what="Two-factor authentication" />
-          </div>
-        </section>
-      ) : (
-        <TwoFactorRequirementSection
-          key={String(workspace.twoFactorRequirementEnabled ?? false)}
-          slug={workspace.slug}
-          required={workspace.twoFactorRequirementEnabled ?? false}
-          without={loaderData.withoutTwoFactor}
-          ownTwoFactor={loaderData.ownTwoFactor}
-          saved={Boolean(actionData && "saved" in actionData && actionData.saved === "two-factor-requirement")}
-          error={actionData && "twoFactorError" in actionData ? actionData.twoFactorError : undefined}
+    <div className="max-w-4xl space-y-12">
+      <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_16rem]">
+        <ProfileForm
+          // Keyed on what was saved, so the fields show identity's copy once it answers.
+          key={JSON.stringify([workspace.name, workspace.description, workspace.website, workspace.email, workspace.location, workspace.socialAccounts])}
+          workspace={workspace}
+          owner={loaderData.owner}
+          saved={saved === "profile"}
+          error={actionData && "error" in actionData ? actionData.error : undefined}
         />
-      )}
-
-      <section>
-        <h2 className="font-medium">Permissions</h2>
-        <p className="mt-1.5 text-xs text-faint">
-          Who may do what in {workspace.slug}: the base permission on its repositories, creating repositories and teams, channels and more are under{" "}
-          <Link to={`/${workspace.slug}/-/permissions`} className="text-muted underline underline-offset-4 hover:text-fg">
-            Permissions
-          </Link>
-          .
-        </p>
-      </section>
-
-      {isFailed(loaderData.residency) ? (
-        <section>
-          <h2 className="font-medium">Data residency</h2>
-          <div className="mt-5">
-            <Unavailable what={loaderData.residency.what} />
+        <section className="lg:order-last">
+          <h2 className="font-medium">Profile picture</h2>
+          <div className="mt-4">
+            {loaderData.owner ? (
+              <AvatarField
+                name={workspace.slug}
+                image={workspace.avatar}
+                square
+                error={actionData && "avatarError" in actionData ? actionData.avatarError : undefined}
+                about="Shown beside the workspace's name everywhere on g1t, and on its link previews. Without one, g1t draws its first letter."
+              />
+            ) : (
+              <p className="text-sm text-muted">Only owners change it.</p>
+            )}
           </div>
         </section>
-      ) : (
-        (loaderData.euAvailable || loaderData.residency === "eu") && (
-          <ResidencySection
-            // Starts from the saved choice whenever it changes.
-            key={loaderData.residency}
-            residency={loaderData.residency}
-            euAvailable={loaderData.euAvailable}
-            saved={Boolean(actionData && "saved" in actionData && actionData.saved === "residency")}
-            error={actionData && "residencyError" in actionData ? actionData.residencyError : undefined}
-          />
-        )
-      )}
+      </div>
 
-      <DangerZone>
-        {isFailed(loaderData.deletion) ? (
-          <div className="p-4">
-            <Unavailable what={loaderData.deletion.what} compact />
-          </div>
-        ) : (
-          <DeleteAction
+      {loaderData.owner && (
+        <div className="max-w-2xl space-y-12">
+          {isFailed(loaderData.billingEmail) ? (
+            <section>
+              <h2 className="font-medium">Billing email</h2>
+              <div className="mt-5">
+                <Unavailable what={loaderData.billingEmail.what} />
+              </div>
+            </section>
+          ) : (
+            <BillingEmailSection
+              key={loaderData.billingEmail ?? ""}
+              workspace={workspace}
+              email={loaderData.billingEmail}
+              saved={saved === "billing-email"}
+              error={actionData && "billingError" in actionData ? actionData.billingError : undefined}
+            />
+          )}
+
+          <section>
+            <h2 className="font-medium">Getting started</h2>
+            <p className="mt-1.5 text-sm text-muted">
+              The setup guide that opened on Home: an AI provider, Ask&apos;s model, your code, your coding agent, your team and a runner, each ticked off as
+              the workspace has it. Open it again any time.
+            </p>
+            <div className="mt-3">
+              <GettingStartedButton slug={workspace.slug} />
+            </div>
+          </section>
+
+          <AddressSection
+            // A new address starts it again, so the dialog is closed on the renamed page.
+            key={workspace.slug}
             workspace={workspace}
-            deletion={loaderData.deletion}
-            apps={loaderData.apps}
-            error={actionData && "deleteError" in actionData ? actionData.deleteError : undefined}
+            error={actionData && "renameError" in actionData ? actionData.renameError : undefined}
           />
-        )}
-      </DangerZone>
+
+          {isFailed(loaderData.residency) ? (
+            <section>
+              <h2 className="font-medium">Data residency</h2>
+              <div className="mt-5">
+                <Unavailable what={loaderData.residency.what} />
+              </div>
+            </section>
+          ) : (
+            (loaderData.euAvailable || loaderData.residency === "eu") && (
+              <ResidencySection
+                // Starts from the saved choice whenever it changes.
+                key={loaderData.residency}
+                residency={loaderData.residency}
+                euAvailable={loaderData.euAvailable}
+                saved={saved === "residency"}
+                error={actionData && "residencyError" in actionData ? actionData.residencyError : undefined}
+              />
+            )
+          )}
+
+          <DangerZone>
+            {isFailed(loaderData.deletion) ? (
+              <div className="p-4">
+                <Unavailable what={loaderData.deletion.what} compact />
+              </div>
+            ) : (
+              <DeleteAction
+                workspace={workspace}
+                deletion={loaderData.deletion}
+                apps={loaderData.apps}
+                error={actionData && "deleteError" in actionData ? actionData.deleteError : undefined}
+              />
+            )}
+          </DangerZone>
+        </div>
+      )}
     </div>
   );
 }
 
-/** Requiring two-factor authentication of everyone with access. */
-function TwoFactorRequirementSection({
-  slug,
-  required,
-  without,
-  ownTwoFactor,
-  saved,
-  error,
-}: {
-  slug: string;
-  required: boolean;
-  without: string[];
-  ownTwoFactor: boolean;
-  saved: boolean;
-  error?: string;
-}) {
-  const [chosen, setChosen] = useState(required);
-  const navigation = useNavigation();
-  const saving = navigation.state !== "idle" && navigation.formData?.get("intent") === "two-factor-requirement";
+/**
+ * Who the workspace is, as everyone sees it on its page: its name,
+ * description, links, location and public email. Members read it; the
+ * fields are an owner's to change.
+ */
+function ProfileForm({ workspace, owner, saved, error }: { workspace: Workspace; owner: boolean; saved: boolean; error?: string }) {
+  const busy = usePending({ intent: "profile" });
+  const [description, setDescription] = useState(workspace.description ?? "");
+  const social = Array.from({ length: SOCIAL_ACCOUNTS }, (_, index) => workspace.socialAccounts?.[index] ?? "");
   return (
-    <section id="two-factor" className="scroll-mt-[calc(var(--topbar-h)+1rem)]">
-      <h2 className="font-medium">Authentication security</h2>
-      <p className="mt-1.5 text-xs text-faint">
-        With two-factor authentication required, members and outside collaborators without it keep their place but cannot use {slug} until they turn it on. They
-        see a notice saying so.
+    <section>
+      <h2 className="font-medium">Public profile</h2>
+      <p className="mt-1 text-sm text-muted">
+        Shown on the workspace&apos;s page and in its link previews. All of it but the name is optional.
+        {!owner && " Only owners change it."}
       </p>
-      <Form method="post" className="mt-5 space-y-3">
-        <input type="hidden" name="intent" value="two-factor-requirement" />
-        <SwitchCard
-          name="required"
-          title="Require two-factor authentication"
-          checked={chosen}
-          disabled={!ownTwoFactor && !required}
-          onCheckedChange={setChosen}
-        >
-          {!ownTwoFactor && !required ? (
-            <>
-              Turn it on for your own account first, in{" "}
-              <Link to="/settings/two-factor" className="text-accent underline underline-offset-4">
-                your settings
-              </Link>
-              .
-            </>
-          ) : without.length === 0 ? (
-            "Every member has it on."
-          ) : (
-            `${without.length} ${without.length === 1 ? "member does" : "members do"} not have it on: ${without.slice(0, 5).join(", ")}${without.length > 5 ? ` and ${without.length - 5} more` : ""}.`
+      <Form method="post" className="mt-5">
+        <input type="hidden" name="intent" value="profile" />
+        <fieldset disabled={!owner} className="grid gap-4 sm:grid-cols-2">
+          <FormField className="sm:col-span-2">
+            <FieldLabel htmlFor="workspace-name">Display name</FieldLabel>
+            <TextInput id="workspace-name" name="displayName" maxLength={80} defaultValue={workspace.name} placeholder={workspace.slug} />
+            <FieldDescription>How people see the workspace: in the sidebar, at the top of its page and in link previews. Up to 80 characters.</FieldDescription>
+          </FormField>
+          <FormField className="sm:col-span-2">
+            <FieldLabel htmlFor="workspace-description">Description</FieldLabel>
+            <Textarea
+              id="workspace-description"
+              name="description"
+              rows={2}
+              maxLength={160}
+              value={description}
+              onChange={(event) => setDescription(event.currentTarget.value)}
+              placeholder="What the workspace makes, in a line."
+            />
+            <FieldDescription>{description.length}/160 characters, shown at the top of the workspace&apos;s page.</FieldDescription>
+          </FormField>
+          <FormField>
+            <FieldLabel htmlFor="workspace-website">URL</FieldLabel>
+            <TextInput id="workspace-website" name="website" inputMode="url" defaultValue={workspace.website ?? ""} placeholder="https://example.com" />
+            <FieldDescription>An https:// address.</FieldDescription>
+          </FormField>
+          <FormField>
+            <FieldLabel htmlFor="workspace-email">Public email</FieldLabel>
+            <TextInput id="workspace-email" name="email" type="email" defaultValue={workspace.email ?? ""} placeholder="hello@example.com" />
+            <FieldDescription>Where people reach the workspace. Shown to everyone.</FieldDescription>
+          </FormField>
+          <FormField>
+            <FieldLabel htmlFor="workspace-location">Location</FieldLabel>
+            <TextInput id="workspace-location" name="location" maxLength={80} defaultValue={workspace.location ?? ""} placeholder="Portland, Oregon" />
+          </FormField>
+          <FormField className="sm:col-span-2">
+            <FieldLabel htmlFor="workspace-social-0">Social accounts</FieldLabel>
+            <div className="grid gap-2">
+              {social.map((value, index) => (
+                <TextInput
+                  key={index}
+                  id={`workspace-social-${index}`}
+                  name="social"
+                  inputMode="url"
+                  defaultValue={value}
+                  aria-label={`Social account ${index + 1}`}
+                  placeholder="https://"
+                />
+              ))}
+            </div>
+            <FieldDescription>Up to {SOCIAL_ACCOUNTS} links, each an https:// address.</FieldDescription>
+          </FormField>
+          {owner && (
+            <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
+              <SubmitButton pending="Saving…" match={{ intent: "profile" }}>
+                Update profile
+              </SubmitButton>
+              {saved && !busy && !error && (
+                <span role="status" className="inline-flex items-center gap-1.5 text-sm text-muted">
+                  <Check size={14} className="text-success" />
+                  Saved
+                </span>
+              )}
+              <FieldError>{error}</FieldError>
+            </div>
           )}
-        </SwitchCard>
-        <ErrorText>{error}</ErrorText>
-        {saved && !error && chosen === required && (
-          <p role="status" className="text-xs text-muted">
-            Saved.
-          </p>
-        )}
-        <Button type="submit" disabled={saving || chosen === required}>
-          Save
-        </Button>
+        </fieldset>
+      </Form>
+    </section>
+  );
+}
+
+/**
+ * Where the workspace's invoices and receipts go, kept private: what its
+ * Stripe customer is given, in place of an owner's own address. More
+ * recipients are Stripe's to add, on the billing page.
+ */
+function BillingEmailSection({ workspace, email, saved, error }: { workspace: Workspace; email: string | null; saved: boolean; error?: string }) {
+  const busy = usePending({ intent: "billing-email" });
+  return (
+    <section>
+      <h2 className="font-medium">Billing email</h2>
+      <p className="mt-1.5 text-xs text-faint">
+        Where invoices and receipts go. Never shown on the workspace&apos;s page. Without one, they go to an owner&apos;s email. To send them to more people,
+        add them from{" "}
+        <Link to={settingsPath(workspace.slug, "billing")} className="text-muted underline underline-offset-4 hover:text-fg">
+          Billing and plans
+        </Link>
+        .
+      </p>
+      <Form method="post" className="mt-5 max-w-lg space-y-3">
+        <input type="hidden" name="intent" value="billing-email" />
+        {/* The profile's name and description go with it unchanged: identity takes them on every save. */}
+        <input type="hidden" name="displayName" value={workspace.name} />
+        <input type="hidden" name="description" value={workspace.description ?? ""} />
+        <FormField>
+          <FieldLabel htmlFor="workspace-billing-email" className="sr-only">
+            Billing email
+          </FieldLabel>
+          <TextInput id="workspace-billing-email" name="billingEmail" type="email" defaultValue={email ?? ""} placeholder="billing@example.com" />
+        </FormField>
+        <div className="flex flex-wrap items-center gap-3">
+          <SubmitButton pending="Saving…" match={{ intent: "billing-email" }} variant="outline">
+            Save
+          </SubmitButton>
+          {saved && !busy && !error && (
+            <span role="status" className="inline-flex items-center gap-1.5 text-sm text-muted">
+              <Check size={14} className="text-success" />
+              Saved
+            </span>
+          )}
+          <FieldError>{error}</FieldError>
+        </div>
       </Form>
     </section>
   );
@@ -516,7 +589,7 @@ function AddressSection({ workspace, error }: { workspace: Workspace; error?: st
   useEffect(() => {
     if (unchanged || !wellFormed) return;
     const timer = setTimeout(() => {
-      load(`/${workspace.slug}/-/settings?check=${encodeURIComponent(wanted)}`);
+      load(`${settingsPath(workspace.slug)}?check=${encodeURIComponent(wanted)}`);
     }, 400);
     return () => clearTimeout(timer);
   }, [load, wanted, unchanged, wellFormed, workspace.slug]);

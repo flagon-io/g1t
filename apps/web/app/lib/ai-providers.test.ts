@@ -31,8 +31,8 @@ test("AI providers are the workspace's AI settings, not integrations", () => {
     CONNECTORS.filter((connector) => connector.provider && ai.has(connector.provider)),
     [],
   );
-  assert.equal(providerPage("alerts"), "integrations/alerts");
-  assert.equal(providerPage("tracker"), "integrations/trackers");
+  assert.equal(providerPage("alerts"), "settings/integrations/alerts");
+  assert.equal(providerPage("tracker"), "settings/integrations/trackers");
   assert.equal(sectionKind("models"), null);
   assert.equal(sectionKind("alerts"), "alerts");
   assert.equal(sectionKind("trackers"), "tracker");
@@ -40,7 +40,7 @@ test("AI providers are the workspace's AI settings, not integrations", () => {
 });
 
 test("older links to the AI providers' page open the AI page", () => {
-  assert.equal(aiPagePath("acme", ""), "/acme/-/ai");
-  assert.equal(aiPagePath("acme", "?add=openai"), "/acme/-/ai?add=openai#add");
-  assert.equal(aiPagePath("acme", "?_routes=root&add=openai"), "/acme/-/ai?add=openai#add");
+  assert.equal(aiPagePath("acme", ""), "/acme/-/settings/ai");
+  assert.equal(aiPagePath("acme", "?add=openai"), "/acme/-/settings/ai?add=openai#add");
+  assert.equal(aiPagePath("acme", "?_routes=root&add=openai"), "/acme/-/settings/ai?add=openai#add");
 });

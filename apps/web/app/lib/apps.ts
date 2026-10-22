@@ -50,7 +50,8 @@ export const BUILTINS: BuiltinInfo[] = [
   { key: "artifacts", name: "Library", path: under("library/artifacts") },
   { key: "routines", name: "Routines", path: under("routines") },
   { key: "people", name: "People", path: under("people") },
-  { key: "workspace", name: "Workspace", path: under("workspace") },
+  // The workspace's settings, which open on its Profile.
+  { key: "workspace", name: "Workspace", path: under("settings/profile") },
 ];
 
 /**
@@ -119,9 +120,9 @@ const SECTION_BY_CATEGORY: Partial<Record<Connector["category"], string>> = { mo
 
 function integrationPath(connector: Connector): (slug: string) => string {
   const section = connector.provider ? SECTION_BY_CATEGORY[connector.category] : undefined;
-  if (section) return under(`integrations/${section}`);
+  if (section) return under(`settings/integrations/${section}`);
   const href = connector.href?.workspace;
-  return href ? (slug) => connectorPath(href, slug) : under("integrations");
+  return href ? (slug) => connectorPath(href, slug) : under("settings/integrations");
 }
 
 /** Identity keeps keys of at most this many characters (MAX_DOCK_APP_KEY). */

@@ -85,7 +85,7 @@ export function ActivationPrompt({
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
           {isOwner ? (
-            <ButtonLink to={`/${workspace}/-/billing`}>Start the plan</ButtonLink>
+            <ButtonLink to={`/${workspace}/-/settings/billing`}>Start the plan</ButtonLink>
           ) : (
             <span className="text-muted">An owner of {workspace} can start the plan in Billing.</span>
           )}

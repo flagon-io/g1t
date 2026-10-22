@@ -77,7 +77,7 @@ export default function DeployKeys({ loaderData, actionData, params }: Route.Com
           <p>
             Deploy keys are used over SSH, and git over SSH is not on yet: it is waiting on inbound TCP on Cloudflare, which g1t has applied for. Keys you add
             now will work as soon as it is. Until then, machines can clone and push over HTTPS with a{" "}
-            <Link to={`/${params.owner}/-/tokens`} className="text-fg underline underline-offset-4">
+            <Link to={`/${params.owner}/-/settings/tokens`} className="text-fg underline underline-offset-4">
               workspace access token
             </Link>
             .

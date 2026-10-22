@@ -388,7 +388,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const error = useRouteError();
   const missing = isRouteErrorResponse(error) && error.status === 404;
   // The billing page shows the full banner itself.
-  const paused = root?.shell?.compute && root.shell.workspace && !pathname.endsWith("/-/billing") && (
+  const paused = root?.shell?.compute && root.shell.workspace && !pathname.endsWith("/-/settings/billing") && (
     <SpikeBanner
       compact
       slug={root.shell.workspace.slug}

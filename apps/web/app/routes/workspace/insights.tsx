@@ -99,7 +99,7 @@ export default function Insights({ loaderData: d }: Route.ComponentProps) {
   const price = d.report?.totals.priceMicros ?? null;
   const peak = Math.max(1, ...d.days.map((day) => day.merged));
   const selectedUsage = d.projects.find((p) => p.slug === d.selected)?.usage;
-  const usageHref = `/${d.slug}/-/usage?period=${d.period}${selectedUsage ? `&project=${encodeURIComponent(selectedUsage)}` : ""}`;
+  const usageHref = `/${d.slug}/-/settings/usage?period=${d.period}${selectedUsage ? `&project=${encodeURIComponent(selectedUsage)}` : ""}`;
   return (
     <div className="space-y-6" aria-busy={pending}>
       <Form ref={form} method="get" preventScrollReset className="flex flex-wrap items-center gap-2">

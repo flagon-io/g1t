@@ -337,7 +337,7 @@ pub fn public_storage_full_response(namespace: &str, public_bytes: i64, free_byt
 fn public_storage_full_message(namespace: &str, public_bytes: i64, free_bytes: i64) -> String {
     let gb = |bytes: i64| bytes as f64 / 1_000_000_000.0;
     format!(
-        "{namespace}'s public repositories hold {:.2} GB. Every workspace has a {:.0} GB public storage limit, including paid workspaces. Public storage is free. Make room before adding more public data: https://g1t.sh/{namespace}/-/billing
+        "{namespace}'s public repositories hold {:.2} GB. Every workspace has a {:.0} GB public storage limit, including paid workspaces. Public storage is free. Make room before adding more public data: https://g1t.sh/{namespace}/-/settings/billing
 ",
         gb(public_bytes),
         gb(free_bytes)
@@ -411,7 +411,7 @@ pub fn storage_full_response(namespace: &str, private_bytes: i64, free_bytes: i6
 fn storage_full_message(namespace: &str, private_bytes: i64, free_bytes: i64) -> String {
     let gb = |bytes: i64| bytes as f64 / 1_000_000_000.0;
     format!(
-        "{namespace}'s private repositories hold {:.2} GB, and a free workspace has {:.0} GB. Free workspaces are never charged for storage, so pushes to private repositories stop here. Make the repository public, delete what you no longer need, or start the g1t plan, where storage past it is usage at cost plus 20% and pushes never stop: https://g1t.sh/{namespace}/-/billing
+        "{namespace}'s private repositories hold {:.2} GB, and a free workspace has {:.0} GB. Free workspaces are never charged for storage, so pushes to private repositories stop here. Make the repository public, delete what you no longer need, or start the g1t plan, where storage past it is usage at cost plus 20% and pushes never stop: https://g1t.sh/{namespace}/-/settings/billing
 ",
         gb(private_bytes),
         gb(free_bytes)
@@ -567,15 +567,15 @@ mod tests {
         // Each storage refusal says why, and where to go next.
         let private = storage_full_message("acme", 1_200_000_000, 1_000_000_000);
         assert!(private.starts_with("acme's private repositories hold 1.20 GB, and a free workspace has 1 GB."), "{private}");
-        assert!(private.contains("https://g1t.sh/acme/-/billing"), "{private}");
+        assert!(private.contains("https://g1t.sh/acme/-/settings/billing"), "{private}");
         let public = public_storage_full_message("acme", 5_000_000_000, 5_000_000_000);
         assert!(public.starts_with("acme's public repositories hold 5.00 GB."), "{public}");
-        assert!(public.contains("5 GB public storage limit") && public.contains("https://g1t.sh/acme/-/billing"), "{public}");
+        assert!(public.contains("5 GB public storage limit") && public.contains("https://g1t.sh/acme/-/settings/billing"), "{public}");
         let repository = repository_full_message("acme", "rocket", 950_000_000);
         assert!(repository.starts_with("acme/rocket holds about "), "{repository}");
         assert!(repository.contains("takes no more pushes") && repository.contains("https://docs.g1t.sh/guides/git/#size-limits"), "{repository}");
         let slowed = too_many_message("acme", 50_000, 60);
-        assert!(slowed.contains("so g1t allows 60 an hour") && slowed.contains("https://g1t.sh/acme/-/billing"), "{slowed}");
+        assert!(slowed.contains("so g1t allows 60 an hour") && slowed.contains("https://g1t.sh/acme/-/settings/billing"), "{slowed}");
         for message in [&private, &public, &repository, &slowed] {
             // Each ends a line, so git's own `fatal:` starts on the next.
             assert!(message.ends_with('\n'), "{message}");

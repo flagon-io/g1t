@@ -800,7 +800,7 @@ const utcDay = (day: string) => new Intl.DateTimeFormat("en-US", { month: "short
 
 export function SpendCard({ spend, slug, span }: { spend: Spend | null; slug: string; span: Pick<Span, "key" | "note" | "words"> }) {
   return (
-    <Card title="Spent" link={{ label: "Billing", to: `/${slug}/-/billing` }}>
+    <Card title="Spent" link={{ label: "Billing", to: `/${slug}/-/settings/billing` }}>
       {!spend ? (
         <Quiet>Billing didn&apos;t answer, so spend can&apos;t be shown right now.</Quiet>
       ) : (

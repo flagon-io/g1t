@@ -6,7 +6,7 @@ import type { Result } from "./result";
 /**
  * A workspace's AI: the AI providers it keeps keys for, and what Ask g1t
  * answers with. Kept by the integrations service, but not an integration: a
- * workspace's AI is one of its own settings, at `/:workspace/-/ai`. Mirrors
+ * workspace's AI is one of its own settings, at `/:workspace/-/settings/ai`. Mirrors
  * `crates/contracts/src/ai.rs`, which says what each does.
  */
 export type AiProvider =

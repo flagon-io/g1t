@@ -94,7 +94,7 @@ export default function ChatSettingsPage({ loaderData, actionData }: Route.Compo
               {owner ? (
                 <>
                   Change it under{" "}
-                  <Link to={`/${slug}/-/permissions`} className="text-muted underline decoration-line-strong underline-offset-2 hover:text-fg">
+                  <Link to={`/${slug}/-/settings/permissions`} className="text-muted underline decoration-line-strong underline-offset-2 hover:text-fg">
                     Permissions
                   </Link>
                   , with everything else about who may do what.
@@ -134,7 +134,7 @@ export default function ChatSettingsPage({ loaderData, actionData }: Route.Compo
             <h2 className="font-medium">Custom emoji</h2>
             <p className="mt-1.5 text-xs text-faint">
               Who can add the workspace&apos;s own emoji and aliases. Whoever added one, and owners, can remove it.{" "}
-              <Link to={`/${slug}/-/emoji`} className="text-muted underline decoration-line-strong underline-offset-2 hover:text-fg">
+              <Link to={`/${slug}/-/settings/emoji`} className="text-muted underline decoration-line-strong underline-offset-2 hover:text-fg">
                 Manage emoji
               </Link>
             </p>

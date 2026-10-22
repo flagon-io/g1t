@@ -288,7 +288,7 @@ export function notSetUpText(slug: string): string {
   return [
     "I answer with an AI provider your workspace connects, on its own key, and none is chosen for me yet.",
     "",
-    `An owner can choose one under [Settings → AI → Ask g1t](/${slug}/-/ai#ask). If you're not an owner, ask one of them to.`,
+    `An owner can choose one under [Settings → AI → Ask g1t](/${slug}/-/settings/ai#ask). If you're not an owner, ask one of them to.`,
   ].join("\n");
 }
 

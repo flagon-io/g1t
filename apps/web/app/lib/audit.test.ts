@@ -55,8 +55,8 @@ test("filters are read from the address, and nonsense is dropped", () => {
 
 test("links keep the other filters", () => {
   const filters = parseFilters(new URLSearchParams("actor=ana&outcome=denied"));
-  assert.equal(filterHref("/acme/-/audit", filters, { before: "aud_9" }), "/acme/-/audit?actor=ana&outcome=denied&before=aud_9");
-  assert.equal(filterHref("/acme/-/audit", parseFilters(new URLSearchParams())), "/acme/-/audit");
+  assert.equal(filterHref("/acme/-/settings/audit", filters, { before: "aud_9" }), "/acme/-/settings/audit?actor=ana&outcome=denied&before=aud_9");
+  assert.equal(filterHref("/acme/-/settings/audit", parseFilters(new URLSearchParams())), "/acme/-/settings/audit");
 });
 
 test("an old agent's entry is shown with whom it acted for", () => {

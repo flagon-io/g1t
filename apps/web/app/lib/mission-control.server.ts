@@ -382,7 +382,7 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
         { label: "Waiting", value: waitedFor(minutes), tone: "warn" },
       ],
       // Runners are the owners' to see to.
-      ...(namespace && roleIn(viewer, namespace) === "owner" ? { link: { label: "Runners", to: `/${namespace}/-/runners` } } : {}),
+      ...(namespace && roleIn(viewer, namespace) === "owner" ? { link: { label: "Runners", to: `/${namespace}/-/settings/runners` } } : {}),
     });
   }
 

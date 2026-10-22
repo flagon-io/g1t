@@ -112,8 +112,8 @@ test("old links to Agents, Customize and the Marketplace open Home", () => {
 });
 
 test("the integrations directory stays on the site", () => {
-  assert.equal(routeFor("/acme/-/integrations"), null);
-  assert.equal(routeFor("/acme/-/integrations/github"), null);
+  assert.equal(routeFor("/acme/-/settings/integrations"), null);
+  assert.equal(routeFor("/acme/-/settings/integrations/github"), null);
 });
 
 test("the app's sign-in comes back to its own screen, and the site's own pages stay on the site", () => {

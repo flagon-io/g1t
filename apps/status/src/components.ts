@@ -217,7 +217,7 @@ export function components(vars: Partial<Targets>, billing = true, storage = fal
       ? {
           key: "billing",
           name: "Billing",
-          address: `${shown}/<workspace>/-/billing`,
+          address: `${shown}/<workspace>/-/settings/billing`,
           checks: "The billing service reading its price book. Stripe itself is not checked.",
           core: false,
           check: { kind: "billing" },

@@ -208,7 +208,7 @@ test("the page an answer is told is the newest question's, as sent from the top 
 test("with no provider chosen, g1t says where an owner chooses one", () => {
   const text = notSetUpText("acme");
   assert.match(text, /Settings → AI → Ask g1t/);
-  assert.match(text, /\(\/acme\/-\/ai#ask\)/);
+  assert.match(text, /\(\/acme\/-\/settings\/ai#ask\)/);
   assert.match(text, /ask one of them/);
 });
 

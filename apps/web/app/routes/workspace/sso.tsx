@@ -473,7 +473,7 @@ function ClientFields({ value, keepsSecret, defaultScopes }: { value: (name: key
 function RequireSection({ settings, slug, disabled, answer }: { settings: SsoSettings; slug: string; disabled: boolean; answer?: Answer }) {
   const connection = settings.connection!;
   const [chosen, setChosen] = useState(settings.required);
-  const back = encodeURIComponent(`/${slug}/-/sso`);
+  const back = encodeURIComponent(`/${slug}/-/settings/sso`);
   // Requiring it needs the owner to have signed in through it; never needed to stop.
   const locked = !settings.required && (disabled || !settings.you_linked);
   return (

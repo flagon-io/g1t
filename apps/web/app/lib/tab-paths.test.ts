@@ -95,10 +95,10 @@ test("the Branches page's tabs are paths", () => {
 test("rules' Insights is a path, for a repository and a workspace", () => {
   assert.equal(rulesPath("/acme/web/settings/rules"), "/acme/web/settings/rules");
   assert.equal(rulesPath("/acme/web/settings/rules", "insights"), "/acme/web/settings/rules/insights");
-  assert.equal(rulesPath("/acme/-/rules", "insights"), "/acme/-/rules/insights");
+  assert.equal(rulesPath("/acme/-/settings/rules", "insights"), "/acme/-/settings/rules/insights");
   assert.equal(rulesAt("/acme/web/settings/rules/insights"), "insights");
   assert.equal(rulesAt("/acme/web/settings/rules/insights.data"), "insights");
-  assert.equal(rulesAt("/acme/-/rules/insights"), "insights");
+  assert.equal(rulesAt("/acme/-/settings/rules/insights"), "insights");
   assert.equal(rulesAt("/acme/web/settings/rules"), "rulesets");
   assert.equal(rulesAt("/acme/web/settings/rules.data"), "rulesets");
   const to = (address: string) => movedTab(at(address), (tab) => rulesPath("/acme/web/settings/rules", tab));

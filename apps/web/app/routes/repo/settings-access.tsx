@@ -178,7 +178,7 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
             </p>
             <p className="mt-2 text-muted">
               {owner ? (
-                <Link to={`/${params.owner}/-/members#base-permission`} className="text-accent hover:underline">
+                <Link to={`/${params.owner}/-/settings/members#base-permission`} className="text-accent hover:underline">
                   Change the base permission
                 </Link>
               ) : (

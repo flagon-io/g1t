@@ -21,7 +21,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   const slug = params.owner.toLowerCase();
-  const moved = currentTokensPath(`/${slug}/-/tokens`, new URL(request.url).searchParams);
+  const moved = currentTokensPath(`/${slug}/-/settings/tokens`, new URL(request.url).searchParams);
   if (moved) throw redirect(moved, 301);
   const viewer = getViewer(context);
   return {
@@ -45,7 +45,7 @@ export default function WorkspaceTokens({ loaderData }: Route.ComponentProps) {
             Each token has permissions, a level for each resource, and reaches all of {slug}'s repositories or the ones chosen.
           </p>
           {owner && (
-            <ButtonLink to={`/${slug}/-/tokens/new`}>
+            <ButtonLink to={`/${slug}/-/settings/tokens/new`}>
               <Plus size={15} />
               New token
             </ButtonLink>
@@ -56,7 +56,7 @@ export default function WorkspaceTokens({ loaderData }: Route.ComponentProps) {
             {owner ? "Make one and give it to whatever needs to act for this workspace." : "An owner can make one."}
           </EmptyState>
         ) : (
-          <TokenList tokens={tokens} href={(token) => `/${slug}/-/tokens/${token.id}`} />
+          <TokenList tokens={tokens} href={(token) => `/${slug}/-/settings/tokens/${token.id}`} />
         )}
         {!owner && <p className="text-sm text-muted">Only owners can make, change or delete a workspace's tokens.</p>}
       </div>
@@ -84,7 +84,7 @@ export default function WorkspaceTokens({ loaderData }: Route.ComponentProps) {
               <h3 className="font-medium">Your members' own tokens</h3>
               <p className="mt-2 text-muted">
                 Which personal tokens may reach {slug}, how long they may last, and approving the ones made for it:{" "}
-                <Link to={`/${slug}/-/personal-access-tokens`} className="text-fg underline underline-offset-4">
+                <Link to={`/${slug}/-/settings/personal-access-tokens`} className="text-fg underline underline-offset-4">
                   Personal access tokens
                 </Link>
                 .

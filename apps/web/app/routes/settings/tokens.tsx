@@ -51,7 +51,7 @@ export default function TokenSettings({ loaderData }: Route.ComponentProps) {
           {workspaces.map((slug, i) => (
             <span key={slug}>
               {i > 0 && ", "}
-              <Link to={`/${slug}/-/tokens`} className="font-mono text-muted underline underline-offset-4 hover:text-fg">
+              <Link to={`/${slug}/-/settings/tokens`} className="font-mono text-muted underline underline-offset-4 hover:text-fg">
                 {slug}
               </Link>
             </span>

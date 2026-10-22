@@ -191,7 +191,7 @@ export default function WorkspaceInvitations({ loaderData, params }: Route.Compo
           <div className="ml-auto">
             <InviteDialog
               name={name}
-              action={`/${params.owner}/-/members/invitations`}
+              action={`/${params.owner}/-/settings/members/invitations`}
               onInvited={(who) => setNotice({ tone: "ok", text: `Invitation to join ${name} sent to ${who}. They join once they accept.` })}
             />
           </div>

@@ -176,7 +176,7 @@ export function localRefusal(ent: ComputeEntitlements, kind: ComputeKind, isPubl
 
 /** Where a workspace's owners start the plan or the trial. */
 export function billingPath(workspace: string): string {
-  return `/${workspace.toLowerCase()}/-/billing`;
+  return `/${workspace.toLowerCase()}/-/settings/billing`;
 }
 
 const WHAT: Record<ComputeKind, string> = {

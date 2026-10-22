@@ -376,7 +376,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
           <section>
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-medium">Members</h2>
-              <Link to={role === "owner" ? `/${slug}/-/members` : `/${slug}/-/people`} className="text-xs text-muted hover:text-fg">
+              <Link to={role === "owner" ? `/${slug}/-/settings/members` : `/${slug}/-/people`} className="text-xs text-muted hover:text-fg">
                 {role === "owner" ? "Manage" : "See all"}
               </Link>
             </div>
@@ -408,7 +408,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
                 Off until you turn them on for a repository, under its Settings. Then production builds from its default branch, with a live preview for every
                 pull request. Apps cost nothing while no one visits.
               </p>
-              <Link prefetch="intent" to={`/${slug}/-/billing`} className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline">
+              <Link prefetch="intent" to={`/${slug}/-/settings/billing`} className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline">
                 Billing and plans <ArrowRight size={13} />
               </Link>
             </section>
@@ -425,7 +425,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
               <p className="mt-1.5 text-sm text-muted">
                 A workspace has access tokens of its own for CI, integrations and agents. They act as the workspace, not as a person.
               </p>
-              <Link prefetch="intent" to={`/${slug}/-/tokens`} className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline">
+              <Link prefetch="intent" to={`/${slug}/-/settings/tokens`} className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline">
                 Access tokens <ArrowRight size={13} />
               </Link>
             </section>

@@ -46,113 +46,141 @@ export function workspacePage(pathname: string, slug: string): WorkspacePageKey 
 }
 
 /**
- * Workspace mode's pages, in the groups its sidebar lists them under: the
- * workspace's settings area, every page one click away. `owner` marks the
- * pages only owners open; the sidebar shows members the rest.
- * `path` is under `-/`.
+ * Workspace mode's pages: the workspace's settings, every one under
+ * `-/settings/`, laid out as GitHub lays out an organization's. The
+ * Profile on top, then sections under headings. A page's `pages` are its
+ * sub-pages, which the sidebar shows under it while you are on one of them.
+ * `owner` marks the pages only owners open; the sidebar shows members the
+ * rest. `path` is under `-/`.
  */
-export type WorkspaceSettingsPage = { key: string; label: string; path: string; owner?: boolean };
+export type WorkspaceSettingsPage = { key: string; label: string; path: string; owner?: boolean; pages?: readonly WorkspaceSettingsPage[] };
 
-export type WorkspaceSettingsGroup = { key: string; title: string; pages: WorkspaceSettingsPage[] };
+/** A section of them; the first, the Profile's, has no heading. */
+export type WorkspaceSettingsGroup = { key: string; title: string | null; pages: readonly WorkspaceSettingsPage[] };
 
 export const WORKSPACE_SETTINGS_GROUPS: readonly WorkspaceSettingsGroup[] = [
   {
-    key: "general",
-    title: "General",
-    pages: [{ key: "settings", label: "General", path: "settings", owner: true }],
-  },
-  {
-    key: "ai",
-    title: "AI",
-    pages: [{ key: "ai", label: "Models", path: "ai" }],
+    key: "profile",
+    title: null,
+    pages: [{ key: "profile", label: "Profile", path: "settings/profile" }],
   },
   {
     key: "access",
     title: "Access",
     pages: [
-      { key: "members", label: "Members", path: "members" },
-      { key: "invitations", label: "Invitations", path: "members/invitations", owner: true },
-      { key: "permissions", label: "Permissions", path: "permissions", owner: true },
-      { key: "sso", label: "Single sign-on", path: "sso", owner: true },
-      { key: "tokens", label: "Access tokens", path: "tokens" },
-      { key: "personal-access-tokens", label: "Personal access tokens", path: "personal-access-tokens", owner: true },
+      {
+        key: "billing",
+        label: "Billing and plans",
+        path: "settings/billing",
+        pages: [
+          { key: "usage", label: "Usage", path: "settings/usage" },
+          { key: "provider-costs", label: "Provider costs", path: "settings/provider-costs" },
+        ],
+      },
+      {
+        key: "members",
+        label: "Members",
+        path: "settings/members",
+        pages: [{ key: "invitations", label: "Invitations", path: "settings/members/invitations", owner: true }],
+      },
+      { key: "permissions", label: "Permissions", path: "settings/permissions", owner: true },
     ],
   },
   {
-    key: "money",
-    title: "Money",
+    key: "automation",
+    title: "Code, planning, and automation",
     pages: [
-      { key: "usage", label: "Usage", path: "usage" },
-      { key: "billing", label: "Billing and plans", path: "billing" },
-      { key: "provider-costs", label: "Provider costs", path: "provider-costs" },
-    ],
-  },
-  {
-    key: "compute",
-    title: "Compute",
-    pages: [{ key: "runners", label: "Runners", path: "runners", owner: true }],
-  },
-  {
-    key: "code",
-    title: "Code",
-    pages: [
-      { key: "repositories", label: "Repositories", path: "repositories" },
-      { key: "actions", label: "Actions", path: "actions" },
-      { key: "secrets", label: "Secrets and variables", path: "secrets" },
-      { key: "webhooks", label: "Webhooks", path: "webhooks" },
-    ],
-  },
-  {
-    key: "work",
-    title: "Work",
-    pages: [{ key: "work-settings", label: "Work settings", path: "settings/work" }],
-  },
-  {
-    key: "chat",
-    title: "Chat",
-    pages: [
-      { key: "chat-settings", label: "Chat settings", path: "settings/chat" },
-      { key: "emoji", label: "Emoji", path: "emoji" },
+      {
+        key: "repositories",
+        label: "Repositories",
+        path: "settings/repositories",
+        pages: [{ key: "rules", label: "Rules", path: "settings/rules" }],
+      },
+      { key: "work-settings", label: "Work", path: "settings/work" },
+      {
+        key: "ai",
+        label: "AI",
+        path: "settings/ai",
+        pages: [{ key: "guardrails", label: "Guardrails", path: "settings/guardrails" }],
+      },
+      {
+        key: "actions",
+        label: "Actions",
+        path: "settings/actions",
+        pages: [{ key: "runners", label: "Runners", path: "settings/runners", owner: true }],
+      },
+      { key: "webhooks", label: "Webhooks", path: "settings/webhooks" },
+      {
+        key: "chat-settings",
+        label: "Chat",
+        path: "settings/chat",
+        pages: [{ key: "emoji", label: "Emoji", path: "settings/emoji" }],
+      },
     ],
   },
   {
     key: "security",
     title: "Security",
     pages: [
-      { key: "security-settings", label: "Security settings", path: "security/settings" },
-      { key: "guardrails", label: "Guardrails", path: "guardrails" },
-      { key: "rules", label: "Rules", path: "rules" },
-      { key: "audit", label: "Audit log", path: "audit" },
+      {
+        key: "authentication",
+        label: "Authentication security",
+        path: "settings/authentication",
+        owner: true,
+        pages: [{ key: "sso", label: "Single sign-on", path: "settings/sso", owner: true }],
+      },
+      { key: "security-settings", label: "Code security", path: "settings/security" },
+      { key: "secrets", label: "Secrets and variables", path: "settings/secrets" },
+    ],
+  },
+  {
+    key: "third-party",
+    title: "Third-party access",
+    pages: [
+      { key: "tokens", label: "Access tokens", path: "settings/tokens" },
+      { key: "personal-access-tokens", label: "Personal access tokens", path: "settings/personal-access-tokens", owner: true },
     ],
   },
   {
     key: "integrations",
     title: "Integrations",
-    pages: [{ key: "integrations", label: "Integrations", path: "integrations" }],
+    pages: [{ key: "integrations", label: "Integrations", path: "settings/integrations" }],
+  },
+  {
+    key: "archive",
+    title: "Archive",
+    pages: [{ key: "audit", label: "Audit log", path: "settings/audit" }],
   },
 ];
 
 /**
  * Which of Workspace mode's pages `pathname` is, under the workspace
- * `slug`, as a group key and a page key; null for the overview and for
- * anything else. A page's own subpages (one ruleset, a receipt) count as
- * the page; the deepest match wins, so Invitations is its own page and
- * not a subpage of Members.
+ * `slug`: its section, the page, and the page the sidebar lists it under
+ * (`parent`, itself for a top page). Null for anything else. A page's own
+ * subpages (one ruleset, a receipt) count as the page; the deepest match
+ * wins, so Invitations is its own page and not a subpage of Members.
  */
-export function workspaceSettingsPage(pathname: string, slug: string): { group: string; page: string } | null {
+export function workspaceSettingsPage(pathname: string, slug: string): { group: string; page: string; parent: string } | null {
   const parts = pagePath(pathname).split("/").filter(Boolean);
   if (parts[0]?.toLowerCase() !== slug.toLowerCase() || parts[1] !== "-") return null;
   const rest = parts.slice(2).join("/");
-  let found: { group: string; page: string; depth: number } | null = null;
+  let found: { group: string; page: string; parent: string; depth: number } | null = null;
   for (const group of WORKSPACE_SETTINGS_GROUPS) {
-    for (const page of group.pages) {
-      if (rest === page.path || rest.startsWith(`${page.path}/`)) {
-        const depth = page.path.split("/").length;
-        if (!found || depth > found.depth) found = { group: group.key, page: page.key, depth };
+    for (const top of group.pages) {
+      for (const page of [top, ...(top.pages ?? [])]) {
+        if (rest === page.path || rest.startsWith(`${page.path}/`)) {
+          const depth = page.path.split("/").length;
+          if (!found || depth > found.depth) found = { group: group.key, page: page.key, parent: top.key, depth };
+        }
       }
     }
   }
-  return found ? { group: found.group, page: found.page } : null;
+  return found ? { group: found.group, page: found.page, parent: found.parent } : null;
+}
+
+/** The workspace's settings: its Profile, where `-/settings` opens. */
+export function settingsPath(slug: string, page = "profile"): string {
+  return `/${slug}/-/settings/${page}`;
 }
 
 /** `?tab=` as people write it, from the tabs the workspace page once had: the page it means. */
@@ -166,7 +194,7 @@ const TAB_WORDS: Record<string, string> = {
   members: "-/members",
   teams: "-/teams",
   insights: "-/insights",
-  settings: "-/settings",
+  settings: "-/settings/profile",
 };
 
 /** Workspace pages that moved, by their old name under `-/`; a new address may carry a query of its own. */
@@ -284,7 +312,6 @@ const PAGE_MODES: Record<string, ModeKey> = {
   permissions: "workspace",
   sso: "workspace",
   teams: "people",
-  workspace: "workspace",
   usage: "workspace",
   billing: "workspace",
   "provider-costs": "workspace",
@@ -321,11 +348,7 @@ export function modeOf(pathname: string, slug: string | null): ModeKey {
   if (SITE_PAGES.has(parts[0] ?? "")) return "site";
   if (slug && parts[0]?.toLowerCase() === slug.toLowerCase()) {
     if (parts.length === 1) return "home";
-    if (parts[1] === "-") {
-      // The workspace's security settings are a policy; its alerts are Code's.
-      if (parts[2] === "security" && parts[3] === "settings") return "workspace";
-      return PAGE_MODES[parts[2] ?? ""] ?? "code";
-    }
+    if (parts[1] === "-") return PAGE_MODES[parts[2] ?? ""] ?? "code";
   }
   // Another workspace's chat, where the viewer is a guest: Chat all the same.
   if (parts[1] === "-" && parts[2] === "chat") return "chat";
@@ -352,7 +375,7 @@ export function modeHome(mode: ModeKey, slug: string): string {
     case "people":
       return `/${slug}/-/people`;
     case "workspace":
-      return `/${slug}/-/workspace`;
+      return settingsPath(slug);
     case "apps":
       return `/${slug}/-/apps`;
     case "account":
@@ -501,6 +524,9 @@ const WORK_REDIRECTS = new Set(["issues", "labels", "milestones", "ref"]);
 /** The workspace pages under `-/` that are Code's: closed to a member without Code access. */
 const CODE_PAGES = new Set(["overview", "code", "projects", "repositories", "packages", "security", "rules", "runners", "actions", "insights", "soon"]);
 
+/** The workspace's settings pages (under `-/settings/`) that are Code's, closed as Code's pages are. */
+const CODE_SETTINGS = new Set(["repositories", "rules", "runners", "actions", "security"]);
+
 /**
  * Where a member without Code access goes instead of `pathname`, or null
  * when the page is open to them. `noCode` is the workspaces (by slug) where
@@ -522,7 +548,10 @@ export function codeGate(pathname: string, search: string, noCode: readonly stri
   const from = `${path}${search && search !== "?" ? search : ""}`;
   // The workspace's own page is Home.
   if (parts.length === 1) return homePagePath(slug);
-  if (parts[1] === "-") return CODE_PAGES.has(parts[2] ?? "") ? codeAccessPath(slug, from) : null;
+  if (parts[1] === "-") {
+    const code = parts[2] === "settings" ? CODE_SETTINGS.has(parts[3] ?? "") : CODE_PAGES.has(parts[2] ?? "");
+    return code ? codeAccessPath(slug, from) : null;
+  }
   // An old link to a repository's issues, labels or milestones leads to
   // Work, which is every member's; a reference (`ref`) leads to what it names.
   if (WORK_REDIRECTS.has(parts[2] ?? "")) return null;

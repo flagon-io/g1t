@@ -184,17 +184,17 @@ const ALWAYS = [
   // Letting a device or an application in makes a token.
   /^\/(?:device|oauth\/authorize|auth\/github)(?:\/|$)/,
   // A workspace's own tokens, and its rules for and approvals of members' tokens.
-  /^\/[^/]+\/-\/(?:tokens|personal-access-tokens)(?:\/|$)/,
+  /^\/[^/]+\/-\/settings\/(?:tokens|personal-access-tokens)(?:\/|$)/,
 ];
 
 /** Form posts a token never makes: a page, the field that names the change, and the changes. */
 const CHANGES: { page: RegExp; field: string; values: string[] }[] = [
-  // Deleting a workspace.
-  { page: /^\/[^/]+\/-\/settings$/, field: "intent", values: ["delete"] },
+  // Deleting a workspace, on its Profile.
+  { page: /^\/[^/]+\/-\/settings\/profile$/, field: "intent", values: ["delete"] },
   // Giving a workspace to another owner.
-  { page: /^\/[^/]+\/-\/(?:members|people)$/, field: "action", values: ["transfer"] },
+  { page: /^\/[^/]+\/-\/(?:settings\/members|people)$/, field: "action", values: ["transfer"] },
   // Payment methods: the card on file, and the payment pages that take one.
-  { page: /^\/[^/]+\/-\/billing$/, field: "intent", values: ["portal", "card-check", "subscribe", "buy-ai-credit"] },
+  { page: /^\/[^/]+\/-\/settings\/billing$/, field: "intent", values: ["portal", "card-check", "subscribe", "buy-ai-credit"] },
 ];
 
 /** Whether a page opens nothing for a token whatever is posted to it. */

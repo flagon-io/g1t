@@ -542,7 +542,7 @@ impl Billing {
         if a.feature == Feature::Security {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
-                format!("Security and quality comes with the g1t plan, with no price of its own. Start the plan at /{workspace}/-/billing."),
+                format!("Security and quality comes with the g1t plan, with no price of its own. Start the plan at /{workspace}/-/settings/billing."),
             ));
         }
         let feature = Feature::Plan;
@@ -744,7 +744,7 @@ impl Billing {
             return Ok(Outcome::fail(
                 FailureCode::PaymentRequired,
                 format!(
-                    "Security and quality on private repositories comes with the g1t plan ($21 a month for the workspace, with $10 of usage included; scans at cost plus 20%), and {workspace} does not have it. An owner can start it at /{workspace}/-/billing."
+                    "Security and quality on private repositories comes with the g1t plan ($21 a month for the workspace, with $10 of usage included; scans at cost plus 20%), and {workspace} does not have it. An owner can start it at /{workspace}/-/settings/billing."
                 ),
             ));
         }
@@ -758,7 +758,7 @@ impl Billing {
         Ok(Outcome::fail(
             FailureCode::PaymentRequired,
             format!(
-                "{what} ($21 a month for the workspace, with $10 of usage included), and {workspace} does not have it. An owner can start it at /{workspace}/-/billing."
+                "{what} ($21 a month for the workspace, with $10 of usage included), and {workspace} does not have it. An owner can start it at /{workspace}/-/settings/billing."
             ),
         ))
     }

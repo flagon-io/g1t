@@ -65,7 +65,7 @@ export default function RepoRules({ loaderData, params }: Route.ComponentProps) 
   const own = rulesets.filter((ruleset) => ruleset.level === "repository");
   const inherited = rulesets.filter((ruleset) => ruleset.level === "workspace");
   const hrefFor = (id: string, level: "repository" | "workspace") =>
-    level === "workspace" ? `/${params.owner}/-/rules/${id}` : `${base}/settings/rules/${id}`;
+    level === "workspace" ? `/${params.owner}/-/settings/rules/${id}` : `${base}/settings/rules/${id}`;
   const tabLink = (name: "rulesets" | "insights") => {
     const next = new URLSearchParams(search);
     next.delete("before");

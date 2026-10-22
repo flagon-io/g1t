@@ -21,7 +21,7 @@ function view(over: Partial<DesktopRunnerView> = {}): DesktopRunnerView {
     workspaces: [{ slug: "acme", name: "Acme" }],
     enabled: true,
     paused: false,
-    link: "https://g1t.sh/acme/-/runners",
+    link: "https://g1t.sh/acme/-/settings/runners",
     machine: "build-box",
     platform: "windows",
     log: ["2026-10-12T08:00:00Z a line"],

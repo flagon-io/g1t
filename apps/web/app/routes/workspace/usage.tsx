@@ -106,7 +106,7 @@ export function UsageView({
   return (
     <div className="space-y-6">
       {bar}
-      {!fixedProject && <IncludedAndCredit report={report} billingHref={`/${slug}/-/billing`} owner={owner} />}
+      {!fixedProject && <IncludedAndCredit report={report} billingHref={`/${slug}/-/settings/billing`} owner={owner} />}
       <UsageChart
         columns={cols}
         products={report.products}

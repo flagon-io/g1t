@@ -351,7 +351,7 @@ impl Billing {
                 ("limit", false) => format!("g1t: about {workspace}'s limit"),
                 _ => format!("g1t: about {workspace}'s usage this month"),
             };
-            crate::limits::notify(identity, &workspace, &subject, &text, "Open billing", &format!("https://g1t.sh/{workspace}/-/billing"))
+            crate::limits::notify(identity, &workspace, &subject, &text, "Open billing", &format!("https://g1t.sh/{workspace}/-/settings/billing"))
                 .await;
         }
         Ok(match self.request(&a.id).await? {

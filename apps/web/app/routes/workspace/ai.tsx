@@ -432,7 +432,7 @@ function AddForm({ provider, slug, error }: { provider: AiProvider; slug: string
             <h3 className="font-medium">Add {isEndpoint(provider) ? `an ${AI_PROVIDERS[provider].label}` : AI_PROVIDERS[provider].label}</h3>
             <p className="text-xs text-muted">{AI_PROVIDER_LOOKS[provider].blurb}</p>
           </div>
-          <Link to={`/${slug}/-/ai`} className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-fg" aria-label="Close">
+          <Link to={`/${slug}/-/settings/ai`} className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-fg" aria-label="Close">
             <X size={16} />
           </Link>
         </div>

@@ -207,7 +207,7 @@ export function AiProviderTiles({ providers, slug, adding }: { providers: AiProv
       {providers.map((provider) => (
         <ProviderTile
           key={provider}
-          to={`/${slug}/-/ai?add=${provider}#add`}
+          to={`/${slug}/-/settings/ai?add=${provider}#add`}
           mark={<AiProviderMark provider={provider} size={28} />}
           label={AI_PROVIDERS[provider].label}
           blurb={AI_PROVIDER_LOOKS[provider].blurb}

@@ -42,7 +42,7 @@ export function SpikeBanner({
         <span>{compact ? (spike ? `${slug}: spending spiked, so new compute is paused.` : `${slug}: new compute is paused.`) : text}</span>
       </p>
       {spike && owner ? (
-        <Form method="post" action={`/${slug}/-/billing`} className={compact ? "flex gap-2" : "mt-4 flex flex-wrap gap-2"}>
+        <Form method="post" action={`/${slug}/-/settings/billing`} className={compact ? "flex gap-2" : "mt-4 flex flex-wrap gap-2"}>
           <input type="hidden" name="intent" value="spike" />
           <SubmitButton variant="accent" name="decision" value="keep" match={{ intent: "spike" }} pending="Starting…">
             <Play size={14} />

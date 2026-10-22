@@ -357,7 +357,7 @@ Workflow jobs with `runs-on: self-hosted` run on the workspace's own
 machines (`g1t-runner` on any OS, or the g1t desktop app's runner) at $0,
 on every plan. When the plan refuses a start, the call answers with a
 failure whose message says what to do and where (such as
-`/acme/-/billing`).
+`/acme/-/settings/billing`).
 
 ## MCP
 
@@ -470,7 +470,7 @@ variables need `admin`, seeing them included; security alerts need
 `write` (dismissing a dependency alert too), dismissing or reopening a
 secret alert `admin`, turning security updates on or off `maintain`;
 enabling or disabling a workflow needs `maintain`. Members: the
-workspace's Members and invites (`g1t.sh/<owner>/-/members`, with an
+workspace's Members and invites (`g1t.sh/<owner>/-/settings/members`, with an
 Outside collaborators tab and the Base permission for owners); a repository's
 Settings → Access (`g1t.sh/<owner>/<repo>/settings/access`); invitations
 are answered at `g1t.sh/<owner>/<repo>/invitations`.
@@ -587,7 +587,7 @@ https://docs.g1t.sh/guides/secrets-and-variables/
 Self-hosted runners: a job with `runs-on: self-hosted` (or
 `[self-hosted, linux, gpu]`, or `{group: name}`) waits until a runner of the
 workspace's with every label takes it. Owners add one under
-`g1t.sh/<workspace>/-/runners`: a one-hour registration token, then
+`g1t.sh/<workspace>/-/settings/runners`: a one-hour registration token, then
 `g1t-runner register --url https://g1t.sh --token g1trt_…` and
 `g1t-runner run`. The g1t desktop app (Windows, macOS, Linux) also runs
 one for the workspace while it is open, with nothing to register. Runners
@@ -793,7 +793,7 @@ https://docs.g1t.sh/guides/search/
   an hour). Limits: $100 in a
   paid workspace's first month, rising as payments clear; owners set a
   spend limit, prepay, or ask with Raise my limit. A spend spike pauses new compute until an owner
-  chooses Keep going or Stop (`/<workspace>/-/billing`). Audit log: 90 days
+  chooses Keep going or Stop (`/<workspace>/-/settings/billing`). Audit log: 90 days
   on every plan.
 
 ## More

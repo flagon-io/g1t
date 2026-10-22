@@ -138,7 +138,7 @@ test("a workspace shows its name and how many projects are public", async () => 
     avatar: null,
   });
   // Its members-only pages show the same public card.
-  assert.equal((await resolve("/acme/-/billing", s)).kind, "workspace");
+  assert.equal((await resolve("/acme/-/settings/billing", s)).kind, "workspace");
   assert.equal((await resolve("/nobody", s)).kind, "brand");
 });
 

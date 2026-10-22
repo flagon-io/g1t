@@ -145,7 +145,7 @@ export const CONNECTORS: Connector[] = [
     description: "Every repository's events, sent to your own addresses as they happen, signed.",
     scopes: W,
     status: "available",
-    href: { workspace: "/:workspace/-/webhooks" },
+    href: { workspace: "/:workspace/-/settings/webhooks" },
     capabilities: ["Sends events"],
     keywords: ["http", "events", "outgoing"],
   },
@@ -169,7 +169,7 @@ export const CONNECTORS: Connector[] = [
     description: "Agents read ENG-42 when work mentions it; import them as work items, and they hear back when the work lands.",
     scopes: BOTH,
     status: "available",
-    href: { workspace: "/:workspace/-/integrations/trackers?add=linear#add" },
+    href: { workspace: "/:workspace/-/settings/integrations/trackers?add=linear#add" },
     capabilities: ["Agents can read", "Writes back"],
     provider: "linear",
     personal: {
@@ -186,7 +186,7 @@ export const CONNECTORS: Connector[] = [
     description: "Agents read TECH-1234 when work mentions it; import tickets, and they hear back when the work lands.",
     scopes: W,
     status: "available",
-    href: { workspace: "/:workspace/-/integrations/trackers?add=jira#add" },
+    href: { workspace: "/:workspace/-/settings/integrations/trackers?add=jira#add" },
     capabilities: ["Agents can read", "Writes back"],
     provider: "jira",
     keywords: ["atlassian", "tracker", "tickets"],
@@ -234,7 +234,7 @@ export const CONNECTORS: Connector[] = [
     description: "New errors open work items with the stack trace, and resolve in Sentry when the fix merges.",
     scopes: W,
     status: "available",
-    href: { workspace: "/:workspace/-/integrations/alerts?add=sentry#add" },
+    href: { workspace: "/:workspace/-/settings/integrations/alerts?add=sentry#add" },
     capabilities: ["Opens work items", "Agents can read", "Writes back"],
     provider: "sentry",
     keywords: ["errors", "alerts", "exceptions"],
@@ -246,7 +246,7 @@ export const CONNECTORS: Connector[] = [
     description: "Monitors that trigger open work items, and recoveries are noted on them.",
     scopes: W,
     status: "available",
-    href: { workspace: "/:workspace/-/integrations/alerts?add=datadog#add" },
+    href: { workspace: "/:workspace/-/settings/integrations/alerts?add=datadog#add" },
     capabilities: ["Opens work items"],
     provider: "datadog",
     keywords: ["monitors", "alerts", "apm"],
@@ -258,7 +258,7 @@ export const CONNECTORS: Connector[] = [
     description: "Anything that can send signed JSON opens work items: your own scripts, or any monitoring tool.",
     scopes: W,
     status: "available",
-    href: { workspace: "/:workspace/-/integrations/alerts?add=webhook#add" },
+    href: { workspace: "/:workspace/-/settings/integrations/alerts?add=webhook#add" },
     capabilities: ["Opens work items"],
     provider: "webhook",
     keywords: ["incoming", "http", "alerts", "pagerduty", "grafana"],
@@ -292,7 +292,7 @@ export const CONNECTORS: Connector[] = [
   soon("kubernetes", "Kubernetes", "cloud", W, "Roll out to your own clusters from workflows, with each rollout's status on g1t.", ["Deploys"]),
 
   // AI & agents. AI providers are not connectors: they are each workspace's
-  // own AI settings, at /:workspace/-/ai.
+  // own AI settings, at /:workspace/-/settings/ai.
   {
     id: "mcp",
     name: "MCP clients",

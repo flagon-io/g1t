@@ -55,7 +55,7 @@ function dayLabel(day: string): string {
  */
 export function StatementView({ slug, statement, group }: { slug: string; statement: Statement; group: "day" | "project" }) {
   const navigate = useNavigate();
-  const go = (month: string, by: string) => navigate(`/${slug}/-/billing?month=${month}&group=${by}#statement`, { preventScrollReset: true });
+  const go = (month: string, by: string) => navigate(`/${slug}/-/settings/billing?month=${month}&group=${by}#statement`, { preventScrollReset: true });
   const months = statement.months.includes(statement.month) ? statement.months : [statement.month, ...statement.months];
   const { totals } = statement;
   // With a discount, every line at its price, and the discount beside it.
@@ -86,7 +86,7 @@ export function StatementView({ slug, statement, group }: { slug: string; statem
         </Tabs>
         {totals.entries > 0 && (
           <a
-            href={`/${slug}/-/billing/statement.csv?month=${statement.month}`}
+            href={`/${slug}/-/settings/billing/statement.csv?month=${statement.month}`}
             className="flex h-8 items-center gap-1.5 rounded-md border border-line px-2.5 text-[0.8125rem] text-muted hover:border-line-strong hover:text-fg"
             download
           >
@@ -264,7 +264,7 @@ function StatementLineRow({
     if (day) query.set("day", day);
     if (project !== null) query.set("project", project);
     if (before) query.set("before", before);
-    fetcher.load(`/${slug}/-/billing/entries?${query}`);
+    fetcher.load(`/${slug}/-/settings/billing/entries?${query}`);
   };
 
   const toggle = () => {

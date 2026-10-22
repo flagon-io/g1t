@@ -132,7 +132,7 @@ export default function HomeSummary({ slug, question, onDone }: { slug: string; 
           {state.message}{" "}
           {state.setup &&
             (state.owner ? (
-              <Link to={`/${slug}/-/ai#ask`} className="text-accent hover:underline">
+              <Link to={`/${slug}/-/settings/ai#ask`} className="text-accent hover:underline">
                 Connect a provider and choose it for Ask.
               </Link>
             ) : (

@@ -35,7 +35,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const user = requireUser(context, request);
   const form = await request.formData();
   const owner = { workspace: params.owner };
-  const list = `/${params.owner}/-/rules`;
+  const list = `/${params.owner}/-/settings/rules`;
   if (form.get("intent") === "delete" && params.id !== "new") {
     const deleted = await work.deleteRuleset(user, owner, params.id);
     return deleted.ok ? redirect(list) : { error: deleted.error.message };
@@ -52,7 +52,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 export default function WorkspaceRuleset({ loaderData, actionData, params }: Route.ComponentProps) {
   const { existing, editable } = loaderData;
-  const list = `/${params.owner}/-/rules`;
+  const list = `/${params.owner}/-/settings/rules`;
   return (
     <div className="mx-auto max-w-4xl">
       <header className="mb-6 border-b border-line pb-5">
