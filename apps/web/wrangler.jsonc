@@ -74,7 +74,13 @@
   // Cloudflare Turnstile on email sign-up (app/lib/turnstile.ts): the
   // widget's public site key here, and its secret as the TURNSTILE_SECRET
   // secret. Either one empty turns it off.
-  "vars": { "TURNSTILE_SITE_KEY": "0x4AAAAAAFWhRDwKfGS3CEvZ" },
+  "vars": {
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAFWhRDwKfGS3CEvZ",
+    // The Access application in front of the preview addresses: a request
+    // to one must carry its token (app/lib/preview-access.ts).
+    "PREVIEW_ACCESS_TEAM": "syntaqx.cloudflareaccess.com",
+    "PREVIEW_ACCESS_AUD": "2914e174ef1d001c54cd6157814ca33dfc96d23400c67a8f4048c6e05f4c24bc"
+  },
   "observability": { "enabled": true, "head_sampling_rate": 0.1 },
   "upload_source_maps": true
 }
