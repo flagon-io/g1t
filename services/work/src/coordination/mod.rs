@@ -2,8 +2,9 @@
 //! (`g1t_contracts::work::coordination`): sessions of their own harnesses
 //! on a repository (sessions.rs), advisory claims on work items
 //! (claims.rs), what a work item is blocked by (dependencies.rs), pull
-//! requests that start changing the same files (overlaps.rs), and the one
-//! call that gathers it all for a work item (context.rs).
+//! requests that start changing the same files (overlaps.rs), the one
+//! call that gathers it all for a work item (context.rs), and what
+//! harnesses' own telemetry says sessions used (telemetry.rs).
 //!
 //! Nothing here is a lock and nothing waits on a harness: sessions and
 //! claims that went quiet are found when the repository's coordination is
@@ -17,6 +18,7 @@ mod links;
 mod overlaps;
 mod sessions;
 pub(crate) mod shown;
+mod telemetry;
 pub(crate) mod titles;
 mod workspace;
 #[cfg(test)]
