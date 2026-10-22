@@ -191,7 +191,7 @@ impl Work {
                 let message = pushed.commits.iter().find(|pushed| pushed.hash == *commit).map(|pushed| pushed.message.as_str());
                 let session = self.trailer_session(&repo.id, message.unwrap_or_default()).await?;
                 let landing =
-                    items::Landing { pull: None, commit: Some(commit.clone()), pushed_by: Some(actor.username.clone()) };
+                    items::Landing { pull: None, commit: Some(commit.clone()), pushed_by: Some(actor.username.clone()), tie: None };
                 let (closes, parts) = if closing { (vec![id], Vec::new()) } else { (Vec::new(), vec![id]) };
                 items::land(self, &repo, &landing, &actor, &closes, &parts, session.as_deref(), agent).await?;
             }

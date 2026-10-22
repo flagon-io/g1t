@@ -7,6 +7,14 @@
 //! ([`LAND_SQL`]); the work item closes once it has landed in every target
 //! it has, or at once when it has none. What it is part of is linked
 //! (`touched`), and closes nothing.
+//!
+//! Closing a work item by hand with a commit (`close_work_item` with
+//! `commit`) lands it too, for a commit on the default branch that is tied
+//! to it ([`tie`]): one whose message names it after a closing keyword, the
+//! commit a pull request merged as whose own work item, `closes` or
+//! `parts` names it, or, for someone with the Write role, any commit, the
+//! explicit request standing for its message. Automatic closing, from
+//! pushes and merges, still needs the closing keyword.
 
 use g1t_contracts::events::WorkItemEvent;
 use g1t_contracts::repos::{BranchDriftArgs, BranchDrifts, Commit, LogArgs, Repo, RepoPath};
@@ -29,6 +37,83 @@ pub(crate) struct Landing {
     pub pull: Option<u32>,
     pub commit: Option<String>,
     pub pushed_by: Option<String>,
+    /// For a commit tied to a work item by hand: how it was.
+    pub tie: Option<Tie>,
+}
+
+/// How a commit closing a work item by hand (`close_work_item` with
+/// `commit`) is tied to it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Tie {
+    /// Its message names the work item after a closing keyword.
+    Named,
+    /// A pull request (this number) merged as it, and names the work item:
+    /// as its own, in its `closes` or `parts`, or in its title or
+    /// description.
+    Merged(u32),
+    /// Nothing names the work item: someone with the Write role tied it.
+    ByHand,
+}
+
+/// How a commit is tied to a work item for an explicit close: whether its
+/// message `names` it, the pull request it is the merge of that names it
+/// (`merged`), and whether the actor `may_push` (has the Write role). None
+/// when it may not be: nothing names it and the actor lacks Write.
+pub(crate) fn tie(names: bool, merged: Option<u32>, may_push: bool) -> Option<Tie> {
+    match (names, merged) {
+        (true, _) => Some(Tie::Named),
+        (false, Some(pull)) => Some(Tie::Merged(pull)),
+        (false, None) => may_push.then_some(Tie::ByHand),
+    }
+}
+
+/// Where a commit stands against the default branch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum OnBranch {
+    On,
+    Off,
+    /// Too far back to tell.
+    Unknown,
+}
+
+/// Where a commit stands against the default branch: on it when it is its
+/// head (`at_tip`), else by how far `ahead` of the head it is, when that
+/// could be told. Ahead of it by any commit, it is not on it.
+pub(crate) fn on_branch(at_tip: bool, ahead: Option<u32>) -> OnBranch {
+    match (at_tip, ahead) {
+        (true, _) => OnBranch::On,
+        (false, Some(0)) => OnBranch::On,
+        (false, Some(_)) => OnBranch::Off,
+        (false, None) => OnBranch::Unknown,
+    }
+}
+
+/// What a note of a landing by hand adds after `what` (landing_note):
+/// what tied the commit; the note's author is who did.
+pub(crate) fn tie_note(path: &str, tie: Option<Tie>) -> String {
+    match tie {
+        None => String::new(),
+        Some(Tie::Named) => ", which names it".to_owned(),
+        Some(Tie::Merged(pull)) => format!(", which merged {path}#{pull}"),
+        Some(Tie::ByHand) => ", tied by hand: the commit does not name it".to_owned(),
+    }
+}
+
+/// The pull requests of repository `?1` that merged as commit `?2`, and
+/// whether each names work item `?3` as its own or in what it closed or
+/// was part of when it merged.
+const MERGED_AS: &str = "SELECT number, title, body,
+       (item_id IS ?3 OR EXISTS (SELECT 1 FROM json_each(pulls.closes_items) WHERE value = ?3)
+         OR EXISTS (SELECT 1 FROM json_each(pulls.parts) WHERE value = ?3)) AS names
+     FROM pulls WHERE repo_id = ?1 AND status = 'merged' AND merge_commit = ?2
+     ORDER BY number LIMIT 5";
+
+#[derive(Deserialize)]
+struct MergedAs {
+    number: u32,
+    title: String,
+    body: Option<String>,
+    names: u8,
 }
 
 /// Landing a work item (`?1`) in repository `?2` at `?3`, by `?4` (an
@@ -139,7 +224,7 @@ impl Work {
             commit: landing.commit.clone(),
             pushed_by: landing.pushed_by.clone(),
         };
-        let what = landing_note(&path, landing.pull, landing.commit.as_deref());
+        let what = landing_note(&path, landing.pull, landing.commit.as_deref()) + &tie_note(&path, landing.tie);
         let mut closed = Vec::new();
         for id in closes {
             let Some(before) = self.item_by_id(id).await? else { continue };
@@ -235,16 +320,16 @@ impl Work {
     }
 
     /// `close_work_item` with a commit: the commit, on the default branch
-    /// of `repo`, whose message names work item `held` after a closing
-    /// keyword, with the session it names, if it names one of this
-    /// repository's. Anything else is refused, saying why.
+    /// of `repo`, tied to work item `held` (see [`tie`]), with the session
+    /// it names, if it names one of this repository's, and how it is tied.
+    /// Anything else is refused, saying why.
     pub(super) async fn closing_commit(
         &self,
         repo: &Repo,
         held: &Held,
         commit: &str,
         actor: &User,
-    ) -> Result<Outcome<(String, Option<String>)>> {
+    ) -> Result<Outcome<(String, Option<String>, Tie)>> {
         let number = held.item.number;
         let commit = commit.trim().to_lowercase();
         if !(4..=64).contains(&commit.len()) || !commit.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -276,12 +361,18 @@ impl Work {
                 break;
             }
         }
-        if !names {
+        let merged = if names { None } else { self.merged_naming(repo, held, &found.hash).await? };
+        let may_push = matches!(crate::allowed(Some(actor), repo, g1t_contracts::access::Capability::Push), Outcome::Ok(()));
+        let Some(tie) = tie(names, merged, may_push) else {
             return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                format!("Commit {short} does not close #{number}: its message names it after no closing keyword (Fixes #{number})."),
+                FailureCode::Forbidden,
+                format!(
+                    "Commit {short} does not name #{number} (Fixes #{number}), nor is it the merge of a pull request that does: \
+                     tying it to #{number} by hand takes the Write role on {}/{}.",
+                    repo.namespace, repo.name
+                ),
             ));
-        }
+        };
         let head = match head? {
             Outcome::Ok(commits) => commits.into_iter().next(),
             Outcome::Fail(_) => None,
@@ -289,35 +380,64 @@ impl Work {
         let Some(head) = head else {
             return Ok(Outcome::fail(FailureCode::Invalid, format!("Commit {short} is not on {}.", repo.default_branch)));
         };
-        if head.hash != found.hash {
+        let at_tip = head.hash == found.hash;
+        let ahead = if at_tip {
+            None
+        } else {
             let drifts: Outcome<BranchDrifts> = g1t_kit::call(
                 &self.repos,
                 "branch_drift",
                 &BranchDriftArgs { path: path.clone(), viewer: Some(actor.clone()), base: head.hash, heads: vec![found.hash.clone()] },
             )
             .await?;
-            let drift = match drifts {
-                Outcome::Ok(drifts) => drifts.branches.into_iter().next().and_then(|branch| branch.drift),
+            match drifts {
+                Outcome::Ok(drifts) => drifts.branches.into_iter().next().and_then(|branch| branch.drift).map(|drift| drift.ahead),
                 Outcome::Fail(_) => None,
-            };
-            match drift {
-                Some(drift) if drift.ahead == 0 => {}
-                Some(_) => {
-                    return Ok(Outcome::fail(
-                        FailureCode::Invalid,
-                        format!("Commit {short} is not on {}, the default branch: only a commit there closes a work item.", repo.default_branch),
-                    ));
-                }
-                None => {
-                    return Ok(Outcome::fail(
-                        FailureCode::Invalid,
-                        format!("Could not tell whether commit {short} is on {}: it is too far back.", repo.default_branch),
-                    ));
-                }
+            }
+        };
+        match on_branch(at_tip, ahead) {
+            OnBranch::On => {}
+            OnBranch::Off => {
+                return Ok(Outcome::fail(
+                    FailureCode::Invalid,
+                    format!("Commit {short} is not on {}, the default branch: only a commit there closes a work item.", repo.default_branch),
+                ));
+            }
+            OnBranch::Unknown => {
+                return Ok(Outcome::fail(
+                    FailureCode::Invalid,
+                    format!("Could not tell whether commit {short} is on {}: it is too far back.", repo.default_branch),
+                ));
             }
         }
         let session = self.trailer_session(&repo.id, &found.message).await?;
-        Ok(Outcome::Ok((found.hash, session)))
+        Ok(Outcome::Ok((found.hash, session, tie)))
+    }
+
+    /// The pull request of `repo` that merged as commit `hash` and names
+    /// work item `held`: as its own, in what it closed or was part of when
+    /// it merged, or after `Closes` or `Part of` in its title or
+    /// description as they read now.
+    async fn merged_naming(&self, repo: &Repo, held: &Held, hash: &str) -> Result<Option<u32>> {
+        let pulls = self
+            .db
+            .prepare(MERGED_AS)
+            .bind(&[repo.id.as_str().into(), hash.into(), held.item.id.as_str().into()])?
+            .all()
+            .await?
+            .results::<MergedAs>()?;
+        for pull in pulls {
+            if pull.names != 0 {
+                return Ok(Some(pull.number));
+            }
+            let named = refs::named(&format!("{}\n{}", pull.title, pull.body.as_deref().unwrap_or_default()));
+            for reference in named.closes.iter().chain(&named.parts) {
+                if self.ref_item(repo, reference).await?.as_deref() == Some(held.item.id.as_str()) {
+                    return Ok(Some(pull.number));
+                }
+            }
+        }
+        Ok(None)
     }
 
     /// `closed_by_commit`: the work items a commit pushed to a repository
@@ -375,6 +495,78 @@ mod tests {
     fn a_landing_is_named_by_its_pull_request_or_commit() {
         assert_eq!(landing_note("acme/web", Some(12), None), "acme/web#12");
         assert_eq!(landing_note("acme/web", None, Some("abcdef1234")), "acme/web@abcdef1");
+    }
+
+    #[test]
+    fn an_explicit_close_ties_any_commit_for_someone_with_write() {
+        // A commit that names the work item, or the merge of a pull request
+        // that does, needs nothing more.
+        assert_eq!(tie(true, None, false), Some(Tie::Named));
+        assert_eq!(tie(true, Some(14), true), Some(Tie::Named));
+        assert_eq!(tie(false, Some(14), false), Some(Tie::Merged(14)));
+        // One that does not is tied by hand, only with the Write role.
+        assert_eq!(tie(false, None, true), Some(Tie::ByHand));
+        assert_eq!(tie(false, None, false), None);
+    }
+
+    #[test]
+    fn only_a_commit_on_the_default_branch_closes_a_work_item() {
+        assert_eq!(on_branch(true, None), OnBranch::On);
+        assert_eq!(on_branch(false, Some(0)), OnBranch::On);
+        assert_eq!(on_branch(false, Some(2)), OnBranch::Off);
+        assert_eq!(on_branch(false, None), OnBranch::Unknown);
+    }
+
+    #[test]
+    fn the_note_says_what_tied_the_commit() {
+        let what = |tie| landing_note("acme/web", None, Some("abcdef1234")) + &tie_note("acme/web", tie);
+        assert_eq!(what(None), "acme/web@abcdef1");
+        assert_eq!(what(Some(Tie::Named)), "acme/web@abcdef1, which names it");
+        assert_eq!(what(Some(Tie::Merged(14))), "acme/web@abcdef1, which merged acme/web#14");
+        assert_eq!(what(Some(Tie::ByHand)), "acme/web@abcdef1, tied by hand: the commit does not name it");
+    }
+
+    #[test]
+    fn a_merge_commit_names_what_its_pull_request_landed() {
+        let db = crate::migrated::database();
+        db.execute_batch(
+            "INSERT INTO work_items (id, workspace, number, title, body, state, resolutions, author_id, author_name, created_at, updated_at)
+             VALUES ('wki_1', 'acme', 1, 'One', '', 'open', '[]', 'user', 'user', 'now', 'now'),
+                    ('wki_2', 'acme', 2, 'Two', '', 'open', '[]', 'user', 'user', 'now', 'now');",
+        )
+        .unwrap();
+        let pull = |id: &str, repo: &str, number: u32, status: &str, merge: &str, item: Option<&str>, closes: &str, parts: &str| {
+            db.execute(
+                "INSERT INTO pulls (id, repo_id, number, title, body, agent, runtime, status, merge_commit, item_id, closes_items, parts,
+                   author_id, author_name, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, 'Fix', NULL, 'a', 'r', ?4, ?5, ?6, ?7, ?8, 'user', 'user', 'now', 'now')",
+                params![id, repo, number, status, merge, item, closes, parts],
+            )
+            .unwrap();
+        };
+        pull("pr_own", "repo", 14, "merged", "m14", Some("wki_1"), "[]", "[]");
+        pull("pr_closes", "repo", 15, "merged", "m15", None, r#"["wki_1"]"#, "[]");
+        pull("pr_part", "repo", 16, "merged", "m16", None, "[]", r#"["wki_2","wki_1"]"#);
+        pull("pr_other", "repo", 17, "merged", "m17", Some("wki_2"), r#"["wki_2"]"#, "[]");
+        pull("pr_open", "repo", 18, "open", "m18", Some("wki_1"), "[]", "[]");
+        pull("pr_away", "away", 14, "merged", "m14b", Some("wki_1"), "[]", "[]");
+        let merged = |repo: &str, commit: &str| -> Vec<(u32, u8)> {
+            db.prepare(MERGED_AS)
+                .unwrap()
+                .query_map(params![repo, commit, "wki_1"], |row| Ok((row.get(0)?, row.get(3)?)))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect()
+        };
+        assert_eq!(merged("repo", "m14"), vec![(14, 1)]);
+        assert_eq!(merged("repo", "m15"), vec![(15, 1)]);
+        assert_eq!(merged("repo", "m16"), vec![(16, 1)]);
+        // Another work item's merge is found, naming nothing of #1's.
+        assert_eq!(merged("repo", "m17"), vec![(17, 0)]);
+        // Not merged, or merged elsewhere: nothing.
+        assert_eq!(merged("repo", "m18"), vec![]);
+        assert_eq!(merged("repo", "m14b"), vec![]);
+        assert_eq!(g1t_kit::rename::parameters(MERGED_AS), 3);
     }
 
     #[test]

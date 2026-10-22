@@ -1323,7 +1323,7 @@ g1t work close [OPTIONS] <NUMBER>
 | `<NUMBER>` |  |
 | `-r, --reason <REASON>` | One of `completed`, `not_planned`. |
 | `-c, --comment <COMMENT>` | Leave a comment as it closes. |
-| `--commit <COMMIT>` | The commit on the repository's default branch that did it: its message names the work item after a closing keyword (Fixes #12). Its full hash. It lands there; the work item closes when nothing else is left to land. |
+| `--commit <COMMIT>` | The commit on the repository's default branch that did it, by its full hash: any commit there with the Write role, else one whose message names the work item (Fixes #12) or a pull request's merge commit that names it. It lands there; the work item closes when nothing else is left to land. |
 | `--sub-items <SUB_ITEMS>` | What to do with its sub-items that are still open. One of `leave`, `close`, `move`. |
 | `--move-to <NUMBER>` | With --sub-items move: the number of the work item they become sub-items of. |
 

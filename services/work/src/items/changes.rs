@@ -359,12 +359,12 @@ impl Work {
                 return Ok(Outcome::fail(FailureCode::Invalid, "Say which repository the commit is in (repo)."));
             };
             let found = check!(self.repo(path, &Some(a.actor.clone())).await?);
-            let (commit, named) = check!(self.closing_commit(&found, &held, commit, &a.actor).await?);
+            let (commit, named, tie) = check!(self.closing_commit(&found, &held, commit, &a.actor).await?);
             let session = match named {
                 Some(session) => Some(session),
                 None => self.caller_session(&held, &a.actor).await?,
             };
-            let landing = Landing { pull: None, commit: Some(commit), pushed_by: Some(a.actor.username.clone()) };
+            let landing = Landing { pull: None, commit: Some(commit), pushed_by: Some(a.actor.username.clone()), tie: Some(tie) };
             self.land(&found, &landing, &a.actor, std::slice::from_ref(&held.item.id), &[], session.as_deref(), false).await?;
             return Ok(match self.item_by_id(&held.item.id).await? {
                 Some(after) if after.item.state == State::Open && !after.item.missing().is_empty() => {

@@ -1596,9 +1596,10 @@ pub struct WorkCloseArgs {
     /// Leave a comment as it closes.
     #[arg(short, long)]
     pub comment: Option<String>,
-    /// The commit on the repository's default branch that did it: its message names the work item
-    /// after a closing keyword (Fixes #12). Its full hash. It lands there; the work item closes when
-    /// nothing else is left to land.
+    /// The commit on the repository's default branch that did it, by its full hash: any commit
+    /// there with the Write role, else one whose message names the work item (Fixes #12) or a pull
+    /// request's merge commit that names it. It lands there; the work item closes when nothing else
+    /// is left to land.
     #[arg(long)]
     pub commit: Option<String>,
     /// What to do with its sub-items that are still open.

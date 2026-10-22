@@ -405,11 +405,12 @@ pub struct WorkItemActionArgs {
 
 /// `close_work_item`: a [`WorkItemActionArgs`], and the commit that did
 /// it, if one did. With `commit` (and `repo`, the repository it is in), a
-/// commit on that repository's default branch whose message names the
-/// work item after a closing keyword (`Fixes #12`): it lands there as the
-/// push of that commit would have, and closes when nothing else is left to
-/// land; a commit not on the default branch, or one that does not name it,
-/// is refused. Returns `Outcome<WorkItem>`.
+/// commit on that repository's default branch: any commit there for
+/// someone with the Write role, else one whose message names the work item
+/// after a closing keyword (`Fixes #12`) or the commit a pull request
+/// naming it merged as. It lands there as the push of that commit would
+/// have, and closes when nothing else is left to land; a commit not on the
+/// default branch is refused. Returns `Outcome<WorkItem>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CloseWorkItemArgs {
     #[serde(flatten)]

@@ -127,21 +127,36 @@ and tells the work items [blocked by it](/work/claims-and-dependencies/#dependen
 
 ## Close one with a commit
 
-A commit already on the default branch can land a work item later: one
-pushed before the work item was filed, or while `auto_close_items` was
-off.
+A commit already on the default branch can land a work item after the
+fact: one pushed before the work item was filed, one whose message never
+named it, or one pushed while `auto_close_items` was off.
 
 ```sh
 g1t work close 12 --commit 3f9a2c1e…
 ```
 
 In the repository, give the commit's full hash. Over MCP and the API,
-`close` takes `repo` and `commit`. The commit's message must name the work
-item after a closing keyword. Its repository then lands in that commit,
-the way a push of it would have, by whoever did it, and the work item
-closes if no target is left. A commit that is not on the default branch,
-or whose message does not name the work item, is refused, and so is a work
-item that is already closed.
+`close` takes `repo` and `commit`. Which commits it accepts:
+
+- **With the Write role** on the repository, any commit on its default
+  branch. Asking for it is what ties the commit to the work item, so its
+  message need not name it.
+- **Without it** (the work item's owner, or the Triage role), a commit
+  whose message names the work item after a closing keyword
+  (`Fixes #12`), or the commit a pull request merged as, when that pull
+  request was made for the work item, or its title or description names
+  it after `Closes` or `Part of`.
+
+Its repository then lands in that commit, the way a push of it would have,
+by whoever did it, and the work item closes if no target is left. The
+timeline says who tied it and how: **closed this in acme/web@3f9a2c1,
+which names it**, **…, which merged acme/web#14**, or **…, tied by hand:
+the commit does not name it**. A commit that is not on the default branch
+is refused, and so is a work item that is already closed.
+
+Closing from pushes and merges is unchanged: a commit or pull request
+closes a work item by itself only when it names it after a closing
+keyword.
 
 ## Reopen one
 

@@ -1487,7 +1487,7 @@
         }
       ]
     },
-    "notes": "With `commit` and `repo`, a commit already on that repository's default branch whose message names the work item after a closing keyword (`Fixes #12`), it lands there as pushing it would have: a resolution is recorded, the event is `work_item.landed` (and `work_item.closed` with `resolutions` once nothing else is left to land), and the timeline says \"landed this in\" the commit, linked. Give `commit` as its full hash. A commit not on the default branch, or one whose message does not name the work item, is refused (`422`); a work item already closed is `409`, saying what closed it. See [Closing work items](/guides/pull-requests/#closing-work-items)."
+    "notes": "With `commit` and `repo`, a commit already on that repository's default branch (any commit there with the Write role; without it, one whose message names the work item after a closing keyword, `Fixes #12`, or the commit a pull request naming it merged as), it lands there as pushing it would have: a resolution is recorded, the event is `work_item.landed` (and `work_item.closed` with `resolutions` once nothing else is left to land), and the timeline says \"landed this in\" the commit, linked. Give `commit` as its full hash. A commit not on the default branch is refused (`422`), and one nothing ties to the work item, from someone without Write, `403`; a work item already closed is `409`, saying what closed it. See [Closing work items](/guides/pull-requests/#closing-work-items)."
   },
   "reopen_work_item": {
     "response": {
