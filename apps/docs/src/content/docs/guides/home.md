@@ -3,10 +3,9 @@ title: Home
 description: Your workspace's front page. A box that asks g1t, your move (everything waiting on you, and the one item to start with), the agents, runs and builds going now, this week's work day by day with what is worth a look, and what happened since you were last here in plain English. How every number is worked out.
 ---
 
-**Home** is the first page of your workspace. On a computer it is where
-**Chat** opens, at `/<workspace>/-/chat`, with your conversations and
-sessions beside it; on a phone it is the **Home** tab, at
-`/<workspace>/-/home`.
+**Home** is the first page of your workspace and the first tab in the app
+bar, at `/<workspace>/-/home`, on a computer and on a phone alike. g1t and
+your workspace's own address open there.
 It reads top to bottom, from what you can do now to what already happened:
 
 1. **What are we building today?**: a box that [asks g1t](#ask-from-home)

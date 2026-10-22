@@ -490,13 +490,9 @@ export function shellMode(pathname: string, viewer: Viewer): ModeKey {
   return browsingOf(pathname, viewer) ? "browse" : modeOf(pathname, viewer.slug);
 }
 
-/**
- * A workspace's front page: Chat, which opens on Home on a computer
- * (routes/workspace/chat/index.tsx). A phone's Home tab is Home's own
- * page (`modeHome("home")`).
- */
+/** A workspace's front page: Home, the first tab, on every device. */
 export function homePagePath(slug: string): string {
-  return `/${slug}/-/chat`;
+  return `/${slug}/-/home`;
 }
 
 /**

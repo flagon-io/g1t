@@ -129,7 +129,7 @@ test("the rail's mode follows the address", async () => {
   assert.equal(modeHome("apps", "acme"), "/acme/-/apps");
   assert.equal(modeHome("code", "acme"), "/acme/-/overview");
   assert.equal(modeHome("workspace", "acme"), "/acme/-/settings/profile");
-  assert.equal(homePath("acme"), "/acme/-/chat");
+  assert.equal(homePath("acme"), "/acme/-/home");
   assert.equal(homePath("acme", "?tab=landed&_routes=x"), "/acme/-/overview?tab=landed");
 });
 
@@ -168,9 +168,9 @@ test("Workspace mode's sidebar knows which group and page an address is", async 
 test("a member without Code access is sent around Code's pages", async () => {
   const { codeGate } = await import("./workspace-nav.ts");
   const none = ["acme"];
-  assert.equal(codeGate("/", "", none, "acme"), "/acme/-/chat");
+  assert.equal(codeGate("/", "", none, "acme"), "/acme/-/home");
   assert.equal(codeGate("/", "", none, "other"), null);
-  assert.equal(codeGate("/acme", "", none, "acme"), "/acme/-/chat");
+  assert.equal(codeGate("/acme", "", none, "acme"), "/acme/-/home");
   assert.equal(codeGate("/acme/web/pull/3", "?x=1", none, "acme"), "/acme/-/code-access?from=%2Facme%2Fweb%2Fpull%2F3%3Fx%3D1");
   assert.equal(codeGate("/acme/-/projects", "", none, "acme"), "/acme/-/code-access?from=%2Facme%2F-%2Fprojects");
   assert.equal(codeGate("/acme/-/code/repositories", "", none, "acme"), "/acme/-/code-access?from=%2Facme%2F-%2Fcode%2Frepositories");
