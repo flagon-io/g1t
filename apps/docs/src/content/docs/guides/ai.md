@@ -3,7 +3,7 @@ title: AI providers
 description: Choose the models g1t works with in your workspace. Use a frontier lab or a model platform, or a model you host yourself, on your own keys. Ask, @g1t in Chat and sessions on work items answer with them.
 ---
 
-**AI**, at `g1t.sh/<workspace>/-/ai`, is where a workspace chooses the
+**AI**, at `g1t.sh/<workspace>/-/settings/ai`, is where a workspace chooses the
 models g1t works with. It is one of the workspace's own settings, like
 Billing or Runners, and not an integration: the
 [Integrations](/guides/integrations/) directory is for connecting other

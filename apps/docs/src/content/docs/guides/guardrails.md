@@ -13,7 +13,8 @@ time limits. Every sandbox, whatever it runs, is watched for
 
 ## Where to set them
 
-- **Workspace defaults**: the workspace's **Settings**, **Guardrails**.
+- **Workspace defaults**: **Workspace → Code, planning, and automation →
+  AI → Guardrails**, `g1t.sh/<workspace>/-/settings/guardrails`.
   Owners can change them; members can read them.
 - **A repository's overrides**: the repository's **Settings**, **Guardrails**.
   People with the Admin [role](/guides/access-and-roles/) on

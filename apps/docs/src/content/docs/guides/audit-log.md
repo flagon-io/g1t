@@ -86,7 +86,7 @@ Entries are only ever added: nothing edits or removes one.
 ## Read the log
 
 Open the workspace's settings and choose **Audit log**, or go to
-`g1t.sh/<workspace>/-/audit`.
+`g1t.sh/<workspace>/-/settings/audit`.
 
 - **Owners** see everything in the workspace.
 - **Members** see what was done to the workspace's repositories, and anything

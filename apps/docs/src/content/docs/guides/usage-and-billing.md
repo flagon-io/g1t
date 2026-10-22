@@ -187,7 +187,7 @@ purchase.
 
 Only an owner or a billing manager can start or end the plan.
 
-1. Open **Settings → Billing and plans**, `g1t.sh/<workspace>/-/billing`.
+1. Open **Workspace → Access → Billing and plans**, `g1t.sh/<workspace>/-/settings/billing`.
 2. On the **g1t** card, choose **Start the g1t plan**.
 3. If the workspace already has a checked card, the plan starts on it at
    once. Otherwise, pay on the card page you are sent to.
@@ -230,7 +230,7 @@ and each card gets one trial.
 A free workspace needs a card check before its trial or g1t's open-source
 pool pays for anything. Only an owner can do it.
 
-1. Open **Settings → Billing and plans**.
+1. Open **Workspace → Access → Billing and plans**.
 2. Under **Try it with $5 of usage**, choose **Check a card**. You are sent
    to Stripe's card page.
 3. Enter the card. If your bank asks for 3-D Secure, confirm it there.
@@ -261,7 +261,7 @@ and the merge queue (1,250 on the standard machine, about 714 on the
   cards start none.
 - Trials come from a pool of **$100 a month** for everyone together. It
   renews on the 1st of each month (UTC). When a month's pool is given out,
-  new trials wait until the 1st, and **Settings → Billing** says so.
+  new trials wait until the 1st, and **Billing and plans** says so.
 - Billing shows what is left.
 
 The trial does not turn into a charge. Nothing is charged until an owner
@@ -624,7 +624,7 @@ Paying in advance pays for usage as it happens, after the plan's included
 usage, and raises what can be used before work stops by the same amount,
 at once. It is never needed to start work. Only an owner can prepay.
 
-1. Open **Settings → Billing and plans**, and find **Prepay**.
+1. Open **Workspace → Access → Billing and plans**, and find **Prepay**.
 2. Choose **By card, with 3-D Secure** or **By bank transfer** (from
    $1,000).
 3. Choose $100, $500 or $1,000, or type your own amount, from $25, and
@@ -774,7 +774,7 @@ they started on.
 
 Your card, billing address, tax IDs, invoices and receipts live on
 **Stripe's billing page**, not on g1t: g1t never sees or stores card
-numbers. On **Settings → Billing and plans**, owners and billing managers
+numbers. On **Workspace → Access → Billing and plans**, owners and billing managers
 see **Billing on Stripe**:
 
 - the default card (brand, last four digits and expiry), read-only; the
@@ -785,6 +785,11 @@ see **Billing on Stripe**:
   every invoice and receipt (the plan and month-end usage); and end the
   plan at the end of the period, or keep it after all. [Tax](#tax) is
   worked out from the address you keep there.
+
+Invoices and receipts are emailed to the **Billing email** an owner sets
+on the workspace's [Profile](/guides/workspaces/#the-workspaces-profile),
+which g1t gives to Stripe; without one, they go to an owner's email. More
+recipients are added from **Billing and plans**.
 
 **Add-ons** lists what comes with the plan, such as
 [Security and quality](/guides/security/pricing/), and whether it is on.
@@ -932,9 +937,9 @@ current period ends, and is not renewed.
 
 ## The Usage page
 
-A workspace's **Usage** page, `g1t.sh/<workspace>/-/usage`, shows what it
+A workspace's **Usage** page, `g1t.sh/<workspace>/-/settings/usage`, shows what it
 used, by product, repository and day. Every member can see it, from **Usage**
-in the workspace's sidebar. A repository's own, `g1t.sh/<workspace>/<repository>/usage`,
+under **Billing and plans** in the workspace's sidebar. A repository's own, `g1t.sh/<workspace>/<repository>/usage`,
 shows the same for that repository.
 
 Every amount is **usage at price**: what was charged, plus what included
@@ -1030,8 +1035,7 @@ g1t counts what its own runs cost. Your team's other agents (CI scripts,
 other tools, people's own sessions) are on your AI provider's bill too,
 and the provider's own cost report is the record of all of it. Connect
 the provider and g1t reads that report, day by day, at
-`g1t.sh/<workspace>/-/provider-costs` (**Provider costs**, under Money in
-the workspace's settings).
+`g1t.sh/<workspace>/-/settings/provider-costs` (**Workspace → Access → Billing and plans → Provider costs**).
 
 **What it reads.** The provider's cost report for the whole organization
 the key belongs to, in US dollars, one line per day and line item:
