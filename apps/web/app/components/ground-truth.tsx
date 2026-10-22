@@ -71,33 +71,43 @@ function QuietList({ title, hint, rows, empty }: { title: string; hint: string; 
   );
 }
 
-export function GroundTruth({ slug, ground }: { slug: string; ground: Ground }) {
+/**
+ * What the work says, section by section. `pulse` leads with the past
+ * week's figures, left out where the page already shows them (Home's
+ * week). `money` shows the spend threaded to the work, which is in dollars:
+ * only for those who look after the workspace's billing.
+ */
+export function GroundTruth({ slug, ground, pulse = true, money = true }: { slug: string; ground: Ground; pulse?: boolean; money?: boolean }) {
   return (
     <div className="space-y-6">
-      <Boundary what="The past week">
-        <PulseStrip tiles={ground.tiles} />
-      </Boundary>
-      {!ground.complete && <p className="text-xs text-faint">Some repositories didn&apos;t answer, so what follows leaves them out.</p>}
-      <Section
-        id="spend"
-        eyebrow="Spend, threaded to the work"
-        title={
-          ground.quarterSpend
-            ? `${dollars(ground.quarterSpend)} of agent spend this quarter, and what it went into`
-            : "This quarter's work, and how much of it agents did"
-        }
-        hint={
-          ground.sized === "spend"
-            ? `Each milestone, its work items, their change set in each repository and its pull requests, sized by what agents cost on them${ground.sessionSpend > 0 ? ` (g1t's metered usage, and ${dollars(ground.sessionSpend)} of harness sessions estimated at list price)` : ""} and shaded by how much was an agent's. Choose a box to open what is under it.`
-            : "Usage isn't known for this quarter, so each box is sized by its pull requests and shaded by how many were an agent's. Choose a box to open what is under it."
-        }
-      >
-        <ProvidersLine slug={slug} providers={ground.providers} threaded={ground.quarterSpend} />
-        <Boundary what="Spend, threaded to the work">
-          <SpendFlow flow={ground.flow} sized={ground.sized} />
+      {pulse && (
+        <Boundary what="The past week">
+          <PulseStrip tiles={ground.tiles} />
         </Boundary>
-        {ground.capped && <p className="mt-3 text-xs text-faint">There were more pull requests this quarter than this reads, so the newest are shown.</p>}
-      </Section>
+      )}
+      {!ground.complete && <p className="text-xs text-faint">Some repositories didn&apos;t answer, so what follows leaves them out.</p>}
+      {money && (
+        <Section
+          id="spend"
+          eyebrow="Spend, threaded to the work"
+          title={
+            ground.quarterSpend
+              ? `${dollars(ground.quarterSpend)} of agent spend this quarter, and what it went into`
+              : "This quarter's work, and how much of it agents did"
+          }
+          hint={
+            ground.sized === "spend"
+              ? `Each milestone, its work items, their change set in each repository and its pull requests, sized by what agents cost on them${ground.sessionSpend > 0 ? ` (g1t's metered usage, and ${dollars(ground.sessionSpend)} of harness sessions estimated at list price)` : ""} and shaded by how much was an agent's. Choose a box to open what is under it.`
+              : "Usage isn't known for this quarter, so each box is sized by its pull requests and shaded by how many were an agent's. Choose a box to open what is under it."
+          }
+        >
+          <ProvidersLine slug={slug} providers={ground.providers} threaded={ground.quarterSpend} />
+          <Boundary what="Spend, threaded to the work">
+            <SpendFlow flow={ground.flow} sized={ground.sized} />
+          </Boundary>
+          {ground.capped && <p className="mt-3 text-xs text-faint">There were more pull requests this quarter than this reads, so the newest are shown.</p>}
+        </Section>
+      )}
       <Section
         id="rhythm"
         eyebrow="What's moving and what's waiting"

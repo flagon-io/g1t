@@ -20,11 +20,17 @@ It reads top to bottom, from what you can do now to what already happened:
    the last two weeks day by day (what agents and people landed), and what
    is [worth a look](#worth-a-look), each finding with its evidence and
    pinned to the day it happened where it happened on one.
-4. **Since you were last here**: one card for the span. It shows what people
+4. **[The workspace](#the-workspace)**: what is moving and what is
+   waiting team by team, and the quiet changes in who works where; for
+   owners and billing managers, the quarter's spend threaded to the work.
+5. **Since you were last here**: one card for the span. It shows what people
    did, what changed in plain English when you ask for it, and what landed,
    each change with whether it is live yet. Beside it, kept in view as you
-   scroll: **[Spent](#spent)**, what the span cost and the month so far,
-   and **[Settled for you](#settled-for-you)**, what finished by itself.
+   scroll: **[Spent](#spent)**, what the span cost and the month so far
+   (owners and billing managers), and
+   **[Settled for you](#settled-for-you)**, what finished by itself.
+6. **Members**, everyone in the workspace, and, for owners and billing
+   managers, the month's **Usage** against the plan.
 
 On a phone it is one column, in the same order.
 
@@ -42,7 +48,8 @@ by a model: [What changed](#what-changed) and the answers in Ask.
 ## This week
 
 A sentence for what landed in the last seven UTC days and how much of it
-was agents', then four figures. Each shows how it moved since the seven
+was agents', then four figures (three for a member who doesn't look after
+billing: **Cost per agent change** is in dollars). Each shows how it moved since the seven
 days before (green when that is good news, red when it is not); point at
 one for what it counts, and it opens the page behind it.
 
@@ -361,9 +368,21 @@ each with its state and how long it has gone:
 | Workflow run | A [workflow](/guides/actions/) run that is queued, waiting, running, or waiting for approval, in the ten repositories pushed to most in the span (their newest 20 runs each) |
 | Build        | A repository's newest build, queued or building                                                                                                                              |
 
+## The workspace
+
+Under This week, for members who can see Code: the workspace's
+[ground truth](/guides/workspaces/#the-workspace-overview), what is moving
+and what is waiting team by team (each repository, without teams), with
+the pull requests waiting on a first review, and the quiet changes in who
+works where. Owners and billing managers also see the quarter's agent
+spend threaded to the work, and what connected providers reported.
+
+At the end of the page are the workspace's members, for everyone, and the
+month's usage against the plan, for owners and billing managers.
+
 ## Spent
 
-Beside the span: what the workspace spent over it, from its
+Only for owners and billing managers. Beside the span: what the workspace spent over it, from its
 [statement](/guides/usage-and-billing/), with each line at its price: what
 was charged plus what your plan's included usage, a trial, a pool or a
 discount paid of it. The lines are the statement's kinds of charge, such
@@ -423,7 +442,9 @@ from Code:
 - Your move has no rows from Code, and no notifications about a
   repository.
 - Landed is not shown, and Live has no sessions, runs or builds.
-- Spent is the same for every member.
+- The workspace's ground truth is not shown; its members are.
+- Spent and Usage are for owners and billing managers, with Code access
+  or without.
 
 ## When something doesn't answer
 

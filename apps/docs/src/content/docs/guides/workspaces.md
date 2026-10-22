@@ -707,17 +707,14 @@ costs** opens [Usage](/guides/usage-and-billing/#the-usage-page) with the same p
 
 ### The workspace overview
 
-The workspace's own figures are on Code's **Overview**,
-`g1t.sh/<workspace>/-/overview`, below [Mission control](#mission-control):
-what needs you, what landed, the week and the activity. It shows what
-the work says, for members who can see Code,
-worked out the
-same way as [Home's week](/guides/home/#this-week), and
-each person sees only the repositories they can read.
+The workspace's own figures are on [Home](/guides/home/#the-workspace),
+for every member, under [This week](/guides/home/#this-week). What the
+work says is for members who can see Code, worked out the same way as
+Home's week, and each person sees only the repositories they can read.
+Figures in dollars are for owners and billing managers only.
 
-1. **[The past week](/guides/home/#this-week)**: the same four
-   figures as Home.
-2. **Spend, threaded to the work**: the quarter's work in four columns:
+1. **Spend, threaded to the work** (owners and billing managers): the
+   quarter's work in four columns:
    each milestone, its work items, each work item's change set in each
    repository, and that change set's pull requests (with no milestones in
    the workspace, it starts at the work items). Each box is sized by
@@ -730,7 +727,7 @@ each person sees only the repositories they can read.
    connected, is what Anthropic or OpenAI reported for the quarter and how
    much of it is threaded to the work. Their figure holds everything the
    organization ran, so it is never added to g1t's.
-3. **What's moving and what's waiting**: each team's last two weeks, day
+2. **What's moving and what's waiting**: each team's last two weeks, day
    by day, by the repositories the team works on (each repository, when the
    workspace has no teams). Above the line are changes (pull requests
    opened and merged, and commits agents pushed outside one) and agent
@@ -739,7 +736,7 @@ each person sees only the repositories they can read.
    at a day for its numbers, or open **The numbers, as a table**. Each
    row is drawn to its own scale. Beside it, **Waiting on a first
    review** lists the oldest open pull requests no one has reviewed.
-4. **Quiet changes**: places to look, not verdicts.
+3. **Quiet changes**: places to look, not verdicts.
    - **Knowledge silos**: repositories where one person merged three quarters
      or more of the last 90 days' changes (six or more), and whoever has
      started there this month. Only in a workspace where three people or
@@ -752,8 +749,8 @@ each person sees only the repositories they can read.
    - **New habits**: people whose first agent-made change merged in the
      last two weeks, after three or more of their own.
 
-Under it are the workspace's members and the month's usage against the
-plan.
+At the end of Home are the workspace's members, for everyone, and, for
+owners and billing managers, the month's usage against the plan.
 
 ## The app bar, the sidebar and the page
 
@@ -1007,8 +1004,8 @@ the row under its name.
 
 Mission control is Code's **Overview**, at `g1t.sh/<workspace>/-/overview`.
 It shows where you are needed in the workspace's code and what landed,
-then the week, the activity and
-[what the workspace's work says](#the-workspace-overview).
+then the week and the activity. What the workspace's work says is on
+[Home](#the-workspace-overview).
 Signed in, `g1t.sh` itself opens [Home](/guides/home/) in the workspace
 you are in.
 
