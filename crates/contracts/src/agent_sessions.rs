@@ -179,7 +179,18 @@ pub struct SyncAgentSessionArgs {
 /// Anthropic when nobody did in the last [`FOLLOW_EVERY_MS`] (however many
 /// pages ask, one read per session in that time), and says whether it
 /// still goes and how far it was read. Returns `Outcome<AgentSessionFollowed>`.
-pub type FollowAgentSessionArgs = SyncAgentSessionArgs;
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FollowAgentSessionArgs {
+    pub viewer: Viewer,
+    pub repo: RepoPath,
+    /// The g1t session (`ses_…`).
+    pub id: String,
+    /// Also say whether a call of it waits for an approval the viewer may
+    /// answer (g1t's card for the session in Chat). Off for its page,
+    /// which reads its waiting calls itself, so following it costs no more.
+    #[serde(default)]
+    pub waiting: bool,
+}
 
 /// The least time between two reads of a running session from Anthropic
 /// for the pages following it.
@@ -194,6 +205,10 @@ pub struct AgentSessionFollowed {
     /// How far it was read: changes whenever anything new was read from
     /// it, or it ended. A page reads the session again when it changes.
     pub mark: String,
+    /// Asked with `waiting`: whether a call of it waits, in time, for an
+    /// approval the viewer may answer. False otherwise, and once it ended.
+    #[serde(default)]
+    pub waiting: bool,
 }
 
 /// `agent_session_link`: where whoever started a Managed Agents session

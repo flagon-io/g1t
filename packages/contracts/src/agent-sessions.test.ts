@@ -39,12 +39,14 @@ test("a request from Chat and a page following a session reach the service as it
   const { calls, client } = recording();
   await client.start(ada, repo, { prompt: "Why is CI slow?" });
   await client.follow(repo, "ses_1", ada);
+  await client.follow(repo, "ses_1", ada, true);
   assert.deepEqual(calls, [
     {
       method: "start_agent_session",
       body: { actor: ada, repo, item: null, title: null, body: null, instruction: null, prompt: "Why is CI slow?", mode: null, handoff: null },
     },
-    { method: "follow_agent_session", body: { repo, id: "ses_1", viewer: ada } },
+    { method: "follow_agent_session", body: { repo, id: "ses_1", viewer: ada, waiting: false } },
+    { method: "follow_agent_session", body: { repo, id: "ses_1", viewer: ada, waiting: true } },
   ]);
 });
 

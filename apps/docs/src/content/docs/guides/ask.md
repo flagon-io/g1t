@@ -223,8 +223,10 @@ or review). Sending then:
    opened for it.
 2. Opens a new conversation with g1t in Chat, with what you asked and
    g1t's card for the session. The card shows whether the session is
-   **Working** or **Done**, and opens the session's page, where it
-   streams and you steer it, stop it or follow it up.
+   **Working**, **Waiting on you** (a call waits for your approval, with
+   **Allow** and **Deny** on the card) or **Done**, and opens the
+   session's page, where it streams and you steer it, stop it or follow
+   it up. See [the card's states](/guides/chat/#start-a-conversation-with-g1t).
 
 The session is not the conversation: it runs on its own, and the
 conversation links to it. When g1t next answers there, it reads that it

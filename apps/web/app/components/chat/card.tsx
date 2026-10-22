@@ -9,23 +9,28 @@ import {
   GitPullRequest,
   ListChecks,
   Rocket,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
   X,
 } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
-import { Link } from "react-router";
+import { Link, useFetcher } from "react-router";
 
 import type { CardAction, MessageCard } from "@g1t/contracts";
 
 import { Markdown } from "../markdown";
+import { AnswerButtons, ApprovalWhat } from "../session-answer";
+import type { ApprovalsData } from "../../routes/workspace/approvals-json";
+import { APPROVAL_ANSWERED_EVENT, type AnswerOutcome, approvalKey, timeLeft, toolName } from "../../lib/session-approvals";
+import { sessionPath } from "../../lib/work-items";
 import { Badge, type BadgeTone } from "../ui/badge";
 import { ButtonLink } from "../ui";
 import { Button, type ButtonVariant } from "../ui/button";
 import { cn } from "../../lib/cn";
 import { type CardChip, cardChip, foldsBody, shownActions } from "../../lib/card-actions";
 import { repoAt } from "../../lib/markdown-plugins";
-import { sessionChip } from "../../lib/session-card";
+import { WAITING_ON_YOU, sessionChip } from "../../lib/session-card";
 import { useHostedSessionState } from "../../lib/use-session-follow";
 import { codeAccessPath } from "../../lib/workspace-nav";
 
@@ -186,11 +191,13 @@ export function CardBox({
   code: boolean;
 }) {
   const href = cardHref(card.href, slug, code);
-  // A hosted session g1t started from the conversation reads as it stands now: Working pulses until Done.
+  // A hosted session g1t started from the conversation reads as it stands now: Working pulses until Done,
+  // and a call waiting on the viewer's approval turns it amber, Waiting on you, with Allow and Deny.
   const now = useHostedSessionState(slug, card);
   const state = now ?? card.state;
   const chip = now ? { ...sessionChip(now), live: now === "Working" } : chipOf(card);
   const live = card.kind === "session" && !!chip?.live;
+  const waiting = now === WAITING_ON_YOU && card.ref ? card.ref : null;
   const actions = shownActions(card);
   const head = (
     <>
@@ -224,7 +231,7 @@ export function CardBox({
       className={cn(
         "group/card mt-1.5 w-full max-w-xl rounded-xl border bg-surface px-3.5 py-3 transition-[transform,box-shadow,border-color] duration-150",
         "hover:-translate-y-px hover:border-line-strong hover:shadow-lg hover:shadow-black/25 motion-reduce:transition-none motion-reduce:hover:translate-y-0",
-        live ? "border-accent/25" : "border-line",
+        live ? "border-accent/25" : waiting ? "border-warn/40" : "border-line",
       )}
     >
       {href ? (
@@ -234,6 +241,8 @@ export function CardBox({
       ) : (
         <div className="flex items-start gap-3">{head}</div>
       )}
+
+      {waiting && <SessionWaiting slug={slug} session={waiting} />}
 
       {card.body && <CardBody body={card.body} repo={repository} />}
 
@@ -267,6 +276,79 @@ export function CardBox({
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * What g1t's card for a hosted session shows while a call of it waits on
+ * the viewer: the call (as its page and Needs attention show it), how long
+ * it has left, Allow and Deny, answered through `-/approvals` as from
+ * Needs attention, and Review, which opens the session's page at the
+ * call. The calls are read (`-/approvals.json?session=…`) only once the
+ * follow route says one waits; until then, or if they could not be read,
+ * Review alone. An answer tells every other view (`APPROVAL_ANSWERED_EVENT`),
+ * and the card asks how its session stands again.
+ */
+function SessionWaiting({ slug, session }: { slug: string; session: string }) {
+  const list = useFetcher<ApprovalsData>();
+  const fetcher = useFetcher<AnswerOutcome>();
+  // Answered here, or refused for good: gone at once, before the list says so.
+  const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    const read = () => list.load(`/${encodeURIComponent(slug)}/-/approvals.json?session=${encodeURIComponent(session)}`);
+    read();
+    window.addEventListener(APPROVAL_ANSWERED_EVENT, read);
+    return () => window.removeEventListener(APPROVAL_ANSWERED_EVENT, read);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, session]);
+  const now = Date.now();
+  // The oldest first: it has the least time left.
+  const calls = (list.data?.approvals ?? [])
+    .filter((approval) => approval.status === "waiting" && Date.parse(approval.expiresAt) > now && !gone.has(approvalKey(approval)))
+    .reverse();
+  const call = calls[0];
+  const outcome = fetcher.state === "idle" ? fetcher.data : undefined;
+  const error = outcome && "error" in outcome ? outcome : null;
+  useEffect(() => {
+    if (!outcome || !call) return;
+    if ("answered" in outcome) {
+      setGone((was) => new Set(was).add(approvalKey(call)));
+      window.dispatchEvent(new Event(APPROVAL_ANSWERED_EVENT));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [outcome]);
+  const review = call ? `${sessionPath(slug, session)}#approval-${encodeURIComponent(call.toolUseId)}` : sessionPath(slug, session);
+  return (
+    <div
+      className="mt-2.5 rounded-lg border border-warn/40 bg-warn/5 px-3 py-2.5 sm:ml-11"
+      // A press here is for its buttons, not the message's long-press sheet.
+      onTouchStart={(event) => event.stopPropagation()}
+    >
+      <p className="flex items-center gap-2 text-[0.8125rem] font-medium text-fg">
+        <ShieldAlert size={14} className="shrink-0 text-warn" aria-hidden="true" />
+        <span className="min-w-0 grow">{call ? `${toolName(call.tool)} waits for your approval` : "A call waits for your approval"}</span>
+        {call && <span className="shrink-0 text-xs font-normal text-faint">{timeLeft(call.expiresAt, now)}</span>}
+      </p>
+      {call && <ApprovalWhat approval={call} className="mt-2" />}
+      {calls.length > 1 && <p className="mt-1 text-xs text-faint">And {calls.length - 1} more on its page.</p>}
+      {error && (
+        <p role="alert" className={cn("mt-2 text-[0.8125rem]", error.refused ? "text-muted" : "text-danger")}>
+          {error.error}
+        </p>
+      )}
+      <fetcher.Form method="post" action={`/${encodeURIComponent(slug)}/-/approvals`} className="mt-2.5 flex flex-wrap items-center gap-2">
+        {call && !error?.refused && (
+          <>
+            <input type="hidden" name="repo" value={call.repo} />
+            <input type="hidden" name="sessionId" value={call.sessionId} />
+            <AnswerButtons approval={call} fetcher={fetcher} />
+          </>
+        )}
+        <Button asChild size="sm" variant="ghost" className="ml-auto max-md:h-10">
+          <Link to={review}>Review</Link>
+        </Button>
+      </fetcher.Form>
     </div>
   );
 }
