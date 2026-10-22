@@ -63,7 +63,7 @@ export function agentsFor(mcp: string = MCP_URL): Record<AgentId, AgentSetup> {
             file: null,
             lang: "sh",
             code: PLUGIN_INSTALL,
-            then: "The plugin adds g1t's MCP server and records your sessions. Start Claude Code again, run `/mcp` and choose `plugin:g1t:g1t` to sign in through your browser. Skip `claude mcp add` with the plugin installed, or every g1t tool is listed twice.",
+            then: "The plugin adds g1t's MCP server and records your sessions. Start Claude Code again, run `/mcp` and choose `plugin:g1t:g1t` to sign in through your browser. Skip `claude mcp add` with the plugin installed, or every g1t tool is listed twice. To keep the plugin current, run `/plugin`, open Marketplaces, choose g1t and Enable auto-update.",
             instructions: "CLAUDE.md",
           }
         : {

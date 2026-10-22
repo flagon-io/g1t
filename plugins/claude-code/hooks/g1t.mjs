@@ -56,6 +56,10 @@
 // Nothing is ever installed. No dependencies; Node 18 or later, and on an
 // older Node it says so once and does nothing.
 //
+// Once a day at most, after a session starts, it reads which version of
+// the plugin g1t.sh publishes (MARKETPLACE_URL), and says once when a newer
+// one is out: see checkForUpdate.
+//
 // Every CLI call is in test/cli-contract.json, which the tests hold this
 // file and the CLI's own parser (crates/g1t) to.
 
@@ -896,13 +900,74 @@ export function setProblem(env, problem, detail = null) {
   write(path, JSON.stringify({ problem, detail, shown: false }));
 }
 
-/** The message for a problem not shown yet, marking it shown. */
-export function takeNotice(env) {
+/**
+ * The message for a problem not shown yet, marking it shown; with no
+ * problem to say, that a newer plugin is out (updateNotice).
+ */
+export function takeNotice(env, root = PLUGIN_ROOT) {
   const path = join(dataDir(env), "notice.json");
   const notice = readJson(path, {});
-  if (!notice.problem || notice.shown || !MESSAGES[notice.problem]) return null;
+  if (!notice.problem || notice.shown || !MESSAGES[notice.problem]) return updateNotice(env, root);
   write(path, JSON.stringify({ ...notice, shown: true }));
   return MESSAGES[notice.problem](notice.detail);
+}
+
+// --- a newer plugin ----------------------------------------------------
+
+/** Where the newest published plugin's version is read: the marketplace's own catalog. */
+export const MARKETPLACE_URL = "https://g1t.sh/flagon-io/g1t-plugins/raw/main/.claude-plugin/marketplace.json";
+/** How often it is read, at most. */
+export const UPDATE_CHECK_MS = 24 * 60 * 60 * 1000;
+/** This plugin's folder: Claude Code keeps each version in a folder of its own, named for it. */
+const PLUGIN_ROOT = dirname(dirname(SELF));
+
+const VERSION = /^\d+\.\d+\.\d+$/;
+
+/** This plugin's version, from its plugin.json; null when it cannot be read. */
+export function pluginVersion(root = PLUGIN_ROOT) {
+  const version = readJson(join(root, ".claude-plugin", "plugin.json"), {})?.version;
+  return typeof version === "string" && VERSION.test(version) ? version : null;
+}
+
+async function fetchMarketplace() {
+  const response = await fetch(MARKETPLACE_URL, { signal: AbortSignal.timeout(5000) });
+  if (!response.ok) throw new Error(`${response.status}`);
+  return response.json();
+}
+
+/**
+ * Reads, at most once a day, which version of the plugin is published,
+ * and keeps it for updateNotice. Third-party marketplaces do not update by
+ * themselves unless auto-update is turned on for them, so a plugin can stay
+ * old for good, recording less than a newer one would (0.3.0 sent no
+ * usage, so its sessions never said what they cost). Not with
+ * CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC. Never throws.
+ */
+export async function checkForUpdate(env = process.env, { fetchJson = fetchMarketplace, now = Date.now() } = {}) {
+  if (env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC) return;
+  const path = join(dataDir(env), "plugin.json");
+  const kept = readJson(path, {}) ?? {};
+  if (Number.isFinite(kept.checked_at) && now - kept.checked_at < UPDATE_CHECK_MS) return;
+  let latest = null;
+  try {
+    latest = (await fetchJson())?.plugins?.find((plugin) => plugin?.name === "g1t")?.version ?? null;
+  } catch {}
+  write(path, JSON.stringify({ ...kept, checked_at: now, ...(typeof latest === "string" && VERSION.test(latest) ? { latest } : {}) }));
+}
+
+/**
+ * That a newer plugin is published, once for each version, or null. Not
+ * when it is already downloaded beside this one (an auto-update did, and
+ * the next start of Claude Code loads it).
+ */
+export function updateNotice(env = process.env, root = PLUGIN_ROOT) {
+  const path = join(dataDir(env), "plugin.json");
+  const kept = readJson(path, {}) ?? {};
+  const own = pluginVersion(root);
+  if (!own || typeof kept.latest !== "string" || !older(own, kept.latest) || kept.said === kept.latest) return null;
+  if (existsSync(join(root, "..", kept.latest))) return null;
+  write(path, JSON.stringify({ ...kept, said: kept.latest }));
+  return `g1t: the g1t plugin here is ${own}, and ${kept.latest} is out; an older plugin records less of your sessions, such as what they cost. Update it with \`claude plugin marketplace update g1t\` and \`claude plugin update g1t@g1t\`, then start Claude Code again. To keep it current, run /plugin, open Marketplaces, choose g1t and Enable auto-update. This is said once for each version.`;
 }
 
 /** Whether version a (1.2.3) is older than b. */
@@ -1349,7 +1414,10 @@ export function oldNode(event, env = process.env, version = process.versions.nod
 
 async function main() {
   if (process.argv[2] === "--worker") {
-    work(JSON.parse(Buffer.from(process.argv[3], "base64url").toString("utf8")));
+    const job = JSON.parse(Buffer.from(process.argv[3], "base64url").toString("utf8"));
+    work(job);
+    // Once a session has started: said at a later prompt, or the next session's start.
+    if (job.start && !job.agent) await checkForUpdate();
     return;
   }
   let raw = "";
