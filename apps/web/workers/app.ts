@@ -194,12 +194,31 @@ async function servePublic(env: Env, request: Request, ctx: ExecutionContext, re
   const key = new Request(keyUrl, { method: "GET" });
   const repository = PUBLIC_PROJECT.test(new URL(request.url).pathname) ? repositoryOfPage(new URL(request.url).pathname) : null;
   const looking = Date.now();
+  // How long each part of the lookup took, for Server-Timing.
+  const took: Record<string, number> = {};
+  const timed = <T>(name: string, work: Promise<T>) => work.finally(() => void (took[name] = Date.now() - looking));
   // Asked alongside the cache, so a hit waits for one indexed read at most.
   // A cache that does not answer is a miss: the page is drawn afresh.
-  const [cached, visible] = await Promise.all([
+  const visibility = timed("visibility", repository ? isStillPublic(env, repository) : Promise.resolve(true));
+  const cached = await timed(
+    "cache",
     withDeadline("cache", CACHE_DEADLINE_MS, () => cache.match(key)).catch(() => undefined),
-    repository ? isStillPublic(env, repository) : Promise.resolve(true),
-  ]);
+  );
+  // No copy here: the one every data centre shares, kept by whichever drew
+  // the page last after finding none of its own (lib/public-cache.ts),
+  // read while repos still answers whether the repository is public.
+  const pages = env.PAGES;
+  const sharedKey = pages && !cached ? await sharedPageKey(key.url) : null;
+  const sharedRead =
+    pages && sharedKey
+      ? timed(
+          "shared",
+          withDeadline("shared cache", CACHE_DEADLINE_MS, () => pages.get(sharedKey, "arrayBuffer"))
+            .then((bytes) => (bytes ? decodeSharedPage(new Uint8Array(bytes)) : null))
+            .catch(() => null),
+        )
+      : Promise.resolve(null);
+  const [visible, found] = await Promise.all([visibility, sharedRead]);
   if (cached && !visible) {
     ctx.waitUntil(
       cache.delete(key).then(
@@ -209,16 +228,9 @@ async function servePublic(env: Env, request: Request, ctx: ExecutionContext, re
     );
     return render();
   }
-  // No copy here: the one every data centre shares, kept by whichever drew
-  // the page last after finding none of its own (lib/public-cache.ts).
-  const pages = env.PAGES;
-  const sharedKey = pages && !cached && visible ? await sharedPageKey(key.url) : null;
-  const shared =
-    pages && sharedKey
-      ? await withDeadline("shared cache", CACHE_DEADLINE_MS, () => pages.get(sharedKey, "arrayBuffer"))
-          .then((bytes) => (bytes ? decodeSharedPage(new Uint8Array(bytes)) : null))
-          .catch(() => null)
-      : null;
+  // A repository no longer public is never served from either copy, nor kept in the shared one.
+  const shared = visible ? found : null;
+  const shareTo = visible ? sharedKey : null;
   const lookupMs = Date.now() - looking;
   const keptAt = cached ? Number(cached.headers.get("x-g1t-kept-at") ?? 0) : (shared?.keptAt ?? 0);
   const age = Math.round((Date.now() - keptAt) / 1000);
@@ -237,12 +249,12 @@ async function servePublic(env: Env, request: Request, ctx: ExecutionContext, re
       // Shared only by a data centre that had no copy of its own, so it is
       // written at most once per data centre per page while it is kept,
       // not by every data centre's refresh of its own.
-      if (pages && sharedKey) {
+      if (pages && shareTo) {
         const body = fresh.clone().arrayBuffer();
         ctx.waitUntil(
           body
             .then((bytes) =>
-              pages.put(sharedKey, encodeSharedPage({ status: fresh.status, headers: [...fresh.headers], keptAt: now, body: new Uint8Array(bytes) }), {
+              pages.put(shareTo, encodeSharedPage({ status: fresh.status, headers: [...fresh.headers], keptAt: now, body: new Uint8Array(bytes) }), {
                 expirationTtl: PUBLIC_STALE_SECONDS,
               }),
             )
@@ -273,7 +285,12 @@ async function servePublic(env: Env, request: Request, ctx: ExecutionContext, re
     }
     answer.headers.delete("x-g1t-kept-at");
     answer.headers.delete("cache-control");
-    answer.headers.set("server-timing", `cache;desc="${cached ? "hit" : "hit-shared"}, ${age}s old", lookup;dur=${lookupMs}`);
+    answer.headers.set(
+      "server-timing",
+      `cache;desc="${cached ? "hit" : "hit-shared"}, ${age}s old", lookup;dur=${lookupMs}${Object.entries(took)
+        .map(([name, ms]) => `, lookup.${name};dur=${ms}`)
+        .join("")}`,
+    );
     return answer;
   }
   return refresh();
