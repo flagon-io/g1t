@@ -3,7 +3,7 @@
 //! Kept beside the workspaces they belong to: `teams` and `team_members`,
 //! and a team's roles on repositories as rows of `repo_grants` whose
 //! principal is the team. Nothing here decides access on a request:
-//! [`Identity::grants_of`] (access.rs) folds a person's teams' roles into
+//! [`Identity::grants_statement`] (access.rs) folds a person's teams' roles into
 //! the grants every resolved user carries.
 //!
 //! **Who may do what.**

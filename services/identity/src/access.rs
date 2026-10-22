@@ -3,7 +3,7 @@
 //!
 //! The rules (which role may do what, and how a person's role is worked
 //! out) live in `g1t_contracts::access`; this is where the roles are kept.
-//! Every user identity resolves carries their grants ([`Identity::grants_of`],
+//! Every user identity resolves carries their grants ([`Identity::grants_statement`],
 //! under the workspace's policy) beside their memberships, so services
 //! decide with `access::can` and never call here to authorize.
 //!
@@ -25,7 +25,7 @@
 //! rename keeps them (deletion.rs, `transfer_repo_scopes`).
 //!
 //! **Teams** are another `principal_kind` in `repo_grants` (teams.rs):
-//! [`Identity::grants_of`] resolves a team's grants into the same
+//! [`Identity::grants_statement`] resolves a team's grants into the same
 //! `RepoGrant`s for each person in the team and in its child teams, and
 //! the access list shows where such a role comes from.
 
@@ -109,6 +109,26 @@ pub fn invitation_status(row: &InvitationRow, now: &str) -> RepoInvitationStatus
     } else {
         RepoInvitationStatus::Pending
     }
+}
+
+/// The grants, each with whether its workspace requires two-factor
+/// authentication, from what `grants_statement` read.
+pub(crate) fn grants_from(result: &worker::D1Result) -> Result<Vec<(RepoGrant, bool)>> {
+    Ok(result
+        .results::<GrantRow>()?
+        .into_iter()
+        .filter_map(|row| {
+            Some((
+                RepoGrant {
+                    repo_id: row.repo_id,
+                    workspace: row.workspace,
+                    role: RepoRole::parse(&row.role)?,
+                    team: row.team,
+                },
+                row.require_two_factor != 0,
+            ))
+        })
+        .collect())
 }
 
 #[derive(Deserialize)]
@@ -257,9 +277,11 @@ impl Identity {
     ///
     /// Each comes with whether its workspace requires two-factor
     /// authentication (security.rs).
-    pub async fn grants_of(&self, user_id: &str) -> Result<Vec<(RepoGrant, bool)>> {
-        let rows = self
-            .db
+    ///
+    /// The statement, to batch with the other reads of an account (lib.rs
+    /// `with_workspaces_via`); `grants_from` reads its result.
+    pub(crate) fn grants_statement(&self, user_id: &str) -> Result<worker::D1PreparedStatement> {
+        self.db
             .prepare(format!(
                 "WITH RECURSIVE mine(id) AS (
                    SELECT team_id FROM team_members WHERE user_id = ?1
@@ -276,24 +298,7 @@ impl Identity {
                  JOIN workspaces w ON w.id = g.workspace_id AND w.deleted_at IS NULL
                  LIMIT {MAX_GRANTS}"
             ))
-            .bind(&[user_id.into()])?
-            .all()
-            .await?
-            .results::<GrantRow>()?;
-        Ok(rows
-            .into_iter()
-            .filter_map(|row| {
-                Some((
-                    RepoGrant {
-                        repo_id: row.repo_id,
-                        workspace: row.workspace,
-                        role: RepoRole::parse(&row.role)?,
-                        team: row.team,
-                    },
-                    row.require_two_factor != 0,
-                ))
-            })
-            .collect())
+            .bind(&[user_id.into()])
     }
 
     /// The repository at `path` as `viewer` sees it: missing when they

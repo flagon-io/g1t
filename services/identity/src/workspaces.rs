@@ -111,6 +111,34 @@ pub struct Policed {
     pub require_sso: bool,
 }
 
+/// The memberships, from what `memberships_statement` read.
+pub(crate) fn policed_from(result: &worker::D1Result) -> Result<Vec<Policed>> {
+    Ok(result
+        .results::<MembershipRow>()?
+        .into_iter()
+        .map(|row| {
+            let mut org_roles = Vec::new();
+            if row.billing_manager != 0 {
+                org_roles.push(OrgRole::BillingManager);
+            }
+            if row.security_manager != 0 {
+                org_roles.push(OrgRole::SecurityManager);
+            }
+            let membership = Membership {
+                slug: row.slug,
+                role: row.role,
+                name: row.name,
+                avatar: row.avatar,
+                base_permission: row.base_permission.as_deref().and_then(BasePermission::parse),
+                team_creation: row.team_creation.as_deref().and_then(TeamCreation::parse),
+                org_roles,
+                privileges: Some(MemberPrivileges::from_stored(row.member_privileges.as_deref())),
+            };
+            Policed { membership, require_two_factor: row.require_two_factor != 0, require_sso: row.require_sso != 0 }
+        })
+        .collect())
+}
+
 impl Identity {
     /// The workspaces a user belongs to, attached to every user resolved
     /// from credentials, with what the site needs to show each one, what
@@ -123,8 +151,12 @@ impl Identity {
     /// The same, each with what its workspace requires: two-factor
     /// authentication (security.rs), single sign-on (sso.rs).
     pub async fn memberships_and_policies(&self, user_id: &str) -> Result<Vec<Policed>> {
-        let rows = self
-            .db
+        policed_from(&self.memberships_statement(user_id)?.all().await?)
+    }
+
+    /// What `memberships_and_policies` reads, to batch with other reads.
+    pub(crate) fn memberships_statement(&self, user_id: &str) -> Result<worker::D1PreparedStatement> {
+        self.db
             .prepare(
                 "SELECT workspaces.slug, workspace_members.role, workspaces.name,
                    workspaces.avatar, workspaces.base_permission, workspaces.team_creation,
@@ -135,33 +167,7 @@ impl Identity {
                  WHERE workspace_members.user_id = ? AND workspaces.deleted_at IS NULL
                  ORDER BY workspaces.slug",
             )
-            .bind(&[user_id.into()])?
-            .all()
-            .await?
-            .results::<MembershipRow>()?;
-        Ok(rows
-            .into_iter()
-            .map(|row| {
-                let mut org_roles = Vec::new();
-                if row.billing_manager != 0 {
-                    org_roles.push(OrgRole::BillingManager);
-                }
-                if row.security_manager != 0 {
-                    org_roles.push(OrgRole::SecurityManager);
-                }
-                let membership = Membership {
-                    slug: row.slug,
-                    role: row.role,
-                    name: row.name,
-                    avatar: row.avatar,
-                    base_permission: row.base_permission.as_deref().and_then(BasePermission::parse),
-                    team_creation: row.team_creation.as_deref().and_then(TeamCreation::parse),
-                    org_roles,
-                    privileges: Some(MemberPrivileges::from_stored(row.member_privileges.as_deref())),
-                };
-                Policed { membership, require_two_factor: row.require_two_factor != 0, require_sso: row.require_sso != 0 }
-            })
-            .collect())
+            .bind(&[user_id.into()])
     }
 
     pub async fn create_workspace(&self, a: CreateWorkspaceArgs) -> Result<Outcome<Workspace>> {
