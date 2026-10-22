@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/hooks/g1t.mjs\" cursor",
+        "timeout": 10
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/hooks/g1t.mjs\" cursor",
+        "timeout": 5
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/hooks/g1t.mjs\" cursor",
+        "timeout": 5
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/hooks/g1t.mjs\" cursor",
+        "timeout": 5
+      }
+    ],
+    "subagentStart": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/hooks/g1t.mjs\" cursor",
+        "timeout": 5
+      }
+    ],
+    "subagentStop": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/hooks/g1t.mjs\" cursor",
+        "timeout": 5
+      }
+    ],
+    "stop": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/hooks/g1t.mjs\" cursor",
+        "timeout": 5
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/hooks/g1t.mjs\" cursor",
+        "timeout": 5
+      }
+    ]
+  }
+}

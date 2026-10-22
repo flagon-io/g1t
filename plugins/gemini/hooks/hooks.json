@@ -1,0 +1,78 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "g1t",
+            "command": "node \"${extensionPath}${/}hooks${/}g1t.mjs\" gemini",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "BeforeAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "g1t",
+            "command": "node \"${extensionPath}${/}hooks${/}g1t.mjs\" gemini",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "BeforeTool": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "g1t",
+            "command": "node \"${extensionPath}${/}hooks${/}g1t.mjs\" gemini",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "g1t",
+            "command": "node \"${extensionPath}${/}hooks${/}g1t.mjs\" gemini",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "AfterAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "g1t",
+            "command": "node \"${extensionPath}${/}hooks${/}g1t.mjs\" gemini",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "g1t",
+            "command": "node \"${extensionPath}${/}hooks${/}g1t.mjs\" gemini",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}
