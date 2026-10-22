@@ -65,10 +65,11 @@ export type SessionsFilters = {
   item: number | null;
 };
 
-const HARNESSES = Object.keys(HARNESS_NAMES) as Harness[];
-const KINDS = Object.keys(KIND_NAMES) as SessionKind[];
-
 export function sessionsFilters(query: URLSearchParams): SessionsFilters {
+  // Read when asked, not as the module loads: HARNESS_NAMES comes from
+  // another module, which a bundle can load after this one.
+  const harnesses = Object.keys(HARNESS_NAMES);
+  const kinds = Object.keys(KIND_NAMES);
   const harness = query.get("harness");
   const kind = query.get("kind");
   const text = (key: string) => query.get(key)?.trim().replace(/^@/, "") || null;
@@ -76,8 +77,8 @@ export function sessionsFilters(query: URLSearchParams): SessionsFilters {
     state: query.get("state") === "recent" ? "recent" : "live",
     repo: text("repo"),
     person: text("person"),
-    harness: harness && (HARNESSES as string[]).includes(harness) ? (harness as Harness) : null,
-    kind: kind && (KINDS as string[]).includes(kind) ? (kind as SessionKind) : null,
+    harness: harness && harnesses.includes(harness) ? (harness as Harness) : null,
+    kind: kind && kinds.includes(kind) ? (kind as SessionKind) : null,
     item: /^\d+$/.test(query.get("item") ?? "") && Number(query.get("item")) > 0 ? Number(query.get("item")) : null,
   };
 }
