@@ -9,6 +9,7 @@ mod authored;
 mod automerge;
 mod checks;
 mod closing;
+mod cloud_agents;
 mod ghost;
 mod codeowners;
 mod commit_checks;
@@ -1117,6 +1118,8 @@ impl Work {
         }
         // Its head and merge refs in the repository, before its events go out.
         self.keep_pull_refs(&pull).await;
+        // A coding agent's commits make it that agent's (cloud_agents.rs).
+        self.mark_agent_pull(&pull, None).await;
         self.publish(
             "pull.opened",
             &repo.id,
@@ -2756,6 +2759,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "start_session" => reply(&work.start_session(args(body)?).await?),
         "update_session" => reply(&work.update_session(args(body)?).await?),
         "end_session" => reply(&work.end_session(args(body)?).await?),
+        // Usage from coding agents' OpenTelemetry (the API's /v1/logs and /v1/metrics).
+        "record_agent_telemetry" => reply(&work.record_agent_telemetry(args(body)?).await?),
         "title_session" => reply(&work.title_session(args(body)?).await?),
         "get_work_session" => reply(&work.get_work_session(args(body)?).await?),
         "list_work_sessions" => reply(&work.list_work_sessions(args(body)?).await?),

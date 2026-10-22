@@ -21,11 +21,13 @@ import {
   type SpendGroup,
   type SpendKey,
   type SpendSpan,
+  REPORTED_HARNESS_NAMES,
   landedShare,
-  providerComparison,
+  providerComparisons,
   spendBy,
   spendDays,
   spendSpan,
+  unitAmount,
   usdMicros,
 } from "../../lib/spend";
 
@@ -40,8 +42,9 @@ export function meta({ params, ...args }: Route.MetaArgs) {
  * setting allows, which Work checks and refuses with why. People are
  * listed by name, never by what they spent.
  *
- * Beside it, what Anthropic's own report says the person's Claude Code
- * cost (billing's `provider_person_costs`): the viewer's own always,
+ * Beside it, what the providers' own reports say the person's use of
+ * each agent cost (billing's `provider_person_costs`: Anthropic's Claude
+ * Code, Cursor, OpenAI's API, Amp, Devin): the viewer's own always,
  * someone else's only for a viewer who may see it and manages billing.
  * It is a part: when billing doesn't answer or refuses, the line is left out.
  */
@@ -211,7 +214,7 @@ function SpendBody({
   owner: boolean;
 }) {
   const share = landedShare(spend.costUsd, spend.landedUsd);
-  const comparison = providerComparison(provider, spend.rows);
+  const comparisons = providerComparisons(provider, spend.rows);
   const empty = spend.sessions === 0;
   return (
     <>
@@ -231,14 +234,21 @@ function SpendBody({
           counted: an older g1t plugin, or a harness that doesn&apos;t report usage.
         </p>
       )}
-      {comparison ? (
-        <ProviderLine comparison={comparison} own={spend.person.own} />
+      {comparisons.length > 0 ? (
+        <Card className="space-y-2 px-4 py-3 text-sm leading-relaxed text-fg-soft">
+          {comparisons.map((c) => (
+            <ProviderLine key={`${c.provider} ${c.harness} ${c.unit}`} comparison={c} own={spend.person.own} />
+          ))}
+          {comparisons.some((c) => !c.complete) && (
+            <p className="text-xs text-muted">The providers&apos; figures may still change: they arrive up to a few hours late and are revised for a week.</p>
+          )}
+        </Card>
       ) : (
         provider?.connected === false &&
         owner && (
           <p className="text-xs text-muted">
             <Link to={`/${slug}/-/settings/provider-costs`} className="underline decoration-line-strong underline-offset-2 hover:text-accent">
-              Connect Anthropic&apos;s report to compare
+              Connect a provider&apos;s report to compare
             </Link>
           </p>
         )
@@ -283,31 +293,42 @@ function SpendBody({
 }
 
 /**
- * What Anthropic reported for the person's Claude Code in the span, and
- * how much of it g1t's sessions saw: a share, or plainly that g1t's
- * estimate came out higher.
+ * What one provider reported for the person's use of one agent in the
+ * span, and how much of it g1t's sessions saw: a share, or plainly that
+ * g1t's estimate came out higher. Where g1t can't compare (credits, or an
+ * agent it doesn't record or the provider can't tell apart), the figure
+ * alone.
  */
 function ProviderLine({ comparison: c, own }: { comparison: ProviderComparison; own: boolean }) {
-  const label = COST_PROVIDERS.anthropic.label;
-  const figure = (micros: number) => <span className="font-medium text-fg tabular-nums">{money(micros)}</span>;
-  return (
-    <Card className="px-4 py-3 text-sm leading-relaxed text-fg-soft">
+  const label = COST_PROVIDERS[c.provider]?.label ?? c.provider;
+  const what = REPORTED_HARNESS_NAMES[c.harness] ?? harnessName(c.harness as Harness) ?? c.harness;
+  const figure = (micros: number) => <span className="font-medium text-fg tabular-nums">{c.unit === "usd" ? money(micros) : unitAmount(micros, c.unit)}</span>;
+  const whose = own ? "your" : "their";
+  if (c.listPrice) {
+    return (
       <p>
-        {label} reported {figure(c.reportedMicros)} for {own ? "your" : "their"} {harnessName("claude_code")} in these days.{" "}
-        {c.share != null ? (
-          <>
-            g1t&apos;s sessions saw {figure(c.sawMicros)} of it ({c.share}%).
-          </>
-        ) : (
-          <>
-            g1t&apos;s sessions came to more, {figure(c.sawMicros)}: g1t&apos;s estimate is at list price, and {label}&apos;s can differ.
-          </>
-        )}
+        {label}&apos;s token counts put {whose} {what} use in these days at {figure(c.reportedMicros)} at list price: {label} can&apos;t split its costs by
+        person for this organization, so g1t priced the tokens.
       </p>
-      {!c.complete && (
-        <p className="mt-1 text-xs text-muted">{label}&apos;s figure may still change: it arrives about an hour late and is revised for a week.</p>
+    );
+  }
+  return (
+    <p>
+      {label} reported {figure(c.reportedMicros)} for {whose} {what} use in these days.{" "}
+      {c.sawMicros == null ? (
+        c.harness === "openai" ? (
+          <>{label} can&apos;t tell Codex from other use of its API, so this isn&apos;t compared with sessions.</>
+        ) : null
+      ) : c.share != null ? (
+        <>
+          g1t&apos;s sessions saw {figure(c.sawMicros)} of it ({c.share}%).
+        </>
+      ) : (
+        <>
+          g1t&apos;s sessions came to more, {figure(c.sawMicros)}: g1t&apos;s estimate is at list price, and {label}&apos;s can differ.
+        </>
       )}
-    </Card>
+    </p>
   );
 }
 

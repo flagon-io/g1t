@@ -746,7 +746,9 @@ Figures in dollars are for owners and billing managers only.
    requests for changes. Turn each layer on or off above the rows, point
    at a day for its numbers, or open **The numbers, as a table**. Each
    row is drawn to its own scale. Beside it, **Waiting on a first
-   review** lists the oldest open pull requests no one has reviewed.
+   review** lists the oldest open pull requests no one has reviewed. An
+   agent's pull request has the agent mark here and in the spend columns:
+   point at it to see [why it's an agent's](/guides/home/#whose-work-is-an-agents).
 3. **Quiet changes**: places to look, not verdicts.
    - **Knowledge silos**: repositories where one person merged three quarters
      or more of the last 90 days' changes (six or more), and whoever has
@@ -923,7 +925,7 @@ on one of them. A page only owners open is left out for members.
 |                                    | [**Profile**](#the-workspaces-profile)                                   | Members | The display name, picture, description and public details; for owners the billing email, Getting started, the address, [data residency](#data-residency) and deleting the workspace. Owners change it. `-/settings/profile`  |
 | **Access**                         | [**Billing and plans**](/guides/usage-and-billing/)                      | Members | The plan, the spend limit and budget alerts, prepaying and every charge. Statements are at `-/settings/billing/entries`. `-/settings/billing`                                                                                |
 |                                    | ↳ [**Usage**](/guides/usage-and-billing/#the-usage-page)                 | Members | What the workspace used, by product, repository and day. `-/settings/usage`                                                                                                                                                  |
-|                                    | ↳ [**Provider costs**](/guides/usage-and-billing/#provider-cost-reports) | Members | Your AI provider's own cost report, day by day. `-/settings/provider-costs`                                                                                                                                                  |
+|                                    | ↳ [**Provider costs**](/guides/usage-and-billing/#provider-cost-reports) | Members | Your AI providers' own cost reports, day by day and per person. `-/settings/provider-costs`                                                                                                                                  |
 |                                    | **Members**                                                              | Members | Who is in the workspace and their roles, with search and filters; owners [invite people](#add-people), change roles, and see **Outside collaborators**. `-/settings/members`                                                 |
 |                                    | ↳ **Invitations**                                                        | Owners  | Every invitation to join, filtered by where it stands; send one again, revoke it, copy its link. `-/settings/members/invitations`                                                                                            |
 |                                    | [**Permissions**](/guides/permissions/)                                  | Owners  | Who may do what, part by part: the base permission, repositories, teams and chat. `-/settings/permissions`                                                                                                                   |

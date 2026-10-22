@@ -245,8 +245,10 @@ MCP server, and commands to claim and hand off work items. See [Claude Code plug
 everything it records, and how to opt out.
 
 With Codex, the [Codex plugin](#codex-marketplace) records sessions the
-same way, with the same hooks. Other agents record a session with the same
-CLI commands, from their instructions file: see
+same way, with the same hooks, and so do g1t's plugins for
+[Cursor](#cursor) and [GitHub Copilot CLI](#github-copilot-cli) and its
+[Gemini CLI extension](#gemini-cli). Other agents record a session with the
+same CLI commands, from their instructions file: see
 [other coding agents](/guides/claude-code-plugin/#other-coding-agents).
 
 ## Staying out of each other's way
@@ -463,3 +465,96 @@ for Claude Code.
 The direct Codex MCP commands above work without a marketplace. ChatGPT's
 **Add custom MCP server** flow is also available independently; a Git marketplace
 is not a listing in OpenAI's public plugin directory.
+
+## Recording other harnesses
+
+g1t's plugin marketplace also has a plugin for Cursor and one for GitHub
+Copilot CLI, and is a Gemini CLI extension. Each runs the same hooks as
+the [Claude Code plugin](/guides/claude-code-plugin/#what-it-records),
+through the [g1t CLI](/guides/cli/), which must be installed and signed in
+(`g1t auth login`), with Node 18 or later. In a g1t repository, each
+records:
+
+- the session, under the harness's own name (Gemini CLI's as another
+  harness, with its model saying which), and your prompts;
+- the tools the agent runs and what it ran them with (a shell command, the
+  file it wrote), never what they returned;
+- the files, commits, branches and pushes it makes;
+- what it cost, where the harness writes how many tokens it used: only
+  the counts leave your machine, never the transcript.
+
+None of these harnesses lets a hook set an environment variable in the
+session, so g1t tells the agent its session's id for the `G1t-Session`
+trailer on its commits, once (`g1t session view --json --jq .id` prints it
+too). `G1T_RECORD=0` and `G1T_RECORD_PROMPTS=0` work as they do for Claude
+Code. The hooks keep what they need between events under `~/.g1t/<harness>`.
+
+### Cursor
+
+Add the marketplace in the Cursor CLI, then run `/plugin` and install
+**g1t**:
+
+```sh
+agent plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git
+```
+
+On a team plan, an admin can also add the repository as a team
+marketplace with **Import from Repo**. Cursor runs a plugin's hooks in any
+workspace you trust.
+
+What Cursor's hooks give g1t:
+
+- The session is the Cursor conversation, the same across its turns, and
+  each subagent is a session of its own under it, with its task and
+  summary. The files the agent edits come from Cursor's own file-edit
+  events.
+- **No cost.** Cursor's hooks and transcripts carry no token counts, so a
+  Cursor session has no known cost from the plugin; Spend counts it as a
+  session with [no known cost](/guides/spend/#sessions-with-no-known-cost).
+- Cursor can also run the Claude Code plugin's hooks, when it loads
+  Claude Code's plugins and settings. With both installed, each event is
+  still recorded once, as Cursor's.
+- g1t tells the agent its session's id after its first tool call.
+
+### GitHub Copilot CLI
+
+Add the marketplace and install the plugin:
+
+```sh
+copilot plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git
+copilot plugin install g1t@g1t
+```
+
+What Copilot CLI's hooks and session files give g1t:
+
+- The session, and each subagent as a session of its own under it, with
+  its final response.
+- What it cost: each model call's tokens, read from the events file
+  Copilot CLI keeps for the session (`~/.copilot/session-state/<id>/events.jsonl`),
+  the main agent's apart from each subagent's, priced at the model
+  provider's list price. Copilot bills premium requests, not tokens, so
+  this is what those tokens would cost at list price, a measure of the
+  work rather than a bill.
+- g1t tells the agent its session's id after its first tool call.
+
+### Gemini CLI
+
+The marketplace's repository is itself a Gemini CLI extension:
+
+```sh
+gemini extensions install https://g1t.sh/flagon-io/g1t-plugins.git --auto-update
+```
+
+Gemini CLI runs an extension's hooks with hooks turned on, as they are
+unless `hooksConfig.enabled` is `false` in your settings. What its hooks
+and transcript give g1t:
+
+- The session, recorded as another harness. Gemini CLI's hooks don't tell
+  a subagent's events from the session's, so its subagents' work counts
+  as the session's.
+- What it cost: each reply's tokens, read from the session's own
+  transcript under `~/.gemini/tmp` and its subagents' beside it, priced at
+  Google's list prices. Thinking tokens count as output, and a prompt over
+  200,000 tokens is priced at the higher rate the Pro models charge for
+  one. A model with no published list price is left out of the cost.
+- g1t tells the agent its session's id at your first prompt.

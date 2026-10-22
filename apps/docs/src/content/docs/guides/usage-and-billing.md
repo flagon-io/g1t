@@ -1038,28 +1038,43 @@ and the provider's own cost report is the record of all of it. Connect
 the provider and g1t reads that report, day by day, at
 `g1t.sh/<workspace>/-/settings/provider-costs` (**Workspace → Access → Billing and plans → Provider costs**).
 
-**What it reads.** The provider's cost report for the whole organization
-the key belongs to, in US dollars, one line per day and line item:
+**What it reads.** Each provider's reports for the whole organization the
+key belongs to, one line per day:
 
-| Provider  | Report                                                                       | Line items                                                                                                          |
-| --------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Anthropic | The Usage and Cost Admin API's cost report (`/v1/organizations/cost_report`) | Each description, such as _Claude Opus 5.5 Usage - Input Tokens_, for each of the organization's Console workspaces |
-| OpenAI    | The Costs API (`/v1/organization/costs`)                                     | Each line item, for each of the organization's projects                                                             |
+| Provider  | Report                                                                                                                                                                                               | Unit             |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| Anthropic | The Usage and Cost Admin API's cost report (`/v1/organizations/cost_report`), per description and Console workspace; and the Claude Code usage report (`/v1/organizations/usage_report/claude_code`) | US dollars       |
+| OpenAI    | The Costs API (`/v1/organization/costs`), per line item and project, and per user                                                                                                                    | US dollars       |
+| Cursor    | The Admin API's usage events (`/teams/filtered-usage-events`): what each request was charged                                                                                                         | US dollars       |
+| Amp       | Workspace analytics (`/api/v2/workspace/analytics/daily-usage`): each person's usage                                                                                                                 | US dollars       |
+| Devin     | With a Devin service user key, each person's daily consumption (`/v3/enterprise/consumption/daily/users/{id}`); with a Devin Desktop service key, each person's prompt credits (`UserPageAnalytics`) | ACUs, or credits |
 
-**By person, from Anthropic.** With Anthropic connected, g1t also reads
-Anthropic's Claude Code usage report
-(`/v1/organizations/usage_report/claude_code`), with the same key: what
-each person's Claude Code use cost by day, by model, as Anthropic
-estimates it. Anthropic names each person by their email address, or an
-API key by its name. g1t links a row to a member only through an email
+Cursor, Amp and Devin have no separate cost report: the organization's
+day is its people's, added up, model by model. Devin's ACUs and Devin
+Desktop's credits are shown as they are, never turned into dollars, and
+never added to a dollar total.
+
+**By person.** Every provider's figures are also kept per person, by day,
+by model, and by what the use was where the provider can tell:
+
+| Provider  | Per person                                                                                                                                                                                                                                                                                                                                         |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anthropic | Each person's **Claude Code** use, as Anthropic estimates it, and their sessions.                                                                                                                                                                                                                                                                  |
+| OpenAI    | Each person's use of OpenAI's API, by the user OpenAI names on it. Where OpenAI can't split the organization's costs by person, g1t reads each person's token counts instead and prices them at [list price](/guides/sessions/#what-a-session-cost), and says so. OpenAI can't tell Codex from any other use of its API, so it isn't called Codex. |
+| Cursor    | Each person's **Cursor** use: what each request was charged, included usage too, and how many conversations they had. Each conversation's charge is kept by its id, the one Cursor's hooks give, so it can be matched to the session g1t recorded.                                                                                                 |
+| Amp       | Each person's **Amp** use, by model, with what orbs and tools cost besides.                                                                                                                                                                                                                                                                        |
+| Devin     | Each person's ACUs, by product (Devin; Devin Desktop's agent as **Devin Desktop**), or their Devin Desktop credits.                                                                                                                                                                                                                                |
+
+Providers name each person by email address (OpenAI by its user, whose
+address its list of users gives; Cursor's service accounts and Anthropic's
+API keys by name). g1t links a row to a member only through an email
 address that member has
 [verified on g1t](/guides/authentication/#email-addresses), and nothing
 else: no guessing from names or usernames. It shows on that person's
-[Spend](/guides/spend/#beside-anthropics-report) beside what g1t's
-sessions saw. OpenAI's report can't be split by person yet, so OpenAI
-stays organization-wide.
+[Spend](/guides/spend/#beside-the-providers-reports) beside what g1t's
+sessions saw.
 
-**Which key.** An admin key, which only an organization's admins can make:
+**Which key.** A key only the organization's admins can make:
 
 - **Anthropic**: an Admin API key (it starts `sk-ant-admin`), made in the
   Claude Console under **Settings**, **Admin keys**. An ordinary API key
@@ -1068,27 +1083,44 @@ stays organization-wide.
 - **OpenAI**: an admin key (it starts `sk-admin-`), made in the OpenAI
   platform under **Organization settings**, **Admin keys**. A project or
   user API key can't read the Costs API.
+- **Cursor**: an Admin API key (it starts `crsr_`), made by a team admin in
+  the Cursor dashboard under **API Keys**. Cursor's Admin API is for
+  Enterprise teams.
+- **Amp**: an External API application, made in your Amp workspace's
+  settings under **Applications**, with the workspace analytics and members
+  view scopes. Paste its client ID and client secret. A workspace that must
+  use its own custom domain for Amp's API can't be read yet.
+- **Devin**: a Devin service user key (it starts `cog_`) whose role may
+  view the enterprise's consumption and members, or a Devin Desktop service
+  key with **Teams Read-only**. Both are Enterprise only. With a service
+  user key, people who are members only through an identity provider's
+  groups aren't listed by Devin, so their ACUs aren't read.
 
 Only an owner of the workspace can connect a provider, one key per
-provider. g1t checks the key with one small report request and says why
-when it doesn't work (the wrong kind of key, no permission), then reads
-the last 90 days.
+provider. g1t checks the key with one small request and says why when it
+doesn't work (the wrong kind of key, no permission, a plan without the
+API), then reads the last 90 days.
 
 **What g1t keeps.** The key, sealed when it is saved; it is never shown
 again, never sent back to anyone and never written to a log. The page shows
 its last four characters, who connected it and when, when it was last read
-and what went wrong. And the costs: day, provider, line item, the provider's
-own workspace or project, and the amount. From Claude Code's usage report:
-day, the email address or API key name, model, Anthropic's estimate and
-how many sessions. g1t uses the key for nothing but reading the reports:
-never to run a model.
+and what went wrong. And the costs: day, provider, line item or model, the
+provider's own workspace or project, and the amount. Per person: day, the
+email address (or the OpenAI user, API key or service account name),
+what the use was, model, the amount and its unit, whether g1t priced it,
+and how many sessions or conversations. From Cursor, each conversation's
+id, charge and number of requests, by day and person. Never a prompt, a
+file or anything else from the use itself. g1t uses the key for nothing
+but reading the reports: never to run a model.
 
 **How often.** Once a day, around 04:17 UTC. Each read asks for the last
 seven days again, since providers revise recent days (and further back,
 up to 90 days, after reads have failed), and replaces what it had for
 those days. A provider that fails keeps its error on the page until a
 read works; the others are read as usual. The day in progress is
-incomplete at the provider too.
+incomplete at the provider too. A very busy Cursor team, or a Devin
+enterprise of more than 100 people, has more than g1t reads at once: the
+page says so, and the earliest days may be missing.
 
 **Not added to g1t's own figures.** Runs g1t made on the workspace's own
 key, such as Ask and sessions on [your AI providers](/guides/ai/), are on
@@ -1101,16 +1133,17 @@ again, since a new key may belong to another organization. To stop the key
 working anywhere, also delete it at the provider.
 
 Members can see which providers are connected and what they reported;
-only owners connect, replace and disconnect them. Each person's Claude Code
-figure follows [who sees each person's spend](/guides/spend/#who-sees-each-persons-spend):
+only owners connect, replace and disconnect them. Each person's figures
+follow [who sees each person's spend](/guides/spend/#who-sees-each-persons-spend):
 everyone sees their own, and someone else's shows to an owner or billing
-manager the workspace lets see it. What the report holds for nobody g1t
-can link (an address no member has verified, or an API key) shows only to
-owners and billing managers, as **Not linked to anyone: $X across N people
-or keys this quarter** on the Provider costs page. To link one, its person
-adds and verifies that address under **Account settings**, **Emails**.
-Services read the figures with the billing service's `provider_costs` and
-`provider_person_costs` RPCs.
+manager the workspace lets see it. What the reports hold in dollars for
+nobody g1t can link (an address no member has verified, an API key or a
+service account) shows only to owners and billing managers, as **Not
+linked to anyone: $X across N people or keys this quarter** on the
+Provider costs page. To link one, its person adds and verifies that
+address under **Account settings**, **Emails**. Services read the figures
+with the billing service's `provider_costs` and `provider_person_costs`
+RPCs.
 
 ## For services: entitlements, reserve, settle
 

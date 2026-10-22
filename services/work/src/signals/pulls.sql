@@ -29,7 +29,7 @@ share(pull_id, usd) AS (
     JOIN (SELECT session_id, COUNT(*) AS pulls FROM counts_with GROUP BY session_id) n ON n.session_id = c.session_id
   GROUP BY c.pull_id
 )
-SELECT pr.repo_id, pr.number, pr.title, pr.status, pr.agent, pr.owner_id, pr.owner_name,
+SELECT pr.repo_id, pr.number, pr.title, pr.status, pr.agent, pr.agent_rule, pr.owner_id, pr.owner_name,
   pr.created_at, pr.merged_at, i.number AS item,
   COALESCE(i.milestone,
     (SELECT m.number FROM milestones m WHERE m.workspace = ?2 AND m.number = pr.milestone)) AS milestone,

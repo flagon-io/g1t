@@ -11,6 +11,10 @@
 //! after a closing keyword (`Fixes #12`, items/refs.rs) lands it there, where
 //! the repository closes work items that way, and the work item says which
 //! commit and who pushed it; `Part of #12` links it.
+//!
+//! A commit pushed straight to the default branch that a coding agent made
+//! (its trailers and addresses say so) is recorded as that agent's direct
+//! work, for whoever started it (cloud_agents.rs).
 
 use g1t_contracts::events::Event;
 use g1t_contracts::repos::{GetByIdArgs, Landed, Pushed, PushedArgs, Repo};
@@ -122,7 +126,9 @@ impl Work {
             .await?
             .results::<CandidateRow>()?;
         let closes_items = default && self.settings(repo_id).await?.auto_close_items;
-        if candidates.is_empty() && !closes_items {
+        // A default branch's new commits are read for the work items they
+        // name, and for a coding agent's (cloud_agents.rs).
+        if candidates.is_empty() && !default {
             return Ok(Vec::new());
         }
         let pushed: Pushed = g1t_kit::call(
@@ -133,7 +139,7 @@ impl Work {
                 before: event.data["before"].as_str().map(str::to_owned),
                 after: after.to_owned(),
                 heads: candidates.iter().map(|row| row.head_commit.clone()).collect(),
-                messages: closes_items,
+                messages: default,
                 // No `before` on the default branch: the repository's first push.
                 first: default && event.data["before"].as_str().is_none(),
             },
@@ -141,6 +147,16 @@ impl Work {
         .await?;
         if pushed.landed.is_empty() && pushed.commits.is_empty() {
             return Ok(Vec::new());
+        }
+        // Straight to the default branch, landing no pull request: a coding
+        // agent's commits there are its direct work. A pull request's are
+        // counted with it, and a repository's first push brings history,
+        // not this week's work.
+        if default && landed_pull.is_none() && pushed.landed.is_empty() && event.data["before"].as_str().is_some() {
+            let at = g1t_contracts::time::rfc3339(g1t_kit::now_ms());
+            if let Err(error) = self.record_agent_commits(repo_id, &pushed.commits, &at).await {
+                worker::console_warn!("agents' commits pushed to {branch} of {repo_id} not recorded: {error}");
+            }
         }
         let actor: Viewer =
             g1t_kit::call(&self.identity, "user_by_id", &g1t_contracts::identity::UserIdArgs { id: actor_id.to_owned() }).await?;
@@ -299,7 +315,7 @@ mod tests {
     }
 
     fn commit(hash: &str, message: &str) -> PushedCommit {
-        PushedCommit { hash: hash.into(), message: message.into() }
+        PushedCommit { hash: hash.into(), message: message.into(), author_email: None }
     }
 
     fn here(number: u32) -> refs::Ref {

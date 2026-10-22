@@ -21,7 +21,8 @@ after(() => temps.forEach((d) => rmSync(d, { recursive: true, force: true })));
 /** A copy of what the build reads from this repository, to change freely. */
 function source() {
   const root = temp("plugins-src-");
-  for (const path of [".claude-plugin", SOURCE, "plugins/codex", "LICENSE"]) cpSync(join(ROOT, path), join(root, path), { recursive: true });
+  for (const path of [".claude-plugin", SOURCE, "plugins/codex", "plugins/cursor", "plugins/copilot", "plugins/gemini", "LICENSE"])
+    cpSync(join(ROOT, path), join(root, path), { recursive: true });
   return root;
 }
 const editJson = (root, file, fn) => {
@@ -144,6 +145,12 @@ test("publishing: the first commit and tag, nothing when unchanged, a new versio
   editJson(root, "plugins/codex/plugin.json", (p) => ({ ...p, version: "0.1.1" }));
   assert.equal(run("1".repeat(40)).changed, true);
 
+  // So does each other harness's plugin, the Gemini CLI extension at the top included.
+  writeFileSync(join(root, "plugins/gemini/hooks/hooks.json"), '{ "hooks": {} }\n');
+  assert.throws(() => run("2".repeat(40)), /Gemini CLI plugin files changed without a version bump in plugins\/gemini\/gemini-extension.json/);
+  editJson(root, "plugins/gemini/gemini-extension.json", (p) => ({ ...p, version: "0.1.1" }));
+  assert.equal(run("3".repeat(40)).changed, true);
+
   // The marketplace's own text may change without a new version.
   editJson(root, ".claude-plugin/marketplace.json", (m) => ({ ...m, description: "g1t's plugins for Claude Code, and more." }));
   const text = run("e".repeat(40));
@@ -163,4 +170,32 @@ test("Codex catalog resolves its packaged skill and OAuth MCP server", () => {
   assert.equal(mcp.mcpServers.g1t.type, "streamable-http");
   assert.equal(mcp.mcpServers.g1t.extensions["com.openai"].auth.client.mode, "dcr");
   assert.match(readFileSync(join(plugin, "skills/work-on-g1t/SKILL.md"), "utf8"), /harness: codex/);
+});
+
+test("Cursor, Copilot CLI and Gemini CLI each find their plugin, with the hook core beside its hooks", () => {
+  const out = join(temp("plugins-harnesses-"), "tree");
+  build(out);
+  const core = readFileSync(join(ROOT, SOURCE, "hooks/g1t.mjs"), "utf8");
+  // Cursor: its multi-plugin catalog names a folder with a .cursor-plugin manifest.
+  const cursor = JSON.parse(readFileSync(join(out, ".cursor-plugin/marketplace.json"), "utf8"));
+  assert.equal(cursor.owner.name, "Flagon, Inc.");
+  const cursorPlugin = join(out, cursor.plugins[0].source);
+  assert.equal(JSON.parse(readFileSync(join(cursorPlugin, ".cursor-plugin/plugin.json"), "utf8")).version, cursor.plugins[0].version);
+  assert.match(readFileSync(join(cursorPlugin, "hooks/hooks.json"), "utf8"), /\$\{CURSOR_PLUGIN_ROOT\}\/hooks\/g1t\.mjs\\" cursor/);
+  assert.equal(readFileSync(join(cursorPlugin, "hooks/g1t.mjs"), "utf8"), core);
+  // Copilot CLI looks in .github/plugin/ before .claude-plugin/, so it finds its own.
+  const copilot = JSON.parse(readFileSync(join(out, ".github/plugin/marketplace.json"), "utf8"));
+  const copilotPlugin = join(out, copilot.plugins[0].source);
+  const hooks = JSON.parse(readFileSync(join(copilotPlugin, "hooks/hooks.json"), "utf8"));
+  for (const [event, [entry]] of Object.entries(hooks.hooks)) {
+    assert.ok(entry.bash.endsWith(`copilot ${event}`) && entry.powershell.endsWith(`copilot ${event}`), event);
+    assert.match(entry.bash, /installed-plugins\/g1t\/g1t/);
+  }
+  assert.equal(readFileSync(join(copilotPlugin, "hooks/g1t.mjs"), "utf8"), core);
+  // Gemini CLI installs the repository's top as its extension.
+  assert.equal(JSON.parse(readFileSync(join(out, "gemini-extension.json"), "utf8")).name, "g1t");
+  assert.match(readFileSync(join(out, "hooks/hooks.json"), "utf8"), /\$\{extensionPath\}\$\{\/\}hooks\$\{\/\}g1t\.mjs\\" gemini/);
+  assert.equal(readFileSync(join(out, "hooks/g1t.mjs"), "utf8"), core);
+  const readme = readFileSync(join(out, "README.md"), "utf8");
+  for (const line of ["agent plugin marketplace add", "copilot plugin install g1t@g1t", "gemini extensions install"]) assert.ok(readme.includes(line), line);
 });

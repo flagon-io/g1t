@@ -4095,19 +4095,42 @@ pub struct SetBillingDetailsArgs {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CostProvider {
-    /// Anthropic's Usage and Cost Admin API, with an Admin API key.
+    /// Anthropic's Usage and Cost Admin API, with an Admin API key, and
+    /// its Claude Code usage report per person.
     Anthropic,
-    /// OpenAI's Costs API, with an admin key.
+    /// OpenAI's Costs API, with an admin key, and its costs (or, where it
+    /// can't split them by person, its token usage priced at list price)
+    /// per person.
     Openai,
+    /// Cursor's Admin API, with an admin API key: each request's charge,
+    /// per person. Cursor has no separate cost report: the organization's
+    /// days are its people's, summed.
+    Cursor,
+    /// Amp's workspace analytics, with an External API application's
+    /// client ID and secret: each person's usage in US dollars, by day.
+    Amp,
+    /// Devin's: with a Devin service user key (`cog_…`), each person's
+    /// ACUs by day; with a Devin Desktop (Windsurf) service key, each
+    /// person's prompt credits by day. Never dollars.
+    Devin,
 }
 
 impl CostProvider {
-    pub const ALL: [CostProvider; 2] = [CostProvider::Anthropic, CostProvider::Openai];
+    pub const ALL: [CostProvider; 5] = [
+        CostProvider::Anthropic,
+        CostProvider::Openai,
+        CostProvider::Cursor,
+        CostProvider::Amp,
+        CostProvider::Devin,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
             CostProvider::Anthropic => "anthropic",
             CostProvider::Openai => "openai",
+            CostProvider::Cursor => "cursor",
+            CostProvider::Amp => "amp",
+            CostProvider::Devin => "devin",
         }
     }
 
@@ -4115,11 +4138,49 @@ impl CostProvider {
         match self {
             CostProvider::Anthropic => "Anthropic",
             CostProvider::Openai => "OpenAI",
+            CostProvider::Cursor => "Cursor",
+            CostProvider::Amp => "Amp",
+            CostProvider::Devin => "Devin",
         }
     }
 
     pub fn parse(name: &str) -> Option<CostProvider> {
         CostProvider::ALL.into_iter().find(|provider| provider.name() == name)
+    }
+
+    /// Whether the provider has an organization cost report of its own,
+    /// apart from what it reports per person.
+    pub fn has_cost_report(self) -> bool {
+        matches!(self, CostProvider::Anthropic | CostProvider::Openai)
+    }
+}
+
+/// What a provider's figure counts: US dollars, or the provider's own
+/// units, which g1t never converts to dollars.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CostUnit {
+    #[default]
+    Usd,
+    /// Devin Desktop's (Windsurf's) prompt credits.
+    Credits,
+    /// Devin's ACUs (agent compute units).
+    Acus,
+}
+
+impl CostUnit {
+    pub fn name(self) -> &'static str {
+        match self {
+            CostUnit::Usd => "usd",
+            CostUnit::Credits => "credits",
+            CostUnit::Acus => "acus",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<CostUnit> {
+        [CostUnit::Usd, CostUnit::Credits, CostUnit::Acus]
+            .into_iter()
+            .find(|unit| unit.name().eq_ignore_ascii_case(name))
     }
 }
 
@@ -4166,7 +4227,9 @@ pub struct ConnectProviderArgs {
     pub actor: User,
     pub workspace: String,
     pub provider: CostProvider,
-    /// The admin key. Never logged, never returned.
+    /// The admin key. For Amp, the External API application's client ID
+    /// and secret joined by a colon (`id:secret`). Never logged, never
+    /// returned.
     pub credential: String,
 }
 
@@ -4215,11 +4278,14 @@ pub struct ProviderCostDay {
     pub day: String,
     pub provider: CostProvider,
     /// The provider's own words for it: Anthropic's description (such as
-    /// "Claude Opus 5.5 Usage - Input Tokens"), OpenAI's line item. Empty
-    /// when the provider gave none.
+    /// "Claude Opus 5.5 Usage - Input Tokens"), OpenAI's line item, the
+    /// model for a provider whose days are its people's. Empty when the
+    /// provider gave none.
     pub item: String,
-    /// Millionths of a US dollar.
+    /// Millionths of `unit`: of a US dollar, but for Devin.
     pub micros: i64,
+    #[serde(default)]
+    pub unit: CostUnit,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -4234,10 +4300,11 @@ pub struct ProviderCosts {
     pub complete: bool,
 }
 
-/// `provider_person_costs`: what a provider reported one person's agent
-/// use cost, by day, beside nothing else: Anthropic's Claude Code usage
-/// report, read with the workspace's Anthropic connection, matched to the
-/// person through an email address they have verified. The viewer's own,
+/// `provider_person_costs`: what the connected providers reported one
+/// person's agent use cost, by day: Anthropic's Claude Code usage report,
+/// OpenAI's costs (or its token usage at list price), Cursor's usage
+/// events, Amp's daily usage and Devin's ACUs or credits, each matched to
+/// the person through an email address they have verified. The viewer's own,
 /// or, for an owner or billing manager, anyone's (the caller also holds to
 /// the workspace's spend visibility). Returns `Outcome<ProviderPersonCosts>`.
 #[derive(Debug, Serialize, Deserialize)]
@@ -4261,12 +4328,26 @@ pub struct ProviderPersonDay {
     /// `YYYY-MM-DD`, UTC.
     pub day: String,
     pub provider: CostProvider,
-    /// claude_code: the only per-person report there is.
+    /// What the use was, as far as the provider can tell: `claude_code`,
+    /// `cursor` and `amp` for those agents; `openai` for use of OpenAI's
+    /// API (it can't tell Codex from any other); `devin` for Devin's ACUs
+    /// and `devin_desktop` for Devin Desktop's (Windsurf's) credits.
     pub harness: String,
+    /// The model, or for Devin's ACUs its product (`devin`, `cascade`,
+    /// `terminal`, …). Empty when the provider gave none.
     pub model: String,
-    /// The provider's estimate, in millionths of a US dollar.
+    /// Millionths of `unit`: the provider's own figure, or, when
+    /// `list_price`, g1t's estimate from the provider's token counts.
     pub micros: i64,
+    /// Sessions, or Cursor's conversations, where the provider counts them.
     pub sessions: u32,
+    #[serde(default)]
+    pub unit: CostUnit,
+    /// True when the provider gave only tokens and g1t priced them at list
+    /// price (OpenAI, for an organization whose costs it can't split by
+    /// person).
+    #[serde(default)]
+    pub list_price: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -4274,11 +4355,14 @@ pub struct ProviderPersonDay {
 pub struct ProviderPersonCosts {
     /// Whether a provider with a per-person report is connected (and read).
     pub connected: bool,
+    /// The providers connected, each of which reports per person.
+    #[serde(default)]
+    pub providers: Vec<CostProvider>,
     /// Oldest first.
     pub days: Vec<ProviderPersonDay>,
-    /// Only for an owner or billing manager: what the report holds for
-    /// nobody g1t can match (an address no member has verified, or an API
-    /// key), in the span, and how many such actors.
+    /// Only for an owner or billing manager: what the reports hold in US
+    /// dollars for nobody g1t can match (an address no member has
+    /// verified, or an API key), in the span, and how many such actors.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unlinked_micros: Option<i64>,
     #[serde(default)]

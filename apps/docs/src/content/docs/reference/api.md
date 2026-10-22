@@ -257,6 +257,14 @@ kind of thing, then a UUIDv7 in base32, for example
 Times are RFC 3339 in UTC, with milliseconds, such as
 `2026-10-01T18:04:11.482Z`.
 
+## OpenTelemetry from coding agents
+
+`POST /v1/logs` and `POST /v1/metrics` take coding agents' own
+OpenTelemetry as OTLP over HTTP, in protobuf or JSON, with a token that has
+`work:write`. They aren't JSON endpoints, so they aren't in the OpenAPI
+document: their requests and answers are OTLP's. What they read, and the
+settings for each harness, are in [agent telemetry](/guides/agent-telemetry/#the-endpoints).
+
 ## Resources
 
 | Resource                                                                            |                                                                                                                                                                                                                                            |

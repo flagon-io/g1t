@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -52,8 +52,18 @@ import {
   codexCounts,
   dataDir,
   updateNotice,
-  codexIdContext,
+  idContext,
   trailerFor,
+  HARNESSES,
+  cursorEvent,
+  cursorReply,
+  geminiEvent,
+  geminiReply,
+  copilotEvent,
+  copilotReply,
+  copilotModel,
+  mergeUsage,
+  firstDelivery,
 } from "../hooks/g1t.mjs";
 
 import { CONTRACT, refusal } from "./fake-g1t.mjs";
@@ -823,6 +833,219 @@ describe("with a working copy", () => {
     await new Promise((done) => setTimeout(done, 200));
   });
 
+  /** Runs the hook script as a harness's plugin does, and waits for its background half to start the session. */
+  async function runAs(args, event, extra = {}) {
+    const out = spawnSync(process.execPath, [SCRIPT, ...args], { input: JSON.stringify(event), encoding: "utf8", env: { ...process.env, ...env, ...extra } });
+    assert.equal(out.status, 0, out.stderr);
+    for (let i = 0; i < 100 && !calls().some((c) => c.args[1] === "start"); i++) await new Promise((done) => setTimeout(done, 50));
+    await new Promise((done) => setTimeout(done, 300));
+    return out.stdout ? JSON.parse(out.stdout) : null;
+  }
+
+  test("Cursor: a session by its conversation, its prompt, tools, edits and subagents, each event once", () => {
+    const cursor = { ...env, G1T_HOOK_HARNESS: "cursor", G1T_HOOK_DATA: join(dir, ".cursor-data") };
+    const common = {
+      conversation_id: "conv-1",
+      generation_id: "gen-1",
+      model: "claude-opus-5-5-thinking",
+      model_id: "claude-opus-5-5",
+      cursor_version: "3.4.0",
+      workspace_roots: [dir],
+    };
+    const run = (raw) => {
+      const event = cursorEvent({ ...common, ...raw }, { env: cursor });
+      const { output, job } = hook(event, cursor);
+      if (job) work(job, cursor);
+      return { output, job };
+    };
+    const started = run({ hook_event_name: "sessionStart", session_id: "conv-1", composer_mode: "agent" });
+    assert.match(started.output.hookSpecificOutput.additionalContext, /work item #42/);
+    assert.match(started.output.hookSpecificOutput.additionalContext, /which g1t says after your first tool call/);
+    assert.deepEqual(cursorReply("sessionStart", started.output), { additional_context: started.output.hookSpecificOutput.additionalContext });
+    run({ hook_event_name: "beforeSubmitPrompt", prompt: "fix the login" });
+    const tool = run({
+      hook_event_name: "postToolUse",
+      tool_name: "Shell",
+      tool_use_id: "t1",
+      tool_input: { command: "git commit -m fix", working_directory: dir },
+    });
+    // The session's id, said once after a tool, for the commits' trailer.
+    assert.match(tool.output.hookSpecificOutput.additionalContext, /this session is ses_fake01 on g1t/);
+    assert.equal(
+      run({ hook_event_name: "postToolUse", tool_name: "Shell", tool_use_id: "t1", tool_input: { command: "git commit -m fix" } }).job,
+      null,
+      "the same event again",
+    );
+    run({ hook_event_name: "afterFileEdit", file_path: join(dir, "src", "login.ts"), edits: [] });
+    run({ hook_event_name: "subagentStart", subagent_id: "sub-9", subagent_type: "explore", task: "find the login form", subagent_model: "claude-sonnet-5-5" });
+    run({ hook_event_name: "subagentStop", subagent_type: "explore", task: "find the login form", status: "completed", summary: "It is in src/login.ts" });
+    run({ hook_event_name: "sessionEnd", session_id: "conv-1", reason: "completed" });
+    const done = calls().filter((c) => c.args[0] !== "work" && c.args[1] !== "get_session");
+    assert.deepEqual(done[0].args, ["session", "start", "--harness", "cursor", "--harness-session-id", "conv-1", "--json"]);
+    assert.ok(done.some((c) => c.args.join(" ") === "session log --kind prompt -- fix the login"));
+    assert.equal(done.filter((c) => c.args.join(" ") === "session log --kind tool_call -- Shell: git commit -m fix").length, 1);
+    assert.ok(done.some((c) => c.args.join(" ") === "session touch --file=src/login.ts"));
+    const sub = done.find((c) => c.args[1] === "start" && c.args.includes("--parent"));
+    assert.ok(
+      sub.args.includes("conv-1/agent/sub-9") && sub.args.includes("--task=find the login form") && sub.args.includes("--model=claude-sonnet-5-5"),
+      sub.args.join(" "),
+    );
+    assert.ok(done.some((c) => c.session === "ses_sub_sub-9" && c.args.join(" ") === "session end --reason done --result=It is in src/login.ts"));
+    assert.ok(done.some((c) => c.session === "ses_fake01" && c.args.join(" ") === "session end --reason completed"));
+    // Cursor's hooks carry no tokens: no usage is ever sent.
+    assert.ok(!done.some((c) => c.args.some((a) => a.startsWith("--usage-json"))));
+    // Where Cursor waits for an answer, it always gets one.
+    assert.deepEqual(cursorReply("subagentStart", null), { permission: "allow" });
+    assert.deepEqual(cursorReply("beforeSubmitPrompt", null), { continue: true });
+    assert.equal(cursorReply("stop", started.output), null);
+  });
+
+  test("Cursor running Claude Code's hooks: its events are Cursor's, and the plugin's copy of one is not recorded twice", async () => {
+    const data = { G1T_HOOK_DATA: join(dir, ".cursor-data") };
+    const event = { hook_event_name: "sessionStart", session_id: "conv-2", conversation_id: "conv-2", cursor_version: "3.4.0", workspace_roots: [dir] };
+    const reply = await runAs([], event, data);
+    assert.match(reply.additional_context, /work item #42/);
+    assert.deepEqual(
+      calls()
+        .find((c) => c.args[1] === "start")
+        .args.slice(2, 6),
+      ["--harness", "cursor", "--harness-session-id", "conv-2"],
+    );
+    const prompt = {
+      hook_event_name: "beforeSubmitPrompt",
+      conversation_id: "conv-2",
+      generation_id: "g",
+      prompt: "hello",
+      cursor_version: "3.4.0",
+      workspace_roots: [dir],
+    };
+    assert.deepEqual(await runAs(["cursor"], prompt, data), { continue: true });
+    await runAs([], prompt, data);
+    assert.equal(calls().filter((c) => c.args.join(" ") === "session log --kind prompt -- hello").length, 1);
+  });
+
+  test("Copilot CLI: its camelCase events by the name its hooks.json passes, each subagent's usage apart from the session's", async () => {
+    const home = join(dir, ".copilot-home");
+    const transcript = join(home, "session-state", "cop-1", "events.jsonl");
+    mkdirSync(dirname(transcript), { recursive: true });
+    const record = (id, model, usage, agentId) =>
+      JSON.stringify({
+        type: "session.usage_record",
+        id: `e-${id}`,
+        ...(agentId ? { agentId } : {}),
+        data: { usage: { model, ...usage, accounting: { usageId: id } } },
+      });
+    writeFileSync(
+      transcript,
+      [
+        JSON.stringify({ type: "user.message", data: { content: "the secret plan" } }),
+        record("u1", "gpt-6-luna", { inputTokens: 1000, cacheReadTokens: 600, cacheWriteTokens: 100, outputTokens: 50, reasoningTokens: 20 }),
+        record("u1", "gpt-6-luna", { inputTokens: 1000, cacheReadTokens: 600, cacheWriteTokens: 100, outputTokens: 50, reasoningTokens: 20 }),
+        record("u2", "claude-sonnet-4.6", { inputTokens: 500, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 10 }, "agent-7"),
+        "",
+      ].join("\n"),
+    );
+    const copilot = { G1T_HOOK_DATA: join(dir, ".copilot-data"), COPILOT_HOME: home, FAKE_G1T_VERSION: USAGE_CLI };
+    const at = { sessionId: "cop-1", timestamp: 1, cwd: dir };
+    const reply = await runAs(["copilot", "sessionStart"], { ...at, source: "new" }, copilot);
+    assert.match(reply.additionalContext, /work item #42/);
+    assert.deepEqual(
+      calls()
+        .find((c) => c.args[1] === "start")
+        .args.slice(2, 6),
+      ["--harness", "copilot", "--harness-session-id", "cop-1"],
+    );
+    assert.equal(await runAs(["copilot", "userPromptSubmitted"], { ...at, prompt: "fix the login" }, copilot), null);
+    const tool = await runAs(
+      ["copilot", "postToolUse"],
+      { ...at, toolName: "edit", toolArgs: { path: join(dir, "a.ts"), old_str: "x", new_str: "y" } },
+      copilot,
+    );
+    assert.match(tool.additionalContext, /this session is ses_fake01 on g1t/);
+    await runAs(
+      ["copilot", "subagentStart"],
+      { ...at, transcriptPath: transcript, agentId: "agent-7", agentName: "explore", agentDescription: "find the form" },
+      copilot,
+    );
+    await runAs(["copilot", "agentStop"], { ...at, agentId: "agent-7", transcriptPath: transcript, stopReason: "end_turn" }, copilot);
+    await runAs(["copilot", "subagentStop"], { ...at, transcriptPath: transcript, agentId: "agent-7", agentName: "explore", response: "Found it" }, copilot);
+    await runAs(["copilot", "agentStop"], { ...at, transcriptPath: transcript, stopReason: "end_turn" }, copilot);
+    for (let i = 0; i < 200 && calls().filter((c) => c.args[1] === "heartbeat").length < 2; i++) await new Promise((done) => setTimeout(done, 50));
+    const done = calls();
+    assert.ok(done.some((c) => c.args.join(" ") === "session log --kind prompt -- fix the login"));
+    assert.ok(done.some((c) => c.args.join(" ") === "session log --kind tool_call -- edit: a.ts"));
+    assert.ok(done.some((c) => c.args.join(" ") === "session touch --file=a.ts"));
+    const usage = (session) => {
+      const beat = done.find((c) => c.session === session && c.args[1] === "heartbeat" && c.args.some((a) => a.startsWith("--usage-json=")));
+      return beat && JSON.parse(beat.args.find((a) => a.startsWith("--usage-json=")).slice("--usage-json=".length));
+    };
+    assert.deepEqual(usage("ses_fake01"), [
+      { model: "gpt-6-luna", input_tokens: 300, output_tokens: 50, cache_write_5m_tokens: 100, cache_write_1h_tokens: 0, cache_read_tokens: 600 },
+    ]);
+    assert.deepEqual(usage("ses_sub_7"), [
+      { model: "claude-sonnet-4-6", input_tokens: 500, output_tokens: 10, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_read_tokens: 0 },
+    ]);
+    assert.ok(done.some((c) => c.session === "ses_sub_7" && c.args.join(" ") === "session end --reason done --result=Found it"));
+    // A subagent's turn ending is not the session's: one heartbeat for the session.
+    assert.equal(done.filter((c) => c.session === "ses_fake01" && c.args[1] === "heartbeat").length, 1);
+  });
+
+  test("Gemini CLI: recorded as another harness, its turn's usage counted from its transcript and its subagents'", async () => {
+    const chats = join(dir, ".gemini", "tmp", "p1", "chats");
+    const transcript = join(chats, "session-2026-10-22T10-00-abc.jsonl");
+    mkdirSync(join(chats, "gem-1"), { recursive: true });
+    const reply = (id, model, tokens) => JSON.stringify({ id, timestamp: "t", type: "gemini", content: "the secret plan", model, tokens });
+    writeFileSync(
+      transcript,
+      [
+        JSON.stringify({ sessionId: "gem-1", projectHash: "h", startTime: "t", kind: "main" }),
+        JSON.stringify({ id: "m0", type: "user", content: "the secret plan" }),
+        reply("m1", "gemini-2.5-pro", { input: 1000, output: 100, cached: 400, thoughts: 50, tool: 10, total: 1160 }),
+        reply("m1", "gemini-2.5-pro", { input: 1000, output: 120, cached: 400, thoughts: 50, tool: 10, total: 1180 }),
+        JSON.stringify({ $set: { lastUpdated: "t2" } }),
+        "",
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(chats, "gem-1", "sub-1.jsonl"),
+      [reply("s1", "gemini-3-flash-preview", { input: 200, output: 20, cached: 0, thoughts: 0 }), ""].join("\n"),
+    );
+    const gemini = { G1T_HOOK_DATA: join(dir, ".gemini-data"), FAKE_G1T_VERSION: USAGE_CLI };
+    const at = { session_id: "gem-1", transcript_path: transcript, cwd: dir, timestamp: "t" };
+    const started = await runAs(["gemini"], { ...at, hook_event_name: "SessionStart", source: "startup" }, gemini);
+    assert.equal(started.hookSpecificOutput.hookEventName, "SessionStart");
+    assert.deepEqual(
+      calls()
+        .find((c) => c.args[1] === "start")
+        .args.slice(2, 6),
+      ["--harness", "other", "--harness-session-id", "gem-1"],
+    );
+    const prompt = await runAs(["gemini"], { ...at, hook_event_name: "BeforeAgent", prompt: "fix it" }, gemini);
+    assert.equal(prompt.hookSpecificOutput.hookEventName, "BeforeAgent");
+    assert.match(prompt.hookSpecificOutput.additionalContext, /this session is ses_fake01 on g1t/);
+    await runAs(
+      ["gemini"],
+      {
+        ...at,
+        hook_event_name: "AfterTool",
+        tool_name: "write_file",
+        tool_input: { file_path: join(dir, "b.md"), content: "x" },
+        tool_response: { llmContent: "the secret plan" },
+      },
+      gemini,
+    );
+    await runAs(["gemini"], { ...at, hook_event_name: "AfterAgent", prompt: "fix it", prompt_response: "the secret plan", stop_hook_active: false }, gemini);
+    for (let i = 0; i < 200 && !calls().some((c) => c.args[1] === "heartbeat"); i++) await new Promise((done) => setTimeout(done, 50));
+    const done = calls();
+    assert.ok(done.some((c) => c.args.join(" ") === "session touch --file=b.md"));
+    assert.ok(!JSON.stringify(done).includes("the secret plan"));
+    const beat = done.find((c) => c.args[1] === "heartbeat");
+    assert.deepEqual(JSON.parse(beat.args.find((a) => a.startsWith("--usage-json=")).slice("--usage-json=".length)), [
+      { model: "gemini-2.5-pro", input_tokens: 610, output_tokens: 170, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_read_tokens: 400 },
+      { model: "gemini-3-flash-preview", input_tokens: 200, output_tokens: 20, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_read_tokens: 0 },
+    ]);
+  });
+
   test("the script prints nothing for a prompt, and never fails on bad input", () => {
     const prompt = spawnSync(process.execPath, [SCRIPT], {
       input: JSON.stringify({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "hello" }),
@@ -1409,15 +1632,177 @@ test("Codex is told its session's id once, at the first prompt after it has one,
   try {
     const env = { G1T_HOOK_HARNESS: "codex", CLAUDE_PLUGIN_DATA: dir };
     const files = sessionFiles("codex-run", env);
-    assert.equal(codexIdContext(files, env), null, "not before it has one");
+    assert.equal(idContext(files, env), null, "not before it has one");
     mkdirSync(files.dir, { recursive: true });
     writeFileSync(files.id, "ses_codex1");
-    assert.match(codexIdContext(files, env), /this session is ses_codex1 on g1t\. Add the trailer `G1t-Session: ses_codex1`/);
-    assert.equal(codexIdContext(files, env), null, "once");
-    assert.equal(codexIdContext(files, { CLAUDE_PLUGIN_DATA: dir }), null, "never for Claude Code, which has G1T_SESSION");
-    assert.equal(codexIdContext(null, env), null);
+    assert.match(idContext(files, env), /this session is ses_codex1 on g1t\. Add the trailer `G1t-Session: ses_codex1`/);
+    assert.equal(idContext(files, env), null, "once");
+    assert.equal(idContext(files, { CLAUDE_PLUGIN_DATA: dir }), null, "never for Claude Code, which has G1T_SESSION");
+    assert.equal(idContext(null, env), null);
     assert.match(trailerFor(env), /which g1t says at your first prompt/);
     assert.match(trailerFor({}), /\$G1T_SESSION/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+describe("other harnesses", () => {
+  test("each harness is one entry: what g1t calls it, its own state folder, and how its transcript is read", () => {
+    assert.deepEqual(
+      Object.entries(HARNESSES).map(([name, h]) => [name, h.cli, h.dir]),
+      [
+        ["claude_code", "claude_code", "claude-code"],
+        ["codex", "codex", "codex"],
+        ["cursor", "cursor", "cursor"],
+        ["gemini", "other", "gemini"],
+        ["copilot", "copilot", "copilot"],
+      ],
+    );
+    // Every harness g1t is told is one the CLI takes.
+    for (const { cli } of Object.values(HARNESSES)) assert.ok(CONTRACT.commands[1].flags["--harness"].includes(cli), cli);
+    assert.equal(harnessOf({ G1T_HOOK_HARNESS: "copilot" }), "copilot");
+    assert.equal(harnessOf({ G1T_HOOK_HARNESS: "toString" }), "claude_code");
+    assert.match(dataDir({ G1T_HOOK_HARNESS: "cursor", CLAUDE_PLUGIN_DATA: "/claude" }), /[\\/]\.g1t[\\/]cursor$/);
+    assert.equal(dataDir({ G1T_HOOK_HARNESS: "copilot", COPILOT_PLUGIN_DATA: "/copilot" }), "/copilot");
+    assert.equal(dataDir({ G1T_HOOK_HARNESS: "gemini", G1T_HOOK_DATA: "/any" }), "/any");
+    assert.equal(HARNESSES.cursor.count, null, "Cursor's transcript has no tokens");
+    assert.match(trailerFor({ G1T_HOOK_HARNESS: "cursor" }), /which g1t says after your first tool call/);
+  });
+
+  test("a harness's g1t MCP tools are known by its own names for them", () => {
+    assert.equal(g1tTool("mcp_g1t_work_item"), "work_item");
+    assert.equal(g1tTool("g1t-work_item"), "work_item");
+    assert.equal(g1tTool("github-mcp-server-pull_request_read"), null);
+    // Copilot gives a tool's arguments as JSON text.
+    const job = plan(
+      copilotEvent({ sessionId: "s", cwd: "/w", toolName: "g1t-work_item", toolArgs: '{"action":"claim","number":7}' }, { name: "postToolUse" }),
+      { G1T_HOOK_HARNESS: "copilot" },
+    );
+    assert.deepEqual(job.steps.at(-1).args, ["session", "touch", "--item", "7"]);
+  });
+
+  test("what a tool returned or a model replied never reaches the core's event", () => {
+    const gemini = geminiEvent({ hook_event_name: "AfterAgent", session_id: "g", prompt_response: "secret", llm_response: { text: "secret" } });
+    assert.equal(gemini.hook_event_name, "Stop");
+    assert.ok(!JSON.stringify(gemini).includes("secret"));
+    assert.equal(geminiEvent({ hook_event_name: "AfterModel", session_id: "g" }), null);
+    const cursor = cursorEvent({
+      hook_event_name: "postToolUse",
+      conversation_id: "c",
+      tool_name: "Shell",
+      tool_input: { command: "ls" },
+      tool_output: '{"stdout":"secret"}',
+    });
+    assert.ok(!JSON.stringify(cursor).includes("secret"));
+    const copilot = copilotEvent(
+      { sessionId: "s", toolName: "bash", toolArgs: { command: "ls" }, toolResult: { textResultForLlm: "secret" } },
+      { name: "postToolUse" },
+    );
+    assert.ok(!JSON.stringify(copilot).includes("secret"));
+  });
+
+  test("a Copilot subagent's prompt is its own session's, and its turn's end is not the session's", () => {
+    const prompt = copilotEvent({ sessionId: "s", agentId: "a1", agentType: "explore", prompt: "look" }, { name: "userPromptSubmitted" });
+    assert.deepEqual([prompt.agent_id, prompt.prompt], ["a1", "look"]);
+    assert.equal(copilotEvent({ sessionId: "s", agentId: "a1", transcriptPath: "/t" }, { name: "agentStop" }), null);
+    assert.equal(copilotEvent({ sessionId: "s", transcriptPath: "/t" }, { name: "agentStop" }).usage_agent, "");
+    assert.equal(copilotEvent({ sessionId: "s" }, { name: "preToolUse" }), null);
+    assert.equal(copilotModel("claude-opus-4.7"), "claude-opus-4-7");
+    assert.equal(copilotModel("gpt-5.6-luna"), "gpt-5.6-luna");
+  });
+
+  test("Copilot and Cursor take text for the agent only where they read it", () => {
+    const output = { systemMessage: "update the CLI", hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: "pending updates" } };
+    assert.deepEqual(copilotReply("postToolUse", output), { additionalContext: "Tell the user once: update the CLI\n\npending updates" });
+    assert.equal(copilotReply("agentStop", output), null);
+    assert.equal(copilotReply("postToolUse", null), null);
+    assert.deepEqual(cursorReply("postToolUse", output), { additional_context: "Tell the user once: update the CLI\n\npending updates" });
+    // Gemini CLI reads Claude Code's shape, under its own event's name, with a changed input as tool_input.
+    assert.deepEqual(geminiReply("BeforeTool", { hookSpecificOutput: { hookEventName: "PreToolUse", updatedInput: { a: 1 } } }), {
+      hookSpecificOutput: { hookEventName: "BeforeTool", tool_input: { a: 1 } },
+    });
+  });
+
+  test("Gemini's Pro models over 200,000 prompt tokens are priced as their long tier, and transcripts add up by model", () => {
+    const dir = mkdtempSync(join(tmpdir(), "g1t-gemini-"));
+    try {
+      const transcript = join(dir, "session.jsonl");
+      const reply = (id, model, input) => JSON.stringify({ id, type: "gemini", model, tokens: { input, output: 1, cached: 0, thoughts: 0 } });
+      writeFileSync(
+        transcript,
+        [reply("a", "gemini-3.1-pro-preview", 250000), reply("b", "gemini-3.1-pro-preview", 1000), reply("c", "gemini-3-flash-preview", 250000), ""].join("\n"),
+      );
+      const usage = transcriptUsage(transcript, null, { harness: "gemini" });
+      assert.deepEqual(
+        usage.map((row) => [row.model, row.tier ?? null, row.input_tokens]),
+        [
+          ["gemini-3.1-pro-preview", "long", 250000],
+          ["gemini-3.1-pro-preview", null, 1000],
+          ["gemini-3-flash-preview", null, 250000],
+        ],
+      );
+      // An older Gemini CLI's session, one JSON document.
+      const old = join(dir, "session-old.json");
+      writeFileSync(
+        old,
+        JSON.stringify({
+          sessionId: "x",
+          messages: [{ id: "a", type: "gemini", model: "gemini-2.5-flash", tokens: { input: 10, output: 2, cached: 4, thoughts: 1 } }],
+        }),
+      );
+      assert.deepEqual(transcriptUsage(old, null, { harness: "gemini" }), [
+        { model: "gemini-2.5-flash", input_tokens: 6, output_tokens: 3, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_read_tokens: 4 },
+      ]);
+      assert.equal(transcriptUsage(transcript, null, { harness: "cursor" }), null, "a harness whose transcript has no tokens");
+      assert.deepEqual(mergeUsage([null, [{ model: "m", input_tokens: 1 }], [{ model: "m", input_tokens: 2, output_tokens: 1 }]]), [
+        { model: "m", input_tokens: 3, output_tokens: 1, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_read_tokens: 0 },
+      ]);
+      assert.equal(mergeUsage([null, null]), null);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an event delivered twice is handled once", () => {
+    const dir = mkdtempSync(join(tmpdir(), "g1t-seen-"));
+    try {
+      const files = sessionFiles("conv", { G1T_HOOK_DATA: dir });
+      assert.equal(firstDelivery(files, "a"), true);
+      assert.equal(firstDelivery(files, "a"), false);
+      assert.equal(firstDelivery(files, "b"), true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+test("an older Copilot CLI's session, with only its totals at shutdown, reports its last totals, the main agent's apart", () => {
+  const dir = mkdtempSync(join(tmpdir(), "g1t-copilot-old-"));
+  try {
+    const transcript = join(dir, "events.jsonl");
+    const shutdown = (main, sub) =>
+      JSON.stringify({
+        type: "session.shutdown",
+        data: {
+          modelMetrics: { "claude-sonnet-5.5": { usage: { inputTokens: main + sub, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 } } },
+          agentMetrics: {
+            main: { modelMetrics: { "claude-sonnet-5.5": { usage: { inputTokens: main, outputTokens: 6, cacheReadTokens: 0, cacheWriteTokens: 0 } } } },
+            call_1: { modelMetrics: { "claude-sonnet-5.5": { usage: { inputTokens: sub, outputTokens: 4, cacheReadTokens: 0, cacheWriteTokens: 0 } } } },
+          },
+        },
+      });
+    writeFileSync(transcript, [shutdown(100, 10), shutdown(300, 20), ""].join("\n"));
+    const row = (input, output) => ({
+      model: "claude-sonnet-5-5",
+      input_tokens: input,
+      output_tokens: output,
+      cache_write_5m_tokens: 0,
+      cache_write_1h_tokens: 0,
+      cache_read_tokens: 0,
+    });
+    assert.deepEqual(transcriptUsage(transcript, null, { harness: "copilot", agent: "" }), [row(300, 6)]);
+    assert.deepEqual(transcriptUsage(transcript, null, { harness: "copilot", agent: "call_1" }), [row(20, 4)]);
+    assert.deepEqual(transcriptUsage(transcript, null, { harness: "copilot" }), [row(320, 10)]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

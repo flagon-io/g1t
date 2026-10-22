@@ -21,7 +21,10 @@ fn schema() -> Connection {
            item_id TEXT, milestone INTEGER, agent TEXT DEFAULT 'person', author_id TEXT DEFAULT 'usr_ana',
            author_name TEXT DEFAULT 'ana', requested_by_id TEXT, requested_by_name TEXT,
            source_branch TEXT, fork_repo_id TEXT, head_repo_id TEXT, head_commit TEXT, head_pushed_at TEXT,
-           created_at TEXT, updated_at TEXT, merged_at TEXT);
+           created_at TEXT, updated_at TEXT, merged_at TEXT, agent_rule TEXT, agent_name TEXT, agent_by_id TEXT,
+           agent_by_name TEXT);
+         CREATE TABLE agent_commits (repo_id TEXT, sha TEXT, agent TEXT, rule TEXT, person_id TEXT, person_name TEXT,
+           at TEXT);
          CREATE TABLE comments (repo_id TEXT, number INTEGER, author_id TEXT, agent_id TEXT, verdict TEXT, created_at TEXT,
            kind TEXT NOT NULL DEFAULT 'comment');
          CREATE TABLE sessions (id TEXT, repo_id TEXT, pull INTEGER, started_at TEXT, parent_id TEXT,
@@ -883,4 +886,107 @@ fn agent_commits_are_a_sessions_own_outside_any_pull_request() {
         [("2026-10-06", 1)],
         "the days read are the last two weeks; c2 is before them"
     );
+}
+
+#[test]
+fn a_cloud_agents_pull_request_is_an_agents_for_whoever_started_it() {
+    let db = schema();
+    for number in 1..=4 {
+        pull(
+            &db,
+            number,
+            "merged",
+            "2026-10-06T12:00:00Z",
+            Some("2026-10-07T12:00:00Z"),
+            "2026-10-07T12:00:00Z",
+        );
+    }
+    db.execute_batch(
+        "-- 1: Copilot's commits, for bo, opened by a token of the workspace.
+         UPDATE pulls SET author_id = 'wsp_acme', author_name = 'acme', agent_rule = 'trailer:agent-logs-url',
+           agent_name = 'copilot', agent_by_id = 'usr_bo', agent_by_name = 'bo' WHERE number = 1;
+         -- 2: Cursor beside a person g1t can't match: an agent's, still ana's.
+         UPDATE pulls SET agent_rule = 'coauthor:cursor', agent_name = 'cursor' WHERE number = 2;
+         -- 3: Claude's address on it, and a session tied too: the session says it.
+         UPDATE pulls SET agent_rule = 'coauthor:claude', agent_name = 'claude' WHERE number = 3;
+         INSERT INTO sessions (id, repo_id, pull, started_at) VALUES ('ses_3', 'a', 3, '2026-10-06T11:00:00Z');
+         -- 4: someone asked for it: theirs, whoever started the agent.
+         UPDATE pulls SET agent_rule = 'author:devin', agent_name = 'devin', agent_by_id = 'usr_bo', agent_by_name = 'bo',
+           requested_by_id = 'usr_cy', requested_by_name = 'cy' WHERE number = 4;",
+    )
+    .unwrap();
+    pull(
+        &db,
+        5,
+        "merged",
+        "2026-10-06T12:00:00Z",
+        Some("2026-10-07T12:00:00Z"),
+        "2026-10-07T12:00:00Z",
+    );
+    let mut found: Vec<(u32, bool, Option<String>, String)> = pulls(&db)
+        .into_iter()
+        .map(|p| (p.number, p.agent, p.agent_rule, p.owner_name))
+        .collect();
+    found.sort();
+    let rule = |r: &str| Some(r.to_owned());
+    assert_eq!(
+        found,
+        [
+            (1, true, rule("trailer:agent-logs-url"), "bo".to_owned()),
+            (2, true, rule("coauthor:cursor"), "ana".to_owned()),
+            (3, true, rule("session"), "ana".to_owned()),
+            (4, true, rule("author:devin"), "cy".to_owned()),
+            (5, false, None, "ana".to_owned()),
+        ]
+    );
+    assert_eq!(
+        in_week(&weeks(&db, "2026-10-18T00:00:00Z"), "2026-10-05").agent_merged,
+        4
+    );
+    // Merged work counts for the person who started the agent.
+    let authors: Vec<SignalAuthor> = rows::<SignalAuthor>(
+        &db,
+        AUTHORS,
+        &[&IDS, &"2026-07-14T00:00:00", &"2026-10-12T00:00:00"],
+    );
+    let mut owners: Vec<(String, u32)> = authors
+        .into_iter()
+        .map(|a| (a.owner_name, a.merged))
+        .collect();
+    owners.sort();
+    assert_eq!(
+        owners,
+        [
+            ("ana".to_owned(), 3),
+            ("bo".to_owned(), 1),
+            ("cy".to_owned(), 1)
+        ]
+    );
+}
+
+#[test]
+fn a_cloud_agents_direct_commits_count_once_beside_sessions() {
+    let db = schema();
+    db.execute_batch(
+        "INSERT INTO sessions (id, repo_id, started_at) VALUES ('ses_main', 'a', '2026-10-06T00:00:00Z');
+         INSERT INTO session_touches VALUES ('ses_main', 'a', 'commit', 'c1', '2026-10-06T10:00:00Z');
+         -- c1 a session recorded: once. c4 is in another repository.
+         INSERT INTO agent_commits VALUES ('a', 'c1', 'claude', 'coauthor:claude', NULL, NULL, '2026-10-06T10:00:02Z');
+         INSERT INTO agent_commits VALUES ('a', 'c2', 'copilot', 'trailer:agent-logs-url', 'usr_bo', 'bo', '2026-10-06T11:00:00Z');
+         INSERT INTO agent_commits VALUES ('a', 'c3', 'cursor', 'author:cursor', NULL, NULL, '2026-10-07T09:00:00Z');
+         INSERT INTO agent_commits VALUES ('a', 'c0', 'cursor', 'trailer:made-with-cursor', NULL, NULL, '2026-10-01T09:00:00Z');
+         INSERT INTO agent_commits VALUES ('b', 'c4', 'devin', 'author:devin', NULL, NULL, '2026-10-06T11:00:00Z');",
+    )
+    .unwrap();
+    let found = weeks(&db, "2026-10-18T00:00:00Z");
+    assert_eq!(in_week(&found, "2026-10-05").agent_commits, 3);
+    assert_eq!(in_week(&found, "2026-09-28").agent_commits, 1);
+    let window = window("2026-10-18T00:00:00Z");
+    let days: Vec<SignalDay> = rows(&db, DAYS, &[&IDS, &window.days_from, &window.end]);
+    let commits: Vec<(&str, u32)> = days
+        .iter()
+        .filter(|d| d.agent_commits > 0)
+        .map(|d| (d.day.as_str(), d.agent_commits))
+        .collect();
+    assert_eq!(commits, [("2026-10-06", 2), ("2026-10-07", 1)]);
 }

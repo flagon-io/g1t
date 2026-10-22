@@ -177,8 +177,9 @@ pub(crate) fn refresh_sql() -> String {
 }
 
 /// Session `?3`'s token usage (`?1`, JSON as reported) and the cost
-/// estimated from it (`?2`): cumulative, so each report replaces the last.
-pub(crate) const SET_USAGE: &str = "UPDATE sessions SET usage = ?1, cost_usd = ?2 WHERE id = ?3";
+/// estimated from it (`?2`): cumulative, so each report replaces the last,
+/// and what telemetry said before it (telemetry.rs).
+pub(crate) const SET_USAGE: &str = "UPDATE sessions SET usage = ?1, cost_usd = ?2, usage_source = NULL WHERE id = ?3";
 
 /// A subagent's heartbeat keeps its parent `?2` seen at `?1`.
 pub(crate) const SEE_PARENT: &str = "UPDATE sessions SET last_seen_at = ?1 WHERE id = ?2 AND state = 'active' AND last_seen_at < ?1";

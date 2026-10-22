@@ -131,6 +131,9 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "UPDATE OR IGNORE provider_person_costs SET workspace = ?1
      WHERE workspace = ?2 AND provider NOT IN (SELECT provider FROM provider_connections WHERE workspace = ?1)",
     "DELETE FROM provider_person_costs WHERE workspace = ?2",
+    "UPDATE OR IGNORE provider_conversations SET workspace = ?1
+     WHERE workspace = ?2 AND provider NOT IN (SELECT provider FROM provider_connections WHERE workspace = ?1)",
+    "DELETE FROM provider_conversations WHERE workspace = ?2",
     "UPDATE OR IGNORE provider_connections SET workspace = ?1 WHERE workspace = ?2",
     "DELETE FROM provider_connections WHERE workspace = ?2",
     // The margin figures and counts are redone each day from the ledger and
@@ -349,7 +352,7 @@ mod tests {
             "reservations", "spikes", "limit_requests", "plan_payments", "card_checks", "alerts_sent",
             "package_storage_days", "pending_days", "token_usage", "price_notices", "closed_workspaces",
             "workspace_costs", "own_counts", "ai_reload", "ai_reloads", "tax_and_fees", "reset_costs",
-            "provider_connections", "provider_costs", "provider_person_costs",
+            "provider_connections", "provider_costs", "provider_person_costs", "provider_conversations",
         ] {
             assert!(all.contains(&format!("FROM {table} WHERE workspace = ?2"))
                 || all.contains(&format!("UPDATE {table} SET"))

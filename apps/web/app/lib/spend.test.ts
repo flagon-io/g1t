@@ -3,7 +3,7 @@ import test from "node:test";
 
 import type { ProviderPersonCosts, ProviderPersonDay, SpendRow } from "@g1t/contracts";
 
-import { landedShare, providerComparison, spendBy, spendDays, spendSpan, usdMicros } from "./spend.ts";
+import { landedShare, providerComparisons, spendBy, spendDays, spendSpan, unitAmount, usdMicros } from "./spend.ts";
 
 const row = (over: Partial<SpendRow>): SpendRow => ({
   day: "2026-10-20",
@@ -97,19 +97,52 @@ const reported = (days: Partial<ProviderPersonDay>[], over: Partial<ProviderPers
 
 test("the provider's figure for a person's Claude Code sits beside what g1t's sessions of it saw", () => {
   const rows = [row({ costUsd: 6 }), row({ costUsd: 2, day: "2026-10-21" }), row({ harness: "codex", costUsd: 50 })];
-  assert.deepEqual(providerComparison(reported([{ micros: 7_000_000 }, { micros: 3_000_000, model: "claude-sonnet-5" }]), rows), {
+  const [claude] = providerComparisons(reported([{ micros: 7_000_000 }, { micros: 3_000_000, model: "claude-sonnet-5" }]), rows);
+  assert.deepEqual(claude, {
+    provider: "anthropic",
+    harness: "claude_code",
+    unit: "usd",
+    listPrice: false,
     reportedMicros: 10_000_000,
     sawMicros: 8_000_000,
     share: 80,
     complete: true,
   });
   // Saw more than was reported: no percent over 100.
-  assert.equal(providerComparison(reported([{ micros: 5_000_000 }]), rows)?.share, null);
+  assert.equal(providerComparisons(reported([{ micros: 5_000_000 }]), rows)[0]?.share, null);
   // Saw nothing of it.
-  assert.equal(providerComparison(reported([{ micros: 5_000_000 }]), [])?.share, 0);
-  assert.equal(providerComparison(reported([{ micros: 5_000_000 }], { complete: false }), rows)?.complete, false);
+  assert.equal(providerComparisons(reported([{ micros: 5_000_000 }]), [])[0]?.share, 0);
+  assert.equal(providerComparisons(reported([{ micros: 5_000_000 }], { complete: false }), rows)[0]?.complete, false);
   // Not connected, nothing reported, or no answer: no line.
-  assert.equal(providerComparison(reported([{ micros: 5_000_000 }], { connected: false }), rows), null);
-  assert.equal(providerComparison(reported([]), rows), null);
-  assert.equal(providerComparison(null, rows), null);
+  assert.deepEqual(providerComparisons(reported([{ micros: 5_000_000 }], { connected: false }), rows), []);
+  assert.deepEqual(providerComparisons(reported([]), rows), []);
+  assert.deepEqual(providerComparisons(null, rows), []);
+});
+
+test("each provider's figure is per harness: compared where g1t records it, in its own unit where it isn't dollars", () => {
+  const rows = [row({ harness: "cursor", costUsd: 3 }), row({ harness: "codex", costUsd: 50 }), row({ costUsd: 1 })];
+  const found = providerComparisons(
+    reported([
+      { provider: "cursor", harness: "cursor", model: "claude-4.5-sonnet", micros: 4_000_000 },
+      { provider: "cursor", harness: "cursor", model: "gpt-6-sol", micros: 2_000_000, day: "2026-10-21" },
+      // OpenAI's API can't be told apart as Codex: reported, never compared.
+      { provider: "openai", harness: "openai", model: "gpt-6-astra", micros: 9_000_000, listPrice: true },
+      { provider: "devin", harness: "devin_desktop", model: "", micros: 125_000_000, unit: "credits" },
+      { provider: "amp", harness: "amp", model: "", micros: 1_000_000 },
+    ]),
+    rows,
+  );
+  assert.deepEqual(
+    found.map((c) => [c.provider, c.harness, c.unit, c.reportedMicros, c.sawMicros, c.share, c.listPrice]),
+    [
+      ["openai", "openai", "usd", 9_000_000, null, null, true],
+      ["cursor", "cursor", "usd", 6_000_000, 3_000_000, 50, false],
+      ["amp", "amp", "usd", 1_000_000, null, null, false],
+      // Credits come last, and are never put beside dollars.
+      ["devin", "devin_desktop", "credits", 125_000_000, null, null, false],
+    ],
+  );
+  assert.equal(unitAmount(125_000_000, "credits"), "125 credits");
+  assert.equal(unitAmount(1_000_000, "credits"), "1 credit");
+  assert.equal(unitAmount(12_345_678, "acus"), "12.35 ACUs");
 });

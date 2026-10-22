@@ -1,0 +1,5 @@
+{
+  "name": "g1t",
+  "version": "0.1.0",
+  "description": "Records your Gemini CLI sessions on g1t through the g1t CLI: prompts, tool calls and what they were called with (never what they returned), the files, commits and branches touched, and what each session cost, from the token counts in its own transcript."
+}

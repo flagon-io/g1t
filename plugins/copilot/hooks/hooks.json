@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT:-${COPILOT_HOME:-$HOME/.copilot}/installed-plugins/g1t/g1t}/hooks/g1t.mjs\" copilot sessionStart",
+        "powershell": "node (Join-Path $(if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } elseif ($env:COPILOT_HOME) { Join-Path $env:COPILOT_HOME 'installed-plugins/g1t/g1t' } else { Join-Path $HOME '.copilot/installed-plugins/g1t/g1t' }) 'hooks/g1t.mjs') copilot sessionStart",
+        "timeoutSec": 10
+      }
+    ],
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT:-${COPILOT_HOME:-$HOME/.copilot}/installed-plugins/g1t/g1t}/hooks/g1t.mjs\" copilot userPromptSubmitted",
+        "powershell": "node (Join-Path $(if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } elseif ($env:COPILOT_HOME) { Join-Path $env:COPILOT_HOME 'installed-plugins/g1t/g1t' } else { Join-Path $HOME '.copilot/installed-plugins/g1t/g1t' }) 'hooks/g1t.mjs') copilot userPromptSubmitted",
+        "timeoutSec": 5
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT:-${COPILOT_HOME:-$HOME/.copilot}/installed-plugins/g1t/g1t}/hooks/g1t.mjs\" copilot postToolUse",
+        "powershell": "node (Join-Path $(if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } elseif ($env:COPILOT_HOME) { Join-Path $env:COPILOT_HOME 'installed-plugins/g1t/g1t' } else { Join-Path $HOME '.copilot/installed-plugins/g1t/g1t' }) 'hooks/g1t.mjs') copilot postToolUse",
+        "timeoutSec": 5
+      }
+    ],
+    "subagentStart": [
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT:-${COPILOT_HOME:-$HOME/.copilot}/installed-plugins/g1t/g1t}/hooks/g1t.mjs\" copilot subagentStart",
+        "powershell": "node (Join-Path $(if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } elseif ($env:COPILOT_HOME) { Join-Path $env:COPILOT_HOME 'installed-plugins/g1t/g1t' } else { Join-Path $HOME '.copilot/installed-plugins/g1t/g1t' }) 'hooks/g1t.mjs') copilot subagentStart",
+        "timeoutSec": 5
+      }
+    ],
+    "subagentStop": [
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT:-${COPILOT_HOME:-$HOME/.copilot}/installed-plugins/g1t/g1t}/hooks/g1t.mjs\" copilot subagentStop",
+        "powershell": "node (Join-Path $(if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } elseif ($env:COPILOT_HOME) { Join-Path $env:COPILOT_HOME 'installed-plugins/g1t/g1t' } else { Join-Path $HOME '.copilot/installed-plugins/g1t/g1t' }) 'hooks/g1t.mjs') copilot subagentStop",
+        "timeoutSec": 5
+      }
+    ],
+    "agentStop": [
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT:-${COPILOT_HOME:-$HOME/.copilot}/installed-plugins/g1t/g1t}/hooks/g1t.mjs\" copilot agentStop",
+        "powershell": "node (Join-Path $(if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } elseif ($env:COPILOT_HOME) { Join-Path $env:COPILOT_HOME 'installed-plugins/g1t/g1t' } else { Join-Path $HOME '.copilot/installed-plugins/g1t/g1t' }) 'hooks/g1t.mjs') copilot agentStop",
+        "timeoutSec": 5
+      }
+    ],
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT:-${COPILOT_HOME:-$HOME/.copilot}/installed-plugins/g1t/g1t}/hooks/g1t.mjs\" copilot sessionEnd",
+        "powershell": "node (Join-Path $(if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } elseif ($env:COPILOT_HOME) { Join-Path $env:COPILOT_HOME 'installed-plugins/g1t/g1t' } else { Join-Path $HOME '.copilot/installed-plugins/g1t/g1t' }) 'hooks/g1t.mjs') copilot sessionEnd",
+        "timeoutSec": 5
+      }
+    ]
+  }
+}

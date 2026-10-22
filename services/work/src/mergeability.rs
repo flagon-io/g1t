@@ -254,10 +254,17 @@ impl Work {
                     if moved.contains(&id) {
                         self.keep_pull_refs(&pull).await;
                     }
+                    let divergence = self.assess_for(&pull).await?;
+                    // Commits a coding agent made, new on its head, make it
+                    // that agent's (cloud_agents.rs).
+                    if moved.contains(&id) {
+                        let merge_base = divergence.as_ref().and_then(|divergence| divergence.merge_base.clone());
+                        self.mark_agent_pull(&pull, merge_base).await;
+                    }
                     // The commits its default messages read are kept for
                     // the same pair of commits (merging.rs), so that the
                     // merge box need not read them from its source.
-                    if let Some(divergence) = self.assess_for(&pull).await?
+                    if let Some(divergence) = divergence
                         && let Err(error) = self.keep_commit_texts(&pull, &divergence).await
                     {
                         worker::console_warn!("commits for the merge messages of {id} not kept: {error}");

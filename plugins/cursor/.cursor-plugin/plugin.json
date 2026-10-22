@@ -1,0 +1,12 @@
+{
+  "name": "g1t",
+  "version": "0.1.0",
+  "description": "Records your Cursor agent sessions on g1t through the g1t CLI: prompts, tool calls and what they were called with (never what they returned), the files, commits and branches touched, and each subagent as a session of its own.",
+  "author": {
+    "name": "Flagon, Inc."
+  },
+  "homepage": "https://docs.g1t.sh/guides/bring-your-own-agent/#cursor",
+  "repository": "https://g1t.sh/flagon-io/g1t",
+  "license": "MIT",
+  "keywords": ["g1t", "sessions", "work-items"]
+}

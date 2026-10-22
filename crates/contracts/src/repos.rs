@@ -651,6 +651,10 @@ pub const MAX_PUSHED: usize = 250;
 pub struct PushedCommit {
     pub hash: String,
     pub message: String,
+    /// Its author's address, for telling a coding agent's commits
+    /// (`coding_agents::agent_mark`). Absent from older senders.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author_email: Option<String>,
 }
 
 /// `build_queue_step`: one entry of a merge queue landed, by its method,

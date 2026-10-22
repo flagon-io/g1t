@@ -1886,15 +1886,25 @@ export type BillingDetailsInput = {
 };
 
 /** An AI provider whose own cost report g1t reads, with the organization's admin key. */
-export type CostProvider = "anthropic" | "openai";
+export type CostProvider = "anthropic" | "openai" | "cursor" | "amp" | "devin";
 
-export const COST_PROVIDERS: Record<CostProvider, { label: string }> = {
-  anthropic: { label: "Anthropic" },
-  openai: { label: "OpenAI" },
+/** What a provider's figure counts: US dollars, or the provider's own units, which g1t never turns into dollars. */
+export type CostUnit = "usd" | "credits" | "acus";
+
+/**
+ * Each provider: its name, and whether it reports in US dollars (Devin reports ACUs or credits, which are never
+ * summed with dollars).
+ */
+export const COST_PROVIDERS: Record<CostProvider, { label: string; dollars: boolean }> = {
+  anthropic: { label: "Anthropic", dollars: true },
+  openai: { label: "OpenAI", dollars: true },
+  cursor: { label: "Cursor", dollars: true },
+  amp: { label: "Amp", dollars: true },
+  devin: { label: "Devin", dollars: false },
 };
 
 export function isCostProvider(value: unknown): value is CostProvider {
-  return value === "anthropic" || value === "openai";
+  return typeof value === "string" && Object.hasOwn(COST_PROVIDERS, value);
 }
 
 /** A provider a workspace has connected: never its key, only the key's last four characters. */
@@ -1918,10 +1928,12 @@ export type ProviderCostDay = {
   /** `YYYY-MM-DD`, UTC. */
   day: string;
   provider: CostProvider;
-  /** The provider's own words: Anthropic's description, OpenAI's line item. Empty when it gave none. */
+  /** The provider's own words: Anthropic's description, OpenAI's line item, the model for the others. Empty when it gave none. */
   item: string;
-  /** Millionths of a US dollar. */
+  /** Millionths of `unit`. */
   micros: number;
+  /** US dollars but for Devin; absent from an older billing. */
+  unit?: CostUnit;
 };
 
 export type ProviderCosts = {
@@ -1935,27 +1947,37 @@ export type ProviderCosts = {
   complete: boolean;
 };
 
-/** One person's day at a provider: what it estimated their use of one model cost. */
+/** One person's day at a provider: what it said their use of one model cost. */
 export type ProviderPersonDay = {
   /** `YYYY-MM-DD`, UTC. */
   day: string;
   provider: CostProvider;
-  /** `claude_code`: the only per-person report there is. */
+  /**
+   * What the use was, as far as the provider can tell: `claude_code`, `cursor`, `amp`; `openai` for OpenAI's API (it
+   * can't tell Codex apart); `devin` for Devin's ACUs and `devin_desktop` for Devin Desktop's credits.
+   */
   harness: string;
+  /** The model, or for Devin's ACUs its product. */
   model: string;
-  /** The provider's estimate, in millionths of a US dollar. */
+  /** Millionths of `unit`: the provider's figure, or g1t's list-price estimate when `listPrice`. */
   micros: number;
   sessions: number;
+  /** Absent from an older billing: US dollars. */
+  unit?: CostUnit;
+  /** True when the provider gave only tokens and g1t priced them at list price. */
+  listPrice?: boolean;
 };
 
 export type ProviderPersonCosts = {
   /** Whether a provider with a per-person report is connected (and read). */
   connected: boolean;
+  /** The providers connected; absent from an older billing. */
+  providers?: CostProvider[];
   /** Oldest first. */
   days: ProviderPersonDay[];
   /**
-   * Only for an owner or billing manager: what the report holds in the span for nobody g1t can match (an address no
-   * member has verified, or an API key), and how many such actors.
+   * Only for an owner or billing manager: what the reports hold in US dollars in the span for nobody g1t can match (an
+   * address no member has verified, or an API key), and how many such actors.
    */
   unlinkedMicros?: number;
   unlinkedActors: number;

@@ -981,7 +981,18 @@ export function agentStep(share: number): 0 | 1 | 2 | 3 | 4 {
   return 4;
 }
 
-export type FlowPull = { key: string; repo: string; number: number; title: string; agent: boolean; micros: number; status: SignalPull["status"]; to: string };
+export type FlowPull = {
+  key: string;
+  repo: string;
+  number: number;
+  title: string;
+  agent: boolean;
+  /** For an agent's: why g1t says so (`SignalPull.agentRule`). */
+  agentRule?: string | null;
+  micros: number;
+  status: SignalPull["status"];
+  to: string;
+};
 
 export type FlowNode = {
   key: string;
@@ -1091,6 +1102,7 @@ export function spendFlow(ctx: Pick<SignalContext, "slug" | "repos" | "signals" 
       number: pull.number,
       title: pull.title,
       agent: pull.agent,
+      agentRule: pull.agentRule ?? null,
       micros,
       status: pull.status,
       to: pullPath(repo, pull.number),
@@ -1208,12 +1220,18 @@ export type ProviderQuarter = {
 /**
  * What the connected providers' cost reports say the organization spent
  * since `quarter` began: their whole bill, agents' work g1t sees and
- * everything else. Null when none is connected.
+ * everything else, in US dollars (a provider that reports credits, such as
+ * Devin, is left out: credits aren't dollars). Null when none is connected.
  */
 export function providerQuarter(costs: ProviderCosts | null, quarter: string): ProviderQuarter | null {
-  if (!costs || costs.connections.length === 0) return null;
-  const by = new Map<string, number>(costs.connections.map((connection) => [connection.provider, 0]));
-  for (const day of costs.days) if (day.day >= quarter) by.set(day.provider, (by.get(day.provider) ?? 0) + day.micros);
+  // As `COST_PROVIDERS[provider].dollars` says (not imported: this file loads without the contracts' runtime).
+  const dollars = (provider: string) => provider !== "devin";
+  const connections = costs?.connections.filter((connection) => dollars(connection.provider)) ?? [];
+  if (!costs || connections.length === 0) return null;
+  const by = new Map<string, number>(connections.map((connection) => [connection.provider, 0]));
+  for (const day of costs.days) {
+    if (day.day >= quarter && (day.unit ?? "usd") === "usd" && by.has(day.provider)) by.set(day.provider, (by.get(day.provider) ?? 0) + day.micros);
+  }
   const providers = [...by].map(([provider, micros]) => ({ provider, micros })).sort((a, b) => b.micros - a.micros);
   return { providers, total: providers.reduce((sum, row) => sum + row.micros, 0), complete: costs.complete };
 }

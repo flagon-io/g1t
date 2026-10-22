@@ -3,7 +3,7 @@
 -- anything in it. Reviews are comments of any kind on a pull request by a
 -- person other than its owner (not g1t's agent, a workspace agent or g1t
 -- itself); reworked, the ones of them that ask for changes. Agent commits
--- are those agent sessions pushed outside any pull request (weeks.sql).
+-- are those agents pushed outside any pull request (base.sql's `direct`).
 ,
 ev(repo_id, day, opened, merged, agent_merged, reworked, reviews, sessions, agent_commits) AS (
   SELECT repo_id, substr(created_at, 1, 10), 1, 0, 0, 0, 0, 0, 0 FROM pr
@@ -17,10 +17,9 @@ ev(repo_id, day, opened, merged, agent_merged, reworked, reviews, sessions, agen
       AND c.author_id NOT IN ('usr_g1t_agent', 'g1t', 'g1t_policy', 'svc_runner', 'g1t_runner')
   UNION ALL SELECT repo_id, substr(started_at, 1, 10), 0, 0, 0, 0, 0, 1, 0 FROM sessions
     WHERE repo_id IN (SELECT value FROM json_each(?1)) AND started_at >= ?2 AND started_at < ?3
-  UNION ALL SELECT t.repo_id, substr(t.at, 1, 10), 0, 0, 0, 0, 0, 0, COUNT(DISTINCT t.value) FROM session_touches t
-    WHERE t.repo_id IN (SELECT value FROM json_each(?1)) AND t.kind = 'commit' AND t.at >= ?2 AND t.at < ?3
-      AND t.session_id NOT IN (SELECT session_id FROM tied)
-    GROUP BY t.repo_id, substr(t.at, 1, 10)
+  UNION ALL SELECT d.repo_id, substr(d.at, 1, 10), 0, 0, 0, 0, 0, 0, COUNT(DISTINCT d.sha) FROM direct d
+    WHERE d.at >= ?2 AND d.at < ?3
+    GROUP BY d.repo_id, substr(d.at, 1, 10)
 )
 SELECT repo_id, day, SUM(opened) AS opened, SUM(merged) AS merged, SUM(agent_merged) AS agent_merged,
   SUM(reworked) AS reworked, SUM(reviews) AS reviews, SUM(sessions) AS sessions,
