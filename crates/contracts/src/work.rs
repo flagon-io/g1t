@@ -28,6 +28,9 @@ pub use spend::*;
 mod coordination;
 pub use coordination::*;
 
+mod telemetry;
+pub use telemetry::*;
+
 mod items;
 pub use items::*;
 

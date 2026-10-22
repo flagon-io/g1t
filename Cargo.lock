@@ -1467,6 +1467,7 @@ dependencies = [
  "futures-util",
  "g1t-contracts",
  "g1t-kit",
+ "miniz_oxide",
  "serde",
  "serde_json",
  "sha2 0.10.9",

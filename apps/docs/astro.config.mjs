@@ -246,6 +246,7 @@ export default defineConfig({
             { label: "Claude Code plugin", slug: "guides/claude-code-plugin" },
             { label: "Recording sessions", slug: "guides/sessions" },
             { label: "Spend", slug: "guides/spend" },
+            { label: "Agent telemetry", slug: "guides/agent-telemetry" },
             { label: "Sessions and why-blame", slug: "guides/why-blame" },
           ],
         },

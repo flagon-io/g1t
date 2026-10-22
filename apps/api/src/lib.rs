@@ -6,6 +6,7 @@
 
 mod about;
 mod activity;
+mod agent_telemetry;
 mod commits;
 mod contents;
 mod run_artifacts;
@@ -595,6 +596,15 @@ async fn respond(mut request: Request, env: &Env, rate_policy: &mut Option<limit
         services.scope = Some(acting.scope.clone());
     } else if viewer.as_ref().is_some_and(|viewer| viewer.kind == PrincipalKind::Agent) {
         return fail(FailureCode::Unauthenticated, "Invalid access token.");
+    }
+    // Coding agents' own OpenTelemetry, at the paths an OTLP exporter adds
+    // to the API's address (`/v1/logs`, `/v1/metrics`), with a g1t token
+    // (agent_telemetry/). Not JSON in and out, so not a REST route.
+    if !on_mcp
+        && method == "POST"
+        && let Some(signal) = agent_telemetry::signal_of(url.path())
+    {
+        return agent_telemetry::receive(request, &services, &viewer, signal).await;
     }
     if let Some(response) = oauth::handle(&mut request, &services, method, &path).await? {
         return Ok(response);
