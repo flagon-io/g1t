@@ -4234,6 +4234,59 @@ pub struct ProviderCosts {
     pub complete: bool,
 }
 
+/// `provider_person_costs`: what a provider reported one person's agent
+/// use cost, by day, beside nothing else: Anthropic's Claude Code usage
+/// report, read with the workspace's Anthropic connection, matched to the
+/// person through an email address they have verified. The viewer's own,
+/// or, for an owner or billing manager, anyone's (the caller also holds to
+/// the workspace's spend visibility). Returns `Outcome<ProviderPersonCosts>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderPersonCostsArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+    /// The person, by user id; the viewer when left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<String>,
+    /// `YYYY-MM-DD`, UTC: the first and last days.
+    pub since: String,
+    pub until: String,
+}
+
+/// One person's day at a provider: what it estimated their use of one
+/// model cost.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderPersonDay {
+    /// `YYYY-MM-DD`, UTC.
+    pub day: String,
+    pub provider: CostProvider,
+    /// claude_code: the only per-person report there is.
+    pub harness: String,
+    pub model: String,
+    /// The provider's estimate, in millionths of a US dollar.
+    pub micros: i64,
+    pub sessions: u32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderPersonCosts {
+    /// Whether a provider with a per-person report is connected (and read).
+    pub connected: bool,
+    /// Oldest first.
+    pub days: Vec<ProviderPersonDay>,
+    /// Only for an owner or billing manager: what the report holds for
+    /// nobody g1t can match (an address no member has verified, or an API
+    /// key), in the span, and how many such actors.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unlinked_micros: Option<i64>,
+    #[serde(default)]
+    pub unlinked_actors: u32,
+    /// As `ProviderCosts::complete`, for the per-person report.
+    pub complete: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
