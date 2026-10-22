@@ -336,11 +336,12 @@ function Breakdown({
       <h3 className="mb-3 font-medium">{title}</h3>
       <Card asChild divided>
         <ul>
+          {groups.length === 0 && <li className="px-4 py-3 text-sm text-muted">Nothing of known cost.</li>}
           {groups.slice(0, SHOWN).map(row)}
           {groups.length > SHOWN && (
             <li>
               <details>
-                <summary className="cursor-pointer px-4 py-2.5 text-xs text-muted hover:text-fg">{plural(groups.length - SHOWN, "more")}</summary>
+                <summary className="cursor-pointer px-4 py-2.5 text-xs text-muted hover:text-fg">{groups.length - SHOWN} more</summary>
                 <ul className="divide-y divide-line border-t border-line">{groups.slice(SHOWN).map(row)}</ul>
               </details>
             </li>

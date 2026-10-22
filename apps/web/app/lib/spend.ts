@@ -59,7 +59,13 @@ export type SpendKey = "item" | "repo" | "harness" | "model";
 /** One work item, repository, harness or model: null for none (no work item, a repository the viewer can't read, no model reported). */
 export type SpendGroup = { key: string | number | null; costUsd: number; landedUsd: number };
 
-/** The rows summed by `key`, the costliest first, then by name, with none last among equals. */
+/** Less than this rounds to $0.00: a group of only sessions of no known cost, which the headline already counts. */
+const NOTHING_USD = 0.005;
+
+/**
+ * The rows summed by `key`, the costliest first, then by name, with none
+ * last among equals. Groups that come to nothing are left out.
+ */
 export function spendBy(rows: SpendRow[], key: SpendKey): SpendGroup[] {
   const groups = new Map<string | number | null, SpendGroup>();
   for (const row of rows) {
@@ -69,9 +75,9 @@ export function spendBy(rows: SpendRow[], key: SpendKey): SpendGroup[] {
     if (row.landed) group.landedUsd += row.costUsd;
     groups.set(value, group);
   }
-  return [...groups.values()].sort(
-    (a, b) => b.costUsd - a.costUsd || Number(a.key == null) - Number(b.key == null) || String(a.key ?? "").localeCompare(String(b.key ?? ""), "en"),
-  );
+  return [...groups.values()]
+    .filter((group) => group.costUsd >= NOTHING_USD)
+    .sort((a, b) => b.costUsd - a.costUsd || Number(a.key == null) - Number(b.key == null) || String(a.key ?? "").localeCompare(String(b.key ?? ""), "en"));
 }
 
 /** Of `costUsd`, the share `landedUsd` is, as a whole percent; null when nothing was spent. */

@@ -15,8 +15,14 @@ use crate::store::GitRepo;
 /// Beyond these the comparison is cut short and marked truncated.
 const MAX_FILES: usize = 300;
 const MAX_LINES: usize = 20_000;
-/// Files larger than this are listed without their lines.
-const MAX_FILE_BYTES: usize = 512 * 1024;
+/// Files larger than this are listed without their lines, as too large.
+const MAX_FILE_BYTES: usize = 4 * 1024 * 1024;
+/// Text larger than this (a lockfile, say) has its lines compared only when
+/// few of them changed: comparing costs its size times the lines changed.
+const LARGE_FILE_BYTES: usize = 512 * 1024;
+const MAX_LARGE_FILE_CHANGES: usize = 5_000;
+/// Reading stops after this much, as it does after `MAX_LINES` lines shown.
+const MAX_READ_BYTES: usize = 24 * 1024 * 1024;
 const CONTEXT_LINES: usize = 3;
 
 /// A file that differs between the two trees.
@@ -171,18 +177,64 @@ pub async fn changed_entries_up_to<R: GitRepo>(
     Ok((entries, truncated))
 }
 
-/// The text of a blob, or `None` if it is binary, too large or missing.
-async fn text<R: GitRepo>(repo: &R, hash: Option<&str>) -> Result<Option<String>> {
+/// One side of a file, as read.
+enum Side {
+    Text(String),
+    /// Binary or missing.
+    Binary,
+    TooLarge,
+}
+
+/// A blob as text, if it is text and not too large. A missing side is empty.
+async fn text<R: GitRepo>(repo: &R, hash: Option<&str>) -> Result<Side> {
     let Some(hash) = hash else {
-        return Ok(Some(String::new()));
+        return Ok(Side::Text(String::new()));
     };
     let Some(bytes) = repo.read_blob(hash).await? else {
-        return Ok(None);
+        return Ok(Side::Binary);
     };
-    if bytes.len() > MAX_FILE_BYTES || bytes.contains(&0) {
-        return Ok(None);
+    if bytes.contains(&0) {
+        return Ok(Side::Binary);
     }
-    Ok(String::from_utf8(bytes).ok())
+    if bytes.len() > MAX_FILE_BYTES {
+        return Ok(Side::TooLarge);
+    }
+    Ok(String::from_utf8(bytes).map_or(Side::Binary, Side::Text))
+}
+
+/// A file's line changes, or why it has none to show.
+enum Read {
+    Lines(Vec<Hunk>, u32, u32),
+    Binary,
+    TooLarge,
+}
+
+/// At least how many lines differ between two texts: the lines one has
+/// more of than the other, counted without regard to order. Cheap, where
+/// the line diff is not.
+fn lines_changed_at_least(old: &str, new: &str) -> usize {
+    let mut counts: std::collections::HashMap<&str, isize> = std::collections::HashMap::new();
+    for line in old.lines() {
+        *counts.entry(line).or_default() += 1;
+    }
+    for line in new.lines() {
+        *counts.entry(line).or_default() -= 1;
+    }
+    counts.values().map(|count| count.unsigned_abs()).sum()
+}
+
+fn read_file(old: Side, new: Side) -> Read {
+    match (old, new) {
+        (Side::Binary, _) | (_, Side::Binary) => Read::Binary,
+        (Side::TooLarge, _) | (_, Side::TooLarge) => Read::TooLarge,
+        (Side::Text(old), Side::Text(new)) => {
+            if old.len().max(new.len()) > LARGE_FILE_BYTES && lines_changed_at_least(&old, &new) > MAX_LARGE_FILE_CHANGES {
+                return Read::TooLarge;
+            }
+            let (hunks, additions, deletions) = line_diff(&old, &new);
+            Read::Lines(hunks, additions, deletions)
+        }
+    }
 }
 
 fn line_diff(old: &str, new: &str) -> (Vec<Hunk>, u32, u32) {
@@ -223,9 +275,10 @@ fn line_diff(old: &str, new: &str) -> (Vec<Hunk>, u32, u32) {
 /// The files that differ between two trees, with their line changes.
 /// Returns the files and whether the list of files was cut short.
 ///
-/// Files are read in order until about `MAX_LINES` lines have been read;
-/// the ones after that are listed without their lines, marked `omitted`,
-/// and are read by asking for them by path (`only`), which reads just them.
+/// Files are read in order until about `MAX_LINES` changed lines (or
+/// `MAX_READ_BYTES`) have been read; the ones after that are listed without
+/// their lines, marked `omitted`, and are read by asking for them by path
+/// (`only`), which reads just them.
 pub async fn compare_trees<R: GitRepo>(
     repo: &R,
     old_tree: Option<&str>,
@@ -237,30 +290,37 @@ pub async fn compare_trees<R: GitRepo>(
         changes.retain(|change| only.contains(&change.path));
     }
     let mut files = Vec::with_capacity(changes.len());
-    let mut lines = 0;
+    let (mut lines, mut bytes) = (0, 0);
     // Contents are read a batch at a time, all of a batch at once.
-    let mut texts_read: Vec<Option<(String, String)>> = Vec::with_capacity(changes.len());
+    let mut files_read: Vec<Read> = Vec::with_capacity(changes.len());
     for batch in changes.chunks(READS_AT_ONCE) {
         let read = try_join_all(batch.iter().map(|change| async move {
-            let (old, new) = try_join(
+            try_join(
                 text(repo, change.old.as_deref()),
                 text(repo, change.new.as_deref()),
             )
-            .await?;
-            Ok::<_, worker::Error>(old.zip(new))
+            .await
         }))
         .await?;
-        lines += read
-            .iter()
-            .flatten()
-            .map(|(old, new)| old.lines().count().max(new.lines().count()))
-            .sum::<usize>();
-        texts_read.extend(read);
-        if lines >= MAX_LINES {
+        for (old, new) in read {
+            for side in [&old, &new] {
+                bytes += match side {
+                    Side::Text(text) => text.len(),
+                    Side::Binary => 0,
+                    Side::TooLarge => MAX_FILE_BYTES,
+                };
+            }
+            let file = read_file(old, new);
+            if let Read::Lines(hunks, _, _) = &file {
+                lines += hunks.iter().map(|hunk| hunk.lines.len()).sum::<usize>();
+            }
+            files_read.push(file);
+        }
+        if lines >= MAX_LINES || bytes >= MAX_READ_BYTES {
             break;
         }
     }
-    let mut texts_read = texts_read.into_iter();
+    let mut files_read = files_read.into_iter();
     lines = 0;
     for change in changes {
         let status = match (&change.old, &change.new) {
@@ -268,18 +328,16 @@ pub async fn compare_trees<R: GitRepo>(
             (_, None) => FileStatus::Deleted,
             _ => FileStatus::Modified,
         };
-        // Past the limit (not read at all), or read: its two sides, or
-        // nothing when it is binary or too large.
-        let (texts, omitted) = match texts_read.next() {
-            Some(texts) if lines < MAX_LINES => (texts, false),
+        // Past the limit (not read, or read but not shown) or read.
+        let (read, omitted) = match files_read.next() {
+            Some(read) if lines < MAX_LINES => (Some(read), false),
             _ => (None, true),
         };
-        let (hunks, additions, deletions, binary) = match texts {
-            Some((old, new)) => {
-                let (hunks, additions, deletions) = line_diff(&old, &new);
-                (hunks, additions, deletions, false)
-            }
-            None => (Vec::new(), 0, 0, !omitted),
+        let (hunks, additions, deletions, binary, too_large) = match read {
+            Some(Read::Lines(hunks, additions, deletions)) => (hunks, additions, deletions, false, false),
+            Some(Read::Binary) => (Vec::new(), 0, 0, true, false),
+            Some(Read::TooLarge) => (Vec::new(), 0, 0, false, true),
+            None => (Vec::new(), 0, 0, false, false),
         };
         lines += hunks.iter().map(|hunk| hunk.lines.len()).sum::<usize>();
         files.push(FileDiff {
@@ -288,6 +346,7 @@ pub async fn compare_trees<R: GitRepo>(
             additions,
             deletions,
             binary,
+            too_large,
             hunks,
             omitted,
         });
@@ -370,7 +429,7 @@ mod tests {
         assert!(!truncated);
         assert_eq!(files.len(), 4);
         assert!(files[..3].iter().all(|f| !f.omitted && !f.binary && f.additions == 10));
-        assert!(files[3].binary && !files[3].omitted);
+        assert!(files[3].binary && !files[3].too_large && !files[3].omitted);
     }
 
     #[test]
@@ -384,6 +443,50 @@ mod tests {
         assert!((MAX_LINES / 1_000..=MAX_LINES / 1_000 + READS_AT_ONCE).contains(&read), "{read} read");
         let last = files.last().unwrap();
         assert!(last.omitted && !last.binary && last.hunks.is_empty() && last.additions == 0);
+    }
+
+    /// A tree with one file, `lock`, as `blob` has it.
+    fn one_file(fake: &mut Fake, root: &str, blob: &str, bytes: Vec<u8>) {
+        fake.blobs.insert(blob.into(), bytes);
+        fake.trees.insert(root.into(), vec![TreeEntry { name: "lock".into(), hash: blob.into(), kind: EntryKind::Blob }]);
+    }
+
+    /// A lockfile's worth of lines, `n` of them, numbered from `from`.
+    fn lockfile(n: usize, from: usize) -> String {
+        (from..from + n).map(|i| format!("    \"node_modules/package-{i}\": {{ \"version\": \"1.0.{i}\" }},\n")).collect()
+    }
+
+    #[test]
+    fn a_large_text_file_with_a_small_change_has_its_lines() {
+        let old = lockfile(20_000, 0);
+        assert!(old.len() > LARGE_FILE_BYTES);
+        let new = old.replacen("\"1.0.7\"", "\"1.0.8\"", 1);
+        let mut fake = Fake::default();
+        one_file(&mut fake, "old", "a", old.into_bytes());
+        one_file(&mut fake, "new", "b", new.into_bytes());
+        let (files, _) = run(compare_trees(&fake, Some("old"), "new", None)).unwrap();
+        let file = &files[0];
+        assert!(!file.binary && !file.too_large && !file.omitted);
+        assert_eq!((file.additions, file.deletions), (1, 1));
+        assert_eq!(file.hunks.len(), 1);
+    }
+
+    #[test]
+    fn a_large_text_file_mostly_rewritten_is_too_large_not_binary() {
+        let mut fake = Fake::default();
+        one_file(&mut fake, "old", "a", lockfile(20_000, 0).into_bytes());
+        one_file(&mut fake, "new", "b", lockfile(20_000, 10_000).into_bytes());
+        let (files, _) = run(compare_trees(&fake, Some("old"), "new", None)).unwrap();
+        let file = &files[0];
+        assert!(file.too_large && !file.binary && file.hunks.is_empty());
+    }
+
+    #[test]
+    fn text_past_the_size_limit_is_too_large_not_binary() {
+        let mut fake = Fake::default();
+        one_file(&mut fake, "new", "b", vec![b'a'; MAX_FILE_BYTES + 1]);
+        let (files, _) = run(compare_trees(&fake, None, "new", None)).unwrap();
+        assert!(files[0].too_large && !files[0].binary);
     }
 
     #[test]

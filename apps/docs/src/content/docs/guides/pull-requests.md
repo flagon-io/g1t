@@ -192,8 +192,10 @@ the MCP server they are the `pull_request` tool's `request_reviewers` and
 ### Reviewing
 
 Anyone signed in other than its author can review an open pull request.
-Write in the comment box under the conversation, then choose **Comment**,
-**Approve** or **Request changes**.
+Choose **Review** in the toolbar of **Files changed**, or beside the
+reviews in the box at the end of the conversation, then **Approve**, or
+write why and **Request changes**. The comment box under the conversation
+offers the same, after **Comment**.
 
 A review that only approves or requests changes, with nothing written and
 no line it is about, shows as one line in the conversation, the way an
@@ -244,7 +246,11 @@ Some changes are too large to read in one go:
   The files after that are listed without their counts and load the same
   way as you reach them; until then the toolbar says how many files are
   not counted.
-- A file over 512 KB, or a binary one, is listed without its contents.
+- A binary file is listed without its contents, as **Binary**. A text
+  file over 4 MB, or one over 512 KB of which more than 5,000 lines
+  changed, is listed as **Too large to compare**. A larger text file with
+  a smaller change (a lockfile after a dependency update, usually) shows
+  its lines like any other. Neither kind has counts.
 
 From the API, `get_pull_request_changes` works the same way: a file left
 out has `omitted: true`, and asking again with its path in `paths` (up to

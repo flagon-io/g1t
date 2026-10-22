@@ -574,6 +574,7 @@ mod tests {
                 additions: 1,
                 deletions: 0,
                 binary: false,
+                too_large: false,
                 omitted: false,
                 hunks: vec![Hunk { lines: vec![line(LineKind::Context, Some(11)), line(LineKind::Add, Some(12)), line(LineKind::Delete, None)] }],
             }],
