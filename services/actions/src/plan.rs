@@ -1778,7 +1778,15 @@ impl Actions {
                         .bind(&[since.as_str().into(), refused.message.as_str().into(), job.id.as_str().into()])?
                         .run()
                         .await?;
-                    worker::console_warn!("actions: job {} waits for a machine: {}", job.id, refused.message);
+                    // With how many of g1t's machines its jobs hold, this one
+                    // claimed among them: far below a class's max_instances
+                    // (50 standard, 10 slim), Cloudflare was short of
+                    // containers, not g1t of room (#391).
+                    worker::console_warn!(
+                        "actions: job {} waits for a machine: {} ({in_pool} jobs on g1t's machines)",
+                        job.id,
+                        refused.message
+                    );
                     no_machine = true;
                     continue;
                 }
