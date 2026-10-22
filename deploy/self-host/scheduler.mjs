@@ -122,6 +122,24 @@ if (process.argv[1]?.replaceAll("\\", "/").endsWith("deploy/self-host/scheduler.
     process.exit(failed ? 1 : 0);
   }
   console.log(`scheduler: ${schedules.map((s) => `${s.worker} ${s.crons.join(", ")}`).join("; ")}`);
+  // Every cron once as soon as the services answer: what came due while
+  // the installation was down runs now, not at its next time, and a new
+  // installation's one-time jobs finish at once (work's move of issues into
+  // work items, before which no work item can be filed; #398).
+  void (async () => {
+    for (let tries = 0; tries < 120; tries++) {
+      if (
+        await fetch(`${base}/login`).then(
+          (r) => r.ok,
+          () => false,
+        )
+      )
+        break;
+      await new Promise((done) => setTimeout(done, 5_000));
+    }
+    for (const { worker, crons } of schedules) for (const cron of crons) await run(base, { worker, cron });
+    console.log("scheduler: caught up");
+  })();
   const tick = () => {
     const now = new Date();
     for (const job of due(schedules, now)) run(base, job);

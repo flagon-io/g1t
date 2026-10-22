@@ -267,7 +267,7 @@ const AT_ONCE = 6;
  * rounds that started within 8 s had billing or storage fail; 9 of 12 that
  * started later did, their calls never reaching either service (#380).
  */
-export const LATE_MS = 8_000;
+const LATE_MS = 8_000;
 
 /**
  * One round of checks, kept. Parts under maintenance are checked but not

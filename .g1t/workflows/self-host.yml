@@ -1,0 +1,122 @@
+# Self-hosting keeps working: the compose stack (deploy/self-host/) built
+# from this commit, and deploy/self-host/smoke.sh run against it from end to
+# end, every cron included. On a change to anything the stack builds or
+# deploys, nightly on main (what changed since, all at once), and by hand.
+# A failure names the step that broke (smoke.sh prints each), and the
+# stack's logs are kept as an artifact. See CONTRIBUTING.md, "Self-hosting".
+name: Self-host
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - apps/**
+      - crates/**
+      - services/**
+      - packages/**
+      - deploy/**
+      - scripts/deploy/**
+      - Cargo.toml
+      - Cargo.lock
+      - package.json
+      - package-lock.json
+      - .g1t/workflows/self-host.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/**
+      - crates/**
+      - services/**
+      - packages/**
+      - deploy/**
+      - scripts/deploy/**
+      - Cargo.toml
+      - Cargo.lock
+      - package.json
+      - package-lock.json
+      - .g1t/workflows/self-host.yml
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer commit on the same branch makes an older run moot.
+concurrency:
+  group: self-host-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Smoke test
+    runs-on: ubuntu-latest
+    # The most g1t's own machines give a job. Building every Rust service to
+    # WebAssembly and the site is most of it, so the build's layers are kept
+    # between runs (below): only what a change touches is built again.
+    timeout-minutes: 60
+    env:
+      COMPOSE: docker compose -p g1t-selfhost -f deploy/self-host/docker-compose.yml -f self-host-cache.yml
+      BUILDX_BUILDER: self-host
+    steps:
+      - uses: actions/checkout@v5
+      - name: Restore the image's build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/self-host-cache
+          key: self-host-image-${{ github.sha }}
+          restore-keys: self-host-image-
+      # A builder that can read and write a cache folder (Docker's own cannot),
+      # and the site's and status page's builds pointed at it.
+      - name: Point the build at the cache
+        run: |
+          docker buildx create --name self-host --driver docker-container >/dev/null
+          cat > self-host-cache.yml <<'EOF'
+          services:
+            g1t:
+              build:
+                cache_from: [type=local,src=/tmp/self-host-cache]
+                cache_to: [type=local,dest=/tmp/self-host-cache-new,mode=max]
+            status:
+              build:
+                cache_from: [type=local,src=/tmp/self-host-cache]
+          EOF
+      - name: Build and start the stack
+        run: $COMPOSE up --build -d
+      # Saved before the smoke test, so a later failure keeps the build.
+      - name: Keep the new cache
+        run: rm -rf /tmp/self-host-cache && mv /tmp/self-host-cache-new /tmp/self-host-cache
+      - uses: actions/cache/save@v4
+        with:
+          path: /tmp/self-host-cache
+          key: self-host-image-${{ github.sha }}
+      # The site answers once its workerd has migrated and loaded every service.
+      - name: Wait for the site and the API
+        run: |
+          for _ in $(seq 1 120); do
+            if curl -fsS -o /dev/null http://localhost:8787/login && curl -sS -o /dev/null http://localhost:8789/; then exit 0; fi
+            sleep 5
+          done
+          echo "::error::The site did not answer within 10 minutes."
+          exit 1
+      - name: Smoke test
+        run: |
+          SCHEDULER_ONCE="$COMPOSE exec -T g1t node deploy/self-host/scheduler.mjs --once /data/generated/schedules.json" \
+            bash deploy/self-host/smoke.sh
+      - name: The stack's logs
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p self-host-logs
+          $COMPOSE ps -a > self-host-logs/ps.txt 2>&1 || true
+          for service in $($COMPOSE config --services); do
+            $COMPOSE logs --no-color --timestamps "$service" > "self-host-logs/$service.log" 2>&1 || true
+          done
+      - uses: actions/upload-artifact@v4
+        if: ${{ failure() }}
+        with:
+          name: self-host-logs
+          path: self-host-logs
+          retention-days: 7
+      - name: Stop the stack
+        if: ${{ always() }}
+        run: $COMPOSE down -v --remove-orphans || true

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end check of a self-hosted g1t: sign up, confirm the email, make a
-# workspace and a repository, push and clone over HTTP, open an issue, and
+# workspace and a repository, push and clone over HTTP, open a work item, and
 # read the code back through the site. Then the API on its own port (REST,
 # OAuth metadata and MCP, with an access token), an npm package published to
 # the installation's registry and installed back, pull requests from a branch
@@ -172,12 +172,21 @@ if [ "$PACK_CACHE" != off ]; then
   echo "hit"
 fi
 
-step "open an issue"
-out="$(post "/$WORKSPACE/$REPO/issues/new" --data-urlencode "title=It works" --data-urlencode "body=Opened by smoke.sh")"
+# Issues are the workspace's work items, filed from the repository.
+step "open a work item"
+# A new installation files none until work's one-time move of issues into
+# work items is done: the scheduler runs it as it starts.
+for _ in $(seq 1 24); do
+  out="$(post "/$WORKSPACE/-/work/new" --data-urlencode "title=It works" --data-urlencode "body=Opened by smoke.sh" --data-urlencode "origin=$REPO")"
+  grep -q "still being moved" "$WORK/body" || break
+  sleep 5
+done
 echo "$out"
-case "$out" in 30[23]*/issues/1) ;; *) fail "issue: $out $(head -c 300 "$WORK/body")" ;; esac
-[ "$(get "/$WORKSPACE/$REPO/issues/1")" = 200 ] || fail "issue page"
-grep -q "It works" "$WORK/body" || fail "issue page does not show the title"
+case "$out" in 30[23]*/-/work/1) ;; *) fail "work item: $out $(grep -o '[^>]*still being moved[^<]*' "$WORK/body" || head -c 300 "$WORK/body")" ;; esac
+[ "$(get "/$WORKSPACE/-/work/1")" = 200 ] || fail "work item page"
+grep -q "It works" "$WORK/body" || fail "work item page does not show the title"
+# An old issue's address still leads to it.
+case "$(get "/$WORKSPACE/$REPO/issues/1")" in 30[18]) ;; *) fail "the old issue address does not redirect" ;; esac
 
 step "browse code in the site"
 [ "$(get "/$WORKSPACE/$REPO/code")" = 200 ] || fail "code page"
@@ -188,10 +197,21 @@ grep -q "hello from g1t" "$WORK/body" || fail "blob page does not show the file"
 grep -q "First commit" "$WORK/body" || fail "commits page does not show the commit"
 
 step "make an access token"
-out="$(post /settings/tokens --data-urlencode "intent=add-token" --data-urlencode "label=smoke" --data-urlencode "preset=full" --data-urlencode "expires=7")"
+# Every permission a personal token can have, at its highest level, from
+# the contracts the site reads them from (the rest of this needs most).
+PERMS=()
+while read -r field; do PERMS+=(--data-urlencode "$field"); done < <(
+  node --input-type=module -e '
+    const { pathToFileURL } = await import("node:url");
+    const { SCOPE_RESOURCES, levelsOf } = await import(pathToFileURL(process.argv[1]));
+    for (const { resource } of SCOPE_RESOURCES) console.log(`perm.${resource}=${levelsOf(resource).at(-1)}`);
+  ' "$(cd "$(dirname "$0")/../.." && { command -v cygpath >/dev/null && cygpath -m "$PWD" || pwd; })/packages/contracts/src/scopes.ts"
+)
+[ "${#PERMS[@]}" -gt 0 ] || fail "no token permissions read from packages/contracts"
+out="$(post /settings/tokens/new --data-urlencode "name=smoke" --data-urlencode "expires=7" "${PERMS[@]}")"
 echo "$out"
 TOKEN="$(grep -ao 'g1t_[0-9A-Za-z_-]*' "$WORK/body" | head -1 || true)"
-[ -n "$TOKEN" ] || fail "no token in the tokens page: $out"
+[ -n "$TOKEN" ] || fail "no token on the new token page: $out $(grep -o '[^>]*Choose[^<]*\|[^>]*Give the token[^<]*\|[^>]*Name the token[^<]*' "$WORK/body" | head -1)"
 echo "token ${TOKEN:0:8}…"
 
 step "the API answers at $API_URL"
