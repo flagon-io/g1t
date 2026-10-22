@@ -65,10 +65,14 @@ const RETEST: &str = "UPDATE queue_entries
     WHERE id = ?1 AND state IN ('testing', 'passed')
       AND attempt_id IS ?2 AND landing_commit IS NULL";
 
+// A publication that stopped resumes while its pull request is open, or once
+// it is recorded as merged at exactly the tested commit; never for one that
+// merged some other way or was closed, whose tested state is stale.
 const BEGIN_LANDING: &str = "UPDATE queue_entries SET landing_commit = combined_commit
     WHERE id = ?1 AND state = 'passed' AND combined_commit = ?2 AND attempt_id IS ?3
-      AND (landing_commit = combined_commit OR EXISTS
-        (SELECT 1 FROM pulls WHERE pulls.id = queue_entries.pull_id AND pulls.status = 'open'))
+      AND EXISTS (SELECT 1 FROM pulls WHERE pulls.id = queue_entries.pull_id
+        AND (pulls.status = 'open' OR (queue_entries.landing_commit = queue_entries.combined_commit
+          AND pulls.status = 'merged' AND pulls.merge_commit = queue_entries.combined_commit)))
       AND NOT EXISTS (SELECT 1 FROM json_each(COALESCE(queue_entries.ahead, '[]')) dependency
         WHERE NOT EXISTS (SELECT 1 FROM queue_entries landed
           WHERE landed.repo_id = queue_entries.repo_id AND landed.number = dependency.value AND landed.state = 'landed'))
@@ -112,12 +116,34 @@ const WAIT_UNAVAILABLE: &str = "UPDATE queue_entries
 const LANDING_WAITS: &str = "UPDATE queue_entries SET landing_commit = NULL, error = ?3
     WHERE id = ?1 AND state = 'passed' AND landing_commit = ?2 RETURNING id AS value";
 
+// Its landing stopped with an error rather than an answer: repos failed,
+// the call was cut off, or the bookkeeping after a push that went through
+// did. Whether the default branch moved is not known, so the intent is kept
+// (a later pass resumes the same publication, which repos answers as landed
+// if it went through) and the reason said, for the sweep to try it again.
+const LANDING_STOPPED: &str = "UPDATE queue_entries SET error = ?3
+    WHERE id = ?1 AND state = 'passed' AND landing_commit = ?2 RETURNING id AS value";
+
+/// Why an entry whose landing stopped waits (LANDING_STOPPED).
+const LANDING_INTERRUPTED: &str =
+    "Its landing was interrupted before it finished. g1t tries it again in a few minutes.";
+
+/// Why an entry whose pull request merged some other way left the queue.
+const MERGED_OUTSIDE: &str = "It merged outside the queue.";
+
 // Repositories whose queue waits on a refusal for now: an entry waiting or
-// passed with a reason is one WAIT_UNAVAILABLE or LANDING_WAITS left (a
-// claim, a retest and a landing each clear it). The runner's sweep passes
-// over each again.
+// passed with a reason is one WAIT_UNAVAILABLE, LANDING_WAITS or
+// LANDING_STOPPED left (a claim, a retest and a landing each clear it). So
+// is one still holding a landing intent: the request publishing it stopped
+// without a word (its caller gave up on it, and it was cut off), and
+// nothing else would pass over the queue again. BEGIN_LANDING lets any pass
+// resume that publication and repos answers one that went through as
+// landed, so passing over a landing still in flight is harmless. The
+// runner's sweep passes over each again.
 const WAITING_QUEUES: &str = "SELECT DISTINCT repo_id AS value FROM queue_entries
-    WHERE state IN ('waiting', 'passed') AND error IS NOT NULL ORDER BY repo_id LIMIT 100";
+    WHERE (state IN ('waiting', 'passed') AND error IS NOT NULL)
+       OR (state = 'passed' AND landing_commit IS NOT NULL)
+    ORDER BY repo_id LIMIT 100";
 
 // A landing that went through while another request gave up its intent:
 // a request that found the repository taking no writes (LANDING_WAITS) can
@@ -129,9 +155,16 @@ const FINISH_LANDED: &str = "UPDATE queue_entries SET state = 'landed', finished
     WHERE id = ?2 AND state = 'passed' AND combined_commit = ?3 AND finished_at IS NULL
     RETURNING id AS value";
 
+// A landing intent holds an entry in the queue while its pull request is
+// open, or merged at the commit being published. One whose pull request
+// merged some other way, or is gone, can only hold a stale tested state:
+// it leaves.
 const LEAVE: &str =
     "UPDATE queue_entries SET state = ?1, error = COALESCE(?2, error), finished_at = ?3
-    WHERE id = ?4 AND state IN ('waiting', 'testing', 'passed') AND landing_commit IS NULL
+    WHERE id = ?4 AND state IN ('waiting', 'testing', 'passed')
+      AND (landing_commit IS NULL OR NOT EXISTS (SELECT 1 FROM pulls
+        WHERE pulls.id = queue_entries.pull_id
+          AND (pulls.status = 'open' OR (pulls.status = 'merged' AND pulls.merge_commit = queue_entries.landing_commit))))
     RETURNING id AS value";
 
 const ACCEPT_BUILD: &str =
@@ -1246,7 +1279,12 @@ impl Work {
             self.integration_passed(&row, Some(commit)).await?;
             self.resolve_held(repo_id).await?;
         }
-        self.settle(repo_id).await?;
+        // Landing is left to the pass `queue.changed` starts (the runner's
+        // `queue_build`), not done here: this runs inside the request that
+        // reported the last check, a CI job's report, and is cut off when
+        // that request is. The queue's first landing on flagon-io/g1t
+        // (2026-10-22) died that way mid-push, holding its intent with no
+        // reason, and nothing passed over the queue again.
         self.changed(repo_id).await?;
         Ok(())
     }
@@ -1415,22 +1453,32 @@ impl Work {
                 self.finish_landing(&row).await?;
                 continue;
             }
+            // Landed by a request whose intent another gave up (see
+            // FINISH_LANDED): landed, not closed.
+            if row.landing_commit.is_none()
+                && pull.status == PullStatus::Merged
+                && row.combined_commit.is_some()
+                && pull.merge_commit == row.combined_commit
+            {
+                self.finish_landed(&row).await?;
+                continue;
+            }
+            // Merged some other way (by hand, with the queue turned off) or
+            // closed: what was tested is stale, and landing it would move
+            // the default branch back to a state without what landed since.
+            // It leaves, whatever intent it holds, before anything lands.
+            if pull.status != PullStatus::Open {
+                let why = if pull.status == PullStatus::Merged {
+                    MERGED_OUTSIDE
+                } else {
+                    "It was closed."
+                };
+                self.leave(repo_id, &pull, QueueState::Removed, Some(why))
+                    .await?;
+                continue;
+            }
             if row.landing_commit.is_none() {
-                // Landed by a request whose intent another gave up (see
-                // FINISH_LANDED): landed, not closed.
-                if pull.status == PullStatus::Merged
-                    && row.combined_commit.is_some()
-                    && pull.merge_commit == row.combined_commit
-                {
-                    self.finish_landed(&row).await?;
-                    continue;
-                }
                 // Pushed to since it was tested: test it again as it is now.
-                if pull.status != PullStatus::Open {
-                    self.leave(repo_id, &pull, QueueState::Removed, Some("It was closed."))
-                        .await?;
-                    continue;
-                }
                 let head: Option<String> = g1t_kit::call(
                     &self.repos,
                     "head",
@@ -1517,18 +1565,31 @@ impl Work {
                 sign_off: false,
                 pull: Some(pull.number),
             };
-            let mut landed: Outcome<Landed> = g1t_kit::call(&self.repos, "land", &land).await?;
-            if matches!(&landed, Outcome::Fail(failure) if failure.code != FailureCode::Unavailable) {
-                // BEGIN_LANDING lets a crashed publication resume, so another
-                // request may be publishing this same commit: its push makes
-                // ours lose Git's compare-and-swap, and its bookkeeping may
-                // already have dropped the tested branch. Ask Git again before
-                // giving up on a commit that may already be published.
-                if !self.still_landing(&row).await? {
-                    return Ok(());
+            // An error rather than an answer (repos failed, or the call was
+            // cut off) says nothing of whether the default branch moved: the
+            // intent stays, saying why, for a later pass (LANDING_STOPPED).
+            let landing = async {
+                let mut landed: Outcome<Landed> = g1t_kit::call(&self.repos, "land", &land).await?;
+                if matches!(&landed, Outcome::Fail(failure) if failure.code != FailureCode::Unavailable)
+                {
+                    // BEGIN_LANDING lets a crashed publication resume, so another
+                    // request may be publishing this same commit: its push makes
+                    // ours lose Git's compare-and-swap, and its bookkeeping may
+                    // already have dropped the tested branch. Ask Git again before
+                    // giving up on a commit that may already be published.
+                    if !self.still_landing(&row).await? {
+                        return Ok(None);
+                    }
+                    landed = g1t_kit::call(&self.repos, "land", &land).await?;
                 }
-                landed = g1t_kit::call(&self.repos, "land", &land).await?;
-            }
+                Ok::<_, worker::Error>(Some(landed))
+            };
+            let landed = match landing.await {
+                Ok(Some(landed)) => landed,
+                // Another request finished (or gave up) this landing.
+                Ok(None) => return Ok(()),
+                Err(error) => return self.landing_stopped(&row, &error).await,
+            };
             let landed = match landed {
                 // Recorded as the method it was built by.
                 Outcome::Ok(landed) => Landed { method: row.method(), ..landed },
@@ -1574,9 +1635,21 @@ impl Work {
             };
             // Record the merge before removing its recoverable queue intent.
             let head = row.head_commit.clone();
-            let merged = self.record_merge(&repo, pull, &actor, row.keep_item_open != 0, landed, None)
-                .await?;
-            self.finish_landing(&row).await?;
+            let recorded = async {
+                let merged = self
+                    .record_merge(&repo, pull, &actor, row.keep_item_open != 0, landed, None)
+                    .await?;
+                self.finish_landing(&row).await?;
+                Ok::<_, worker::Error>(merged)
+            };
+            let merged = match recorded.await {
+                Ok(merged) => merged,
+                // The default branch moved but the merge or the entry was
+                // not recorded: the intent stays, and the next pass records
+                // them (repos answers the same landing as landed, and a
+                // merge recorded at the tested commit finishes it).
+                Err(error) => return self.landing_stopped(&row, &error).await,
+            };
             // Its branch, where the repository deletes branches on merge,
             // if it is still where it was tested.
             if merged.status == PullStatus::Merged {
@@ -1592,6 +1665,30 @@ impl Work {
     pub(crate) async fn waiting_queues(&self) -> Result<Vec<String>> {
         let rows = self.db.prepare(WAITING_QUEUES).all().await?.results::<crate::rows::ValueRow>()?;
         Ok(rows.into_iter().map(|row| row.value).collect())
+    }
+
+    /// Keeps the landing intent of an entry whose landing stopped with an
+    /// error, saying why, for a later pass to resume it (LANDING_STOPPED):
+    /// the sweep tries it every few minutes, and `queue.changed` is said
+    /// only for a new reason, so a landing that keeps failing is never hot.
+    async fn landing_stopped(&self, row: &EntryRow, error: &worker::Error) -> Result<()> {
+        worker::console_error!("merge queue entry {} did not land: {error}", row.id);
+        let waits = self
+            .db
+            .prepare(LANDING_STOPPED)
+            .bind(&[
+                row.id.as_str().into(),
+                row.combined_commit
+                    .as_deref()
+                    .map_or(JsValue::NULL, JsValue::from),
+                LANDING_INTERRUPTED.into(),
+            ])?
+            .first::<crate::rows::ValueRow>(None)
+            .await?;
+        if waits.is_some() && tell_waiting(row.error.as_deref(), LANDING_INTERRUPTED) {
+            self.changed(&row.repo_id).await?;
+        }
+        Ok(())
     }
 
     /// Records an entry as landed whose pull request merged at its tested
