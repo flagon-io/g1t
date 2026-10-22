@@ -5,7 +5,7 @@
  * rows, one per day, repository, work item, harness, model and landed;
  * this only groups and sums them. Pure, so it is tested on its own.
  */
-import type { SpendRow, SpendVisibility } from "@g1t/contracts";
+import type { ProviderPersonCosts, SpendRow, SpendVisibility } from "@g1t/contracts";
 
 const DAY_MS = 86_400_000;
 
@@ -87,6 +87,27 @@ export function landedShare(costUsd: number, landedUsd: number): number | null {
 
 /** Dollars as millionths of one, the way `money` takes them. */
 export const usdMicros = (usd: number) => Math.round(usd * 1_000_000);
+
+/** The harness whose per-person report a provider gives, as the rows name it. */
+const REPORTED_HARNESS = "claude_code";
+
+/**
+ * What the provider reported for a person's Claude Code in the span beside
+ * what g1t's sessions of it cost, in millionths of a dollar. `share` is the
+ * whole percent g1t saw; null when it saw more than was reported, which is
+ * said plainly rather than as a percent over 100.
+ */
+export type ProviderComparison = { reportedMicros: number; sawMicros: number; share: number | null; complete: boolean };
+
+/** The comparison, or null when no per-person report is connected or it holds nothing for the span. */
+export function providerComparison(costs: ProviderPersonCosts | null, rows: SpendRow[]): ProviderComparison | null {
+  if (!costs?.connected) return null;
+  const reportedMicros = costs.days.filter((day) => day.harness === REPORTED_HARNESS).reduce((sum, day) => sum + day.micros, 0);
+  if (reportedMicros <= 0) return null;
+  const sawMicros = usdMicros(rows.filter((row) => row.harness === REPORTED_HARNESS).reduce((sum, row) => sum + row.costUsd, 0));
+  const share = sawMicros > reportedMicros ? null : Math.round((sawMicros / reportedMicros) * 100);
+  return { reportedMicros, sawMicros, share, complete: costs.complete };
+}
 
 /** Who sees each person's spend, besides that person, in a sentence's words. */
 export const SPEND_VISIBILITY: Record<SpendVisibility, { label: string; who: string }> = {

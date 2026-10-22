@@ -41,7 +41,7 @@ use std::collections::HashMap;
 use g1t_contracts::account_deletion::{GHOST_ID, GHOST_USERNAME};
 use g1t_contracts::accounts::*;
 use g1t_contracts::events::UserEmailChanged;
-use g1t_contracts::identity::{UserArgs, UsernameArgs};
+use g1t_contracts::identity::{MemberEmail, MembersByEmailArgs, UserArgs, UsernameArgs};
 use g1t_contracts::time::{SQL_NOW, rfc3339, sql_after};
 use g1t_contracts::{FailureCode, Outcome, new_id};
 use g1t_kit::now_ms;
@@ -977,6 +977,36 @@ impl Identity {
             .await
     }
 
+    // --- Provider reports ---
+
+    /// `members_by_email`: which of these addresses belong to members of
+    /// the workspace, through an address they have confirmed. What links a
+    /// row of a provider's per-person report (billing's
+    /// `provider_person_costs`) to a person, and nothing else does: an
+    /// address someone only typed in, or a former member's, links nobody.
+    pub async fn members_by_email(&self, a: MembersByEmailArgs) -> Result<Vec<MemberEmail>> {
+        #[derive(Deserialize)]
+        struct Row {
+            email: String,
+            user_id: String,
+            username: String,
+        }
+        let emails = asked_addresses(&a.emails);
+        if emails.is_empty() {
+            return Ok(Vec::new());
+        }
+        Ok(self
+            .db
+            .prepare(MEMBERS_BY_EMAIL)
+            .bind(&[a.workspace.trim().into(), serde_json::to_string(&emails)?.into()])?
+            .all()
+            .await?
+            .results::<Row>()?
+            .into_iter()
+            .map(|row| MemberEmail { email: row.email, user_id: row.user_id, username: row.username })
+            .collect())
+    }
+
     // --- Commits ---
 
     /// `email_owners`: whose commits these are, by author address.
@@ -1251,9 +1281,69 @@ fn shown_owner(id: String, username: String, avatar: Option<String>, gone: bool)
     }
 }
 
+/// The most addresses one `members_by_email` call matches.
+const MAX_MEMBER_EMAILS: usize = 500;
+
+/// Confirmed addresses of the workspace's current members among the ones
+/// asked (`?2`, a JSON array of lowercased addresses), in one query: a
+/// deleted account, a deleted workspace or an unconfirmed address matches
+/// nothing.
+const MEMBERS_BY_EMAIL: &str = "SELECT e.email, u.id AS user_id, u.username FROM user_emails e
+     JOIN users u ON u.id = e.user_id
+     JOIN workspace_members m ON m.user_id = u.id
+     JOIN workspaces w ON w.id = m.workspace_id
+     WHERE w.slug = lower(?1) AND w.deleted_at IS NULL AND u.deleted_at IS NULL
+       AND e.verified_at IS NOT NULL AND e.email IN (SELECT value FROM json_each(?2))
+     ORDER BY e.email";
+
+/// The addresses `members_by_email` looks up: trimmed and lowercased as
+/// `user_emails` keeps them, each once, the first [`MAX_MEMBER_EMAILS`];
+/// anything that is not an address is left out.
+fn asked_addresses(emails: &[String]) -> Vec<String> {
+    let mut asked: Vec<String> = Vec::new();
+    for email in emails {
+        if asked.len() == MAX_MEMBER_EMAILS {
+            break;
+        }
+        if let Some(email) = normalize_email(email)
+            && !asked.contains(&email)
+        {
+            asked.push(email);
+        }
+    }
+    asked
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn addresses_are_matched_lowercased_once_each_and_at_most_five_hundred() {
+        let asked = asked_addresses(&[" Ada@Example.com ".into(), "ada@example.com".into(), "not an address".into(), "bo@example.org".into()]);
+        assert_eq!(asked, ["ada@example.com", "bo@example.org"]);
+        let many: Vec<String> = (0..600).map(|n| format!("p{n}@example.com")).collect();
+        let asked = asked_addresses(&many);
+        assert_eq!(asked.len(), 500);
+        assert_eq!(asked.last().map(String::as_str), Some("p499@example.com"));
+    }
+
+    #[test]
+    fn only_a_current_members_confirmed_address_links_to_them() {
+        // One query, whatever the number of addresses: they go as one JSON
+        // array, not a placeholder each.
+        assert_eq!(MEMBERS_BY_EMAIL.matches('?').count(), 2);
+        assert!(MEMBERS_BY_EMAIL.contains("json_each(?2)"));
+        for condition in [
+            "e.verified_at IS NOT NULL",
+            "u.deleted_at IS NULL",
+            "w.deleted_at IS NULL",
+            "JOIN workspace_members m ON m.user_id = u.id",
+            "w.slug = lower(?1)",
+        ] {
+            assert!(MEMBERS_BY_EMAIL.contains(condition), "{condition}");
+        }
+    }
 
     #[test]
     fn a_deleted_account_is_ghost_on_its_commits_until_restored() {

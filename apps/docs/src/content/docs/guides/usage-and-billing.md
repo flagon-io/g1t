@@ -1046,6 +1046,19 @@ the key belongs to, in US dollars, one line per day and line item:
 | Anthropic | The Usage and Cost Admin API's cost report (`/v1/organizations/cost_report`) | Each description, such as _Claude Opus 5.5 Usage - Input Tokens_, for each of the organization's Console workspaces |
 | OpenAI    | The Costs API (`/v1/organization/costs`)                                     | Each line item, for each of the organization's projects                                                             |
 
+**By person, from Anthropic.** With Anthropic connected, g1t also reads
+Anthropic's Claude Code usage report
+(`/v1/organizations/usage_report/claude_code`), with the same key: what
+each person's Claude Code use cost by day, by model, as Anthropic
+estimates it. Anthropic names each person by their email address, or an
+API key by its name. g1t links a row to a member only through an email
+address that member has
+[verified on g1t](/guides/authentication/#email-addresses), and nothing
+else: no guessing from names or usernames. It shows on that person's
+[Spend](/guides/spend/#beside-anthropics-report) beside what g1t's
+sessions saw. OpenAI's report can't be split by person yet, so OpenAI
+stays organization-wide.
+
 **Which key.** An admin key, which only an organization's admins can make:
 
 - **Anthropic**: an Admin API key (it starts `sk-ant-admin`), made in the
@@ -1065,8 +1078,10 @@ the last 90 days.
 again, never sent back to anyone and never written to a log. The page shows
 its last four characters, who connected it and when, when it was last read
 and what went wrong. And the costs: day, provider, line item, the provider's
-own workspace or project, and the amount. g1t uses the key for nothing but
-reading the report: never to run a model.
+own workspace or project, and the amount. From Claude Code's usage report:
+day, the email address or API key name, model, Anthropic's estimate and
+how many sessions. g1t uses the key for nothing but reading the reports:
+never to run a model.
 
 **How often.** Once a day, around 04:17 UTC. Each read asks for the last
 seven days again, since providers revise recent days (and further back,
@@ -1086,8 +1101,16 @@ again, since a new key may belong to another organization. To stop the key
 working anywhere, also delete it at the provider.
 
 Members can see which providers are connected and what they reported;
-only owners connect, replace and disconnect them. Services read the figures
-with the billing service's `provider_costs` RPC.
+only owners connect, replace and disconnect them. Each person's Claude Code
+figure follows [who sees each person's spend](/guides/spend/#who-sees-each-persons-spend):
+everyone sees their own, and someone else's shows to an owner or billing
+manager the workspace lets see it. What the report holds for nobody g1t
+can link (an address no member has verified, or an API key) shows only to
+owners and billing managers, as **Not linked to anyone: $X across N people
+or keys this quarter** on the Provider costs page. To link one, its person
+adds and verifies that address under **Account settings**, **Emails**.
+Services read the figures with the billing service's `provider_costs` and
+`provider_person_costs` RPCs.
 
 ## For services: entitlements, reserve, settle
 

@@ -1313,6 +1313,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "connect_provider" => reply(&billing.connect_provider(args(body)?).await?),
         "disconnect_provider" => reply(&billing.disconnect_provider(args(body)?).await?),
         "provider_costs" => reply(&billing.provider_costs(args(body)?).await?),
+        "provider_person_costs" => reply(&billing.provider_person_costs(args(body)?).await?),
         "checkout" => reply(&billing.checkout(args(body)?).await?),
         "confirm" => reply(&billing.confirm(args(body)?).await?),
         "trial" => reply(&billing.trial(args(body)?).await?),
@@ -1531,6 +1532,7 @@ mod tests {
         include_str!("../migrations/0065_free_except_flagon.sql"),
         include_str!("../migrations/0066_drop_issue_caps.sql"),
         include_str!("../migrations/0067_provider_costs.sql"),
+        include_str!("../migrations/0068_provider_person_costs.sql"),
     ];
 
     /// The columns of `table` after the migrations: each with whether an

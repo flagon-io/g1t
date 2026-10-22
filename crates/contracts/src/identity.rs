@@ -162,6 +162,24 @@ pub struct UsernamesArgs {
     pub ids: Vec<String>,
 }
 
+/// `members_by_email`: services only. Which of these email addresses (at
+/// most 500, any case) belong to members of `workspace` (its slug) who
+/// have verified them. An address nobody has verified, or a non-member's,
+/// is left out. Returns `Vec<MemberEmail>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct MembersByEmailArgs {
+    pub workspace: String,
+    pub emails: Vec<String>,
+}
+
+/// An address a member has verified, lowercased, and who they are.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemberEmail {
+    pub email: String,
+    pub user_id: String,
+    pub username: String,
+}
+
 /// `members_among`: services only. Which of these people (by username,
 /// at most 200) are members of `workspace` (its slug). Returns their
 /// usernames, lowercased.

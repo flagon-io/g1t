@@ -1,7 +1,7 @@
 import { AlertTriangle, CheckCircle2, ChevronRight, ReceiptText, X } from "lucide-react";
-import { Form, data } from "react-router";
+import { Form, Link, data } from "react-router";
 
-import { COST_PROVIDERS, type CostProvider, type ProviderConnection, type ProviderCosts, isCostProvider } from "@g1t/contracts";
+import { COST_PROVIDERS, type CostProvider, type ProviderConnection, type ProviderCosts, type ProviderPersonCosts, isCostProvider } from "@g1t/contracts";
 
 import type { Route } from "./+types/provider-costs";
 import { AiProviderMark } from "../../components/connectors";
@@ -12,7 +12,7 @@ import { page } from "../../lib/meta";
 import { money } from "../../lib/money";
 import { type Failed, isFailed, part } from "../../lib/partial";
 import { billing } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, managesBilling, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Provider costs · ${params.owner} · g1t` });
@@ -35,12 +35,21 @@ const KEYS: Record<CostProvider, { key: string; where: string; placeholder: stri
   },
 };
 
+/** The first day of the calendar quarter `today` (`YYYY-MM-DD`, UTC) is in. */
+function quarterStart(today: string): string {
+  const month = Number(today.slice(5, 7));
+  return `${today.slice(0, 4)}-${String(month - ((month - 1) % 3)).padStart(2, "0")}-01`;
+}
+
 /**
  * Settings, Provider costs: the AI providers whose own cost reports g1t
  * reads for the workspace (services/billing/src/provider_costs.rs). Every
  * member can see which are connected, when they were last read and what
  * went wrong; only owners connect and disconnect them. Keys are never
  * shown again, only their last four characters.
+ *
+ * Owners and billing managers also see what Claude Code's per-person
+ * report holds this quarter for nobody g1t can link to a member.
  */
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
@@ -48,16 +57,25 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   if (!role) throw data(null, { status: 404 });
   const slug = params.owner.toLowerCase();
   const since = new Date(Date.now() - (RECENT_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
-  // The connections are what the page is about; the totals beside them are a part.
-  const [connections, costs] = await Promise.all([
+  const today = new Date().toISOString().slice(0, 10);
+  // The connections are what the page is about; the totals beside them are a part, and what nobody is linked to is
+  // left out when billing doesn't say. Unlinked comes back for a manager whoever the person asked about is.
+  const [connections, costs, people] = await Promise.all([
     billing.providerConnections(slug, viewer),
     part(billing.providerCosts(slug, viewer, since), "What the providers reported"),
+    viewer && managesBilling(viewer, slug)
+      ? billing
+          .providerPersonCosts(slug, viewer, { userId: viewer.id, since: quarterStart(today), until: today })
+          .then((found) => (found.ok ? found.value : null))
+          .catch(() => null)
+      : null,
   ]);
   return {
     slug,
     owner: role === "owner",
     connections: unwrap(connections),
     totals: totalsOf(costs),
+    people: people?.connected && people.unlinkedMicros != null ? people : null,
   };
 }
 
@@ -95,7 +113,7 @@ export async function action({ params, context, request }: Route.ActionArgs) {
 const SECTION = "border-t border-line pt-8 first:border-t-0 first:pt-0";
 
 export default function ProviderCostsPage({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, owner, connections, totals } = loaderData;
+  const { slug, owner, connections, totals, people } = loaderData;
   const connected = actionData?.ok && "connected" in actionData ? actionData.connected : null;
   const failure = actionData && !actionData.ok ? actionData : null;
   const byProvider = new Map(connections.map((c) => [c.provider, c]));
@@ -142,6 +160,7 @@ export default function ProviderCostsPage({ loaderData, actionData }: Route.Comp
                       total={isFailed(totals) ? totals : (totals[connection.provider] ?? 0)}
                       error={failure?.provider === connection.provider ? failure.error : null}
                     />
+                    {connection.provider === "anthropic" && people && <ByPerson people={people} />}
                   </li>
                 ))}
               </ul>
@@ -246,6 +265,37 @@ function ConnectionRow({ connection, owner, total, error }: { connection: Provid
           <p className="mt-2 text-xs text-faint">The costs read with the old key are deleted and the last 90 days are read again with the new one.</p>
           <KeyForm provider={provider} error={null} label="Replace" />
         </details>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Claude Code's per-person report, for owners and billing managers: read
+ * too, linked to members only through addresses they verified, and what
+ * this quarter's report holds for nobody g1t can link.
+ */
+function ByPerson({ people }: { people: ProviderPersonCosts }) {
+  const actors = people.unlinkedActors;
+  return (
+    <div className="mt-4 border-t border-line pt-3 text-xs leading-relaxed text-muted">
+      <p className="font-medium text-fg-soft">By person</p>
+      <p className="mt-1">
+        g1t also reads Claude Code&apos;s usage report: what each person&apos;s use cost, by day. A row is linked to a member only through an email address they
+        verified on g1t, and shows on their Spend page beside what g1t&apos;s sessions saw.
+      </p>
+      {actors > 0 ? (
+        <p className="mt-1">
+          Not linked to anyone: <span className="font-medium text-fg tabular-nums">{money(people.unlinkedMicros ?? 0)}</span> across{" "}
+          {actors.toLocaleString("en-US")} {actors === 1 ? "person or key" : "people or keys"} this quarter. To link someone, they add and verify that address
+          under{" "}
+          <Link to="/settings/emails" className="underline decoration-line-strong underline-offset-2 hover:text-accent">
+            Account settings, Emails
+          </Link>
+          ; API keys stay unlinked.
+        </p>
+      ) : (
+        <p className="mt-1">Everything this quarter is linked to a member.</p>
       )}
     </div>
   );

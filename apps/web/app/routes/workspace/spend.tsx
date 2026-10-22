@@ -1,6 +1,6 @@
 import { Link, data, useNavigation } from "react-router";
 
-import type { Harness, PersonSpend, Spend } from "@g1t/contracts";
+import { COST_PROVIDERS, type Harness, type PersonSpend, type ProviderPersonCosts, type Spend } from "@g1t/contracts";
 
 import type { Route } from "./+types/spend";
 import { ButtonLink } from "../../components/ui";
@@ -12,15 +12,17 @@ import { cn } from "../../lib/cn";
 import { harnessName } from "../../lib/coordination";
 import { page } from "../../lib/meta";
 import { money } from "../../lib/money";
-import { work } from "../../lib/services.server";
-import { requireUser, roleIn } from "../../lib/session.server";
+import { billing, work } from "../../lib/services.server";
+import { managesBilling, requireUser, roleIn } from "../../lib/session.server";
 import {
   SPEND_DAYS,
   SPEND_VISIBILITY,
+  type ProviderComparison,
   type SpendGroup,
   type SpendKey,
   type SpendSpan,
   landedShare,
+  providerComparison,
   spendBy,
   spendDays,
   spendSpan,
@@ -37,22 +39,61 @@ export function meta({ params, ...args }: Route.MetaArgs) {
  * sees their own; someone else's (`?person=`) only as the workspace's
  * setting allows, which Work checks and refuses with why. People are
  * listed by name, never by what they spent.
+ *
+ * Beside it, what Anthropic's own report says the person's Claude Code
+ * cost (billing's `provider_person_costs`): the viewer's own always,
+ * someone else's only for a viewer who may see it and manages billing.
+ * It is a part: when billing doesn't answer or refuses, the line is left out.
  */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
   const slug = params.owner.toLowerCase();
-  if (!roleIn(viewer, slug)) throw data(null, { status: 404 });
+  const role = roleIn(viewer, slug);
+  if (!role) throw data(null, { status: 404 });
   const query = new URL(request.url).searchParams;
   const span = spendSpan(query, new Date().toISOString().slice(0, 10));
   const person = query.get("person")?.trim() || null;
+  const owner = role === "owner";
+  const reported = (userId?: string): Promise<ProviderPersonCosts | null> =>
+    billing
+      .providerPersonCosts(slug, viewer, { userId, since: span.since, until: span.until })
+      .then((costs) => (costs.ok ? costs.value : null))
+      .catch(() => null);
+  // The viewer's own needs nothing from Work first, so it is asked alongside.
+  const ownReported = person ? null : reported();
   const found = await work.getSpend(slug, viewer, { person: person ?? undefined, since: span.since, until: span.until }).catch(() => null);
-  if (!found) return { slug, span, person, spend: null, refused: null, error: "Work didn't answer, so spend can't be shown right now. Try again in a moment." };
+  if (!found)
+    return {
+      slug,
+      span,
+      person,
+      owner,
+      spend: null,
+      provider: null,
+      refused: null,
+      error: "Work didn't answer, so spend can't be shown right now. Try again in a moment.",
+    };
   if (!found.ok) {
     // Someone else's spend the viewer may not see: said, with the way back to their own.
     const refused = found.error.code === "forbidden";
-    return { slug, span, person, spend: null, refused: refused ? found.error.message : null, error: refused ? null : found.error.message };
+    return {
+      slug,
+      span,
+      person,
+      owner,
+      spend: null,
+      provider: null,
+      refused: refused ? found.error.message : null,
+      error: refused ? null : found.error.message,
+    };
   }
-  return { slug, span, person, spend: found.value, refused: null, error: null };
+  const spend = found.value;
+  const provider = spend.person.own
+    ? await (ownReported ?? reported())
+    : spend.canSeePeople && managesBilling(viewer, slug)
+      ? await reported(spend.person.id)
+      : null;
+  return { slug, span, person, owner, spend, provider, refused: null, error: null };
 }
 
 /** This page's address for `person` (null for the viewer's own) over `span`. */
@@ -114,7 +155,7 @@ export default function SpendPage({ loaderData: d }: Route.ComponentProps) {
           {d.error}
         </Alert>
       ) : (
-        <SpendBody slug={d.slug} spend={spend} span={d.span} />
+        <SpendBody slug={d.slug} spend={spend} span={d.span} provider={d.provider} owner={d.owner} />
       )}
     </div>
   );
@@ -155,8 +196,22 @@ function Stat({ label, value, note, className }: { label: string; value: string;
   );
 }
 
-function SpendBody({ slug, spend, span }: { slug: string; spend: Spend; span: SpendSpan }) {
+function SpendBody({
+  slug,
+  spend,
+  span,
+  provider,
+  owner,
+}: {
+  slug: string;
+  spend: Spend;
+  span: SpendSpan;
+  /** What the provider's per-person report says; null when it wasn't asked or didn't answer. */
+  provider: ProviderPersonCosts | null;
+  owner: boolean;
+}) {
   const share = landedShare(spend.costUsd, spend.landedUsd);
+  const comparison = providerComparison(provider, spend.rows);
   const empty = spend.sessions === 0;
   return (
     <>
@@ -175,6 +230,18 @@ function SpendBody({ slug, spend, span }: { slug: string; spend: Spend; span: Sp
           {plural(spend.unknownSessions, "session")} reported no usage, so {spend.unknownSessions === 1 ? "its" : "their"} cost isn&apos;t known and isn&apos;t
           counted: an older g1t plugin, or a harness that doesn&apos;t report usage.
         </p>
+      )}
+      {comparison ? (
+        <ProviderLine comparison={comparison} own={spend.person.own} />
+      ) : (
+        provider?.connected === false &&
+        owner && (
+          <p className="text-xs text-muted">
+            <Link to={`/${slug}/-/settings/provider-costs`} className="underline decoration-line-strong underline-offset-2 hover:text-accent">
+              Connect Anthropic&apos;s report to compare
+            </Link>
+          </p>
+        )
       )}
       {empty ? (
         <Card className="p-8 text-center">
@@ -212,6 +279,35 @@ function SpendBody({ slug, spend, span }: { slug: string; spend: Spend; span: Sp
         push whose commit names the session landed its work item.
       </p>
     </>
+  );
+}
+
+/**
+ * What Anthropic reported for the person's Claude Code in the span, and
+ * how much of it g1t's sessions saw: a share, or plainly that g1t's
+ * estimate came out higher.
+ */
+function ProviderLine({ comparison: c, own }: { comparison: ProviderComparison; own: boolean }) {
+  const label = COST_PROVIDERS.anthropic.label;
+  const figure = (micros: number) => <span className="font-medium text-fg tabular-nums">{money(micros)}</span>;
+  return (
+    <Card className="px-4 py-3 text-sm leading-relaxed text-fg-soft">
+      <p>
+        {label} reported {figure(c.reportedMicros)} for {own ? "your" : "their"} {harnessName("claude_code")} in these days.{" "}
+        {c.share != null ? (
+          <>
+            g1t&apos;s sessions saw {figure(c.sawMicros)} of it ({c.share}%).
+          </>
+        ) : (
+          <>
+            g1t&apos;s sessions came to more, {figure(c.sawMicros)}: g1t&apos;s estimate is at list price, and {label}&apos;s can differ.
+          </>
+        )}
+      </p>
+      {!c.complete && (
+        <p className="mt-1 text-xs text-muted">{label}&apos;s figure may still change: it arrives about an hour late and is revised for a week.</p>
+      )}
+    </Card>
   );
 }
 

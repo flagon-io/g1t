@@ -1083,6 +1083,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "user_by_id" => reply(&identity.current_user(args(body)?).await?),
         "usernames" => reply(&identity.usernames(args(body)?).await?),
         "members_among" => reply(&identity.members_among(args(body)?).await?),
+        // Services only: provider reports' addresses to members (emails.rs).
+        "members_by_email" => reply(&identity.members_by_email(args(body)?).await?),
         // The API: each username's chosen case, shown beside it.
         "display_usernames" => reply(&identity.display_usernames(args(body)?).await?),
         "accounts" => reply(&identity.accounts(args(body)?).await?),
