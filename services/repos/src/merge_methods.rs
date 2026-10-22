@@ -39,10 +39,11 @@ use worker::Result;
 use crate::public_storage::Operation;
 use crate::catch_up::{BranchUpdate, Change, Signature, ancestors, commit_object_by, merge_tree, moved_since, read_dirs};
 use crate::diff::{FileEntry, changed_entries_up_to};
+use crate::merge_base::{MergeBase, merge_base};
 use crate::registry::store_key;
 use crate::store::{GitRepo, GitStore, Scope};
 use crate::test_merge::{as_text, merge_text};
-use crate::{MAX_ANCESTRY, Repos, descends_from, land, nearest_ancestor_in};
+use crate::{MAX_ANCESTRY, Repos, descends_from, land};
 
 /// The most files one side's change may touch for g1t to apply it.
 pub(crate) const MAX_LAND_FILES: usize = 1000;
@@ -609,16 +610,25 @@ async fn make_on<R: GitRepo>(
     let Some(base) = target_history.first() else {
         return Ok(Err(refused(FailureCode::Conflict, format!("{branch} has no commits yet."))));
     };
-    let shared: HashSet<String> = target_history.iter().map(|commit| commit.hash.clone()).collect();
-    let merge_base = nearest_ancestor_in(reader, history, &shared).await?;
-    let Some((merge_base, merge_base_tree)) = merge_base.and_then(|hash| {
-        target_history.iter().find(|commit| commit.hash == hash).map(|commit| (hash, commit.tree_hash.clone()))
-    }) else {
+    let line: HashSet<String> = target_history
+        .iter()
+        .map(|commit| commit.hash.clone())
+        .collect();
+    let Some(MergeBase {
+        hash: merge_base,
+        tree: merge_base_tree,
+        merged,
+    }) = merge_base(reader, history, reader, target_history, &line).await?
+    else {
         return Ok(Err(refused(
             FailureCode::Conflict,
             format!("g1t could not find where this pull request left {branch}, so it cannot make its commits there."),
         )));
     };
+    // What the branch shares with the target: its line, and what it took
+    // in through a merge (a branch made from another that merged since).
+    let mut shared = line;
+    shared.extend(merged);
     let made = match method {
         MergeMethod::Merge | MergeMethod::Squash => {
             let squash = method == MergeMethod::Squash;
@@ -1018,15 +1028,27 @@ impl<S: GitStore> Repos<S> {
             return Ok(refused);
         }
         let needs_agent = |reason, detail: String, paths| Outcome::Ok(PullBranchUpdate::NeedsAgent { reason, detail, paths });
-        let shared: HashSet<String> = target_history.iter().map(|commit| commit.hash.clone()).collect();
+        let line: HashSet<String> = target_history
+            .iter()
+            .map(|commit| commit.hash.clone())
+            .collect();
         let reader = Reader::new(&source_git, from_fork.then_some(&target_git));
-        let Some(merge_base) = nearest_ancestor_in(&reader, &history, &shared).await? else {
+        let Some(MergeBase {
+            hash: merge_base,
+            merged,
+            ..
+        }) = merge_base(&reader, &history, &target_git, &target_history, &line).await?
+        else {
             return Ok(needs_agent(
                 NeedsAgentReason::Unsupported,
                 format!("g1t could not find where this pull request left {base_branch}."),
                 Vec::new(),
             ));
         };
+        // A branch made from another that merged since shares that one's
+        // commits too: they are not rebased again.
+        let mut shared = line;
+        shared.extend(merged);
         // On the base's head already, with no merge commits to straighten.
         let commits = match branch_commits(&reader, &history, &shared, MAX_REBASE_COMMITS).await? {
             Some(commits) => commits,
@@ -1431,6 +1453,80 @@ mod tests {
         };
         assert!(replayed.made.is_empty());
         assert_eq!(replayed.head, b.hash);
+    }
+
+    #[test]
+    fn a_branch_made_from_a_merged_pull_request_catches_up_and_rebases_cleanly() {
+        // flagon-io/g1t#362: made from #360's branch (p1), which merged into
+        // main as a merge commit (M) after main took m1.
+        let mut store = Store::default();
+        store.commit("m0", &[], "ana", &[("home.tsx", "a\n"), ("other", "1\n")]);
+        store.commit(
+            "p1",
+            &["m0"],
+            "ana",
+            &[("home.tsx", "a\nP\n"), ("other", "1\n")],
+        );
+        store.commit(
+            "s1",
+            &["p1"],
+            "bo",
+            &[("home.tsx", "a\nP\nS\n"), ("other", "1\n")],
+        );
+        store.commit(
+            "m1",
+            &["m0"],
+            "cy",
+            &[("home.tsx", "a\n"), ("other", "2\n")],
+        );
+        let main = store.commit(
+            "M",
+            &["m1", "p1"],
+            "cy",
+            &[("home.tsx", "a\nP\n"), ("other", "2\n")],
+        );
+        let git = Reader::new(&store, None);
+        let (history, target_history) = (
+            block_on(store.log("s1", 100)).unwrap(),
+            block_on(store.log("M", 100)).unwrap(),
+        );
+        let line: HashSet<String> = target_history
+            .iter()
+            .map(|commit| commit.hash.clone())
+            .collect();
+        let found = block_on(merge_base(&git, &history, &store, &target_history, &line))
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.hash, "p1");
+        // Bringing it up to date (catch_up.rs `merge_up`) applies only its own change.
+        let mut objects = Vec::new();
+        let Applied::Tree(tree) = block_on(apply(
+            &git,
+            Some(&found.tree),
+            &history[0].tree_hash,
+            &main.tree_hash,
+            &mut objects,
+        ))
+        .unwrap() else {
+            panic!("not applied")
+        };
+        assert_eq!(
+            Store::files(&git, &tree),
+            files(&[("home.tsx", "a\nP\nS\n"), ("other", "2\n")])
+        );
+        // A rebase makes only its own commits again.
+        let mut shared = line;
+        shared.extend(found.merged);
+        let commits = block_on(branch_commits(&git, &history, &shared, 10))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            commits
+                .iter()
+                .map(|commit| commit.hash.as_str())
+                .collect::<Vec<_>>(),
+            ["s1"]
+        );
     }
 
     #[test]

@@ -30,6 +30,7 @@ mod license;
 mod lifecycle;
 mod limits;
 mod listing;
+mod merge_base;
 mod merge_methods;
 mod meters;
 mod moves;
@@ -69,7 +70,7 @@ use g1t_contracts::repos::*;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, User, Viewer, is_valid_repo_name, new_id};
 use g1t_kit::{args, now_ms, reply, rpc_method};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use serde::Serialize;
@@ -171,38 +172,6 @@ async fn descends_from<R: GitRepo>(repo: &R, history: &[Commit], ancestor: &str)
         }
     }
     Ok(false)
-}
-
-/// The commit closest to the newest in `history` that is also in `shared`:
-/// where a fork and the repository it came from last agreed.
-async fn nearest_ancestor_in<R: GitRepo>(
-    repo: &R,
-    history: &[Commit],
-    shared: &HashSet<String>,
-) -> Result<Option<String>> {
-    let known: HashMap<&str, &[String]> = history
-        .iter()
-        .map(|commit| (commit.hash.as_str(), commit.parents.as_slice()))
-        .collect();
-    let mut seen = HashSet::new();
-    let mut queue: VecDeque<String> = history
-        .first()
-        .map(|c| c.hash.clone())
-        .into_iter()
-        .collect();
-    while let Some(hash) = queue.pop_front() {
-        if shared.contains(&hash) {
-            return Ok(Some(hash));
-        }
-        if !seen.insert(hash.clone()) || seen.len() > MAX_ANCESTRY as usize {
-            continue;
-        }
-        match known.get(hash.as_str()) {
-            Some(parents) => queue.extend(parents.iter().cloned()),
-            None => queue.extend(repo.parents(&hash).await?.unwrap_or_default()),
-        }
-    }
-    Ok(None)
 }
 
 thread_local! {
@@ -1356,22 +1325,22 @@ impl<S: GitStore> Repos<S> {
             return Ok(None);
         };
         let behind = !descends_from(&source_git, &history, &base.hash).await?;
-        let merge_base = nearest_ancestor_in(&source_git, &history, &side.shared).await?;
+        let found = merge_base::merge_base(
+            &source_git,
+            &history,
+            &target_git,
+            target_history,
+            &side.shared,
+        )
+        .await?;
         let mut divergence = Divergence {
             head: head.hash.clone(),
             base: base.hash.clone(),
-            merge_base: merge_base.clone(),
+            merge_base: found.as_ref().map(|found| found.hash.clone()),
             behind,
             ..Divergence::default()
         };
-        let merge_base_tree = match &merge_base {
-            Some(hash) => target_history
-                .iter()
-                .find(|commit| commit.hash == *hash)
-                .map(|commit| commit.tree_hash.clone()),
-            None => None,
-        };
-        let Some(merge_base_tree) = merge_base_tree else {
+        let Some(merge_base_tree) = found.map(|found| found.tree) else {
             // No common history to compare from: say nothing is known.
             divergence.truncated = true;
             return Ok(Some(divergence));
@@ -1881,13 +1850,15 @@ impl<S: GitStore> Repos<S> {
         let shared_with = async |against: &Repo| -> Result<Option<String>> {
             let against_git = self.read_git(against).await?;
             let branch = base_branch.as_deref().unwrap_or(&against.default_branch);
-            let shared: HashSet<String> = against_git
-                .log(branch, MAX_ANCESTRY)
-                .await?
-                .into_iter()
-                .map(|commit| commit.hash)
+            let against_history = against_git.log(branch, MAX_ANCESTRY).await?;
+            let shared: HashSet<String> = against_history
+                .iter()
+                .map(|commit| commit.hash.clone())
                 .collect();
-            nearest_ancestor_in(&git, &history, &shared).await
+            let found =
+                merge_base::merge_base(&git, &history, &against_git, &against_history, &shared)
+                    .await?;
+            Ok(found.map(|found| found.hash))
         };
         // A fork's branch, compared from the repository it would merge into.
         let target = match a.target_id.as_deref().filter(|id| a.base.is_none() && *id != repo.id) {

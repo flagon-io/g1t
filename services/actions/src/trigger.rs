@@ -9,7 +9,7 @@ use g1t_contracts::actions::{DispatchArgs, RepositoryDispatchArgs, WorkflowRun};
 use g1t_contracts::events::{Event, caused_by_job};
 use g1t_contracts::identity::{AGENT_ID, AGENT_NAME, UsernamesArgs};
 use g1t_contracts::repos::{Commit, CompareArgs, Comparison, FileStatus, LogArgs, PullMergeRef, PullMergeRefArgs, Repo, RepoPath};
-use g1t_contracts::work::{Label, PullDetail, ViewArgs, WorkItemDetail, WorkItemViewArgs, WorkspaceViewArgs};
+use g1t_contracts::work::{Label, Mergeable, PullDetail, ViewArgs, WorkItemDetail, WorkItemViewArgs, WorkspaceViewArgs};
 use g1t_contracts::{FailureCode, Outcome, User, new_id};
 use g1t_contracts::time::rfc3339;
 use g1t_kit::now_ms;
@@ -116,10 +116,31 @@ enum PullBuild {
     Nothing,
 }
 
-fn pull_build(event_name: &str, action: Option<&str>, made: &PullMergeRef) -> PullBuild {
+/// What a pull request's run builds, given the test merge `made` and
+/// whether the pull request is known to conflict (`mergeable`, worked out
+/// by work's mergeability check, which merges with git itself).
+///
+/// A conflict only the test merge found is not shown on the pull request,
+/// which then waits on its required checks with nothing saying why they
+/// never report: it builds the head instead. Until 2026-10-22 it ran
+/// nothing, and a branch made from a pull request that merged with a merge
+/// commit, whose test merge went wrong (repos merge_base.rs), sat at
+/// "expected" (flagon-io/g1t#365).
+fn pull_build(
+    event_name: &str,
+    action: Option<&str>,
+    made: &PullMergeRef,
+    mergeable: Mergeable,
+) -> PullBuild {
     match made {
         PullMergeRef::Merged { merge, .. } => PullBuild::Merge(merge.clone()),
-        PullMergeRef::Conflict { .. } if event_name == "pull_request" && action != Some("closed") => PullBuild::Nothing,
+        PullMergeRef::Conflict { .. }
+            if event_name == "pull_request"
+                && action != Some("closed")
+                && mergeable == Mergeable::Conflicting =>
+        {
+            PullBuild::Nothing
+        }
         PullMergeRef::Conflict { .. } | PullMergeRef::Unavailable { .. } => PullBuild::Head,
     }
 }
@@ -524,14 +545,14 @@ impl Actions {
                     Some(_) => None,
                     None => {
                         let made = self.test_merge(repo, pull, &sha, &base_ref).await;
-                        match pull_build(event_name, action, &made) {
+                        match pull_build(event_name, action, &made, detail.mergeable) {
                             PullBuild::Merge(merge) => Some(merge),
                             PullBuild::Nothing => {
                                 worker::console_log!("actions: pull request #{} conflicts with {base_ref}: {made:?}; no pull_request workflows run", pull.number);
                                 return Ok(None);
                             }
                             PullBuild::Head => {
-                                worker::console_log!("actions: no merge commit for pull request #{}: {made:?}; its head is built", pull.number);
+                                worker::console_warn!("actions: no merge commit for pull request #{}: {made:?}; its head is built", pull.number);
                                 None
                             }
                         }
@@ -1594,17 +1615,35 @@ mod tests {
         let merged = PullMergeRef::Merged { head: "h".into(), base: "b".into(), merge: "m".into() };
         let conflict = PullMergeRef::Conflict { head: "h".into(), base: "b".into(), paths: vec!["a".into()] };
         let unavailable = PullMergeRef::Unavailable { reason: "too large".into() };
-        assert_eq!(pull_build("pull_request", Some("synchronize"), &merged), PullBuild::Merge("m".into()));
-        assert_eq!(pull_build("pull_request_review", Some("submitted"), &merged), PullBuild::Merge("m".into()));
+        let conflicting = Mergeable::Conflicting;
+        assert_eq!(pull_build("pull_request", Some("synchronize"), &merged, Mergeable::Clean), PullBuild::Merge("m".into()));
+        assert_eq!(pull_build("pull_request_review", Some("submitted"), &merged, Mergeable::Clean), PullBuild::Merge("m".into()));
         // GitHub runs no pull_request workflow while it conflicts.
         for action in ["opened", "synchronize", "reopened", "edited"] {
-            assert_eq!(pull_build("pull_request", Some(action), &conflict), PullBuild::Nothing);
+            assert_eq!(pull_build("pull_request", Some(action), &conflict, conflicting), PullBuild::Nothing);
         }
         // Closing it, or reviewing it, still runs, on the head.
-        assert_eq!(pull_build("pull_request", Some("closed"), &conflict), PullBuild::Head);
-        assert_eq!(pull_build("pull_request_review", Some("submitted"), &conflict), PullBuild::Head);
+        assert_eq!(pull_build("pull_request", Some("closed"), &conflict, conflicting), PullBuild::Head);
+        assert_eq!(pull_build("pull_request_review", Some("submitted"), &conflict, conflicting), PullBuild::Head);
         // What g1t could not merge itself runs on the head.
-        assert_eq!(pull_build("pull_request", Some("opened"), &unavailable), PullBuild::Head);
+        assert_eq!(pull_build("pull_request", Some("opened"), &unavailable, Mergeable::Unknown), PullBuild::Head);
+    }
+
+    #[test]
+    fn a_conflict_the_pull_request_does_not_show_still_builds_its_head() {
+        // flagon-io/g1t#362: the test merge conflicted where git did not, the
+        // pull request showed none, and its required check waited for good.
+        let conflict = PullMergeRef::Conflict {
+            head: "h".into(),
+            base: "b".into(),
+            paths: vec!["a".into()],
+        };
+        for mergeable in [Mergeable::Clean, Mergeable::Checking, Mergeable::Unknown] {
+            assert_eq!(
+                pull_build("pull_request", Some("synchronize"), &conflict, mergeable),
+                PullBuild::Head
+            );
+        }
     }
 
     fn repo() -> Repo {

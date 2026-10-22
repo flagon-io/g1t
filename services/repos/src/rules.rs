@@ -335,8 +335,9 @@ impl<S: GitStore> Repos<S> {
                 let target_git = self.store.open(&store_key(&target)).await?;
                 let (history, base_history) =
                     futures_util::future::try_join(source_git.log(&a.head, MAX_ANCESTRY), target_git.log(&a.base_branch, MAX_ANCESTRY)).await?;
-                let shared: std::collections::HashSet<String> = base_history.into_iter().map(|commit| commit.hash).collect();
-                let merge_base = crate::nearest_ancestor_in(&source_git, &history, &shared).await?;
+                let shared: std::collections::HashSet<String> = base_history.iter().map(|commit| commit.hash.clone()).collect();
+                let found = crate::merge_base::merge_base(&source_git, &history, &target_git, &base_history, &shared).await?;
+                let merge_base = found.map(|found| found.hash);
                 let Some(head) = history.first() else {
                     return Ok(Outcome::Ok(InspectedCommits { commits: Vec::new(), complete: true }));
                 };

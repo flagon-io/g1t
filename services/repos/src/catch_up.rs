@@ -33,7 +33,8 @@ use crate::public_storage::Operation;
 use crate::registry::{can_read, can_write, store_key};
 use crate::store::{GitRepo, GitStore, Scope};
 use crate::merge_methods::{Applied, Reader, apply};
-use crate::{MAX_ANCESTRY, Repos, UNVERIFIED, descends_from, land, nearest_ancestor_in, not_found};
+use crate::merge_base::{MergeBase, merge_base};
+use crate::{MAX_ANCESTRY, Repos, UNVERIFIED, descends_from, land, not_found};
 
 /// The mode git writes for an entry of each kind.
 fn mode(kind: EntryKind) -> &'static str {
@@ -488,13 +489,8 @@ impl<S: GitStore> Repos<S> {
             }));
         }
         let shared: HashSet<String> = target_history.iter().map(|commit| commit.hash.clone()).collect();
-        let merge_base = nearest_ancestor_in(&source_git, &history, &shared).await?;
-        let Some((merge_base, merge_base_tree)) = merge_base.and_then(|hash| {
-            target_history
-                .iter()
-                .find(|commit| commit.hash == hash)
-                .map(|commit| (hash, commit.tree_hash.clone()))
-        }) else {
+        let found = merge_base(&source_git, &history, &target_git, &target_history, &shared).await?;
+        let Some(MergeBase { hash: merge_base, tree: merge_base_tree, .. }) = found else {
             return Ok(needs_agent(
                 NeedsAgentReason::Unsupported,
                 format!("g1t could not find where this pull request left {base_branch}."),
