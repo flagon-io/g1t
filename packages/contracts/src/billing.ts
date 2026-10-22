@@ -1243,6 +1243,12 @@ export interface BillingApi {
   disconnectProvider(actor: User, workspace: string, provider: CostProvider): Promise<Result<boolean>>;
   /** What the connected providers say the organization spent, by day, from `since` (`YYYY-MM-DD`, UTC). Members only. */
   providerCosts(workspace: string, viewer: Viewer, since: string): Promise<Result<ProviderCosts>>;
+  /**
+   * What the providers estimated one person's use cost, by day and model, `since` through `until` (`YYYY-MM-DD`, UTC):
+   * Anthropic's Claude Code usage report, matched to the person through an email address they verified on g1t. The
+   * viewer's own (`userId` left out), or anyone's for an owner or billing manager; forbidden otherwise.
+   */
+  providerPersonCosts(workspace: string, viewer: Viewer, options: { userId?: string; since: string; until: string }): Promise<Result<ProviderPersonCosts>>;
 }
 
 /** One slice of usage: what it was for, what it cost, how many runs. */
@@ -1926,5 +1932,33 @@ export type ProviderCosts = {
    * True when at least one provider is connected and every one was last read without an error and back to `since`.
    * The day in progress is never complete at the provider either.
    */
+  complete: boolean;
+};
+
+/** One person's day at a provider: what it estimated their use of one model cost. */
+export type ProviderPersonDay = {
+  /** `YYYY-MM-DD`, UTC. */
+  day: string;
+  provider: CostProvider;
+  /** `claude_code`: the only per-person report there is. */
+  harness: string;
+  model: string;
+  /** The provider's estimate, in millionths of a US dollar. */
+  micros: number;
+  sessions: number;
+};
+
+export type ProviderPersonCosts = {
+  /** Whether a provider with a per-person report is connected (and read). */
+  connected: boolean;
+  /** Oldest first. */
+  days: ProviderPersonDay[];
+  /**
+   * Only for an owner or billing manager: what the report holds in the span for nobody g1t can match (an address no
+   * member has verified, or an API key), and how many such actors.
+   */
+  unlinkedMicros?: number;
+  unlinkedActors: number;
+  /** As `ProviderCosts.complete`, for the per-person report. */
   complete: boolean;
 };

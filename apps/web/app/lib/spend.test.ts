@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { SpendRow } from "@g1t/contracts";
+import type { ProviderPersonCosts, ProviderPersonDay, SpendRow } from "@g1t/contracts";
 
-import { landedShare, spendBy, spendDays, spendSpan, usdMicros } from "./spend.ts";
+import { landedShare, providerComparison, spendBy, spendDays, spendSpan, usdMicros } from "./spend.ts";
 
 const row = (over: Partial<SpendRow>): SpendRow => ({
   day: "2026-10-20",
   repo: "acme/web",
   item: 7,
-  harness: "claude-code",
+  harness: "claude_code",
   model: "opus",
   landed: false,
   sessions: 1,
@@ -64,7 +64,7 @@ test("rows sum by what they went into, the costliest first and none last among e
     [null, "acme/web", "acme/api"],
   );
   assert.deepEqual(spendBy(rows, "harness"), [
-    { key: "claude-code", costUsd: 7, landedUsd: 1 },
+    { key: "claude_code", costUsd: 7, landedUsd: 1 },
     { key: "codex", costUsd: 0.5, landedUsd: 0 },
   ]);
   // Equal costs: by name, none last.
@@ -85,4 +85,31 @@ test("the landed share is a whole percent of something spent", () => {
   assert.equal(landedShare(3, 1), 33);
   assert.equal(landedShare(2, 2), 100);
   assert.equal(usdMicros(1.2345675), 1_234_568);
+});
+
+const reported = (days: Partial<ProviderPersonDay>[], over: Partial<ProviderPersonCosts> = {}): ProviderPersonCosts => ({
+  connected: true,
+  days: days.map((day) => ({ day: "2026-10-20", provider: "anthropic", harness: "claude_code", model: "claude-opus-5-5", micros: 0, sessions: 1, ...day })),
+  unlinkedActors: 0,
+  complete: true,
+  ...over,
+});
+
+test("the provider's figure for a person's Claude Code sits beside what g1t's sessions of it saw", () => {
+  const rows = [row({ costUsd: 6 }), row({ costUsd: 2, day: "2026-10-21" }), row({ harness: "codex", costUsd: 50 })];
+  assert.deepEqual(providerComparison(reported([{ micros: 7_000_000 }, { micros: 3_000_000, model: "claude-sonnet-5" }]), rows), {
+    reportedMicros: 10_000_000,
+    sawMicros: 8_000_000,
+    share: 80,
+    complete: true,
+  });
+  // Saw more than was reported: no percent over 100.
+  assert.equal(providerComparison(reported([{ micros: 5_000_000 }]), rows)?.share, null);
+  // Saw nothing of it.
+  assert.equal(providerComparison(reported([{ micros: 5_000_000 }]), [])?.share, 0);
+  assert.equal(providerComparison(reported([{ micros: 5_000_000 }], { complete: false }), rows)?.complete, false);
+  // Not connected, nothing reported, or no answer: no line.
+  assert.equal(providerComparison(reported([{ micros: 5_000_000 }], { connected: false }), rows), null);
+  assert.equal(providerComparison(reported([]), rows), null);
+  assert.equal(providerComparison(null, rows), null);
 });

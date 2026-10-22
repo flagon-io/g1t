@@ -30,6 +30,40 @@ Someone else's spend leaves out the names of repositories you can't read,
 and their work items, though what was spent there still counts: it shows
 as **Elsewhere**.
 
+## Beside Anthropic's report
+
+With Anthropic's cost report [connected](/guides/usage-and-billing/#provider-cost-reports),
+Spend also says what Anthropic's own Claude Code usage report puts on the
+person for the same days, and how much of it g1t's sessions saw:
+
+> Anthropic reported $412.80 for your Claude Code in these days. g1t's
+> sessions saw $338.50 of it (82%).
+
+g1t's figure is the Claude Code rows of the page: **By harness**, **Claude
+Code**. Anthropic's report is matched to the person only through an email
+address they [verified on g1t](/guides/authentication/#email-addresses),
+so a person with none verified there, or who uses Claude Code under
+another address, has no line until they add and verify it under
+**Account settings**, **Emails**. The line shows on your own spend,
+and on someone else's to an owner or billing manager the workspace lets
+see it. Owners who haven't connected Anthropic see a link to connect it.
+
+**Why the figures differ.**
+
+- g1t prices tokens at list price; Anthropic's figure is its own estimate,
+  and can differ. When g1t's comes out higher, Spend says so plainly rather
+  than as a share over 100%.
+- Sessions that ran without the [g1t plugin](/guides/claude-code-plugin/),
+  or outside the workspace's repositories, are in Anthropic's report but
+  not in g1t's.
+- Use on a Claude subscription plan rather than the organization's API
+  isn't in Anthropic's report, though g1t's sessions count it at list
+  price.
+- Anthropic's figure arrives about an hour late and is revised for a week,
+  so the last days may still change; Spend says so while they can.
+
+OpenAI's report can't be split by person yet, so Codex has no line like it.
+
 ## How a session's cost is worked out
 
 1. **The harness reports tokens.** As a session runs, its harness reports

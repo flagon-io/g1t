@@ -723,6 +723,8 @@ export function billingClient(service: ServiceBinding): BillingApi {
     connectProvider: (actor, workspace, provider, credential) => call("connect_provider", { actor, workspace, provider, credential }),
     disconnectProvider: (actor, workspace, provider) => call("disconnect_provider", { actor, workspace, provider }),
     providerCosts: (workspace, viewer, since) => call("provider_costs", { workspace, viewer, since }),
+    providerPersonCosts: (workspace, viewer, options) =>
+      call("provider_person_costs", { workspace, viewer, userId: options.userId, since: options.since, until: options.until }),
   };
 }
 
