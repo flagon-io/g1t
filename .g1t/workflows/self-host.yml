@@ -51,49 +51,20 @@ jobs:
   smoke:
     name: Smoke test
     runs-on: ubuntu-latest
-    # The most g1t's own machines give a job. Building every Rust service to
-    # WebAssembly and the site is most of it, so the build's layers are kept
-    # between runs (below): only what a change touches is built again.
+    # The most g1t's own machines give a job; building every Rust service
+    # to WebAssembly and the site is most of it. Docker inside the job's
+    # sandbox cannot start a builder of its own (BuildKit in a container),
+    # so the build's layers are not kept between runs.
     timeout-minutes: 60
     env:
-      COMPOSE: docker compose -p g1t-selfhost -f deploy/self-host/docker-compose.yml -f self-host-cache.yml
-      BUILDX_BUILDER: self-host
-      # Compose builds through bake, which asks before reading or writing a
-      # folder outside the build's context (the cache in /tmp) and has no
-      # flag for it through Compose.
-      BUILDX_BAKE_ENTITLEMENTS_FS: "0"
+      COMPOSE: docker compose -p g1t-selfhost -f deploy/self-host/docker-compose.yml
     steps:
       - uses: actions/checkout@v5
-      - name: Restore the image's build cache
-        uses: actions/cache/restore@v4
-        with:
-          path: /tmp/self-host-cache
-          key: self-host-image-${{ github.sha }}
-          restore-keys: self-host-image-
-      # A builder that can read and write a cache folder (Docker's own cannot),
-      # and the site's and status page's builds pointed at it.
-      - name: Point the build at the cache
-        run: |
-          docker buildx create --name self-host --driver docker-container >/dev/null
-          cat > self-host-cache.yml <<'EOF'
-          services:
-            g1t:
-              build:
-                cache_from: ["type=local,src=/tmp/self-host-cache"]
-                cache_to: ["type=local,dest=/tmp/self-host-cache-new,mode=max"]
-            status:
-              build:
-                cache_from: ["type=local,src=/tmp/self-host-cache"]
-          EOF
       - name: Build and start the stack
-        run: $COMPOSE up --build -d
-      # Saved before the smoke test, so a later failure keeps the build.
-      - name: Keep the new cache
-        run: rm -rf /tmp/self-host-cache && mv /tmp/self-host-cache-new /tmp/self-host-cache
-      - uses: actions/cache/save@v4
-        with:
-          path: /tmp/self-host-cache
-          key: self-host-image-${{ github.sha }}
+        run: |
+          started=$(date +%s)
+          $COMPOSE up --build -d
+          echo "::notice::The stack built and started in $(( $(date +%s) - started ))s."
       # The site answers once its workerd has migrated and loaded every service.
       - name: Wait for the site and the API
         run: |
