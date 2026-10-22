@@ -108,6 +108,8 @@ export type WorkItem = {
   milestone?: MilestoneRef | null;
   /** The project it is in, if any. */
   project?: WorkProjectRef | null;
+  /** The cycle it is in, while its workspace has cycles on: in Now the current one; in Next the coming one it is planned into. */
+  cycle?: number | null;
   /** The repositories it is linked to: its origin first, then targets, then those it touched. */
   repos: ItemRepo[];
   /** Where it stands in the workspace's plan. A closed one keeps where it was, for if it is reopened. */
@@ -230,9 +232,144 @@ export type Plan = {
   triageWaiting: number;
   /** How many were set aside in the last 30 days. */
   setAsideRecent: number;
+  /** While the workspace has cycles on, the current cycle: what Now is. */
+  cycle?: Cycle | null;
 };
 
 export type PlanGroup = { repo: string | null; count: number };
+
+// --- Cycles -----------------------------------------------------------------
+//
+// A workspace's time boxes, one or two weeks long. Off until a workspace
+// turns them on; while on, the plan's Now *is* the current cycle, and the
+// work service's cron closes a cycle once its last day is over, carrying
+// what is open in it into the next (crates/contracts/src/work/cycles.rs).
+// Days are YYYY-MM-DD in UTC, and a cycle holds its first and last day.
+
+/** The lengths a cycle may have, in days. */
+export const CYCLE_LENGTHS = [7, 14] as const;
+/** The most days of cooldown between two cycles. */
+export const MAX_COOLDOWN_DAYS = 14;
+
+/** What a workspace's cycles are set to. */
+export type CycleSettings = {
+  /** Off by default: Work behaves as it does without cycles. */
+  enabled: boolean;
+  /** 7 or 14. */
+  lengthDays: number;
+  /** The ISO day a cycle starts on: 1 for Monday to 7 for Sunday. */
+  startsWeekday: number;
+  /** Days between one cycle's last day and the next one's first. */
+  cooldownDays: number;
+  updatedAt?: string | null;
+};
+
+/** Open before its first day (upcoming), open from then (running), or over (closed). */
+export type CycleState = "upcoming" | "running" | "closed";
+
+/** A cycle of a workspace, with what it holds. */
+export type Cycle = {
+  workspace: string;
+  number: number;
+  /** Its first day, YYYY-MM-DD. */
+  startsOn: string;
+  /** Its last day, YYYY-MM-DD. */
+  endsOn: string;
+  closedAt?: string | null;
+  state: CycleState;
+  /** Every work item it took on: in it now, closed or not, and carried out of it. */
+  scope: number;
+  /** Of its scope, closed as completed in it. */
+  done: number;
+  carriedIn: number;
+  carriedOut: number;
+  /** Of its scope, added after its first day. */
+  added: number;
+};
+
+/** The days of a cycle not yet opened. */
+export type CycleDates = { number: number; startsOn: string; endsOn: string };
+
+/** A workspace's cycles (`listCycles`). */
+export type Cycles = {
+  workspace: string;
+  settings: CycleSettings;
+  /** The open cycle, while cycles are on. */
+  current?: Cycle | null;
+  /** The cycle after the current one, as the settings would make it now. */
+  next?: CycleDates | null;
+  /** Closed cycles, the latest first. */
+  past: Cycle[];
+};
+
+/** What a cycle says of one of its work items. */
+export type CycleMember = {
+  number: number;
+  /** RFC 3339: when it joined the cycle, or the one it was carried from. */
+  addedAt?: string | null;
+  /** Joined after the cycle's first day. */
+  added: boolean;
+  carriedIn: boolean;
+  carriedOut: boolean;
+  claimed: boolean;
+  live: boolean;
+  draftPulls: number;
+  openPulls: number;
+  mergedPulls: number;
+};
+
+/** A cycle and its report (`getCycle`). */
+export type CycleDetail = {
+  cycle: Cycle;
+  settings: CycleSettings;
+  /** Its work items: open ones in the plan's order, then closed ones; for a closed cycle, those it carried out too. */
+  items: WorkItem[];
+  /** What the cycle says of each of `items`, in the same order. */
+  members: CycleMember[];
+  /** For the current cycle: the work items in Next planned into the coming one. */
+  planned: WorkItem[];
+  next?: CycleDates | null;
+};
+
+/** Where `cycleWorkItem` puts a work item: the current cycle (Now), the coming one, or neither. */
+export type CycleChoice = "current" | "next" | "none";
+
+/** A change to a workspace's cycles: whichever fields are given. */
+export type CycleSettingsChange = { enabled?: boolean; lengthDays?: number; startsWeekday?: number; cooldownDays?: number };
+
+const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+/** The ISO weekday's name: 1 is Monday. */
+export function weekdayName(weekday: number): string {
+  return WEEKDAYS[weekday - 1] ?? "";
+}
+
+/** The days since the Unix epoch of a day (YYYY-MM-DD); NaN for anything else. */
+export function dayNumber(day: string): number {
+  return Math.floor(Date.parse(`${day.slice(0, 10)}T00:00:00Z`) / 86_400_000);
+}
+
+/** The day (YYYY-MM-DD) `number` days after the Unix epoch. */
+export function dayOf(number: number): string {
+  return new Date(number * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Days left in a cycle on `today`, counting today: 1 on its last day, 0 once over, all of it before it starts. */
+export function cycleDaysLeft(cycle: Pick<Cycle, "startsOn" | "endsOn">, today: string): number {
+  const start = dayNumber(cycle.startsOn);
+  const end = dayNumber(cycle.endsOn);
+  const now = dayNumber(today);
+  if ([start, end, now].some(Number.isNaN)) return 0;
+  return Math.max(0, end - Math.max(now, start) + 1);
+}
+
+/** "Oct 19 – Nov 1", or with the year when the two days are in different years. */
+export function cycleDays(cycle: Pick<Cycle, "startsOn" | "endsOn">): string {
+  const day = (text: string, year: boolean) =>
+    new Date(`${text}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", ...(year ? { year: "numeric" } : {}), timeZone: "UTC" });
+  const years = cycle.startsOn.slice(0, 4) !== cycle.endsOn.slice(0, 4);
+  return `${day(cycle.startsOn, years)} – ${day(cycle.endsOn, years)}`;
+}
 
 /**
  * A move in the plan (`planWorkItem`): whichever fields are given change.
@@ -1174,6 +1311,8 @@ export type WorkItemFilter = {
   parent?: number;
   /** Only those in the project of this slug. */
   project?: string;
+  /** Only those in the cycle of this number. */
+  cycle?: number;
   /** Only those closed at or after this time (RFC 3339), the most recently closed first instead of the newest. */
   closedSince?: string;
   /** Only those numbered below this: the next page, after one whose lowest number this is. */
@@ -1259,6 +1398,14 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
   nextWorkItem(workspace: string, viewer: Viewer, repo?: RepoPath): Promise<Result<WorkItem | null>>;
   /** Sets Now's cap (1 to `MAX_NOW_CAP`). Needs the right to manage milestones. */
   configurePlan(actor: User, workspace: string, nowCap: number): Promise<Result<Plan>>;
+  /** A workspace's cycle settings, its current cycle and the next one's days, and its last `limit` closed cycles (12 by default; 0 for none). */
+  listCycles(workspace: string, viewer: Viewer, limit?: number): Promise<Result<Cycles>>;
+  /** A cycle and its report: the current one without `number`. */
+  getCycle(workspace: string, viewer: Viewer, number?: number): Promise<Result<CycleDetail>>;
+  /** Changes a workspace's cycle settings. Turning cycles on opens the first cycle with Now in it. Needs the right to manage milestones. */
+  configureCycles(actor: User, workspace: string, change: CycleSettingsChange): Promise<Result<Cycles>>;
+  /** Puts an open work item in the current cycle (Now), plans it into the coming one, or takes it out of either. Refused to agents. */
+  cycleWorkItem(actor: User, workspace: string, number: number, cycle: CycleChoice): Promise<Result<WorkItem>>;
   /**
    * Closes it; with `by`, as the commit there (on its repository's default
    * branch, naming it after a closing keyword) would have: it lands there,

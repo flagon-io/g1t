@@ -614,6 +614,7 @@ pub const ROUTES: &[Route] = &[
             ("limit", "limit"),
             ("parent", "parent"),
             ("project", "project"),
+            ("cycle", "cycle"),
         ],
     ),
     route("POST", "/workspaces/:workspace/work", Op::OpenWorkItem, &[]),
@@ -641,6 +642,11 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/workspaces/:workspace/plan", Op::GetPlan, &[("repo", "repo"), ("all", "all")]),
     route("PATCH", "/workspaces/:workspace/plan", Op::ConfigurePlan, &[]),
     route("GET", "/workspaces/:workspace/plan/next", Op::NextWorkItem, &[("repo", "repo")]),
+    // Cycles: Now as a time box. `cycles/current` is the current one.
+    route("GET", "/workspaces/:workspace/cycles", Op::ListCycles, &[("limit", "limit")]),
+    route("PATCH", "/workspaces/:workspace/cycles", Op::ConfigureCycles, &[]),
+    route("GET", "/workspaces/:workspace/cycles/:cycle", Op::GetCycle, &[]),
+    route("POST", "/workspaces/:workspace/work/:number/cycle", Op::CycleWorkItem, &[]),
     route("GET", "/workspaces/:workspace/work/:number/links", Op::ListWorkItemLinks, &[]),
     route("POST", "/workspaces/:workspace/work/:number/links", Op::LinkWorkItem, &[]),
     route("DELETE", "/workspaces/:workspace/work/:number/links", Op::UnlinkWorkItem, &[("repo", "repo")]),
@@ -1705,6 +1711,11 @@ mod tests {
         assert_eq!(op("GET", "/workspaces/acme/plan"), Op::GetPlan);
         assert_eq!(op("PATCH", "/workspaces/acme/plan"), Op::ConfigurePlan);
         assert_eq!(op("GET", "/workspaces/acme/plan/next"), Op::NextWorkItem);
+        assert_eq!(op("GET", "/workspaces/acme/cycles"), Op::ListCycles);
+        assert_eq!(op("PATCH", "/workspaces/acme/cycles"), Op::ConfigureCycles);
+        assert_eq!(op("GET", "/workspaces/acme/cycles/current"), Op::GetCycle);
+        assert_eq!(op("GET", "/workspaces/acme/cycles/14"), Op::GetCycle);
+        assert_eq!(op("POST", "/workspaces/acme/work/12/cycle"), Op::CycleWorkItem);
         assert_eq!(op("GET", "/workspaces/acme/work/12/links"), Op::ListWorkItemLinks);
         assert_eq!(op("POST", "/workspaces/acme/work/12/links"), Op::LinkWorkItem);
         let (route, input) = resolve("DELETE", "/workspaces/acme/work/12/links", &[("repo".to_owned(), "acme/api".to_owned())], Value::Null).unwrap();

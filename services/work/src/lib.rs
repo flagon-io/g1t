@@ -2645,6 +2645,11 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "get_plan" => reply(&work.get_plan(args(body)?).await?),
         "next_work_item" => reply(&work.next_work_item(args(body)?).await?),
         "configure_plan" => reply(&work.configure_plan(args(body)?).await?),
+        // Cycles: Now as a time box (items/cycles.rs).
+        "list_cycles" => reply(&work.list_cycles(args(body)?).await?),
+        "get_cycle" => reply(&work.get_cycle(args(body)?).await?),
+        "configure_cycles" => reply(&work.configure_cycles(args(body)?).await?),
+        "cycle_work_item" => reply(&work.cycle_work_item(args(body)?).await?),
         "close_work_item" => reply(&work.close_work_item(args(body)?).await?),
         "set_work_item_parent" => reply(&work.set_work_item_parent(args(body)?).await?),
         "check_work_item_task" => reply(&work.check_work_item_task(args(body)?).await?),
@@ -2792,8 +2797,10 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
 }
 
 /// The cron trigger: moves on the job that moves issues into work items
-/// (items/migration.rs), until it is done, and settles the sessions'
-/// titles that are due (coordination/titles.rs).
+/// (items/migration.rs), until it is done, settles the sessions' titles
+/// that are due (coordination/titles.rs), keeps the plan up
+/// (items/plan_settle.rs), and closes the cycles that are over, carrying
+/// what is open in them into the next (items/cycles.rs).
 #[event(scheduled)]
 async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     let moved = async {
@@ -2817,6 +2824,13 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     if let Err(error) = planned.await {
         worker::console_error!("the plan's upkeep: {error}");
     }
+    let cycled = async {
+        let work = service(&env)?;
+        work.settle_cycles().await
+    };
+    if let Err(error) = cycled.await {
+        worker::console_error!("rolling cycles over: {error}");
+    }
 }
 
 /// Events from the bus, delivered on this service's own queue.
@@ -2826,7 +2840,7 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
     for message in batch.messages()? {
         // A workspace renamed: its runs, work items, labels, milestones,
         // projects and numbers move to the slug it has now.
-        let renamed = [runs::RENAMED, guardrails::RENAMED, rulesets::RENAMED, items::RENAMED, items::PROJECTS_RENAMED, attachments::RENAMED].concat();
+        let renamed = [runs::RENAMED, guardrails::RENAMED, rulesets::RENAMED, items::RENAMED, items::PROJECTS_RENAMED, items::CYCLES_RENAMED, attachments::RENAMED].concat();
         if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), &renamed).await? {
             message.ack();
             continue;
@@ -2845,7 +2859,7 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
         {
             attachments::purge_workspace(&env, &work.db, slug).await?;
         }
-        let deleted = [guardrails::DELETED, items::DELETED, items::PROJECTS_DELETED, attachments::DELETED].concat();
+        let deleted = [guardrails::DELETED, items::DELETED, items::PROJECTS_DELETED, items::CYCLES_DELETED, attachments::DELETED].concat();
         if g1t_kit::deleted::on_event(&env.d1("DB")?, message.body(), &deleted).await? {
             message.ack();
             continue;

@@ -9,6 +9,7 @@ pub mod cache;
 pub mod deploy;
 pub mod logs;
 pub mod pr;
+pub mod cycle;
 pub mod project;
 pub mod repo;
 pub mod run;
@@ -52,6 +53,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Session(command) => session::run(&Ctx::new(cli.global)?, command),
         Command::Work(command) => work::run(&Ctx::new(cli.global)?, command),
         Command::Project(command) => project::run(&Ctx::new(cli.global)?, command),
+        Command::Cycle(command) => cycle::run(&Ctx::new(cli.global)?, command),
         Command::Why(args) => why::run(&Ctx::new(cli.global)?, args),
         Command::Attach(args) => attach::run(&Ctx::new(cli.global)?, args),
         Command::Api(args) => api::run(&Ctx::new(cli.global)?, args),

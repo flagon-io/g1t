@@ -775,6 +775,7 @@ impl Search {
                 assignee: None,
                 parent: None,
                 project: None,
+                cycle: None,
                 closed_since: None,
                 horizon: None,
                 limit: None,

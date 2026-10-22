@@ -102,6 +102,9 @@ pub(crate) struct ItemRow {
     /// JSON [`PlanSuggestion`] (plan_settle.rs).
     #[serde(default)]
     pub suggestion: Option<String>,
+    /// The cycle it is in (cycles.rs).
+    #[serde(default)]
+    pub cycle_number: Option<u32>,
 }
 
 /// A link as [`ITEM_COLUMNS`] reads it.
@@ -305,6 +308,7 @@ impl ItemRow {
                 agent: self.agent,
                 milestone: milestone_ref(self.milestone, self.milestone_title),
                 project: self.project_json.as_deref().and_then(|json| serde_json::from_str(json).ok()),
+                cycle: self.cycle_number,
                 repos,
                 horizon: self.horizon.unwrap_or_default(),
                 appetite: self.appetite,

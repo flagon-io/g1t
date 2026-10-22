@@ -1826,6 +1826,304 @@
     },
     "notes": "Only now_cap is meaningful in the answer: get_plan reads the plan itself."
   },
+  "list_cycles": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": {
+      "workspace": "flagon-io",
+      "settings": {
+        "enabled": true,
+        "length_days": 14,
+        "starts_weekday": 1,
+        "cooldown_days": 0,
+        "updated_at": "2026-10-19T08:30:00.000Z"
+      },
+      "current": {
+        "workspace": "flagon-io",
+        "number": 14,
+        "starts_on": "2026-10-19",
+        "ends_on": "2026-11-01",
+        "closed_at": null,
+        "state": "running",
+        "scope": 14,
+        "done": 9,
+        "carried_in": 3,
+        "carried_out": 0,
+        "added": 2
+      },
+      "next": {
+        "number": 15,
+        "starts_on": "2026-11-02",
+        "ends_on": "2026-11-15"
+      },
+      "past": [
+        {
+          "workspace": "flagon-io",
+          "number": 13,
+          "starts_on": "2026-10-05",
+          "ends_on": "2026-10-18",
+          "closed_at": "2026-10-19T00:05:00.214Z",
+          "state": "closed",
+          "scope": 12,
+          "done": 9,
+          "carried_in": 1,
+          "carried_out": 3,
+          "added": 4
+        }
+      ]
+    }
+  },
+  "configure_cycles": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "request": {
+      "enabled": true,
+      "length_days": 14,
+      "starts_weekday": "monday"
+    },
+    "response": {
+      "workspace": "flagon-io",
+      "settings": {
+        "enabled": true,
+        "length_days": 14,
+        "starts_weekday": 1,
+        "cooldown_days": 0,
+        "updated_at": "2026-10-19T08:30:00.000Z"
+      },
+      "current": {
+        "workspace": "flagon-io",
+        "number": 14,
+        "starts_on": "2026-10-19",
+        "ends_on": "2026-11-01",
+        "closed_at": null,
+        "state": "running",
+        "scope": 6,
+        "done": 0,
+        "carried_in": 0,
+        "carried_out": 0,
+        "added": 0
+      },
+      "next": {
+        "number": 15,
+        "starts_on": "2026-11-02",
+        "ends_on": "2026-11-15"
+      },
+      "past": []
+    },
+    "notes": "Turning cycles on opens the first cycle at once, from the latest start day on or before today, with everything in Now in it."
+  },
+  "get_cycle": {
+    "params": {
+      "workspace": "flagon-io",
+      "cycle": "current"
+    },
+    "response": {
+      "cycle": {
+        "workspace": "flagon-io",
+        "number": 14,
+        "starts_on": "2026-10-19",
+        "ends_on": "2026-11-01",
+        "closed_at": null,
+        "state": "running",
+        "scope": 14,
+        "done": 9,
+        "carried_in": 3,
+        "carried_out": 0,
+        "added": 2
+      },
+      "settings": {
+        "enabled": true,
+        "length_days": 14,
+        "starts_weekday": 1,
+        "cooldown_days": 0,
+        "updated_at": "2026-10-19T08:30:00.000Z"
+      },
+      "items": [
+        {
+          "id": "wki_01m3zr4bq1ef0a8m6n2vkxgq7t",
+          "workspace": "flagon-io",
+          "number": 9,
+          "title": "Deploy fails when the README has no title",
+          "body": "The page build reads the first heading as the site title and stops when there is none.",
+          "labels": [
+            "bug"
+          ],
+          "state": "open",
+          "reason": null,
+          "resolutions": [],
+          "author": {
+            "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+            "username": "syntaqx",
+            "display_username": "syntaqx",
+            "kind": "user",
+            "verified": false,
+            "workspaces": []
+          },
+          "requested_by": null,
+          "created_at": "2026-10-01T18:04:11.482Z",
+          "updated_at": "2026-10-01T19:41:52.830Z",
+          "closed_at": null,
+          "pull_count": 0,
+          "comment_count": 0,
+          "assignees": [],
+          "blocked_by": [],
+          "agent": null,
+          "milestone": null,
+          "repos": [
+            {
+              "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+              "path": "flagon-io/hello",
+              "role": "origin",
+              "legacy_number": null,
+              "landed": false
+            }
+          ],
+          "horizon": "now",
+          "appetite": "medium",
+          "budget_usd": 25.0,
+          "urgent": false,
+          "planned_at": "2026-10-18T09:12:44.501Z",
+          "cycle": 14
+        },
+        {
+          "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+          "workspace": "flagon-io",
+          "number": 12,
+          "title": "Greeting should name the caller",
+          "body": "Take a name from the first argument; fall back to world.",
+          "labels": [
+            "feature"
+          ],
+          "state": "closed",
+          "reason": "completed",
+          "resolutions": [],
+          "author": {
+            "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+            "username": "syntaqx",
+            "display_username": "syntaqx",
+            "kind": "user",
+            "verified": false,
+            "workspaces": []
+          },
+          "requested_by": null,
+          "created_at": "2026-10-01T18:04:11.482Z",
+          "updated_at": "2026-10-19T15:20:07.114Z",
+          "closed_at": "2026-10-24T15:02:10.114Z",
+          "pull_count": 0,
+          "comment_count": 0,
+          "assignees": [],
+          "blocked_by": [],
+          "agent": null,
+          "milestone": null,
+          "repos": [
+            {
+              "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+              "path": "flagon-io/hello",
+              "role": "origin",
+              "legacy_number": null,
+              "landed": false
+            }
+          ],
+          "horizon": "now",
+          "appetite": "small",
+          "budget_usd": null,
+          "urgent": false,
+          "planned_at": "2026-10-19T15:20:07.114Z",
+          "cycle": 14
+        }
+      ],
+      "members": [
+        {
+          "number": 9,
+          "added_at": "2026-10-21T10:14:00.000Z",
+          "added": true,
+          "carried_in": false,
+          "carried_out": false,
+          "claimed": true,
+          "live": true,
+          "draft_pulls": 1,
+          "open_pulls": 0,
+          "merged_pulls": 0
+        },
+        {
+          "number": 12,
+          "added_at": "2026-10-05T00:00:00.000Z",
+          "added": false,
+          "carried_in": true,
+          "carried_out": false,
+          "claimed": false,
+          "live": false,
+          "draft_pulls": 0,
+          "open_pulls": 0,
+          "merged_pulls": 1
+        }
+      ],
+      "planned": [],
+      "next": {
+        "number": 15,
+        "starts_on": "2026-11-02",
+        "ends_on": "2026-11-15"
+      }
+    },
+    "notes": "cycle is a cycle's number, or current for the current one."
+  },
+  "cycle_work_item": {
+    "params": {
+      "workspace": "flagon-io",
+      "number": 9
+    },
+    "request": {
+      "cycle": "current"
+    },
+    "response": {
+      "id": "wki_01m3zr4bq1ef0a8m6n2vkxgq7t",
+      "workspace": "flagon-io",
+      "number": 9,
+      "title": "Deploy fails when the README has no title",
+      "body": "The page build reads the first heading as the site title and stops when there is none.",
+      "labels": [
+        "bug"
+      ],
+      "state": "open",
+      "reason": null,
+      "resolutions": [],
+      "author": {
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+        "username": "syntaqx",
+        "display_username": "syntaqx",
+        "kind": "user",
+        "verified": false,
+        "workspaces": []
+      },
+      "requested_by": null,
+      "created_at": "2026-10-01T18:04:11.482Z",
+      "updated_at": "2026-10-01T19:41:52.830Z",
+      "closed_at": null,
+      "pull_count": 0,
+      "comment_count": 0,
+      "assignees": [],
+      "blocked_by": [],
+      "agent": null,
+      "milestone": null,
+      "repos": [
+        {
+          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "path": "flagon-io/hello",
+          "role": "origin",
+          "legacy_number": null,
+          "landed": false
+        }
+      ],
+      "horizon": "now",
+      "appetite": "medium",
+      "budget_usd": 25.0,
+      "urgent": false,
+      "planned_at": "2026-10-18T09:12:44.501Z",
+      "cycle": 14
+    }
+  },
   "add_comment": {
     "request": {
       "body": "Should an empty name fall back to \"world\"?"

@@ -112,6 +112,8 @@ pub enum Command {
     Work(WorkArgs),
     /// Projects: homes for bodies of work in Work, with a brief, a lead, people and repositories.
     Project(ProjectArgs),
+    /// Cycles: a workspace's one- or two-week time boxes, whose unfinished work carries over.
+    Cycle(CycleArgs),
     /// Why a file or line is as it is: its commit, pull request, work item, decisions and sessions.
     Why(WhyArgs),
     /// Upload images, such as a screenshot, to show in a work item, a pull request or a comment; prints their Markdown.
@@ -1984,6 +1986,91 @@ pub struct ProjectEditArgs {
     /// Bring it back from the archive.
     #[arg(long)]
     pub unarchive: bool,
+}
+
+// --- cycle ------------------------------------------------------------
+
+#[derive(Debug, Args)]
+#[command(after_help = "\nWhile cycles are on, the plan's Now is the current cycle: g1t cycle add N moves N into Now.
+Examples:
+  g1t cycle
+  g1t cycle view 13
+  g1t cycle add 318
+  g1t cycle add 320 --next
+  g1t cycle settings --on --length 14 --start-day monday")]
+pub struct CycleArgs {
+    /// The workspace, by its slug; the current repository's when left out.
+    #[arg(long, global = true, value_name = "SLUG", env = "G1T_WORKSPACE")]
+    pub workspace: Option<String>,
+    #[command(subcommand)]
+    pub command: Option<CycleCommand>,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CycleCommand {
+    /// Show a cycle and its report: the current one, or the one numbered N.
+    View(CycleViewArgs),
+    /// List the workspace's cycles: the current one, the next one's days, and past ones.
+    List(CycleListArgs),
+    /// Put a work item in the current cycle (Now), or with --next plan it into the coming one.
+    Add(CycleAddArgs),
+    /// Take a work item out of the current or coming cycle, back to Next.
+    Remove(CycleRemoveArgs),
+    /// Show or change the workspace's cycles: on or off, length, start day and cooldown.
+    #[command(after_help = "\nCycles are off, two weeks long, start on Monday and have no cooldown until changed.
+Turning them on opens the first cycle at once, with everything in Now in it. A new length,
+start day or cooldown applies from the next cycle. Needs the Write role in the workspace.")]
+    Settings(CycleSettingsArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct CycleViewArgs {
+    /// The cycle's number; the current cycle when left out.
+    pub number: Option<u32>,
+    /// Open it in the browser.
+    #[arg(short, long)]
+    pub web: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct CycleListArgs {
+    /// How many past cycles to list (12 if left out, up to 100).
+    #[arg(short = 'L', long, default_value_t = 12)]
+    pub limit: u32,
+}
+
+#[derive(Debug, Args)]
+pub struct CycleAddArgs {
+    /// The work item's number.
+    pub number: u32,
+    /// Plan it into the coming cycle instead: it waits in Next and moves into Now when this one closes.
+    #[arg(long)]
+    pub next: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct CycleRemoveArgs {
+    /// The work item's number.
+    pub number: u32,
+}
+
+#[derive(Debug, Args)]
+pub struct CycleSettingsArgs {
+    /// Turn cycles on.
+    #[arg(long, conflicts_with = "off")]
+    pub on: bool,
+    /// Turn cycles off: the current cycle closes and nothing carries over.
+    #[arg(long)]
+    pub off: bool,
+    /// How long a cycle is, in days: 7 or 14.
+    #[arg(long, value_name = "DAYS", value_parser = clap::value_parser!(u32).range(7..=14))]
+    pub length: Option<u32>,
+    /// The day a cycle starts on: monday to sunday.
+    #[arg(long, value_name = "DAY")]
+    pub start_day: Option<String>,
+    /// Days between one cycle's end and the next one's start, 0 to 14.
+    #[arg(long, value_name = "DAYS", value_parser = clap::value_parser!(u32).range(0..=14))]
+    pub cooldown: Option<u32>,
 }
 
 // --- attach -----------------------------------------------------------

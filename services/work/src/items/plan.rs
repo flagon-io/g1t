@@ -7,6 +7,7 @@
 
 use g1t_contracts::access::{self, Capability};
 use g1t_contracts::events::WorkItemEvent;
+use g1t_contracts::rules::is_agent;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome, User, Viewer};
@@ -16,7 +17,7 @@ use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
 use super::rows::{Held, ITEM_COLUMNS, ItemRow, no_item, workspace_of};
-use crate::{Work, optional};
+use crate::{Work, optional, optional_number};
 
 /// An open work item's horizon, with NULL (rows from before the plan, and
 /// ones opened since) read as Triage.
@@ -380,6 +381,25 @@ impl Work {
                 format!("Deciding what is in Now takes the right to manage milestones. {}", access::needs_on_item(Capability::ManageLabels, &workspace)),
             ));
         }
+        // While cycles are on, Now is the current cycle (cycles.rs): moving
+        // into Now puts a work item in it, and out of Now takes it out. An
+        // agent never commits a cycle.
+        let current = self.current_cycle_number(&workspace).await?;
+        if let Some(number) = current
+            && horizon == Horizon::Now
+            && held.item.horizon != Horizon::Now
+            && is_agent(&a.actor)
+        {
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                format!("Agents can't commit a cycle: a person moves work into Cycle {number}. A work item an agent files waits in Triage."),
+            ));
+        }
+        let (cycle_changed, cycle_number) = match (horizon, current) {
+            (Horizon::Now, Some(number)) => (held.item.cycle != Some(number), Some(number)),
+            _ if horizon != from => (held.item.cycle.is_some(), None),
+            _ => (false, held.item.cycle),
+        };
         let anchor_rank = match &anchor {
             Some(anchor) => Some(self.ranked(anchor).await?),
             None => None,
@@ -399,8 +419,10 @@ impl Work {
         let planned_at = if reranked { Some(now.clone()) } else { held.item.planned_at.clone() };
         self.db
             .prepare(
-                "UPDATE work_items SET horizon = ?, rank = ?, appetite = ?, budget_usd = ?, urgent = ?, planned_at = ?
-                 WHERE id = ? AND state = 'open'",
+                "UPDATE work_items SET horizon = ?1, rank = ?2, appetite = ?3, budget_usd = ?4, urgent = ?5, planned_at = ?6,
+                   cycle_number = CASE WHEN ?8 THEN ?9 ELSE cycle_number END,
+                   cycle_added_at = CASE WHEN ?8 THEN ?10 ELSE cycle_added_at END
+                 WHERE id = ?7 AND state = 'open'",
             )
             .bind(&[
                 horizon.as_str().into(),
@@ -410,6 +432,9 @@ impl Work {
                 u32::from(urgent).into(),
                 optional(&planned_at),
                 held.item.id.as_str().into(),
+                cycle_changed.into(),
+                optional_number(cycle_number),
+                if cycle_number.is_some() { now.as_str().into() } else { JsValue::NULL },
             ])?
             .run()
             .await?;
@@ -468,8 +493,9 @@ impl Work {
             self.db.prepare(LATER_GROUPS.replace("{OPEN_VISIBLE}", OPEN_VISIBLE)).bind(&bound(None))?,
             self.db.prepare(LANDED.replace("{ITEM_COLUMNS}", ITEM_COLUMNS)).bind(&bound(Some(week.as_str().into())))?,
             self.db.prepare(WAITING.replace("{OPEN_VISIBLE}", OPEN_VISIBLE)).bind(&waiting_values)?,
+            self.current_cycle_statement(&workspace)?,
         ];
-        let results = self.timing.db(6, self.db.batch(statements)).await?;
+        let results = self.timing.db(7, self.db.batch(statements)).await?;
         let rows = |index: usize| results.get(index).ok_or_else(|| worker::Error::RustError("short batch".into()));
         let now = shown_rows(rows(0)?.results::<ItemRow>()?, &a.viewer);
         let next = shown_rows(rows(1)?.results::<ItemRow>()?, &a.viewer);
@@ -480,6 +506,8 @@ impl Work {
         let later = rows(3)?.results::<Group>()?.into_iter().map(|group| PlanGroup { repo: group.repo, count: group.count }).collect();
         let landed = shown_rows(rows(4)?.results::<ItemRow>()?, &a.viewer);
         let waiting = rows(5)?.results::<Waiting>()?.into_iter().next().unwrap_or(Waiting { triage_waiting: 0, set_aside_recent: 0 });
+        let today = rfc3339(now_ms)[..10].to_owned();
+        let cycle = rows(6)?.results::<super::cycles::CycleRow>()?.into_iter().next().map(|row| row.cycle(&today));
         // How each in Now stands, in Now's order.
         let ids: Vec<&str> = now.iter().map(|item| item.id.as_str()).collect();
         let mut facts: Vec<FactsRow> = if ids.is_empty() {
@@ -508,6 +536,7 @@ impl Work {
             later_total: total(Horizon::Later),
             later,
             set_aside_total: total(Horizon::SetAside),
+            cycle,
             workspace,
         }))
     }

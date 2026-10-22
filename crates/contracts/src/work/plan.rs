@@ -326,6 +326,9 @@ pub struct Plan {
     /// How many were set aside in the last 30 days.
     #[serde(default)]
     pub set_aside_recent: u32,
+    /// While the workspace has cycles on, the current cycle: what Now is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cycle: Option<super::Cycle>,
 }
 
 /// Work items of one horizon filed in one repository.

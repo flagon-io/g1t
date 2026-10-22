@@ -466,6 +466,7 @@ export function workClient(service: ServiceBinding): WorkApi {
         before: filter.before ?? null,
         ...(filter.horizon ? { horizon: filter.horizon } : {}),
         ...(filter.project ? { project: filter.project } : {}),
+        ...(filter.cycle ? { cycle: filter.cycle } : {}),
         ...(filter.limit ? { limit: filter.limit } : {}),
       }),
     getWorkItem: (workspace, number, viewer) => call("get_work_item", { workspace, number, viewer }),
@@ -475,6 +476,18 @@ export function workClient(service: ServiceBinding): WorkApi {
       call("get_plan", { workspace, viewer, ...(options.repo ? { repo: options.repo } : {}), ...(options.all ? { all: true } : {}) }),
     nextWorkItem: (workspace, viewer, repo) => call("next_work_item", { workspace, viewer, ...(repo ? { repo } : {}) }),
     configurePlan: (actor, workspace, nowCap) => call("configure_plan", { actor, workspace, now_cap: nowCap }),
+    listCycles: (workspace, viewer, limit) => call("list_cycles", { workspace, viewer, ...(limit === undefined ? {} : { limit }) }),
+    getCycle: (workspace, viewer, number) => call("get_cycle", { workspace, viewer, ...(number === undefined ? {} : { number }) }),
+    configureCycles: (actor, workspace, change) =>
+      call("configure_cycles", {
+        actor,
+        workspace,
+        ...(change.enabled === undefined ? {} : { enabled: change.enabled }),
+        ...(change.lengthDays === undefined ? {} : { length_days: change.lengthDays }),
+        ...(change.startsWeekday === undefined ? {} : { starts_weekday: change.startsWeekday }),
+        ...(change.cooldownDays === undefined ? {} : { cooldown_days: change.cooldownDays }),
+      }),
+    cycleWorkItem: (actor, workspace, number, cycle) => call("cycle_work_item", { actor, workspace, number, cycle }),
     closeWorkItem: (actor, workspace, number, reason, by, subItems) =>
       call("close_work_item", {
         actor,

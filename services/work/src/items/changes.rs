@@ -447,6 +447,8 @@ impl Work {
                     )
                     .bind(&[now.as_str().into(), held.item.id.as_str().into()])?,
                 self.db.prepare("UPDATE work_item_repos SET landed_at = NULL WHERE item_id = ?").bind(&[held.item.id.as_str().into()])?,
+                // Back in Now: in the current cycle (cycles.rs).
+                self.db.prepare(super::cycles::REJOIN).bind(&[held.item.id.as_str().into(), now.as_str().into()])?,
             ])
             .await?;
         self.publish_item("work_item.reopened", &held, Some(&a.actor), Self::item_event(&held)).await?;

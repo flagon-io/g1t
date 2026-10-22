@@ -177,6 +177,9 @@ pub const TOOLS: &[Tool] = &[
             a("release", Op::Coordination(CoordinationOp::ReleaseClaim), "Stop working on it"),
             a("handoff", Op::Coordination(CoordinationOp::HandOffWorkItem), "Hand it off, to someone or anyone, with a note on where it stands"),
             a("list_claims", Op::Coordination(CoordinationOp::ListClaims), "Claims on a workspace's work items: who is working on what"),
+            a("list_cycles", Op::ListCycles, "A workspace's cycles: its settings, the current cycle (what Now is while cycles are on) with its days and counts, the next one's days, and past ones"),
+            a("get_cycle", Op::GetCycle, "A cycle and its report, the current one without cycle: its work items, what was carried in and out, added after it started, and planned into the next"),
+            a("cycle", Op::CycleWorkItem, "Move it into a cycle: cycle current (Now), next (planned into the coming cycle) or none. Write role; agents may not commit a cycle"),
             a("list_projects", Op::ListWorkProjects, "A workspace's projects (homes for bodies of work), live ones first; state or archived narrows them"),
             a("get_project", Op::GetWorkProject, "One project by its slug: brief, instructions, people, repositories, its open work items with where each is on its hill, milestones"),
             a("create_project", Op::CreateWorkProject, "Create a project: name, and slug, summary, brief, lead, state, dates or health if you like"),
@@ -464,6 +467,7 @@ pub const TOOLS: &[Tool] = &[
             a("update_milestone", Op::UpdateMilestone, "Change a milestone's title, description, due date or state"),
             a("delete_milestone", Op::DeleteMilestone, "Delete a milestone"),
             a("configure_plan", Op::ConfigurePlan, "Set now_cap, how many work items its plan's Now holds before it says it is over (1 to 50)"),
+            a("configure_cycles", Op::ConfigureCycles, "Turn cycles on or off, and set length_days (7 or 14), starts_weekday (1 Monday to 7 Sunday) and cooldown_days"),
             a("list_integrations", Op::ListIntegrations, "Alert sources and issue trackers"),
             a("connect_integration", Op::ConnectIntegration, "Connect one"),
             a("update_integration", Op::UpdateIntegration, "Change one: rotate its key or its settings"),
@@ -1058,7 +1062,7 @@ mod tests {
         let work_item = tools.iter().find(|tool| tool["name"] == "work_item").unwrap();
         assert_eq!(
             work_item["inputSchema"]["properties"]["action"]["enum"],
-            json!(["list", "get", "next", "get_plan", "links", "labels", "decisions", "resolve", "work", "list_claims", "list_projects", "get_project"])
+            json!(["list", "get", "next", "get_plan", "links", "labels", "decisions", "resolve", "work", "list_claims", "list_cycles", "get_cycle", "list_projects", "get_project"])
         );
     }
 
