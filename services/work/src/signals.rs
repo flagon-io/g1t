@@ -186,6 +186,8 @@ struct WaitingRow {
     title: String,
     created_at: String,
     agent: u32,
+    #[serde(default)]
+    agent_rule: Option<String>,
     draft_seconds: Option<f64>,
     item: Option<u32>,
     /// JSON array of numbers.
@@ -200,6 +202,7 @@ impl From<WaitingRow> for WaitingPull {
             title: row.title,
             created_at: row.created_at,
             agent: row.agent != 0,
+            agent_rule: row.agent_rule.filter(|_| row.agent != 0),
             draft_seconds: row.draft_seconds,
             item: row.item,
             blocks: serde_json::from_str(&row.blocks).unwrap_or_default(),
@@ -215,6 +218,8 @@ struct PullRow {
     title: String,
     status: String,
     agent: u32,
+    #[serde(default)]
+    agent_rule: Option<String>,
     owner_id: String,
     owner_name: String,
     created_at: String,
@@ -232,6 +237,7 @@ impl From<PullRow> for SignalPull {
             title: row.title,
             status: row.status,
             agent: row.agent != 0,
+            agent_rule: row.agent_rule.filter(|_| row.agent != 0),
             owner_id: row.owner_id,
             owner_name: row.owner_name,
             created_at: row.created_at,

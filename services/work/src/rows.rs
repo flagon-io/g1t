@@ -3,7 +3,7 @@
 use g1t_contracts::User;
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::work::{
-    AgentRef, AgentVerdict, CheckStatus, Comment, CommentKind, MilestoneRef, Pull, PullStatus, Runtime, SessionEntry, SessionEntryKind,
+    AgentRef, AgentVerdict, AgentWork, CheckStatus, Comment, CommentKind, MilestoneRef, Pull, PullStatus, Runtime, SessionEntry, SessionEntryKind,
     Verdict,
 };
 use serde::Deserialize;
@@ -185,6 +185,16 @@ pub struct PullRow {
     pub parts_numbers: Option<String>,
     #[serde(default)]
     pub head_branch_deleted: Option<u8>,
+    /// A coding agent's work, as its commits tell it
+    /// (migrations/0065_agent_rules.sql, cloud_agents.rs).
+    #[serde(default)]
+    pub agent_rule: Option<String>,
+    #[serde(default)]
+    pub agent_name: Option<String>,
+    #[serde(default)]
+    pub agent_by_id: Option<String>,
+    #[serde(default)]
+    pub agent_by_name: Option<String>,
 }
 
 impl From<PullRow> for Pull {
@@ -230,6 +240,11 @@ impl From<PullRow> for Pull {
                 .unwrap_or_default(),
             author: user(row.author_id, row.author_name),
             requested_by: requester(row.requested_by_id, row.requested_by_name),
+            agent_work: row.agent_rule.zip(row.agent_name).map(|(rule, agent)| AgentWork {
+                agent,
+                rule,
+                started_by: requester(row.agent_by_id, row.agent_by_name),
+            }),
             created_at: row.created_at,
             updated_at: row.updated_at,
             labels: row

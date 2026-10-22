@@ -115,17 +115,14 @@ sw AS (
     AND s.started_at >= (SELECT MIN(lo_at) FROM w) AND s.started_at < (SELECT MAX(hi_at) FROM w)
   GROUP BY s.repo_id, w.start
 ),
--- The commits agent sessions pushed outside any pull request (to a
--- branch no pull request is from, the default branch most of all): a
--- session's own commits, by when it recorded them, each once.
+-- The commits agents pushed outside any pull request (base.sql's
+-- `direct`), each once.
 cw AS (
-  SELECT t.repo_id, w.start, 0 AS merged, 0 AS agent_merged, 0 AS agent_reworked, 0 AS agent_drafted,
+  SELECT d.repo_id, w.start, 0 AS merged, 0 AS agent_merged, 0 AS agent_reworked, 0 AS agent_drafted,
     0.0 AS agent_draft_seconds, 0 AS reviewed, 0.0 AS review_seconds, 0 AS stalled, 0.0 AS session_cost_usd,
-    COUNT(DISTINCT t.value) AS agent_commits
-  FROM session_touches t JOIN w ON t.at >= w.lo_at AND t.at < w.hi_at
-  WHERE t.repo_id IN (SELECT value FROM json_each(?1)) AND t.kind = 'commit'
-    AND t.session_id NOT IN (SELECT session_id FROM tied)
-  GROUP BY t.repo_id, w.start
+    COUNT(DISTINCT d.sha) AS agent_commits
+  FROM direct d JOIN w ON d.at >= w.lo_at AND d.at < w.hi_at
+  GROUP BY d.repo_id, w.start
 )
 SELECT repo_id, start, SUM(merged) AS merged, SUM(agent_merged) AS agent_merged,
   SUM(agent_reworked) AS agent_reworked, SUM(agent_drafted) AS agent_drafted,
