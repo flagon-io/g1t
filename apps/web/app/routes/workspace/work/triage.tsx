@@ -18,7 +18,8 @@ import { work } from "../../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../../lib/session.server";
 import { useWorkspaceLive } from "../../../lib/use-repo-live";
 import { canItem } from "../../../lib/work-access";
-import { itemPath, newItemPath } from "../../../lib/work-items";
+import { itemPath, newItemPath, workPath } from "../../../lib/work-items";
+import { type WorkTrail, trailState } from "../../../lib/work-trail";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Triage · Work · ${params.owner} · g1t` });
@@ -82,6 +83,8 @@ export default function Triage({ loaderData }: Route.ComponentProps) {
   const { workspace, items, triageTotal, canPlan, canNow, member } = loaderData;
   useWorkspaceLive({ workspace, member, match: workPages.list() });
   const more = moreText(items.length, triageTotal);
+  // The list as it shows, for J and K on each item's page.
+  const trail = { numbers: items.map((item) => item.number), label: "Triage", href: workPath(workspace, "triage") };
   // Only a workspace with an AI provider gets suggestions, so one shown says it has one.
   const suggesting = items.some((item) => item.suggestion);
   return (
@@ -122,7 +125,7 @@ export default function Triage({ loaderData }: Route.ComponentProps) {
           <Card asChild divided className="overflow-hidden">
             <ul>
               {items.map((item) => (
-                <TriageRow key={item.id} item={item} workspace={workspace} canPlan={canPlan} canNow={canNow} />
+                <TriageRow key={item.id} item={item} workspace={workspace} canPlan={canPlan} canNow={canNow} trail={trail} />
               ))}
             </ul>
           </Card>
@@ -134,7 +137,7 @@ export default function Triage({ loaderData }: Route.ComponentProps) {
 }
 
 /** One work item waiting to be placed, with its quick moves. Once placed, it leaves the list. */
-function TriageRow({ item, workspace, canPlan, canNow }: { item: WorkItem; workspace: string; canPlan: boolean; canNow: boolean }) {
+function TriageRow({ item, workspace, canPlan, canNow, trail }: { item: WorkItem; workspace: string; canPlan: boolean; canNow: boolean; trail: WorkTrail }) {
   const fetcher = useFetcher<typeof action>();
   const busy = fetcher.state !== "idle";
   const posted = fetcher.formData;
@@ -148,7 +151,12 @@ function TriageRow({ item, workspace, canPlan, canNow }: { item: WorkItem; works
   return (
     <li className="flex flex-col gap-2.5 px-4 py-3">
       <div className="min-w-0">
-        <Link to={itemPath(workspace, item.number)} prefetch="intent" className="flex min-w-0 items-baseline gap-1.5 font-medium hover:text-accent">
+        <Link
+          to={itemPath(workspace, item.number)}
+          state={trailState(trail)}
+          prefetch="intent"
+          className="flex min-w-0 items-baseline gap-1.5 font-medium hover:text-accent"
+        >
           <span className="shrink-0 font-mono text-xs font-normal text-faint">#{item.number}</span>
           <span className="min-w-0 wrap-break-word">{item.title}</span>
         </Link>

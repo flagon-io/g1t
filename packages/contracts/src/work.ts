@@ -2157,6 +2157,19 @@ export interface CoordinationApi {
    * made from it or on work items linked to it.
    */
   listClaims(workspace: string, viewer: Viewer, filter?: { state?: ClaimState; item?: number; repo?: RepoPath }): Promise<Result<Claim[]>>;
+  /**
+   * Claims a work item for the actor, from the site: no harness and no
+   * session, so it lapses unless renewed (`claim_work_item`). Claiming one
+   * you hold renews it. `others` are anyone else's claims on it.
+   */
+  claimWorkItem(actor: User, workspace: string, number: number, note?: string): Promise<Result<{ claim: Claim; others: Claim[] }>>;
+  /** Gives up the actor's active claim on a work item (`release_claim`). */
+  releaseClaim(actor: User, workspace: string, number: number): Promise<Result<Claim>>;
+  /**
+   * Ends the actor's active claim as handed off, to someone (`to`, a
+   * username) or anyone, with a note on where it stands (`hand_off_work_item`).
+   */
+  handOffWorkItem(actor: User, workspace: string, number: number, note: string, to?: string): Promise<Result<Claim>>;
   /** Most recently heard from first; `item` is a work item of the repository's workspace. */
   listWorkSessions(
     repo: RepoPath,

@@ -8,7 +8,16 @@ import { ArrowUp, Check, GitPullRequest, MessageSquare, Milestone as MilestoneIc
 import { type ReactNode, useState } from "react";
 import { Link } from "react-router";
 
-import { type ItemRepo, type Label, type LinkRole, type Milestone, type SubItemProgress, type WorkItem, type WorkProject, appetiteLetter } from "@g1t/contracts";
+import {
+  type ItemRepo,
+  type Label,
+  type LinkRole,
+  type Milestone,
+  type SubItemProgress,
+  type WorkItem,
+  type WorkProject,
+  appetiteLetter,
+} from "@g1t/contracts";
 
 import { FilterMenu, LabelChip, Swatch } from "./labels";
 import { ProjectMark } from "./projects";
@@ -19,6 +28,7 @@ import { Button } from "./ui/button";
 import { Hint } from "./ui/hint";
 import { AssigneeStack } from "./work";
 import { ItemIcon } from "./work-icons";
+import { type WorkTrail, trailState } from "../lib/work-trail";
 import { cn } from "../lib/cn";
 import type { LabelColors } from "../lib/labels";
 import {
@@ -169,10 +179,21 @@ export function PlanBadges({ item }: { item: WorkItem }) {
  * at the end. On a phone the meta wraps under the title and the counts sit
  * with it, so nothing scrolls sideways.
  */
-export function WorkItemRow({ item, colors, showProject = true }: { item: WorkItem; colors: LabelColors; showProject?: boolean }) {
+export function WorkItemRow({
+  item,
+  colors,
+  showProject = true,
+  trail,
+}: {
+  item: WorkItem;
+  colors: LabelColors;
+  showProject?: boolean;
+  /** The list it is in, for J and K on its page. */
+  trail?: WorkTrail | null;
+}) {
   return (
     <li className="transition-colors hover:bg-surface">
-      <Link prefetch="intent" to={itemPath(item.workspace, item.number)} className="flex min-w-0 items-start gap-3 px-4 py-3">
+      <Link prefetch="intent" to={itemPath(item.workspace, item.number)} state={trailState(trail ?? null)} className="flex min-w-0 items-start gap-3 px-4 py-3">
         <span className="mt-0.5">
           <ItemIcon item={item} />
         </span>

@@ -67,6 +67,8 @@ export default function ProjectPage({ loaderData }: Route.ComponentProps) {
   const today = new Date(loaderData.today);
   useWorkspaceLive({ workspace, member, match: workPages.list() });
   const now = nowItems(detail.open);
+  // Now in the project, for J and K on each item's page.
+  const trail = { numbers: now.map((item) => item.number), label: project.name, href: projectPath(workspace, project.slug) };
   const progress = progressOf(detail.progress);
   const rest = horizonCounts(detail.open.filter((item) => item.horizon !== "now"));
   return (
@@ -93,7 +95,16 @@ export default function ProjectPage({ loaderData }: Route.ComponentProps) {
               ) : (
                 <ol className="px-2 pb-1">
                   {now.map((item, index) => (
-                    <PlanRow key={item.id} item={item} rank={index + 1} workspace={workspace} on={undefined} waiting={[]} progress={progress[item.number]} />
+                    <PlanRow
+                      key={item.id}
+                      item={item}
+                      rank={index + 1}
+                      workspace={workspace}
+                      on={undefined}
+                      waiting={[]}
+                      progress={progress[item.number]}
+                      trail={trail}
+                    />
                   ))}
                 </ol>
               )}

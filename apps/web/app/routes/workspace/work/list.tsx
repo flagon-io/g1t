@@ -81,6 +81,8 @@ export function WorkListView({ data: loaderData, project }: { data: WorkListData
   const kept = new URLSearchParams(workQuery({ ...filters, state: "open", horizon: null }));
   const emptyTitle = project && !filtered(filters) ? `No ${filters.state} work items in this project` : emptyListTitle(filters, repoName);
   useWorkspaceLive({ workspace, member, match: workPages.list() });
+  // The list as it shows, for J and K on each item's page.
+  const trail = { numbers: items.map((item) => item.number), label: project ? "Project" : "All items", href: `${pathname}${search}` };
   // Sessions go idle (after 15 minutes) with no event to say so: looked at again each minute.
   useRefreshWhile((loaderData.cooking?.total ?? 0) > 0, 60_000);
   return (
@@ -171,7 +173,7 @@ export function WorkListView({ data: loaderData, project }: { data: WorkListData
           <Card asChild tone="plain" divided className="overflow-hidden">
             <ul>
               {items.map((item) => (
-                <WorkItemRow key={item.id} item={item} colors={colors} showProject={!project} />
+                <WorkItemRow key={item.id} item={item} colors={colors} showProject={!project} trail={trail} />
               ))}
             </ul>
           </Card>
