@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, isRouteErrorResponse, useLocation, useMatches, useRevalidator, useRouteLoaderData } from "react-router";
 
+import { clientErrorReport, reportClientError } from "../lib/client-errors";
 import { DebugDetails } from "./debug-details";
 import { PageMain } from "./landmark";
 import { NotFound } from "./not-found";
@@ -8,7 +9,7 @@ import { Button } from "./ui/button";
 import { ButtonLink } from "./ui";
 import { useDeveloperMode } from "../lib/developer-mode";
 import { useReconnect } from "../lib/reconnect";
-import { isNetworkFailure } from "../lib/resilient-fetch";
+import { isNetworkFailure, tabOutdated } from "../lib/resilient-fetch";
 import { RELOADED_KEY, RELOAD_GIVE_UP_MS, clientNavigated, reloadFixes, reloadedBefore } from "../lib/stale-build";
 import { isNeedsSignIn } from "../lib/website-token";
 import { usePageNavigation } from "../lib/use-page-navigation";
@@ -38,6 +39,7 @@ export function RouteError({ error, contained = false }: { error: unknown; conta
     status: isRouteErrorResponse(error) ? error.status : undefined,
     clientNavigation: clientNavigated(location.key),
     caughtByCatchAll: matches.at(-1)?.id === "routes/not-found",
+    outdated: tabOutdated(),
   });
   // Already loaded again once, or the reload never started: show the page.
   const tried = useMemo(() => reloadable && reloadedBefore(href), [reloadable, href]);
@@ -60,6 +62,12 @@ export function RouteError({ error, contained = false }: { error: unknown; conta
     const timer = window.setTimeout(() => setGaveUp(href), RELOAD_GIVE_UP_MS);
     return () => window.clearTimeout(timer);
   }, [reload, href, owns]);
+
+  // The error page is about to show: say what it was in the site's logs.
+  const shown = !reload && !offline && !(isRouteErrorResponse(error) && error.status === 404);
+  useEffect(() => {
+    if (shown) reportClientError(clientErrorReport(error, location.pathname, import.meta.env.G1T_BUILD_ID ?? "", tabOutdated()));
+  }, [shown, error, location.pathname]);
 
   const space = contained ? "py-16" : "py-32";
   if (reload) {

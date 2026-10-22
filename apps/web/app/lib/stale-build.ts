@@ -25,10 +25,19 @@ export type ErrorSeen = {
   clientNavigation: boolean;
   /** Whether the deepest route matched is the catch-all not-found route. */
   caughtByCatchAll: boolean;
+  /**
+   * Whether a read was answered by a newer build (lib/resilient-fetch.ts):
+   * a background refresh hands the old page's code the new build's data,
+   * which it may not be able to draw.
+   */
+  outdated?: boolean;
 };
 
 /** Whether reloading the address as a whole page is the fix for this error. */
-export function reloadFixes({ error, status, clientNavigation, caughtByCatchAll }: ErrorSeen): boolean {
+export function reloadFixes({ error, status, clientNavigation, caughtByCatchAll, outdated = false }: ErrorSeen): boolean {
+  // Old code meeting new data fails in ways no message names: load the new
+  // build. A 404 the new build sent is a real one.
+  if (outdated) return status !== 404 || caughtByCatchAll;
   // A document load already ran the server's newest build.
   if (!clientNavigation) return false;
   // An address the old build does not know: the new one may.
