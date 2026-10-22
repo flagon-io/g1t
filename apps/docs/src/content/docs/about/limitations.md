@@ -179,8 +179,9 @@ See [Dependency updates](/guides/dependency-updates/#options).
 A pull request, commit or comparison lists at most 300 changed files. Of
 those, lines are read for the first ones until about 20,000 lines; the
 rest are listed without their counts and load one batch at a time as you
-scroll to them. A single file over 512 KB is not shown at all, and one
-with a diff over 1,000 lines waits for **Load diff**.
+scroll to them. A single text file over 4 MB is not shown at all, nor is
+one over 512 KB with more than 5,000 lines changed; one with a diff over
+1,000 lines waits for **Load diff**.
 
 - **Instead.** For a change of more than 300 files, compare the commits
   with git (`git diff --stat base...head`). From the API, ask for the files

@@ -514,6 +514,7 @@ mod tests {
             additions: 0,
             deletions: 0,
             binary: false,
+            too_large: false,
             hunks: vec![Hunk {
                 lines: lines
                     .iter()

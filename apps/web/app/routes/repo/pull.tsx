@@ -73,7 +73,7 @@ import { WorkflowStatuses } from "../../components/actions";
 import { AddCiPrompt } from "../../components/add-ci";
 import { AttemptsBox } from "../../components/attempts";
 import { type Attempt, attemptReview, otherAttempts, sharedPaths, splitOverlaps } from "../../lib/attempts";
-import { CommentForm, CommentList, ItemIcon, PeoplePicker, PersonLink, PullState, TimelineItem, verdicts } from "../../components/work";
+import { CommentForm, CommentList, ItemIcon, PeoplePicker, PersonLink, PullState, ReviewButton, TimelineItem, verdicts } from "../../components/work";
 import { ChecksSection, ConflictsSection, MergeabilityRow, runIdOf } from "../../components/merge-box";
 import { AutoMergeBanner, BranchAfterwards, MergeButton, UpdateBranchButton } from "../../components/merge-actions";
 import { METHOD_INFO, type MergeChoicesView, choicesFromService, choicesFromSettings, isMergeMethod } from "../../lib/merge";
@@ -686,14 +686,26 @@ function StatusBox({ children }: { children: React.ReactNode }) {
   );
 }
 
-function StatusRow({ icon, title, children }: { icon: React.ReactNode; title: string; children?: React.ReactNode }) {
+function StatusRow({
+  icon,
+  title,
+  children,
+  action,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  children?: React.ReactNode;
+  /** At the row's end: what the reader can do about it. */
+  action?: React.ReactNode;
+}) {
   return (
     <div className="flex gap-3 px-4 py-3 text-sm">
       <span className="mt-0.5 shrink-0">{icon}</span>
-      <div className="min-w-0">
+      <div className="min-w-0 grow">
         <p className="font-medium">{title}</p>
         {children && <div className="mt-0.5 text-muted">{children}</div>}
       </div>
+      {action && <div className="shrink-0 self-center">{action}</div>}
     </div>
   );
 }
@@ -836,6 +848,11 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     // Nobody reviews their own pull request, nor one g1t made for them.
     canJudge: active && viewer != null && viewer.id !== workOwner(pull).id,
   };
+  // The viewer's own review, offered where they read the change and where it waits to merge.
+  const mine = viewer ? (reviews.find(({ reviewer }) => reviewer === viewer.username)?.verdict ?? null) : null;
+  const reviewButton = review.canJudge ? (
+    <ReviewButton mine={mine === "approve" || mine === "request_changes" ? mine : null} asked={pull.reviewers.includes(viewer?.username ?? "")} />
+  ) : null;
   // Everyone whose review was asked for, then anyone who reviewed unasked.
   const reviewerNames = [...new Set([...pull.reviewers, ...reviews.map(({ reviewer }) => reviewer)])];
   const teamReviewers = pull.teamReviewers ?? [];
@@ -1093,6 +1110,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       comments: comments.filter((comment) => comment.path),
                       canComment: Boolean(viewer),
                     }}
+                    actions={reviewButton}
                   />
                 )
               ) : tab === "session" ? (
@@ -1287,6 +1305,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       </Suspense>
                       {noChecks && <AddCiPrompt owner={params.owner} repo={params.repo} canAdd={canAddCi} compact />}
                       <StatusRow
+                        action={reviewButton}
                         icon={
                           reviews.some(({ verdict }) => verdict === "request_changes") ? (
                             <CircleSlash size={16} className="text-danger" />
