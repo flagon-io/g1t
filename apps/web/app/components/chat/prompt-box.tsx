@@ -56,7 +56,7 @@ export function PromptBoxInput({
         else event.currentTarget.form?.requestSubmit();
       }}
       className={cn(
-        "max-h-[33dvh] min-h-14 w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[0.9375rem] leading-relaxed text-fg outline-none [field-sizing:content] placeholder:text-faint",
+        "max-h-[33dvh] min-h-14 w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[0.9375rem] leading-relaxed text-fg outline-none field-sizing-content placeholder:text-faint",
         className,
       )}
     />

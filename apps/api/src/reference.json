@@ -2009,9 +2009,7 @@
           "number": 9,
           "title": "Deploy fails when the README has no title",
           "body": "The page build reads the first heading as the site title and stops when there is none.",
-          "labels": [
-            "bug"
-          ],
+          "labels": ["bug"],
           "state": "open",
           "reason": null,
           "resolutions": [],
@@ -2055,9 +2053,7 @@
           "number": 12,
           "title": "Greeting should name the caller",
           "body": "Take a name from the first argument; fall back to world.",
-          "labels": [
-            "feature"
-          ],
+          "labels": ["feature"],
           "state": "closed",
           "reason": "completed",
           "resolutions": [],
@@ -2147,9 +2143,7 @@
       "number": 9,
       "title": "Deploy fails when the README has no title",
       "body": "The page build reads the first heading as the site title and stops when there is none.",
-      "labels": [
-        "bug"
-      ],
+      "labels": ["bug"],
       "state": "open",
       "reason": null,
       "resolutions": [],

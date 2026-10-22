@@ -138,7 +138,7 @@ export function PickerProperty({
             aria-keyshortcuts={command ? keyFor(command).replace(" ", "+") : undefined}
             className={cn(
               VALUE,
-              "group/prop -mx-0 transition-colors outline-none hover:bg-raised focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-raised max-lg:min-h-10",
+              "group/prop mx-0 transition-colors outline-none hover:bg-raised focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-raised max-lg:min-h-10",
             )}
           >
             <span className="flex min-w-0 grow flex-wrap items-center gap-1.5">{value}</span>

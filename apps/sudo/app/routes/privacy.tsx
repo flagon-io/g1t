@@ -91,7 +91,7 @@ export default function Privacy({ loaderData, actionData }: Route.ComponentProps
                 {request.reviews.map((review, i) => (
                   <li key={i} className="text-sm">
                     <When at={review.at} time /> · {review.status} · {review.staff}
-                    <pre className="whitespace-pre-wrap break-words text-xs">{review.evidence}</pre>
+                    <pre className="whitespace-pre-wrap wrap-break-word text-xs">{review.evidence}</pre>
                   </li>
                 ))}
               </ol>

@@ -632,9 +632,7 @@ function FileSection({
               <p className="px-4 py-6 text-sm text-muted">This file is no longer part of the change; reload the page to see it as it is now.</p>
             ) : file.binary || file.too_large ? (
               <p className="px-4 py-6 text-sm text-muted">
-                {file.binary
-                  ? "Binary file; its contents are not shown."
-                  : "Too large, or too much of it changed, to compare line by line here."}
+                {file.binary ? "Binary file; its contents are not shown." : "Too large, or too much of it changed, to compare line by line here."}
                 {fileBase && file.status !== "deleted" && (
                   <>
                     {" "}

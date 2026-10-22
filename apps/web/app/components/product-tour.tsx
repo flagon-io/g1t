@@ -1147,7 +1147,7 @@ function PeopleCardMock() {
       <ul className="grid grid-cols-2 gap-x-4 gap-y-1 border-t border-line px-4 py-2.5">
         {legend.map(([kind, text]) => (
           <li key={kind} className="flex min-w-0 items-center gap-1.5 text-[10.5px]">
-            <span className={cn("size-2 shrink-0 rounded-[2px]", TOUR_FILL[kind])} />
+            <span className={cn("size-2 shrink-0 rounded-xs", TOUR_FILL[kind])} />
             <span className="truncate">
               <span className="font-medium text-fg">{WORK_LABEL[kind]}</span> <span className="text-muted">{text}</span>
             </span>

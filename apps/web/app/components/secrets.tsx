@@ -178,7 +178,7 @@ export function SecretsPanel({
                 />
               ) : (
                 <Card className="min-w-0 overflow-hidden">
-                  <Table className="min-w-[850px] table-fixed" frameProps={{ tabIndex: 0, role: "region", "aria-label": `${section} secrets and variables` }}>
+                  <Table className="min-w-212.5 table-fixed" frameProps={{ tabIndex: 0, role: "region", "aria-label": `${section} secrets and variables` }}>
                     <colgroup>
                       <col style={{ width: "32%" }} />
                       <col style={{ width: "19%" }} />
@@ -253,7 +253,7 @@ function Row({ row, inherited, manage, override }: { row: Setting; inherited: bo
           {!secret && row.value != null && <p className="truncate font-mono text-xs text-muted">{row.value}</p>}
         </div>
       </TableCell>
-      <TableCell className="align-middle break-words text-muted">{environmentsLabel(row.environments)}</TableCell>
+      <TableCell className="align-middle wrap-break-word text-muted">{environmentsLabel(row.environments)}</TableCell>
       <TableCell className="align-middle text-xs text-muted">{row.availableTo.map((r) => READERS[r] ?? r).join(", ")}</TableCell>
       <TableCell className="align-middle text-xs text-muted">
         <span className="flex items-center gap-1.5">

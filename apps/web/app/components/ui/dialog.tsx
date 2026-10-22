@@ -45,7 +45,7 @@ export const DIALOG_PANEL =
 const SIZES = {
   default: "",
   split:
-    "max-w-4xl gap-0 p-0 sm:h-[min(42rem,calc(100dvh-4rem))] sm:grid-cols-[16rem_minmax(0,1fr)] sm:grid-rows-[minmax(0,1fr)] sm:overflow-hidden max-sm:h-[44rem] max-sm:grid-cols-[minmax(0,1fr)] max-sm:grid-rows-[minmax(0,1fr)] max-sm:overflow-hidden max-sm:pb-[env(safe-area-inset-bottom)]",
+    "max-w-4xl gap-0 p-0 sm:h-[min(42rem,calc(100dvh-4rem))] sm:grid-cols-[16rem_minmax(0,1fr)] sm:grid-rows-[minmax(0,1fr)] sm:overflow-hidden max-sm:h-176 max-sm:grid-cols-[minmax(0,1fr)] max-sm:grid-rows-[minmax(0,1fr)] max-sm:overflow-hidden max-sm:pb-[env(safe-area-inset-bottom)]",
 } as const;
 
 export function DialogContent({

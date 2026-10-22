@@ -445,7 +445,7 @@ function Drift({ drift }: { drift: StorageDrift | null }) {
           <p className="mb-2 text-xs text-muted">
             Measured <When at={drift.measuredAt} time />: the store holds {formatBytes(drift.storeBytes)} where g1t counts {formatBytes(drift.storedBytes)}.
           </p>
-          <table className="w-full min-w-[36rem] text-sm">
+          <table className="w-full min-w-xl text-sm">
             <thead className="text-left text-xs text-muted">
               <tr>
                 <th className="py-1.5 font-medium">Repository</th>
