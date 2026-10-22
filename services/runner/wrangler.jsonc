@@ -5,15 +5,18 @@
   "compatibility_date": "2026-09-26",
   "main": "./src/index.ts",
   "workers_dev": false,
-  // One image (the base plus the runner binary), on two named instance
-  // types: standard-3 (2 vCPU, 8 GiB, 16 GB of disk) for the standard
-  // machine, which ubuntu-latest and every other Linux label get, and
-  // standard-2 (1 vCPU, 6 GiB, 12 GB) for ubuntu-slim. The git edge runs
-  // the same image on standard-2. At these max_instances, 60 sandboxes and
-  // 10 edges at once hold 120 vCPU, 520 GiB and 1,040 GB, well inside the
-  // account's limits for live instances (1,500 vCPU, 6 TiB of memory,
-  // 30 TB of disk). crates/contracts (INSTANCE_TYPES) and services/billing
-  // (keeper.rs) say the same sizes.
+  // One image (the base plus the runner binary), on three named instance
+  // types, as GitHub sizes its hosted runners (GITHUB_HOSTED_LABELS in
+  // crates/contracts): standard-3 (2 vCPU, 8 GiB, 16 GB of disk) for the
+  // standard machine, which ubuntu-latest and the other Ubuntu labels get
+  // in a private repository; standard-4 (4 vCPU, 12 GiB, 20 GB, the largest
+  // Containers instance) for the 4-core one, which they get in a public
+  // repository; and standard-2 (1 vCPU, 6 GiB, 12 GB) for ubuntu-slim. The
+  // git edge runs the same image on standard-2. At these max_instances, 90
+  // sandboxes and 10 edges at once hold 240 vCPU, 880 GiB and 1,640 GB,
+  // well inside the account's limits for live instances (1,500 vCPU, 6 TiB
+  // of memory, 30 TB of disk). crates/contracts (INSTANCE_TYPES) and
+  // services/billing (keeper.rs) say the same sizes.
   // scripts/deploy.mjs deploys with each image set to the reference it
   // built and pushed ("The runner's images" in
   // docs.g1t.sh/guides/deploy-to-cloudflare/), so a deploy builds
@@ -22,10 +25,10 @@
     {
       "class_name": "AttemptSandbox",
       "image": "./Dockerfile",
-      // Workflow jobs with `runs-on: ubuntu-latest` (and every other Linux
-      // label), in any repository, checks, the merge queue and all other
-      // work: 2 vCPU, 8 GiB, 16 GB. Nearly every job runs here, so it has
-      // the most room.
+      // Workflow jobs with `runs-on: ubuntu-latest` (and the other Ubuntu
+      // labels) in a private repository, any label g1t does not know,
+      // checks, the merge queue and all other work: 2 vCPU, 8 GiB, 16 GB.
+      // Most jobs run here, so it has the most room.
       "instance_type": "standard-3",
       "max_instances": 50,
       // A deploy that changes the image or these settings replaces every
@@ -41,6 +44,16 @@
       "image": "./Dockerfile",
       "instance_type": "standard-2",
       "max_instances": 10,
+      "rollout_active_grace_period": 7200
+    },
+    {
+      // Workflow jobs with `runs-on: ubuntu-latest` (and the other Ubuntu
+      // labels) in a public repository: 4 vCPU, 12 GiB, 20 GB. GitHub's
+      // has 16 GB of memory; 12 GiB is the most a Containers instance has.
+      "class_name": "SandboxLarge",
+      "image": "./Dockerfile",
+      "instance_type": "standard-4",
+      "max_instances": 30,
       "rollout_active_grace_period": 7200
     },
     {
@@ -70,6 +83,7 @@
     "bindings": [
       { "name": "SANDBOX", "class_name": "AttemptSandbox" },
       { "name": "SANDBOX_SLIM", "class_name": "SandboxSlim" },
+      { "name": "SANDBOX_LARGE", "class_name": "SandboxLarge" },
       { "name": "GIT_EDGE", "class_name": "GitEdge" }
     ]
   },
@@ -84,7 +98,10 @@
     // g1t's labels became GitHub's: g1t-2core and g1t-4core are gone, and
     // with them their objects (each one job's sandbox, nothing kept past
     // it); ubuntu-slim has a class of its own.
-    { "tag": "v6", "deleted_classes": ["Sandbox2Core", "Sandbox4Core"], "new_sqlite_classes": ["SandboxSlim"] }
+    { "tag": "v6", "deleted_classes": ["Sandbox2Core", "Sandbox4Core"], "new_sqlite_classes": ["SandboxSlim"] },
+    // A public repository's Ubuntu labels run on 4 vCPU again, as GitHub's
+    // do, in a class of its own: Sandbox4Core's name went with v6.
+    { "tag": "v7", "new_sqlite_classes": ["SandboxLarge"] }
   ],
   // The repos service's packs bucket: each repository's git edge keeps its
   // mirror there (packs/edge/<repo_id>/mirror.tar, src/gitedge.ts), so a

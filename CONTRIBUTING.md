@@ -334,21 +334,27 @@ quota, and `g1t cache list --sort size-in-bytes` which take the most.
 
 g1t's hosted machines are one catalogue: `INSTANCE_TYPES` in
 `crates/contracts/src/actions.rs`, mirrored row for row in
-`packages/contracts/src/instances.ts`. Each row is a `runs-on` label, the
-machine it bills as (`machine`, such as `2-core`), the runner's Durable
+`packages/contracts/src/instances.ts`. Each row is the machine's name in
+a job's start and billing record (`label`: `standard`, `ubuntu-slim`,
+`g1t-4core`), the machine it bills as (`machine`, such as `2-core`), the runner's Durable
 Object class that runs it (`class` / `sandboxClass`), the Cloudflare
 Containers instance type behind that class (`container`), its vCPUs,
 memory and disk, and its price a minute (`micros_per_minute`). The runner
 starts a job in its label's class, billing charges its minutes at its
 rate and reports them by machine, and the docs' tables follow it.
 
-Labels are GitHub's hosted-runner labels: `GITHUB_HOSTED_LABELS` (in the
-same file, also mirrored) lists each with GitHub's private-repository size
-and the g1t machine that answers it, or none for Windows and macOS, which
-the planner refuses unless the job asks for `self-hosted`. A label in
-neither table gets the standard machine. g1t adds no labels of its own;
-larger machines would come as GitHub-style larger runners, not a label.
+`runs-on` labels are GitHub's hosted-runner labels: `GITHUB_HOSTED_LABELS`
+(in the same file, also mirrored) lists each with GitHub's size in a
+public repository and in a private one, and the g1t machine (by its
+catalogue `label`) that answers it in each, or none for Windows and
+macOS, which the planner refuses unless the job asks for `self-hosted`.
+`instance_for` takes the column for the run's repository. A label not in
+it gets the standard machine. g1t adds no labels of its own; larger
+machines would come as GitHub-style larger runners, not a label.
 
+- **A new GitHub label, or a new size of one**: a row in
+  `GITHUB_HOSTED_LABELS` (both files) with GitHub's sizes and the machine
+  for each visibility; a machine of the catalogue, or a new one below.
 - **A new label for an existing machine** (another name for the standard
   one, say): a row with the new label and class and the machine's
   `machine`, size and rate; the class and its binding below.
@@ -377,7 +383,9 @@ larger machines would come as GitHub-style larger runners, not a label.
 Never reuse a `machine` key for a different machine: past usage is
 reported under it. For a new class, add it to `services/runner/wrangler.jsonc`
 (`containers`, a `durable_objects` binding and a migration tag with
-`new_sqlite_classes`), export it from `services/runner/src/index.ts`
+`new_sqlite_classes`; a class a migration deleted keeps its name retired,
+so a machine that comes back gets a new class, as the 4-core one did as
+`SandboxLarge`), export it from `services/runner/src/index.ts`
 (`export class SandboxSlim extends AttemptSandbox {}`, with its own
 `outboundHandlers`), and give it a
 binding in `SANDBOX_BINDINGS` (`services/runner/src/egress.ts`). The tests

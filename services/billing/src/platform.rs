@@ -110,8 +110,9 @@ pub(crate) const METRICS: &[Metric] = &[
     // Containers bill memory while awake ($0.009 a GiB-hour) and the CPU
     // they use ($0.072 a vCPU-hour): 400 GiB-hours, about $3.60, is about
     // the largest runner class at its max_instances for the whole hour (50
-    // standard sandboxes hold 400 GiB), and 180,000 CPU-seconds is 50 vCPU
-    // busy all hour, half of them.
+    // standard sandboxes hold 400 GiB, 30 4-core ones 360 GiB), and
+    // 180,000 CPU-seconds is 50 vCPU busy all hour, half the standard
+    // class's.
     Metric { key: "container_memory_gib_hours", title: "Containers memory (GiB-hours)", var: "CONTAINER_MEMORY_GIB_HOURS", default: 400.0, of: "container application id", levels: &[Compute, Schedules, GitEdge] },
     Metric { key: "container_cpu_seconds", title: "Containers CPU (seconds)", var: "CONTAINER_CPU_SECONDS", default: 180_000.0, of: "container application id", levels: &[Compute, Schedules, GitEdge] },
 ];

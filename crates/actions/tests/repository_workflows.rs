@@ -1152,8 +1152,8 @@ fn deploy_builds_on_ubuntu_latest_with_its_target_cached() {
             };
             expr::interpolate_value(&job.runs_on, &scope).unwrap()
         };
-        // Every job on ubuntu-latest, as on GitHub: 2 vCPU and 8 GiB, the
-        // size GitHub gives a private repository, in this public one too
+        // Every job on ubuntu-latest, as on GitHub: 4 vCPU in this public
+        // repository, the size GitHub gives a public one
         // (g1t_contracts::actions::instance_for), Rust builds and the
         // runner's image included.
         assert_eq!(on(true, false), json!("ubuntu-latest"), "{stage}");

@@ -1088,9 +1088,9 @@ pub struct StartJobArgs {
     pub repo: RepoPath,
     /// Minutes before the job is stopped.
     pub timeout_minutes: u32,
-    /// The machine its `runs-on` asked for, by label (`instance_for`):
-    /// `ubuntu-slim`; absent, the standard one, which `ubuntu-latest` and
-    /// every other Linux label get.
+    /// The machine its `runs-on` asked for, by the catalogue's label
+    /// (`instance_for`): `ubuntu-slim`, or `g1t-4core` for `ubuntu-latest`
+    /// in a public repository; absent, the standard one.
     #[serde(default)]
     pub instance: Option<String>,
     /// Whether the job may be given brokered secrets, so the runner sends
@@ -1110,19 +1110,26 @@ pub struct StartJobArgs {
 // Adding a size, renaming a label or pointing a label at another instance
 // type is a row here and in the mirror, and a class in wrangler.jsonc
 // (CONTRIBUTING.md, "Adding a machine size"). `GITHUB_HOSTED_LABELS` is
-// GitHub's hosted runners, label by label, and what g1t does with each.
+// GitHub's hosted runners, label by label, with GitHub's size for a public
+// and for a private repository and the machine that answers each.
 
-/// A machine g1t runs workflow jobs on, and the `runs-on` label that asks
-/// for it. g1t answers GitHub's hosted-runner labels ([`GITHUB_HOSTED_LABELS`])
-/// at the sizes GitHub gives a private repository, public repositories
-/// included. Each machine is a named Cloudflare Containers instance type
-/// (no custom types): the standard machine is standard-3 (2 vCPU, 8 GiB,
-/// 16 GB of disk), which `ubuntu-latest` and the other Ubuntu labels get
-/// (GitHub's are 2 vCPU, 8 GB), and `ubuntu-slim` is standard-2 (1 vCPU,
-/// 6 GiB, 12 GB; GitHub's is 1 vCPU, 5 GB).
+/// A machine g1t runs workflow jobs on. g1t answers GitHub's hosted-runner
+/// labels ([`GITHUB_HOSTED_LABELS`]) at the sizes GitHub gives the
+/// repository, and public and private ones differ. Each machine is a named
+/// Cloudflare Containers instance type (no custom types): the standard
+/// machine is standard-3 (2 vCPU, 8 GiB, 16 GB of disk), which
+/// `ubuntu-latest` and the other Ubuntu labels get in a private repository
+/// (GitHub's are 2 vCPU, 8 GB); the 4-core one is standard-4 (4 vCPU,
+/// 12 GiB, 20 GB), which they get in a public one (GitHub's are 4 vCPU,
+/// 16 GB; 12 GiB is the most a Containers instance has); and `ubuntu-slim`
+/// is standard-2 (1 vCPU, 6 GiB, 12 GB; GitHub's is 1 vCPU, 5 GB).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct InstanceType {
-    /// The `runs-on` label, or `standard` for the default.
+    /// Its name in a job's start and its billing record (`instance`):
+    /// GitHub's label where the machine is one label's alone
+    /// (`ubuntu-slim`), `standard` for the default, and otherwise a name of
+    /// g1t's (`g1t-4core`). A job asks for a machine through
+    /// [`GITHUB_HOSTED_LABELS`], never by this name.
     pub label: &'static str,
     /// The machine, as it is billed and reported: runner minutes are
     /// counted by machine (`2-core`), so a label renamed or pointed at
@@ -1161,9 +1168,10 @@ impl InstanceType {
     }
 }
 
-/// The default: what `ubuntu-latest`, every other Linux label and any
-/// label g1t does not know get, public repositories included, as GitHub
-/// sizes a private repository's. Checks and the merge queue run on it too.
+/// The default: what `ubuntu-latest` and the other Ubuntu labels get in a
+/// private repository, as GitHub sizes them, and what any label g1t does
+/// not know gets in any repository. Checks and the merge queue run on it
+/// too.
 pub const STANDARD_INSTANCE: InstanceType = InstanceType {
     label: "standard",
     machine: "2-core",
@@ -1175,8 +1183,8 @@ pub const STANDARD_INSTANCE: InstanceType = InstanceType {
     micros_per_minute: 4_000,
 };
 
-/// Every machine a workflow job can ask for by label, the default first.
-pub const INSTANCE_TYPES: [InstanceType; 2] = [
+/// Every machine a workflow job can run on, the default first.
+pub const INSTANCE_TYPES: [InstanceType; 3] = [
     STANDARD_INSTANCE,
     // GitHub's `ubuntu-slim` (1 vCPU, 5 GB, 14 GB), on standard-2. Its rate,
     // in micros (memory 2.5 a GiB-second, disk 0.07 a GB-second, the
@@ -1196,17 +1204,20 @@ pub const INSTANCE_TYPES: [InstanceType; 2] = [
         disk_gb: 12.0,
         micros_per_minute: 3_000,
     },
-];
-
-/// Machines no label asks for any more, kept so the minutes billed on them
-/// are still read, reported and priced under their key. `label` and
-/// `class` are what they had; neither is deployed, and no job is given one.
-pub const RETIRED_MACHINES: [InstanceType; 1] = [
-    // `g1t-4core`, on standard-4, until g1t's labels became GitHub's.
+    // GitHub's Ubuntu labels in a public repository (4 vCPU, 16 GB, 14 GB),
+    // on standard-4, the largest Containers instance type. Its name and
+    // machine key are the ones its minutes were billed under when it was
+    // `runs-on: g1t-4core`, which no job can ask for now. Its class is new:
+    // `Sandbox4Core` was deleted by migration v6, and a deleted class's
+    // name is not used again. Its rate: idle, 12 x 2.5 + 20 x 0.07 +
+    // 0.125 x 12.5 = 32.9625 a second. Half its vCPUs busy,
+    // (32.9625 + 40) x 60 = 4,377.75 a minute, plus 20% = 5,253.3, rounded
+    // up = 6,000. All four busy, (32.9625 + 80) x 60 = 6,777.75, rounded up
+    // = 7,000, the higher: $0.007 a minute.
     InstanceType {
         label: "g1t-4core",
         machine: "4-core",
-        class: "Sandbox4Core",
+        class: "SandboxLarge",
         container: "standard-4",
         vcpu: 4.0,
         memory_gib: 12.0,
@@ -1214,6 +1225,12 @@ pub const RETIRED_MACHINES: [InstanceType; 1] = [
         micros_per_minute: 7_000,
     },
 ];
+
+/// Machines no job runs on any more, kept so the minutes billed on them
+/// are still read, reported and priced under their key. `label` and
+/// `class` are what they had; neither is deployed, and no job is given one.
+/// None today: the 4-core machine, retired once, runs again.
+pub const RETIRED_MACHINES: [InstanceType; 0] = [];
 
 /// The machines a job can run on, once each, in the catalogue's order: the
 /// first row of each.
@@ -1251,21 +1268,19 @@ pub fn runner_minutes(seconds: i64) -> i64 {
     if seconds <= 0 { 0 } else { (seconds + 59) / 60 }
 }
 
-/// The machine a job's `runs-on` labels ask for: the dearest named (the
-/// later row when two cost the same); with none named (`ubuntu-latest`,
-/// say), the standard machine. Public and private repositories alike, as
-/// GitHub sizes a private one's. Labels compare without regard to case.
-pub fn instance_for(labels: &[String]) -> InstanceType {
-    INSTANCE_TYPES
+/// The machine a job's `runs-on` labels ask for in a `public` repository
+/// or a private one: each GitHub label's machine for that visibility
+/// ([`GITHUB_HOSTED_LABELS`]), the dearest when the labels name more than
+/// one. With no GitHub Linux label among them (none at all, or only labels
+/// g1t does not know), the standard machine, in either. Labels compare
+/// without regard to case.
+pub fn instance_for(labels: &[String], public: bool) -> InstanceType {
+    labels
         .iter()
-        .filter(|instance| {
-            instance.label != STANDARD_INSTANCE.label
-                && labels
-                    .iter()
-                    .any(|label| label.trim().eq_ignore_ascii_case(instance.label))
-        })
+        .filter_map(|label| github_label(label))
+        .filter_map(|github| github.size(public).machine)
+        .filter_map(instance_named)
         .max_by_key(|instance| instance.micros_per_minute)
-        .copied()
         .unwrap_or(STANDARD_INSTANCE)
 }
 
@@ -1289,15 +1304,10 @@ pub fn billed_instance(label: &str) -> Option<InstanceType> {
     })
 }
 
-/// One of GitHub's standard hosted-runner labels, as GitHub sizes it in a
-/// private repository, and the g1t machine that answers it.
+/// GitHub's runner for a label in a repository of one visibility, and the
+/// g1t machine that answers it there.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct GithubLabel {
-    pub label: &'static str,
-    /// `linux`, `windows` or `macos`.
-    pub os: &'static str,
-    /// `x64` or `arm64`, as GitHub's runner is.
-    pub arch: &'static str,
+pub struct HostedSize {
     /// GitHub's runner: its vCPUs, memory and disk, in GB.
     pub vcpu: f64,
     pub memory_gb: f64,
@@ -1307,54 +1317,90 @@ pub struct GithubLabel {
     pub machine: Option<&'static str>,
 }
 
+/// One of GitHub's standard hosted-runner labels, as GitHub sizes it in a
+/// public repository and in a private one, and the g1t machine that
+/// answers it in each.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GithubLabel {
+    pub label: &'static str,
+    /// `linux`, `windows` or `macos`.
+    pub os: &'static str,
+    /// `x64` or `arm64`, as GitHub's runner is.
+    pub arch: &'static str,
+    pub public: HostedSize,
+    pub private: HostedSize,
+}
+
+impl GithubLabel {
+    /// Its size, and machine, in a `public` repository or a private one.
+    pub fn size(&self, public: bool) -> HostedSize {
+        if public { self.public } else { self.private }
+    }
+}
+
+/// A row of [`GITHUB_HOSTED_LABELS`]: GitHub's vCPUs and memory in GB, and
+/// g1t's machine, for a public repository and then a private one. Every
+/// standard runner has a 14 GB disk.
 const fn github(
     label: &'static str,
     os: &'static str,
     arch: &'static str,
-    size: (f64, f64),
-    machine: Option<&'static str>,
+    public: (f64, f64, Option<&'static str>),
+    private: (f64, f64, Option<&'static str>),
 ) -> GithubLabel {
     GithubLabel {
         label,
         os,
         arch,
-        vcpu: size.0,
-        memory_gb: size.1,
-        disk_gb: 14.0,
-        machine,
+        public: HostedSize {
+            vcpu: public.0,
+            memory_gb: public.1,
+            disk_gb: 14.0,
+            machine: public.2,
+        },
+        private: HostedSize {
+            vcpu: private.0,
+            memory_gb: private.1,
+            disk_gb: 14.0,
+            machine: private.2,
+        },
     }
 }
 
 /// GitHub's standard hosted runners, label by label, at their size in a
-/// private repository (docs.github.com, "GitHub-hosted runners"), and what
-/// g1t runs each on. g1t's hosted machines are x64 Linux: the Arm Ubuntu
-/// labels run there too (x64, not arm64), and a Windows or macOS label is
-/// refused unless the job asks for a self-hosted runner. A public
-/// repository gets the same machines; GitHub's larger public sizes are not
-/// offered.
+/// public repository and in a private one (docs.github.com, "GitHub-hosted
+/// runners", as of 2026-10-22), and the g1t machine that runs each. GitHub
+/// gives a public repository's Ubuntu labels 4 vCPU, so g1t gives them the
+/// 4-core machine there and the standard one in a private repository.
+/// g1t's hosted machines are x64 Linux: the Arm Ubuntu labels run there too
+/// (x64, not arm64), and a Windows or macOS label is refused unless the job
+/// asks for a self-hosted runner. A new label or size is a row here and in
+/// the TypeScript mirror; a new machine for one is a row of
+/// [`INSTANCE_TYPES`].
 #[rustfmt::skip]
 pub const GITHUB_HOSTED_LABELS: [GithubLabel; 21] = [
-    github("ubuntu-slim", "linux", "x64", (1.0, 5.0), Some("ubuntu-slim")),
-    github("ubuntu-latest", "linux", "x64", (2.0, 8.0), Some("standard")),
-    github("ubuntu-24.04", "linux", "x64", (2.0, 8.0), Some("standard")),
-    github("ubuntu-22.04", "linux", "x64", (2.0, 8.0), Some("standard")),
-    github("ubuntu-26.04", "linux", "x64", (2.0, 8.0), Some("standard")),
-    github("ubuntu-24.04-arm", "linux", "arm64", (2.0, 8.0), Some("standard")),
-    github("ubuntu-22.04-arm", "linux", "arm64", (2.0, 8.0), Some("standard")),
-    github("ubuntu-26.04-arm", "linux", "arm64", (2.0, 8.0), Some("standard")),
-    github("windows-latest", "windows", "x64", (2.0, 8.0), None),
-    github("windows-2025", "windows", "x64", (2.0, 8.0), None),
-    github("windows-2025-vs2026", "windows", "x64", (2.0, 8.0), None),
-    github("windows-2022", "windows", "x64", (2.0, 8.0), None),
-    github("windows-11-arm", "windows", "arm64", (2.0, 8.0), None),
-    github("windows-11-vs2026-arm", "windows", "arm64", (2.0, 8.0), None),
-    github("macos-15-intel", "macos", "x64", (4.0, 14.0), None),
-    github("macos-26-intel", "macos", "x64", (4.0, 14.0), None),
-    github("macos-latest", "macos", "arm64", (3.0, 7.0), None),
-    github("macos-14", "macos", "arm64", (3.0, 7.0), None),
-    github("macos-15", "macos", "arm64", (3.0, 7.0), None),
-    github("macos-26", "macos", "arm64", (3.0, 7.0), None),
-    github("xcode-27", "macos", "arm64", (3.0, 7.0), None),
+    //                                                 public                              private
+    github("ubuntu-slim", "linux", "x64",             (1.0, 5.0, Some("ubuntu-slim")),    (1.0, 5.0, Some("ubuntu-slim"))),
+    github("ubuntu-latest", "linux", "x64",           (4.0, 16.0, Some("g1t-4core")),     (2.0, 8.0, Some("standard"))),
+    github("ubuntu-24.04", "linux", "x64",            (4.0, 16.0, Some("g1t-4core")),     (2.0, 8.0, Some("standard"))),
+    github("ubuntu-22.04", "linux", "x64",            (4.0, 16.0, Some("g1t-4core")),     (2.0, 8.0, Some("standard"))),
+    github("ubuntu-26.04", "linux", "x64",            (4.0, 16.0, Some("g1t-4core")),     (2.0, 8.0, Some("standard"))),
+    github("ubuntu-24.04-arm", "linux", "arm64",      (4.0, 16.0, Some("g1t-4core")),     (2.0, 8.0, Some("standard"))),
+    github("ubuntu-22.04-arm", "linux", "arm64",      (4.0, 16.0, Some("g1t-4core")),     (2.0, 8.0, Some("standard"))),
+    github("ubuntu-26.04-arm", "linux", "arm64",      (4.0, 16.0, Some("g1t-4core")),     (2.0, 8.0, Some("standard"))),
+    github("windows-latest", "windows", "x64",        (4.0, 16.0, None),                  (2.0, 8.0, None)),
+    github("windows-2025", "windows", "x64",          (4.0, 16.0, None),                  (2.0, 8.0, None)),
+    github("windows-2025-vs2026", "windows", "x64",   (4.0, 16.0, None),                  (2.0, 8.0, None)),
+    github("windows-2022", "windows", "x64",          (4.0, 16.0, None),                  (2.0, 8.0, None)),
+    github("windows-11-arm", "windows", "arm64",      (4.0, 16.0, None),                  (2.0, 8.0, None)),
+    github("windows-11-vs2026-arm", "windows", "arm64", (4.0, 16.0, None),                (2.0, 8.0, None)),
+    github("macos-15-intel", "macos", "x64",          (4.0, 14.0, None),                  (4.0, 14.0, None)),
+    github("macos-26-intel", "macos", "x64",          (4.0, 14.0, None),                  (4.0, 14.0, None)),
+    github("macos-latest", "macos", "arm64",          (3.0, 7.0, None),                   (3.0, 7.0, None)),
+    github("macos-14", "macos", "arm64",              (3.0, 7.0, None),                   (3.0, 7.0, None)),
+    github("macos-15", "macos", "arm64",              (3.0, 7.0, None),                   (3.0, 7.0, None)),
+    github("macos-26", "macos", "arm64",              (3.0, 7.0, None),                   (3.0, 7.0, None)),
+    github("xcode-27", "macos", "arm64",              (3.0, 7.0, None),                   (3.0, 7.0, None)),
 ];
 
 /// A GitHub hosted-runner label, if `label` is one (without regard to case).
@@ -1903,24 +1949,53 @@ mod instance_tests {
 
     #[test]
     fn runs_on_picks_the_machine() {
-        // GitHub's Linux labels, at its private sizes, in any repository.
-        assert_eq!(instance_for(&labels(&["ubuntu-latest"])), STANDARD_INSTANCE);
-        assert_eq!(instance_for(&labels(&["ubuntu-24.04"])).vcpu, 2.0);
-        assert_eq!(instance_for(&labels(&[])).label, "standard");
-        assert_eq!(instance_for(&labels(&["ubuntu-slim"])).label, "ubuntu-slim");
-        assert_eq!(instance_for(&labels(&["Ubuntu-Slim"])).machine, "1-core");
-        assert_eq!(instance_named("ubuntu-slim").map(|i| i.vcpu), Some(1.0));
-        // The labels g1t had before are unknown now: the standard machine.
-        assert_eq!(instance_for(&labels(&["g1t-4core"])), STANDARD_INSTANCE);
+        // As on GitHub: ubuntu-latest is 2 vCPU in a private repository, 4
+        // in a public one.
         assert_eq!(
-            instance_for(&labels(&["ubuntu-latest", "G1T-2Core"])),
+            instance_for(&labels(&["ubuntu-latest"]), false),
             STANDARD_INSTANCE
         );
-        assert_eq!(instance_named("g1t-4core"), None);
+        assert_eq!(
+            instance_for(&labels(&["ubuntu-latest"]), true).machine,
+            "4-core"
+        );
+        assert_eq!(instance_for(&labels(&["Ubuntu-24.04"]), true).vcpu, 4.0);
+        assert_eq!(instance_for(&labels(&["ubuntu-24.04"]), false).vcpu, 2.0);
+        assert_eq!(
+            instance_for(&labels(&["ubuntu-24.04-arm"]), true).label,
+            "g1t-4core"
+        );
+        // ubuntu-slim is 1 vCPU in either.
+        for public in [false, true] {
+            assert_eq!(
+                instance_for(&labels(&["ubuntu-slim"]), public).label,
+                "ubuntu-slim"
+            );
+            assert_eq!(
+                instance_for(&labels(&["Ubuntu-Slim"]), public).machine,
+                "1-core"
+            );
+            // Two GitHub labels: the dearer machine.
+            assert_eq!(
+                instance_for(&labels(&["ubuntu-slim", "ubuntu-latest"]), public).machine,
+                if public { "4-core" } else { "2-core" }
+            );
+            // No label, or none g1t knows (the labels g1t had before among
+            // them): the standard machine, public or not.
+            for unknown in [&[][..], &["linux"], &["g1t-4core"], &["G1T-2Core"]] {
+                assert_eq!(
+                    instance_for(&labels(unknown), public),
+                    STANDARD_INSTANCE,
+                    "{unknown:?}"
+                );
+            }
+        }
+        assert_eq!(instance_named("ubuntu-slim").map(|i| i.vcpu), Some(1.0));
+        assert_eq!(instance_named("g1t-4core").map(|i| i.vcpu), Some(4.0));
         assert_eq!(instance_named("g1t-2core"), None);
         assert_eq!(instance_named("standard"), Some(STANDARD_INSTANCE));
         assert_eq!(instance_named("g1t-64core"), None);
-        // A job that ran on a retired machine is still billed for it.
+        // What the runner reports a job ran on is what it is billed for.
         assert_eq!(
             billed_instance("g1t-4core").map(|i| i.machine),
             Some("4-core")
@@ -1945,46 +2020,70 @@ mod instance_tests {
                 "{}",
                 github.label
             );
-            match github.machine {
-                // Linux: g1t's machine, at least GitHub's private size in
-                // vCPUs and memory, and what `instance_for` gives the label.
-                Some(machine) => {
-                    assert_eq!(github.os, "linux", "{}", github.label);
-                    let instance = instance_named(machine).unwrap();
-                    assert_eq!(
-                        instance_for(&labels(&[github.label])),
-                        instance,
-                        "{}",
-                        github.label
-                    );
-                    assert!(
-                        instance.vcpu >= github.vcpu
-                            && instance.memory_gib * 1.073_741_824 >= github.memory_gb,
-                        "{}",
-                        github.label
-                    );
-                    assert_eq!(
-                        not_hosted_os(&labels(&[github.label])),
-                        None,
-                        "{}",
-                        github.label
-                    );
-                }
-                // Windows and macOS: no hosted machine; refused unless the
-                // job asks for a self-hosted runner.
-                None => {
-                    assert_ne!(github.os, "linux", "{}", github.label);
-                    assert_eq!(
-                        not_hosted_os(&labels(&["ubuntu-latest", github.label])),
-                        Some((github.label.to_owned(), github.os))
-                    );
+            // GitHub never gives a public repository less than a private one.
+            assert!(
+                github.public.vcpu >= github.private.vcpu
+                    && github.public.memory_gb >= github.private.memory_gb,
+                "{}",
+                github.label
+            );
+            for public in [false, true] {
+                let size = github.size(public);
+                match size.machine {
+                    // Linux: g1t's machine, what `instance_for` gives the
+                    // label there, with at least GitHub's vCPUs and its
+                    // memory, or the most memory a Containers instance has
+                    // (standard-4's 12 GiB, where GitHub's has 16 GB).
+                    Some(machine) => {
+                        assert_eq!(github.os, "linux", "{}", github.label);
+                        let instance = instance_named(machine).unwrap();
+                        assert_eq!(
+                            instance_for(&labels(&[github.label]), public),
+                            instance,
+                            "{} {public}",
+                            github.label
+                        );
+                        assert!(
+                            instance.vcpu >= size.vcpu
+                                && (instance.memory_gib * 1.073_741_824 >= size.memory_gb
+                                    || instance.container == "standard-4"),
+                            "{} {public}",
+                            github.label
+                        );
+                        assert_eq!(
+                            not_hosted_os(&labels(&[github.label])),
+                            None,
+                            "{}",
+                            github.label
+                        );
+                    }
+                    // Windows and macOS: no hosted machine; refused unless
+                    // the job asks for a self-hosted runner.
+                    None => {
+                        assert_ne!(github.os, "linux", "{}", github.label);
+                        assert_eq!(
+                            not_hosted_os(&labels(&["ubuntu-latest", github.label])),
+                            Some((github.label.to_owned(), github.os))
+                        );
+                    }
                 }
             }
         }
         assert_eq!(
-            github_label("Ubuntu-24.04-ARM").map(|g| (g.arch, g.machine)),
-            Some(("arm64", Some("standard")))
+            github_label("Ubuntu-24.04-ARM").map(|g| (g.arch, g.public.machine, g.private.machine)),
+            Some(("arm64", Some("g1t-4core"), Some("standard")))
         );
+        // Every machine a job can run on answers some label somewhere.
+        for instance in INSTANCE_TYPES {
+            assert!(
+                instance == STANDARD_INSTANCE
+                    || GITHUB_HOSTED_LABELS.iter().any(|g| {
+                        [g.public.machine, g.private.machine].contains(&Some(instance.label))
+                    }),
+                "{}",
+                instance.label
+            );
+        }
         // Images the table does not have yet, or no longer has, by name.
         assert_eq!(
             not_hosted_os(&labels(&["windows-2019"])),
@@ -2064,7 +2163,7 @@ mod instance_tests {
         }
         assert_eq!(
             machines().iter().map(|m| m.machine).collect::<Vec<_>>(),
-            ["2-core", "1-core"]
+            ["2-core", "1-core", "4-core"]
         );
         assert_eq!(
             billed_machines()
@@ -2075,7 +2174,7 @@ mod instance_tests {
         );
         assert_eq!(STANDARD_INSTANCE.size(), "2 vCPU, 8 GiB, 16 GB");
         assert!((INSTANCE_TYPES[1].price_scale() - 0.75).abs() < 1e-12);
-        assert!((RETIRED_MACHINES[0].price_scale() - 1.75).abs() < 1e-12);
+        assert!((INSTANCE_TYPES[2].price_scale() - 1.75).abs() < 1e-12);
     }
 
     #[test]
@@ -2140,11 +2239,21 @@ mod instance_tests {
             .filter(|line| line.trim_start().starts_with("{ githubLabel: "))
             .count();
         assert_eq!(rows, GITHUB_HOSTED_LABELS.len());
+        let size = |s: HostedSize| {
+            let machine = s.machine.map_or("null".to_owned(), |m| format!("\"{m}\""));
+            format!(
+                "{{ vcpu: {}, memoryGb: {}, diskGb: {}, machine: {machine} }}",
+                s.vcpu, s.memory_gb, s.disk_gb
+            )
+        };
         for g in GITHUB_HOSTED_LABELS {
-            let machine = g.machine.map_or("null".to_owned(), |m| format!("\"{m}\""));
             let row = format!(
-                r#"{{ githubLabel: "{}", os: "{}", arch: "{}", vcpu: {}, memoryGb: {}, diskGb: {}, machine: {machine} }}"#,
-                g.label, g.os, g.arch, g.vcpu, g.memory_gb, g.disk_gb
+                r#"{{ githubLabel: "{}", os: "{}", arch: "{}", public: {}, private: {} }}"#,
+                g.label,
+                g.os,
+                g.arch,
+                size(g.public),
+                size(g.private)
             );
             assert!(mirror.contains(&row), "instances.ts has no row\n{row}");
         }

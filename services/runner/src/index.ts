@@ -99,9 +99,12 @@ export interface RunnerEnv {
   SANDBOX: DurableObjectNamespace<AttemptSandbox>;
   /**
    * Workflow jobs that ask with `runs-on` for `ubuntu-slim` (a smaller
-   * instance type): the same image, in a class of its own.
+   * instance type), and a public repository's `ubuntu-latest` and other
+   * Ubuntu labels (a larger one, as GitHub sizes them): the same image,
+   * each in a class of its own.
    */
   SANDBOX_SLIM?: DurableObjectNamespace<SandboxSlim>;
+  SANDBOX_LARGE?: DurableObjectNamespace<SandboxLarge>;
   /**
    * The git edge (gitedge.ts): one object and container per repository,
    * named by its id, that answers clones from a well-packed mirror. Not a
@@ -844,14 +847,20 @@ function notAdmitted(admitted: Exclude<Admitted, Granted>): Result<never> {
 }
 
 /**
- * Sandboxes for workflow jobs that ask for another machine in `runs-on`
- * (`ubuntu-slim`): the same image and behaviour on another Containers
- * instance type, each a class of its own (wrangler.jsonc). Outbound
- * handlers are registered by class, so each registers its own.
+ * Sandboxes for workflow jobs whose `runs-on` gets another machine
+ * (`ubuntu-slim`, and `ubuntu-latest` in a public repository): the same
+ * image and behaviour on another Containers instance type, each a class of
+ * its own (wrangler.jsonc). Outbound handlers are registered by class, so
+ * each registers its own.
  */
 export class SandboxSlim extends AttemptSandbox {
   static {
     SandboxSlim.outboundHandlers = { egress, abuse, git };
+  }
+}
+export class SandboxLarge extends AttemptSandbox {
+  static {
+    SandboxLarge.outboundHandlers = { egress, abuse, git };
   }
 }
 

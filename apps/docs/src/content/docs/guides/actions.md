@@ -559,11 +559,26 @@ say; see [the job's token](#the-jobs-token). The
 
 ### Machine sizes
 
-g1t answers GitHub's hosted-runner labels, at the sizes GitHub gives a
-private repository. A public repository gets the same machines: GitHub's
-larger machines for public repositories (4 vCPUs, 16 GB) are not offered.
+g1t answers GitHub's hosted-runner labels at the sizes GitHub gives them,
+which depend on whether the repository is public or private: as on
+GitHub, `ubuntu-latest` has 4 vCPUs in a public repository and 2 in a
+private one.
 
-| GitHub label                                                            | On GitHub (private)  | On g1t                             | A minute |
+For public repositories:
+
+| GitHub label                                                            | On GitHub             | On g1t                             | A minute |
+| ----------------------------------------------------------------------- | --------------------- | ---------------------------------- | -------- |
+| `ubuntu-slim`                                                           | 1 vCPU, 5 GB, 14 GB   | 1 vCPU, 6 GiB, 12 GB               | $0.003   |
+| `ubuntu-latest`, `ubuntu-24.04`, `ubuntu-22.04`, `ubuntu-26.04`         | 4 vCPUs, 16 GB, 14 GB | 4 vCPUs, 12 GiB, 20 GB             | $0.007   |
+| `ubuntu-24.04-arm`, `ubuntu-22.04-arm`, `ubuntu-26.04-arm`              | 4 vCPUs (Arm), 16 GB  | 4 vCPUs, 12 GiB, 20 GB, on x64     | $0.007   |
+| `windows-latest`, `windows-2025`, `windows-2025-vs2026`, `windows-2022` | 4 vCPUs, 16 GB        | None: a self-hosted Windows runner | Free     |
+| `windows-11-arm`, `windows-11-vs2026-arm`                               | 4 vCPUs (Arm), 16 GB  | None: a self-hosted Windows runner | Free     |
+| `macos-15-intel`, `macos-26-intel`                                      | 4 vCPUs, 14 GB        | None: a self-hosted macOS runner   | Free     |
+| `macos-latest`, `macos-14`, `macos-15`, `macos-26`, `xcode-27`          | 3 vCPUs (M1), 7 GB    | None: a self-hosted macOS runner   | Free     |
+
+For private repositories:
+
+| GitHub label                                                            | On GitHub            | On g1t                             | A minute |
 | ----------------------------------------------------------------------- | -------------------- | ---------------------------------- | -------- |
 | `ubuntu-slim`                                                           | 1 vCPU, 5 GB, 14 GB  | 1 vCPU, 6 GiB, 12 GB               | $0.003   |
 | `ubuntu-latest`, `ubuntu-24.04`, `ubuntu-22.04`, `ubuntu-26.04`         | 2 vCPUs, 8 GB, 14 GB | 2 vCPUs, 8 GiB, 16 GB              | $0.004   |
@@ -573,12 +588,16 @@ larger machines for public repositories (4 vCPUs, 16 GB) are not offered.
 | `macos-15-intel`, `macos-26-intel`                                      | 4 vCPUs, 14 GB       | None: a self-hosted macOS runner   | Free     |
 | `macos-latest`, `macos-14`, `macos-15`, `macos-26`, `xcode-27`          | 3 vCPUs (M1), 7 GB   | None: a self-hosted macOS runner   | Free     |
 
-Any other Linux label, or none g1t knows, gets the `ubuntu-latest`
-machine. `g1t-2core` and `g1t-4core`, the labels g1t had before, are
-among them: they get the `ubuntu-latest` machine, and the workflows that
-name them keep running. Name `ubuntu-slim` for light jobs (linting,
-labelling, a script that calls an API), where a smaller machine costs
-less:
+GitHub's machine for public repositories has 16 GB of memory; g1t's has
+12 GiB, the most its machines have. A repository's visibility is taken
+from the event that started the run.
+
+Any other label, or none, gets the 2-vCPU machine in any repository.
+`g1t-2core` and `g1t-4core`, the labels g1t had before, are among them:
+they get the 2-vCPU machine, and the workflows that name them keep
+running; name `ubuntu-latest` for 4 vCPUs in a public repository. Name
+`ubuntu-slim` for light jobs (linting, labelling, a script that calls an
+API), where a smaller machine costs less:
 
 ```yaml
 jobs:
@@ -591,7 +610,8 @@ The label can come from the matrix or the run's inputs
 
 GitHub's [larger runners](https://docs.github.com/en/actions/concepts/runners/larger-runners)
 (more vCPUs, GPUs, named by the organization) are not offered yet: the
-largest machine is `ubuntu-latest`'s. A job that needs more can run on a
+largest machine is `ubuntu-latest`'s in a public repository. A job that
+needs more can run on a
 [self-hosted runner](/guides/self-hosted-runners/).
 
 Each job is charged its time rounded up to the whole minute (61 seconds

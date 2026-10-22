@@ -218,7 +218,8 @@ hand (**Actions → Deploy → Run workflow**) with `units`, `all` and
 | `smoke`                  | Loads the landing page, sign-in, sign-up and pricing      |
 
 Deploys run one at a time; a second push waits. Rust units build on
-`ubuntu-latest` (2 vCPU, 8 GiB), split by how long each takes to build
+`ubuntu-latest` (4 vCPU and 12 GiB in a public repository, 2 vCPU and
+8 GiB in a private one), split by how long each takes to build
 (`RUST_JOB_SECONDS` in `scripts/deploy/stack.mjs`): the slowest Workers
 build alone, the small ones share a job, with Cargo's target and sccache
 kept in the Actions cache. The build jobs start as soon as the plan is
@@ -394,13 +395,14 @@ minutes, so a deploy never cuts one short. New jobs get the new image a
 few minutes after the rollout is marked complete. When a fix cannot wait
 for running jobs, make an [urgent deploy](#urgent-deploys).
 
-The standard sandbox, which `ubuntu-latest` and every other Linux label
-get, is the instance type `standard-3` (2 vCPU, 8 GiB, 16 GB); jobs that
-ask for `runs-on: ubuntu-slim` get `standard-2` (1 vCPU, 6 GiB, 12 GB), in
-a class of their own. At the `max_instances` in
-`services/runner/wrangler.jsonc` (50 and 10), 60 sandboxes at once hold
-110 vCPU, 460 GiB of memory and 920 GB of disk, which your account's
-Containers limits for live instances must allow.
+The standard sandbox, which `ubuntu-latest` and the other Ubuntu labels
+get in a private repository, is the instance type `standard-3` (2 vCPU,
+8 GiB, 16 GB); in a public repository they get `standard-4` (4 vCPU,
+12 GiB, 20 GB), and jobs that ask for `runs-on: ubuntu-slim` get
+`standard-2` (1 vCPU, 6 GiB, 12 GB), each in a class of its own. At the
+`max_instances` in `services/runner/wrangler.jsonc` (50, 30 and 10), 90
+sandboxes at once hold 230 vCPU, 820 GiB of memory and 1,520 GB of disk,
+which your account's Containers limits for live instances must allow.
 
 Set the runner Worker's `DOCKER` variable to `off` to give workflow jobs no
 Docker Engine.

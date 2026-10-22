@@ -54,7 +54,7 @@ jobs whose runner went quiet.
 
 |                             |                                                                                                   |
 | --------------------------- | ------------------------------------------------------------------------------------------------- |
-| Hosted jobs running at once | 4 per workspace always, up to 12 while the pool of 60 sandboxes keeps 8 free for other workspaces |
+| Hosted jobs running at once | 4 per workspace always, up to 12 while the pool of 90 sandboxes keeps 8 free for other workspaces |
 | A hosted job's timeout      | 60 minutes at most                                                                                |
 | A self-hosted job's timeout | 24 hours at most                                                                                  |
 | Logs                        | 4 MiB a job, kept 90 days                                                                         |
@@ -71,25 +71,30 @@ what is kept.
 
 ## Sandboxes on g1t's runners
 
-`runner` defines two Container classes for sandboxes, picked by
-`runs-on`, each a named Cloudflare instance type:
+`runner` defines three Container classes for sandboxes, picked by
+`runs-on` and the repository's visibility, each a named Cloudflare
+instance type:
 
-| `runs-on`                                                                                 | Class            | Size                                           |
-| ----------------------------------------------------------------------------------------- | ---------------- | ---------------------------------------------- |
-| `ubuntu-latest`, every other Linux label, any label g1t does not know, and all other work | `AttemptSandbox` | `standard-3`: 2 vCPU, 8 GiB memory, 16 GB disk |
-| `ubuntu-slim`                                                                             | `SandboxSlim`    | `standard-2`: 1 vCPU, 6 GiB memory, 12 GB disk |
+| `runs-on`                                                                                                        | Class            | Size                                            |
+| ---------------------------------------------------------------------------------------------------------------- | ---------------- | ----------------------------------------------- |
+| `ubuntu-latest` and the other Ubuntu labels in a private repository, any label g1t does not know, and other work | `AttemptSandbox` | `standard-3`: 2 vCPU, 8 GiB memory, 16 GB disk  |
+| `ubuntu-latest` and the other Ubuntu labels in a public repository                                               | `SandboxLarge`   | `standard-4`: 4 vCPU, 12 GiB memory, 20 GB disk |
+| `ubuntu-slim`                                                                                                    | `SandboxSlim`    | `standard-2`: 1 vCPU, 6 GiB memory, 12 GB disk  |
 
-The labels are GitHub's, at the sizes GitHub gives a private repository,
-in public repositories too (`GITHUB_HOSTED_LABELS` in
-`crates/contracts/src/actions.rs`). Arm Ubuntu labels run on the x64
-standard machine. A job naming a Windows or macOS label, and not
-`self-hosted`, fails when it is queued: hosted runners are Linux only.
-`g1t-2core` and `g1t-4core`, the labels g1t had before, are unknown labels
-now and get the standard machine; their classes were deleted (migration
-`v6`), and minutes billed on the `4-core` machine still read under it
-(`RETIRED_MACHINES`). The contracts' instance table (`INSTANCE_TYPES`)
-and billing's price keeper say the same sizes, and a test holds them to
-`wrangler.jsonc`.
+The labels are GitHub's, at the sizes GitHub gives a public and a
+private repository (`GITHUB_HOSTED_LABELS` in
+`crates/contracts/src/actions.rs`, a row a label with its size and
+machine for each). The actions service takes the visibility from the
+run's event (`repository.private`; private when it does not say) and
+names the machine the job starts on, which billing charges it as. Arm
+Ubuntu labels run on the x64 machine of the same size. A job naming a
+Windows or macOS label, and not `self-hosted`, fails when it is queued:
+hosted runners are Linux only. `g1t-2core` and `g1t-4core`, the labels
+g1t had before, are unknown labels and get the standard machine; their
+classes were deleted (migration `v6`), and the 4-core machine came back
+in a class of its own (`v7`), billed under its old key (`4-core`). The
+contracts' instance table (`INSTANCE_TYPES`) and billing's price keeper
+say the same sizes, and a test holds them to `wrangler.jsonc`.
 
 Every sandbox starts from one image: `services/runner/base/Dockerfile`,
 which has Node, Python, Go, Rust, Java, .NET, Ruby and Docker, with the
