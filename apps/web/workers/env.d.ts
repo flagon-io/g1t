@@ -55,6 +55,11 @@ declare global {
         } | null>;
       };
       BLOBS: KVNamespace;
+      /**
+       * Signed-out pages, kept for every data centre (lib/public-cache.ts
+       * `SharedPage`). Absent, each data centre keeps only its own.
+       */
+      PAGES?: KVNamespace;
       /** Uploaded avatars by SHA-256, with `{ contentType }`; written by identity. */
       AVATARS: KVNamespace;
       /** The self-hosted runner's releases (scripts/runner-release.mjs). Absent when self-hosted. */

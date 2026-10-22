@@ -241,7 +241,7 @@ impl<S: GitStore> Repos<S> {
     /// refs_cache.rs). Everything that changes a repository's refs calls
     /// this after it (`every_ref_writer_records_the_change` checks). A
     /// failure is logged: the change itself happened, and what was kept
-    /// expires within `refs_cache::TTL_SECONDS` regardless.
+    /// expires within `refs_cache::SHARED_TTL_SECONDS` regardless.
     pub(crate) async fn refs_moved(&self, repo_id: &str) {
         if let Err(error) = self.registry.refs_moved(repo_id).await {
             worker::console_error!("refs of {repo_id} changed but not recorded: {error}");

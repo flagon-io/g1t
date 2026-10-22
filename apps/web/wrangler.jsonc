@@ -24,9 +24,12 @@
   // GitHub Actions artifacts, as the API keeps them, for download from a run.
   // Uploaded avatars (g1t-avatars), served at /avatars/<sha256>. Read
   // only here: the identity service checks and writes them.
+  // Signed-out pages kept for every data centre (g1t-pages, workers/app.ts
+  // `servePublic`), so one that has not served a page lately need not draw it.
   "kv_namespaces": [
     { "binding": "BLOBS", "id": "16a4232cb746418db53782aa068be693" },
-    { "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }
+    { "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" },
+    { "binding": "PAGES", "id": "a3ba00a41a684af1aa336f9a0315821a" }
   ],
   // The self-hosted runner's releases, served at /downloads/runner/
   // (routes/downloads-runner.ts); published by scripts/runner-release.mjs.
