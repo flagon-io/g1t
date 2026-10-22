@@ -76,7 +76,19 @@ export function signalsRange(now: number): { until: string; since: string; weeks
 // --- Adding up batches ------------------------------------------------------------
 
 export function emptySignals(): WorkspaceSignals {
-  return { weeks: [], days: [], waiting: [], pulls: [], pullsCapped: false, authors: [], harnesses: [], items: [], milestones: [] };
+  return {
+    weeks: [],
+    days: [],
+    waiting: [],
+    pulls: [],
+    pullsCapped: false,
+    sessionSpend: [],
+    sessionSpendCapped: false,
+    authors: [],
+    harnesses: [],
+    items: [],
+    milestones: [],
+  };
 }
 
 /** The batches' answers as one: rows are per repository, so they add; items and milestones once each. */
@@ -89,6 +101,8 @@ export function mergeSignals(batches: WorkspaceSignals[]): WorkspaceSignals {
     all.days.push(...batch.days);
     all.waiting.push(...batch.waiting);
     all.pulls.push(...batch.pulls);
+    all.sessionSpend!.push(...(batch.sessionSpend ?? []));
+    all.sessionSpendCapped ||= batch.sessionSpendCapped ?? false;
     all.authors.push(...batch.authors);
     all.harnesses.push(...(batch.harnesses ?? []));
     all.pullsCapped ||= batch.pullsCapped;
@@ -486,16 +500,21 @@ function inQuarter(pull: SignalPull, quarter: string): boolean {
   return pull.createdAt.slice(0, 10) >= quarter || (pull.mergedAt != null && pull.mergedAt.slice(0, 10) >= quarter);
 }
 
+/** What harness sessions with no pull request cost in one repository, for one work item or none. */
+export type LooseSpend = { repoId: string; item: number | null; micros: number };
+
 /**
  * What the quarter's agent work cost, by pull request (`namespace/name#number`)
  * and in all: g1t's metered usage on each pull request (usage's `byPull`), and
  * each pull request's share of what its harness sessions cost, estimated at
- * list price from their token usage. The total also holds g1t usage on pull
- * requests the reading doesn't list. Null when usage did not answer.
+ * list price from their token usage. Harness sessions that count with no pull
+ * request (a direct push, or work that never opened one) are in `loose`, by
+ * repository and work item. The total also holds g1t usage on pull requests
+ * the reading doesn't list. Null when usage did not answer.
  */
 export function quarterSpend(
   ctx: Pick<SignalContext, "repos" | "signals" | "quarterUsage" | "quarter">,
-): { byPull: Map<string, number>; total: number; sessions: number } | null {
+): { byPull: Map<string, number>; loose: LooseSpend[]; total: number; sessions: number } | null {
   if (!ctx.quarterUsage) return null;
   const byPull = new Map<string, number>();
   let total = 0;
@@ -514,7 +533,27 @@ export function quarterSpend(
     total += micros;
     sessions += micros;
   }
-  return { byPull, total, sessions };
+  const loose = new Map<string, LooseSpend>();
+  for (const row of ctx.signals.sessionSpend ?? []) {
+    const micros = Math.round(row.sessionCostUsd * MICROS);
+    if (!ctx.repos[row.repoId] || micros <= 0 || row.day < ctx.quarter) continue;
+    const key = `${row.repoId}#${row.item ?? ""}`;
+    const entry = loose.get(key) ?? { repoId: row.repoId, item: row.item, micros: 0 };
+    entry.micros += micros;
+    loose.set(key, entry);
+    total += micros;
+    sessions += micros;
+  }
+  return { byPull, loose: [...loose.values()], total, sessions };
+}
+
+/**
+ * Whether one person does the workspace's work: no more than one person
+ * started a session or merged a pull request in its repositories.
+ */
+export function onePerson(signals: WorkspaceSignals): boolean {
+  const people = new Set([...signals.harnesses, ...signals.authors].map((row) => row.ownerId));
+  return people.size <= 1;
 }
 
 function pullKey(repo: RepoPath, number: number): string {
@@ -529,27 +568,33 @@ export function spendSignal(ctx: SignalContext): Signal | null {
   const items = new Map(ctx.signals.items.map((item) => [item.number, item]));
   const milestones = new Map(ctx.signals.milestones.map((milestone) => [milestone.number, milestone]));
   const groups = new Map<string, { label: string; to: string; micros: number }>();
+  const add = (repoId: string, repo: RepoPath, itemNumber: number | null, milestoneNumber: number | null, micros: number) => {
+    const item = itemNumber != null ? items.get(itemNumber) : undefined;
+    const milestone = (milestoneNumber ?? item?.milestone) != null ? milestones.get((milestoneNumber ?? item?.milestone)!) : undefined;
+    const group = milestone
+      ? { key: `m${milestone.number}`, label: milestone.title, to: milestonePath(ctx.slug, milestone.number) }
+      : item
+        ? { key: `i${item.number}`, label: item.title, to: itemPath(ctx.slug, item.number) }
+        : { key: `r${repoId}`, label: repo.name, to: `/${repo.namespace}/${repo.name}` };
+    const entry = groups.get(group.key) ?? { label: group.label, to: group.to, micros: 0 };
+    entry.micros += micros;
+    groups.set(group.key, entry);
+  };
   for (const pull of ctx.signals.pulls) {
     const repo = ctx.repos[pull.repoId];
     if (!repo) continue;
     const micros = spend.get(pullKey(repo, pull.number));
     if (!micros) continue;
-    const milestone = pull.milestone != null ? milestones.get(pull.milestone) : undefined;
-    const item = pull.item != null ? items.get(pull.item) : undefined;
-    const group = milestone
-      ? { key: `m${milestone.number}`, label: milestone.title, to: milestonePath(ctx.slug, milestone.number) }
-      : item
-        ? { key: `i${item.number}`, label: item.title, to: itemPath(ctx.slug, item.number) }
-        : { key: `r${pull.repoId}`, label: repo.name, to: `/${repo.namespace}/${repo.name}` };
-    const entry = groups.get(group.key) ?? { label: group.label, to: group.to, micros: 0 };
-    entry.micros += micros;
-    groups.set(group.key, entry);
+    add(pull.repoId, repo, pull.item, pull.milestone, micros);
   }
+  // Sessions with no pull request: by the work item they did, else their repository.
+  for (const row of quarter.loose) add(row.repoId, ctx.repos[row.repoId]!, row.item, null, row.micros);
   const top = [...groups.values()].sort((a, b) => b.micros - a.micros)[0];
   if (!top) return null;
   const share = top.micros / total;
-  if (share < 0.35 || groups.size < 2) return null;
-  const amount = share > 0.5 ? "more than half" : share > 1 / 3 ? "more than a third" : `${Math.round(share * 100)}%`;
+  // With one group, there is nothing to compare it with, unless one person does all the work.
+  if (share < 0.35 || (groups.size < 2 && !onePerson(ctx.signals))) return null;
+  const amount = share >= 0.995 ? "all" : share > 0.5 ? "more than half" : share > 1 / 3 ? "more than a third" : `${Math.round(share * 100)}%`;
   return {
     key: "spend",
     headline: `${top.label.charAt(0).toUpperCase()}${top.label.slice(1)} took ${amount} of the agent spend this quarter.`,
@@ -922,6 +967,12 @@ export function dailySignal(data: {
 // --- Spend threaded to the work ---------------------------------------------------
 
 /** How much of a node's work was an agent's: 0 (none) to 4 (nearly all), the flow's five steps. */
+/** How much of a flow node's work was an agent's: its pull requests', or all of it when only sessions with none cost anything. */
+export function flowAgentShare(node: Pick<FlowNode, "pulls" | "agent" | "micros">): number {
+  if (node.pulls > 0) return node.agent / node.pulls;
+  return node.micros > 0 ? 1 : 0;
+}
+
 export function agentStep(share: number): 0 | 1 | 2 | 3 | 4 {
   if (share < 0.2) return 0;
   if (share < 0.4) return 1;
@@ -940,6 +991,8 @@ export type FlowNode = {
   pulls: number;
   agent: number;
   micros: number;
+  /** Of `micros`, what harness sessions with no pull request cost. */
+  direct: number;
   children: FlowNode[];
   /** Its pull requests, for the last level: the costliest (else newest) first. */
   list?: FlowPull[];
@@ -961,6 +1014,7 @@ function fold(nodes: FlowNode[], label: string): FlowNode[] {
     pulls: rest.reduce((sum, node) => sum + node.pulls, 0),
     agent: rest.reduce((sum, node) => sum + node.agent, 0),
     micros: rest.reduce((sum, node) => sum + node.micros, 0),
+    direct: rest.reduce((sum, node) => sum + node.direct, 0),
     children: fold(
       rest.flatMap((node) => node.children),
       label,
@@ -975,27 +1029,36 @@ function fold(nodes: FlowNode[], label: string): FlowNode[] {
  * pull requests in each project (its change set there), and the pull
  * requests, each node with its pull requests, how many were an agent's,
  * and what the agents' usage on them came to. Work with no milestone or
- * no work item has a node of its own.
+ * no work item has a node of its own. What harness sessions with no pull
+ * request cost goes to their work item's change set in their repository
+ * (`direct`), with no pull requests of its own.
  */
 export function spendFlow(ctx: Pick<SignalContext, "slug" | "repos" | "signals" | "quarterUsage" | "quarter">): FlowNode[] {
-  const spend = quarterSpend(ctx)?.byPull ?? new Map<string, number>();
+  const quarter = quarterSpend(ctx);
+  const spend = quarter?.byPull ?? new Map<string, number>();
   const items = new Map(ctx.signals.items.map((item) => [item.number, item]));
   const milestones = new Map(ctx.signals.milestones.map((milestone) => [milestone.number, milestone]));
   type Build = FlowNode & { index: Map<string, Build> };
-  const make = (key: string, label: string, to: string | null): Build => ({ key, label, to, pulls: 0, agent: 0, micros: 0, children: [], index: new Map() });
+  const make = (key: string, label: string, to: string | null): Build => ({
+    key,
+    label,
+    to,
+    pulls: 0,
+    agent: 0,
+    micros: 0,
+    direct: 0,
+    children: [],
+    index: new Map(),
+  });
   const roots = new Map<string, Build>();
   const child = (parent: Map<string, Build>, key: string, label: string, to: string | null) => {
     let node = parent.get(key);
     if (!node) parent.set(key, (node = make(key, label, to)));
     return node;
   };
-  for (const pull of ctx.signals.pulls) {
-    const repo = ctx.repos[pull.repoId];
-    if (!repo) continue;
-    if (pull.createdAt.slice(0, 10) < ctx.quarter && !(pull.mergedAt && pull.mergedAt.slice(0, 10) >= ctx.quarter)) continue;
-    const micros = spend.get(pullKey(repo, pull.number)) ?? 0;
-    const milestone = pull.milestone != null ? milestones.get(pull.milestone) : undefined;
-    const item = pull.item != null ? items.get(pull.item) : undefined;
+  const pathOf = (repoId: string, repo: RepoPath, itemNumber: number | null, milestoneNumber: number | null): Build[] => {
+    const item = itemNumber != null ? items.get(itemNumber) : undefined;
+    const milestone = milestoneNumber != null ? milestones.get(milestoneNumber) : undefined;
     const path = [
       child(roots, milestone ? `m${milestone.number}` : "m-", milestone?.title ?? "No milestone", milestone ? milestonePath(ctx.slug, milestone.number) : null),
     ];
@@ -1007,7 +1070,15 @@ export function spendFlow(ctx: Pick<SignalContext, "slug" | "repos" | "signals" 
         item ? itemPath(ctx.slug, item.number) : null,
       ),
     );
-    path.push(child(path[1]!.index, `${path[1]!.key}/${pull.repoId}`, repo.name, `/${repo.namespace}/${repo.name}`));
+    path.push(child(path[1]!.index, `${path[1]!.key}/${repoId}`, repo.name, `/${repo.namespace}/${repo.name}`));
+    return path;
+  };
+  for (const pull of ctx.signals.pulls) {
+    const repo = ctx.repos[pull.repoId];
+    if (!repo) continue;
+    if (pull.createdAt.slice(0, 10) < ctx.quarter && !(pull.mergedAt && pull.mergedAt.slice(0, 10) >= ctx.quarter)) continue;
+    const micros = spend.get(pullKey(repo, pull.number)) ?? 0;
+    const path = pathOf(pull.repoId, repo, pull.item, pull.milestone);
     for (const node of path) {
       node.pulls += 1;
       node.agent += pull.agent ? 1 : 0;
@@ -1024,6 +1095,13 @@ export function spendFlow(ctx: Pick<SignalContext, "slug" | "repos" | "signals" 
       status: pull.status,
       to: pullPath(repo, pull.number),
     });
+  }
+  for (const row of quarter?.loose ?? []) {
+    const item = row.item != null ? items.get(row.item) : undefined;
+    for (const node of pathOf(row.repoId, ctx.repos[row.repoId]!, row.item, item?.milestone ?? null)) {
+      node.micros += row.micros;
+      node.direct += row.micros;
+    }
   }
   const finish = (nodes: Map<string, Build>, label: string, depth: number): FlowNode[] =>
     fold(

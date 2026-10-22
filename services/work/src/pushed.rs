@@ -190,6 +190,11 @@ impl Work {
                 }
                 let message = pushed.commits.iter().find(|pushed| pushed.hash == *commit).map(|pushed| pushed.message.as_str());
                 let session = self.trailer_session(&repo.id, message.unwrap_or_default()).await?;
+                // The session the commit names worked on what it lands: its
+                // cost counts there when no pull request carries it (signals).
+                if let Some(session) = &session {
+                    self.link_item(session, &repo.id, &id, LinkVia::Trailer).await;
+                }
                 let landing =
                     items::Landing { pull: None, commit: Some(commit.clone()), pushed_by: Some(actor.username.clone()), tie: None };
                 let (closes, parts) = if closing { (vec![id], Vec::new()) } else { (Vec::new(), vec![id]) };

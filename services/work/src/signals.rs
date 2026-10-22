@@ -40,6 +40,13 @@
 //!   as 0), split evenly among the pull requests it counts with: the ones
 //!   it is tied to, as above, or, for a subagent tied to none, the ones its
 //!   root session is tied to. Only the repositories read count.
+//! - **Session spend** with no pull request: what the sessions that count
+//!   with none (neither they nor their root session is tied to one) cost,
+//!   by repository, work item and day started. A session's work items are
+//!   the ones it claimed, landed by a push whose commit names it in a
+//!   `G1t-Session` trailer, or said it works on, else its root's; its cost
+//!   is split evenly among them, and with none it counts with its
+//!   repository alone. Sessions of unknown cost are left out.
 //! - A day's **reviews** are comments of any kind on a pull request by a
 //!   person other than its owner (not g1t's agent, a workspace agent or g1t
 //!   itself); **reworked**, the ones of them asking for changes.
@@ -55,7 +62,7 @@ use g1t_contracts::identity::AGENT_ID;
 use g1t_contracts::repos::{ReadableArgs, Repo};
 use g1t_contracts::time::{parse_rfc3339, rfc3339};
 use g1t_contracts::work::{
-    SignalAuthor, SignalDay, SignalHarness, SignalItem, SignalMilestone, SignalPull, SignalWeek, State, WaitingPull,
+    SignalAuthor, SignalDay, SignalHarness, SignalItem, SignalMilestone, SignalPull, SignalSessionSpend, SignalWeek, State, WaitingPull,
     WorkspaceSignals, WorkspaceSignalsArgs,
 };
 use serde::{Deserialize, Serialize};
@@ -71,6 +78,8 @@ const DAY_MS: u64 = 86_400_000;
 const MAX_SINCE_DAYS: u64 = 400;
 /// `pulls` returns at most this many; pulls.sql asks for one more.
 const PULLS_LIMIT: usize = 3000;
+/// `session_spend` returns at most this many; sessions.sql asks for one more.
+const SESSION_SPEND_LIMIT: usize = 3000;
 /// `recent` in authors: the days ending with `until`.
 const RECENT_DAYS: u64 = 90;
 
@@ -78,6 +87,7 @@ pub(crate) const WEEKS: &str = concat!(include_str!("signals/base.sql"), include
 pub(crate) const DAYS: &str = concat!(include_str!("signals/base.sql"), include_str!("signals/days.sql"));
 pub(crate) const WAITING: &str = concat!(include_str!("signals/base.sql"), include_str!("signals/waiting.sql"));
 pub(crate) const PULLS: &str = concat!(include_str!("signals/base.sql"), include_str!("signals/pulls.sql"));
+pub(crate) const SESSIONS: &str = concat!(include_str!("signals/base.sql"), include_str!("signals/sessions.sql"));
 pub(crate) const AUTHORS: &str = include_str!("signals/authors.sql");
 pub(crate) const HARNESSES: &str = include_str!("signals/harnesses.sql");
 /// ?1 the workspace.
@@ -233,9 +243,10 @@ impl From<PullRow> for SignalPull {
     }
 }
 
-/// The work item numbers `pulls` and `waiting` name, each once.
-fn named_items(pulls: &[SignalPull], waiting: &[WaitingPull]) -> Vec<u32> {
+/// The work item numbers `pulls`, `waiting` and `spend` name, each once.
+fn named_items(pulls: &[SignalPull], waiting: &[WaitingPull], spend: &[SignalSessionSpend]) -> Vec<u32> {
     let mut numbers: BTreeSet<u32> = pulls.iter().filter_map(|pull| pull.item).collect();
+    numbers.extend(spend.iter().filter_map(|row| row.item));
     for pull in waiting {
         numbers.extend(pull.item);
         numbers.extend(pull.blocks.iter().copied());
@@ -273,7 +284,7 @@ impl Work {
         let results = self
             .timing
             .db(
-                7,
+                8,
                 self.db.batch(vec![
                     self.db.prepare(WEEKS).bind(&[ids.clone(), window.weeks.into()])?,
                     self.db.prepare(DAYS).bind(&[
@@ -284,6 +295,9 @@ impl Work {
                     self.db.prepare(WAITING).bind(&[ids.clone(), workspace.clone()])?,
                     self.db
                         .prepare(PULLS)
+                        .bind(&[ids.clone(), workspace.clone(), window.since.as_str().into()])?,
+                    self.db
+                        .prepare(SESSIONS)
                         .bind(&[ids.clone(), workspace.clone(), window.since.into()])?,
                     self.db
                         .prepare(AUTHORS)
@@ -293,7 +307,7 @@ impl Work {
                 ]),
             )
             .await?;
-        let [weeks, days, waiting, pulls, authors, harnesses, milestones] = results.as_slice() else {
+        let [weeks, days, waiting, pulls, session_spend, authors, harnesses, milestones] = results.as_slice() else {
             return Err(worker::Error::RustError("workspace_signals: missing results".into()));
         };
         let mut waiting: Vec<WaitingPull> = waiting
@@ -304,6 +318,9 @@ impl Work {
         let mut pulls: Vec<SignalPull> = pulls.results::<PullRow>()?.into_iter().map(SignalPull::from).collect();
         let pulls_capped = pulls.len() > PULLS_LIMIT;
         pulls.truncate(PULLS_LIMIT);
+        let mut session_spend: Vec<SignalSessionSpend> = session_spend.results::<SignalSessionSpend>()?;
+        let session_spend_capped = session_spend.len() > SESSION_SPEND_LIMIT;
+        session_spend.truncate(SESSION_SPEND_LIMIT);
         let authors: Vec<SignalAuthor> = authors
             .results::<SignalAuthor>()?
             .into_iter()
@@ -315,7 +332,7 @@ impl Work {
             .filter(|harness| is_person(&harness.owner_id))
             .collect();
         let (items, milestones) = if in_workspace {
-            let numbers = named_items(&pulls, &waiting);
+            let numbers = named_items(&pulls, &waiting, &session_spend);
             let visible = items::visible_numbered(self, &a.workspace, &numbers, viewer.as_ref()).await?;
             let mut items: Vec<SignalItem> = visible
                 .into_iter()
@@ -335,6 +352,13 @@ impl Work {
         } else {
             (Vec::new(), Vec::new())
         };
+        // A work item the viewer may not see is not named: its sessions'
+        // cost counts with their repository.
+        for row in &mut session_spend {
+            if row.item.is_some_and(|number| !items.iter().any(|item| item.number == number)) {
+                row.item = None;
+            }
+        }
         // A blocked work item the viewer may not see is not named.
         for pull in &mut waiting {
             pull.blocks
@@ -346,6 +370,8 @@ impl Work {
             waiting,
             pulls,
             pulls_capped,
+            session_spend,
+            session_spend_capped,
             authors,
             harnesses,
             items,

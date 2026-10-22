@@ -727,7 +727,12 @@ Figures in dollars are for owners and billing managers only.
    pull request's share of its sessions' cost estimated at list price),
    and shaded by how many were an agent's (**Agent use**, less to more). Choose a box to
    open what is under it. Work with no milestone or work item has its own
-   box. When usage can't be read, boxes are sized by pull requests.
+   box. Sessions that opened no pull request, such as ones that pushed
+   straight to the default branch, count in their work item's change set
+   in their repository, which says **No PRs** and what they cost: the work
+   item a session claimed, said it works on, or landed with a push whose
+   commit names it in a `G1t-Session` trailer, else its repository alone.
+   When usage can't be read, boxes are sized by pull requests.
    Above it, with a [provider's cost report](/guides/usage-and-billing/)
    connected, is what Anthropic or OpenAI reported for the quarter and how
    much of it is threaded to the work. Their figure holds everything the

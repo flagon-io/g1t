@@ -123,6 +123,22 @@ pub struct SignalPull {
     pub session_cost_usd: f64,
 }
 
+/// What the harness sessions of one repository that started on UTC day
+/// `day` (since `since`) and count with no pull request cost, for one work
+/// item, or for none (`item` unset). A session counts with no pull request
+/// when neither it nor its root session is tied to one; its work items are
+/// the ones it claimed, landed by a push whose commit names it, or said it
+/// works on (a subagent with none has its root's), and its cost is split
+/// evenly among them. Unknown costs are left out.
+#[derive(Clone, Default, Deserialize, Serialize)]
+#[serde(default, rename_all(serialize = "camelCase"))]
+pub struct SignalSessionSpend {
+    pub repo_id: String,
+    pub item: Option<u32>,
+    pub day: String,
+    pub session_cost_usd: f64,
+}
+
 /// One person's use of one harness in one repository: when they first
 /// started a session with it there, and how many they have started.
 #[derive(Clone, Default, Deserialize, Serialize)]
@@ -151,7 +167,7 @@ pub struct SignalAuthor {
     pub recent: u32,
 }
 
-/// A work item `pulls` or `waiting` names.
+/// A work item `pulls`, `waiting` or `session_spend` names.
 #[derive(Clone, Default, Deserialize, Serialize)]
 #[serde(default, rename_all(serialize = "camelCase"))]
 pub struct SignalItem {
@@ -183,6 +199,9 @@ pub struct WorkspaceSignals {
     /// At most 3,000, newest first; `pulls_capped` when there were more.
     pub pulls: Vec<SignalPull>,
     pub pulls_capped: bool,
+    /// At most 3,000, newest first; `session_spend_capped` when there were more.
+    pub session_spend: Vec<SignalSessionSpend>,
+    pub session_spend_capped: bool,
     pub authors: Vec<SignalAuthor>,
     /// People's harnesses, root sessions only (a subagent is its parent's).
     pub harnesses: Vec<SignalHarness>,
