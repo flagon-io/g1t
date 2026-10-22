@@ -1,0 +1,124 @@
+# A preview of the site (apps/web) for every pull request that changes it,
+# so a change to the interface is looked at before it merges instead of
+# after a production deploy. What it does is scripts/deploy/preview.mjs;
+# CONTRIBUTING.md, "Previewing a change to the site", is the guide.
+#
+#   build   whether the pull request reaches the site (`preview.mjs check`),
+#           and if so the site, built as a deploy builds it, kept as an
+#           artifact. Runs the pull request's code, with no secrets.
+#   upload  the build, uploaded to Cloudflare as a version of the `g1t`
+#           Worker under the alias pr-<number>: nothing is deployed, no
+#           migration runs, and production's traffic never reaches it. Its
+#           address, https://pr-<number>-g1t.<subdomain>.workers.dev, is the
+#           link of the commit status `preview / web` on the pull request,
+#           and in the run's summary. Installs Wrangler alone, and runs none
+#           of the pull request's build.
+#
+# Only a pull request from a branch of this repository is previewed; one
+# from a fork or a g1t working copy is not (the jobs' `if`, and
+# preview.mjs again), and g1t gives an outside contributor's run no
+# secrets anyway. The preview has the production Worker's bindings and
+# secrets: it reads and writes g1t.sh's real data.
+#
+# Needs the secret CLOUDFLARE_PREVIEW_TOKEN in the `preview` environment (a
+# Cloudflare API token with Account > Workers Scripts > Edit only) and the
+# variable CLOUDFLARE_ACCOUNT_ID. Without the token, upload says so and
+# passes.
+name: Preview
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+# One preview per pull request at a time: a newer push replaces the run
+# still building the older one.
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+  WRANGLER_SEND_METRICS: "false"
+
+jobs:
+  build:
+    name: Build
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      preview: ${{ steps.check.outputs.preview }}
+    steps:
+      # The test merge and its first parent, the base's tip: what the pull
+      # request changes (as CI's ci-affected.mjs reads it).
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+      - name: Does it reach the site?
+        id: check
+        run: node scripts/deploy/preview.mjs check
+      # npm's downloads for the whole lockfile, only restored (deploy.yml's
+      # build job says why).
+      - name: Cache npm's downloads
+        if: ${{ steps.check.outputs.preview == 'true' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.npm
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-full-${{ runner.os }}-
+      - name: Install
+        if: ${{ steps.check.outputs.preview == 'true' }}
+        run: node scripts/deploy.mjs install --only web
+      - name: Build the site
+        if: ${{ steps.check.outputs.preview == 'true' }}
+        run: node scripts/deploy.mjs build --only web
+      - name: Keep what was built
+        if: ${{ steps.check.outputs.preview == 'true' }}
+        run: tar -cf build.tar $(node scripts/deploy.mjs outputs --only web)
+      - uses: actions/upload-artifact@v4
+        if: ${{ steps.check.outputs.preview == 'true' }}
+        with:
+          name: preview-web
+          path: build.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  upload:
+    name: Upload
+    needs: [build]
+    if: ${{ needs.build.outputs.preview == 'true' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    # The preview environment's secrets, without a deployment record: the
+    # link is the commit status.
+    environment:
+      name: preview
+      deployment: false
+    # Sets the commit status that links the preview.
+    permissions:
+      contents: read
+      statuses: write
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache npm's downloads
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.npm
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-full-${{ runner.os }}-
+      - name: Install Wrangler
+        run: node scripts/deploy/npm-ci.mjs --prefer-offline --workspaces=false --no-audit --no-fund
+      - uses: actions/download-artifact@v4
+        with:
+          name: preview-web
+      - name: Unpack what was built
+        run: tar -xf build.tar && rm build.tar
+      - name: Upload the preview
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PREVIEW_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/deploy/preview.mjs upload
