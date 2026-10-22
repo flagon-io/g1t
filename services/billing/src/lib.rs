@@ -869,9 +869,11 @@ impl Billing {
             let cost = deployment_costs::MICROS_PER_BUILD_SECOND as f64;
             (cost, Price::price_for(cost, self.margin_percent))
         });
-        // The machine it ran on, from the catalogue by its `runs-on` label
-        // (a retired machine's too, for a job started before it retired);
-        // the standard one otherwise. What it cost g1t: a machine's memory
+        // The machine it is charged as, from the catalogue by the label the
+        // runner reports (`billed_instance`: what that machine is billed as,
+        // so a public repository's 4-core job is the standard machine, and a
+        // retired machine's row for a job started before it retired); the
+        // standard one otherwise. What it cost g1t: a machine's memory
         // and disk cost what they are each second, and without its own CPU
         // it is costed at its vCPUs as busy as the standard machine's.
         let instance = a.instance.as_deref().and_then(g1t_contracts::actions::billed_instance).unwrap_or(g1t_contracts::actions::STANDARD_INSTANCE);

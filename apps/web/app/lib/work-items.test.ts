@@ -30,7 +30,17 @@ import {
 const query = (text: string) => new URLSearchParams(text);
 
 test("the Work list's filters come from its address", () => {
-  assert.deepEqual(workFilters(query("")), { state: "open", horizon: null, label: "", milestone: null, assignee: "", repo: "", role: null, parent: null, project: "" });
+  assert.deepEqual(workFilters(query("")), {
+    state: "open",
+    horizon: null,
+    label: "",
+    milestone: null,
+    assignee: "",
+    repo: "",
+    role: null,
+    parent: null,
+    project: "",
+  });
   assert.deepEqual(workFilters(query("state=closed&label=Bug&milestone=3&assignee=ana&repo=web&role=target")), {
     state: "closed",
     horizon: null,

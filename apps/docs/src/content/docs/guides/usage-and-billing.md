@@ -272,8 +272,9 @@ by g1t**. When the trial is used up, new compute waits for the plan.
 
 g1t sets aside **$50 a month** for public repositories, at most **$4 a
 month** for any one repository: 12,500 and 1,000 minutes of workflow
-jobs, checks and merge queue runs on the standard machine, which public
-repositories get as private ones do. It pays for **checks, workflows and the merge queue on
+jobs, checks and merge queue runs at the standard machine's rate, which
+a public repository's `ubuntu-latest` jobs are charged at though they run
+on 4 vCPUs. It pays for **checks, workflows and the merge queue on
 public repositories**, after a card check. It does not pay
 for deployments, storage or embeddings.
 
@@ -373,16 +374,21 @@ Every job g1t runs on its own machines (a workflow job, a check, a merge
 queue run) is charged by the minute, at a fixed rate for the machine it
 ran on:
 
-| `runs-on`                                                            | Machine             | vCPUs | Memory | Disk  | A minute |
-| -------------------------------------------------------------------- | ------------------- | ----- | ------ | ----- | -------- |
-| `ubuntu-latest`, any other Linux label, or a label g1t does not know | Standard (`2-core`) | 2     | 8 GiB  | 16 GB | $0.004   |
-| `ubuntu-slim`                                                        | `1-core`            | 1     | 6 GiB  | 12 GB | $0.003   |
+| `runs-on`                                                                                     | Machine                             | vCPUs | Memory | Disk  | A minute |
+| --------------------------------------------------------------------------------------------- | ----------------------------------- | ----- | ------ | ----- | -------- |
+| `ubuntu-latest` or another Ubuntu label in a private repository, or a label g1t does not know | Standard (`2-core`)                 | 2     | 8 GiB  | 16 GB | $0.004   |
+| `ubuntu-latest` or another Ubuntu label in a public repository                                | Standard (`2-core`), run on 4 vCPUs | 4     | 12 GiB | 20 GB | $0.004   |
+| `ubuntu-slim`, in any repository                                                              | `1-core`                            | 1     | 6 GiB  | 12 GB | $0.003   |
 
-The labels are GitHub's, at the sizes GitHub gives a private repository,
-in public repositories too ([machine sizes](/guides/actions/#machine-sizes)).
-A job is charged as the machine it ran on. Checks and the merge queue run
-on the standard machine. `g1t-2core` and `g1t-4core`, the labels g1t had
-before, get the standard machine, at its rate.
+The labels are GitHub's, at the sizes GitHub gives a public and a
+private repository ([machine sizes](/guides/actions/#machine-sizes)):
+`ubuntu-latest` has 4 vCPUs in a public repository and 2 in a private
+one. As on GitHub, the larger machine costs a public repository nothing
+more: its jobs are charged as the standard machine, at its rate, and
+their minutes count as **Runner minutes, 2-core**. Every other job is
+charged as the machine it ran on. Checks and the merge queue run on the
+standard machine. `g1t-2core` and `g1t-4core`, the
+labels g1t had before, get the standard machine, at its rate.
 
 **How a job's minutes are counted.** Each job's time, from when its
 machine starts to when it stops, is rounded up to the whole minute: a
@@ -409,12 +415,17 @@ half of it busy plus 20%, $0.0020, would be under that. Should a job ever
 cost g1t more than its minutes at the rate, it is charged that cost
 instead.
 
+Nothing is charged at a 4-core rate today. Minutes charged on the
+`4-core` machine before (at $0.007 a minute) keep their own line, and
+GitHub-style [larger runners](/guides/actions/#machine-sizes), asked for
+by name, will each have a rate of their own.
+
 Each job is one line on the [statement](#the-statement), naming its
 machine and minutes, such as _A workflow job in acme/api on ubuntu-slim:
 6m 40s, 7 minutes on the 1-core machine_. Usage, the statement and the API
-total them as **Runner minutes, 2-core** and **Runner minutes, 1-core**;
-minutes from before the `4-core` machine was retired stay under
-**Runner minutes, 4-core**, and months before runner minutes show
+total them as **Runner minutes, 2-core** and **Runner minutes, 1-core**
+(and **Runner minutes, 4-core** for minutes charged on it before); months
+before runner minutes show
 **Sandbox time**, by the second.
 Deploy builds are not counted here: [Deployments](/guides/deployments/)
 charges them by the second, from the first, under **Builds**. Jobs on
@@ -990,22 +1001,22 @@ time. Every member can see it.
   per kind of charge, with how many entries it holds and what they come
   to:
 
-  | Line                                              | What it holds                                                                                                                             |
-  | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-  | Runner minutes, 2-core and Runner minutes, 1-core | Each job on g1t's machines, with the minutes charged on that machine (and Runner minutes, 4-core, for minutes from before it retired).    |
-  | Sandbox time                                      | Each sandbox's time, in months before runner minutes.                                                                                     |
-  | Self-hosted runner time                           | Each job on your own runners, at $0.                                                                                                      |
-  | Deployments                                       | Builds as they finish; each month's requests, CPU time, custom domains and container time when it closes.                                 |
-  | Private storage                                   | Storage past the free 1 GB, once a month.                                                                                                 |
-  | Actions cache storage                             | What `actions/cache` and artifacts held, on the plan, once a month.                                                                       |
-  | Git operations                                    | Operations past the free 50,000, once a month.                                                                                            |
-  | Search embeddings                                 | Private text put in the search index, once a month.                                                                                       |
-  | Security scans                                    | History scans and dependency checks, once a month.                                                                                        |
-  | Payments                                          | Card payments and invoices paid.                                                                                                          |
-  | Credits from g1t                                  | Credit g1t added (promotional, goodwill or a refund), and what of it expired or was withdrawn. See [Credits from g1t](#credits-from-g1t). |
-  | Refunds                                           | Money given back to your card.                                                                                                            |
-  | Tax                                               | Tax paid with that day's payments. Not a charge, and not from your balance.                                                               |
-  | Card processing fees                              | Only on payments from before the card fee was folded into prices: the fee paid with them. Not a charge, and not from your balance.        |
+  | Line                              | What it holds                                                                                                                             |
+  | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+  | Runner minutes, 2-core and 1-core | Each job on g1t's machines, with the minutes charged on that machine (and Runner minutes, 4-core, for minutes charged on it before).      |
+  | Sandbox time                      | Each sandbox's time, in months before runner minutes.                                                                                     |
+  | Self-hosted runner time           | Each job on your own runners, at $0.                                                                                                      |
+  | Deployments                       | Builds as they finish; each month's requests, CPU time, custom domains and container time when it closes.                                 |
+  | Private storage                   | Storage past the free 1 GB, once a month.                                                                                                 |
+  | Actions cache storage             | What `actions/cache` and artifacts held, on the plan, once a month.                                                                       |
+  | Git operations                    | Operations past the free 50,000, once a month.                                                                                            |
+  | Search embeddings                 | Private text put in the search index, once a month.                                                                                       |
+  | Security scans                    | History scans and dependency checks, once a month.                                                                                        |
+  | Payments                          | Card payments and invoices paid.                                                                                                          |
+  | Credits from g1t                  | Credit g1t added (promotional, goodwill or a refund), and what of it expired or was withdrawn. See [Credits from g1t](#credits-from-g1t). |
+  | Refunds                           | Money given back to your card.                                                                                                            |
+  | Tax                               | Tax paid with that day's payments. Not a charge, and not from your balance.                                                               |
+  | Card processing fees              | Only on payments from before the card fee was folded into prices: the fee paid with them. Not a charge, and not from your balance.        |
 
   Payments are what reached your balance; the tax paid with them is the
   line below them, and the totals say what it came to.

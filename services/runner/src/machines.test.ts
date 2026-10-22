@@ -7,9 +7,11 @@ import {
   INSTANCE_TYPES,
   RETIRED_MACHINES,
   STANDARD_INSTANCE,
+  chargedAs,
   instanceNamed,
   machineNamed,
   machineSize,
+  machineTitle,
   machines,
   priceScale,
   runnerMinutes,
@@ -95,11 +97,14 @@ test("each label in the machine catalogue runs in its own class, bound and sized
   assert.equal(jobNamespaceOf({ SANDBOX: "standard" }, { sandboxClass: "Sandbox64Core" }), null);
 });
 
-test("runs-on labels are the catalogue's, and a job is charged its minutes rounded up", () => {
+test("the machines a job starts on are the catalogue's, and a job is charged its minutes rounded up", () => {
+  // The planner names the machine (`instance_for`): ubuntu-latest is the
+  // standard one in a private repository and g1t-4core in a public one.
   assert.equal(instanceNamed("ubuntu-latest"), STANDARD_INSTANCE);
+  assert.equal(instanceNamed(null), STANDARD_INSTANCE);
   assert.equal(instanceNamed("Ubuntu-Slim").machine, "1-core");
-  // The labels g1t had before: the standard machine, like any unknown one.
-  assert.equal(instanceNamed("G1T-4Core"), STANDARD_INSTANCE);
+  assert.equal(instanceNamed("G1T-4Core").machine, "4-core");
+  assert.equal(instanceNamed("g1t-4core").sandboxClass, "SandboxLarge");
   assert.equal(instanceNamed("g1t-2core"), STANDARD_INSTANCE);
   assert.deepEqual(
     machines().map((m) => [m.machine, m.microsPerMinute, machineSize(m)]),
@@ -108,14 +113,28 @@ test("runs-on labels are the catalogue's, and a job is charged its minutes round
       ["1-core", 3000, "1 vCPU, 6 GiB, 12 GB"],
     ],
   );
-  // A retired machine still reads, for its past minutes.
+  // The 4-core machine runs a public repository's Ubuntu jobs, charged as
+  // the standard machine; its own rate still prices minutes billed on it.
+  assert.equal(chargedAs(instanceNamed("g1t-4core")), STANDARD_INSTANCE);
+  assert.equal(chargedAs(instanceNamed("ubuntu-slim")).machine, "1-core");
+  assert.equal(chargedAs(STANDARD_INSTANCE), STANDARD_INSTANCE);
+  assert.equal(machineNamed("4-core")?.microsPerMinute, 7000);
   assert.equal(machineNamed("4-core")?.label, "g1t-4core");
   assert.equal(machineNamed("8-core"), null);
   assert.equal(priceScale(instanceNamed("ubuntu-slim")), 0.75);
-  // Every GitHub Linux label is a machine here; Windows and macOS are none.
+  assert.equal(priceScale(instanceNamed("g1t-4core")), 1.75);
+  assert.deepEqual(INSTANCE_TYPES.map(machineTitle), ["standard machine", "ubuntu-slim", "4-core machine"]);
+  // Every GitHub Linux label is a machine here, public or private; Windows
+  // and macOS are none.
   for (const github of GITHUB_HOSTED_LABELS) {
-    if (github.os === "linux") assert.equal(instanceNamed(github.machine).label, github.machine, github.githubLabel);
-    else assert.equal(github.machine, null, github.githubLabel);
+    for (const size of [github.public, github.private]) {
+      if (github.os === "linux") assert.equal(instanceNamed(size.machine).label, size.machine, github.githubLabel);
+      else assert.equal(size.machine, null, github.githubLabel);
+    }
   }
+  const latest = GITHUB_HOSTED_LABELS.find((g) => g.githubLabel === "ubuntu-latest")!;
+  assert.deepEqual([latest.public.vcpu, latest.public.machine, latest.private.vcpu, latest.private.machine], [4, "g1t-4core", 2, "standard"]);
+  const slim = GITHUB_HOSTED_LABELS.find((g) => g.githubLabel === "ubuntu-slim")!;
+  assert.deepEqual([slim.public.machine, slim.private.machine], ["ubuntu-slim", "ubuntu-slim"]);
   assert.deepEqual([0, 1, 60, 61, 3600].map(runnerMinutes), [0, 1, 1, 2, 60]);
 });

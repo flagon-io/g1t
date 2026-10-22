@@ -753,7 +753,13 @@ export function ReviewButton({ mine, asked }: { mine: "approve" | "request_chang
       <PopoverContent side="bottom" align="end" sideOffset={6} aria-label="Review" className="w-80 p-3">
         <Form method="post" className="space-y-2" onSubmit={() => (sent.current = true)}>
           <input type="hidden" name="action" value="comment" />
-          <MentionTextarea name="body" rows={3} value={note} onChange={(event) => setNote(event.currentTarget.value)} placeholder="A note (needed to request changes)" />
+          <MentionTextarea
+            name="body"
+            rows={3}
+            value={note}
+            onChange={(event) => setNote(event.currentTarget.value)}
+            placeholder="A note (needed to request changes)"
+          />
           <div className="flex flex-wrap gap-2">
             <SubmitButton size="sm" variant="accent" name="verdict" value="approve" match={{ action: "comment" }} pending="Approving…">
               <CircleCheck size={14} />

@@ -24,8 +24,7 @@ beforeEach(() => {
   fetches = 0;
 });
 
-const b64 = (data: Uint8Array | string) =>
-  Buffer.from(typeof data === "string" ? new TextEncoder().encode(data) : data).toString("base64url");
+const b64 = (data: Uint8Array | string) => Buffer.from(typeof data === "string" ? new TextEncoder().encode(data) : data).toString("base64url");
 
 async function token(claims: Record<string, unknown>, kid = "k1") {
   const head = b64(JSON.stringify({ alg: "RS256", kid }));
@@ -35,8 +34,7 @@ async function token(claims: Record<string, unknown>, kid = "k1") {
 }
 
 const good = { aud: [settings.aud], iss: `https://${settings.team}`, exp: NOW / 1000 + 600, nbf: NOW / 1000 - 10 };
-const preview = (jwt?: string) =>
-  new Request("https://pr-12-g1t.example.workers.dev/flagon-io", jwt ? { headers: { "cf-access-jwt-assertion": jwt } } : {});
+const preview = (jwt?: string) => new Request("https://pr-12-g1t.example.workers.dev/flagon-io", jwt ? { headers: { "cf-access-jwt-assertion": jwt } } : {});
 
 test("g1t.sh and other custom domains are never checked", async () => {
   assert.equal(await refusePreview(new Request("https://g1t.sh/"), null, fetchKeys, NOW), null);

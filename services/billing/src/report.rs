@@ -472,7 +472,8 @@ mod tests {
         let line = |key: &str| sandboxes.meters.iter().find(|m| m.key == key).unwrap();
         let two = line("runner_2-core");
         assert_eq!((two.label.as_str(), two.unit.as_str(), two.quantity, two.micros), ("Runner minutes, 2-core (2 vCPU, 8 GiB, 16 GB)", "minutes", 12.0, 48_000));
-        // 4-core is retired, and its minutes keep their own line.
+        // 4-core's minutes from when they were charged as 4-core keep a
+        // line of their own.
         assert_eq!((line("runner_4-core").quantity, line("runner_4-core").micros), (3.0, 21_000));
         assert_eq!(line("runner_4-core").label, "Runner minutes, 4-core (4 vCPU, 12 GiB, 20 GB)");
         assert_eq!((line("sandbox").unit.as_str(), line("sandbox").quantity), ("seconds", 90.0));

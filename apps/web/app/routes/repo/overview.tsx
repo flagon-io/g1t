@@ -739,7 +739,7 @@ function ProductionSummary({
         <dl className="grid min-w-0 content-start grid-cols-2 gap-x-5 gap-y-5 text-sm">
           <div className="col-span-2 min-w-0">
             <dt className="text-xs text-muted">Deployment</dt>
-            <dd className="mt-1 break-words font-medium">
+            <dd className="mt-1 wrap-break-word font-medium">
               {current ? (
                 <Link to={`${base}/deployments/${current.id}`} className="hover:text-accent">
                   Current production <ArrowUpRight size={14} className="inline text-faint" />

@@ -354,16 +354,17 @@ includes, and fails for any other version.
 
 ### Machine sizes, time and storage
 
-| Limit                     | Value                                                                                                                                                                                                                                           |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Largest machine           | 2 vCPUs, 8 GiB of memory, 16 GB of disk (`ubuntu-latest` and every other Linux label), as GitHub sizes a private repository's, public repositories included. No GPUs. GitHub's machine for public repositories has 4 vCPUs and 16 GB of memory. |
-| Smallest machine          | 1 vCPU, 6 GiB of memory, 12 GB of disk (`ubuntu-slim`).                                                                                                                                                                                         |
-| Larger runners            | Not offered yet: GitHub's larger runners (more vCPUs, GPUs, named by the organization) have no g1t equivalent. Use a self-hosted runner.                                                                                                        |
-| One job on g1t's machines | 60 minutes. On a self-hosted runner, 24 hours.                                                                                                                                                                                                  |
-| One cache entry           | 2 GiB, compressed. A larger one is not saved.                                                                                                                                                                                                   |
-| A repository's caches     | 10 GiB together, 100 GiB on the g1t plan. Past it, the entries restored longest ago are removed.                                                                                                                                                |
-| One artifact              | 5 GiB, zipped. Kept 14 days unless the repository says otherwise, at most 90.                                                                                                                                                                   |
-| A run's artifacts         | 10 GiB together.                                                                                                                                                                                                                                |
+| Limit                     | Value                                                                                                                                                     |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Largest machine           | 4 vCPUs, 12 GiB of memory, 20 GB of disk (`ubuntu-latest` in a public repository). No GPUs. GitHub's machine for public repositories has 16 GB of memory. |
+| Standard machine          | 2 vCPUs, 8 GiB of memory, 16 GB of disk (`ubuntu-latest` in a private repository, and any label g1t does not know).                                       |
+| Smallest machine          | 1 vCPU, 6 GiB of memory, 12 GB of disk (`ubuntu-slim`).                                                                                                   |
+| Larger runners            | Not offered yet: GitHub's larger runners (more vCPUs, GPUs, named by the organization) have no g1t equivalent. Use a self-hosted runner.                  |
+| One job on g1t's machines | 60 minutes. On a self-hosted runner, 24 hours.                                                                                                            |
+| One cache entry           | 2 GiB, compressed. A larger one is not saved.                                                                                                             |
+| A repository's caches     | 10 GiB together, 100 GiB on the g1t plan. Past it, the entries restored longest ago are removed.                                                          |
+| One artifact              | 5 GiB, zipped. Kept 14 days unless the repository says otherwise, at most 90.                                                                             |
+| A run's artifacts         | 10 GiB together.                                                                                                                                          |
 
 The machine sizes are Cloudflare Containers' instance sizes. For more, use a
 [self-hosted runner](/guides/self-hosted-runners/). See

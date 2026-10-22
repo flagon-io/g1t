@@ -1,7 +1,7 @@
 import { ArrowUpRight } from "lucide-react";
 
 import type { FeaturePlan, FreeTier, Price } from "@g1t/contracts";
-import { type InstanceType, machineSize, machines } from "@g1t/contracts/instances";
+import { type InstanceType, machineSize, machineTitle, machines } from "@g1t/contracts/instances";
 
 import type { Route } from "./+types/pricing";
 import { money as sum, wholeDollars } from "../lib/money";
@@ -603,7 +603,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             {machines().map((instance) => (
               <tr key={instance.machine}>
                 <td className="px-4 py-3">
-                  <p className="font-medium">Runner minutes, {instance.label === "standard" ? "standard machine" : instance.label}</p>
+                  <p className="font-medium">Runner minutes, {machineTitle(instance)}</p>
                   <p className="text-xs text-faint">{machineSize(instance)}. Each job's time rounded up to the minute; checks, workflows and the merge queue</p>
                 </td>
                 <td className="px-4 py-3 font-mono text-xs tabular-nums text-muted">Up to {money(busyMinuteMicros(instance))} a minute</td>
