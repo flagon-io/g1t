@@ -13,7 +13,7 @@ import type { CloseReason, ItemBrief, SubItemProgress } from "@g1t/contracts";
 import { ErrorText, Input, SubmitButton } from "./ui";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Field, FieldError, FieldLabel } from "./ui/field";
 import { Hint } from "./ui/hint";
 import { Label } from "./ui/label";
@@ -165,7 +165,6 @@ export function CloseButton({
 }) {
   const intent = reason === "not_planned" ? "close-not-planned" : "close-completed";
   const [open, setOpen] = useState(Boolean(error));
-  const [choice, setChoice] = useState("leave");
   // Refused for its open sub-items: the choices come up, with why.
   useEffect(() => {
     if (error) setOpen(true);
@@ -179,37 +178,81 @@ export function CloseButton({
       </Form>
     );
   }
+  return (
+    <>
+      <span className={className}>
+        <Button variant="outline" onClick={() => setOpen(true)}>
+          {children}
+        </Button>
+      </span>
+      <CloseDialog reason={reason} openSubItems={openSubItems} error={error} open={open} onOpenChange={setOpen} />
+    </>
+  );
+}
+
+/**
+ * The dialog that closes a work item, opened by its caller: `CloseButton`
+ * while it has open sub-items, which asks what becomes of them; or the
+ * page's ⋯ menu and Shift C, which also ask how it ended (`chooseReason`).
+ */
+export function CloseDialog({
+  reason,
+  openSubItems,
+  error,
+  open,
+  onOpenChange,
+  chooseReason = false,
+}: {
+  reason: CloseReason;
+  openSubItems: number;
+  error?: string | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Ask how it ended, completed or not planned, starting from `reason`. */
+  chooseReason?: boolean;
+}) {
+  const [ended, setEnded] = useState<CloseReason>(reason);
+  useEffect(() => {
+    if (open) setEnded(reason);
+  }, [open, reason]);
+  const intent = ended === "not_planned" ? "close-not-planned" : "close-completed";
+  const [choice, setChoice] = useState("leave");
   const them = openSubItems === 1 ? "it" : "them";
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <span className={className}>
-        <DialogTrigger asChild>
-          <Button variant="outline">{children}</Button>
-        </DialogTrigger>
-      </span>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <Form method="post" className="grid gap-5">
+        <Form method="post" className="grid gap-5" onSubmit={() => openSubItems === 0 && !error && onOpenChange(false)}>
           <input type="hidden" name="action" value={intent} />
           <DialogHeader>
-            <DialogTitle>{reason === "not_planned" ? "Close as not planned" : "Close work item"}</DialogTitle>
+            <DialogTitle>{!chooseReason && ended === "not_planned" ? "Close as not planned" : "Close work item"}</DialogTitle>
             <DialogDescription>
               {openSubItems === 1
                 ? "It has an open sub-item. Say what becomes of it."
                 : openSubItems > 1
                   ? `It has ${openSubItems} open sub-items. Say what becomes of them.`
-                  : "It has open sub-items. Say what becomes of them."}
+                  : chooseReason
+                    ? "Its claims are released, and it leaves the plan. It can be reopened."
+                    : "It has open sub-items. Say what becomes of them."}
             </DialogDescription>
           </DialogHeader>
-          <RadioGroup name="sub_items" value={choice} onValueChange={setChoice}>
-            <RadioOption value="leave" label={`Leave ${them} open`} description="They stay sub-items of this one." />
-            <RadioOption
-              value="close"
-              label={`Close ${them} too`}
-              description={`As ${reason === "not_planned" ? "not planned" : "completed"}, and their own sub-items with them.`}
-            />
-            <RadioOption value="move" label={`Move ${them} to another work item`} description="They become its sub-items instead." />
-          </RadioGroup>
-          {choice === "move" && (
+          {chooseReason && (
+            <RadioGroup value={ended} onValueChange={(value) => setEnded(value as CloseReason)} aria-label="How it ended">
+              <RadioOption value="completed" label="Completed" description="Done: what it asked for is so." />
+              <RadioOption value="not_planned" label="Not planned" description="It will not be done: a duplicate, out of scope, or no longer wanted." />
+            </RadioGroup>
+          )}
+          {openSubItems > 0 && (
+            <RadioGroup name="sub_items" value={choice} onValueChange={setChoice} aria-label="Its open sub-items">
+              <RadioOption value="leave" label={`Leave ${them} open`} description="They stay sub-items of this one." />
+              <RadioOption
+                value="close"
+                label={`Close ${them} too`}
+                description={`As ${ended === "not_planned" ? "not planned" : "completed"}, and their own sub-items with them.`}
+              />
+              <RadioOption value="move" label={`Move ${them} to another work item`} description="They become its sub-items instead." />
+            </RadioGroup>
+          )}
+          {openSubItems > 0 && choice === "move" && (
             <Field>
               <FieldLabel htmlFor={`${intent}-move-to`}>Move to</FieldLabel>
               <Input id={`${intent}-move-to`} name="move_to" placeholder="#212" autoComplete="off" required />
@@ -221,7 +264,7 @@ export function CloseButton({
               <Button variant="ghost">Cancel</Button>
             </DialogClose>
             <SubmitButton match={{ action: intent }} pending="Closing…">
-              Close
+              {chooseReason && ended === "not_planned" ? "Close as not planned" : "Close"}
             </SubmitButton>
           </DialogFooter>
         </Form>

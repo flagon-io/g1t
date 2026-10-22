@@ -289,6 +289,8 @@ export default [
       route("-/work/projects.json", "routes/workspace/work/projects-json.ts"),
       route("-/work/projects/:slug", "routes/workspace/work/project.tsx"),
       route("-/work/projects/:slug/items", "routes/workspace/work/project-items.tsx"),
+      // Work items to choose from in a work item's pickers, and the plan's order for J and K.
+      route("-/work/items.json", "routes/workspace/work/items-json.ts"),
       route("-/work/ref/:number", "routes/workspace/work/ref.ts"),
       route("-/work/:number", "routes/workspace/work/item.tsx"),
       route("-/today", "routes/workspace/moved.ts", { id: "routes/workspace/moved-today" }),

@@ -18,6 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { type PinnableApp, appOf, barApps } from "../lib/apps";
 import { cn } from "../lib/cn";
 import { PALETTE_KEY, modKeyLabel, newChatKeyLabel, shortcutsKeyLabel } from "../lib/shortcut";
+import { ITEM_KEYS } from "../lib/item-keys";
 import { type ModeKey, homePagePath, modeHome, modeOf } from "../lib/workspace-nav";
 
 type Badge = { count: number; loud: boolean } | null;
@@ -159,28 +160,42 @@ export function sidebarKeyLabel(platform: string | null): string {
   return modKeyLabel(platform, "B");
 }
 
+/** A work item's page's own keys (lib/work-item-page.ts), with the comment box's. */
+function itemShortcuts(platform: string | null): [string, string][] {
+  return [...ITEM_KEYS.map(({ key, what }): [string, string] => [key, what]), [modKeyLabel(platform, "Enter"), "Send a comment"]];
+}
+
+/** A list of shortcuts, each with its key. */
+function ShortcutList({ keys }: { keys: [string, string][] }) {
+  return (
+    <Card asChild tone="plain" radius="lg" divided>
+      <dl>
+        {keys.map(([key, what]) => (
+          <div key={key} className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm">
+            <dt className="text-fg-soft">{what}</dt>
+            <dd>
+              <Kbd className="px-1.5 py-0.5 font-sans text-xs whitespace-nowrap text-fg ring-line-strong">{key}</Kbd>
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </Card>
+  );
+}
+
 /** The keyboard's shortcuts, opened from the account menu. */
 export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const platform = typeof navigator === "undefined" ? null : navigator.platform;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
           <DialogDescription>Everywhere in g1t, and in Chat.</DialogDescription>
         </DialogHeader>
-        <Card asChild tone="plain" radius="lg" divided>
-          <dl>
-            {shortcuts(PALETTE_KEY, shortcutsKeyLabel(platform), sidebarKeyLabel(platform), newChatKeyLabel(platform)).map(([key, what]) => (
-              <div key={key} className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm">
-                <dt className="text-fg-soft">{what}</dt>
-                <dd>
-                  <Kbd className="px-1.5 py-0.5 font-sans text-xs whitespace-nowrap text-fg ring-line-strong">{key}</Kbd>
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </Card>
+        <ShortcutList keys={shortcuts(PALETTE_KEY, shortcutsKeyLabel(platform), sidebarKeyLabel(platform), newChatKeyLabel(platform))} />
+        <h3 className="-mb-2 text-sm font-medium">On a work item</h3>
+        <ShortcutList keys={itemShortcuts(platform)} />
       </DialogContent>
     </Dialog>
   );

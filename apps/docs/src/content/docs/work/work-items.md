@@ -191,23 +191,95 @@ it too.
 
 ## A work item's page
 
-Besides its description, conversation and repositories, a work item's
-page has:
+A work item's page reads top to bottom, with its properties in a panel at
+the right:
 
-- a banner for each repository it **landed in**, by which pull request or
-  commit;
-- its [decision records](/guides/why-blame/#decision-records), and the
-  latest combination that failed in the merge queue, if any;
-- in its sidebar, the **Work** panel: who has claimed it, the sessions on
-  it, what it is blocked by and what it blocks (see
-  [claims and dependencies](/work/claims-and-dependencies/));
-- **Start a session**, where the workspace has an Anthropic AI provider
-  (see [start a session on your Anthropic account](/guides/sessions/#start-a-session-on-your-anthropic-account));
-- its assignees, with **Assign yourself** and **Assign to g1t**;
-- **Bring your own agent**, while nobody has a pull request open for it:
-  its reference to give your agent (`acme#12`), or a draft pull request to
-  open yourself;
-- its labels, milestone and whether you get notifications about it.
+- **The header**: where it is (its project, or Work, then the work item it
+  is a sub-item of), its place in the list you opened it from with
+  **Previous** and **Next**, **Start agent**, and the **⋯** menu.
+- **The title and description.** Press <kbd>E</kbd>, or the pencil beside
+  the title, to edit both in place; <kbd>Ctrl</kbd> <kbd>Enter</kbd>
+  (<kbd>⌘</kbd> <kbd>Enter</kbd> on a Mac) saves and <kbd>Esc</kbd> puts
+  them back. Its task list can be ticked where it is.
+- **Sub-items**: how far along they are, and adding one (see
+  [sub-items](/work/sub-items/)).
+- **Work**: everything being done for it, in one place. A banner for each
+  repository it **landed in**, a combination that failed in the merge
+  queue if one still stands, then each repository in its role with its
+  pull requests (state, checks, place in the merge queue) and whether the
+  work landed there, the repositories it **may also need** with **Add as
+  target**, who is **on it** (its claims, and those that ended lately),
+  and its **sessions**, each linked to its page in Chat (see
+  [claims and dependencies](/work/claims-and-dependencies/)).
+- **Decisions**, folded under a line that says how many: its
+  [decision records](/guides/why-blame/#decision-records).
+- **Activity**: what people wrote and what happened, oldest first, in one
+  stream: comments, its sessions where each started, claims and handoffs,
+  and the notes g1t writes. **All**, **Comments** and **Events** filter
+  it. The comment box is at the bottom; <kbd>Ctrl</kbd> <kbd>Enter</kbd>
+  (<kbd>⌘</kbd> <kbd>Enter</kbd>) sends.
+
+### Its properties
+
+Each property in the panel opens a picker you can drive with the
+keyboard alone: type to narrow it, <kbd>↑</kbd> <kbd>↓</kbd> to move,
+<kbd>Enter</kbd> to choose. In a picker that takes several (assignees,
+labels, blocked by), <kbd>Enter</kbd> ticks and <kbd>Esc</kbd> saves.
+
+| Property       | Key          | What it holds                                                                                                                                                       |
+| -------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Stage**      |              | Where it stands, read from what is so, never set by hand, with why: "In review: #318 open in acme/web". The same stages as the [board](/work/board/).               |
+| **Assignees**  | <kbd>A</kbd> | People, you first, anyone by username, and **g1t**, which takes it on in a session on the workspace's Claude where that is set up (Triage role).                    |
+| **Agent**      | <kbd>D</kbd> | Who is working on it now: each live session and where it stands. <kbd>D</kbd> opens **Start an agent**.                                                             |
+| **Project**    | <kbd>P</kbd> | The [project](/work/projects/) it is in, or none (Triage role).                                                                                                     |
+| **Plan**       | <kbd>H</kbd> | Its horizon, appetite, urgent, and a budget: type a number of dollars, such as `5`. In Triage, g1t's suggestion with **Accept**; in Now, how it stands on the hill. |
+| **Milestone**  | <kbd>M</kbd> | One of the workspace's open milestones, or none (Triage role).                                                                                                      |
+| **Labels**     | <kbd>L</kbd> | Tick labels on and off, find one, or make one if you may manage labels.                                                                                             |
+| **Blocked by** | <kbd>B</kbd> | The work items that have to land first: find one by its words, or type its number. What waits on it shows under it, as **Blocks**.                                  |
+| **Repos**      |              | The repositories it is linked to, in their roles. Link another as a target or as touched, or unlink one (never its origin; Triage role).                            |
+| **Links**      |              | Its sessions in Chat, its project, and what it is tied to outside g1t, such as a GitHub issue.                                                                      |
+
+Under them, whether you get [notifications](/guides/notifications/) about
+it. On a phone the panel folds under the title, with a line that sums it
+up; tap it to open it, and every picker works by touch.
+
+### Start agent and the ⋯ menu
+
+**Start agent** opens **Start an agent**: on the workspace's Anthropic
+account, where it has an Anthropic AI provider, or on your own machine as
+the Claude Code command to run (see
+[start a session on your Anthropic account](/guides/sessions/#start-a-session-on-your-anthropic-account)).
+Its arrow picks where, copies the work item's reference (`acme#12`) for
+your own agent, opens a draft pull request of your own with a fork to
+push to, or opens one from a branch you already pushed.
+
+The **⋯** menu claims it (<kbd>I</kbd>), renews, releases or hands off
+your claim with a note on where it stands, makes it a sub-item of another
+work item, closes it (<kbd>Shift</kbd> <kbd>C</kbd>, as completed or not
+planned, saying what becomes of open sub-items) or reopens it, and copies
+its link. A claim made here has no harness behind it, so it lapses after
+30 minutes unless you renew it.
+
+### Keys
+
+None of these work while you type in a field.
+
+| Key                                                                           | Does                                                      |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------- |
+| <kbd>E</kbd>                                                                  | Edit the title and description                            |
+| <kbd>A</kbd> <kbd>P</kbd> <kbd>H</kbd> <kbd>M</kbd> <kbd>L</kbd> <kbd>B</kbd> | Open the property's picker                                |
+| <kbd>D</kbd>                                                                  | Start an agent                                            |
+| <kbd>I</kbd>                                                                  | Claim it                                                  |
+| <kbd>Shift</kbd> <kbd>C</kbd>                                                 | Close it                                                  |
+| <kbd>J</kbd> / <kbd>K</kbd>                                                   | The next and previous work item in the list you came from |
+| <kbd>Ctrl</kbd> <kbd>Enter</kbd>                                              | Send a comment, or save an edit                           |
+
+<kbd>J</kbd> and <kbd>K</kbd> follow the list you opened it from: All
+items, the plan, the board, Triage, or a project's home. Opened from
+anywhere else, they follow the plan's order (Now, then Next) while it is
+in either. The keyboard's shortcuts (<kbd>?</kbd>) list them too.
+
+### Events
 
 Every change to a work item is an event, sent to
 [webhooks](/guides/webhooks/): `work_item.opened`, `work_item.updated`,

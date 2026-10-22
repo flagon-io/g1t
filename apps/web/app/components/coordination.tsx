@@ -518,6 +518,10 @@ export function StartSessionDialog({
   error,
   command,
   setupHref,
+  open: controlled,
+  onOpenChange,
+  trigger,
+  where: asked,
 }: {
   /** Whether sessions can start on the workspace's account; null when it could not be read. */
   setup: AgentSessionsSetup | null;
@@ -527,18 +531,38 @@ export function StartSessionDialog({
   command?: string | null;
   /** Where an owner sets hosted sessions up; absent for a member. */
   setupHref?: string | null;
+  /** Opened and closed by its caller (a page's key, a split button's menu) rather than by its own button. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Its own button; null for none, when the caller opens it. */
+  trigger?: ReactNode;
+  /** Where it runs when it opens, as the caller chose; else on the workspace's account where it can. */
+  where?: "hosted" | "local";
 }) {
   const hosted = setup?.available === true;
-  const [open, setOpen] = useState(Boolean(error || command));
+  const [own, setOwn] = useState(Boolean(error || command));
+  const open = controlled ?? own;
+  const setOpen = (next: boolean) => {
+    setOwn(next);
+    onOpenChange?.(next);
+  };
   const [where, setWhere] = useState<"hosted" | "local">(hosted ? "hosted" : "local");
+  // Opened for one place, it starts there.
+  useEffect(() => {
+    if (open && asked) setWhere(asked === "hosted" && !hosted ? "local" : asked);
+  }, [open, asked, hosted]);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="xs">
-          <Sparkles size={12} />
-          Start an agent
-        </Button>
-      </DialogTrigger>
+      {trigger !== null && (
+        <DialogTrigger asChild>
+          {trigger ?? (
+            <Button variant="outline" size="xs">
+              <Sparkles size={12} />
+              Start an agent
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent>
         <Form method="post" className="grid gap-5">
           <input type="hidden" name="action" value="start-session" />
