@@ -391,6 +391,11 @@ the databases, so start calls together and add no rounds.
 - A page is slowest in a data centre g1t has not run in lately: when
   Page speed's first try is slow, the status worker logs both tries'
   `Server-Timing` (`status.slow_first`), which says what the cold cost was.
+  `worker` is everything the site's Worker did and `isolate` whether it
+  was that isolate's first request: a first try's time beyond `worker` went
+  before the Worker ran. A signed-out page one data centre drew is kept for
+  the others too (`cache;desc=hit-shared`, the `PAGES` KV namespace), and
+  so is a repository's ref listing, for ten minutes (`refs;desc=hit-shared`).
 - A TypeScript service reports its database time too (`db;dur`, from
   `openD1` in `@g1t/contracts`): the round trips a method makes are what
   it costs, so start them together (`Promise.all`), keep what never

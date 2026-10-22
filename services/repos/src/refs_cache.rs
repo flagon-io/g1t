@@ -10,9 +10,12 @@
 //! than having to find and remove it. The key also holds the default branch
 //! (the answer's `HEAD` is rewritten to it, see `git_http::with_head`), the
 //! protocol version, and for `ls-refs` the whole request. Answers are kept
-//! in this colo's cache and, sealed, in the cache isolates share
-//! (shared.rs), each for [`TTL_SECONDS`] at most, which bounds how stale
-//! one can be should a change ever fail to move the version.
+//! in this colo's cache for [`TTL_SECONDS`] and, sealed, in the cache
+//! isolates share (shared.rs) for [`SHARED_TTL_SECONDS`], which bounds how
+//! stale one can be should a change ever fail to move the version. The
+//! shared copy lasts longer so a data centre that has not served the
+//! repository lately still finds it there, rather than ask the store
+//! (#383).
 //!
 //! Only ever served after the request was authorized, like any answer
 //! from the store: a private repository's answers are kept like any
@@ -24,8 +27,12 @@ use crate::shared::Shared;
 use g1t_contracts::repos::GitService;
 use worker::{Headers, Response, Result};
 
-/// How long an answer is kept, at most.
+/// How long an answer is kept in a colo's cache, at most.
 pub const TTL_SECONDS: u64 = 60;
+/// How long an answer is kept in the shared cache, at most: long enough
+/// that a repository fetched every few minutes, from anywhere, is found
+/// there by a colo that has no copy of its own.
+pub const SHARED_TTL_SECONDS: u64 = 10 * 60;
 /// Larger answers (repositories with tens of thousands of refs) are not kept.
 const MAX_KEPT_BYTES: usize = 1024 * 1024;
 /// An `ls-refs` request larger than this (a great many ref prefixes) is
@@ -210,7 +217,7 @@ pub async fn keep(shared: Option<&Shared>, key: &Key, entry: &Entry) {
     }
     let shared_put = async {
         if let Some(shared) = shared {
-            shared.put(&key.shared_key(), &entry.encode(), TTL_SECONDS).await;
+            shared.put(&key.shared_key(), &entry.encode(), SHARED_TTL_SECONDS).await;
         }
     };
     futures_util::future::join(keep_in_colo(key, entry), shared_put).await;

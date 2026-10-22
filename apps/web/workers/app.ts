@@ -11,7 +11,7 @@ import { wantsServerErrors } from "../app/lib/developer-mode";
 import { crawlerLimited, gitLimited, pageLimited, usercontentLimited } from "../app/lib/front-door-limits";
 import { alsoKeptForCrawlers, costlyForCrawlers, crawlerCacheKey, crawlerKeepSeconds, crawlerOf, keptForCrawlers, signedOut } from "../app/lib/crawlers";
 import { goImport } from "../app/lib/go-get";
-import { repositoryOfPage, stillPublic } from "../app/lib/public-cache";
+import { decodeSharedPage, encodeSharedPage, repositoryOfPage, sharedPageKey, stillPublic } from "../app/lib/public-cache";
 import { registryWorkspace, servicePath } from "../app/lib/registry-paths";
 import { usercontentPath } from "../app/lib/usercontent";
 import { TOKEN_CHALLENGE } from "../app/lib/website-token";
@@ -66,6 +66,9 @@ const MOVED_DOCS: Record<string, string> = {
   "/docs/api/reference": "/reference/api/",
 };
 
+/** Whether this isolate has been handed a request yet. */
+let started = false;
+
 export default {
   async fetch(request, env, ctx) {
     // Repository files and avatars, on their own origin
@@ -75,13 +78,22 @@ export default {
     if (usercontent !== null) {
       return (await usercontentLimited(env, request, usercontent)) ?? serveUsercontent(env, ctx, request, usercontent);
     }
+    const arrived = Date.now();
+    const fresh = !started;
+    started = true;
     // A pull request's preview is for g1t staff, signed in through
     // Cloudflare Access (app/lib/preview-access.ts).
     const refused = await refusePreview(request, previewAccessSettings(env));
     if (refused) return withSiteHeaders(refused);
     // Every answer: no sniffing, a referrer of the origin alone, and no
     // framing of pages (app/lib/page-headers.ts).
-    return withSiteHeaders(await site(request, env, ctx));
+    const answer = withSiteHeaders(await site(request, env, ctx));
+    // Everything this Worker did, from the moment it was handed the request
+    // (`total` starts later, after the limits and the page cache), and
+    // whether it was this isolate's first: what a first try waited for
+    // beyond these is Cloudflare's, before this Worker ran (#383).
+    if (answer.status !== 101) answer.headers.append("server-timing", `worker;dur=${Date.now() - arrived}, isolate;desc=${fresh ? "new" : "warm"}`);
+    return answer;
   },
 } satisfies ExportedHandler<Env>;
 
@@ -181,6 +193,7 @@ async function servePublic(env: Env, request: Request, ctx: ExecutionContext, re
   keyUrl.searchParams.set("_g1t_representation", pageRepresentation(request.headers.get("accept")));
   const key = new Request(keyUrl, { method: "GET" });
   const repository = PUBLIC_PROJECT.test(new URL(request.url).pathname) ? repositoryOfPage(new URL(request.url).pathname) : null;
+  const looking = Date.now();
   // Asked alongside the cache, so a hit waits for one indexed read at most.
   // A cache that does not answer is a miss: the page is drawn afresh.
   const [cached, visible] = await Promise.all([
@@ -196,7 +209,18 @@ async function servePublic(env: Env, request: Request, ctx: ExecutionContext, re
     );
     return render();
   }
-  const keptAt = Number(cached?.headers.get("x-g1t-kept-at") ?? 0);
+  // No copy here: the one every data centre shares, kept by whichever drew
+  // the page last after finding none of its own (lib/public-cache.ts).
+  const pages = env.PAGES;
+  const sharedKey = pages && !cached && visible ? await sharedPageKey(key.url) : null;
+  const shared =
+    pages && sharedKey
+      ? await withDeadline("shared cache", CACHE_DEADLINE_MS, () => pages.get(sharedKey, "arrayBuffer"))
+          .then((bytes) => (bytes ? decodeSharedPage(new Uint8Array(bytes)) : null))
+          .catch(() => null)
+      : null;
+  const lookupMs = Date.now() - looking;
+  const keptAt = cached ? Number(cached.headers.get("x-g1t-kept-at") ?? 0) : (shared?.keptAt ?? 0);
   const age = Math.round((Date.now() - keptAt) / 1000);
   const refresh = async () => {
     const fresh = await render();
@@ -205,14 +229,30 @@ async function servePublic(env: Env, request: Request, ctx: ExecutionContext, re
     const cacheable =
       (fresh.status === 200 || fresh.status === 404) && !fresh.headers.has("set-cookie") && !/private|no-store/.test(fresh.headers.get("cache-control") ?? "");
     if (cacheable) {
+      const now = Date.now();
       const copy = new Response(fresh.clone().body, fresh);
-      copy.headers.set("x-g1t-kept-at", String(Date.now()));
+      copy.headers.set("x-g1t-kept-at", String(now));
       copy.headers.set("cache-control", `public, max-age=${PUBLIC_STALE_SECONDS}`);
       ctx.waitUntil(cache.put(key, copy));
+      // Shared only by a data centre that had no copy of its own, so it is
+      // written at most once per data centre per page while it is kept,
+      // not by every data centre's refresh of its own.
+      if (pages && sharedKey) {
+        const body = fresh.clone().arrayBuffer();
+        ctx.waitUntil(
+          body
+            .then((bytes) =>
+              pages.put(sharedKey, encodeSharedPage({ status: fresh.status, headers: [...fresh.headers], keptAt: now, body: new Uint8Array(bytes) }), {
+                expirationTtl: PUBLIC_STALE_SECONDS,
+              }),
+            )
+            .catch(() => undefined),
+        );
+      }
     }
     return fresh;
   };
-  if (cached && keptAt > 0 && age < PUBLIC_STALE_SECONDS) {
+  if ((cached || shared) && keptAt > 0 && age < PUBLIC_STALE_SECONDS) {
     if (age >= PUBLIC_FRESH_SECONDS)
       ctx.waitUntil(
         refresh().then(
@@ -220,10 +260,20 @@ async function servePublic(env: Env, request: Request, ctx: ExecutionContext, re
           () => undefined,
         ),
       );
-    const answer = new Response(cached.body, cached);
+    let answer: Response;
+    if (cached) {
+      answer = new Response(cached.body, cached);
+    } else {
+      answer = new Response(shared!.body, { status: shared!.status, headers: shared!.headers });
+      // Kept here too, as old as it is, so this data centre's next visitor reads it from here.
+      const copy = new Response(shared!.body, { status: shared!.status, headers: shared!.headers });
+      copy.headers.set("x-g1t-kept-at", String(keptAt));
+      copy.headers.set("cache-control", `public, max-age=${PUBLIC_STALE_SECONDS}`);
+      if (age < PUBLIC_FRESH_SECONDS) ctx.waitUntil(cache.put(key, copy).catch(() => undefined));
+    }
     answer.headers.delete("x-g1t-kept-at");
     answer.headers.delete("cache-control");
-    answer.headers.set("server-timing", `cache;desc="hit, ${age}s old"`);
+    answer.headers.set("server-timing", `cache;desc="${cached ? "hit" : "hit-shared"}, ${age}s old", lookup;dur=${lookupMs}`);
     return answer;
   }
   return refresh();
