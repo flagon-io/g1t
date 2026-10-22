@@ -30,7 +30,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { type ReactNode, type Ref, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Form, Link, useLoaderData, useSearchParams } from "react-router";
+import { Form, Link, type ShouldRevalidateFunctionArgs, useLoaderData, useSearchParams } from "react-router";
 
 import {
   type Annotation,
@@ -107,6 +107,22 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // The runners page is the workspace owners'.
     runnersPage: roleIn(viewer, params.owner) === "owner",
   };
+}
+
+/**
+ * Picking a job changes only `?job=`, which the loader does not read: the
+ * run is already here, so it is not asked for again. Refreshes (the same
+ * address) and another attempt still load.
+ */
+export function shouldRevalidate({ currentUrl, nextUrl, formMethod, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
+  if (formMethod || currentUrl.href === nextUrl.href || currentUrl.pathname !== nextUrl.pathname) return defaultShouldRevalidate;
+  const withoutJob = (url: URL) => {
+    const search = new URLSearchParams(url.search);
+    search.delete("job");
+    search.sort();
+    return search.toString();
+  };
+  return withoutJob(currentUrl) === withoutJob(nextUrl) ? false : defaultShouldRevalidate;
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
