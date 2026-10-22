@@ -26,9 +26,10 @@ use worker::Result;
 
 use crate::catch_up::{Change, Signature, ancestors, commit_object, merge_tree, overlapping, read_dirs};
 use crate::diff::{FileEntry, changed_entries};
+use crate::merge_base::{MergeBase, merge_base};
 use crate::registry::store_key;
 use crate::store::{GitRepo, GitStore, Scope};
-use crate::{MAX_ANCESTRY, Repos, descends_from, land, nearest_ancestor_in, refs};
+use crate::{MAX_ANCESTRY, Repos, descends_from, land, refs};
 
 /// Files larger than this are not merged line by line.
 pub(crate) const MAX_MERGE_BYTES: usize = 1024 * 1024;
@@ -244,10 +245,15 @@ async fn make<R: GitRepo>(git: &R, base: &str, head: &str) -> Result<Made> {
     let tree = if descends_from(git, &head_log, base).await? {
         head_commit.tree_hash.clone()
     } else {
-        let shared = base_log.iter().map(|commit| commit.hash.clone()).collect();
-        let merge_base = nearest_ancestor_in(git, &head_log, &shared).await?;
-        let Some(merge_base_tree) = merge_base.and_then(|hash| base_log.iter().find(|commit| commit.hash == hash)).map(|commit| commit.tree_hash.clone()) else {
-            return Ok(Made::Unsupported("g1t could not find where the head left the base branch".to_owned()));
+        let line = base_log.iter().map(|commit| commit.hash.clone()).collect();
+        let Some(MergeBase {
+            tree: merge_base_tree,
+            ..
+        }) = merge_base(git, &head_log, git, &base_log, &line).await?
+        else {
+            return Ok(Made::Unsupported(
+                "g1t could not find where the head left the base branch".to_owned(),
+            ));
         };
         let ((ours, ours_cut), (theirs, theirs_cut)) = try_join(
             changed_entries(git, Some(&merge_base_tree), &head_commit.tree_hash),
@@ -731,6 +737,28 @@ mod tests {
         store.commit("b", &["m"], &[("a", "3\n"), ("b", "y\n")]);
         let Made::Conflict(paths) = block_on(make(&store, "b", "h")).unwrap() else { panic!("no conflict") };
         assert_eq!(paths, ["a"]);
+    }
+
+    #[test]
+    fn a_branch_made_from_a_pull_request_merged_with_a_merge_commit_merges_cleanly() {
+        // flagon-io/g1t#362: made from #360's branch (p1), which then merged
+        // into main as a merge commit (M) after main took m1. Measured from
+        // m0, where #360 left main, both sides changed home.tsx; from p1,
+        // where #362 left, only #362 did.
+        let mut store = Store::default();
+        store.commit("m0", &[], &[("home", "a\n"), ("other", "1\n")]);
+        store.commit("p1", &["m0"], &[("home", "a\nP\n"), ("other", "1\n")]);
+        store.commit("s1", &["p1"], &[("home", "a\nPS\n"), ("other", "1\n")]);
+        store.commit("m1", &["m0"], &[("home", "a\n"), ("other", "2\n")]);
+        store.commit("M", &["m1", "p1"], &[("home", "a\nP\n"), ("other", "2\n")]);
+        let made = block_on(make(&store, "M", "s1")).unwrap();
+        assert_eq!(
+            merged_files(&store, made, "M", "s1"),
+            [
+                ("home".to_owned(), "a\nPS\n".to_owned()),
+                ("other".to_owned(), "2\n".to_owned())
+            ]
+        );
     }
 
     #[test]

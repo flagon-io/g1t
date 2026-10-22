@@ -51,6 +51,26 @@ fn token_opens(current: Option<&str>, first: Option<&str>, token: &str, started:
 pub(crate) const LOG_INSERT: &str = "INSERT INTO logs (job_id, seq, step, text, chunk)
      SELECT ?1, COALESCE(MAX(seq), 0) + 1, ?2, ?3, ?4 FROM logs WHERE job_id = ?1
      ON CONFLICT (job_id, chunk) DO NOTHING";
+/// Adds a batch of `?2` bytes to the job `?1`'s count of its log (migration
+/// 0027), and with `?3` marks it seen. Sent in the same batch as, and just
+/// ahead of, [`LOG_INSERT`] with the same `?4`: a batch sent again, which
+/// the insert does not keep twice, is not counted twice either.
+pub(crate) const LOG_COUNTED: &str = "UPDATE jobs SET seen_at = COALESCE(?3, seen_at),
+       log_bytes = log_bytes + CASE WHEN ?4 IS NOT NULL AND EXISTS (SELECT 1 FROM logs WHERE job_id = ?1 AND chunk = ?4) THEN 0 ELSE ?2 END
+     WHERE id = ?1";
+
+/// Whether a batch of log is kept by a job that has `used` bytes of it
+/// already: the one that reaches [`MAX_LOG_BYTES`] is kept whole, with a
+/// line to say the rest is not, and none after it.
+fn log_room(used: usize, text: &mut String) -> bool {
+    if used >= MAX_LOG_BYTES {
+        return false;
+    }
+    if used + text.len() >= MAX_LOG_BYTES {
+        text.push_str("\n… The log reached its limit of 4 MB; the rest is not kept.\n");
+    }
+    true
+}
 /// The most one step's job summary keeps, in bytes, and how many steps of a
 /// job may have one, as on GitHub.
 pub(crate) const MAX_SUMMARY_BYTES: usize = 1024 * 1024;
@@ -257,6 +277,9 @@ pub struct JobRow {
     /// (migration 0025).
     #[serde(default)]
     pub waiting_since: Option<String>,
+    /// How many bytes of log it has kept so far (migration 0027).
+    #[serde(default)]
+    pub log_bytes: u32,
 }
 
 /// How long a cancelled job has to run its `if: always()` and `cancelled()`
@@ -2358,7 +2381,7 @@ impl Actions {
                         "UPDATE jobs SET status = 'waiting', conclusion = NULL, steps = '[]', annotations = '[]', outputs = '{}', reason = NULL,
                            matrix = NULL, call = NULL, token_hash = NULL, first_token_hash = NULL, seen_at = NULL, started_at = NULL, finished_at = NULL,
                            labels = NULL, queued_at = NULL, runner_id = NULL, runner_name = NULL, environment = NULL,
-                           concurrency_group = NULL, cancel_in_progress = 0, cancel_requested_at = NULL WHERE run_id = ? AND key = ?",
+                           concurrency_group = NULL, cancel_in_progress = 0, cancel_requested_at = NULL, log_bytes = 0 WHERE run_id = ? AND key = ?",
                     )
                     .bind(&[run.id.as_str().into(), key.as_str().into()])?,
             );
@@ -2790,37 +2813,42 @@ impl Actions {
                     }
                     text.truncate(cut);
                 }
-                #[derive(Deserialize)]
-                struct Size {
-                    n: Option<f64>,
-                }
-                let size = self
-                    .db
-                    .prepare("SELECT SUM(LENGTH(text)) AS n FROM logs WHERE job_id = ?")
-                    .bind(&[job.id.as_str().into()])?
-                    .first::<Size>(None)
-                    .await?;
-                let used = size.and_then(|s| s.n).unwrap_or(0.0) as usize;
-                if used < MAX_LOG_BYTES {
-                    if used + text.len() >= MAX_LOG_BYTES {
-                        text.push_str("\n… The log reached its limit of 4 MB; the rest is not kept.\n");
-                    }
+                // Checked against the count kept on the job, read with it
+                // just now, rather than the log added up again: the count
+                // and the batch are written together, so the count is
+                // always the log's own size. Two reports at once may both
+                // find room, as before, and take the log one batch past.
+                if log_room(job.log_bytes as usize, &mut text) {
+                    let chunk = report["chunk"]
+                        .as_u64()
+                        .map_or(worker::wasm_bindgen::JsValue::NULL, |n| (n as f64).into());
                     // The next `seq` is taken in the insert itself, so two
                     // batches at once (a report sent again while the first
                     // was still being written) never reach for the same one
                     // and lose a chunk to the primary key.
                     self.db
-                        .prepare(LOG_INSERT)
-                        .bind(&[
-                            job.id.as_str().into(),
-                            (report["step"].as_u64().unwrap_or(0) as u32).into(),
-                            text.into(),
-                            report["chunk"].as_u64().map_or(worker::wasm_bindgen::JsValue::NULL, |n| (n as f64).into()),
-                        ])?
+                        .batch(vec![
+                            self.db.prepare(LOG_COUNTED).bind(&[
+                                job.id.as_str().into(),
+                                (text.len() as u32).into(),
+                                at.as_str().into(),
+                                chunk.clone(),
+                            ])?,
+                            self.db.prepare(LOG_INSERT).bind(&[
+                                job.id.as_str().into(),
+                                (report["step"].as_u64().unwrap_or(0) as u32).into(),
+                                text.into(),
+                                chunk,
+                            ])?,
+                        ])
+                        .await?;
+                } else {
+                    self.db
+                        .prepare("UPDATE jobs SET seen_at = ? WHERE id = ?")
+                        .bind(&[at.into(), job.id.as_str().into()])?
                         .run()
                         .await?;
                 }
-                self.db.prepare("UPDATE jobs SET seen_at = ? WHERE id = ?").bind(&[at.into(), job.id.as_str().into()])?.run().await?;
             }
             "summary" => {
                 // `$GITHUB_STEP_SUMMARY`, masked by the runner: added to the
@@ -3080,6 +3108,131 @@ mod log_chunks {
         assert_eq!(insert("job_1", 0, "again\n", Some(1)), 1);
         assert_eq!(log(&db, "job_1"), [(1, 0, "again\n".into())]);
         assert_eq!(log(&db, "job_1.1").len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod log_bytes {
+    use rusqlite::{Connection, params};
+
+    use super::{LOG_COUNTED, LOG_INSERT, MAX_LOG_BYTES, log_room};
+
+    fn migrate(db: &Connection, names: &[&str]) {
+        for name in names {
+            let path = format!("{}/migrations/{name}", env!("CARGO_MANIFEST_DIR"));
+            db.execute_batch(&std::fs::read_to_string(path).unwrap()).unwrap();
+        }
+    }
+
+    fn add_job(db: &Connection, id: &str, finished: Option<&str>) {
+        db.execute(
+            "INSERT INTO jobs (id, run_id, repo_id, namespace, key, name, status, finished_at) VALUES (?1, 'run_1', 'repo_1', 'acme', ?1, ?1, 'in_progress', ?2)",
+            params![id, finished],
+        )
+        .unwrap();
+    }
+
+    fn bytes(db: &Connection, job: &str) -> i64 {
+        db.query_row("SELECT log_bytes FROM jobs WHERE id = ?", [job], |row| {
+            row.get(0)
+        })
+        .unwrap()
+    }
+
+    /// A report's batch as `job_report` writes it: counted, then kept.
+    fn report(db: &Connection, job: &str, text: &str, chunk: Option<i64>, at: Option<&str>) {
+        let tx = db.unchecked_transaction().unwrap();
+        tx.execute(LOG_COUNTED, params![job, text.len() as i64, at, chunk])
+            .unwrap();
+        tx.execute(LOG_INSERT, params![job, 0, text, chunk])
+            .unwrap();
+        tx.commit().unwrap();
+    }
+
+    #[test]
+    fn the_migration_counts_the_jobs_still_running_in_bytes() {
+        let db = Connection::open_in_memory().unwrap();
+        migrate(&db, &["0001_init.sql", "0016_log_chunks.sql"]);
+        add_job(&db, "running", None);
+        add_job(&db, "quiet", None);
+        add_job(&db, "done", Some("2026-01-01T00:00:00Z"));
+        for (job, text) in [
+            ("running", "héllo\n"),
+            ("running", "two\n"),
+            ("done", "old\n"),
+        ] {
+            db.execute(LOG_INSERT, params![job, 0, text, None::<i64>])
+                .unwrap();
+        }
+        migrate(&db, &["0027_log_bytes.sql"]);
+        // Bytes, as the limit is: é is two.
+        assert_eq!(
+            bytes(&db, "running"),
+            ("héllo\n".len() + "two\n".len()) as i64
+        );
+        assert_eq!(bytes(&db, "quiet"), 0);
+        // A finished job is sent no more log, so is not counted.
+        assert_eq!(bytes(&db, "done"), 0);
+    }
+
+    #[test]
+    fn each_batch_kept_adds_to_the_count_once() {
+        let db = Connection::open_in_memory().unwrap();
+        migrate(
+            &db,
+            &["0001_init.sql", "0016_log_chunks.sql", "0027_log_bytes.sql"],
+        );
+        add_job(&db, "job_1", None);
+        report(&db, "job_1", "one\n", Some(1), Some("2026-01-01T00:00:01Z"));
+        assert_eq!(bytes(&db, "job_1"), 4);
+        // Sent again after an answer the runner did not hear: neither kept
+        // nor counted twice, though the job was still heard from.
+        report(&db, "job_1", "one\n", Some(1), Some("2026-01-01T00:00:02Z"));
+        assert_eq!(bytes(&db, "job_1"), 4);
+        report(
+            &db,
+            "job_1",
+            "three\n",
+            Some(2),
+            Some("2026-01-01T00:00:03Z"),
+        );
+        // g1t's own notes number nothing, are always kept, and leave when
+        // it was last heard from alone.
+        report(&db, "job_1", "note\n", None, None);
+        report(&db, "job_1", "note\n", None, None);
+        let (counted, seen): (i64, String) = db
+            .query_row(
+                "SELECT log_bytes, seen_at FROM jobs WHERE id = 'job_1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let kept: i64 = db
+            .query_row(
+                "SELECT SUM(LENGTH(CAST(text AS BLOB))) FROM logs WHERE job_id = 'job_1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(counted, kept);
+        assert_eq!(counted, 4 + 6 + 5 + 5);
+        assert_eq!(seen, "2026-01-01T00:00:03Z");
+    }
+
+    #[test]
+    fn the_batch_that_reaches_the_limit_is_the_last_kept() {
+        let mut text = "a".repeat(10);
+        assert!(log_room(0, &mut text));
+        assert_eq!(text, "a".repeat(10));
+        let mut text = "a".repeat(10);
+        assert!(log_room(MAX_LOG_BYTES - 10, &mut text));
+        assert!(
+            text.starts_with(&"a".repeat(10)) && text.contains("limit of 4 MB"),
+            "{text}"
+        );
+        let mut text = "a".repeat(10);
+        assert!(!log_room(MAX_LOG_BYTES, &mut text));
+        assert!(!log_room(MAX_LOG_BYTES + 100, &mut text));
     }
 }
 

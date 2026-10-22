@@ -30,7 +30,7 @@ use serde_json::{Map, Value};
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
-use crate::plan::LOG_INSERT;
+use crate::plan::{LOG_COUNTED, LOG_INSERT};
 use crate::{Actions, Count, check, fail};
 
 /// The most hosts one brokered secret names.
@@ -202,11 +202,24 @@ impl Actions {
     }
 
     /// Adds g1t's own lines to a job's log, under `step` (0 for its setup).
+    /// They count toward its log's size, though they are kept past it.
     pub(crate) async fn note_log(&self, job_id: &str, step: u32, text: &str) -> Result<()> {
+        let text = stamped(text);
         self.db
-            .prepare(LOG_INSERT)
-            .bind(&[job_id.into(), step.into(), stamped(text).into(), JsValue::NULL])?
-            .run()
+            .batch(vec![
+                self.db.prepare(LOG_COUNTED).bind(&[
+                    job_id.into(),
+                    (text.len() as u32).into(),
+                    JsValue::NULL,
+                    JsValue::NULL,
+                ])?,
+                self.db.prepare(LOG_INSERT).bind(&[
+                    job_id.into(),
+                    step.into(),
+                    text.into(),
+                    JsValue::NULL,
+                ])?,
+            ])
             .await?;
         Ok(())
     }
