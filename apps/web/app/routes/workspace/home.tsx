@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useState } from "react";
-import { Await, data, redirect } from "react-router";
+import { Await, data } from "react-router";
 
 import { type WorkspaceSession, hasCodeAccess } from "@g1t/contracts";
 
@@ -84,7 +84,6 @@ import { page } from "../../lib/meta";
 import { billing, identity, inbox, work } from "../../lib/services.server";
 import { managesBilling, requireUser, roleIn } from "../../lib/session.server";
 import { canItem } from "../../lib/work-access";
-import { isPhone } from "../../lib/phone";
 import { Boundary } from "../../components/boundary";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -134,12 +133,6 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const now = Date.now();
   const tz = readCookie(request.headers.get("cookie"), "g1t_tz");
   const url = new URL(request.url);
-  // On a computer Home is Chat's landing (routes/workspace/chat/index.tsx): its own address leads there.
-  if (url.pathname.toLowerCase().endsWith(`/${slug}/-/home`) && !isPhone(request.headers)) {
-    url.searchParams.delete("_routes");
-    const query = url.searchParams.toString();
-    throw redirect(`/${slug}/-/chat${query ? `?${query}` : ""}`);
-  }
   const windowKey = parseWindow(url.searchParams.get("window"));
   // Getting started, for an owner: streamed, and opened by itself until dismissed (`?setup` opens it anyway).
   const setupAsked = url.searchParams.has("setup");
@@ -414,16 +407,14 @@ function useMarkSeen(slug: string, loadedAt: number) {
   }, [slug, loadedAt]);
 }
 
-/** Home's page, from its loader's data: its own route draws it, and so does Chat's first page (routes/workspace/chat/index.tsx). */
+/** Home's page, from its loader's data. */
 export default function Home({ loaderData }: Route.ComponentProps) {
-  return <HomePage data={loaderData} />;
+  return <HomePage key={loaderData.slug} data={loaderData} />;
 }
 
 /**
- * Home itself, taking its data as a prop. The route's default export is
- * wrapped by the router, which hands it the data of the route it is drawn
- * in: drawn inside another route (Chat's first page), that would be the
- * other route's data, so that route draws this instead.
+ * Home itself, taking its data as a prop. Keyed by the workspace above, so
+ * nothing of the last one is held over after switching.
  */
 export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loaderData"] }) {
   const { slug, now, tz, span, digest, happened, attention: waiting, away, live, head, spend, signal } = loaderData;
@@ -496,23 +487,8 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
         </HeldSuspense>
       )}
 
-      {/* 4. The workspace's ground truth: what is moving and waiting team by team, and the quiet changes; spend for billing. */}
-      {loaderData.ground && (
-        <HeldSuspense id={`home:${slug}:ground`} fallback={<GroundSkeleton />}>
-          <Await resolve={loaderData.ground}>
-            {(value) =>
-              value && (
-                <Boundary what="What the work says">
-                  <GroundTruth slug={slug} ground={value} pulse={false} money={loaderData.money} />
-                </Boundary>
-              )
-            }
-          </Await>
-        </HeldSuspense>
-      )}
-
       <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_24rem]">
-        {/* 5. What happened in the span: in a sentence, then in plain English, then who did what, then what landed. */}
+        {/* 4. What happened in the span: in a sentence, then in plain English, then who did what, then what landed. */}
         <section aria-labelledby="since" className="rounded-2xl border border-line bg-surface">
           <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-5 pt-4">
             <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -571,7 +547,7 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
           </HeldSuspense>
         </section>
 
-        {/* 6. What the span cost (for billing), and what settled by itself: kept in view beside it. */}
+        {/* 5. What the span cost (for billing), and what settled by itself: kept in view beside it. */}
         <aside aria-label="Cost and settled" className="space-y-5 lg:sticky lg:top-4">
           {spend && (
             <HeldSuspense
@@ -609,6 +585,21 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
           </HeldSuspense>
         </aside>
       </div>
+
+      {/* 6. The workspace: what is moving and waiting team by team, and the quiet changes; spend for billing. Drawn as Home's cards. */}
+      {loaderData.ground && (
+        <HeldSuspense id={`home:${slug}:ground`} fallback={<GroundSkeleton />}>
+          <Await resolve={loaderData.ground}>
+            {(value) =>
+              value && (
+                <Boundary what="What the work says">
+                  <GroundTruth slug={slug} ground={value} pulse={false} money={loaderData.money} compact />
+                </Boundary>
+              )
+            }
+          </Await>
+        </HeldSuspense>
+      )}
 
       {/* 7. The workspace at a glance: who is in it, and the month's usage against its plan (for billing). */}
       <div className={`grid grid-cols-[minmax(0,1fr)] items-start gap-5 ${loaderData.usage ? "lg:grid-cols-[minmax(0,1fr)_24rem]" : "lg:grid-cols-2"}`}>

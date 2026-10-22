@@ -1130,9 +1130,14 @@ fn rust_builds_go_through_sccache_before_cargo_and_report_after() {
     // builds and tsc's build info; the site's build keeps nothing.
     assert!(ci.trigger("push").unwrap().branches.allows("main"));
     assert!(ci.trigger("pull_request").is_some());
+    assert!(ci.trigger("merge_group").is_some());
     for (id, on_push) in [("rust", true), ("typescript", true), ("build", false)] {
         let job = ci.jobs.iter().find(|j| j.id == id).unwrap();
-        for (event, expected) in [("push", on_push), ("pull_request", true)] {
+        for (event, expected) in [
+            ("push", on_push),
+            ("pull_request", true),
+            ("merge_group", true),
+        ] {
             let mut contexts = Map::new();
             contexts.insert(
                 "github".into(),
@@ -1433,6 +1438,10 @@ fn ci_tests_only_the_crates_a_pull_request_reaches() {
         // A part with nothing to test does nothing more, and passes.
         assert!(!runs_with(step, &none, Status::Success), "{name}");
         assert!(!runs_with(step, &none, Status::Failure), "{name}");
+        // Built only for a push the merge queue tested (below).
+        if name == "Tests, compiled only" {
+            continue;
+        }
         assert!(runs_with(step, &all, Status::Success), "{name}");
         // Only a build of every crate of the part is pruned and saved.
         let keeps = name == "Only this build's files are saved" || saves(step) && step.id.as_deref() != Some("test-build") && step.raw["with"]["key"].as_str().is_some_and(|k| k.starts_with("cargo-test-"));
@@ -1444,6 +1453,125 @@ fn ci_tests_only_the_crates_a_pull_request_reaches() {
     for path in ["\"Cargo.lock\"", "\".g1t/workflows/ci.yml\"", "\"scripts/sccache.sh\"", "\"scripts/deploy/ci-affected.mjs\""] {
         assert!(script.contains(path), "{path}");
     }
-    // Anything but a pull request tests every crate.
-    assert!(script.contains("process.env.GITHUB_EVENT_NAME !== \"pull_request\""));
+    // Anything but a pull request or a merge queue state tests every crate.
+    assert!(script.contains("if (event === \"pull_request\") {"));
+    assert!(script.contains("if (event === \"merge_group\") {"));
+    assert!(script.contains("return { why: `a ${event ?? \"local\"} run tests every crate` };"));
+}
+
+#[test]
+fn a_push_the_merge_queue_tested_keeps_mains_caches_and_runs_no_tests_again() {
+    let ci = read("ci.yml");
+    // Its token may read runs: ci-affected.mjs asks whether the push's
+    // commit passed a merge_group run of CI.
+    assert_eq!(ci.raw["permissions"]["actions"], json!("read"));
+    let rust = ci.jobs.iter().find(|j| j.id == "rust").unwrap();
+    let affected = rust
+        .steps
+        .iter()
+        .find(|s| s.id.as_deref() == Some("affected"))
+        .unwrap();
+    assert_eq!(
+        affected.raw["env"]["GITHUB_TOKEN"],
+        json!("${{ github.token }}")
+    );
+    let outputs = |tested: bool| {
+        json!({ "steps": {
+            "affected": { "outputs": { "crates": "-p g1t-kit -p g1t", "whole": "true", "tested": tested.to_string() } },
+            "test-build": { "outputs": { "cache-hit": "false" } },
+        } })
+    };
+    let named = |name: &str| {
+        rust.steps
+            .iter()
+            .find(|s| s.name.as_deref() == Some(name))
+            .unwrap_or_else(|| panic!("no step {name}"))
+    };
+    let (tests, compiled) = (named("Tests"), named("Tests, compiled only"));
+    assert_eq!(
+        tests.run.as_deref(),
+        Some("cargo test ${{ steps.affected.outputs.crates }} --locked --quiet")
+    );
+    assert_eq!(
+        compiled.run.as_deref(),
+        Some("cargo test ${{ steps.affected.outputs.crates }} --locked --quiet --no-run")
+    );
+    for (tested, test, compile) in [(false, true, false), (true, false, true)] {
+        assert_eq!(
+            runs_with(tests, &outputs(tested), Status::Success),
+            test,
+            "tested={tested}"
+        );
+        assert_eq!(
+            runs_with(compiled, &outputs(tested), Status::Success),
+            compile,
+            "tested={tested}"
+        );
+        // Either way the whole build is pruned and saved for pull requests.
+        assert!(runs_with(
+            named("Only this build's files are saved"),
+            &outputs(tested),
+            Status::Success
+        ));
+        assert!(runs_with(
+            named("Save the test build"),
+            &outputs(tested),
+            Status::Success
+        ));
+    }
+    // A queue state's branch is gone once it lands: it saves no test build.
+    let mut queued = outputs(false).as_object().unwrap().clone();
+    queued.insert("github".into(), json!({ "event_name": "merge_group" }));
+    assert!(!runs_with(
+        named("Save the test build"),
+        &Value::Object(queued),
+        Status::Success
+    ));
+    // TypeScript type checks, saving tsc's build info, and runs no tests.
+    let typescript = ci.jobs.iter().find(|j| j.id == "typescript").unwrap();
+    let queue = typescript
+        .steps
+        .iter()
+        .position(|s| s.id.as_deref() == Some("queue"))
+        .unwrap();
+    assert_eq!(
+        typescript.steps[queue].run.as_deref(),
+        Some("node scripts/deploy/ci-affected.mjs --tested")
+    );
+    assert_eq!(
+        typescript.steps[queue].raw["env"]["GITHUB_TOKEN"],
+        json!("${{ github.token }}")
+    );
+    let check = typescript
+        .steps
+        .iter()
+        .position(|s| s.run.as_deref() == Some("npm run typecheck"))
+        .unwrap();
+    assert!(queue < check);
+    let tested = |yes: bool| json!({ "steps": { "queue": { "outputs": { "tested": yes.to_string() } } }, "github": { "event_name": "push" } });
+    for step in &typescript.steps[check..] {
+        let name = step.name.clone().unwrap_or_default();
+        assert!(runs_with(step, &tested(false), Status::Success), "{name}");
+        let kept = step.run.as_deref() == Some("npm run typecheck") || saves(step);
+        assert_eq!(
+            runs_with(step, &tested(true), Status::Success),
+            kept,
+            "{name}"
+        );
+    }
+    // The desktop job asks too, and passes without running (ci-affected.mjs).
+    let desktop = ci.jobs.iter().find(|j| j.id == "desktop").unwrap();
+    let asks = desktop
+        .steps
+        .iter()
+        .find(|s| s.id.as_deref() == Some("affected"))
+        .unwrap();
+    assert_eq!(
+        asks.run.as_deref(),
+        Some("node scripts/deploy/ci-affected.mjs --job desktop")
+    );
+    assert_eq!(
+        asks.raw["env"]["GITHUB_TOKEN"],
+        json!("${{ github.token }}")
+    );
 }

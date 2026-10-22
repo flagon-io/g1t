@@ -151,6 +151,7 @@ import {
   pagePath,
   repositoriesPath,
   workspaceSettingsPage,
+  isIntegrationsPath,
 } from "../lib/workspace-nav";
 import { useSidebarLocation } from "../lib/use-sidebar-location";
 import { setupPath } from "../lib/onboarding";
@@ -2380,7 +2381,8 @@ export function AppShell({
     username: user.username,
   });
   const mode: ModeKey = browsing ? "browse" : modeOf(target, ws?.slug ?? null);
-  const panel = sidebarFor(mode, ws != null);
+  // The workspace's integrations are Apps's (lit in the app bar), kept beside the settings they are part of.
+  const panel = ws && isIntegrationsPath(target, ws.slug) ? "workspace" : sidebarFor(mode, ws != null);
   const { sidebar: chatSidebar } = useChatSidebar();
   // Notify: the feed socket's live counts (lib/notify-client.ts) once it has them; the page's until then.
   const live = useLiveBadges(ws?.slug);

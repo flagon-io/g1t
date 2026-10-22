@@ -27,8 +27,39 @@ export function GroundSkeleton() {
   );
 }
 
-/** A part of the ground truth: a mono eyebrow, a sentence for a heading, and what it shows. */
-function Section({ id, eyebrow, title, hint, children }: { id: string; eyebrow: string; title: string; hint?: ReactNode; children: ReactNode }) {
+/**
+ * A part of the ground truth: a mono eyebrow, a sentence for a heading, and
+ * what it shows. `compact` draws it as Home's cards are: the eyebrow as
+ * the card's title and the sentence under it.
+ */
+function Section({
+  id,
+  eyebrow,
+  title,
+  hint,
+  compact = false,
+  children,
+}: {
+  id: string;
+  eyebrow: string;
+  title: string;
+  hint?: ReactNode;
+  compact?: boolean;
+  children: ReactNode;
+}) {
+  if (compact) {
+    return (
+      <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-6 rounded-2xl border border-line bg-surface">
+        <header className="px-5 pt-4 pb-3">
+          <h2 id={`${id}-title`} className="text-sm font-semibold text-fg">
+            {eyebrow}
+          </h2>
+          <p className="mt-0.5 text-xs text-muted">{title}</p>
+        </header>
+        <div className="px-5 pb-5">{children}</div>
+      </section>
+    );
+  }
   return (
     <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-6 rounded-2xl border border-line bg-surface px-5 py-6 md:px-8 md:py-7">
       <p className="font-mono text-[0.6875rem] tracking-[0.16em] text-accent uppercase">{eyebrow}</p>
@@ -77,7 +108,21 @@ function QuietList({ title, hint, rows, empty }: { title: string; hint: string; 
  * week). `money` shows the spend threaded to the work, which is in dollars:
  * only for those who look after the workspace's billing.
  */
-export function GroundTruth({ slug, ground, pulse = true, money = true }: { slug: string; ground: Ground; pulse?: boolean; money?: boolean }) {
+export function GroundTruth({
+  slug,
+  ground,
+  pulse = true,
+  money = true,
+  compact = false,
+}: {
+  slug: string;
+  ground: Ground;
+  pulse?: boolean;
+  money?: boolean;
+  /** Drawn among Home's cards, as one of them. */
+  compact?: boolean;
+}) {
+  const quiet = [ground.silos, ground.newGround, ground.spreading, ground.habits].every((rows) => rows.length === 0);
   return (
     <div className="space-y-6">
       {pulse && (
@@ -110,6 +155,7 @@ export function GroundTruth({ slug, ground, pulse = true, money = true }: { slug
       )}
       <Section
         id="rhythm"
+        compact={compact}
         eyebrow="What's moving and what's waiting"
         title={ground.rhythm?.by === "project" ? "Each repository's last two weeks" : "Each team's last two weeks"}
         hint="Pull requests and agent sessions above the line; reviews, comments and requests for changes below it. Each row is drawn to its own scale: point at a day for its numbers."
@@ -150,36 +196,43 @@ export function GroundTruth({ slug, ground, pulse = true, money = true }: { slug
       </Section>
       <Section
         id="quiet"
+        compact={compact}
         eyebrow="Quiet changes"
         title="Who works where, and what is spreading"
         hint="What no roll-up shows: knowledge resting with one person, people moving into new ground, and new ways of working taking hold. Each is a place to look, not a verdict."
       >
-        <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-4">
-          <QuietList
-            title="Knowledge silos"
-            hint="Repositories where one person has done most of the last 90 days' work"
-            rows={ground.silos}
-            empty="No repository rests on one person right now."
-          />
-          <QuietList
-            title="New ground"
-            hint="People who merged to a repository for the first time in the last two weeks"
-            rows={ground.newGround}
-            empty="No one has moved into a new repository in the last two weeks."
-          />
-          <QuietList
-            title="Spreading"
-            hint="A harness more people took up this month, after someone started with it"
-            rows={ground.spreading}
-            empty="No harness has caught on in a team this month."
-          />
-          <QuietList
-            title="New habits"
-            hint="People whose first agent-made change merged in the last two weeks"
-            rows={ground.habits}
-            empty="No one new started merging agents' work in the last two weeks."
-          />
-        </div>
+        {quiet ? (
+          <p className="text-sm text-faint">
+            Nothing has shifted lately: no repository rests on one person, no one has moved into new ground, and no new harness or habit has caught on.
+          </p>
+        ) : (
+          <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-4">
+            <QuietList
+              title="Knowledge silos"
+              hint="Repositories where one person has done most of the last 90 days' work"
+              rows={ground.silos}
+              empty="No repository rests on one person right now."
+            />
+            <QuietList
+              title="New ground"
+              hint="People who merged to a repository for the first time in the last two weeks"
+              rows={ground.newGround}
+              empty="No one has moved into a new repository in the last two weeks."
+            />
+            <QuietList
+              title="Spreading"
+              hint="A harness more people took up this month, after someone started with it"
+              rows={ground.spreading}
+              empty="No harness has caught on in a team this month."
+            />
+            <QuietList
+              title="New habits"
+              hint="People whose first agent-made change merged in the last two weeks"
+              rows={ground.habits}
+              empty="No one new started merging agents' work in the last two weeks."
+            />
+          </div>
+        )}
       </Section>
     </div>
   );

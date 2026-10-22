@@ -1,18 +1,33 @@
 //! Telling g1t how a job is going: its steps, its log in batches, its
 //! annotations, and how it ended. Every report carries the job's token.
 
+use std::collections::VecDeque;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use g1t_actions::mask;
 use serde_json::{Value, json};
 
-/// How long log lines wait before they are sent: about a second, so a
-/// running step's page follows it closely, at one write to g1t a second.
+/// How long log lines wait before they are handed to the uploader: about a
+/// second, so a running step's page follows it closely, at one write to
+/// g1t a second.
 const FLUSH_EVERY: Duration = Duration::from_millis(1000);
-/// How much log is sent at once.
+/// How much log is handed to the uploader at once.
 const FLUSH_BYTES: usize = 64 * 1024;
+/// The most log the uploader sends in one report, joining the batches that
+/// waited while it was sending the last: under the 256 KiB g1t keeps of
+/// one (services/actions, `MAX_CHUNK_BYTES`).
+const SEND_BYTES: usize = 192 * 1024;
+/// How long the job's end waits for its log to reach g1t before the rest
+/// is let go and the job's conclusion sent: a slow log never holds a job,
+/// or the deploy waiting on it, for longer.
+const DRAIN_WAIT: Duration = Duration::from_secs(30);
+/// How long, past [`DRAIN_WAIT`], the job's end waits for the report in
+/// flight and its conclusion: one report's three tries at most.
+const HURRY_WAIT: Duration = Duration::from_secs(100);
 /// The most one step may add to the job's summary, as on GitHub.
 pub(crate) const MAX_SUMMARY_BYTES: usize = 1024 * 1024;
 /// How long the runner goes without a report before it asks whether the
@@ -261,6 +276,118 @@ impl Api {
     }
 }
 
+/// What the log hands its uploader.
+enum Outgoing {
+    /// A batch of step `.0`'s log.
+    Log(u32, String),
+    /// A report about the job (its steps, an annotation, a summary, a
+    /// ping), sent ahead of any log still waiting.
+    Report(Value),
+    /// The job's conclusion, sent once everything before it has been.
+    Done(Value),
+    /// Answered once everything handed over before it has been sent.
+    #[cfg(test)]
+    Settled(mpsc::Sender<()>),
+}
+
+/// Sends the job's reports to g1t on a thread of its own, so a step never
+/// waits on one. Each report used to be sent where it was made, and a step
+/// that printed quickly to a g1t that took a second to answer waited that
+/// second for every line (the batch's second had passed again by the time
+/// the last one was answered): Deploy #511's and #531's builds, done in a
+/// minute or two, sent their output a line a second for twenty minutes,
+/// and held their deploys. Here what waits while one report is sent goes
+/// in the next together.
+struct Uploader {
+    api: Api,
+    /// Log batches waiting, in order.
+    logs: VecDeque<(u32, String)>,
+    /// Other reports waiting, in order.
+    others: VecDeque<Value>,
+    done: Option<Value>,
+    /// Whether the log can still hand anything over.
+    open: bool,
+    /// Set when the job's end has waited long enough for the log: what
+    /// waits of it is let go, and the conclusion sent.
+    hurry: Arc<AtomicBool>,
+    /// The number of the last batch sent, 1 for the job's first: each
+    /// batch carries its own, and keeps it when it is sent again, so g1t
+    /// keeps a batch it already has once.
+    chunk: u64,
+    #[cfg(test)]
+    settled: Vec<mpsc::Sender<()>>,
+}
+
+impl Uploader {
+    fn take(&mut self, item: Outgoing) {
+        match item {
+            Outgoing::Log(step, text) => self.logs.push_back((step, text)),
+            Outgoing::Report(report) => self.others.push_back(report),
+            Outgoing::Done(report) => self.done = Some(report),
+            #[cfg(test)]
+            Outgoing::Settled(answer) => self.settled.push(answer),
+        }
+    }
+
+    /// Sends everything handed over, until the log is closed and nothing
+    /// waits; the conclusion last.
+    fn run(mut self, queue: mpsc::Receiver<Outgoing>) {
+        loop {
+            if self.logs.is_empty() && self.others.is_empty() {
+                #[cfg(test)]
+                for answer in self.settled.drain(..) {
+                    let _ = answer.send(());
+                }
+                if !self.open {
+                    if let Some(done) = self.done.take() {
+                        self.api.report(done);
+                    }
+                    return;
+                }
+                match queue.recv() {
+                    Ok(item) => self.take(item),
+                    Err(_) => self.open = false,
+                }
+                continue;
+            }
+            // Everything that waits, so the batches go together.
+            while self.open {
+                match queue.try_recv() {
+                    Ok(item) => self.take(item),
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => self.open = false,
+                }
+            }
+            if self.hurry.load(Ordering::Relaxed) && !self.logs.is_empty() {
+                let left: usize = self.logs.drain(..).map(|(_, text)| text.len()).sum();
+                eprintln!(
+                    "g1t-runner: {left} bytes of the job's log did not reach g1t in time and were let go"
+                );
+            }
+            if let Some(report) = self.others.pop_front() {
+                self.api.report(report);
+            } else if let Some(report) = self.next_batch() {
+                self.api.report(report);
+            }
+        }
+    }
+
+    /// The batches that wait for the same step, joined up to
+    /// [`SEND_BYTES`], numbered.
+    fn next_batch(&mut self) -> Option<Value> {
+        let (step, mut text) = self.logs.pop_front()?;
+        while let Some((next, more)) = self.logs.front()
+            && *next == step
+            && text.len() + more.len() <= SEND_BYTES
+        {
+            text.push_str(more);
+            self.logs.pop_front();
+        }
+        self.chunk += 1;
+        Some(json!({ "kind": "log", "step": step, "chunk": self.chunk, "text": text }))
+    }
+}
+
 /// The job's log, masked, sent in batches. `masks` holds every form of
 /// every secret (`g1t_actions::mask`), longest first.
 pub(crate) struct Log {
@@ -273,10 +400,11 @@ pub(crate) struct Log {
     sent: Instant,
     /// The problem matchers steps added, which last the whole job.
     pub(crate) matchers: super::matchers::Matchers,
-    /// The number of the last batch sent, 1 for the job's first: each
-    /// batch carries its own, and keeps it when it is sent again, so g1t
-    /// keeps a batch it already has once.
-    chunk: u64,
+    /// Where reports go to be sent (`Uploader`), until the job's end.
+    queue: Option<mpsc::Sender<Outgoing>>,
+    /// Hangs up when the uploader has finished.
+    uploaded: Option<mpsc::Receiver<()>>,
+    hurry: Arc<AtomicBool>,
     /// Everything sent so far, so a test reads the whole log however its
     /// batches fell (`buffered`).
     #[cfg(test)]
@@ -287,6 +415,24 @@ impl Log {
     pub(crate) fn new(api: Api, mut masks: Vec<String>) -> Log {
         masks.retain(|mask| !mask.is_empty());
         masks.sort_by_key(|mask| std::cmp::Reverse(mask.len()));
+        let (queue, handed) = mpsc::channel();
+        let (finished, uploaded) = mpsc::channel::<()>();
+        let hurry = Arc::new(AtomicBool::new(false));
+        let uploader = Uploader {
+            api: api.clone(),
+            logs: VecDeque::new(),
+            others: VecDeque::new(),
+            done: None,
+            open: true,
+            hurry: hurry.clone(),
+            chunk: 0,
+            #[cfg(test)]
+            settled: Vec::new(),
+        };
+        std::thread::spawn(move || {
+            uploader.run(handed);
+            drop(finished);
+        });
         Log {
             api,
             masks,
@@ -295,10 +441,42 @@ impl Log {
             last: Instant::now(),
             sent: Instant::now(),
             matchers: super::matchers::Matchers::default(),
-            chunk: 0,
+            queue: Some(queue),
+            uploaded: Some(uploaded),
+            hurry,
             #[cfg(test)]
             flushed: String::new(),
         }
+    }
+
+    /// Hands `item` to the uploader; nothing, once the job has ended.
+    fn send(&self, item: Outgoing) {
+        if let Some(queue) = &self.queue {
+            let _ = queue.send(item);
+        }
+    }
+
+    /// Waits for everything handed over to be sent: up to `within`, then
+    /// lets the log that still waits go, and waits for the report in flight
+    /// and the conclusion.
+    fn finish(&mut self, within: Duration) {
+        self.flush();
+        self.queue = None;
+        let Some(uploaded) = self.uploaded.take() else {
+            return;
+        };
+        if let Err(mpsc::RecvTimeoutError::Timeout) = uploaded.recv_timeout(within) {
+            self.hurry.store(true, Ordering::Relaxed);
+            let _ = uploaded.recv_timeout(HURRY_WAIT);
+        }
+    }
+
+    /// Waits until everything handed over so far has been sent.
+    #[cfg(test)]
+    fn settle(&self) {
+        let (answer, settled) = mpsc::channel();
+        self.send(Outgoing::Settled(answer));
+        let _ = settled.recv_timeout(Duration::from_secs(60));
     }
 
     /// The log so far, what was sent and what waits to be, without the
@@ -358,10 +536,11 @@ impl Log {
             self.flush();
         } else if self.sent.elapsed() >= PING_EVERY {
             self.sent = Instant::now();
-            self.api.report(json!({ "kind": "ping" }));
+            self.send(Outgoing::Report(json!({ "kind": "ping" })));
         }
     }
 
+    /// Hands what waits to the uploader, which sends it as soon as it can.
     pub(crate) fn flush(&mut self) {
         self.last = Instant::now();
         if self.buffer.is_empty() {
@@ -371,14 +550,7 @@ impl Log {
         let text = std::mem::take(&mut self.buffer);
         #[cfg(test)]
         self.flushed.push_str(&text);
-        let report = self.log_report(text);
-        self.api.report(report);
-    }
-
-    /// The next batch of the log, numbered.
-    fn log_report(&mut self, text: String) -> Value {
-        self.chunk += 1;
-        json!({ "kind": "log", "step": self.step, "chunk": self.chunk, "text": text })
+        self.send(Outgoing::Log(self.step, text));
     }
 
     /// Does `work` with the job's API on a thread of its own, writing
@@ -417,13 +589,15 @@ impl Log {
     }
 
     pub(crate) fn steps(&self, names: &[String]) {
-        self.api.report(json!({ "kind": "steps", "steps": names }));
+        self.send(Outgoing::Report(json!({ "kind": "steps", "steps": names })));
     }
 
+    /// A step's state, sent ahead of any of its log still waiting: a step
+    /// ends when its process does, and its log catches up after.
     pub(crate) fn step_state(&mut self, number: u32, name: &str, status: &str, conclusion: Option<&str>) {
         self.flush();
         let name = self.mask(name);
-        self.api.report(json!({ "kind": "step", "number": number, "name": name, "status": status, "conclusion": conclusion }));
+        self.send(Outgoing::Report(json!({ "kind": "step", "number": number, "name": name, "status": status, "conclusion": conclusion })));
     }
 
     /// What a step wrote to `$GITHUB_STEP_SUMMARY`, masked, for the run's
@@ -442,7 +616,7 @@ impl Log {
         }
         let markdown = self.mask(markdown);
         self.flush();
-        self.api.report(json!({ "kind": "summary", "step": self.step, "markdown": markdown }));
+        self.send(Outgoing::Report(json!({ "kind": "summary", "step": self.step, "markdown": markdown })));
     }
 
     /// An annotation, from `::error::` and its kin or a problem matcher:
@@ -451,7 +625,7 @@ impl Log {
     /// and `end_column`.
     pub(crate) fn annotation(&mut self, level: &str, message: &str, properties: &serde_json::Map<String, Value>) {
         let report = self.annotation_report(level, message, properties);
-        self.api.report(report);
+        self.send(Outgoing::Report(report));
     }
 
     fn annotation_report(&self, level: &str, message: &str, properties: &serde_json::Map<String, Value>) -> Value {
@@ -471,10 +645,23 @@ impl Log {
         })
     }
 
+    /// The job's conclusion, sent after its log (g1t takes no more once the
+    /// job is done), waiting for that up to [`DRAIN_WAIT`].
     pub(crate) fn done(&mut self, conclusion: &str, outputs: &serde_json::Map<String, Value>, reason: Option<&str>) {
+        self.done_within(conclusion, outputs, reason, DRAIN_WAIT);
+    }
+
+    fn done_within(
+        &mut self,
+        conclusion: &str,
+        outputs: &serde_json::Map<String, Value>,
+        reason: Option<&str>,
+        within: Duration,
+    ) {
         let outputs = self.withhold_secrets(outputs);
         self.flush();
-        self.api.report(json!({ "kind": "done", "conclusion": conclusion, "outputs": outputs, "reason": reason }));
+        self.send(Outgoing::Done(json!({ "kind": "done", "conclusion": conclusion, "outputs": outputs, "reason": reason })));
+        self.finish(within);
     }
 
     /// The job's outputs without any that hold a secret, as on GitHub: an
@@ -494,6 +681,14 @@ impl Log {
             kept.insert(name.clone(), value.clone());
         }
         kept
+    }
+}
+
+/// A log dropped before the job's end (its setup failed) still sends what
+/// it was handed.
+impl Drop for Log {
+    fn drop(&mut self) {
+        self.finish(DRAIN_WAIT);
     }
 }
 
@@ -695,6 +890,8 @@ mod tests {
         let mut log = Log::new(Api { base, job: "job_1".into(), token: "t".into() }, Vec::new());
         log.line("one");
         log.flush();
+        // Sent before the next is handed over, or the two would go together.
+        log.settle();
         log.line("two");
         log.flush();
         log.flush(); // Nothing waits: no batch, and no number used.
@@ -707,6 +904,166 @@ mod tests {
         // next is the job's second.
         assert_eq!(sent, [(1, "one\n".into()), (1, "one\n".into()), (2, "two\n".into())]);
         assert_eq!(bodies[0], bodies[1], "a batch sent again is the same batch");
+    }
+
+    /// A g1t that answers each report `{}` after `slow(report)`, until the
+    /// job's `done`, and hands back each report as it came.
+    fn slow_server(
+        slow: impl Fn(&Value) -> Duration + Send + 'static,
+    ) -> (String, std::thread::JoinHandle<Vec<Value>>) {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let serving = std::thread::spawn(move || {
+            let mut reports = Vec::new();
+            loop {
+                let (stream, _) = listener.accept().unwrap();
+                let mut reader = BufReader::new(stream);
+                let mut length = 0;
+                loop {
+                    let mut header = String::new();
+                    reader.read_line(&mut header).unwrap();
+                    if header.trim().is_empty() {
+                        break;
+                    }
+                    if let Some((name, value)) = header.split_once(':')
+                        && name.eq_ignore_ascii_case("content-length")
+                    {
+                        length = value.trim().parse().unwrap();
+                    }
+                }
+                let mut body = vec![0; length];
+                reader.read_exact(&mut body).unwrap();
+                let report = serde_json::from_slice::<Value>(&body).unwrap()["report"].clone();
+                std::thread::sleep(slow(&report));
+                write!(
+                    reader.get_mut(),
+                    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+                )
+                .unwrap();
+                let done = report["kind"] == "done";
+                reports.push(report);
+                if done {
+                    return reports;
+                }
+            }
+        });
+        (base, serving)
+    }
+
+    #[test]
+    fn a_slow_g1t_never_holds_a_step_and_its_log_catches_up_in_few_reports() {
+        // Each report takes 200 ms to answer, as g1t's took a second in
+        // Deploy #531, where a 300-line table went a line a second.
+        let (base, serving) = slow_server(|_| Duration::from_millis(200));
+        let mut log = Log::new(
+            Api {
+                base,
+                job: "job_1".into(),
+                token: "t".into(),
+            },
+            Vec::new(),
+        );
+        log.steps(&["Build".into()]);
+        log.step(1);
+        log.step_state(1, "Build", "in_progress", None);
+        let started = Instant::now();
+        for n in 0..300 {
+            log.line(&format!("line {n}"));
+            // The step's output comes over two seconds or so: lines still
+            // come while a batch is being sent.
+            if n % 30 == 0 {
+                log.flush();
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+        log.step_state(1, "Build", "completed", Some("success"));
+        assert!(
+            started.elapsed() < Duration::from_millis(200),
+            "the step waited on g1t: {:?}",
+            started.elapsed()
+        );
+        log.done("success", &serde_json::Map::new(), None);
+        let reports = serving.join().unwrap();
+        let logs: Vec<&Value> = reports
+            .iter()
+            .filter(|report| report["kind"] == "log")
+            .collect();
+        // Far fewer reports than lines, numbered in order, with every line.
+        assert!(logs.len() < 30, "{} log reports for 300 lines", logs.len());
+        let numbers: Vec<u64> = logs
+            .iter()
+            .map(|report| report["chunk"].as_u64().unwrap())
+            .collect();
+        assert_eq!(numbers, (1..=logs.len() as u64).collect::<Vec<_>>());
+        let text: String = logs
+            .iter()
+            .map(|report| unstamped(report["text"].as_str().unwrap()))
+            .collect();
+        let expected: String = (0..300).map(|n| format!("line {n}\n")).collect();
+        assert_eq!(text, expected);
+        // The step's end went no later than the last of its log, and the
+        // job's conclusion after all of it.
+        let at = |find: &dyn Fn(&Value) -> bool| reports.iter().position(find).unwrap();
+        let completed = at(&|report| report["kind"] == "step" && report["status"] == "completed");
+        let last_log = reports
+            .iter()
+            .rposition(|report| report["kind"] == "log")
+            .unwrap();
+        assert!(completed <= last_log + 1, "{reports:?}");
+        assert_eq!(reports.last().unwrap()["kind"], "done");
+    }
+
+    #[test]
+    fn a_log_that_cannot_keep_up_is_let_go_and_the_job_still_ends() {
+        // Step 1's log takes a second and a half to be answered; the job's
+        // end waits a tenth of a second for it, then lets step 2's go.
+        let (arrived, sending) = mpsc::channel();
+        let (base, serving) = slow_server(move |report| {
+            if report["kind"] == "log" {
+                let _ = arrived.send(());
+                Duration::from_millis(1500)
+            } else {
+                Duration::ZERO
+            }
+        });
+        let mut log = Log::new(
+            Api {
+                base,
+                job: "job_1".into(),
+                token: "t".into(),
+            },
+            Vec::new(),
+        );
+        log.step(1);
+        log.line("one");
+        log.flush();
+        sending.recv_timeout(Duration::from_secs(10)).unwrap();
+        log.step(2);
+        log.line("two");
+        let started = Instant::now();
+        log.done_within(
+            "success",
+            &serde_json::Map::new(),
+            None,
+            Duration::from_millis(100),
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "{:?}",
+            started.elapsed()
+        );
+        let reports = serving.join().unwrap();
+        let kinds: Vec<(&str, u64)> = reports
+            .iter()
+            .map(|report| {
+                (
+                    report["kind"].as_str().unwrap(),
+                    report["step"].as_u64().unwrap_or(0),
+                )
+            })
+            .collect();
+        assert_eq!(kinds, [("log", 1), ("done", 0)]);
     }
 
     #[test]

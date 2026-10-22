@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DESKTOP, EVERYTHING, READS, affected, needs, partCrates, workspace } from "./ci-affected.mjs";
+import { DESKTOP, EVERYTHING, READS, WORKFLOW, affected, needs, partCrates, queueTested, workspace } from "./ci-affected.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
@@ -79,6 +79,24 @@ test("every file the desktop job names is there", () => {
   for (const test of tests.match(/scripts\/[\w-]+\.test\.mjs/g)) assert.ok(DESKTOP.includes(test), test);
   // Outside the workspace, with no path dependency on it.
   assert.doesNotMatch(readFileSync(join(ROOT, "apps/desktop/src-tauri/Cargo.toml"), "utf8"), /\bpath\s*=/);
+});
+
+test("a push is the merge queue's only when CI's merge_group run passed on that very commit", () => {
+  const sha = "a".repeat(40);
+  const run = { event: "merge_group", sha, conclusion: "success", path: `.g1t/workflows/${WORKFLOW}` };
+  // g1t's answer is a list; GitHub's has workflow_runs, with head_sha.
+  assert.equal(queueTested([run], sha), true);
+  assert.equal(queueTested({ workflow_runs: [{ event: "merge_group", head_sha: sha, conclusion: "success" }] }, sha), true);
+  // Any other run never vouches for it, whatever the query asked for.
+  assert.equal(queueTested([], sha), false);
+  assert.equal(queueTested([{ ...run, event: "push" }], sha), false);
+  assert.equal(queueTested([{ ...run, event: "pull_request" }], sha), false);
+  assert.equal(queueTested([{ ...run, sha: "b".repeat(40) }], sha), false);
+  assert.equal(queueTested([{ ...run, conclusion: "failure" }], sha), false);
+  assert.equal(queueTested([{ ...run, conclusion: null }], sha), false);
+  assert.equal(queueTested([{ ...run, path: ".g1t/workflows/deploy.yml" }], sha), false);
+  assert.equal(queueTested(null, sha), false);
+  assert.equal(queueTested([{ ...run, event: "push" }, run], sha), true);
 });
 
 test("a part's crates are read from its -p arguments", () => {

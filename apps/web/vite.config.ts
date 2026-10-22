@@ -45,6 +45,10 @@ function editorChunk(): Plugin {
 }
 
 export default defineConfig({
+  // In CI, warnings and errors only: the list of every chunk the build
+  // writes runs to hundreds of lines, and a job's log is uploaded line by
+  // line before the job is done.
+  logLevel: process.env.CI ? "warn" : undefined,
   define: { "import.meta.env.G1T_BUILD_ID": JSON.stringify(randomUUID()) },
   plugins: [cloudflare({ viteEnvironment: { name: "ssr" } }), tailwindcss(), reactRouter(), editorChunk()],
   resolve: {

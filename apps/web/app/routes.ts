@@ -176,6 +176,7 @@ export default [
       // The integrations directory, and the setup pages for alerts and
       // trackers (lib/integration-sections).
       route("-/settings/integrations", "routes/workspace/integrations-directory.tsx"),
+      route("-/settings/integrations/github", "routes/workspace/integration-github.tsx"),
       route("-/settings/integrations/:section", "routes/workspace/integrations.tsx"),
       // Ask g1t: what it answers with (Chat's New with no repository), and
       // starting a session it proposed (components/chat/agent-composer).

@@ -39,10 +39,10 @@ test("Work is a built-in app right after Home, for every member, and Sessions ar
   );
 });
 
-test("the app bar's tabs are Chat (which opens on Home), Work, Code, the Library and Routines", () => {
-  assert.deepEqual(barApps(true), ["chat", "work", "code", "artifacts", "routines"]);
+test("the app bar's tabs are Home, Chat, Work, Code, the Library and Routines", () => {
+  assert.deepEqual(barApps(true), ["home", "chat", "work", "code", "artifacts", "routines"]);
   // A member without Code access has no Code, and the rest in the same order.
-  assert.deepEqual(barApps(false), ["chat", "work", "artifacts", "routines"]);
+  assert.deepEqual(barApps(false), ["home", "chat", "work", "artifacts", "routines"]);
 });
 
 test("a phone's bar is Home, Work, Chat and Notifications, with Code first of More's apps", () => {
@@ -86,7 +86,7 @@ test("installed apps are what the workspace connected, opening where each is man
     apps.map((app) => app.key),
     ["int-github", "int-sentry"],
   );
-  assert.equal(apps[0]!.path("acme"), "/new/github?workspace=acme");
+  assert.equal(apps[0]!.path("acme"), "/acme/-/settings/integrations/github");
   assert.deepEqual(appData(apps[1]!, "acme").href, "/acme/-/settings/integrations/alerts");
   assert.deepEqual(installedApps({}), []);
   assert.deepEqual(
