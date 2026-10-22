@@ -1,5 +1,5 @@
-import { AlarmClock, Bell, Bookmark, Check, CheckCheck, CircleCheck, CircleX, Ellipsis, Hand, Info, Mail, MailOpen, Undo2 } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { AlarmClock, Bell, Bookmark, Check, CheckCheck, CircleCheck, CircleX, Ellipsis, Hand, Info, Mail, MailOpen, RotateCcw, Undo2 } from "lucide-react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useFetcher } from "react-router";
 
 import type { InboxCounts, InboxItem, InboxSeverity } from "@g1t/contracts";
@@ -38,6 +38,12 @@ import type { InboxPanelData } from "../routes/inbox-json";
 const ACTION = "/notifications";
 /** How often the bell asks for its count while the page is in view. */
 const COUNT_EVERY_MS = 60_000;
+/** How long the panel waits for its list before asking again. */
+const LIST_PATIENCE_MS = 8_000;
+/** How many times the panel asks for its list by itself before it offers Retry. */
+const LIST_TRIES = 3;
+/** How recent a list read on the way to the bell is, to show it as it opens without asking again. */
+const LIST_FRESH_MS = 15_000;
 
 const TONE: Record<InboxSeverity, BadgeTone> = {
   error: "danger",
@@ -271,6 +277,68 @@ export function MarkAllRead({ tab, disabled }: { tab: InboxTab; disabled: boolea
 }
 
 /**
+ * The panel's list for a tab: read when the pointer or focus reaches the
+ * bell, so it is there as the panel opens, and again on opening unless
+ * that read is recent. A read that comes back without the list, or takes
+ * too long, is asked again by itself; after a few, `failed` says so, and
+ * `retry` asks again. The last list read stays shown while a newer one loads.
+ */
+function usePanelList(open: boolean, tab: InboxTab) {
+  const list = useFetcher<InboxPanelData>({ key: "inbox-panel" });
+  const [failed, setFailed] = useState(false);
+  const tries = useRef(0);
+  const asked = useRef<{ tab: InboxTab; at: number } | null>(null);
+  const load = (count: boolean) => {
+    tries.current = count ? tries.current + 1 : 1;
+    asked.current = { tab, at: Date.now() };
+    setFailed(false);
+    list.load(`/inbox.json?tab=${tab}`);
+  };
+  // Asked again, or given up on: a read that came back without the list, or one that took too long.
+  const again = () => {
+    if (tries.current < LIST_TRIES) load(true);
+    else setFailed(true);
+  };
+  // Read for this tab a moment ago, and on its way or come back with the list.
+  const fresh = () =>
+    asked.current?.tab === tab &&
+    Date.now() - asked.current.at < LIST_FRESH_MS &&
+    (list.state !== "idle" || (list.data?.tab === tab && list.data.items != null));
+
+  useEffect(() => {
+    if (open && !fresh()) load(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, tab]);
+
+  const was = useRef(list.state);
+  useEffect(() => {
+    const before = was.current;
+    was.current = list.state;
+    if (!open || before === "idle" || list.state !== "idle") return;
+    if (list.data?.tab !== tab || list.data.items == null) again();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list.state]);
+
+  useEffect(() => {
+    if (!open || list.state === "idle") return;
+    const timer = setTimeout(again, LIST_PATIENCE_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, list.state]);
+
+  return {
+    data: list.data,
+    items: list.data?.tab === tab ? list.data.items : null,
+    failed,
+    retry: () => load(false),
+    /** For the bell's pointer and focus: read the list on the way to opening it. */
+    prefetch: () => {
+      if (!open && !fresh()) load(false);
+    },
+  };
+}
+
+/**
  * The bell in the top bar, and the panel it opens from the right: the
  * notifications's tabs and newest items, to work through without leaving the page.
  * Its count comes with the page (root.tsx), and is asked for again every
@@ -279,13 +347,9 @@ export function MarkAllRead({ tab, disabled }: { tab: InboxTab; disabled: boolea
 export function NotificationsBell({ counts: loaded }: { counts: InboxCounts | null }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<InboxTab>("all");
-  const list = useFetcher<InboxPanelData>({ key: "inbox-panel" });
+  const list = usePanelList(open, tab);
   const poll = useFetcher<InboxPanelData>({ key: "inbox-count" });
 
-  useEffect(() => {
-    if (open) list.load(`/inbox.json?tab=${tab}`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, tab]);
   useEffect(() => {
     const ask = () => {
       if (document.visibilityState === "visible") poll.load("/inbox.json?only=counts");
@@ -301,7 +365,7 @@ export function NotificationsBell({ counts: loaded }: { counts: InboxCounts | nu
 
   const counts = (open ? list.data?.counts : null) ?? poll.data?.counts ?? loaded;
   const unread = counts?.unread ?? 0;
-  const items = list.data?.tab === tab ? list.data.items : null;
+  const items = list.items;
   const shown = bellCount(unread);
   // Do not disturb shows on the bell: an amber dot while it holds (the feed says; nothing on the server).
   const dnd = dndOn(useOwnPresence(), Date.now());
@@ -313,6 +377,8 @@ export function NotificationsBell({ counts: loaded }: { counts: InboxCounts | nu
           variant="ghost"
           size="icon-sm"
           aria-label={`${unread ? `Notifications, ${unread} unread` : "Notifications"}${dnd ? ", do not disturb is on" : ""}`}
+          onPointerEnter={list.prefetch}
+          onFocus={list.prefetch}
           className="relative"
         >
           <Bell size={17} />
@@ -348,8 +414,14 @@ export function NotificationsBell({ counts: loaded }: { counts: InboxCounts | nu
           {/* Chat cards waiting on you (live notifications), to act on from here. */}
           <WaitingCards onNavigate={() => setOpen(false)} />
           {items == null ? (
-            list.state === "idle" && list.data?.tab === tab ? (
-              <p className="text-sm text-muted">Notifications could not be loaded. Try again in a moment.</p>
+            list.failed ? (
+              <div className="flex items-center justify-between gap-3 text-sm text-muted">
+                <p>Notifications could not be loaded.</p>
+                <Button type="button" variant="outline" size="sm" onClick={list.retry}>
+                  <RotateCcw size={14} />
+                  Retry
+                </Button>
+              </div>
             ) : (
               <ul aria-busy="true" className="space-y-2">
                 {Array.from({ length: 4 }, (_, index) => (

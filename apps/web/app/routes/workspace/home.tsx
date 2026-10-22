@@ -294,8 +294,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     happened,
     attention: waiting,
     away,
-    running: runningNow,
-    live,
+    /**
+     * Live's agents, and its runs and builds. Joined here, not while drawing:
+     * a promise made on each render is new each time, so `<Await>` suspends
+     * again on every render, and no router update commits while Home is shown.
+     */
+    live: Promise.all([live, runningNow]),
     /** The sentence about the span needs the digest and what landed. */
     head: Promise.all([digest, happened]),
     spend,
@@ -375,7 +379,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
  * other route's data, so that route draws this instead.
  */
 export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loaderData"] }) {
-  const { slug, now, tz, span, digest, happened, attention: waiting, away, running: runningNow, live, head, spend, signal } = loaderData;
+  const { slug, now, tz, span, digest, happened, attention: waiting, away, live, head, spend, signal } = loaderData;
   useMarkSeen(slug, now);
   useHomeLive(slug, useWatched(loaderData.watch));
   return (
@@ -420,7 +424,7 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
         {/* 2. Live: agents at work, then workflow runs and builds, as they go. */}
         <Card title="Live" hint="Agents, runs and builds going now">
           <HeldSuspense id={`home:${slug}:live`} fallback={<RowsSkeleton rows={2} />}>
-            <Await resolve={Promise.all([live, runningNow])}>
+            <Await resolve={live}>
               {([sessions, value]) => (
                 <Boundary what="Live">
                   <LiveSessions sessions={sessions} slug={slug} now={now} />
