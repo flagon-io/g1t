@@ -1496,9 +1496,10 @@ mod tests {
         assert_eq!(rfc3339(*start), "2026-10-12T00:00:00.000Z");
         assert_eq!(rfc3339(*end), "2026-10-18T23:59:59.999Z");
         assert_eq!(windows[1].2.len(), 7);
+        // As values: key order depends on whether serde_json keeps insertion order in this build.
         assert_eq!(
-            cursor_body(1, 2, 3, 1000),
-            r#"{"endDate":2,"page":3,"pageSize":1000,"startDate":1}"#
+            serde_json::from_str::<serde_json::Value>(&cursor_body(1, 2, 3, 1000)).unwrap(),
+            serde_json::json!({ "startDate": 1, "endDate": 2, "page": 3, "pageSize": 1000 })
         );
     }
 
