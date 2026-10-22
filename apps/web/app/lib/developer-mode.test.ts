@@ -41,7 +41,7 @@ test("one report says what failed, where, when and on which build", () => {
   const error = new Error("Cannot read properties of undefined (reading 'slug')");
   error.stack = "Error: Cannot read properties of undefined\n    at Integrations (integrations.tsx:10:5)";
   const report = debugReport({
-    url: "https://g1t.sh/flagon-io/-/integrations",
+    url: "https://g1t.sh/flagon-io/-/settings/integrations",
     at: new Date("2026-10-12T23:00:00Z"),
     error,
     routes: ["root", "routes/workspace/integrations"],
@@ -51,7 +51,7 @@ test("one report says what failed, where, when and on which build", () => {
     navigation: "client",
   });
   for (const line of [
-    "URL: https://g1t.sh/flagon-io/-/integrations",
+    "URL: https://g1t.sh/flagon-io/-/settings/integrations",
     "Time: 2026-10-12T23:00:00.000Z",
     "Loaded: a navigation in the browser",
     "Routes: root > routes/workspace/integrations",

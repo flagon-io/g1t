@@ -381,7 +381,7 @@ export default function WorkspaceMembers({ loaderData, actionData, params }: Rou
   ].sort((a, b) => a.name.localeCompare(b.name));
   // Who was just invited from the dialog, said under the list.
   const [invited, setInvited] = useState<string | null>(null);
-  const invite = owner && !free ? <InviteDialog name={name} action={`/${params.owner}/-/members`} onInvited={setInvited} /> : null;
+  const invite = owner && !free ? <InviteDialog name={name} action={`/${params.owner}/-/settings/members`} onInvited={setInvited} /> : null;
   const membersTab = (
     <>
       <MembersToolbar owner={owner} teams={teamChoices} invite={invite} />
@@ -454,7 +454,7 @@ export default function WorkspaceMembers({ loaderData, actionData, params }: Rou
           <>
             {" · "}
             <Link
-              to={`/${params.owner}/-/members/invitations?state=pending`}
+              to={`/${params.owner}/-/settings/members/invitations?state=pending`}
               className="inline-flex items-center gap-1 text-muted underline-offset-4 hover:text-fg hover:underline"
             >
               <Mail size={12} aria-hidden="true" />
@@ -466,7 +466,7 @@ export default function WorkspaceMembers({ loaderData, actionData, params }: Rou
           <>
             {" · "}
             <Link
-              to={`/${params.owner}/-/members/invitations?state=pending`}
+              to={`/${params.owner}/-/settings/members/invitations?state=pending`}
               className="inline-flex items-center gap-1 text-muted underline-offset-4 hover:text-fg hover:underline"
             >
               <Mail size={12} aria-hidden="true" />
@@ -478,7 +478,7 @@ export default function WorkspaceMembers({ loaderData, actionData, params }: Rou
       {invited && (
         <p className="mt-3 text-sm text-muted" role="status">
           Invitation to join {name} sent to <span className="text-fg">{invited}</span>. They join once they accept; until then it is listed under{" "}
-          <Link to={`/${params.owner}/-/members/invitations`} className="text-accent underline-offset-4 hover:underline">
+          <Link to={`/${params.owner}/-/settings/members/invitations`} className="text-accent underline-offset-4 hover:underline">
             Invitations
           </Link>
           .

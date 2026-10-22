@@ -76,11 +76,11 @@ export function DeleteAccountAction({
                   </p>
                   <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs">
                     {workspace.members > 1 ? (
-                      <Link to={`/${workspace.slug}/-/members`} className="text-accent underline-offset-4 hover:underline">
+                      <Link to={`/${workspace.slug}/-/settings/members`} className="text-accent underline-offset-4 hover:underline">
                         Make someone else an owner
                       </Link>
                     ) : null}
-                    <Link to={`/${workspace.slug}/-/settings`} className="text-accent underline-offset-4 hover:underline">
+                    <Link to={`/${workspace.slug}/-/settings/profile`} className="text-accent underline-offset-4 hover:underline">
                       Delete the workspace
                     </Link>
                   </p>

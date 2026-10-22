@@ -94,7 +94,7 @@ async function lifecycle(intent: LifecycleIntent, form: FormData, request: Reque
       if (!confirmsName(typed, full)) return { lifecycle: intent, error: `Type ${full} to confirm.` };
       const deleted = await repos.delete(user, path, typed);
       if (!deleted.ok) return failed(deleted);
-      throw redirect(`/${params.owner}/-/repositories?deleted=${encodeURIComponent(deleted.value.name)}`);
+      throw redirect(`/${params.owner}/-/settings/repositories?deleted=${encodeURIComponent(deleted.value.name)}`);
     }
   }
 }

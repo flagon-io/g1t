@@ -486,7 +486,24 @@ pub struct Workspace {
     /// authentication to use it.
     #[serde(default)]
     pub two_factor_requirement_enabled: bool,
+    /// Its website: an `https://` address.
+    #[serde(default)]
+    pub website: Option<String>,
+    /// Where to reach it: a public email address. Its billing email is
+    /// private, and not here (`workspace_billing_email`).
+    #[serde(default)]
+    pub email: Option<String>,
+    /// Where it is, as it puts it.
+    #[serde(default)]
+    pub location: Option<String>,
+    /// Its accounts elsewhere: at most [`MAX_WORKSPACE_SOCIAL_ACCOUNTS`]
+    /// `https://` addresses.
+    #[serde(default)]
+    pub social_accounts: Vec<String>,
 }
+
+/// The most social accounts a workspace's profile lists.
+pub const MAX_WORKSPACE_SOCIAL_ACCOUNTS: usize = 4;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Member {
@@ -591,12 +608,41 @@ pub struct MemberArgs {
 
 /// `update_workspace`: owners only. An empty name falls back to the slug;
 /// an empty description clears it. Returns `Outcome<Workspace>`.
+///
+/// The profile fields after `description` are each optional: left out, the
+/// stored value stays as it is; empty (or an empty list) clears it. The
+/// website and each social account must be `https://` addresses (a bare
+/// `example.com` means `https://example.com`); the emails must look like
+/// addresses. Blank and repeated social accounts are dropped; more than
+/// [`MAX_WORKSPACE_SOCIAL_ACCOUNTS`] are refused.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateWorkspaceArgs {
     pub actor: User,
     pub slug: String,
     pub name: String,
     pub description: String,
+    #[serde(default)]
+    pub website: Option<String>,
+    /// The public email address.
+    #[serde(default)]
+    pub email: Option<String>,
+    #[serde(default)]
+    pub location: Option<String>,
+    #[serde(default)]
+    pub social_accounts: Option<Vec<String>>,
+    /// The private address billing sends receipts and invoices to.
+    #[serde(default)]
+    pub billing_email: Option<String>,
+}
+
+/// `workspace_billing_email`: owners and billing managers only. The
+/// private address billing sends receipts and invoices to, or null when
+/// none is set (billing then uses an owner's). Returns
+/// `Outcome<Option<String>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkspaceBillingEmailArgs {
+    pub actor: User,
+    pub slug: String,
 }
 
 /// `rename_workspace`: owners only. Changes the workspace's slug, the first
@@ -1064,6 +1110,10 @@ pub struct AdminWorkspaceDetail {
     /// Set while staff have it suspended.
     #[serde(default)]
     pub suspended: Option<Suspension>,
+    /// The private address billing sends receipts and invoices to, when
+    /// one is set; billing otherwise uses an owner's.
+    #[serde(default)]
+    pub billing_email: Option<String>,
 }
 
 /// A member of a workspace, as staff see them.

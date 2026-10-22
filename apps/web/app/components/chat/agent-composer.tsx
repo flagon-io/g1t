@@ -281,7 +281,7 @@ export function AgentComposer({ slug, page, onDone, initialText = "" }: { slug: 
             <NotSetUp
               what="Ask needs one of the workspace's AI providers."
               problem={ask.problem}
-              setup={owner ? { to: `/${slug}/-/ai#ask`, label: "Connect a provider and choose it for Ask" } : null}
+              setup={owner ? { to: `/${slug}/-/settings/ai#ask`, label: "Connect a provider and choose it for Ask" } : null}
               slug={slug}
               onDone={onDone}
             />
@@ -303,7 +303,7 @@ export function AgentComposer({ slug, page, onDone, initialText = "" }: { slug: 
           <NotSetUp
             what="Agents run on the workspace's own Anthropic account, which is not connected yet."
             problem={setup.problem}
-            setup={owner ? { to: `/${slug}/-/ai`, label: "Connect Anthropic" } : null}
+            setup={owner ? { to: `/${slug}/-/settings/ai`, label: "Connect Anthropic" } : null}
             slug={slug}
             onDone={onDone}
             alternative="Or choose No repository to ask g1t."

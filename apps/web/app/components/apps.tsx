@@ -157,7 +157,7 @@ export function NoApps({ slug, onOpen, compact = false }: { slug: string; onOpen
       <p className="mt-3 text-sm font-medium">No apps installed yet</p>
       <p className="mt-1 max-w-xs text-[0.8125rem] text-muted">Apps are the integrations your workspace connects. Each one you can use shows here.</p>
       <Link
-        to={`/${slug}/-/integrations`}
+        to={`/${slug}/-/settings/integrations`}
         onClick={onOpen}
         className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-md bg-fg px-3 text-[0.8125rem] font-medium text-bg hover:bg-fg-hover"
       >
@@ -248,7 +248,7 @@ export function AppsLauncher({
           All apps
         </Link>
         <Link
-          to={`/${slug}/-/integrations`}
+          to={`/${slug}/-/settings/integrations`}
           onClick={onClose}
           className="flex h-8 items-center gap-1.5 rounded-md px-2 text-[0.8125rem] text-muted transition-colors hover:bg-line hover:text-fg"
         >

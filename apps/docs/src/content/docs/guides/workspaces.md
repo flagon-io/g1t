@@ -57,9 +57,8 @@ and nobody can register them.
 ## Getting started
 
 **Getting started** is a setup guide for a workspace's owners. It opens
-by itself on the workspace's [Home](/guides/home/) and on its
-**Workspace** page, for each owner, until that owner finishes or closes
-it. A workspace made before the guide existed opens it once for each of
+by itself on the workspace's [Home](/guides/home/), for each owner, until
+that owner finishes or closes it. A workspace made before the guide existed opens it once for each of
 its owners too.
 
 It has six steps. Each is ticked from what the workspace has, never from
@@ -82,7 +81,7 @@ puts it away.
 Closing the guide puts it away too: it stops opening by itself for you,
 in this workspace, on every device. Nothing else changes. Open it again
 any time from the **Getting started** button at the top of Home, from
-**Settings → General** (**Getting started**), from the
+**Workspace → Profile** (**Getting started**), from the
 workspace's **AI** page, or by typing _Getting started_ in the command
 palette, which opens Home with `?setup=1`. Each owner has their own:
 closing it does not close it for anyone else.
@@ -118,21 +117,25 @@ A workspace has two names:
 
 Without a display name, the slug is shown. Where an address is shown, the
 slug is in monospace beside the name. Owners change the display name and
-description (up to 160 characters) on **Settings → General**, or with
+description (up to 160 characters) on **Workspace → Profile**, or with
 [`PATCH /workspaces/{workspace}`](/reference/api/workspaces/update-workspace/)
 (MCP: `workspace` `update`), which takes `name` and `description` and
 changes only the fields given. It needs the `workspace:admin` scope, and
 is recorded in the [audit log](/guides/audit-log/):
 
 ```sh
-curl -X PATCH https://api.g1t.sh/workspaces/flagon \n  -H "Authorization: Bearer $G1T_TOKEN" \n  -H "Content-Type: application/json" \n  -d '{"name": "Flagon Industries", "description": "Rockets, and the software that flies them."}'
+curl -X PATCH https://api.g1t.sh/workspaces/flagon \
+  -H "Authorization: Bearer $G1T_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Flagon Industries", "description": "Rockets, and the software that flies them."}'
 ```
 
 Neither changes the slug; that is a [rename](#rename-a-workspace).
 
 A workspace also has an icon. Without
 one, g1t draws its first letter in a colour of its own. To upload one, an
-owner opens **Settings → General** and picks an image:
+owner opens **Workspace → Profile** and picks an image under **Profile
+picture**:
 
 - PNG, JPEG, WebP or GIF, at most 1 MB. Square images look best.
 - An image is checked by its contents, not its name. SVG is refused,
@@ -147,20 +150,50 @@ that changes gets a new address and nothing shows the old one.
 You can upload a picture of yourself the same way, under
 [Settings → Profile](https://g1t.sh/settings/profile).
 
+### The workspace's profile
+
+**Profile**, `g1t.sh/<workspace>/-/settings/profile`, is the first page of
+[Workspace mode](#workspace-mode): **Workspace settings** opens there, and
+`g1t.sh/<workspace>/-/settings` leads to it. Every member can read it; only
+owners change it. Everything in **Profile** is shown publicly:
+
+| Field               | What it holds                                                 |
+| ------------------- | ------------------------------------------------------------- |
+| **Display name**    | The workspace's name, as above.                               |
+| **Profile picture** | The workspace's icon, as above.                               |
+| **Description**     | One line about the workspace, up to 160 characters.           |
+| **URL**             | The workspace's website, starting `https://`.                 |
+| **Public email**    | An address people can reach the workspace at.                 |
+| **Location**        | Where the workspace is.                                       |
+| **Social accounts** | Up to four links to the workspace elsewhere, each `https://`. |
+
+Owners also see these on the page:
+
+| Section             | What it is                                                                                                                                                                                                             |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Billing email**   | Private. Where invoices and receipts go; g1t gives it to Stripe as the workspace's billing email. Without one, they go to an owner's email. Add more recipients under [Billing and plans](/guides/usage-and-billing/). |
+| **Getting started** | Opens the [setup guide](#getting-started) again.                                                                                                                                                                       |
+| **Address**         | The slug. See [rename a workspace](#rename-a-workspace).                                                                                                                                                               |
+| **Data residency**  | Where new repositories are stored, when g1t offers a choice. See [data residency](#data-residency).                                                                                                                    |
+| **Danger zone**     | [Deleting the workspace](#delete-a-workspace).                                                                                                                                                                         |
+
+Requiring two-factor authentication is not here: it is under
+[Authentication security](#require-two-factor-authentication).
+
 ## Rename a workspace
 
 Renaming changes the slug, the first part of every address under the
 workspace. The display name is separate; change it on its own under
-**Settings → General → Workspace details**. Only owners can rename a
+**Workspace → Profile**. Only owners can rename a
 workspace.
 
-1. Open the workspace's **Settings → General** and go to **Address**.
+1. Open **Workspace → Profile** and go to **Address**.
 2. Type the new slug. The field shows the new address, `g1t.sh/<new>`, and
    whether the name is available.
 3. Choose **Change address**, read what changes, type the new slug to
    confirm, and choose **Change address** again.
 
-You land on the workspace's settings at its new address. Repositories,
+You land on the workspace's **Profile** at its new address. Repositories,
 work items and the rest move with it within a few seconds.
 
 ### What changes
@@ -244,7 +277,7 @@ for a name it used to trade under.
 ## Data residency
 
 Data residency says where the git data of the workspace's new repositories
-is stored. The section appears in **Settings** once g1t can store
+is stored. The section appears on **Workspace → Profile** once g1t can store
 repositories in the EU. Until then it is not shown, and every repository is
 stored wherever g1t stores repositories.
 
@@ -255,7 +288,7 @@ stored wherever g1t stores repositories.
 
 To change it:
 
-1. Open the workspace, then **Settings**. Only owners see the page.
+1. Open **Workspace → Profile**. Only owners see the section.
 2. Under **Data residency**, choose **Anywhere** or **EU only**.
 3. Select **Save**.
 
@@ -285,7 +318,7 @@ deletion you did not mean, or did not make, can be undone: an owner writes
 to support@g1t.sh, and support restores the workspace as it was. After 30
 days it is purged for good.
 
-1. Open the workspace's **Settings → General** and go to **Danger zone**.
+1. Open **Workspace → Profile** and go to **Danger zone**.
    It lists what will go with the workspace: its repositories,
    live apps and members.
 2. Choose **Delete workspace**, read what happens, type the workspace's
@@ -385,7 +418,7 @@ the member already has; an owner has both already.
 
 ### Change someone's role
 
-On **Members**, `g1t.sh/<workspace>/-/members` (**Workspace → Access →
+On **Members**, `g1t.sh/<workspace>/-/settings/members` (**Workspace → Access →
 Members**), an owner opens the **⋯** menu beside a member:
 
 1. **Make owner** or **Make member** changes their role.
@@ -425,9 +458,9 @@ the invitation. To tell a friend about g1t without adding them to a
 workspace, use [Invite a friend](/guides/authentication/#invite-a-friend)
 in your account menu instead.
 
-On the workspace's **Members** page, `g1t.sh/<workspace>/-/members`
+On the workspace's **Members** page, `g1t.sh/<workspace>/-/settings/members`
 (**Workspace → Access → Members** in the sidebar), or on **Invitations**
-beside it:
+under it:
 
 1. Select **Invite**. A dialog opens.
 2. Under **Who**, type a username, a name or an email address. As you
@@ -469,7 +502,7 @@ invite code that names the workspace. The join is an event,
 [webhooks](/guides/webhooks/#events).
 
 Every invitation sent is on **Invitations**,
-`g1t.sh/<workspace>/-/members/invitations` (**Workspace → Access →
+`g1t.sh/<workspace>/-/settings/members/invitations` (**Workspace → Access →
 Invitations**, owners only): a table of who it is for, who sent it, the
 role, when it was sent and where it stands, newest first. The chips above
 it narrow the table, each with its count:
@@ -530,7 +563,7 @@ curl -X PATCH https://api.g1t.sh/workspaces/acme/members/grace \
 
 What members can do beyond their role on each repository. Owners set them
 under **Workspace → Access → [Permissions](/guides/permissions/#code)**,
-`g1t.sh/<workspace>/-/permissions`, in the **Code** card, and can always do
+`g1t.sh/<workspace>/-/settings/permissions`, in the **Code** card, and can always do
 all of it themselves.
 
 | Setting                                                                                          | Default | When on                                                                                                     |
@@ -555,8 +588,8 @@ sets any of them (`workspace` `update` over MCP). Each change is in the
 
 An owner can run a workflow in every repository of the workspace, or in
 those whose names match, without committing it to each: a security scan, a
-licence check, a release policy. Add it under **Workspace → Code →
-Actions**, `g1t.sh/<workspace>/-/actions`, from a workflow file in one of
+licence check, a release policy. Add it under **Workspace → Code, planning,
+and automation → Actions**, `g1t.sh/<workspace>/-/settings/actions`, from a workflow file in one of
 the workspace's repositories, as **Required** (repositories cannot take its
 place or turn it off, so a ruleset can require its check) or **Default**
 (a repository's own workflow of the same name runs instead, and its admins
@@ -572,9 +605,10 @@ and its outside collaborators, to have
 on.
 
 1. Turn it on for your own account first.
-2. Open **Workspace → General**, `g1t.sh/<workspace>/-/settings#two-factor`.
-   Under **Authentication security**, it says how many members do not have
-   it on, and who.
+2. Open **Workspace → Security → Authentication security**,
+   `g1t.sh/<workspace>/-/settings/authentication`. Owners only. Under
+   **Two-factor authentication**, it says how many members do not have it
+   on, and who.
 3. Turn on **Require two-factor authentication** and choose **Save**.
 
 From then on, someone without it keeps their place but cannot use the
@@ -610,9 +644,9 @@ top bar, such as _acme / Repositories_, leads back to the workspace's page.
 | [**Packages**](/guides/packages/)       | `/-/packages`          | Everyone | What the workspace publishes. A visitor opens it from **Packages** on the workspace's page.                                                                           |
 | [**Teams**](/guides/teams/)             | `/-/teams`             | Members  | Groups of members given roles on repositories together, mentioned as `@workspace/team` and asked to review together. Each team has its own page at `/-/teams/<team>`. |
 | [**People**](/guides/people-and-teams/) | `/-/people`            | Members  | The workspace's people, with their titles, teams and what they own. Each has a profile at `/-/people/<username>`.                                                     |
-| **Members and invites**                 | `/-/members`           | Members  | Who belongs. Owners invite, change roles and remove people here.                                                                                                      |
+| **Members and invites**                 | `/-/settings/members`  | Members  | Who belongs. Owners invite, change roles and remove people here.                                                                                                      |
 | **Insights**                            | `/-/insights`          | Members  | How the workspace delivers, what waits and what it costs. See [Insights](#insights).                                                                                  |
-| **Settings**                            | `/-/settings`          | Owners   | How the workspace is set up and connected (below).                                                                                                                    |
+| **Settings**                            | `/-/settings/profile`  | Members  | How the workspace is set up and connected, opening on its [profile](#the-workspaces-profile). See [Workspace mode](#workspace-mode).                                  |
 
 Each person sees the repositories they can read: a member whose base permission
 is None, an [outside collaborator](/guides/access-and-roles/#outside-collaborators)
@@ -673,8 +707,11 @@ costs** opens [Usage](/guides/usage-and-billing/#the-usage-page) with the same p
 
 ### The workspace overview
 
-The workspace's **Overview**, `g1t.sh/<workspace>/-/workspace`, opens with
-what its work says, for members who can see Code. It is worked out the
+The workspace's own figures are on Code's **Overview**,
+`g1t.sh/<workspace>/-/overview`, below [Mission control](#mission-control):
+what needs you, what landed, the week and the activity. It shows what
+the work says, for members who can see Code,
+worked out the
 same way as [Home's week](/guides/home/#this-week), and
 each person sees only the repositories they can read.
 
@@ -715,8 +752,8 @@ each person sees only the repositories they can read.
    - **New habits**: people whose first agent-made change merged in the
      last two weeks, after three or more of their own.
 
-Under it are the members and repositories, the month's usage against the
-plan, and the workspace's policies.
+Under it are the workspace's members and the month's usage against the
+plan.
 
 ## The app bar, the sidebar and the page
 
@@ -763,12 +800,12 @@ its name on hover below that):
 
 After them come the apps you pinned, then:
 
-| App           | Opens                                                                                                                                                                                    |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Apps**      | Every app the workspace has, to open one or pin it to the app bar.                                                                                                                       |
-| **Explore**   | g1t beyond your workspaces: public repositories, people and other workspaces.                                                                                                            |
-| **People**    | In the workspace's menu: everyone in the workspace, and its [teams](/guides/teams/). See [people and teams](/guides/people-and-teams/).                                                  |
-| **Workspace** | In the workspace's menu, as **Workspace settings**: the workspace's settings: who has access, money, compute, and how each part of g1t is set up. See [Workspace mode](#workspace-mode). |
+| App           | Opens                                                                                                                                                                                                     |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Apps**      | Every app the workspace has, to open one or pin it to the app bar.                                                                                                                                        |
+| **Explore**   | g1t beyond your workspaces: public repositories, people and other workspaces.                                                                                                                             |
+| **People**    | In the workspace's menu: everyone in the workspace, and its [teams](/guides/teams/). See [people and teams](/guides/people-and-teams/).                                                                   |
+| **Workspace** | In the workspace's menu, as **Workspace settings**: the workspace's settings, opening on its profile: who has access, billing, and how each part of g1t is set up. See [Workspace mode](#workspace-mode). |
 
 [Notifications](/guides/notifications/) are the bell at the app bar's end.
 
@@ -857,8 +894,7 @@ for the roles that can use it. A link straight to any of these pages opens
 the sidebar already there.
 
 Workspace's sidebar is the [workspace's settings area](#workspace-mode):
-its **Overview**, then every settings page in named groups, each one click
-away.
+its **Profile**, then every settings page under its section's heading.
 
 Below 1024px wide, the sidebar opens over the page from the left, from the
 header's button, and closes when you open a page.
@@ -867,41 +903,48 @@ header's button, and closes when you open a page.
 
 **Workspace settings**, in the workspace's menu in the app bar, is everything about the workspace
 itself: who has access, what it spends, and how each part of g1t is set up
-for it. There is no second Settings inside it: every page is in the
-sidebar, under the group it belongs to, and the group you are in stays
-open while the others fold when you select their name. A page only owners
-open is left out for members.
+for it. It opens on the workspace's [Profile](#the-workspaces-profile).
+There is no second Settings inside it: the sidebar is laid out like
+GitHub's organization settings, with **Profile** at the top, then each
+section under its heading. A page's own pages show under it while you are
+on one of them. A page only owners open is left out for members.
 
-| Group            | Page                                                        | Who     |                                                                                                                                                                                                                                    |
-| ---------------- | ----------------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|                  | **Overview**                                                | Members | What the work says (the past week, spend threaded to the work, what is moving and waiting, quiet changes), then members, plan and spend. `g1t.sh/<workspace>/-/workspace`                                                          |
-| **General**      | **General**                                                 | Owners  | The icon, the display name, a one-line description, the address (the slug), [requiring two-factor authentication](#require-two-factor-authentication), [data residency](#data-residency), and deleting the workspace. `-/settings` |
-| **Access**       | **Members**                                                 | Members | Who is in the workspace and their roles, with search and filters; owners [invite people](#add-people), change roles, and see **Outside collaborators**. `-/members`                                                                |
-|                  | **Invitations**                                             | Owners  | Every invitation to join, filtered by where it stands; send one again, revoke it, copy its link. `-/members/invitations`                                                                                                           |
-|                  | [**Permissions**](/guides/permissions/)                     | Owners  | Who may do what, part by part: the base permission, repositories, teams and chat. `-/permissions`                                                                                                                                  |
-|                  | [**Single sign-on**](/guides/single-sign-on/)               | Owners  | Your identity provider over SAML 2.0, OpenID Connect or OAuth 2.0, the people linked to it, and requiring it. Every paid plan. `-/sso`                                                                                             |
-|                  | [**Access tokens**](#workspace-access-tokens)               | Members | The workspace's own tokens. Owners create and delete them. `-/tokens`                                                                                                                                                              |
-|                  | **Personal access tokens**                                  | Owners  | The workspace's rules for members' tokens, and approving them. `-/personal-access-tokens`                                                                                                                                          |
-| **Money**        | [**Usage**](/guides/usage-and-billing/#the-usage-page)      | Members | What the workspace used, by product, repository and day. `-/usage`                                                                                                                                                                 |
-|                  | [**Billing and plans**](/guides/usage-and-billing/)         | Members | The plan, the spend limit and budget alerts, prepaying and every charge. `-/billing`                                                                                                                                               |
-| **Compute**      | [**Runners**](/guides/self-hosted-runners/)                 | Owners  | The workspace's self-hosted machines, their groups and registration tokens. `-/runners`                                                                                                                                            |
-| **Code**         | **Repositories**                                            | Members | Every repository, and for owners **Recently deleted**, where a [deleted repository](/guides/managing-repositories/#restore-a-repository) can be restored, or purged, for 30 days. `-/repositories`                                 |
-|                  | **Actions**                                                 | Members | How workflows run in the workspace: what jobs' tokens may do, and for owners the [workflows the workspace manages](#workflows-the-workspace-manages) in its repositories. `-/actions`                                              |
-|                  | [**Secrets and variables**](/guides/secrets-and-variables/) | Members | What runs and deployments are given. Owners change them. `-/secrets`                                                                                                                                                               |
-|                  | [**Webhooks**](/guides/webhooks/)                           | Members | Where the workspace's events are sent. Owners add and change them. `-/webhooks`                                                                                                                                                    |
-| **Work**         | [**Work settings**](/work/cycles/#turn-cycles-on)           | Members | Cycles on or off, their length, start day and cooldown. Those who can manage milestones change it. `-/settings/work`                                                                                                               |
-| **Chat**         | [**Chat settings**](/guides/chat/#workspace-chat-settings)  | Members | Renaming and archiving channels, emoji, default channels. Owners change it. `-/settings/chat`                                                                                                                                      |
-|                  | **Emoji**                                                   | Members | The workspace's own emoji. `-/emoji`                                                                                                                                                                                               |
-| **Security**     | **Security settings**                                       | Members | The workspace's security policies. `-/security/settings`                                                                                                                                                                           |
-|                  | [**Guardrails**](/guides/guardrails/)                       | Members | How long checks, the merge queue and merge checks may run. `-/guardrails`                                                                                                                                                          |
-|                  | [**Rules**](/guides/rules/)                                 | Members | Rulesets across repositories. `-/rules`                                                                                                                                                                                            |
-|                  | [**Audit log**](/guides/audit-log/)                         | Members | Every change, by whom, to what. `-/audit`                                                                                                                                                                                          |
-| **Integrations** | [**Integrations**](/guides/integrations/)                   | Members | The tools connected for everyone. `-/integrations`                                                                                                                                                                                 |
+| Section                            | Page                                                                     | Who     |                                                                                                                                                                                                                             |
+| ---------------------------------- | ------------------------------------------------------------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|                                    | [**Profile**](#the-workspaces-profile)                                   | Members | The display name, picture, description and public details; for owners the billing email, Getting started, the address, [data residency](#data-residency) and deleting the workspace. Owners change it. `-/settings/profile` |
+| **Access**                         | [**Billing and plans**](/guides/usage-and-billing/)                      | Members | The plan, the spend limit and budget alerts, prepaying and every charge. Statements are at `-/settings/billing/entries`. `-/settings/billing`                                                                               |
+|                                    | ↳ [**Usage**](/guides/usage-and-billing/#the-usage-page)                 | Members | What the workspace used, by product, repository and day. `-/settings/usage`                                                                                                                                                 |
+|                                    | ↳ [**Provider costs**](/guides/usage-and-billing/#provider-cost-reports) | Members | Your AI provider's own cost report, day by day. `-/settings/provider-costs`                                                                                                                                                 |
+|                                    | **Members**                                                              | Members | Who is in the workspace and their roles, with search and filters; owners [invite people](#add-people), change roles, and see **Outside collaborators**. `-/settings/members`                                                |
+|                                    | ↳ **Invitations**                                                        | Owners  | Every invitation to join, filtered by where it stands; send one again, revoke it, copy its link. `-/settings/members/invitations`                                                                                           |
+|                                    | [**Permissions**](/guides/permissions/)                                  | Owners  | Who may do what, part by part: the base permission, repositories, teams and chat. `-/settings/permissions`                                                                                                                  |
+| **Code, planning, and automation** | **Repositories**                                                         | Members | Every repository, and for owners **Recently deleted**, where a [deleted repository](/guides/managing-repositories/#restore-a-repository) can be restored, or purged, for 30 days. `-/settings/repositories`                 |
+|                                    | ↳ [**Rules**](/guides/rules/)                                            | Members | Rulesets across repositories, and their insights. `-/settings/rules`                                                                                                                                                        |
+|                                    | [**Work**](/work/cycles/#turn-cycles-on)                                 | Members | Cycles on or off, their length, start day and cooldown. Those who can manage milestones change it. `-/settings/work`                                                                                                        |
+|                                    | [**AI**](/guides/ai/)                                                    | Members | The workspace's AI providers and models. `-/settings/ai`                                                                                                                                                                    |
+|                                    | ↳ [**Guardrails**](/guides/guardrails/)                                  | Members | How long checks, the merge queue and merge checks may run. `-/settings/guardrails`                                                                                                                                          |
+|                                    | [**Actions**](/guides/actions/)                                          | Members | How workflows run in the workspace: what jobs' tokens may do, and for owners the [workflows the workspace manages](#workflows-the-workspace-manages) in its repositories. `-/settings/actions`                              |
+|                                    | ↳ [**Runners**](/guides/self-hosted-runners/)                            | Owners  | The workspace's self-hosted machines, their groups and registration tokens. `-/settings/runners`                                                                                                                            |
+|                                    | [**Webhooks**](/guides/webhooks/)                                        | Members | Where the workspace's events are sent. Owners add and change them. `-/settings/webhooks`                                                                                                                                    |
+|                                    | [**Chat**](/guides/chat/#workspace-chat-settings)                        | Members | Renaming and archiving channels, default channels. Owners change it. `-/settings/chat`                                                                                                                                      |
+|                                    | ↳ **Emoji**                                                              | Members | The workspace's own emoji. `-/settings/emoji`                                                                                                                                                                               |
+| **Security**                       | **Authentication security**                                              | Owners  | [Requiring two-factor authentication](#require-two-factor-authentication). `-/settings/authentication`                                                                                                                      |
+|                                    | ↳ [**Single sign-on**](/guides/single-sign-on/)                          | Owners  | Your identity provider over SAML 2.0, OpenID Connect or OAuth 2.0, the people linked to it, and requiring it. Every paid plan. `-/settings/sso`                                                                             |
+|                                    | **Code security**                                                        | Members | The workspace's security policies. `-/settings/security`                                                                                                                                                                    |
+|                                    | [**Secrets and variables**](/guides/secrets-and-variables/)              | Members | What runs and deployments are given. Owners change them. `-/settings/secrets`                                                                                                                                               |
+| **Third-party access**             | [**Access tokens**](#workspace-access-tokens)                            | Members | The workspace's own tokens. Owners create and delete them. `-/settings/tokens`                                                                                                                                              |
+|                                    | **Personal access tokens**                                               | Owners  | The workspace's rules for members' tokens, and approving them. `-/settings/personal-access-tokens`                                                                                                                          |
+| **Integrations**                   | [**Integrations**](/guides/integrations/)                                | Members | The tools connected for everyone. `-/settings/integrations`                                                                                                                                                                 |
+| **Archive**                        | [**Audit log**](/guides/audit-log/)                                      | Members | Every change, by whom, to what. `-/settings/audit`                                                                                                                                                                          |
 
-Each page's address is under `g1t.sh/<workspace>/`. The page's header
-shows where you are: **General**, **Members / Invitations**, **Permissions**.
-Every address that was there before this layout still works. To find
-someone, and what they work on, use the
+↳ marks a page that shows under the one above it. Each page's address is
+under `g1t.sh/<workspace>/`. The page's header shows where you are:
+**Profile**, **Members / Invitations**, **Permissions**.
+
+`g1t.sh/<workspace>/-/settings` opens on the Profile. Code's
+security alerts (`-/security`), Work, Packages, Insights, Teams, People,
+Apps and Routines are pages of their own, not settings, and stay where
+they were. To find someone, and what they work on, use the
 [People directory](/guides/people-and-teams/#the-directory).
 
 ### Pinned and recent repositories
@@ -963,7 +1006,9 @@ the row under its name.
 ## Mission control
 
 Mission control is Code's **Overview**, at `g1t.sh/<workspace>/-/overview`.
-It shows where you are needed in the workspace's code and what landed.
+It shows where you are needed in the workspace's code and what landed,
+then the week, the activity and
+[what the workspace's work says](#the-workspace-overview).
 Signed in, `g1t.sh` itself opens [Home](/guides/home/) in the workspace
 you are in.
 

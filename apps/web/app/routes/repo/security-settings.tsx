@@ -235,7 +235,7 @@ export default function SecuritySettings({ loaderData, params }: Route.Component
           Dependency updates
         </Link>
         . Delegated bypass and validity checks are the workspace's, in{" "}
-        <Link to={`/${params.owner}/-/security/settings`} className="underline underline-offset-2 hover:text-fg">
+        <Link to={`/${params.owner}/-/settings/security`} className="underline underline-offset-2 hover:text-fg">
           its Security settings
         </Link>
         .

@@ -19,7 +19,7 @@ description: Open alerts across a workspace by type and severity, how they move,
 The overview's tabs also lead to the workspace's
 [bypass requests](/guides/security/secret-protection/#delegated-bypass),
 [custom patterns](/guides/security/secret-protection/#custom-patterns) and
-Security settings.
+**Code security** settings, `g1t.sh/<workspace>/-/settings/security`.
 
 ## Private repositories
 

@@ -580,7 +580,7 @@ export function ChannelView({ data }: { data: Loaded }) {
       usercontent,
       me: meProfile,
       react: (id: string, emoji: string, on: boolean) => void react(id, emoji, on),
-      manageHref: `/${slug}/-/emoji`,
+      manageHref: `/${slug}/-/settings/emoji`,
     }),
     [customs, usercontent, meProfile, react, slug],
   );

@@ -2,9 +2,9 @@ import type { ProviderKind } from "@g1t/contracts";
 
 /**
  * Where each kind of integration is set up: alerts and trackers have setup
- * pages under `-/integrations/<section>`, which the directory at
- * `-/integrations` links into. AI providers are not integrations: they are
- * the workspace's own AI settings, at `-/ai`.
+ * pages under `-/settings/integrations/<section>`, which the directory at
+ * `-/settings/integrations` links into. AI providers are not integrations:
+ * they are the workspace's own AI settings, at `-/settings/ai`.
  */
 export type IntegrationsSection = "alerts" | "trackers";
 
@@ -15,7 +15,7 @@ const SECTIONS: Record<ProviderKind, IntegrationsSection> = {
 
 /** The page, under `-/`, a kind of integration is set up on. */
 export function providerPage(kind: ProviderKind): string {
-  return `integrations/${SECTIONS[kind]}`;
+  return `settings/integrations/${SECTIONS[kind]}`;
 }
 
 /** The kind of integration a section's page is for, or null when it is no section. */
@@ -34,5 +34,5 @@ export function aiPagePath(slug: string, search: string): string {
   const query = new URLSearchParams(search);
   query.delete("_routes");
   const rest = query.toString();
-  return `/${slug}/-/ai${rest ? `?${rest}` : ""}${query.has("add") ? "#add" : ""}`;
+  return `/${slug}/-/settings/ai${rest ? `?${rest}` : ""}${query.has("add") ? "#add" : ""}`;
 }

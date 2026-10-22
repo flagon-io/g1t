@@ -10,7 +10,7 @@ import { ButtonLink } from "./ui";
 
 /** Where a workspace's plan is started. */
 export function planHref(workspace: string): string {
-  return `/${workspace}/-/billing#plan`;
+  return `/${workspace}/-/settings/billing#plan`;
 }
 
 /** "Start the plan to invite people", with the button, for a free workspace's owners. */

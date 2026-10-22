@@ -79,7 +79,7 @@ const SELECT = "h-auto py-2";
 
 export default function WorkspaceAudit({ loaderData }: Route.ComponentProps) {
   const { workspace, role, filters, entries, next, projects, retention } = loaderData;
-  const base = `/${workspace}/-/audit`;
+  const base = `/${workspace}/-/settings/audit`;
   const filtered = Object.entries(filters).some(([key, value]) => key !== "before" && value);
   const exportHref = (format: "csv" | "json") => filterHref(`${base}/export`, { ...filters, before: "" }) + `${filtered ? "&" : "?"}format=${format}`;
   return (

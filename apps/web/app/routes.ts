@@ -131,11 +131,11 @@ export default [
       route("-/people", "routes/workspace/people.tsx"),
       route("-/people/:username", "routes/workspace/people/person.tsx"),
       // Workspace mode's Access: who is a member and their roles, the invitations sent, and who may do what.
-      route("-/members", "routes/workspace/members.tsx"),
-      route("-/members/invitations", "routes/workspace/member-invitations.tsx"),
-      route("-/permissions", "routes/workspace/permissions.tsx"),
+      route("-/settings/members", "routes/workspace/members.tsx"),
+      route("-/settings/members/invitations", "routes/workspace/member-invitations.tsx"),
+      route("-/settings/permissions", "routes/workspace/permissions.tsx"),
       // Single sign-on through the workspace's own identity provider.
-      route("-/sso", "routes/workspace/sso.tsx"),
+      route("-/settings/sso", "routes/workspace/sso.tsx"),
       route("-/insights", "routes/workspace/insights.tsx"),
       // Pinning its repositories, for the person signed in.
       route("-/pins", "routes/workspace/pins.ts"),
@@ -145,7 +145,9 @@ export default [
       // Code's Overview: Mission control's code panels, for this workspace.
       route("-/overview", "routes/workspace/code-overview.tsx"),
       // The workspace itself, at a glance: members, plan and spend.
-      route("-/workspace", "routes/workspace/workspace-overview.tsx"),
+      // The workspace's settings, every page under `-/settings/`, open on its Profile.
+      route("-/settings", "routes/workspace/settings-index.ts"),
+      route("-/settings/authentication", "routes/workspace/authentication.tsx"),
       // Teams: the list, a new one, and each team's pages.
       route("-/teams", "routes/workspace/teams.tsx"),
       route("-/teams/new", "routes/workspace/team-new.tsx"),
@@ -156,41 +158,41 @@ export default [
         route("settings", "routes/workspace/team/settings.tsx"),
       ]),
       // The workspace's own access tokens: the list, a new one, and each one's page.
-      route("-/tokens", "routes/workspace/tokens.tsx"),
-      route("-/tokens/new", "routes/workspace/token-new.tsx"),
-      route("-/tokens/:id", "routes/workspace/token.tsx"),
+      route("-/settings/tokens", "routes/workspace/tokens.tsx"),
+      route("-/settings/tokens/new", "routes/workspace/token-new.tsx"),
+      route("-/settings/tokens/:id", "routes/workspace/token.tsx"),
       // Its rules for members' personal access tokens, and approving them.
-      route("-/personal-access-tokens", "routes/workspace/personal-access-tokens.tsx"),
-      route("-/usage", "routes/workspace/usage.tsx"),
-      route("-/billing", "routes/workspace/billing.tsx"),
+      route("-/settings/personal-access-tokens", "routes/workspace/personal-access-tokens.tsx"),
+      route("-/settings/usage", "routes/workspace/usage.tsx"),
+      route("-/settings/billing", "routes/workspace/billing.tsx"),
       // What the workspace's AI providers say its organization spent, from
       // their own cost reports (services/billing/src/provider_costs.rs).
-      route("-/provider-costs", "routes/workspace/provider-costs.tsx"),
-      route("-/billing/entries", "routes/workspace/statement-entries.ts"),
-      route("-/billing/statement.csv", "routes/workspace/statement-csv.ts"),
+      route("-/settings/provider-costs", "routes/workspace/provider-costs.tsx"),
+      route("-/settings/billing/entries", "routes/workspace/statement-entries.ts"),
+      route("-/settings/billing/statement.csv", "routes/workspace/statement-csv.ts"),
       // The workspace's AI: its AI providers, managed or self-hosted, and
       // what Ask answers with. A base setting, not an integration.
-      route("-/ai", "routes/workspace/ai.tsx"),
+      route("-/settings/ai", "routes/workspace/ai.tsx"),
       // The integrations directory, and the setup pages for alerts and
       // trackers (lib/integration-sections).
-      route("-/integrations", "routes/workspace/integrations-directory.tsx"),
-      route("-/integrations/:section", "routes/workspace/integrations.tsx"),
+      route("-/settings/integrations", "routes/workspace/integrations-directory.tsx"),
+      route("-/settings/integrations/:section", "routes/workspace/integrations.tsx"),
       // Ask g1t: what it answers with (Chat's New with no repository), and
       // starting a session it proposed (components/chat/agent-composer).
       route("-/ask", "routes/workspace/ask.ts"),
-      route("-/webhooks", "routes/workspace/webhooks.tsx"),
+      route("-/settings/webhooks", "routes/workspace/webhooks.tsx"),
       // The workspace's own emoji, for chat (components/emoji).
-      route("-/emoji", "routes/workspace/emoji.tsx"),
-      route("-/secrets", "routes/workspace/secrets.tsx"),
-      route("-/runners", "routes/workspace/runners.tsx"),
-      route("-/actions", "routes/workspace/actions-settings.tsx"),
+      route("-/settings/emoji", "routes/workspace/emoji.tsx"),
+      route("-/settings/secrets", "routes/workspace/secrets.tsx"),
+      route("-/settings/runners", "routes/workspace/runners.tsx"),
+      route("-/settings/actions", "routes/workspace/actions-settings.tsx"),
       route("-/packages", "routes/workspace/packages.tsx"),
       route("-/packages/:ecosystem/*", "routes/workspace/package.tsx"),
-      route("-/settings", "routes/workspace/settings.tsx"),
+      route("-/settings/profile", "routes/workspace/settings.tsx"),
       // What members may do in chat: channels, emoji, default channels.
       route("-/settings/chat", "routes/workspace/chat-settings.tsx"),
       route("-/settings/work", "routes/workspace/work-settings.tsx"),
-      route("-/repositories", "routes/workspace/repositories.tsx"),
+      route("-/settings/repositories", "routes/workspace/repositories.tsx"),
       // Chat mode: channels by name, direct messages by id, and what the page
       // calls as it runs: the live socket and the JSON for sending and reading.
       route("-/chat/live", "routes/workspace/chat/live.ts"),
@@ -311,13 +313,13 @@ export default [
       route("-/security", "routes/workspace/security.tsx"),
       route("-/security/patterns", "routes/workspace/security-patterns.tsx"),
       route("-/security/bypass-requests", "routes/workspace/security-bypass.tsx"),
-      route("-/security/settings", "routes/workspace/security-settings.tsx"),
-      route("-/audit", "routes/workspace/audit.tsx"),
-      route("-/audit/export", "routes/workspace/audit-export.ts"),
-      route("-/guardrails", "routes/workspace/guardrails.tsx"),
-      route("-/rules", "routes/workspace/rules.tsx"),
-      route("-/rules/insights", "routes/workspace/rules.tsx", { id: "routes/workspace/rules-insights" }),
-      route("-/rules/:id", "routes/workspace/ruleset.tsx"),
+      route("-/settings/security", "routes/workspace/security-settings.tsx"),
+      route("-/settings/audit", "routes/workspace/audit.tsx"),
+      route("-/settings/audit/export", "routes/workspace/audit-export.ts"),
+      route("-/settings/guardrails", "routes/workspace/guardrails.tsx"),
+      route("-/settings/rules", "routes/workspace/rules.tsx"),
+      route("-/settings/rules/insights", "routes/workspace/rules.tsx", { id: "routes/workspace/rules-insights" }),
+      route("-/settings/rules/:id", "routes/workspace/ruleset.tsx"),
       // What the workspace will have across its repositories.
       route("-/soon/:feature", "routes/workspace/soon.tsx"),
     ]),

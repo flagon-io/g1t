@@ -775,7 +775,7 @@ function PlanNeeded({ plan, owner, quiet }: { plan: FeatureState | null; owner: 
       )}
       {plan && <p className="mt-3 text-xs text-faint">{plan.plan.overage}</p>}
       <div className="mt-4">
-        <ButtonLink variant={quiet ? "outline" : "accent"} to={`/${owner}/-/billing`}>
+        <ButtonLink variant={quiet ? "outline" : "accent"} to={`/${owner}/-/settings/billing`}>
           See the plan under Billing
         </ButtonLink>
       </div>

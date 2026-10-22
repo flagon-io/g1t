@@ -171,7 +171,18 @@ export type Workspace = {
   teamCreation?: TeamCreation;
   /** Whether members and outside collaborators need two-factor authentication. */
   twoFactorRequirementEnabled?: boolean;
+  /** Its website: an https:// address. */
+  website: string | null;
+  /** Where to reach it: a public email address. The billing email is private, and not here. */
+  email: string | null;
+  /** Where it is, as it puts it. */
+  location: string | null;
+  /** Its accounts elsewhere: at most `MAX_WORKSPACE_SOCIAL_ACCOUNTS` https:// addresses. */
+  socialAccounts: string[];
 } & Partial<MemberPrivileges>;
+
+/** The most social accounts a workspace's profile lists. */
+export const MAX_WORKSPACE_SOCIAL_ACCOUNTS = 4;
 
 export type Member = {
   username: string;
@@ -234,6 +245,8 @@ export type AdminWorkspaceDetail = {
   protected: boolean;
   /** Set while staff have it suspended. */
   suspended?: Suspension | null;
+  /** The private address billing sends receipts and invoices to; null means an owner's. */
+  billingEmail?: string | null;
 };
 
 /** The most workspaces one `workspaces` call returns. */
@@ -788,8 +801,30 @@ export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, De
   setMemberPrivileges(actor: User, slug: string, change: Partial<MemberPrivileges>): Promise<Result<MemberPrivileges>>;
   /** Owners only, with two-factor on themselves: require it of everyone. */
   setTwoFactorRequirement(actor: User, slug: string, required: boolean): Promise<Result<boolean>>;
-  /** Owners only. An empty name falls back to the slug. */
-  updateWorkspace(actor: User, slug: string, details: { name: string; description: string }): Promise<Result<Workspace>>;
+  /**
+   * Owners only. An empty name falls back to the slug. Each profile field
+   * left out stays as it is; an empty one (or an empty list) clears it. The
+   * website and social accounts must be https:// addresses (a bare
+   * `example.com` means `https://example.com`), at most
+   * `MAX_WORKSPACE_SOCIAL_ACCOUNTS` of them, blanks and repeats dropped; the
+   * emails must look like addresses. `billingEmail` is private: where
+   * billing sends receipts and invoices (see `workspaceBillingEmail`).
+   */
+  updateWorkspace(
+    actor: User,
+    slug: string,
+    details: {
+      name: string;
+      description: string;
+      website?: string;
+      email?: string;
+      location?: string;
+      socialAccounts?: string[];
+      billingEmail?: string;
+    },
+  ): Promise<Result<Workspace>>;
+  /** Owners and billing managers only: the private billing email, or null when none is set (an owner's is used). */
+  workspaceBillingEmail(actor: User, slug: string): Promise<Result<string | null>>;
   /**
    * Owners only. Changes the slug, the first segment of the workspace's
    * URLs; the display name is untouched. The old slug redirects to the new

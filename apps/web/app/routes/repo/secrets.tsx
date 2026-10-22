@@ -16,7 +16,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   await requireInsider(context, params, "manage_integrations");
   return {
     ...(await loadSecrets(ownerOf(params), requireUser(context, request))),
-    workspacePath: roleIn(getViewer(context), params.owner) ? `/${params.owner}/-/secrets` : undefined,
+    workspacePath: roleIn(getViewer(context), params.owner) ? `/${params.owner}/-/settings/secrets` : undefined,
   };
 }
 

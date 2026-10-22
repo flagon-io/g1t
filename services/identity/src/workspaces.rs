@@ -17,6 +17,7 @@ use g1t_contracts::{
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
+use worker::wasm_bindgen::JsValue;
 
 use crate::Identity;
 
@@ -30,6 +31,7 @@ const MAX_DESCRIPTION_LENGTH: usize = 160;
 const WORKSPACE_COLUMNS: &str = "workspaces.id, workspaces.slug, workspaces.name,
   workspaces.description, workspaces.avatar, workspaces.created_at, workspaces.base_permission, workspaces.team_creation,
   workspaces.member_privileges, workspaces.require_two_factor,
+  workspaces.website, workspaces.email, workspaces.location, workspaces.social_accounts,
   (SELECT count(*) FROM workspace_members
    WHERE workspace_members.workspace_id = workspaces.id) AS member_count";
 
@@ -50,6 +52,15 @@ struct WorkspaceRow {
     member_privileges: Option<String>,
     #[serde(default)]
     require_two_factor: Option<u8>,
+    #[serde(default)]
+    website: Option<String>,
+    #[serde(default)]
+    email: Option<String>,
+    #[serde(default)]
+    location: Option<String>,
+    /// A JSON array of addresses.
+    #[serde(default)]
+    social_accounts: Option<String>,
 }
 
 impl From<WorkspaceRow> for Workspace {
@@ -74,8 +85,92 @@ impl From<WorkspaceRow> for Workspace {
                 .unwrap_or_default(),
             privileges: MemberPrivileges::from_stored(row.member_privileges.as_deref()),
             two_factor_requirement_enabled: row.require_two_factor.unwrap_or(0) != 0,
+            website: row.website,
+            email: row.email,
+            location: row.location,
+            social_accounts: row
+                .social_accounts
+                .as_deref()
+                .and_then(|stored| serde_json::from_str(stored).ok())
+                .unwrap_or_default(),
         }
     }
+}
+
+/// The profile fields of an update, checked. Each is `None` where it was
+/// not given, so stays as it is, and `Some(None)` (or an empty list) where
+/// it is cleared.
+#[derive(Debug, Default, PartialEq)]
+struct ProfileChange {
+    website: Option<Option<String>>,
+    email: Option<Option<String>>,
+    location: Option<Option<String>>,
+    social_accounts: Option<Vec<String>>,
+    billing_email: Option<Option<String>>,
+}
+
+/// An email address as it is kept, trimmed and lowercased: empty is none;
+/// anything that does not look like an address is refused.
+fn email_field(value: &str, what: &str) -> std::result::Result<Option<String>, String> {
+    if value.trim().is_empty() {
+        return Ok(None);
+    }
+    g1t_contracts::accounts::normalize_email(value)
+        .map(Some)
+        .ok_or_else(|| format!("Enter a valid {what} address, such as hello@example.com."))
+}
+
+/// Social accounts as they are kept: each an `https://` address (see
+/// `profiles::https_address`), blanks and repeats dropped, at most
+/// [`MAX_WORKSPACE_SOCIAL_ACCOUNTS`].
+fn social_accounts(values: &[String]) -> std::result::Result<Vec<String>, String> {
+    let mut kept: Vec<String> = Vec::new();
+    for value in values {
+        let address = match crate::profiles::https_address(value) {
+            Ok(Some(address)) => address,
+            Ok(None) => continue,
+            Err(crate::profiles::AddressProblem::TooLong) => {
+                return Err("That social account address is too long.".into());
+            }
+            Err(crate::profiles::AddressProblem::NotHttps) => {
+                return Err("Use an https:// address for each social account, such as https://github.com/example.".into());
+            }
+        };
+        if !kept.iter().any(|seen| seen.eq_ignore_ascii_case(&address)) {
+            kept.push(address);
+        }
+    }
+    if kept.len() > MAX_WORKSPACE_SOCIAL_ACCOUNTS {
+        return Err(format!("List at most {MAX_WORKSPACE_SOCIAL_ACCOUNTS} social accounts."));
+    }
+    Ok(kept)
+}
+
+/// The profile fields of `a`, checked, or the first thing wrong.
+fn check_profile(a: &UpdateWorkspaceArgs) -> std::result::Result<ProfileChange, String> {
+    Ok(ProfileChange {
+        website: match a.website.as_deref() {
+            None => None,
+            Some(value) => Some(crate::profiles::https_address(value).map_err(|problem| match problem {
+                crate::profiles::AddressProblem::TooLong => "That website address is too long.".to_owned(),
+                crate::profiles::AddressProblem::NotHttps => {
+                    "Use an https:// address for the website, such as https://example.com.".to_owned()
+                }
+            })?),
+        },
+        email: a.email.as_deref().map(|value| email_field(value, "email")).transpose()?,
+        location: a
+            .location
+            .as_deref()
+            .map(|value| crate::profiles::tidy(value, MAX_PROFILE_LOCATION, "location"))
+            .transpose()?,
+        social_accounts: a.social_accounts.as_deref().map(social_accounts).transpose()?,
+        billing_email: a
+            .billing_email
+            .as_deref()
+            .map(|value| email_field(value, "billing email"))
+            .transpose()?,
+    })
 }
 
 /// The name a new account's own workspace takes: its username, when that
@@ -282,6 +377,10 @@ impl Identity {
             team_creation: TeamCreation::default(),
             privileges: MemberPrivileges::default(),
             two_factor_requirement_enabled: false,
+            website: None,
+            email: None,
+            location: None,
+            social_accounts: Vec::new(),
         };
         self.db
             .batch(vec![
@@ -345,23 +444,70 @@ impl Identity {
             .chars()
             .take(MAX_DESCRIPTION_LENGTH)
             .collect();
-        self.db
-            .prepare("UPDATE workspaces SET name = ?, description = ? WHERE slug = ?")
-            .bind(&[
-                name.into(),
-                if description.is_empty() {
-                    worker::wasm_bindgen::JsValue::NULL
-                } else {
-                    description.into()
-                },
-                slug.as_str().into(),
-            ])?
-            .run()
-            .await?;
+        let profile = match check_profile(&a) {
+            Ok(profile) => profile,
+            Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
+        };
+        fn optional(value: Option<String>) -> JsValue {
+            value.map_or(JsValue::NULL, JsValue::from)
+        }
+        let mut sql = String::from("UPDATE workspaces SET name = ?, description = ?");
+        let mut values: Vec<JsValue> = vec![
+            name.into(),
+            if description.is_empty() { JsValue::NULL } else { description.into() },
+        ];
+        // Only what was given changes.
+        let social_accounts = profile.social_accounts.map(|accounts| {
+            (!accounts.is_empty()).then(|| serde_json::to_string(&accounts).unwrap_or_default())
+        });
+        for (column, value) in [
+            ("website", profile.website),
+            ("email", profile.email),
+            ("location", profile.location),
+            ("social_accounts", social_accounts),
+            ("billing_email", profile.billing_email),
+        ] {
+            if let Some(value) = value {
+                sql.push_str(&format!(", {column} = ?"));
+                values.push(optional(value));
+            }
+        }
+        sql.push_str(" WHERE slug = ?");
+        values.push(slug.as_str().into());
+        self.db.prepare(sql).bind(&values)?.run().await?;
         Ok(match self.get_workspace(SlugArgs { slug }).await? {
             Some(workspace) => Outcome::Ok(workspace),
             None => Outcome::fail(FailureCode::NotFound, "Workspace not found."),
         })
+    }
+
+    /// The private address billing sends a workspace's receipts and
+    /// invoices to, or None when none is set. Owners and billing managers
+    /// only: it is not on [`Workspace`], which every member sees.
+    pub async fn workspace_billing_email(&self, a: WorkspaceBillingEmailArgs) -> Result<Outcome<Option<String>>> {
+        let slug = a.slug.to_lowercase();
+        if a.actor.kind != PrincipalKind::User || !a.actor.manages_billing(&slug) {
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                "Only an owner or a billing manager can see a workspace's billing email.",
+            ));
+        }
+        #[derive(Deserialize)]
+        struct Row {
+            billing_email: Option<String>,
+        }
+        Ok(
+            match self
+                .db
+                .prepare("SELECT billing_email FROM workspaces WHERE slug = ? AND deleted_at IS NULL")
+                .bind(&[slug.into()])?
+                .first::<Row>(None)
+                .await?
+            {
+                Some(row) => Outcome::Ok(row.billing_email),
+                None => Outcome::fail(FailureCode::NotFound, "Workspace not found."),
+            },
+        )
     }
 
     pub async fn list_members(&self, a: ListMembersArgs) -> Result<Outcome<Vec<Member>>> {
@@ -577,5 +723,90 @@ mod tests {
             assert_eq!(claimable_namespace(slug), None, "{slug}");
         }
         assert_eq!(claimable_namespace("Acme").as_deref(), Some("acme"));
+    }
+
+    fn update(name: &str) -> UpdateWorkspaceArgs {
+        UpdateWorkspaceArgs {
+            actor: User::default(),
+            slug: "acme".into(),
+            name: name.into(),
+            description: String::new(),
+            website: None,
+            email: None,
+            location: None,
+            social_accounts: None,
+            billing_email: None,
+        }
+    }
+
+    #[test]
+    fn a_profile_field_left_out_stays_and_an_empty_one_clears() {
+        assert_eq!(check_profile(&update("Acme")).unwrap(), ProfileChange::default());
+        let cleared = check_profile(&UpdateWorkspaceArgs {
+            website: Some(" ".into()),
+            email: Some(String::new()),
+            location: Some(String::new()),
+            social_accounts: Some(Vec::new()),
+            billing_email: Some(String::new()),
+            ..update("Acme")
+        })
+        .unwrap();
+        assert_eq!(
+            cleared,
+            ProfileChange {
+                website: Some(None),
+                email: Some(None),
+                location: Some(None),
+                social_accounts: Some(Vec::new()),
+                billing_email: Some(None),
+            }
+        );
+    }
+
+    #[test]
+    fn a_profile_is_tidied_and_checked() {
+        let checked = check_profile(&UpdateWorkspaceArgs {
+            website: Some(" acme.dev ".into()),
+            email: Some(" Hello@Acme.dev ".into()),
+            location: Some("  Denver,\n Colorado ".into()),
+            social_accounts: Some(vec![
+                "https://github.com/acme".into(),
+                " ".into(),
+                "github.com/acme".into(),
+                "https://x.com/acme".into(),
+            ]),
+            billing_email: Some("billing@acme.dev".into()),
+            ..update("Acme")
+        })
+        .unwrap();
+        assert_eq!(checked.website, Some(Some("https://acme.dev".into())));
+        assert_eq!(checked.email, Some(Some("hello@acme.dev".into())));
+        assert_eq!(checked.location, Some(Some("Denver, Colorado".into())));
+        assert_eq!(
+            checked.social_accounts,
+            Some(vec!["https://github.com/acme".into(), "https://x.com/acme".into()]),
+            "blanks and repeats are dropped"
+        );
+        assert_eq!(checked.billing_email, Some(Some("billing@acme.dev".into())));
+    }
+
+    #[test]
+    fn a_bad_profile_field_is_refused() {
+        for bad in [
+            UpdateWorkspaceArgs { website: Some("http://acme.dev".into()), ..update("Acme") },
+            UpdateWorkspaceArgs { email: Some("not an address".into()), ..update("Acme") },
+            UpdateWorkspaceArgs { billing_email: Some("billing@".into()), ..update("Acme") },
+            UpdateWorkspaceArgs { location: Some("a".repeat(MAX_PROFILE_LOCATION + 1)), ..update("Acme") },
+            UpdateWorkspaceArgs { social_accounts: Some(vec!["javascript:alert(1)".into()]), ..update("Acme") },
+        ] {
+            assert!(check_profile(&bad).is_err(), "{bad:?} was kept");
+        }
+    }
+
+    #[test]
+    fn at_most_four_social_accounts() {
+        let five: Vec<String> = (1..=5).map(|n| format!("https://example{n}.com")).collect();
+        assert!(social_accounts(&five).is_err());
+        assert_eq!(social_accounts(&five[..4]).unwrap().len(), MAX_WORKSPACE_SOCIAL_ACCOUNTS);
     }
 }

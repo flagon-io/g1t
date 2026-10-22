@@ -49,7 +49,7 @@ export function UsageCard({ slug, glance, owner }: { slug: string; glance: Usage
         <div className="p-5 pb-4">
           <div className="flex items-baseline justify-between gap-3">
             <h2 id="usage-card" className="font-medium">
-              <Link to={`/${slug}/-/usage`} className="hover:underline">
+              <Link to={`/${slug}/-/settings/usage`} className="hover:underline">
                 Usage
               </Link>
             </h2>
@@ -122,22 +122,22 @@ export function UsageCard({ slug, glance, owner }: { slug: string; glance: Usage
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-5 py-3">
-          <Link to={`/${slug}/-/usage`} className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
+          <Link to={`/${slug}/-/settings/usage`} className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
             Usage, run by run <ArrowRight size={12} />
           </Link>
           {glance.kind === "forge" || glance.kind === "trial" ? (
             owner ? (
-              <ButtonLink to={`/${slug}/-/billing#plan`} variant="accent">
+              <ButtonLink to={`/${slug}/-/settings/billing#plan`} variant="accent">
                 Start the plan
               </ButtonLink>
             ) : (
-              <ButtonLink to={`/${slug}/-/billing`} variant="outline">
+              <ButtonLink to={`/${slug}/-/settings/billing`} variant="outline">
                 <CreditCard size={14} />
                 Billing
               </ButtonLink>
             )
           ) : (
-            <ButtonLink to={`/${slug}/-/billing`} variant="outline">
+            <ButtonLink to={`/${slug}/-/settings/billing`} variant="outline">
               <CreditCard size={14} />
               Billing
             </ButtonLink>

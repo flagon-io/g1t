@@ -65,7 +65,7 @@ them off again.
 ## Turn on deployments
 
 1. **Start the g1t plan for the workspace**, if it is not on. An owner
-   opens **Settings → Billing and plans**, `g1t.sh/<workspace>/-/billing`,
+   opens **Workspace → Access → Billing and plans**, `g1t.sh/<workspace>/-/settings/billing`,
    and chooses **Start the g1t plan** on the **g1t** card. Back on
    Billing, the card says **On the g1t plan**. The trial does not pay for
    deployments.

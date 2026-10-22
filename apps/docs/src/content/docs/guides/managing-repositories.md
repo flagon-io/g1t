@@ -512,7 +512,7 @@ To move a repository to another workspace instead of deleting it, see
 
 A workspace's recently deleted repositories are listed for its owners
 under **Recently deleted** in the workspace's **Settings → Repositories**,
-at `g1t.sh/<workspace>/-/repositories`, each with who deleted it and when
+at `g1t.sh/<workspace>/-/settings/repositories`, each with who deleted it and when
 it will be purged.
 
 1. Open the workspace's **Settings → Repositories**.

@@ -69,7 +69,7 @@ pub(crate) fn paid_with(extras: Extras) -> String {
 /// What the owners are told when Stripe Tax cannot place the workspace.
 pub(crate) fn address_needed_message(workspace: &str) -> String {
     format!(
-        "Add {workspace}'s billing address in Stripe: on the Billing page (/{workspace}/-/billing#stripe), choose Manage billing. Stripe needs it to work out tax, so g1t did not charge the card; nothing is lost, and the charge goes through once the address is there."
+        "Add {workspace}'s billing address in Stripe: on the Billing page (/{workspace}/-/settings/billing#stripe), choose Manage billing. Stripe needs it to work out tax, so g1t did not charge the card; nothing is lost, and the charge goes through once the address is there."
     )
 }
 
@@ -188,7 +188,7 @@ impl Billing {
                 &format!("g1t: add a billing address for {workspace}"),
                 &address_needed_message(workspace),
                 "Add the address",
-                &format!("https://g1t.sh/{workspace}/-/billing#stripe"),
+                &format!("https://g1t.sh/{workspace}/-/settings/billing#stripe"),
                 "You get this because you own this workspace on g1t. Tax is explained at https://docs.g1t.sh/guides/usage-and-billing/#tax",
             )
             .await;
@@ -274,7 +274,7 @@ mod tests {
     #[test]
     fn the_owners_are_told_where_to_add_the_address() {
         let message = address_needed_message("acme");
-        assert!(message.contains("/acme/-/billing#stripe") && message.contains("Manage billing"));
+        assert!(message.contains("/acme/-/settings/billing#stripe") && message.contains("Manage billing"));
         assert!(message.contains("tax"));
     }
 }

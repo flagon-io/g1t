@@ -11,7 +11,7 @@ the other or both do, and which environments it applies to.
 | Where        | Page                                                                                     | Who sees and changes it                                       |
 | ------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
 | A repository | **Settings → Secrets and variables**, `g1t.sh/<workspace>/<repository>/settings/secrets` | People with the Admin [role](/guides/access-and-roles/) on it |
-| A workspace  | **Settings → Secrets and variables**, `g1t.sh/<workspace>/-/secrets`                     | Owners                                                        |
+| A workspace  | **Settings → Secrets and variables**, `g1t.sh/<workspace>/-/settings/secrets`            | Owners                                                        |
 
 Seeing the list needs the same as changing it: a repository's rows, config
 values included, are for Admins of its repository, and the page is not

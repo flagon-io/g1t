@@ -70,24 +70,24 @@ test("only integrations are pinned; built-in apps, their pages, old plugins and 
 });
 
 test("an integration's app opens its page", () => {
-  assert.equal(installedAppOf("int-sentry")?.path("acme"), "/acme/-/integrations/alerts");
-  assert.equal(installedAppOf("int-linear")?.path("acme"), "/acme/-/integrations/trackers");
+  assert.equal(installedAppOf("int-sentry")?.path("acme"), "/acme/-/settings/integrations/alerts");
+  assert.equal(installedAppOf("int-linear")?.path("acme"), "/acme/-/settings/integrations/trackers");
   // AI providers are the workspace's AI settings, not apps.
   assert.equal(installedAppOf("int-anthropic"), null);
-  assert.equal(installedAppOf("int-webhooks")?.path("acme"), "/acme/-/webhooks");
+  assert.equal(installedAppOf("int-webhooks")?.path("acme"), "/acme/-/settings/webhooks");
   assert.equal(installedAppOf(integrationAppKey("github"))?.listing, "integration:github");
   // Every key fits what identity keeps (MAX_DOCK_APP_KEY, 32).
   assert.ok(integrationAppKey("anthropic-endpoint").length <= 32);
 });
 
 test("installed apps are what the workspace connected, opening where each is managed", () => {
-  const apps = installedApps({ sentry: { manage: "/acme/-/integrations/alerts" }, github: { manage: null }, nonsense: { manage: null } });
+  const apps = installedApps({ sentry: { manage: "/acme/-/settings/integrations/alerts" }, github: { manage: null }, nonsense: { manage: null } });
   assert.deepEqual(
     apps.map((app) => app.key),
     ["int-github", "int-sentry"],
   );
   assert.equal(apps[0]!.path("acme"), "/new/github?workspace=acme");
-  assert.deepEqual(appData(apps[1]!, "acme").href, "/acme/-/integrations/alerts");
+  assert.deepEqual(appData(apps[1]!, "acme").href, "/acme/-/settings/integrations/alerts");
   assert.deepEqual(installedApps({}), []);
   assert.deepEqual(
     installedApps({ sentry: { manage: null }, anthropic: { manage: null } }).map((app) => [app.key, app.from, app.pinnable]),

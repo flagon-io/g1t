@@ -18,8 +18,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const role = roleIn(viewer, params.owner);
   if (!role) throw data(null, { status: 404 });
   const url = new URL(request.url);
-  // Insights is a path: `?tab=insights`, the address before, is `/-/rules/insights`.
-  const moved = movedTab(url, (asked) => rulesPath(`/${params.owner}/-/rules`, asked));
+  // Insights is a path: `?tab=insights`, the address before, is `/-/settings/rules/insights`.
+  const moved = movedTab(url, (asked) => rulesPath(`/${params.owner}/-/settings/rules`, asked));
   if (moved) throw redirect(moved, 301);
   const tab = rulesAt(url.pathname);
   const owner = { workspace: params.owner };
@@ -37,7 +37,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 
 export default function WorkspaceRules({ loaderData, params }: Route.ComponentProps) {
   const { tab, rulesets, evaluations, editable } = loaderData;
-  const base = `/${params.owner}/-/rules`;
+  const base = `/${params.owner}/-/settings/rules`;
   const [search] = useSearchParams();
   const tabLink = (name: "rulesets" | "insights") => {
     const next = new URLSearchParams(search);

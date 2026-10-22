@@ -281,7 +281,7 @@ address, and stops working when the invite is used, revoked or expires.
 ### Inviting someone into a workspace
 
 An owner can invite someone into a workspace from its **Members and
-invites** page, `g1t.sh/<workspace>/-/members`, by
+invites** page, `g1t.sh/<workspace>/-/settings/members`, by
 username or by email address, with the role they join as; see
 [add people](/guides/workspaces/#add-people). Nobody is added without
 saying yes: someone on g1t gets a [workspace invitation](#workspace-invitations)
@@ -1019,7 +1019,7 @@ token's page.
 
 A workspace's own tokens act as the workspace rather than a person. An
 owner makes them in the workspace's **Settings → Access tokens**
-(`g1t.sh/<workspace>/-/tokens`), with **New token**: the same form as a
+(`g1t.sh/<workspace>/-/settings/tokens`), with **New token**: the same form as a
 personal token, starting on the CI preset. A workspace token reaches all
 of that workspace's repositories, or the ones chosen, never another
 workspace, and cannot manage people, tokens or workspaces. It holds no
@@ -1038,7 +1038,7 @@ owner can make, change or delete one. See
 
 An owner decides which of the members' own personal tokens reach the
 workspace, under its **Settings → Personal access tokens**
-(`g1t.sh/<workspace>/-/personal-access-tokens`). The rules apply from each
+(`g1t.sh/<workspace>/-/settings/personal-access-tokens`). The rules apply from each
 token's next request, to tokens made before them too. A token they keep out
 keeps working everywhere else, and reads the workspace's public
 repositories as anyone can.

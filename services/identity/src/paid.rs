@@ -31,14 +31,14 @@ pub(crate) fn second_free_refusal(free: &[String]) -> Option<String> {
         (format!("You already own {} free workspaces ({})", free.len(), free.join(", ")), "each of them")
     };
     Some(format!(
-        "{owned}, and each person can own one workspace that is not on the g1t plan. A new workspace starts free: to make one, start the plan on {them} (/{first}/-/billing#plan), or delete a free workspace you no longer use (in its settings, /{first}/-/settings)."
+        "{owned}, and each person can own one workspace that is not on the g1t plan. A new workspace starts free: to make one, start the plan on {them} (/{first}/-/settings/billing#plan), or delete a free workspace you no longer use (in its settings, /{first}/-/settings)."
     ))
 }
 
 /// Why no one can be added to the free workspace `slug`.
 pub(crate) fn invite_refusal(slug: &str) -> String {
     format!(
-        "{slug} is a free workspace, so it cannot add people. Start the plan to invite people: an owner can start it at /{slug}/-/billing#plan. Its members stay as they are."
+        "{slug} is a free workspace, so it cannot add people. Start the plan to invite people: an owner can start it at /{slug}/-/settings/billing#plan. Its members stay as they are."
     )
 }
 
@@ -127,7 +127,7 @@ mod tests {
         assert_eq!(second_free_refusal(&[]), None);
         let one = second_free_refusal(&["acme".to_owned()]).unwrap();
         assert!(one.starts_with("You already own a free workspace, acme"));
-        assert!(one.contains("/acme/-/billing#plan"));
+        assert!(one.contains("/acme/-/settings/billing#plan"));
         assert!(one.contains("delete"));
         // Grandfathered: several from before are named, and still no more.
         let several = second_free_refusal(&["acme".to_owned(), "side".to_owned()]).unwrap();
@@ -138,7 +138,7 @@ mod tests {
     fn a_free_workspace_is_told_to_start_the_plan_to_invite() {
         let why = invite_refusal("acme");
         assert!(why.contains("Start the plan to invite people"));
-        assert!(why.contains("/acme/-/billing#plan"));
+        assert!(why.contains("/acme/-/settings/billing#plan"));
         assert!(why.contains("members stay"));
     }
 

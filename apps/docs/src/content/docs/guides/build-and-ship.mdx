@@ -129,7 +129,7 @@ choose **Change access** on Claude Code, tick `repo:create` and choose
    This is yours to do, once. No API route or MCP tool turns deployments
    on, and none starts a plan.
    1. If the workspace is not on the g1t plan, an owner opens
-      **Settings → Billing and plans**, `g1t.sh/acme/-/billing`, and
+      **Workspace → Access → Billing and plans**, `g1t.sh/acme/-/settings/billing`, and
       chooses **Start the g1t plan**.
    2. Open the repository, `g1t.sh/acme/my-app`. Its overview asks **Where
       does my-app run?**: choose **Deploy on g1t**. (An overview that says
@@ -203,7 +203,7 @@ to yourself, say so in the repository's `CLAUDE.md`, and leave
 | Merge                                                | Yes, within the repository's rules | `g1t pr merge`, or `pull_request` `merge`                                                                                                                          | `pull_requests:write`, and the Write role                       |
 | Approve its own pull request                         | No                                 | Someone else approves                                                                                                                                              |                                                                 |
 | Read deployments, logs and errors                    | Yes                                | `g1t deploy list` and `g1t logs`, or `workflow` `list_deployments` and `observability`                                                                             | `deployments:read`, `observability:read`                        |
-| Start the g1t plan                                   | No                                 | An owner, under **Settings → Billing and plans**                                                                                                                   |                                                                 |
+| Start the g1t plan                                   | No                                 | An owner, under **Workspace → Access → Billing and plans**                                                                                                         |                                                                 |
 | Turn deployments on or off, or change their settings | No                                 | You, under the repository's **Settings → Deployments**, with the Admin role, or by starting [Ask's card for a new repository](/guides/ask/#building-something-new) |                                                                 |
 | Build production again                               | No                                 | **Redeploy** on the repository's overview, with the Write role, or a push to the default branch                                                                    |                                                                 |
 

@@ -168,7 +168,7 @@ To add one:
 
 1. Commit the workflow to one of the workspace's repositories, such as
    `acme/policies/.g1t/workflows/scan.yml`.
-2. Open **Workspace → Code → Actions**, `g1t.sh/<workspace>/-/actions`, and
+2. Open **Workspace → Code, planning, and automation → Actions**, `g1t.sh/<workspace>/-/settings/actions`, and
    under **Workflows this workspace manages** choose **Add workflow**.
 3. Give it a name, its source as `owner/repo/path@ref` (for example
    `acme/policies/.g1t/workflows/scan.yml@main`), a mode, and the
@@ -1887,8 +1887,8 @@ someone with the Admin role sets under **Settings → Actions**:
 | Made before restricted tokens came in, in October 2026 | **Read and write**: every permission at `write`, as before                                                                                                   |
 | Made since                                             | The workspace's default for new repositories: **Read repository contents and packages** (`contents: read`, `packages: read`) unless an owner chose otherwise |
 
-The workspace's owners set that default, and a **maximum**, under the
-workspace's **Settings → Actions**: with a maximum of **Read only**, no
+The workspace's owners set that default, and a **maximum**, under
+**Workspace → Code, planning, and automation → Actions**: with a maximum of **Read only**, no
 repository's default goes past `contents: read` and `packages: read`,
 whatever it chose. Workflows that write `permissions:` get what they
 write either way, and whatever a workflow asks for, a pull request from

@@ -515,7 +515,12 @@ const TAB_LABEL: Record<Tab, string> = { needs: "Needs you", landed: "Landed tod
 const TAB_SHORT: Record<Tab, string> = { needs: "Needs you", landed: "Today" };
 const SORT_LABEL: Record<Sort, string> = { impact: "By impact", newest: "Newest" };
 
-export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
+/**
+ * Code's Overview, laid out. `children` follow the work and the week on the
+ * same page: what the work says and the workspace at a glance
+ * (routes/workspace/code-overview.tsx).
+ */
+export default function MissionControl({ loaderData, children }: { loaderData: Loaded; children?: ReactNode }) {
   const { pathname } = useLocation();
   const shell = useRouteLoaderData("root")?.shell as ShellData | null | undefined;
   const loaded: Loaded = loaderData;
@@ -553,8 +558,8 @@ export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
             ask: detail,
             by: null,
             at: Date.now(),
-            to: `/${workspace}/-/billing`,
-            open: `/${workspace}/-/billing`,
+            to: `/${workspace}/-/settings/billing`,
+            open: `/${workspace}/-/settings/billing`,
             facts: [{ label: "Used", value: `${dollars(limit.exposureMicros)} of ${dollars(limit.ceilingMicros ?? 0)}`, tone: "warn" as const }],
             why: "Workflows, checks and deployments that are paid for stop at the workspace's usage limit. Only an owner can raise it or add a card.",
             quick: null,
@@ -831,6 +836,7 @@ export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
           </Card>
         </aside>
       </div>
+      {children}
     </main>
   );
 }

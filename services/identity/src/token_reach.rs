@@ -1191,7 +1191,7 @@ impl Identity {
                 notify: owners,
                 title: format!("{} asks to use an access token in {slug}", requester.username),
                 body: format!("{}: {permissions}", token.name),
-                link: format!("/{slug}/-/personal-access-tokens"),
+                link: format!("/{slug}/-/settings/personal-access-tokens"),
             },
         )
         .await;

@@ -1,13 +1,13 @@
 /**
  * How the site shows what the compute gate says (`@g1t/contracts`
  * compute.ts): its messages name the page to act on, such as
- * `/acme/-/billing`, which is shown as a link. Pure, so it can be tested.
+ * `/acme/-/settings/billing`, which is shown as a link. Pure, so it can be tested.
  */
 
 /** A message in pieces: plain text, and g1t paths to link. */
 export type Piece = { text: string; href?: string };
 
-/** A workspace page path, such as `/acme/-/billing` or `/acme/-/settings`. */
+/** A workspace page path, such as `/acme/-/settings/billing` or `/acme/-/settings`. */
 const PATH = /(?<![\w/])(\/[a-z0-9][a-z0-9-]*\/-\/[a-z0-9][a-z0-9/#-]*)/gi;
 
 /** Splits a message so the g1t pages it names can be links. */

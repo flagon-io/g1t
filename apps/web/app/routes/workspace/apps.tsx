@@ -74,7 +74,7 @@ export default function Apps({ loaderData }: Route.ComponentProps) {
             The integrations {name} connected. Pin the ones you want in your rail: your rail is yours, and nobody else sees your pins.
           </p>
         </div>
-        <ButtonLink to={`/${slug}/-/integrations`} prefetch="intent" variant="outline">
+        <ButtonLink to={`/${slug}/-/settings/integrations`} prefetch="intent" variant="outline">
           <Plug size={15} />
           Integrations
         </ButtonLink>

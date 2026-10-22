@@ -43,6 +43,8 @@ struct DetailRow {
     created_at: String,
     #[serde(default)]
     protected: u8,
+    #[serde(default)]
+    billing_email: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -238,7 +240,7 @@ impl Identity {
     pub async fn admin_workspace(&self, a: SlugArgs) -> Result<Option<AdminWorkspaceDetail>> {
         let Some(row) = self
             .db
-            .prepare("SELECT id, slug, name, description, created_at, protected FROM workspaces WHERE slug = ?")
+            .prepare("SELECT id, slug, name, description, created_at, protected, billing_email FROM workspaces WHERE slug = ?")
             .bind(&[a.slug.trim().to_lowercase().into()])?
             .first::<DetailRow>(None)
             .await?
@@ -275,6 +277,7 @@ impl Identity {
             description: row.description,
             created_at: row.created_at,
             members,
+            billing_email: row.billing_email,
         }))
     }
 }

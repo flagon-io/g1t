@@ -460,7 +460,7 @@ pub fn view(app: &AppHandle) -> View {
         running: matches!(now.code, Code::Idle | Code::Busy | Code::Offline) || facts.sandbox.as_ref().is_some_and(Status::running),
         version: now.version,
         backend: settings.runner_backend,
-        link: facts.workspace.as_ref().and_then(|w| server.join(&format!("{w}/-/runners")).ok()).map(|u| u.to_string()),
+        link: facts.workspace.as_ref().and_then(|w| server.join(&format!("{w}/-/settings/runners")).ok()).map(|u| u.to_string()),
         workspace: facts.workspace,
         workspaces: shared.site.held().owned.clone(),
         enabled: settings.runner,
@@ -672,7 +672,7 @@ pub fn act(app: &AppHandle, action: &str, kind: Option<&str>) -> Result<(), Stri
         "sign_in" => crate::links::go(app, "/login"),
         "new_workspace" => crate::links::go(app, "/workspaces/new"),
         "view_runners" => match workspace(app) {
-            Some(workspace) => crate::links::go(app, &format!("/{workspace}/-/runners")),
+            Some(workspace) => crate::links::go(app, &format!("/{workspace}/-/settings/runners")),
             None => crate::links::go(app, "/"),
         },
         // They are chosen in the settings' Runner section.

@@ -133,8 +133,8 @@ workspace's [audit log](/guides/audit-log/) as
 
 ### Delegated bypass
 
-With **Delegated bypass** on, in the workspace's Security settings
-(`g1t.sh/<owner>/-/security/settings`), someone who pushed a blocked
+With **Delegated bypass** on, in the workspace's **Code security** settings
+(`g1t.sh/<owner>/-/settings/security`), someone who pushed a blocked
 secret asks instead: **Ask to bypass** records a request, and the
 workspace's owners are told in their [notifications](/guides/notifications/). The
 workspace's owners and the repository's admins review requests at
@@ -152,7 +152,7 @@ alert's activity and the audit log (`secret_scanning.bypass_requested`,
 
 ## Validity checks
 
-With **Validity checks** on in the workspace's Security settings, g1t asks
+With **Validity checks** on in the workspace's **Code security** settings, g1t asks
 a secret's issuer whether it still works, and marks the alert:
 
 | Validity | Meaning                                                                                                    |

@@ -133,7 +133,7 @@ pub(crate) fn caps(plan: PlanKind, first_month: bool, on_trial: bool, agents: Op
 
 /// The refusal for a start that cannot be held, with what to do.
 pub(crate) fn refusal(code: FailureCode, workspace: &str, kind: ComputeKind, detail: &str) -> Outcome<Reservation> {
-    let link = format!("/{workspace}/-/billing");
+    let link = format!("/{workspace}/-/settings/billing");
     let what = match kind {
         ComputeKind::Agent => "Agents",
         ComputeKind::Check => "Checks",
@@ -929,7 +929,7 @@ impl Billing {
                 self.plans.spike_factor,
                 dollars(spike.average_micros)
             );
-            let link = format!("https://g1t.sh/{workspace}/-/billing");
+            let link = format!("https://g1t.sh/{workspace}/-/settings/billing");
             if crate::limits::notify(identity, workspace, &format!("g1t: spending on {workspace} spiked, so new work is paused"), &intro, "Keep going or stop", &link).await {
                 self.db
                     .prepare("UPDATE spikes SET told_at = ? WHERE id = ?")
@@ -1154,7 +1154,7 @@ mod tests {
         for code in [FailureCode::NotPaid, FailureCode::TrialUsed, FailureCode::OssPoolEmpty, FailureCode::Limit, FailureCode::Paused] {
             let Outcome::Fail(failure) = refusal(code, "acme", ComputeKind::Check, "Detail.") else { panic!() };
             assert_eq!(failure.code, code);
-            assert!(failure.message.contains("/acme/-/billing"), "{}", failure.message);
+            assert!(failure.message.contains("/acme/-/settings/billing"), "{}", failure.message);
         }
         let Outcome::Fail(failure) = refusal(FailureCode::NotPaid, "acme", ComputeKind::Agent, "") else { panic!() };
         assert!(failure.message.contains("$5 trial") && failure.message.contains("never charged"));

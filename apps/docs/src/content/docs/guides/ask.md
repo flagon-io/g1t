@@ -23,7 +23,7 @@ your browser.
 An owner of the workspace sets it up once:
 
 1. Open **AI**, in the workspace's settings, at
-   `g1t.sh/<workspace>/-/ai`.
+   `g1t.sh/<workspace>/-/settings/ai`.
 2. Add a provider if there is none yet: a frontier lab such as
    Anthropic, OpenAI or Gemini, a model platform, or a model you host
    yourself behind an Anthropic- or OpenAI-compatible endpoint.

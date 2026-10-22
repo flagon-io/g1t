@@ -4,7 +4,7 @@ description: Who may do what in a workspace, in one place, part by part — repo
 ---
 
 **Permissions** is where a workspace's owners decide who may do what, part
-by part: `g1t.sh/<workspace>/-/permissions`, under **Workspace → Access**
+by part: `g1t.sh/<workspace>/-/settings/permissions`, under **Workspace → Access**
 in the sidebar. Only owners can open it. Each part of g1t has a card, each
 setting says what it decides, and each card saves on its own with its
 **Save** button; the change holds on everyone's next request and is
@@ -40,8 +40,8 @@ is off, only owners can do it; the refusal says so.
 | **Private channels**   | Who can create them: **Any member** or **Owners only**.                                                                                                         | Any member |
 
 Renaming and archiving channels, custom emoji and default channels are on
-[Chat settings](/guides/chat/#workspace-chat-settings), under **Workspace →
-Chat**: they are about what a channel's own members may do, not who may do
+[Chat](/guides/chat/#workspace-chat-settings), under **Workspace → Code,
+planning, and automation**: they are about what a channel's own members may do, not who may do
 what in the workspace.
 
 ## Through the API
@@ -52,7 +52,7 @@ Every setting is set the way it was before it had this page:
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
 | Base permission                         | [`PUT /workspaces/{workspace}/base_permission`](/reference/api/access/set-base-permission/)                            | `access` `set_base_permission` |
 | Member privileges, who can create teams | [`PATCH /workspaces/{workspace}`](/reference/api/workspaces/update-workspace/) with `members_can_…` or `team_creation` | `workspace` `update`           |
-| Public and private channels             | The chat service's workspace settings, as [Chat settings](/guides/chat/#workspace-chat-settings) saves them            |                                |
+| Public and private channels             | The chat service's workspace settings, as its [Chat settings](/guides/chat/#workspace-chat-settings) save them         |                                |
 
 ## Next
 

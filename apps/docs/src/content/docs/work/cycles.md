@@ -22,8 +22,8 @@ Cycles are the workspace's, one sequence for everyone in it, numbered from
 
 ## Turn cycles on
 
-1. Open **Workspace** in the left rail, then **Work settings** under
-   **Work**, at `g1t.sh/<workspace>/-/settings/work`.
+1. Open **Workspace** in the left rail, then **Work** under
+   **Code, planning, and automation**, at `g1t.sh/<workspace>/-/settings/work`.
 2. Turn on **Run the workspace in cycles**.
 3. Choose the **length**, the day cycles **start on** and the
    **cooldown**, or keep the defaults.

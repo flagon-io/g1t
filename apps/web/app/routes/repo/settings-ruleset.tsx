@@ -35,7 +35,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   if (!found.ok && found.error.code === "not_found") throw data(null, { status: 404 });
   const existing = unwrap(found);
   // A workspace's ruleset is changed in the workspace's settings.
-  if (existing.level === "workspace") throw redirect(`/${params.owner}/-/rules/${existing.id}`);
+  if (existing.level === "workspace") throw redirect(`/${params.owner}/-/settings/rules/${existing.id}`);
   return { ...base, existing };
 }
 

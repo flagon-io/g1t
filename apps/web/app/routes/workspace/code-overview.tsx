@@ -1,10 +1,26 @@
+import { ArrowRight } from "lucide-react";
 import { Suspense, lazy } from "react";
-import { type ShouldRevalidateFunctionArgs, data } from "react-router";
+import { Await, Link, type ShouldRevalidateFunctionArgs, data } from "react-router";
+
+import { type User, hasCodeAccess } from "@g1t/contracts";
 
 import type { Route } from "./+types/code-overview";
 import { page } from "../../lib/meta";
 import { loadMissionControl } from "../../lib/mission-control.server";
+import { billing, identity } from "../../lib/services.server";
 import { requireUser, roleIn } from "../../lib/session.server";
+import { usageFor } from "../../lib/workspace-usage.server";
+import { settingsPath } from "../../lib/workspace-nav";
+import { isFailed, part } from "../../lib/partial";
+import { loadRepos } from "../../lib/home.server";
+import { shapeGround } from "../../lib/ground";
+import { providerQuarter, signalsRange } from "../../lib/signals";
+import { loadGroups, loadSignalData } from "../../lib/signals.server";
+import { Unavailable } from "../../components/boundary";
+import { GroundSkeleton, GroundTruth } from "../../components/ground-truth";
+import { UsageCard } from "../../components/usage-card";
+import { Avatar } from "../../components/ui/avatar";
+import { Badge } from "../../components/ui/badge";
 import { Card } from "../../components/ui/card";
 import { Skeleton, SkeletonCard, SkeletonLine, SkeletonStat } from "../../components/ui/skeleton";
 
@@ -19,15 +35,55 @@ export function headers({ loaderHeaders }: Route.HeadersArgs) {
   return out;
 }
 
+/** Most members listed before "and N more". */
+const MAX_FACES = 10;
+
 /**
- * Code's Overview, for this workspace: what needs you and what landed,
- * the week's numbers, activity, and a way to open a work item.
+ * The workspace's Overview, its data on one page: what needs you and what
+ * landed, the week's numbers, activity, and a way to open a work item;
+ * then the workspace's ground truth, from what its work says
+ * (lib/signals.ts): the past week, the quarter's agent spend threaded to
+ * the work it produced, what is moving and what is waiting team by team,
+ * and quiet changes in who works where, streamed; then the month's usage
+ * against its plan and who is in it. Each part is left out, or says so,
+ * when its service does not answer.
  */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
-  const { value, timing } = await loadMissionControl(viewer, request, params.owner);
-  return data(value, { headers: { "Server-Timing": timing } });
+  const slug = params.owner.toLowerCase();
+  const role = roleIn(viewer, slug);
+  if (!role) throw data(null, { status: 404 });
+  const membership = viewer.workspaces?.find((m) => m.slug === slug) ?? null;
+  const ground = hasCodeAccess(membership) ? loadGround(viewer, slug, Date.now()).catch(() => null) : null;
+  const [{ value, timing }, members, usage] = await Promise.all([
+    loadMissionControl(viewer, request, params.owner),
+    part(identity.listMembers(slug, viewer), "The member list"),
+    usageFor(slug, viewer),
+  ]);
+  const workspace = {
+    slug,
+    role,
+    ground,
+    members: isFailed(members) ? members : members.ok ? members.value : null,
+    usage,
+  };
+  return data({ ...value, glance: workspace }, { headers: { "Server-Timing": timing } });
+}
+
+/** Everything the work says, shaped for the page; null when the work service did not answer. */
+async function loadGround(viewer: User, slug: string, now: number) {
+  const owned = await loadRepos(viewer, slug).catch(() => null);
+  if (!owned) return null;
+  const [found, groups, providers] = await Promise.all([
+    loadSignalData(viewer, slug, now, owned).catch(() => null),
+    loadGroups(viewer, slug, owned).catch(() => null),
+    // What the connected providers say was spent: beside the rest, never in the way of it.
+    billing
+      .providerCosts(slug, viewer, signalsRange(now).quarter)
+      .then((result) => (result.ok ? result.value : null))
+      .catch(() => null),
+  ]);
+  return found ? { ...shapeGround(found, groups, now), providers: providerQuarter(providers, found.range.quarter) } : null;
 }
 
 /**
@@ -47,8 +103,76 @@ const MissionControl = lazy(() => import("../../components/mission-control"));
 export default function CodeOverview({ loaderData }: Route.ComponentProps) {
   return (
     <Suspense fallback={<MissionControlSkeleton />}>
-      <MissionControl loaderData={loaderData} />
+      <MissionControl loaderData={loaderData}>
+        <AtAGlance glance={loaderData.glance} />
+      </MissionControl>
     </Suspense>
+  );
+}
+
+/** What the work says, then the month's usage and who is in the workspace. */
+function AtAGlance({ glance }: { glance: Route.ComponentProps["loaderData"]["glance"] }) {
+  const { slug, role, members, usage } = glance;
+  const owner = role === "owner";
+  const everyone = owner ? settingsPath(slug, "members") : `/${slug}/-/people`;
+  return (
+    <>
+      {glance.ground && (
+        <Suspense fallback={<GroundSkeleton />}>
+          <Await resolve={glance.ground}>
+            {(ground) => (ground ? <GroundTruth slug={slug} ground={ground} /> : <Unavailable what="What the work says" />)}
+          </Await>
+        </Suspense>
+      )}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem] xl:grid-cols-[minmax(0,1fr)_23rem]">
+        {usage ? (
+          <UsageCard slug={slug} glance={usage} owner={owner} />
+        ) : (
+          <Card asChild className="self-start p-5">
+            <section>
+              <h2 className="font-medium">Usage</h2>
+              <p className="mt-1.5 text-sm text-muted">This month&apos;s usage isn&apos;t available right now.</p>
+              <Link to={settingsPath(slug, "usage")} className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline">
+                Open Usage <ArrowRight size={13} />
+              </Link>
+            </section>
+          </Card>
+        )}
+        <Card asChild className="self-start p-5">
+          <section>
+            <div className="flex items-center justify-between">
+              <h2 className="font-medium">Members{members && !isFailed(members) ? ` · ${members.length}` : ""}</h2>
+              <Link to={everyone} className="text-xs text-muted hover:text-fg">
+                {owner ? "Manage" : "See all"}
+              </Link>
+            </div>
+            {isFailed(members) ? (
+              <div className="mt-3">
+                <Unavailable what={members.what} compact />
+              </div>
+            ) : members ? (
+              <>
+                <ul className="mt-3 space-y-2">
+                  {members.slice(0, MAX_FACES).map((member) => (
+                    <li key={member.username} className="flex items-center gap-2.5 text-sm">
+                      <Avatar name={member.username} image={member.avatar} size={24} />
+                      <Link to={`/u/${member.username}`} className="min-w-0 grow truncate hover:text-accent">
+                        {member.name?.trim() || member.username}
+                        {member.name?.trim() && <span className="ml-1.5 font-mono text-xs text-faint">{member.username}</span>}
+                      </Link>
+                      {member.role === "owner" && <Badge size="md">owner</Badge>}
+                    </li>
+                  ))}
+                </ul>
+                {members.length > MAX_FACES && <p className="mt-2 text-xs text-faint">and {members.length - MAX_FACES} more</p>}
+              </>
+            ) : (
+              <p className="mt-3 text-sm text-muted">The member list isn&apos;t available right now.</p>
+            )}
+          </section>
+        </Card>
+      </div>
+    </>
   );
 }
 

@@ -5163,6 +5163,11 @@ impl Op {
                             slug: workspace(),
                             name: name.unwrap_or(current.name),
                             description: description.unwrap_or(current.description.unwrap_or_default()),
+                            website: None,
+                            email: None,
+                            location: None,
+                            social_accounts: None,
+                            billing_email: None,
                         },
                     )
                     .await?;

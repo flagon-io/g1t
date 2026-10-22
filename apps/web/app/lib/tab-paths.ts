@@ -99,7 +99,7 @@ export function branchSegment(segment: string | undefined): (typeof BRANCH_SEGME
 
 export type RulesTab = "rulesets" | "insights";
 
-/** The rules page (`<repo>/settings/rules`, `/<workspace>/-/rules`), or its Insights: `…/rules/insights`. */
+/** The rules page (`<repo>/settings/rules`, `/<workspace>/-/settings/rules`), or its Insights: `…/rules/insights`. */
 export function rulesPath(rules: string, tab: RulesTab | string = "rulesets"): string {
   return tab === "insights" ? `${rules}/insights` : rules;
 }

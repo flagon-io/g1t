@@ -68,7 +68,7 @@ export default function PersonalIntegrations({ loaderData }: Route.ComponentProp
           {workspaces.map((workspace, index) => (
             <span key={workspace.slug}>
               {index > 0 && ", "}
-              <Link to={`/${workspace.slug}/-/integrations`} className="text-accent hover:underline">
+              <Link to={`/${workspace.slug}/-/settings/integrations`} className="text-accent hover:underline">
                 {workspace.name}
               </Link>
             </span>

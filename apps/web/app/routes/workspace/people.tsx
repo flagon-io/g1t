@@ -68,7 +68,7 @@ export default function PeopleDirectoryPage({ loaderData }: Route.ComponentProps
             {query ? `${entries.length} of ${total}` : total} {total === 1 && !query ? "person" : "people"}
           </span>
           {directory.can_manage && (
-            <ButtonLink to={`/${slug}/-/members`}>
+            <ButtonLink to={`/${slug}/-/settings/members`}>
               <UserPlus size={15} />
               Invite people
             </ButtonLink>

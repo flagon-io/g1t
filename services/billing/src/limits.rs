@@ -568,7 +568,7 @@ impl Billing {
         } else {
             format!("The {workspace} workspace")
         };
-        let billing = format!("/{workspace}/-/billing");
+        let billing = format!("/{workspace}/-/settings/billing");
         let message = match state {
             LimitState::Ok => None,
             LimitState::Warning if budget == LimitState::Warning && !pause => Some(format!(
@@ -1133,7 +1133,7 @@ impl Billing {
                 .bind(&[workspace.as_str().into()])?
                 .first::<Told>(None)
                 .await?;
-            let billing = format!("https://g1t.sh/{workspace}/-/billing");
+            let billing = format!("https://g1t.sh/{workspace}/-/settings/billing");
 
             // A declined card, once per decline.
             if let Some(Told { autopay_failed_at: Some(failed), declined_told_at }) = &told

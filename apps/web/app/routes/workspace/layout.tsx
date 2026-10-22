@@ -1,4 +1,4 @@
-import { Package, Plus } from "lucide-react";
+import { Link as LinkIcon, Mail, MapPin, Package, Plus } from "lucide-react";
 import { Outlet, type ShouldRevalidateFunctionArgs, data, redirect, useLocation, useNavigation } from "react-router";
 
 import type { Route } from "./+types/layout";
@@ -75,28 +75,28 @@ export function shouldRevalidate({
 
 /** A workspace's own pages, each with its title and what it is for. */
 const PAGES: Record<string, { title: string; about: string }> = {
-  workspace: {
-    title: "Workspace",
-    about: "Who is in it, what it is on, and what it has spent this month. Everything about the workspace itself is in this sidebar.",
+  "settings/profile": {
+    title: "Profile",
+    about: "Who the workspace is, as people see it: its name, picture, description and links. Then its address, where its data lives, and deleting it.",
   },
-  settings: {
-    title: "General",
-    about: "The workspace's name, icon, address and description, two-factor authentication, where its data lives, and deleting it.",
+  "settings/authentication": {
+    title: "Authentication security",
+    about: "How people sign in to the workspace: two-factor authentication for everyone with access, and single sign-on through your identity provider.",
   },
   people: {
     title: "People",
     about: "Everyone in the workspace, in one directory: who they are, what they own, the teams they're on and who's around.",
   },
-  members: {
+  "settings/members": {
     title: "Members",
     about:
       "Who is in the workspace and their roles. Owners invite people, manage members and owners, and see the outside collaborators; what members may do is under Permissions.",
   },
-  "members/invitations": {
+  "settings/members/invitations": {
     title: "Invitations",
     about: "Every invitation to join the workspace: who it is for, who sent it, the role, and where it stands. Send one again, revoke it, or copy its link.",
   },
-  permissions: {
+  "settings/permissions": {
     title: "Permissions",
     about: "Who may do what in the workspace, part by part: repositories, teams, chat, artifacts, deployments and packages. Owners only.",
   },
@@ -108,16 +108,16 @@ const PAGES: Record<string, { title: string; about: string }> = {
     title: "Teams",
     about: "People with a lead, a channel and roles on repositories. Everyone on a team knows who their teammates are.",
   },
-  repositories: {
+  "settings/repositories": {
     title: "Repositories",
     about: "Every repository in the workspace: who can see it, whether it is archived, and the ones deleted recently.",
   },
-  tokens: {
+  "settings/tokens": {
     title: "Access tokens",
     about:
       "Tokens that belong to the workspace, not a person: for CI, integrations and coding agents that work for the whole team. Each has the permissions an owner gives it, in all of the workspace's repositories or the ones chosen.",
   },
-  "personal-access-tokens": {
+  "settings/personal-access-tokens": {
     title: "Personal access tokens",
     about:
       "Which of your members' own tokens may reach the workspace and for how long, the tokens made for it that wait for an owner's approval, and every token that can reach it.",
@@ -148,21 +148,21 @@ const PAGES: Record<string, { title: string; about: string }> = {
     about: "Goals with a due date, that work items and pull requests from every repository of the workspace are gathered under.",
   },
   insights: { title: "Insights", about: "Delivery, review times, work in progress and costs across your workspace." },
-  usage: { title: "Usage", about: "What the workspace used and what it cost, by product, repository and day." },
-  billing: { title: "Billing and plans", about: "The g1t plan, the trial, your spend limit, prepaying, and every charge." },
-  audit: {
+  "settings/usage": { title: "Usage", about: "What the workspace used and what it cost, by product, repository and day." },
+  "settings/billing": { title: "Billing and plans", about: "The g1t plan, the trial, your spend limit, prepaying, and every charge." },
+  "settings/audit": {
     title: "Audit log",
     about: "Every change people, tokens and g1t's own runs made: by whom, on whose behalf, to what, and whether it was allowed.",
   },
-  guardrails: {
+  "settings/guardrails": {
     title: "Guardrails",
     about: "How long every repository's runs may take. Each repository can override these under its settings.",
   },
-  webhooks: {
+  "settings/webhooks": {
     title: "Webhooks",
     about: "Every repository's events, sent to your own addresses as they happen. A repository can also have its own, under its settings.",
   },
-  secrets: {
+  "settings/secrets": {
     title: "Secrets and variables",
     about: "Shared with every repository, or the ones you link: read by workflows, deployments, or both. A repository's own row of the same key wins.",
   },
@@ -171,11 +171,43 @@ const PAGES: Record<string, { title: string; about: string }> = {
     about:
       "Open alerts in every repository: secrets found in pushes and history, and vulnerable dependencies. Each repository's Security page has the details and the security update g1t opened for each.",
   },
-  integrations: {
+  "settings/integrations": {
     title: "Integrations",
     about: "The tools your team works with, connected once for everyone in the workspace. Secrets are sealed when saved, and never shown again.",
   },
 };
+
+/** What the workspace's Profile says about it, under its name: where it is, its links, and a public email. */
+function ProfileLinks({ workspace }: { workspace: Route.ComponentProps["loaderData"]["workspace"] }) {
+  const links = [...new Set([workspace.website, ...(workspace.socialAccounts ?? [])])].filter((link): link is string => Boolean(link));
+  if (!workspace.location && !workspace.email && links.length === 0) return null;
+  return (
+    <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-muted">
+      {workspace.location && (
+        <li className="flex items-center gap-1.5">
+          <MapPin size={14} className="text-faint" />
+          {workspace.location}
+        </li>
+      )}
+      {links.map((link) => (
+        <li key={link} className="flex min-w-0 items-center gap-1.5">
+          <LinkIcon size={14} className="shrink-0 text-faint" />
+          <a href={link} rel="nofollow noopener noreferrer" target="_blank" className="truncate hover:text-fg hover:underline">
+            {link.replace(/^https:\/\//, "").replace(/\/$/, "")}
+          </a>
+        </li>
+      ))}
+      {workspace.email && (
+        <li className="flex items-center gap-1.5">
+          <Mail size={14} className="text-faint" />
+          <a href={`mailto:${workspace.email}`} className="hover:text-fg hover:underline">
+            {workspace.email}
+          </a>
+        </li>
+      )}
+    </ul>
+  );
+}
 
 /** A workspace page's heading: its title and what it is for. */
 function PageHeader({ title, about }: { title: string; about: string }) {
@@ -274,6 +306,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
             )}
           </div>
           {workspace.description && <p className="mt-4 max-w-2xl text-sm text-muted">{workspace.description}</p>}
+          <ProfileLinks workspace={workspace} />
         </div>
       </div>
       <div className="mx-auto max-w-7xl px-4 py-8">{next ? <WorkspacePageSkeleton page="overview" /> : <Outlet />}</div>

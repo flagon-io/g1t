@@ -42,7 +42,7 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
 
 export default function NewWorkspaceToken({ loaderData, actionData }: Route.ComponentProps) {
   const { slug, owner, repos } = loaderData;
-  const back = `/${slug}/-/tokens`;
+  const back = `/${slug}/-/settings/tokens`;
   return (
     <section className="max-w-2xl space-y-6">
       <div>

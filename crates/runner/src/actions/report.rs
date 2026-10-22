@@ -554,8 +554,28 @@ mod tests {
         std::thread::spawn(move || {
             for (body, cut) in answers {
                 let Ok((mut stream, _)) = listener.accept() else { return };
-                let mut request = [0u8; 4096];
-                let _ = stream.read(&mut request);
+                // The whole request, body and all: hanging up on a body not
+                // yet read resets the connection on Windows, and the client
+                // then sees no answer at all, cut short or whole.
+                let mut request = Vec::new();
+                let mut chunk = [0u8; 4096];
+                loop {
+                    let Ok(read) = stream.read(&mut chunk) else { break };
+                    if read == 0 {
+                        break;
+                    }
+                    request.extend_from_slice(&chunk[..read]);
+                    let text = String::from_utf8_lossy(&request);
+                    if let Some(end) = text.find("\r\n\r\n") {
+                        let length = text[..end]
+                            .lines()
+                            .find_map(|line| line.to_ascii_lowercase().strip_prefix("content-length:").map(|n| n.trim().parse::<usize>().unwrap_or(0)))
+                            .unwrap_or(0);
+                        if request.len() >= end + 4 + length {
+                            break;
+                        }
+                    }
+                }
                 count.fetch_add(1, Ordering::SeqCst);
                 // Cut short: says the whole length, sends half, and hangs up.
                 let sent = if cut { &body[..body.len() / 2] } else { body };

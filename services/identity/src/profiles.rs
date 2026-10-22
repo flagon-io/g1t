@@ -50,7 +50,7 @@ const PROFILE_COLUMNS: &str =
 
 /// A field as it is kept: whitespace runs made single spaces, control
 /// characters dropped, trimmed. Empty is none. Too long is refused.
-fn tidy(value: &str, max: usize, what: &str) -> std::result::Result<Option<String>, String> {
+pub(crate) fn tidy(value: &str, max: usize, what: &str) -> std::result::Result<Option<String>, String> {
     let text = value
         .chars()
         .map(|c| if c.is_whitespace() { ' ' } else { c })
@@ -69,18 +69,35 @@ fn tidy(value: &str, max: usize, what: &str) -> std::result::Result<Option<Strin
     }
 }
 
-/// A website as it is kept: an `https://` address with a real host name.
-/// A bare `example.com` is taken to mean `https://example.com`. Plain
-/// `http://`, other schemes and anything a browser might read as script are
-/// refused.
+/// A website as it is kept: see [`https_address`].
 pub fn website(value: &str) -> std::result::Result<Option<String>, &'static str> {
-    const REFUSED: &str = "Use an https:// address for your website, such as https://example.com.";
+    https_address(value).map_err(|problem| match problem {
+        AddressProblem::TooLong => "That website address is too long.",
+        AddressProblem::NotHttps => "Use an https:// address for your website, such as https://example.com.",
+    })
+}
+
+/// Why [`https_address`] refused an address.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum AddressProblem {
+    /// Longer than [`MAX_PROFILE_WEBSITE`] characters.
+    TooLong,
+    /// Not an `https://` address with a real host name.
+    NotHttps,
+}
+
+/// A web address shown to others, as it is kept: an `https://` address
+/// with a real host name. A bare `example.com` is taken to mean
+/// `https://example.com`. Plain `http://`, other schemes and anything a
+/// browser might read as script are refused. Empty is none.
+pub(crate) fn https_address(value: &str) -> std::result::Result<Option<String>, AddressProblem> {
+    const REFUSED: AddressProblem = AddressProblem::NotHttps;
     let value = value.trim();
     if value.is_empty() {
         return Ok(None);
     }
     if value.chars().count() > MAX_PROFILE_WEBSITE {
-        return Err("That website address is too long.");
+        return Err(AddressProblem::TooLong);
     }
     if value.chars().any(|c| c.is_whitespace() || c.is_control() || "<>\"'`\\".contains(c)) {
         return Err(REFUSED);

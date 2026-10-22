@@ -149,7 +149,7 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
 
   return (
     <div>
-      <Link to={`/${slug}/-/integrations`} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
+      <Link to={`/${slug}/-/settings/integrations`} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
         <ArrowLeft size={14} /> All integrations
       </Link>
       {justConnected && <Connected connected={justConnected} />}

@@ -12,12 +12,12 @@ test("only a workspace's SAML address is answered before React Router", () => {
   assert.equal(samlPath("/auth/sso/acme/callback"), null);
   assert.equal(samlPath("/auth/sso/acme/saml/extra"), null);
   assert.equal(samlPath("/auth/sso/-acme/saml"), null);
-  assert.equal(samlPath("/acme/-/sso"), null);
+  assert.equal(samlPath("/acme/-/settings/sso"), null);
 });
 
 test("afterwards it goes on to the workspace, never off the site", () => {
   assert.equal(afterSso({ slug: "acme", next: "/" }), "/acme");
-  assert.equal(afterSso({ slug: "acme", next: "/acme/-/sso" }), "/acme/-/sso");
+  assert.equal(afterSso({ slug: "acme", next: "/acme/-/settings/sso" }), "/acme/-/settings/sso");
   assert.equal(afterSso({ slug: "acme", next: "//evil.test" }), "/acme");
   assert.equal(afterSso({ slug: "acme", next: "https://evil.test/" }), "/acme");
 });

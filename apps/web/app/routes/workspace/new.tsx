@@ -131,7 +131,7 @@ function OneFreeWorkspace({ free }: { free: string[] }) {
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <ButtonLink to={planHref(first)}>Start the plan on {first}</ButtonLink>
-          <Link to={`/${first}/-/settings`} className="text-sm text-muted hover:text-fg">
+          <Link to={`/${first}/-/settings/profile`} className="text-sm text-muted hover:text-fg">
             Workspace settings
           </Link>
         </div>

@@ -29,7 +29,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   const slug = params.owner.toLowerCase();
   // `?kind=` filtered the two kinds tokens used to come in.
-  const moved = currentTokensPath(`/${slug}/-/personal-access-tokens`, new URL(request.url).searchParams);
+  const moved = currentTokensPath(`/${slug}/-/settings/personal-access-tokens`, new URL(request.url).searchParams);
   if (moved) throw redirect(moved, 301);
   const viewer = getViewer(context);
   const role = roleIn(viewer, params.owner);
@@ -208,7 +208,7 @@ export default function PersonalAccessTokens({ loaderData, actionData }: Route.C
         </h2>
         <p className="mt-1 text-sm text-muted">
           Members' and outside collaborators' tokens, never the tokens themselves. The workspace's own tokens are under{" "}
-          <Link to={`/${slug}/-/tokens`} className="text-fg underline underline-offset-4">
+          <Link to={`/${slug}/-/settings/tokens`} className="text-fg underline underline-offset-4">
             Access tokens
           </Link>
           .

@@ -82,7 +82,9 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     leaveWorkspace: (user, slug) => call("leave_workspace", { user, slug, surface: "web" }),
     setMemberPrivileges: (actor, slug, change) => call("set_member_privileges", { actor, slug, privileges: change, surface: "web" }),
     setTwoFactorRequirement: (actor, slug, required) => call("set_two_factor_requirement", { actor, slug, required, surface: "web" }),
-    updateWorkspace: (actor, slug, details) => call("update_workspace", { actor, slug, ...details }),
+    updateWorkspace: (actor, slug, { socialAccounts, billingEmail, ...details }) =>
+      call("update_workspace", { actor, slug, ...details, social_accounts: socialAccounts, billing_email: billingEmail }),
+    workspaceBillingEmail: (actor, slug) => call("workspace_billing_email", { actor, slug }),
     renameWorkspace: (actor, slug, newSlug) => call("rename_workspace", { actor, slug, newSlug }),
     checkWorkspaceRename: (actor, slug, newSlug) => call("check_workspace_rename", { actor, slug, newSlug }),
     resolveSlug: (slug) => call("resolve_slug", { slug }),
@@ -684,6 +686,7 @@ export function billingClient(service: ServiceBinding): BillingApi {
     freeWorkspaces: (workspaces) => call("free_workspaces", { workspaces }),
     chargeFeature: (charge) => call("charge_feature", charge),
     billingPortal: (actor, workspace, returnUrl) => call("billing_portal", { actor, workspace, return_url: returnUrl }),
+    setCustomerEmail: (actor, workspace, email) => call("set_customer_email", { actor, workspace, email }),
     recordSandbox: (usage) => call("record_sandbox", usage),
     limit: (workspace, viewer) => call("limit", { workspace, viewer }),
     checkLimit: (workspace) => call("check_limit", { workspace }),

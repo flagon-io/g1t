@@ -18,8 +18,8 @@ provider's to open.
 
 ## Set it up
 
-Owners only, at **Workspace → Access → Single sign-on**,
-`g1t.sh/<workspace>/-/sso`.
+Owners only, at **Workspace → Security → Authentication security → Single sign-on**,
+`g1t.sh/<workspace>/-/settings/sso`.
 
 1. Choose the protocol. Use **OpenID Connect** when your provider offers
    it; **SAML 2.0** for providers set up for SAML apps; **OAuth 2.0** for

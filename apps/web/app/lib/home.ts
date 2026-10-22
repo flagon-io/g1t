@@ -342,7 +342,7 @@ function part(counts: ActorCount[], agents?: ReadonlySet<string>): { count: numb
 function placeFor(slug: string, repos: Record<string, RepoRef>, repoIds: Iterable<string>, page: string): string {
   const ids = [...new Set(repoIds)];
   const only = ids.length === 1 ? repos[ids[0]!] : null;
-  return only ? `/${only.namespace}/${only.name}/${page}` : `/${slug}/-/repositories`;
+  return only ? `/${only.namespace}/${only.name}/${page}` : `/${slug}/-/settings/repositories`;
 }
 
 /** `3 opened, 5 merged`: the non-zero counts, `#` standing for each. */

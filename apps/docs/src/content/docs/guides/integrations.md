@@ -7,7 +7,7 @@ g1t connects to the tools your work already lives in: where errors are
 reported, where tickets are tracked, where code came from. Every
 integration is listed in one directory, by category, whether it works
 today or is still being built. The directory is **Integrations**, at
-`g1t.sh/<workspace>/-/integrations`.
+`g1t.sh/<workspace>/-/settings/integrations`.
 
 The models g1t works with are not an integration. A workspace chooses
 them, managed or self-hosted, under **AI**, its own setting: see
@@ -17,12 +17,12 @@ them, managed or self-hosted, under **AI**, its own setting: see
 
 There are two places to connect things, and they are for different people:
 
-|               | Workspace integrations                                                                                | Your integrations                                                                                           |
-| ------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Where         | **Integrations**, at `g1t.sh/<workspace>/-/integrations`, with each integration's setup page under it | **Your settings → Integrations**, at [`g1t.sh/settings/integrations`](https://g1t.sh/settings/integrations) |
-| Who it is for | Everyone in that workspace                                                                            | Just you, in every workspace you belong to                                                                  |
-| Who connects  | Workspace owners. Members see what is connected.                                                      | You                                                                                                         |
-| Examples      | Sentry, Jira, Linear, GitHub imports, webhooks                                                        | Signing in with GitHub, coding agents you connect through MCP, and soon your calendar                       |
+|               | Workspace integrations                                                                                         | Your integrations                                                                                           |
+| ------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Where         | **Integrations**, at `g1t.sh/<workspace>/-/settings/integrations`, with each integration's setup page under it | **Your settings → Integrations**, at [`g1t.sh/settings/integrations`](https://g1t.sh/settings/integrations) |
+| Who it is for | Everyone in that workspace                                                                                     | Just you, in every workspace you belong to                                                                  |
+| Who connects  | Workspace owners. Members see what is connected.                                                               | You                                                                                                         |
+| Examples      | Sentry, Jira, Linear, GitHub imports, webhooks                                                                 | Signing in with GitHub, coding agents you connect through MCP, and soon your calendar                       |
 
 Some tools have both sides. GitHub, for instance: a workspace owner
 installs g1t's GitHub App to import the team's repositories, and

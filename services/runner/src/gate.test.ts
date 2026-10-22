@@ -88,12 +88,12 @@ test("billing's refusal is shown in its own words", async () => {
   for (const code of ["not_paid", "trial_used", "limit", "oss_pool_empty"] as const) {
     const { binding } = billing({
       entitlements: wire(ent({ plan: "free", compute: false })),
-      reserve: { ok: false, error: { code, message: `Refused: ${code}. /acme/-/billing` } },
+      reserve: { ok: false, error: { code, message: `Refused: ${code}. /acme/-/settings/billing` } },
     });
     const admitted = await new ComputeGate(binding, memory(), quiet).admit(request("check", true));
     assert.equal(admitted.ok, false, code);
     assert.equal(!admitted.ok && admitted.code, code);
-    assert.equal(!admitted.ok && admitted.message, `Refused: ${code}. /acme/-/billing`);
+    assert.equal(!admitted.ok && admitted.message, `Refused: ${code}. /acme/-/settings/billing`);
   }
 });
 
@@ -106,7 +106,7 @@ test("a refusal without words gets g1t's, with what to do and where", async () =
   assert.equal(!admitted.ok && admitted.message, refusalMessage("not_paid", "acme", "deploy"));
   assert.match(
     refusalMessage("not_paid", "acme", "deploy"),
-    /^Deployments need a paid workspace\. Start the \$21 plan or try it with \$5 of free usage after a card check: \/acme\/-\/billing$/,
+    /^Deployments need a paid workspace\. Start the \$21 plan or try it with \$5 of free usage after a card check: \/acme\/-\/settings\/billing$/,
   );
 });
 

@@ -711,6 +711,14 @@ impl Stripe {
         Ok(true)
     }
 
+    /// Sets the address Stripe sends the customer's receipts and invoices
+    /// to, and that signs in to its billing page: the workspace's billing
+    /// email, changed on its profile.
+    pub async fn set_customer_email(&self, customer: &str, email: &str) -> Result<()> {
+        let _: serde_json::Value = self.post(&format!("/customers/{}", encode(customer)), &[("email", email.to_owned())]).await?;
+        Ok(())
+    }
+
     /// Whether the customer's address is enough for Stripe Tax.
     pub async fn customer_placed(&self, customer: &str) -> Result<bool> {
         let found = self.customer(customer).await?;
@@ -1252,11 +1260,11 @@ mod tests {
             form(&[
                 (
                     "success_url",
-                    "https://g1t.sh/a/-/billing?session={ID}".to_owned()
+                    "https://g1t.sh/a/-/settings/billing?session={ID}".to_owned()
                 ),
                 ("line_items[0][quantity]", "1".to_owned()),
             ]),
-            "success_url=https%3A%2F%2Fg1t.sh%2Fa%2F-%2Fbilling%3Fsession%3D%7BID%7D&line_items%5B0%5D%5Bquantity%5D=1"
+            "success_url=https%3A%2F%2Fg1t.sh%2Fa%2F-%2Fsettings%2Fbilling%3Fsession%3D%7BID%7D&line_items%5B0%5D%5Bquantity%5D=1"
         );
     }
 
@@ -1283,7 +1291,7 @@ mod tests {
 
     #[test]
     fn the_plans_page_is_a_subscription_without_payment_mode_fields() {
-        let url = "https://g1t.sh/acme/-/billing?plan=plan";
+        let url = "https://g1t.sh/acme/-/settings/billing?plan=plan";
         for customer in [None, Some("cus_1")] {
             let fields = subscription_fields("acme", "plan", "g1t", 2_100, customer, url);
             assert_eq!(has(&fields, "mode").as_deref(), Some("subscription"));
@@ -1291,7 +1299,7 @@ mod tests {
             assert!(has(&fields, "customer_creation").is_none());
             assert!(has(&fields, "payment_intent_data[setup_future_usage]").is_none());
             assert_eq!(has(&fields, "customer").as_deref(), customer);
-            assert_eq!(has(&fields, "success_url").unwrap(), "https://g1t.sh/acme/-/billing?plan=plan&session={CHECKOUT_SESSION_ID}");
+            assert_eq!(has(&fields, "success_url").unwrap(), "https://g1t.sh/acme/-/settings/billing?plan=plan&session={CHECKOUT_SESSION_ID}");
             assert_eq!(has(&fields, "line_items[0][price_data][recurring][interval]").as_deref(), Some("month"));
             // The plan at its price is the only line: no card fee.
             assert_eq!(has(&fields, "line_items[0][price_data][unit_amount]").as_deref(), Some("2100"));
@@ -1325,7 +1333,7 @@ mod tests {
 
     #[test]
     fn every_payment_page_is_taxed_by_stripe_tax() {
-        let url = "https://g1t.sh/acme/-/billing";
+        let url = "https://g1t.sh/acme/-/settings/billing";
         for customer in [None, Some("cus_1")] {
             // The plan and Security and quality.
             assert_taxed_page(&subscription_fields("acme", "plan", "g1t", 2_100, customer, url), customer);
@@ -1411,7 +1419,7 @@ mod tests {
     #[test]
     fn no_prepayment_has_a_card_fee_line() {
         for bank_transfer in [true, false] {
-            let fields = prepay_fields("acme", 5_000, Some("cus_1"), "https://g1t.sh/acme/-/billing", bank_transfer);
+            let fields = prepay_fields("acme", 5_000, Some("cus_1"), "https://g1t.sh/acme/-/settings/billing", bank_transfer);
             assert_eq!(has(&fields, "line_items[0][price_data][unit_amount]").as_deref(), Some("5000"));
             assert!(has(&fields, "line_items[1][quantity]").is_none());
             assert!(fields.iter().all(|(_, v)| !v.contains(CARD_FEE_LINE)));
@@ -1479,10 +1487,10 @@ mod tests {
 
     #[test]
     fn a_card_check_is_a_setup_page_with_no_amount() {
-        let fields = card_check_fields("acme", "cus_1", "https://g1t.sh/acme/-/billing");
+        let fields = card_check_fields("acme", "cus_1", "https://g1t.sh/acme/-/settings/billing");
         assert_eq!(has(&fields, "mode").as_deref(), Some("setup"));
         assert!(fields.iter().all(|(n, _)| !n.starts_with("line_items")));
-        assert_eq!(has(&fields, "success_url").unwrap(), "https://g1t.sh/acme/-/billing?card_check={CHECKOUT_SESSION_ID}");
+        assert_eq!(has(&fields, "success_url").unwrap(), "https://g1t.sh/acme/-/settings/billing?card_check={CHECKOUT_SESSION_ID}");
         assert_eq!(has(&fields, "customer").as_deref(), Some("cus_1"));
     }
 

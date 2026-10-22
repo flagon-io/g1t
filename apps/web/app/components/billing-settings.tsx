@@ -243,7 +243,7 @@ export function PlanSummary({
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <Link
-          to={`/${slug}/-/usage`}
+          to={`/${slug}/-/settings/usage`}
           className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm text-fg/80 hover:border-line-strong hover:text-fg"
         >
           <FileText size={14} /> Usage

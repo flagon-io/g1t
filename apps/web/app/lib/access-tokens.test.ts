@@ -155,7 +155,10 @@ test("lists read a token in a line", () => {
 test("old addresses of the token settings go to the current pages", () => {
   assert.equal(currentTokensPath("/settings/tokens", new URLSearchParams("tab=classic")), "/settings/tokens");
   assert.equal(currentTokensPath("/settings/tokens", new URLSearchParams("tab=classic&edit=tok_01ABC")), "/settings/tokens/tok_01ABC");
-  assert.equal(currentTokensPath("/acme/-/personal-access-tokens", new URLSearchParams("kind=fine_grained")), "/acme/-/personal-access-tokens");
+  assert.equal(
+    currentTokensPath("/acme/-/settings/personal-access-tokens", new URLSearchParams("kind=fine_grained")),
+    "/acme/-/settings/personal-access-tokens",
+  );
   assert.equal(currentTokensPath("/settings/tokens", new URLSearchParams("")), null);
 });
 

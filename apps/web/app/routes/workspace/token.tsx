@@ -35,7 +35,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   if (form.get("intent") === "delete") {
     const removed = await identity.removeWorkspaceToken(user, slug, params.id);
     if (!removed.ok) return { error: removed.error.message, saved: false };
-    throw redirect(`/${slug}/-/tokens`);
+    throw redirect(`/${slug}/-/settings/tokens`);
   }
   if (form.get("intent") === "regenerate") {
     const ttl = ttlFromForm(form);
@@ -57,7 +57,7 @@ export default function WorkspaceTokenPage({ loaderData, actionData }: Route.Com
   return (
     <section className="max-w-2xl space-y-6">
       <div className="space-y-1.5">
-        <Link to={`/${slug}/-/tokens`} className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
+        <Link to={`/${slug}/-/settings/tokens`} className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
           <ArrowLeft size={13} /> Access tokens
         </Link>
         <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold tracking-tight">
@@ -68,7 +68,7 @@ export default function WorkspaceTokenPage({ loaderData, actionData }: Route.Com
         <TokenMeta token={token} />
       </div>
       {actionData && "secret" in actionData && actionData.secret && actionData.made && (
-        <TokenCreated secret={actionData.secret} token={actionData.made} back={`/${slug}/-/tokens`} />
+        <TokenCreated secret={actionData.secret} token={actionData.made} back={`/${slug}/-/settings/tokens`} />
       )}
       {owner ? (
         <>

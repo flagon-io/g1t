@@ -313,14 +313,20 @@ impl Billing {
         Ok(self.row(workspace).await?.and_then(|row| row.customer_id).unwrap_or(customer))
     }
 
-    /// An owner's email, for a new Stripe customer's receipts and billing
-    /// page sign-in. None when identity cannot say; the owners can add one
-    /// on the billing page.
+    /// The address for a new Stripe customer's receipts and billing page
+    /// sign-in: the workspace's billing email, set on its profile, or else
+    /// an owner's email. None when identity cannot say; the owners can add
+    /// one on the billing page.
     async fn owner_email(&self, workspace: &str) -> Option<String> {
         let identity = self.identity.as_ref()?;
         let args = g1t_contracts::identity::SlugArgs { slug: workspace.to_owned() };
         match g1t_kit::call::<_, Option<g1t_contracts::identity::AdminWorkspaceDetail>>(identity, "admin_workspace", &args).await {
-            Ok(found) => found?.members.into_iter().find(|m| m.role == g1t_contracts::Role::Owner && m.email.is_some()).and_then(|m| m.email),
+            Ok(found) => {
+                let found = found?;
+                found.billing_email.or_else(|| {
+                    found.members.into_iter().find(|m| m.role == g1t_contracts::Role::Owner && m.email.is_some()).and_then(|m| m.email)
+                })
+            }
             Err(error) => {
                 worker::console_error!("{workspace}: no owner email for its Stripe customer: {error}");
                 None
@@ -347,6 +353,37 @@ impl Billing {
                 // The customer was removed at Stripe: a new one next time.
                 self.forget_customer(&workspace).await?;
                 Ok(Outcome::fail(FailureCode::Conflict, "Stripe no longer had this workspace's customer. Try again."))
+            }
+            Err(error) => Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error))),
+        }
+    }
+
+    /// Gives the workspace's Stripe customer a new email, when the billing
+    /// email changes on the workspace's profile. Owners and billing
+    /// managers only. False when there is nothing to change: no email, no
+    /// customer yet (the first one is made with the billing email, see
+    /// `owner_email`), or payments not set up.
+    async fn set_customer_email(&self, a: SetCustomerEmailArgs) -> Result<Outcome<bool>> {
+        let workspace = a.workspace.to_lowercase();
+        if !a.actor.manages_billing(&workspace) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner or a billing manager can change the workspace's billing email."));
+        }
+        let email = a.email.trim();
+        let Some(stripe) = &self.stripe else {
+            return Ok(Outcome::Ok(false));
+        };
+        if email.is_empty() {
+            return Ok(Outcome::Ok(false));
+        }
+        let Some(customer) = self.row(&workspace).await?.and_then(|row| row.customer_id) else {
+            return Ok(Outcome::Ok(false));
+        };
+        match stripe.set_customer_email(&customer, email).await {
+            Ok(()) => Ok(Outcome::Ok(true)),
+            Err(error) if stripe::is_missing(&error) => {
+                // The customer was removed at Stripe: the next one is made with this email.
+                self.forget_customer(&workspace).await?;
+                Ok(Outcome::Ok(false))
             }
             Err(error) => Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error))),
         }
@@ -1292,6 +1329,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "set_spend_limit" => reply(&billing.set_spend_limit(args(body)?).await?),
         "prices" => reply(&billing.prices().await?),
         "billing_portal" => reply(&billing.billing_portal(args(body)?).await?),
+        "set_customer_email" => reply(&billing.set_customer_email(args(body)?).await?),
         "admin_billing_link" => reply(&billing.admin_billing_link(args(body)?).await?),
         "admin_stripe" => reply(&billing.admin_stripe(args(body)?).await?),
         "admin_enterprise_billing" => reply(&billing.admin_enterprise_billing(args(body)?).await?),

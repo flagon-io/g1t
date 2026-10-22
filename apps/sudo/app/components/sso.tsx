@@ -23,7 +23,7 @@ export function SsoSection({ sso, unavailable }: { sso: SsoSettings | null; unav
     <Section
       id="sso"
       title="Single sign-on"
-      description="The workspace's own identity provider. Owners set it up and require it at /-/sso; they are never held out."
+      description="The workspace's own identity provider. Owners set it up and require it at /-/settings/sso; they are never held out."
       className="mt-6"
     >
       {unavailable ? (
