@@ -16,7 +16,7 @@ for its username and on the free plan, unless its invite brings it into
 someone else's workspace; see
 [your first workspace](/guides/authentication/#your-first-workspace).
 Signed in without a workspace, g1t shows **Create your workspace or ask to
-join one** in place of Mission control: the invitations waiting for you,
+join one** in place of Home: the invitations waiting for you,
 and the form below.
 
 To create another:
@@ -627,11 +627,16 @@ provider.
 
 ## The workspace's page
 
-A workspace's own page, `g1t.sh/<workspace>`, has its icon, name, address
-and description at the top, then its overview: your
+A workspace's own page, `g1t.sh/<workspace>`, is Code's front page, as an
+organization's page is on GitHub, for members and visitors alike. It has
+the workspace's [profile](#the-workspaces-profile) at the top: its
+picture, name, address, description, location and links. Then how many
+repositories it has, how many are in production, its open work items and
+the pull requests in progress; your
 [pinned repositories](#pinned-and-recent-repositories), then the most active ones,
-the pull requests in progress across them, and **All repositories**. Members
-also see a **Usage** card with this month's spend, and who belongs.
+and **All repositories**; the pull requests in progress across them; and,
+beside them, its members. **Code** in the app bar opens it. Where you are
+needed and what happened while you were away are on [Home](/guides/home/).
 
 The workspace's other pages each have a heading of their own and a row in
 [the sidebar](#the-sidebar), lit while you are on them. The trail in the
@@ -1001,38 +1006,17 @@ as Explore, a profile or a public repository, under a plain header with
 **Explore**, **Docs**, **Sign in** and **Sign up**; a repository's pages run in
 the row under its name.
 
-## Mission control
+## Code's front page
 
-Mission control is Code's **Overview**, at `g1t.sh/<workspace>/-/overview`.
-It shows where you are needed in the workspace's code and what landed,
-then the week and the activity. What the workspace's work says is on
-[Home](#the-workspace-overview).
-Signed in, `g1t.sh` itself opens [Home](/guides/home/) in the workspace
-you are in.
-
-**Review N that need you** jumps to the list, and **New work item** opens
-a new [work item](/work/work-items/) of the workspace, filed from the
-repository you pick.
-
-| Tab              | What it lists                                                                                                                                                     |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Needs you**    | Reviews asked of you, changes ready for you to merge, failed checks, failed production builds, repository invitations and a usage limit that is close or reached. |
-| **Landed today** | Pull requests merged today in your time zone, and whether a person merged them.                                                                                   |
-
-Each row in **Needs you** carries the reason it needs you:
-
-| Reason           | Means                                                                                                         |
-| ---------------- | ------------------------------------------------------------------------------------------------------------- |
-| `BLOCKING`       | Nothing moves until a person acts: a failed production build, a merge g1t could not make, or the usage limit. |
-| `ASKED FOR YOU`  | A review or an invitation addressed to you by name.                                                           |
-| `CHECKS FAILING` | A required check fails.                                                                                       |
-| `NEEDS REVIEW`   | The repository wants a person's approval.                                                                     |
-| `READY TO MERGE` | Checks passed and it was approved; the repository lands changes only when a person merges them.               |
-
-From a row, **Review and respond** opens it, and where it can be done
-without leaving the page you can approve the change, merge it or re-run
-its failed jobs. **By impact** puts the most urgent first; **Newest** sorts
-by time.
+Code opens on [the workspace's page](#the-workspaces-page),
+`g1t.sh/<workspace>`: the workspace as an organization, its repositories
+and its people. What needs you in the workspace's code (reviews asked of
+you, changes ready to merge, failing checks, failed production builds,
+repository invitations and a usage limit that is close or reached) is in
+[Home's Your move](/guides/home/#your-move), with everything else waiting
+on you; what landed is under
+[Since you were last here](/guides/home/). Signed in, `g1t.sh` itself
+opens [Home](/guides/home/) in the workspace you are in.
 
 ## Workspace access tokens
 

@@ -319,7 +319,7 @@ Everything on g1t lives in a workspace, so every new account gets one:
 
 Signed in without any workspace (you declined an invitation, or left the
 only workspace you were in), g1t shows **Create your workspace or ask to
-join one** in place of Mission control: the invitations waiting for you, if
+join one** in place of Home: the invitations waiting for you, if
 any, and the form to create a workspace. To join a team already on g1t,
 ask one of its owners to invite you by your username.
 

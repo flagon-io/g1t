@@ -84,7 +84,8 @@ test("a click's data request for an alias leads to the page, not its data", () =
 test("the rail's mode follows the address", async () => {
   const { modeOf, modeHome, homePath } = await import("./workspace-nav.ts");
   assert.equal(modeOf("/", "acme"), "home");
-  assert.equal(modeOf("/acme", "acme"), "home");
+  // The workspace's own page is Code's front page.
+  assert.equal(modeOf("/acme", "acme"), "code");
   assert.equal(modeOf("/acme/-/home", "acme"), "home");
   // g1t's own public pages light no mode.
   assert.equal(modeOf("/explore", "acme"), "site");
@@ -127,10 +128,10 @@ test("the rail's mode follows the address", async () => {
   assert.equal(modeHome("notifications", "acme"), "/notifications");
   assert.equal(modeHome("people", "acme"), "/acme/-/people");
   assert.equal(modeHome("apps", "acme"), "/acme/-/apps");
-  assert.equal(modeHome("code", "acme"), "/acme/-/overview");
+  assert.equal(modeHome("code", "acme"), "/acme");
   assert.equal(modeHome("workspace", "acme"), "/acme/-/settings/profile");
   assert.equal(homePath("acme"), "/acme/-/home");
-  assert.equal(homePath("acme", "?tab=landed&_routes=x"), "/acme/-/overview?tab=landed");
+  assert.equal(homePath("acme", "?tab=landed&_routes=x"), "/acme/-/home");
 });
 
 test("Workspace mode's sidebar knows which group and page an address is", async () => {

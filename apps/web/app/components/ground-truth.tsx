@@ -188,7 +188,7 @@ export function GroundTruth({
                 ))}
               </ul>
             )}
-            <Link to={`/${slug}/-/overview?tab=needs#work`} className="mt-3 inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
+            <Link to={`/${slug}/-/home#needed`} className="mt-3 inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
               The review queue <ArrowRight size={11} />
             </Link>
           </div>
