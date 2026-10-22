@@ -1109,8 +1109,12 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
    * Jobs run on g1t's machines, so only for workspaces that may use them.
    */
   private async startActionsJob(args: ActionsJobArgs): Promise<Result<true>> {
-    // The machine its `runs-on` asked for; the standard one otherwise.
-    const instance = instanceNamed(args.instance);
+    // The machine its `runs-on` asked for; the standard one otherwise, and
+    // also when this runner has no such machine (a g1t that does not deploy
+    // it, or a deploy that has reached the actions service first): the job
+    // runs, smaller, rather than failing.
+    const asked = instanceNamed(args.instance);
+    const instance = this.jobNamespace(asked) ? asked : STANDARD_INSTANCE;
     // Workflow jobs run on g1t's machines: only as the workspace's plan
     // allows, or on a public repository, from the open-source pool.
     const admitted = await this.admitSandbox("workflow", args.repo, args.timeoutMinutes, instance);
