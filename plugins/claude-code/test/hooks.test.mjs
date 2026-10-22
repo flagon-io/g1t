@@ -46,6 +46,14 @@ import {
   takeNotice,
   UPDATE_CHECK_MS,
   setProblem,
+  harnessOf,
+  commandOf,
+  patchFiles,
+  codexCounts,
+  dataDir,
+  updateNotice,
+  codexIdContext,
+  trailerFor,
 } from "../hooks/g1t.mjs";
 
 import { CONTRACT, refusal } from "./fake-g1t.mjs";
@@ -800,6 +808,21 @@ describe("with a working copy", () => {
     await new Promise((done) => setTimeout(done, 200));
   });
 
+  test("run as Codex's hook (`g1t.mjs codex`), the session starts as Codex's", async () => {
+    const out = spawnSync(process.execPath, [SCRIPT, "codex"], {
+      input: JSON.stringify({ ...base, cwd: dir, hook_event_name: "SessionStart", source: "startup", model: "gpt-6.1-sol" }),
+      encoding: "utf8",
+      env: { ...process.env, ...env },
+    });
+    assert.equal(out.status, 0);
+    assert.match(JSON.parse(out.stdout).hookSpecificOutput.additionalContext, /work item #42/);
+    const id = sessionFiles(base.session_id, env).id;
+    for (let i = 0; i < 100 && !existsSync(id); i++) await new Promise((done) => setTimeout(done, 50));
+    const start = calls().find((c) => c.args[0] === "session" && c.args[1] === "start");
+    assert.deepEqual(start.args.slice(2, 4), ["--harness", "codex"]);
+    await new Promise((done) => setTimeout(done, 200));
+  });
+
   test("the script prints nothing for a prompt, and never fails on bad input", () => {
     const prompt = spawnSync(process.execPath, [SCRIPT], {
       input: JSON.stringify({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "hello" }),
@@ -1270,4 +1293,132 @@ describe("a newer plugin", () => {
     assert.match(takeNotice(env, root), /not signed in/);
     assert.match(takeNotice(env, root), /0\.3\.3 is out/);
   });
+});
+
+describe("Codex", () => {
+  let dir;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "g1t-codex-"));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  const codex = { G1T_HOOK_HARNESS: "codex" };
+  const usage = (input, cached, output) => ({
+    input_tokens: input,
+    cached_input_tokens: cached,
+    cache_write_input_tokens: 0,
+    output_tokens: output,
+    reasoning_output_tokens: Math.floor(output / 2),
+    total_tokens: input + output,
+  });
+  const line = (type, payload) => JSON.stringify({ timestamp: "2026-10-22T10:00:00Z", type, payload });
+  const record = (id, u) => line("token_usage_record", { response_id: id, thread_id: "t1", usage: u });
+  const total = (u) => line("event_msg", { type: "token_count", info: { total_token_usage: u, last_token_usage: u }, rate_limits: { plan_type: "plus" } });
+
+  test("the harness is Codex's only when Codex's hooks.json says so, with a state folder of its own", () => {
+    assert.equal(harnessOf({}), "claude_code");
+    assert.equal(harnessOf(codex), "codex");
+    assert.match(dataDir(codex), /[\\/]\.g1t[\\/]codex$/);
+    assert.equal(dataDir({ ...codex, CLAUDE_PLUGIN_DATA: "/data" }), "/data");
+  });
+
+  test("a shell tool's command is read whatever shape Codex gives it in, and a patch says which files it wrote", () => {
+    assert.equal(commandOf("git push"), "git push");
+    assert.equal(commandOf({ command: ["bash", "-lc", "git commit -m x"] }), "bash -lc git commit -m x");
+    assert.equal(commandOf({ cmd: "npm test" }), "npm test");
+    const patch = "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-x\n+y\n*** Add File: docs/b.md\n+hi\n*** Delete File: old.txt\n*** End Patch";
+    assert.deepEqual(patchFiles(patch), ["src/a.ts", "docs/b.md", "old.txt"]);
+    assert.deepEqual(patchFiles({ input: patch }), ["src/a.ts", "docs/b.md", "old.txt"]);
+    const job = plan({ ...base, hook_event_name: "PostToolUse", tool_name: "exec", tool_input: { command: ["git", "push", "-u", "origin", "42-x"] } }, codex);
+    assert.deepEqual(job.steps[0].args.slice(-1), ["exec: git push -u origin 42-x"]);
+    assert.ok(job.steps.some((step) => step.headCommit));
+    const patched = plan({ ...base, hook_event_name: "PostToolUse", tool_name: "apply_patch", tool_input: patch }, codex);
+    assert.deepEqual(patched.steps.at(-1).args, ["session", "touch", "--file=src/a.ts", "--file=docs/b.md", "--file=old.txt"]);
+  });
+
+  test("Codex's counts are taken apart: cached input and reasoning are never counted twice", () => {
+    assert.deepEqual(
+      codexCounts({ input_tokens: 1000, cached_input_tokens: 800, cache_write_input_tokens: 50, output_tokens: 300, reasoning_output_tokens: 200 }),
+      {
+        input_tokens: 150,
+        output_tokens: 300,
+        cache_write_5m_tokens: 50,
+        cache_write_1h_tokens: 0,
+        cache_read_tokens: 800,
+      },
+    );
+  });
+
+  test("a Codex transcript's usage is each response's, once, under the model of its turn", () => {
+    const transcript = join(dir, "rollout-2026-10-22T10-00-00-abc.jsonl");
+    writeFileSync(
+      transcript,
+      [
+        line("session_meta", { id: "t1", cwd: "/work/repo" }),
+        line("turn_context", { turn_id: "1", model: "gpt-6.1-sol" }),
+        record("resp_1", usage(1000, 600, 100)),
+        record("resp_1", usage(1000, 600, 100)),
+        total(usage(1000, 600, 100)),
+        line("turn_context", { turn_id: "2", model: "gpt-6-astra" }),
+        record("resp_2", usage(2000, 1500, 50)),
+        // A compaction's call is in the records, though the running total leaves it out.
+        record("resp_3", usage(500, 0, 40)),
+        total(usage(3000, 2100, 150)),
+        "",
+      ].join("\n"),
+    );
+    assert.deepEqual(transcriptUsage(transcript, null, { harness: "codex" }), [
+      { model: "gpt-6.1-sol", input_tokens: 400, output_tokens: 100, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_read_tokens: 600 },
+      { model: "gpt-6-astra", input_tokens: 1000, output_tokens: 90, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_read_tokens: 1500 },
+    ]);
+  });
+
+  test("an older Codex's transcript, with no response records, is its last running total under the hook's model", () => {
+    const transcript = join(dir, "rollout-old.jsonl");
+    writeFileSync(transcript, [total(usage(100, 40, 10)), total(usage(300, 200, 30)), ""].join("\n"));
+    assert.deepEqual(transcriptUsage(transcript, null, { harness: "codex", model: "gpt-5.6-sol" }), [
+      { model: "gpt-5.6-sol", input_tokens: 100, output_tokens: 30, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_read_tokens: 200 },
+    ]);
+    // With no model known at all, nothing can be priced: nothing is sent.
+    assert.deepEqual(transcriptUsage(transcript, null, { harness: "codex" }), []);
+  });
+
+  test("a compressed rollout is read whole when Node can", async () => {
+    const zlib = await import("node:zlib");
+    if (typeof zlib.zstdDecompressSync !== "function") return;
+    const transcript = join(dir, "rollout-cold.jsonl.zst");
+    writeFileSync(transcript, zlib.zstdCompressSync(Buffer.from([line("turn_context", { model: "gpt-6-sol" }), record("r", usage(10, 0, 5)), ""].join("\n"))));
+    assert.deepEqual(transcriptUsage(transcript, null, { harness: "codex" }), [
+      { model: "gpt-6-sol", input_tokens: 10, output_tokens: 5, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_read_tokens: 0 },
+    ]);
+  });
+
+  test("Codex's subagents use their own transcripts, and are not paired from Claude Code's files", () => {
+    const stop = plan(
+      { ...base, hook_event_name: "SubagentStop", agent_id: "a1", agent_type: "worker", agent_transcript_path: "/c/sub.jsonl", model: "gpt-6-luna" },
+      codex,
+    );
+    assert.deepEqual(stop.steps[0], { args: ["session", "heartbeat"], usage: "/c/sub.jsonl", only: true, model: "gpt-6-luna" });
+    // Claude Code's plugin update notice is not Codex's.
+    assert.equal(updateNotice(codex), null);
+  });
+});
+
+test("Codex is told its session's id once, at the first prompt after it has one, for the commits' trailer", () => {
+  const dir = mkdtempSync(join(tmpdir(), "g1t-codex-id-"));
+  try {
+    const env = { G1T_HOOK_HARNESS: "codex", CLAUDE_PLUGIN_DATA: dir };
+    const files = sessionFiles("codex-run", env);
+    assert.equal(codexIdContext(files, env), null, "not before it has one");
+    mkdirSync(files.dir, { recursive: true });
+    writeFileSync(files.id, "ses_codex1");
+    assert.match(codexIdContext(files, env), /this session is ses_codex1 on g1t\. Add the trailer `G1t-Session: ses_codex1`/);
+    assert.equal(codexIdContext(files, env), null, "once");
+    assert.equal(codexIdContext(files, { CLAUDE_PLUGIN_DATA: dir }), null, "never for Claude Code, which has G1T_SESSION");
+    assert.equal(codexIdContext(null, env), null);
+    assert.match(trailerFor(env), /which g1t says at your first prompt/);
+    assert.match(trailerFor({}), /\$G1T_SESSION/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
