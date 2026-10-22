@@ -868,11 +868,12 @@ impl Billing {
             let cost = deployment_costs::MICROS_PER_BUILD_SECOND as f64;
             (cost, Price::price_for(cost, self.margin_percent))
         });
-        // The machine it ran on, from the catalogue by its `runs-on` label;
-        // the standard one otherwise. What it cost g1t: a larger machine's
-        // memory and disk cost more each second, and without its own CPU it
-        // is costed at its vCPUs as busy as the standard machine's.
-        let instance = a.instance.as_deref().and_then(g1t_contracts::actions::instance_named).unwrap_or(g1t_contracts::actions::STANDARD_INSTANCE);
+        // The machine it ran on, from the catalogue by its `runs-on` label
+        // (a retired machine's too, for a job started before it retired);
+        // the standard one otherwise. What it cost g1t: a machine's memory
+        // and disk cost what they are each second, and without its own CPU
+        // it is costed at its vCPUs as busy as the standard machine's.
+        let instance = a.instance.as_deref().and_then(g1t_contracts::actions::billed_instance).unwrap_or(g1t_contracts::actions::STANDARD_INSTANCE);
         let base_scale = keeper::base_scale(instance.memory_gib, instance.disk_gb);
         let cost_scale = keeper::busy_scale(&instance);
         let vcpus = instance.vcpu.max(4.0);

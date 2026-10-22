@@ -250,10 +250,11 @@ impl Api {
         Api { base: String::new(), job: "job_1".into(), token: "t".into() }
     }
 
-    pub(crate) fn report(&self, report: Value) {
+    /// Sends a report; whether g1t took it.
+    pub(crate) fn report(&self, report: Value) -> bool {
         // No address: nowhere to send it (Api::offline).
         if self.base.is_empty() {
-            return;
+            return true;
         }
         // A report that cannot be sent is tried a few times, then dropped:
         // the job goes on, and g1t notices a silent job by itself.
@@ -266,13 +267,14 @@ impl Api {
                     if let Ok(answer) = response.into_json::<Value>() {
                         CANCEL.hear(&answer);
                     }
-                    return;
+                    return true;
                 }
                 // Refused: the job was cancelled or finished; nothing to retry.
-                Err(ureq::Error::Status(code, _)) if (400..500).contains(&code) => return,
+                Err(ureq::Error::Status(code, _)) if (400..500).contains(&code) => return false,
                 Err(_) => std::thread::sleep(Duration::from_millis(500 * (attempt + 1))),
             }
         }
+        false
     }
 }
 
@@ -314,6 +316,11 @@ struct Uploader {
     /// batch carries its own, and keeps it when it is sent again, so g1t
     /// keeps a batch it already has once.
     chunk: u64,
+    /// Bytes of log g1t did not take (every try failed), which the next
+    /// batch says are missing: a log never has a hole that does not say so.
+    lost: usize,
+    /// Whether the log waiting at the job's end has been let go.
+    let_go: bool,
     #[cfg(test)]
     settled: Vec<mpsc::Sender<()>>,
 }
@@ -358,23 +365,37 @@ impl Uploader {
                     Err(mpsc::TryRecvError::Disconnected) => self.open = false,
                 }
             }
-            if self.hurry.load(Ordering::Relaxed) && !self.logs.is_empty() {
+            if self.hurry.load(Ordering::Relaxed) && !self.let_go && !self.logs.is_empty() {
+                self.let_go = true;
+                let step = self.logs.front().map_or(0, |(step, _)| *step);
                 let left: usize = self.logs.drain(..).map(|(_, text)| text.len()).sum();
                 eprintln!(
                     "g1t-runner: {left} bytes of the job's log did not reach g1t in time and were let go"
                 );
+                // What is let go is said in the log itself, where it starts:
+                // one short batch, sent before the conclusion.
+                self.logs.push_back((
+                    step,
+                    note(&format!(
+                        "##[warning]{left} bytes of this job's log, from here on, did not reach g1t within {} seconds of the job's end and were let go.",
+                        DRAIN_WAIT.as_secs()
+                    )),
+                ));
             }
             if let Some(report) = self.others.pop_front() {
                 self.api.report(report);
-            } else if let Some(report) = self.next_batch() {
-                self.api.report(report);
+            } else if let Some((report, bytes)) = self.next_batch()
+                && !self.api.report(report)
+            {
+                self.lost += bytes;
             }
         }
     }
 
     /// The batches that wait for the same step, joined up to
-    /// [`SEND_BYTES`], numbered.
-    fn next_batch(&mut self) -> Option<Value> {
+    /// [`SEND_BYTES`], numbered, and the bytes of log they carry: theirs,
+    /// and any g1t did not take before, which the batch says are missing.
+    fn next_batch(&mut self) -> Option<(Value, usize)> {
         let (step, mut text) = self.logs.pop_front()?;
         while let Some((next, more)) = self.logs.front()
             && *next == step
@@ -383,9 +404,23 @@ impl Uploader {
             text.push_str(more);
             self.logs.pop_front();
         }
+        let mut bytes = text.len();
+        if self.lost > 0 {
+            let lost = std::mem::take(&mut self.lost);
+            text.insert_str(0, &note(&format!("##[warning]{lost} bytes of this job's log before this line could not be sent to g1t and are missing.")));
+            bytes += lost;
+        }
         self.chunk += 1;
-        Some(json!({ "kind": "log", "step": step, "chunk": self.chunk, "text": text }))
+        Some((
+            json!({ "kind": "log", "step": step, "chunk": self.chunk, "text": text }),
+            bytes,
+        ))
     }
+}
+
+/// A line of the runner's own in the log, stamped as the job's are.
+fn note(text: &str) -> String {
+    format!("{} {text}\n", stamp(SystemTime::now()))
 }
 
 /// The job's log, masked, sent in batches. `masks` holds every form of
@@ -426,6 +461,8 @@ impl Log {
             open: true,
             hurry: hurry.clone(),
             chunk: 0,
+            lost: 0,
+            let_go: false,
             #[cfg(test)]
             settled: Vec::new(),
         };
@@ -1063,7 +1100,140 @@ mod tests {
                 )
             })
             .collect();
-        assert_eq!(kinds, [("log", 1), ("done", 0)]);
+        // Step 2's log is let go, and its log says so where it starts.
+        assert_eq!(kinds, [("log", 1), ("log", 2), ("done", 0)]);
+        let note = unstamped(reports[1]["text"].as_str().unwrap());
+        assert!(
+            note.starts_with(
+                "##[warning]33 bytes of this job's log, from here on, did not reach g1t"
+            ),
+            "{note}"
+        );
+        assert!(!note.contains("two"), "{note}");
+    }
+
+    #[test]
+    fn a_batch_g1t_never_takes_is_said_to_be_missing_in_the_next() {
+        // The first batch fails all three tries (CI #599 asked whether a
+        // step's output went this way, unsaid); the next says so.
+        let (base, serving) = flaky_server(3, 4);
+        let mut log = Log::new(
+            Api {
+                base,
+                job: "job_1".into(),
+                token: "t".into(),
+            },
+            Vec::new(),
+        );
+        log.step(8);
+        log.line("error: could not compile `g1t-repos`");
+        log.flush();
+        log.settle();
+        log.line("##[error]Process completed with exit code 101.");
+        log.flush();
+        log.settle();
+        let bodies = serving.join().unwrap();
+        let sent: Vec<(u64, u64, String)> = bodies
+            .iter()
+            .map(|body| {
+                let report = &body["report"];
+                (
+                    report["step"].as_u64().unwrap(),
+                    report["chunk"].as_u64().unwrap(),
+                    unstamped(report["text"].as_str().unwrap()),
+                )
+            })
+            .collect();
+        let lost = "error: could not compile `g1t-repos`\n";
+        assert_eq!(
+            sent[..3],
+            [
+                (8, 1, lost.into()),
+                (8, 1, lost.into()),
+                (8, 1, lost.into())
+            ]
+        );
+        assert_eq!(
+            sent[3],
+            (
+                8,
+                2,
+                format!(
+                    "##[warning]{} bytes of this job's log before this line could not be sent to g1t and are missing.\n##[error]Process completed with exit code 101.\n",
+                    lost.len() + 29
+                )
+            )
+        );
+    }
+
+    #[test]
+    fn a_failing_steps_tail_reaches_g1t_under_its_step_before_the_job_ends() {
+        // CI #599's step 8: its header, half a minute of silence (here more
+        // than a batch's second), then its output in a burst as it fails,
+        // the error line, its state, and the steps after it, to a g1t that
+        // takes a while to answer each log report.
+        let (base, serving) = slow_server(|report| {
+            if report["kind"] == "log" {
+                Duration::from_millis(150)
+            } else {
+                Duration::ZERO
+            }
+        });
+        let mut log = Log::new(
+            Api {
+                base,
+                job: "job_1".into(),
+                token: "t".into(),
+            },
+            Vec::new(),
+        );
+        log.step(8);
+        log.step_state(8, "Tests", "in_progress", None);
+        log.line("##[group]Run cargo test -p g1t-repos --locked --quiet");
+        log.line("##[endgroup]");
+        std::thread::sleep(FLUSH_EVERY + Duration::from_millis(100));
+        log.tick();
+        let failures = [
+            "error[E0425]: cannot find value `x` in this scope",
+            "  --> services/repos/src/lib.rs:3:5",
+            "error: could not compile `g1t-repos`",
+        ];
+        for line in failures {
+            log.line(line);
+        }
+        log.line("##[error]Process completed with exit code 101.");
+        log.step_state(8, "Tests", "completed", Some("failure"));
+        log.step(12);
+        log.step_state(12, "sccache's hits and misses", "in_progress", None);
+        log.line("Compile requests 0");
+        log.step_state(
+            12,
+            "sccache's hits and misses",
+            "completed",
+            Some("success"),
+        );
+        log.done("failure", &serde_json::Map::new(), None);
+        let reports = serving.join().unwrap();
+        let of = |step: u64| -> String {
+            reports
+                .iter()
+                .filter(|report| report["kind"] == "log" && report["step"] == step)
+                .map(|report| unstamped(report["text"].as_str().unwrap()))
+                .collect()
+        };
+        let expected = format!(
+            "##[group]Run cargo test -p g1t-repos --locked --quiet\n##[endgroup]\n{}\n##[error]Process completed with exit code 101.\n",
+            failures.join("\n")
+        );
+        assert_eq!(of(8), expected);
+        assert_eq!(of(12), "Compile requests 0\n");
+        let numbers: Vec<u64> = reports
+            .iter()
+            .filter(|report| report["kind"] == "log")
+            .map(|report| report["chunk"].as_u64().unwrap())
+            .collect();
+        assert_eq!(numbers, (1..=numbers.len() as u64).collect::<Vec<_>>());
+        assert_eq!(reports.last().unwrap()["kind"], "done");
     }
 
     #[test]

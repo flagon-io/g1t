@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // What are the runner's Durable Object errors? The sandboxes that run
 // checks, workflow jobs and merge-queue builds are Durable Objects of the
-// g1t-runner Worker (services/runner: AttemptSandbox, Sandbox2Core,
-// Sandbox4Core). This asks Cloudflare, over the last N days:
+// g1t-runner Worker (services/runner: AttemptSandbox and SandboxSlim, and
+// before them Sandbox2Core and Sandbox4Core). This asks Cloudflare, over
+// the last N days:
 //
 // 1. GraphQL Analytics (durableObjectsInvocationsAdaptiveGroups): requests
 //    and errors by namespace and status, and by day and status.

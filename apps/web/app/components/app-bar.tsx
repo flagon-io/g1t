@@ -90,8 +90,9 @@ export function WorkspaceSwitcher({
         <ChevronDown size={14} className="shrink-0 text-faint" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-72 p-1.5">
+        {/* The workspace itself, at the address it shows: its own page. */}
         <DropdownMenuItem asChild className="gap-3 px-2 py-2">
-          <Link to={modeHome("workspace", slug)}>
+          <Link to={`/${slug}`}>
             <Avatar name={slug} image={workspace.avatar} size={36} square />
             <span className="flex min-w-0 grow flex-col leading-tight">
               <span className="truncate text-sm font-medium text-fg">{displayName(workspace)}</span>

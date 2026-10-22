@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import {
+  GITHUB_HOSTED_LABELS,
   INSTANCE_TYPES,
+  RETIRED_MACHINES,
   STANDARD_INSTANCE,
   instanceNamed,
   machineNamed,
@@ -22,11 +24,13 @@ test("each label in the machine catalogue runs in its own class, bound and sized
   const config = JSON.parse(text) as {
     containers: { class_name: string; instance_type: unknown }[];
     durable_objects: { bindings: { name: string; class_name: string }[] };
+    migrations: { new_sqlite_classes?: string[]; deleted_classes?: string[] }[];
   };
   // The named Cloudflare instance types a machine may be, at the sizes
   // Cloudflare gives them. A custom type would be a row here once the
   // account may use them.
   const named: Record<string, Size> = {
+    "standard-2": { vcpu: 1, memory_mib: 6 * 1024, disk_mb: 12_000 },
     "standard-3": { vcpu: 2, memory_mib: 8 * 1024, disk_mb: 16_000 },
     "standard-4": { vcpu: 4, memory_mib: 12 * 1024, disk_mb: 20_000 },
   };
@@ -74,23 +78,44 @@ test("each label in the machine catalogue runs in its own class, bound and sized
     assert.equal(jobNamespaceOf({ [binding]: instance.label }, instance), instance.label);
   }
   // A class not deployed here: the job is not started on another machine.
-  assert.equal(jobNamespaceOf({ SANDBOX: "standard" }, INSTANCE_TYPES[2]!), null);
+  assert.equal(jobNamespaceOf({ SANDBOX: "standard" }, INSTANCE_TYPES[1]!), null);
+  // Every class has a migration that made it, and a retired machine's class
+  // is deployed no more and was deleted by one (its objects were each one
+  // job's sandbox).
+  const created = config.migrations.flatMap((m) => m.new_sqlite_classes ?? []);
+  const deleted = config.migrations.flatMap((m) => m.deleted_classes ?? []);
+  for (const container of config.containers) {
+    assert.ok(created.includes(container.class_name) && !deleted.includes(container.class_name), container.class_name);
+  }
+  for (const retired of RETIRED_MACHINES) {
+    assert.ok(!config.containers.some((c) => c.class_name === retired.sandboxClass), retired.sandboxClass);
+    assert.ok(!config.durable_objects.bindings.some((b) => b.class_name === retired.sandboxClass), retired.sandboxClass);
+    assert.ok(deleted.includes(retired.sandboxClass), `${retired.sandboxClass} has no deleted_classes migration`);
+  }
   assert.equal(jobNamespaceOf({ SANDBOX: "standard" }, { sandboxClass: "Sandbox64Core" }), null);
 });
 
 test("runs-on labels are the catalogue's, and a job is charged its minutes rounded up", () => {
   assert.equal(instanceNamed("ubuntu-latest"), STANDARD_INSTANCE);
-  assert.equal(instanceNamed("G1T-4Core").machine, "4-core");
-  assert.equal(instanceNamed("g1t-2core").machine, STANDARD_INSTANCE.machine);
+  assert.equal(instanceNamed("Ubuntu-Slim").machine, "1-core");
+  // The labels g1t had before: the standard machine, like any unknown one.
+  assert.equal(instanceNamed("G1T-4Core"), STANDARD_INSTANCE);
+  assert.equal(instanceNamed("g1t-2core"), STANDARD_INSTANCE);
   assert.deepEqual(
     machines().map((m) => [m.machine, m.microsPerMinute, machineSize(m)]),
     [
       ["2-core", 4000, "2 vCPU, 8 GiB, 16 GB"],
-      ["4-core", 7000, "4 vCPU, 12 GiB, 20 GB"],
+      ["1-core", 3000, "1 vCPU, 6 GiB, 12 GB"],
     ],
   );
+  // A retired machine still reads, for its past minutes.
   assert.equal(machineNamed("4-core")?.label, "g1t-4core");
   assert.equal(machineNamed("8-core"), null);
-  assert.equal(priceScale(instanceNamed("g1t-4core")), 1.75);
+  assert.equal(priceScale(instanceNamed("ubuntu-slim")), 0.75);
+  // Every GitHub Linux label is a machine here; Windows and macOS are none.
+  for (const github of GITHUB_HOSTED_LABELS) {
+    if (github.os === "linux") assert.equal(instanceNamed(github.machine).label, github.machine, github.githubLabel);
+    else assert.equal(github.machine, null, github.githubLabel);
+  }
   assert.deepEqual([0, 1, 60, 61, 3600].map(runnerMinutes), [0, 1, 1, 2, 60]);
 });

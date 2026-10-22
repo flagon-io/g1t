@@ -8,11 +8,14 @@
 //   node scripts/deploy/ci-affected.mjs -p <crate>...
 //   node scripts/deploy/ci-affected.mjs --job desktop|build
 //   node scripts/deploy/ci-affected.mjs --tested
+//   node scripts/deploy/ci-affected.mjs --npm
 //
 // With --job it says whether a run needs one of CI's other jobs (JOBS), as
 // the output `run` (true or false), on the same terms: anything but a pull
 // request or a queue state, or anything failing, runs it, except a push of
-// a commit the merge queue tested (below).
+// a commit the merge queue tested (below). With --npm it says which npm
+// workspaces the TypeScript job type checks and tests, how much it
+// installs, and which of its other checks run (npmPlan, below).
 //
 // It takes the part's `-p` arguments and writes to the step's outputs
 // (GITHUB_OUTPUT):
@@ -46,7 +49,7 @@
 
 import { spawnSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
-import { basename, dirname, relative, sep } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -127,25 +130,222 @@ export const DESKTOP = [
 ];
 
 /**
+ * The npm workspaces the build job builds (`deploy.mjs build --only
+ * web,sudo,docs`), and the deploy tool's own files it builds them with.
+ */
+export const BUILT = ["apps/web", "apps/sudo", "apps/docs"];
+export const BUILD_TOOL = ["scripts/deploy.mjs", "scripts/deploy/", "scripts/build-rust-worker.mjs", "scripts/build-runner.mjs", "deploy/stack.jsonc"];
+
+/**
  * CI's other jobs a pull request may pass without running, and whether a
- * changed file needs each: `desktop` its own files (DESKTOP), `build` (the
- * site, sudo and the docs) any file but Rust source, which none of them
- * reads. TypeScript runs on every pull request: its tests and the
- * conformance suite read Rust source and manifests throughout.
+ * change to `files` needs each: `desktop` its own files (DESKTOP), `build`
+ * (the site, sudo and the docs) a change that reaches one of their npm
+ * workspaces (npmAffected, through `npm`, the workspace graph) or the
+ * deploy tool that builds them.
  */
 export const JOBS = {
-  desktop: (file) => DESKTOP.some((entry) => under(file, entry)),
-  build: (file) => !file.endsWith(".rs"),
+  desktop: (files) => files.some((file) => DESKTOP.some((entry) => under(file, entry))),
+  build: (files, npm) => {
+    if (files.some((file) => BUILD_TOOL.some((entry) => under(file, entry)))) return true;
+    const reached = npmAffected(npm, files);
+    return reached === null || npm.some((w) => BUILT.includes(w.dir) && reached.includes(w.name));
+  },
 };
 
-/** Whether a change to `files` needs `job` (a key of JOBS) to run. */
-export function needs(job, files) {
-  return files.some(JOBS[job]);
+/** Whether a change to `files` needs `job` (a key of JOBS) to run; `npm` is the npm workspace graph (npmGraph). */
+export function needs(job, files, npm = []) {
+  return files.length > 0 && JOBS[job](files, npm);
 }
 
-/** Whether `path` is `entry`, or under it when `entry` is a folder. */
+/**
+ * Whether `path` is `entry`, or under it when `entry` is a folder (a
+ * trailing `/`). In `entry`, `*` stands for one path segment's name, and
+ * a leading `**` and slash for any folders: every wrangler.jsonc, say.
+ */
 function under(path, entry) {
-  return entry.endsWith("/") ? path.startsWith(entry) : path === entry;
+  if (!entry.includes("*")) return entry.endsWith("/") ? path.startsWith(entry) : path === entry;
+  const pattern = entry
+    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/^\*\*\//, "(?:.*/)?")
+    .replace(/(?<!\.)\*/g, "[^/]*");
+  return new RegExp(`^${pattern}${entry.endsWith("/") ? "" : "$"}`).test(path);
+}
+
+// ── npm workspaces ──────────────────────────────────────────────────────
+//
+// The TypeScript job, on a pull request or a queue state, type checks and
+// tests only the npm workspaces the change reaches: those whose folder holds
+// a changed file (or that read it, NPM_READS), and every workspace that
+// depends on them, however far, through package.json `dependencies` and
+// `devDependencies` (packages/contracts reaches the apps and every service).
+// A change to the install or to the TypeScript every workspace shares
+// (NPM_EVERYTHING) reaches all of them. Its other checks run when their own
+// files change (CHECKS). A push runs everything, as for the Rust parts.
+
+/**
+ * Files any change to which type checks and tests every npm workspace and
+ * runs every check of the TypeScript job: the root manifest and lockfile,
+ * npm's and Node's settings, the TypeScript options every workspace extends,
+ * this workflow, and the scripts that decide and run it.
+ */
+export const NPM_EVERYTHING = [
+  "package.json",
+  "package-lock.json",
+  ".npmrc",
+  ".nvmrc",
+  "tsconfig.base.json",
+  ".g1t/workflows/ci.yml",
+  "scripts/deploy/ci-affected.mjs",
+  "scripts/deploy/ci-workspaces.mjs",
+  "scripts/deploy/npm-ci.mjs",
+  // npmWorkspace(), the graph this file walks.
+  "scripts/deploy/stack.mjs",
+];
+
+/**
+ * Files outside a workspace's folder (or in another's, by a path rather
+ * than a package dependency) that its code or tests read, and the
+ * workspaces (by folder) that read them. ci-affected.test.mjs checks that
+ * every relative path a workspace's source names outside its folder is
+ * here or a package dependency.
+ */
+export const NPM_READS = [
+  // og's cards name a roadmap item as the site does.
+  ["apps/web/app/lib/roadmap.ts", ["services/og"]],
+  // markdown-tree.test.ts renders the repository's own documents.
+  ["README.md", ["apps/web"]],
+  ["CONTRIBUTING.md", ["apps/web"]],
+  // So does the docs' Cloudflare guide, under apps/docs (no dependency).
+  ["apps/docs/src/content/docs/guides/deploy-to-cloudflare.md", ["apps/web"]],
+  // The phone app's icon script draws the mark.
+  ["packages/theme/mark.svg", ["apps/mobile"]],
+];
+
+/**
+ * The TypeScript job's checks besides the workspaces' own, and the files
+ * each reads: the tests of the deploy tool, the conformance report and the
+ * ops scripts, the deploy manifest against every wrangler.jsonc, and the
+ * Claude Code plugin's hooks and published marketplace. Each runs when one
+ * of its files changes, or with NPM_EVERYTHING. ci-affected.test.mjs checks
+ * that every repository path their tests name is among them.
+ */
+export const CHECKS = {
+  // scripts/deploy/*.test.mjs: the deploy tool and what it plans from.
+  deploy: [
+    "scripts/",
+    "deploy/",
+    ".g1t/workflows/",
+    ".gitignore",
+    "Cargo.lock",
+    "services/runner/",
+    "services/identity/",
+    "services/*/migrations/",
+    "**/wrangler.jsonc",
+    "**/wrangler.toml",
+    "**/Cargo.toml",
+    "**/package.json",
+  ],
+  // conformance/*.test.mjs: the services' Rust, SQL and migrations,
+  // run in Miniflare.
+  conformance: ["conformance/", "scripts/conformance-diff.mjs", "scripts/deploy/stack.mjs", "services/"],
+  // scripts/ops/*.test.mjs.
+  ops: ["scripts/ops/", "scripts/deploy/", "services/repos/wrangler.jsonc", "services/billing/src/", "deploy/self-host/"],
+  // deploy.mjs manifest --check.
+  manifest: ["deploy/stack.jsonc", "scripts/deploy.mjs", "scripts/deploy/", "**/wrangler.jsonc", "**/wrangler.toml"],
+  // The plugin's hooks' tests, and plugins-release.mjs check and its tests.
+  plugins: ["plugins/", "scripts/plugins-release.mjs", "scripts/plugins-release.test.mjs"],
+};
+
+/** The checks (keys of CHECKS) a change to `files` runs; `null` files run every one. */
+export function checks(files) {
+  return Object.keys(CHECKS).filter(
+    (name) => files === null || files.some((file) => NPM_EVERYTHING.includes(file) || CHECKS[name].some((entry) => under(file, entry))),
+  );
+}
+
+/**
+ * The npm workspaces as a list: each one's package name, its folder, the
+ * workspaces it depends on, and its scripts (from npmWorkspace's map, and
+ * each package.json).
+ */
+export function npmGraph(packages, scriptsOf = () => ({})) {
+  return [...packages].map(([name, { dir, deps }]) => ({ name, dir, deps: [...deps], scripts: scriptsOf(dir) }));
+}
+
+/**
+ * The npm workspaces a change to `files` reaches: `null` for every one,
+ * otherwise their names, sorted. A file belongs to the workspace whose
+ * folder holds it.
+ */
+export function npmAffected(graph, files) {
+  const byDir = new Map(graph.map((w) => [w.dir, w.name]));
+  const touched = new Set();
+  for (const file of files) {
+    if (NPM_EVERYTHING.includes(file)) return null;
+    const owner = graph.find((w) => file.startsWith(`${w.dir}/`));
+    if (owner) touched.add(owner.name);
+    for (const [entry, readers] of NPM_READS) if (under(file, entry)) for (const dir of readers) if (byDir.has(dir)) touched.add(byDir.get(dir));
+  }
+  const dependents = new Map(graph.map((w) => [w.name, []]));
+  for (const w of graph) for (const dep of w.deps) dependents.get(dep)?.push(w.name);
+  const out = new Set();
+  const queue = [...touched];
+  while (queue.length) {
+    const name = queue.pop();
+    if (out.has(name)) continue;
+    out.add(name);
+    queue.push(...(dependents.get(name) ?? []));
+  }
+  return [...out].sort();
+}
+
+/** `names` and every workspace they depend on, however far: what an install of them needs. */
+export function npmClosure(graph, names) {
+  const byName = new Map(graph.map((w) => [w.name, w]));
+  const out = new Set();
+  const queue = [...names];
+  while (queue.length) {
+    const name = queue.pop();
+    if (out.has(name) || !byName.has(name)) continue;
+    out.add(name);
+    queue.push(...byName.get(name).deps);
+  }
+  return [...out].sort();
+}
+
+/**
+ * What the TypeScript job does for a change: `reached` the workspaces it
+ * reaches (`null` for every one, see npmAffected), `checks` (CHECKS) to
+ * run, and `tested`, a push the merge queue tested, which only type checks
+ * every workspace (for tsc's cache) and runs nothing else. Returns:
+ *
+ *   typecheck  workspaces whose `typecheck` script runs
+ *   test       workspaces whose `test` script runs
+ *   checks     the checks that run
+ *   install    `all`, `none`, or the npm ci arguments that install only
+ *              the workspaces checked and what they depend on
+ *   whole      every workspace is checked and tested
+ */
+export function npmPlan(graph, { reached, checks: run, tested = false }) {
+  const all = reached === null || tested;
+  const names = all ? graph.map((w) => w.name) : reached;
+  const has = (script) => graph.filter((w) => names.includes(w.name) && w.scripts?.[script]).map((w) => w.name);
+  const typecheck = has("typecheck");
+  const test = tested ? [] : has("test");
+  const checks = tested ? [] : run;
+  const workspaces = [...new Set([...typecheck, ...test])];
+  let install;
+  if (all) install = "all";
+  // Conformance runs Miniflare and esbuild, the root's (wrangler's).
+  else if (!workspaces.length) install = checks.includes("conformance") ? "--workspaces=false" : "none";
+  else install = ["--include-workspace-root", ...npmClosure(graph, workspaces).flatMap((name) => ["-w", name])].join(" ");
+  return { typecheck, test, checks, install, whole: all };
+}
+
+/** The repository's npm workspaces, with their scripts. */
+async function repositoryGraph() {
+  const { npmWorkspace } = await import("./stack.mjs");
+  return npmGraph(npmWorkspace(ROOT), (dir) => JSON.parse(readFileSync(join(ROOT, dir, "package.json"), "utf8")).scripts ?? {});
 }
 
 /**
@@ -305,7 +505,7 @@ async function mainJob(job) {
   try {
     const { files, why } = changedFiles();
     if (files) {
-      run = needs(job, files);
+      run = needs(job, files, job === "build" ? await repositoryGraph() : []);
       console.log(`${files.length} files changed; ${run ? `the ${job} job's among them` : `none of them the ${job} job's, so it passes without running`}`);
     } else {
       console.log(why.replace("tests every crate", `runs the ${job} job`));
@@ -317,9 +517,55 @@ async function mainJob(job) {
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `run=${run}\n`);
 }
 
+/**
+ * `--npm`: what the TypeScript job does (npmPlan), as the outputs
+ * `typecheck` and `test` (workspace names, space-separated), `install`
+ * (whether it installs at all) and `install-args` (npm ci's arguments for
+ * part of the lockfile, empty for all of it), `whole`, `tested`, and each
+ * check of CHECKS as true or false.
+ */
+async function mainNpm() {
+  const queue = await tested();
+  if (queue.tested) console.log(queue.why);
+  const graph = await repositoryGraph();
+  let reached = null;
+  let changed = [];
+  try {
+    const { files, why } = changedFiles();
+    if (files) {
+      reached = npmAffected(graph, files);
+      changed = files;
+      console.log(
+        `${files.length} files changed; ${reached ? `workspaces reached: ${reached.join(", ") || "none"}` : "the install's or the job's own files among them, so every workspace"}`,
+      );
+    } else {
+      console.log(why.replace("tests every crate", "checks every workspace"));
+    }
+  } catch (error) {
+    console.log(`::warning title=Affected workspaces::${error.message.split("\n")[0]}; every workspace is checked`);
+    reached = null;
+  }
+  const plan = npmPlan(graph, { reached, checks: checks(reached === null ? null : changed), tested: queue.tested });
+  console.log(`Type checks: ${plan.typecheck.join(" ") || "none"}`);
+  console.log(`Tests: ${queue.tested ? "none (the merge queue ran them)" : plan.test.join(" ") || "none"}`);
+  console.log(`Checks: ${plan.checks.join(", ") || "none"}`);
+  console.log(`Install: ${plan.install}`);
+  const lines = [
+    `tested=${queue.tested}`,
+    `typecheck=${plan.typecheck.join(" ")}`,
+    `test=${plan.test.join(" ")}`,
+    `install=${plan.install !== "none"}`,
+    `install-args=${plan.install === "all" || plan.install === "none" ? "" : plan.install}`,
+    `whole=${plan.whole}`,
+    ...Object.keys(CHECKS).map((name) => `${name}=${plan.checks.includes(name)}`),
+  ];
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join("\n")}\n`);
+}
+
 async function main(args) {
   if (args[0] === "--job") return mainJob(args[1]);
   if (args[0] === "--tested") return mainTested();
+  if (args[0] === "--npm") return mainNpm();
   const part = partCrates(args);
   let test = part;
   // A push: every crate, compiled, and tested unless the queue did.

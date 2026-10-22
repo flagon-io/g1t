@@ -39,10 +39,19 @@ export function assetReferences(text) {
   );
 }
 
-async function together(items, run) {
+/**
+ * How many of the new build's assets are archived at once. Each new name is
+ * a lookup and an upload to R2 through Cloudflare's API, about a second
+ * each: six at a time, the ~400 new names of a typical release took two
+ * minutes of every web deploy. The number of requests is the same at any
+ * width; a 429 is waited out (retryingFetch).
+ */
+export const ARCHIVE_CONCURRENCY = 16;
+
+async function together(items, run, limit = 6) {
   let index = 0;
   const results = await Promise.allSettled(
-    Array.from({ length: Math.min(6, items.length) }, async () => {
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
       for (let i = index++; i < items.length; i = index++) await run(items[i]);
     }),
   );
@@ -230,11 +239,15 @@ export async function publishWebAssets(cwd, { onLine = console.log, fetchImpl = 
   const manifest = manifestName(names);
   if (!manifest || !names.some((name) => name.endsWith(".css"))) throw new Error("Web build has no manifest/CSS assets");
   const current = new Map();
-  await together(names, async (name) => {
-    const bytes = await readFile(join(directory, name));
-    await archiveAsset({ name, bytes, account: config.account_id, bucket, headers, index, fetchImpl: providerFetch });
-    current.set(archivedAssetKey(`/assets/${name}`), checksum(bytes));
-  });
+  await together(
+    names,
+    async (name) => {
+      const bytes = await readFile(join(directory, name));
+      await archiveAsset({ name, bytes, account: config.account_id, bucket, headers, index, fetchImpl: providerFetch });
+      current.set(archivedAssetKey(`/assets/${name}`), checksum(bytes));
+    },
+    ARCHIVE_CONCURRENCY,
+  );
   await saveManifest(manifest, current);
   onLine(`Verified ${names.length} assets for the new build; old filenames remain available`);
   const samples = new Map();

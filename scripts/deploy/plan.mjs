@@ -199,15 +199,22 @@ const firstLine = (text) =>
  */
 export function planJson(stack, decisions, migrations, head) {
   const deploying = decisions.filter((d) => d.deploy).map((d) => d.unit);
+  const order = codeStages(stack);
   const stages = {};
-  for (const stage of codeStages(stack)) {
+  for (const stage of order) {
     const units = deploying.filter((u) => u.stage === stage);
+    // A unit deploying in a later stage that calls one of a job's units:
+    // that stage waits for the job. A job nothing later calls (the
+    // runner's image when the API is not deploying, say) is `awaited:
+    // false`, and the stages after it start without it.
+    const later = deploying.filter((u) => order.indexOf(u.stage) > order.indexOf(stage));
+    const callers = new Set(later.flatMap(waitsOn));
     stages[stage] = {
       units: units.map((u) => u.id),
       jobs: buildGroups(
         units,
         decisions.filter((d) => d.deploy && d.image).map((d) => d.unit.id),
-      ),
+      ).map((job) => ({ ...job, awaited: job.units.split(",").some((id) => callers.has(units.find((u) => u.id === id).worker)) })),
     };
   }
   return {
@@ -229,6 +236,60 @@ export function planJson(stack, decisions, migrations, head) {
     })),
     stage_order: byStage(stack, deploying).map((g) => g.stage),
   };
+}
+
+/**
+ * The Workers a unit calls, so must be live before it: the services it
+ * binds to (the manifest's rule for stages, `problems` in stack.mjs) and
+ * the Workers its traces go to (tail consumers).
+ */
+export function waitsOn(unit) {
+  const tails = (unit.config?.tail_consumers ?? []).map((t) => t.service);
+  return [...new Set([...(unit.bindsTo ?? []), ...tails])];
+}
+
+/**
+ * The plan job's outputs for .g1t/workflows/deploy.yml, one `name=value`
+ * a line. Each stage's jobs are two matrices: `<stage>`, those a later
+ * stage waits for (every job of the last stage), and `<stage>_rest`,
+ * those nothing later calls, which deploy beside the stages after them.
+ * A Containers image job goes first in its matrix: it takes longest, and
+ * a matrix starts its entries in order.
+ */
+export function workflowOutputs(data) {
+  const lines = [
+    `commit=${data.commit}`,
+    `migrate=${data.migrations.length > 0}`,
+    `migrate_units=${data.migrations.map((m) => m.unit).join(",")}`,
+    `deploying=${data.units
+      .filter((u) => u.deploy)
+      .map((u) => u.unit)
+      .join(",")}`,
+  ];
+  // A matrix needs one entry; an empty one's job is skipped by its `if`.
+  const matrix = (jobs, stage) => JSON.stringify({ include: jobs.length ? jobs : [{ group: "none", units: "", stage }] });
+  const longestFirst = (jobs) => [...jobs.filter((j) => j.image), ...jobs.filter((j) => !j.image)];
+  const names = Object.keys(data.stages);
+  // Each job names its stage, which names the artifact its build is kept in.
+  const builds = [];
+  names.forEach((stage, i) => {
+    const last = i === names.length - 1;
+    const jobs = data.stages[stage].jobs.map(({ awaited, ...job }) => ({ ...job, stage, awaited: last || awaited !== false }));
+    builds.push(...jobs.filter((job) => job.prebuilt).map(({ awaited, ...job }) => job));
+    const strip = (list) => longestFirst(list).map(({ awaited, ...job }) => job);
+    const first = strip(jobs.filter((job) => job.awaited));
+    lines.push(`has_${stage}=${first.length > 0}`, `${stage}=${matrix(first, stage)}`);
+    if (!last) {
+      const rest = strip(jobs.filter((job) => !job.awaited));
+      lines.push(`has_${stage}_rest=${rest.length > 0}`, `${stage}_rest=${matrix(rest, stage)}`);
+    }
+  });
+  // Every stage's builds, made at once before any stage deploys.
+  lines.push(
+    `has_builds=${builds.length > 0}`,
+    `builds=${JSON.stringify({ include: builds.length ? builds : [{ group: "none", units: "", stage: "none" }] })}`,
+  );
+  return lines;
 }
 
 /** A plain table. */

@@ -62,10 +62,10 @@ pub(crate) fn runner_meter(machine: &str) -> String {
     format!("runner_{machine}")
 }
 
-/// Every meter: runner minutes for each machine in the catalogue, then
-/// `METERS`.
+/// Every meter: runner minutes for each machine minutes were ever billed
+/// on (the catalogue's, then retired ones), then `METERS`.
 pub(crate) fn meters() -> Vec<Meter> {
-    g1t_contracts::actions::machines()
+    g1t_contracts::actions::billed_machines()
         .into_iter()
         .map(|m| (runner_meter(m.machine), format!("Runner minutes, {} ({})", m.machine, m.size()), "sandboxes", "minutes"))
         .chain(METERS.iter().map(|(key, label, product, unit)| ((*key).to_owned(), (*label).to_owned(), *product, *unit)))
@@ -465,14 +465,16 @@ mod tests {
             // A line from before minutes: seconds of sandbox time.
             minutes("sandbox", 90.0, 1_000.0),
             // A machine since taken out of the catalogue: kept, under Other.
-            minutes("runner_1-core", 5.0, 5_000.0),
+            minutes("runner_8-core", 5.0, 5_000.0),
         ];
         let (products, _, totals, _) = shape(&days, &cells, &[], &[], &[]);
         let sandboxes = &products[0];
         let line = |key: &str| sandboxes.meters.iter().find(|m| m.key == key).unwrap();
         let two = line("runner_2-core");
         assert_eq!((two.label.as_str(), two.unit.as_str(), two.quantity, two.micros), ("Runner minutes, 2-core (2 vCPU, 8 GiB, 16 GB)", "minutes", 12.0, 48_000));
+        // 4-core is retired, and its minutes keep their own line.
         assert_eq!((line("runner_4-core").quantity, line("runner_4-core").micros), (3.0, 21_000));
+        assert_eq!(line("runner_4-core").label, "Runner minutes, 4-core (4 vCPU, 12 GiB, 20 GB)");
         assert_eq!((line("sandbox").unit.as_str(), line("sandbox").quantity), ("seconds", 90.0));
         assert_eq!(products.last().unwrap().micros, 5_000);
         assert_eq!(totals.price_micros, 75_000);

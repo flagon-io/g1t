@@ -318,7 +318,7 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
         <div className="grid gap-3 md:grid-cols-3">
           <WhereCard icon={<Workflow size={15} />} title="Workflow jobs">
             Each job&apos;s <code className="font-mono text-fg-soft">runs-on</code> decides. <code className="font-mono text-fg-soft">ubuntu-latest</code>,{" "}
-            <code className="font-mono text-fg-soft">g1t-4core</code> and other Linux labels run on g1t cloud;{" "}
+            <code className="font-mono text-fg-soft">ubuntu-slim</code> and GitHub&apos;s other Linux labels run on g1t cloud;{" "}
             <code className="font-mono text-fg-soft">self-hosted</code> and your own labels run on your runners.
           </WhereCard>
           <WhereCard icon={<Bot size={15} />} title="Checks and the merge queue">

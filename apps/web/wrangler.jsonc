@@ -17,6 +17,9 @@
     { "pattern": "g1t.sh", "custom_domain": true },
     { "pattern": "g1tusercontent.com", "custom_domain": true }
   ],
+  // A pull request's preview: its version, at pr-<number>-g1t.<subdomain>.workers.dev
+  // (.g1t/workflows/preview.yml). Off, every deploy would turn them off.
+  "preview_urls": true,
   // The site holds no data of its own; everything goes through services.
   // GitHub Actions artifacts, as the API keeps them, for download from a run.
   // Uploaded avatars (g1t-avatars), served at /avatars/<sha256>. Read

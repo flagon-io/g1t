@@ -167,6 +167,9 @@ export const TOOL_NOT_INPUTS = [
   "scripts/deploy/status-window.mjs",
   "scripts/deploy/ci-affected.mjs",
   "scripts/deploy/ci-cache.mjs",
+  "scripts/deploy/ci-workspaces.mjs",
+  // Uploads a pull request's preview of the site; production never sees it.
+  "scripts/deploy/preview.mjs",
 ];
 
 /** Files of the deploy tool only some units are built or deployed with. */
@@ -436,13 +439,61 @@ export function buildOutputs(unit) {
   return [];
 }
 
-/** The most Rust workers one CI job builds; more are split across jobs. */
-export const RUST_PER_JOB = 4;
+/**
+ * Roughly how long each Rust Worker takes to build, in seconds, with its
+ * dependencies cached: what Deploy #530 measured (2026-10-22, the table
+ * `deploy.mjs build` prints), on 4 vCPU. A Worker missing here counts as
+ * BUILD_SECONDS_DEFAULT. Only the proportions matter: they balance the jobs.
+ */
+export const BUILD_SECONDS = {
+  events: 155,
+  work: 147,
+  repos: 140,
+  api: 132,
+  search: 126,
+  actions: 118,
+  identity: 108,
+  billing: 98,
+  security: 88,
+  packages: 64,
+  integrations: 38,
+  webhooks: 22,
+};
+export const BUILD_SECONDS_DEFAULT = 100;
+
+/**
+ * The most build time (BUILD_SECONDS) one CI job is given. A job's Workers
+ * take turns on Cargo's lock on their shared target, so a job takes about
+ * the sum of its Workers' builds; on 2 vCPU and 8 GiB (ubuntu-latest, as
+ * on GitHub) one big Worker is a job's worth. So the slowest Worker sets
+ * the budget, and the small ones share a job up to it: a deploy waits for
+ * its slowest Worker's build and no more. A job costs a minute or so of
+ * setup (checkout, caches), which is why the small ones share.
+ */
+export const RUST_JOB_SECONDS = 160;
+
+/**
+ * The Rust Workers split into jobs of at most RUST_JOB_SECONDS (or one
+ * Worker, if it alone takes longer): slowest first, each into the first
+ * job it fits (first-fit decreasing). Each job's Workers in manifest order.
+ */
+export function rustShards(rust, budget = RUST_JOB_SECONDS) {
+  const cost = (unit) => BUILD_SECONDS[unit.id] ?? BUILD_SECONDS_DEFAULT;
+  const shards = [];
+  const slowestFirst = [...rust].sort((a, b) => cost(b) - cost(a) || rust.indexOf(a) - rust.indexOf(b));
+  for (const unit of slowestFirst) {
+    let shard = shards.find((s) => s.total + cost(unit) <= budget);
+    if (!shard) shards.push((shard = { total: 0, units: [] }));
+    shard.total += cost(unit);
+    shard.units.push(unit);
+  }
+  return shards.map((s) => rust.filter((u) => s.units.includes(u)));
+}
 
 /**
  * How a stage's units are split into CI jobs, so units that share a build
- * share a sandbox: Rust workers (one Cargo target, at most RUST_PER_JOB to
- * a job, each on a 4-vCPU machine), the TypeScript Workers (cheap),
+ * share a sandbox: Rust workers (one Cargo target, at most RUST_JOB_SECONDS
+ * of building to a job, rustShards), the TypeScript Workers (cheap),
  * each site that runs a framework build, and each unit whose Containers
  * image must be rebuilt (`images`: ids), which needs Docker.
  */
@@ -453,8 +504,10 @@ export function buildGroups(units, images = []) {
     groups.get(key).push(id);
   };
   const rust = units.filter((u) => u.kind === "rust-worker");
-  const shards = Math.ceil(rust.length / RUST_PER_JOB);
-  rust.forEach((unit, i) => add(shards > 1 ? `rust-${(i % shards) + 1}` : "rust", unit.id));
+  const shards = rustShards(rust);
+  shards.forEach((shard, i) => {
+    for (const unit of shard) add(shards.length > 1 ? `rust-${i + 1}` : "rust", unit.id);
+  });
   for (const unit of units.filter((u) => u.kind !== "rust-worker")) {
     add(images.includes(unit.id) ? `${unit.id}-image` : unit.kind === "ts-worker" ? "ts" : unit.id, unit.id);
   }

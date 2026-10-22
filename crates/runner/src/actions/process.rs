@@ -317,6 +317,9 @@ fn run_until(
             });
         }
     }
+    // Read before the step starts, so the end can tell whether the kernel
+    // stopped anything for want of memory while it ran.
+    let oom_before = oom_kills();
     let mut child = command.spawn()?;
     let (sender, lines) = mpsc::channel::<String>();
     let mut readers = Vec::new();
@@ -413,7 +416,111 @@ fn run_until(
     if interrupted.is_some() {
         return Ok(Ended::Cancelled);
     }
-    Ok(Ended::Exited(status.code().unwrap_or(1)))
+    let code = exit_code(&status);
+    if code != 0 {
+        // Whether the kernel stopped anything for want of memory meanwhile:
+        // None when that cannot be told.
+        let oom = oom_before
+            .zip(oom_kills())
+            .map(|(before, after)| after.saturating_sub(before));
+        if let Some(stopped) = stopped_by(&status, oom.is_none()) {
+            log.line(&stopped);
+        }
+        if let Some(stopped) = oom.filter(|n| *n > 0) {
+            log.line(&out_of_memory(stopped));
+        }
+    }
+    Ok(Ended::Exited(code))
+}
+
+/// A process's exit code, as GitHub's runner and a shell give it: one a
+/// signal stopped is 128 and the signal's number (137 for SIGKILL). It was
+/// 1, so CI #599's step, stopped mid-build with nothing printed, read as a
+/// command that failed by itself and left no output.
+fn exit_code(status: &std::process::ExitStatus) -> i32 {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return 128 + signal;
+        }
+    }
+    status.code().unwrap_or(1)
+}
+
+/// What the log says of a process a signal stopped (not the runner: it
+/// says so itself when it cancels a step or ends one past its time). With
+/// `guess`, when whether the machine ran out of memory cannot be read, a
+/// SIGKILL says that is the likeliest cause.
+fn stopped_by(status: &std::process::ExitStatus, guess: bool) -> Option<String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        let signal = status.signal()?;
+        let name = match signal {
+            libc::SIGKILL => "SIGKILL",
+            libc::SIGTERM => "SIGTERM",
+            libc::SIGINT => "SIGINT",
+            libc::SIGSEGV => "SIGSEGV",
+            libc::SIGABRT => "SIGABRT",
+            libc::SIGBUS => "SIGBUS",
+            libc::SIGHUP => "SIGHUP",
+            libc::SIGPIPE => "SIGPIPE",
+            _ => "",
+        };
+        let name = if name.is_empty() {
+            String::new()
+        } else {
+            format!(" ({name})")
+        };
+        let why = if signal == libc::SIGKILL && guess {
+            " The likeliest cause is the machine running out of memory."
+        } else {
+            ""
+        };
+        Some(format!(
+            "##[error]The step's process was stopped by signal {signal}{name}.{why}"
+        ))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (status, guess);
+        None
+    }
+}
+
+/// How many processes the kernel has stopped for want of memory: the job's
+/// cgroup's count (cgroup v2 `memory.events`), else the machine's
+/// (`/proc/vmstat`). None where neither can be read (not Linux).
+fn oom_kills() -> Option<u64> {
+    let cgroup = std::fs::read_to_string("/sys/fs/cgroup/memory.events")
+        .ok()
+        .and_then(|text| counter(&text, "oom_kill"));
+    cgroup.or_else(|| {
+        std::fs::read_to_string("/proc/vmstat")
+            .ok()
+            .and_then(|text| counter(&text, "oom_kill"))
+    })
+}
+
+/// `name value` from a file of such lines.
+fn counter(text: &str, name: &str) -> Option<u64> {
+    text.lines().find_map(|line| {
+        let (key, value) = line.split_once(char::is_whitespace)?;
+        (key == name).then(|| value.trim().parse().ok()).flatten()
+    })
+}
+
+/// The line that says the machine ran out of memory while a step ran.
+fn out_of_memory(stopped: u64) -> String {
+    let processes = if stopped == 1 {
+        "1 process".to_owned()
+    } else {
+        format!("{stopped} processes")
+    };
+    format!(
+        "##[error]The machine ran out of memory while this step ran: the kernel stopped {processes} to free some."
+    )
 }
 
 #[cfg(test)]
@@ -522,6 +629,63 @@ mod tests {
         assert_eq!(commands.handle("main.go:3:1: undefined: x", &mut log).unwrap(), "main.go:3:1: undefined: x");
         assert!(commands.handle("::add-matcher::missing.json", &mut log).unwrap().contains("Unable to process command"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A step a signal stops says so, and exits as a shell says it did
+    /// (128 and the signal), not with a 1 that reads as a command that
+    /// failed by itself: CI #599's step showed only "exit code 1".
+    #[cfg(unix)]
+    #[test]
+    fn a_step_a_signal_stops_says_so() {
+        use super::{Commands, Ended, run};
+        use crate::actions::report::{Api, Log};
+        use std::process::Command;
+        use std::time::Duration;
+
+        let mut log = Log::new(Api::offline(), Vec::new());
+        let mut command = Command::new("sh");
+        command.args(["-c", "echo compiling; kill -9 $$"]);
+        let ended = run(
+            command,
+            Duration::from_secs(60),
+            &mut log,
+            &mut Commands::default(),
+        )
+        .unwrap();
+        assert!(matches!(ended, Ended::Exited(137)));
+        let text = log.buffered();
+        assert!(text.starts_with("compiling\n"), "{text}");
+        assert!(
+            text.contains("##[error]The step's process was stopped by signal 9 (SIGKILL)."),
+            "{text}"
+        );
+        // A process that fails by itself says nothing more.
+        let mut log = Log::new(Api::offline(), Vec::new());
+        let mut command = Command::new("sh");
+        command.args(["-c", "echo failed >&2; exit 101"]);
+        let ended = run(
+            command,
+            Duration::from_secs(60),
+            &mut log,
+            &mut Commands::default(),
+        )
+        .unwrap();
+        assert!(matches!(ended, Ended::Exited(101)));
+        assert_eq!(log.buffered(), "failed\n");
+    }
+
+    #[test]
+    fn the_kernels_out_of_memory_count_is_read() {
+        use super::{counter, out_of_memory};
+        let events = "low 0\nhigh 0\nmax 12\noom 2\noom_kill 3\noom_group_kill 0\n";
+        assert_eq!(counter(events, "oom_kill"), Some(3));
+        assert_eq!(counter(events, "oom"), Some(2));
+        assert_eq!(counter("nr_free_pages 100\npgfault 9\n", "oom_kill"), None);
+        assert_eq!(
+            out_of_memory(1),
+            "##[error]The machine ran out of memory while this step ran: the kernel stopped 1 process to free some."
+        );
+        assert!(out_of_memory(2).contains("stopped 2 processes"));
     }
 
     #[test]

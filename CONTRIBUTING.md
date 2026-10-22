@@ -82,6 +82,56 @@ cd apps/docs && npm run build
 - Look at what you changed in a browser. Screenshots catch what type
   checks do not.
 
+## Previewing a change to the site
+
+A pull request that changes the site (`apps/web`, a package it uses, or the
+npm lockfile) gets a preview: the site as the pull request makes it, at an
+address of its own, before anything merges. The Preview workflow
+(`.g1t/workflows/preview.yml`, running `scripts/deploy/preview.mjs`) builds
+it as a deploy would, and uploads it to Cloudflare as a version of the
+`g1t` Worker under the alias `pr-<number>`. Nothing is deployed, no
+migration runs, and g1t.sh's traffic never reaches it.
+
+1. Push a branch to `flagon-io/g1t` and open a pull request from it.
+2. When the Preview run finishes, the pull request's checks have
+   `preview / web`; its link is the preview,
+   `https://pr-<number>-g1t.<subdomain>.workers.dev`. The run's summary
+   has the same link, and the address of that commit's version alone.
+3. Each push replaces what the address shows. It keeps showing the last
+   version after the pull request closes.
+
+What to know:
+
+- **It is production's data.** The preview has the `g1t` Worker's
+  bindings, variables and secrets, so it reads and writes g1t.sh's real
+  data through the same services. What you do there is done.
+- **Sign in on the preview itself**, with your username and password (and
+  your second factor). g1t.sh's session cookie is g1t.sh's alone and never
+  reaches a preview, and the preview's never reaches g1t.sh. Signing in
+  with GitHub or SSO works only on g1t.sh (their callback addresses are
+  g1t.sh's), and sign-up needs the Turnstile widget, which knows only
+  g1t.sh. Links the site makes (git remotes, invites, emails) still name
+  g1t.sh.
+- **Only a branch of this repository is previewed.** A pull request from a
+  fork, or from a g1t working copy, is not: its code would run with the
+  Cloudflare token. Its author can push the branch here to get one.
+- **Anyone with the address can open it**, unless Cloudflare Access guards
+  the Worker's preview URLs (below).
+
+Setting it up, once:
+
+1. The repository's `CLOUDFLARE_API_TOKEN`, the secret Deploy uses: anyone
+   who can push a branch here can already read the repository's secrets
+   from a workflow on their pull request, so a token of its own would
+   protect nothing. Fork pull requests get no secrets and no preview.
+2. The variable `CLOUDFLARE_ACCOUNT_ID`, which Deploy already uses.
+3. `"preview_urls": true` in `apps/web/wrangler.jsonc` deployed (the next
+   deploy of the site turns them on), and a workers.dev subdomain on the
+   account (Workers & Pages › your subdomain).
+4. Recommended: **Workers & Pages › g1t › Settings › Domains & Routes ›
+   Preview URLs › Enable Cloudflare Access**, so only the team can open
+   previews.
+
 ## Checking g1t against GitHub
 
 g1t runs GitHub Actions workflows as GitHub does. The Conformance
@@ -249,7 +299,7 @@ restored longest ago go. So:
 | The runner's image build   | `runner-musl-<os>-<rust>-<deps>`                                                        | Deploy                                        | Deploy                      |
 | worker-build and its tools | `worker-build-…`, `worker-build-tools-…`                                                | Deploy                                        | Deploy                      |
 | Compiled crates            | sccache's, one per crate                                                                | every Rust job                                | every Rust job              |
-| The desktop app's check    | `desktop-check-<os>-<rust>-<desktop deps>`                                              | CI desktop, on a push not from the queue      | CI desktop on pull requests |
+| The desktop app's check    | `desktop-check-nodebug-<os>-<rust>-<desktop deps>`                                      | CI desktop, on a push not from the queue      | CI desktop on pull requests |
 | apt for Tauri              | `apt-tauri-<os>-<scripts/apt-install.sh>`, only where the image lacks Tauri's packages  | CI desktop, on a push not from the queue      | the desktop release         |
 | The runner release         | `runner-release-<os>-<target>-<rust>-<deps>`, zig                                       | Caches (`runner`)                             | the runner release          |
 | The desktop release        | `desktop-release-linux-…`, `desktop-release-windows-…`, `xwin-…`, `apt-tauri-windows-…` | Caches (`desktop-linux`, `desktop-windows`)   | the desktop release         |
@@ -274,6 +324,13 @@ memory and disk, and its price a minute (`micros_per_minute`). The runner
 starts a job in its label's class, billing charges its minutes at its
 rate and reports them by machine, and the docs' tables follow it.
 
+Labels are GitHub's hosted-runner labels: `GITHUB_HOSTED_LABELS` (in the
+same file, also mirrored) lists each with GitHub's private-repository size
+and the g1t machine that answers it, or none for Windows and macOS, which
+the planner refuses unless the job asks for `self-hosted`. A label in
+neither table gets the standard machine. g1t adds no labels of its own;
+larger machines would come as GitHub-style larger runners, not a label.
+
 - **A new label for an existing machine** (another name for the standard
   one, say): a row with the new label and class and the machine's
   `machine`, size and rate; the class and its binding below.
@@ -289,12 +346,22 @@ rate and reports them by machine, and the docs' tables follow it.
   size to the runner test's table of instance types.
 - **Renaming a label**: change `label`; keep `machine`, so its minutes stay
   on the same line of everyone's usage.
+- **Retiring a machine**: move its row to `RETIRED_MACHINES` (in both
+  files), so its past minutes still read and price under its `machine`;
+  remove its class from `wrangler.jsonc` (`containers` and binding), add a
+  migration tag with `deleted_classes`, and drop its export and its
+  `SANDBOX_BINDINGS` entry. Deleting a class deletes its objects' storage,
+  which is safe for sandboxes (each holds one job's state), but deploy it
+  when none of its jobs is running. The container application Cloudflare
+  made for the class (`g1t-runner-<class, lowercased>`) is left behind;
+  delete it with `wrangler containers delete` after the deploy.
 
 Never reuse a `machine` key for a different machine: past usage is
 reported under it. For a new class, add it to `services/runner/wrangler.jsonc`
 (`containers`, a `durable_objects` binding and a migration tag with
 `new_sqlite_classes`), export it from `services/runner/src/index.ts`
-(`export class SandboxXCore extends AttemptSandbox {}`), and give it a
+(`export class SandboxSlim extends AttemptSandbox {}`, with its own
+`outboundHandlers`), and give it a
 binding in `SANDBOX_BINDINGS` (`services/runner/src/egress.ts`). The tests
 that hold all of this together are `cargo test -p g1t-contracts instance`
 (the table, its rates and its TypeScript mirror) and the runner's

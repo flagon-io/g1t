@@ -245,12 +245,14 @@ pub(crate) fn base_scale(memory_gib: f64, disk_gb: f64) -> f64 {
 /// How much more a second of a machine costs g1t than the standard
 /// sandbox's with every vCPU of each as busy, at Cloudflare's list rates: 1
 /// for the standard machine. What a run that did not report its CPU is
-/// costed at, against the measured `sandbox_second`.
+/// costed at, against the measured `sandbox_second`. Never under its
+/// [`base_scale`]: a smaller machine (`ubuntu-slim`'s one vCPU) saves more
+/// CPU than memory and disk, and an idle job still holds those.
 pub(crate) fn busy_scale(instance: &InstanceType) -> f64 {
     let busy = |i: &InstanceType| {
         i.memory_gib * LIST_MEMORY_GIB_SECOND + i.disk_gb * LIST_DISK_GB_SECOND + i.vcpu * LIST_VCPU_SECOND + SANDBOX_DO_GB * LIST_DO_GB_SECOND
     };
-    busy(instance) / busy(&STANDARD_INSTANCE)
+    (busy(instance) / busy(&STANDARD_INSTANCE)).max(base_scale(instance.memory_gib, instance.disk_gb))
 }
 
 /// What a job on g1t's machines is charged before the account's terms:
@@ -641,10 +643,15 @@ mod tests {
         // disk, and with its CPU unknown, at its vCPUs as busy: at least its
         // base's share, so an idle job's cost still has the memory and disk
         // it held.
-        for instance in g1t_contracts::actions::INSTANCE_TYPES {
+        for instance in g1t_contracts::actions::billed_machines() {
             let scale = base_scale(instance.memory_gib, instance.disk_gb);
-            assert!(scale >= 1.0 - 1e-12 && scale <= busy_scale(&instance) + 1e-9, "{}: {scale}", instance.label);
+            assert!(scale > 0.0 && scale <= busy_scale(&instance) + 1e-9, "{}: {scale}", instance.label);
         }
+        // ubuntu-slim: 6 GiB and 12 GB against 8 and 16, so about 0.77 of
+        // the standard base, which is more than its one busy vCPU's share.
+        let slim = g1t_contracts::actions::machine_named("1-core").unwrap();
+        assert!((base_scale(slim.memory_gib, slim.disk_gb) - 0.767).abs() < 0.01);
+        assert!((busy_scale(&slim) - base_scale(slim.memory_gib, slim.disk_gb)).abs() < 1e-12);
         assert!((busy_scale(&STANDARD_INSTANCE) - 1.0).abs() < 1e-12);
         let four = g1t_contracts::actions::machine_named("4-core").unwrap();
         assert!((busy_scale(&four) - 1.80).abs() < 0.01, "{}", busy_scale(&four));

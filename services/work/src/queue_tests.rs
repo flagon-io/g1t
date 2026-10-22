@@ -3,8 +3,9 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use super::{
     ABANDON_LANDING, ACCEPT_BUILD, BEGIN_LANDING, CLAIM_BUILD, ENQUEUE, FINISH_CHECKS,
-    FINISH_LANDING, LANDING_WAITS, LEAVE, PUBLISHING, REPORT_BUILD, RETEST, RETESTED, STILL_LANDING,
-    FINISH_LANDED, WAIT_UNAVAILABLE, WAITING_QUEUES, attempt_branch, removed_by, tell_waiting,
+    FINISH_LANDED, FINISH_LANDING, LANDING_INTERRUPTED, LANDING_STOPPED, LANDING_WAITS, LEAVE,
+    MERGED_OUTSIDE, PUBLISHING, REPORT_BUILD, RETEST, RETESTED, STILL_LANDING, WAIT_UNAVAILABLE,
+    WAITING_QUEUES, attempt_branch, removed_by, tell_waiting,
 };
 use crate::integration::{FINISH_PROBE, REPORT_PROBE, RESOLVE_HELD};
 
@@ -745,7 +746,7 @@ fn only_an_unavailable_refusal_waits_and_it_waits_for_the_sweep() {
     let lands = &lands[..lands.find("Outcome::Fail(_) => {").unwrap()];
     assert!(lands.contains(".prepare(LANDING_WAITS)") && lands.contains("return Ok(());"), "{lands}");
     assert!(!lands.contains("retest") && !lands.contains("ABANDON_LANDING"), "{lands}");
-    assert!(settle.contains("if matches!(&landed, Outcome::Fail(failure) if failure.code != FailureCode::Unavailable) {"));
+    assert!(settle.contains("if matches!(&landed, Outcome::Fail(failure) if failure.code != FailureCode::Unavailable)"));
     // Never hot: each queue.changed has the runner build the queue at
     // once, so one is published only for a new reason; after that, the
     // runner's sweep tries it every five minutes.
@@ -789,7 +790,7 @@ fn a_landing_that_went_through_while_another_request_waited_is_landed_not_closed
     // settle asks this before it would call it closed.
     let settle = body_of("settle");
     let landed = settle.find("self.finish_landed(&row).await?;").expect("finished as landed");
-    let closed = settle.find("Some(\"It was closed.\")").unwrap();
+    let closed = settle.find("\"It was closed.\"").unwrap();
     assert!(landed < closed);
     assert!(settle.contains("pull.status == PullStatus::Merged"));
     assert!(settle.contains("pull.merge_commit == row.combined_commit"));
@@ -809,4 +810,190 @@ fn an_entry_taken_out_while_waiting_says_who_took_it_out_not_why_it_waited() {
     let removal = body_of("remove_from_queue");
     assert!(removal.contains("let why = removed_by(&a.actor.username);"));
     assert!(removal.contains(".leave(&repo.id, &pull, QueueState::Removed, Some(&why))"));
+}
+
+/// 'entry' passed at `tested`, its landing intent taken.
+fn landing(db: &Connection) {
+    assert!(claim(db, "attempt"));
+    assert!(report(db, "attempt", "tested"));
+    assert!(finish(db, "tested"));
+    assert!(exists(
+        db,
+        BEGIN_LANDING,
+        params!["entry", "tested", "attempt"]
+    ));
+}
+
+#[test]
+fn a_landing_that_stopped_with_an_error_keeps_its_intent_says_why_and_is_swept() {
+    let db = database();
+    landing(&db);
+    // repos failed, or the call was cut off: whether main moved is unknown.
+    assert!(!exists(
+        &db,
+        LANDING_STOPPED,
+        params!["entry", "other", LANDING_INTERRUPTED]
+    ));
+    assert!(exists(
+        &db,
+        LANDING_STOPPED,
+        params!["entry", "tested", LANDING_INTERRUPTED]
+    ));
+    let (state, error, _, landing) = entry(&db);
+    assert_eq!(
+        (state.as_str(), error.as_deref(), landing.as_deref()),
+        ("passed", Some(LANDING_INTERRUPTED), Some("tested"))
+    );
+    assert_eq!(waiting_queues(&db), vec!["repo".to_owned()]);
+    // Still being published: nothing takes it out or tests it again.
+    assert!(exists(&db, PUBLISHING, params!["pull"]));
+    assert_eq!(db.execute(RETEST, params!["entry", "attempt"]).unwrap(), 0);
+    // A later pass resumes the same publication. Its push had gone through
+    // and the merge was recorded at the tested commit: it finishes, and the
+    // reason goes with it.
+    assert!(exists(
+        &db,
+        BEGIN_LANDING,
+        params!["entry", "tested", "attempt"]
+    ));
+    assert!(exists(&db, STILL_LANDING, params!["entry", "tested"]));
+    db.execute(
+        "UPDATE pulls SET status = 'merged', merge_commit = 'tested' WHERE id = 'pull'",
+        [],
+    )
+    .unwrap();
+    assert!(
+        exists(&db, BEGIN_LANDING, params!["entry", "tested", "attempt"]),
+        "resumable once merged at it"
+    );
+    assert_eq!(
+        db.execute(FINISH_LANDING, params!["now", "entry"]).unwrap(),
+        1
+    );
+    let (state, error, _, _) = entry(&db);
+    assert_eq!((state.as_str(), error), ("landed", None));
+    assert!(waiting_queues(&db).is_empty());
+    // settle catches an error from land and from the bookkeeping after it,
+    // rather than let it leave the intent with no reason.
+    let settle = body_of("settle");
+    assert_eq!(
+        settle
+            .matches("Err(error) => return self.landing_stopped(&row, &error).await,")
+            .count(),
+        2
+    );
+    let stopped = body_of("landing_stopped");
+    assert!(stopped.contains(".prepare(LANDING_STOPPED)"));
+    assert!(
+        stopped
+            .contains("waits.is_some() && tell_waiting(row.error.as_deref(), LANDING_INTERRUPTED)")
+    );
+    assert!(!stopped.contains("retest") && !stopped.contains("ABANDON_LANDING"));
+}
+
+#[test]
+fn a_landing_cut_off_without_a_word_is_found_by_the_sweep() {
+    let db = database();
+    landing(&db);
+    // The request publishing it was cancelled mid-push: the intent is held,
+    // with no reason, and nothing else passes over the queue.
+    let (state, error, _, landing) = entry(&db);
+    assert_eq!(
+        (state.as_str(), error, landing.as_deref()),
+        ("passed", None, Some("tested"))
+    );
+    assert_eq!(waiting_queues(&db), vec!["repo".to_owned()]);
+    // The sweep's pass resumes it.
+    assert!(exists(
+        &db,
+        BEGIN_LANDING,
+        params!["entry", "tested", "attempt"]
+    ));
+    // Passed and not landing yet, or landed: nothing to sweep.
+    assert!(exists(&db, ABANDON_LANDING, params!["entry", "tested"]));
+    assert!(waiting_queues(&db).is_empty());
+    // The checks that pass it do not land it in the request that reported
+    // them, which a CI job's report is and which is cut off with it.
+    let finished = body_of("merge_group_finished");
+    assert!(!finished.contains("self.settle("), "{finished}");
+    assert!(finished.contains("self.changed(repo_id).await?;"));
+}
+
+#[test]
+fn a_pull_request_merged_outside_the_queue_leaves_it_without_landing_a_stale_state() {
+    let db = database();
+    landing(&db);
+    // The queue was stuck; the rule was turned off and it merged by hand.
+    db.execute(
+        "UPDATE pulls SET status = 'merged', merge_commit = 'by-hand' WHERE id = 'pull'",
+        [],
+    )
+    .unwrap();
+    assert!(
+        !exists(&db, BEGIN_LANDING, params!["entry", "tested", "attempt"]),
+        "never lands the tested state"
+    );
+    assert!(exists(
+        &db,
+        LEAVE,
+        params!["removed", MERGED_OUTSIDE, "now", "entry"]
+    ));
+    let (state, error, _, _) = entry(&db);
+    assert_eq!(
+        (state.as_str(), error.as_deref()),
+        ("removed", Some("It merged outside the queue."))
+    );
+    assert!(waiting_queues(&db).is_empty());
+
+    // Merged at exactly the tested commit, it landed, and does not leave.
+    let db = database();
+    landing(&db);
+    db.execute(
+        "UPDATE pulls SET status = 'merged', merge_commit = 'tested' WHERE id = 'pull'",
+        [],
+    )
+    .unwrap();
+    assert!(!exists(
+        &db,
+        LEAVE,
+        params!["removed", MERGED_OUTSIDE, "now", "entry"]
+    ));
+    assert_eq!(
+        db.execute(FINISH_LANDING, params!["now", "entry"]).unwrap(),
+        1
+    );
+
+    // Closed with an intent held: it leaves too, never lands.
+    let db = database();
+    landing(&db);
+    db.execute("UPDATE pulls SET status = 'closed' WHERE id = 'pull'", [])
+        .unwrap();
+    assert!(!exists(
+        &db,
+        BEGIN_LANDING,
+        params!["entry", "tested", "attempt"]
+    ));
+    assert!(exists(
+        &db,
+        LEAVE,
+        params!["removed", "It was closed.", "now", "entry"]
+    ));
+
+    // Open, the intent still holds it in the queue.
+    let db = database();
+    landing(&db);
+    assert!(!exists(
+        &db,
+        LEAVE,
+        params!["removed", MERGED_OUTSIDE, "now", "entry"]
+    ));
+
+    // settle asks before anything lands, whatever intent the entry holds.
+    let settle = body_of("settle");
+    let leaves = settle
+        .find("let why = if pull.status == PullStatus::Merged {")
+        .unwrap();
+    assert!(settle.find("self.finish_landing(&row).await?;").unwrap() < leaves);
+    assert!(leaves < settle.find("if row.landing_commit.is_none() {\n").unwrap());
+    assert!(leaves < settle.find(".prepare(BEGIN_LANDING)").unwrap());
 }

@@ -103,6 +103,9 @@ export function commitFrom(message) {
   return match ? match[1] : null;
 }
 
+/** The version a deployment sends most of its traffic to, or null. */
+export const mainVersion = (deployment) => [...(deployment?.versions ?? [])].sort((a, b) => b.percentage - a.percentage)[0]?.version_id ?? null;
+
 /**
  * Which commit a Worker's live version was deployed from, given Wrangler's
  * `deployments status --json` and `versions list --json`. A version made by
@@ -249,8 +252,18 @@ export async function readLive(unit, { auth = apiAuth(), fetchImpl = fetch } = {
     if (deployments.status === 404 || deployments.codes.includes(SCRIPT_NOT_FOUND)) return { sha: null, missing: true, why: "never deployed" };
     return { sha: null, error: deployments.error };
   }
+  // The versions are a recent page, newest first: uploads that are never
+  // deployed (a pull request's preview, `wrangler versions upload`) can
+  // push the live one off it, and the plan would then deploy the unit
+  // again on every push. The live version is then read by its id.
+  let listed = versions.error ? null : versions.result;
+  const live = mainVersion(deployments.result?.deployments?.[0]);
+  if (live && !(listed?.items ?? []).some((v) => v.id === live)) {
+    const one = await cloudflareApi(auth, `${script}/versions/${encodeURIComponent(live)}`, { fetchImpl });
+    if (!one.error && one.result?.id === live) listed = { ...listed, items: [...(listed?.items ?? []), one.result] };
+  }
   try {
-    return liveFromApi(unit.worker, deployments.result, versions.error ? null : versions.result);
+    return liveFromApi(unit.worker, deployments.result, listed);
   } catch (error) {
     return { sha: null, error: String(error.message ?? error) };
   }

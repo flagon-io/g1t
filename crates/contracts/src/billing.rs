@@ -462,9 +462,10 @@ pub struct RecordSandboxArgs {
     /// self-hosted time, for the minutes, at $0.
     #[serde(default, alias = "self_hosted")]
     pub self_hosted: bool,
-    /// The machine it ran on, by label (`g1t-4core`); absent, the standard
-    /// one. Its row in the machine catalogue sets the rate a minute and the
-    /// machine its minutes are reported under.
+    /// The machine it ran on, by label (`ubuntu-slim`); absent, the
+    /// standard one. Its row in the machine catalogue (or a retired
+    /// machine's, `billed_instance`) sets the rate a minute and the machine
+    /// its minutes are reported under.
     #[serde(default)]
     pub instance: Option<String>,
 }

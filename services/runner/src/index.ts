@@ -98,12 +98,10 @@ export { ContainerProxy } from "@cloudflare/containers";
 export interface RunnerEnv {
   SANDBOX: DurableObjectNamespace<AttemptSandbox>;
   /**
-   * Workflow jobs that ask with `runs-on` for `g1t-2core` (the standard
-   * machine, kept as a name so the label keeps working) or `g1t-4core` (a
-   * larger instance type): the same image, in classes of their own.
+   * Workflow jobs that ask with `runs-on` for `ubuntu-slim` (a smaller
+   * instance type): the same image, in a class of its own.
    */
-  SANDBOX_2CORE?: DurableObjectNamespace<Sandbox2Core>;
-  SANDBOX_4CORE?: DurableObjectNamespace<Sandbox4Core>;
+  SANDBOX_SLIM?: DurableObjectNamespace<SandboxSlim>;
   /**
    * The git edge (gitedge.ts): one object and container per repository,
    * named by its id, that answers clones from a well-packed mirror. Not a
@@ -846,19 +844,14 @@ function notAdmitted(admitted: Exclude<Admitted, Granted>): Result<never> {
 }
 
 /**
- * Larger sandboxes for workflow jobs that ask for one in `runs-on`: the
- * same image and behaviour on a larger Containers instance type, each a
- * class of its own (wrangler.jsonc). Outbound handlers are registered by
- * class, so each registers its own.
+ * Sandboxes for workflow jobs that ask for another machine in `runs-on`
+ * (`ubuntu-slim`): the same image and behaviour on another Containers
+ * instance type, each a class of its own (wrangler.jsonc). Outbound
+ * handlers are registered by class, so each registers its own.
  */
-export class Sandbox2Core extends AttemptSandbox {
+export class SandboxSlim extends AttemptSandbox {
   static {
-    Sandbox2Core.outboundHandlers = { egress, abuse, git };
-  }
-}
-export class Sandbox4Core extends AttemptSandbox {
-  static {
-    Sandbox4Core.outboundHandlers = { egress, abuse, git };
+    SandboxSlim.outboundHandlers = { egress, abuse, git };
   }
 }
 

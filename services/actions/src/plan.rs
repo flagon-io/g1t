@@ -532,15 +532,18 @@ pub(crate) fn deploys_to(run: &RunRow, job: &JobRow) -> Option<JobEnvironment> {
     env.filter(|env| env.deploys)
 }
 
-/// Whether a run's repository was public when the run was made, from its
-/// event's `repository.private`: private when the event doesn't say.
-fn run_is_public(run: &RunRow) -> bool {
-    run.info().event.get("repository").and_then(|repository| repository.get("private")).and_then(Value::as_bool) == Some(false)
+/// Why a job whose `runs-on` asks for Windows or macOS, and not for a
+/// self-hosted runner, does not run: g1t's hosted machines are Linux, and
+/// running it on Linux would only fail later and stranger.
+fn not_hosted_reason(labels: &[String]) -> Option<String> {
+    g1t_contracts::actions::not_hosted_os(labels).map(|(label, os)| {
+        format!("`runs-on: {label}`: g1t's hosted runners are Linux only. A self-hosted runner can run it: `runs-on: [self-hosted, {os}]`.")
+    })
 }
 
 /// The machine a job's `runs-on` asks for (`instance_for`), for the
-/// runner: none for the standard one. `ubuntu-latest` follows GitHub: the
-/// 4-core machine in a public repository. Billing charges the job as the
+/// runner: none for the standard one. GitHub's labels at their private
+/// sizes, in public repositories too. Billing charges the job as the
 /// machine named here, so what it ran on is what it pays for.
 fn start_instance(run: &RunRow, job: &JobRow) -> Option<String> {
     let spec = match job.callee() {
@@ -561,7 +564,7 @@ fn start_instance(run: &RunRow, job: &JobRow) -> Option<String> {
         },
         _ => Vec::new(),
     };
-    let instance = g1t_contracts::actions::instance_for(&labels, run_is_public(run));
+    let instance = g1t_contracts::actions::instance_for(&labels);
     (instance != g1t_contracts::actions::STANDARD_INSTANCE).then(|| instance.label.to_owned())
 }
 
@@ -1089,20 +1092,7 @@ impl Actions {
                 _ => None,
             };
             let wanted = Wanted::of(&labels, group.as_deref());
-            let mut reason = if wanted.self_hosted {
-                None
-            } else {
-                labels
-                    .iter()
-                    .find(|label| {
-                        let lower = label.to_ascii_lowercase();
-                        lower.contains("windows") || lower.contains("macos")
-                    })
-                    .map(|label| {
-                        let os = if label.to_ascii_lowercase().contains("windows") { "windows" } else { "macos" };
-                        format!("`runs-on: {label}`: g1t's own runners are Linux. A self-hosted runner can run it: `runs-on: [self-hosted, {os}]`.")
-                    })
-            };
+            let mut reason = if wanted.self_hosted { None } else { not_hosted_reason(&labels) };
             // A pull request from a fork runs code anyone could write: never
             // on the workspace's machines unless it said they may.
             if wanted.self_hosted && run.trusted == 0 {
@@ -3535,25 +3525,23 @@ mod reruns {
 
 #[cfg(test)]
 mod machines {
-    use serde_json::json;
+    use super::not_hosted_reason;
 
-    use super::{RunInfo, RunRow, run_is_public};
-
-    fn run(event: serde_json::Value) -> RunRow {
-        let info = serde_json::to_string(&RunInfo { repository: "acme/web".into(), event, ..RunInfo::default() }).unwrap();
-        serde_json::from_value(json!({
-            "id": "run_1", "workflow_id": "wf_1", "repo_id": "rep_1", "repo": "acme/web", "path": ".g1t/workflows/ci.yml", "name": "CI",
-            "title": "CI", "number": 1, "attempt": 1, "event": "push", "git_ref": "refs/heads/main", "sha": "abc", "status": "queued",
-            "source": "", "info": info, "inputs": "{}", "trusted": 1, "created_at": "2026-10-18T00:00:00Z",
-        }))
-        .unwrap()
+    fn labels(given: &[&str]) -> Vec<String> {
+        given.iter().map(|l| (*l).to_owned()).collect()
     }
 
     #[test]
-    fn a_runs_repository_is_public_only_when_its_event_says_so() {
-        assert!(run_is_public(&run(json!({ "repository": { "private": false } }))));
-        assert!(!run_is_public(&run(json!({ "repository": { "private": true } }))));
-        // An event that doesn't say is taken as private: the standard machine.
-        assert!(!run_is_public(&run(json!({}))));
+    fn a_windows_or_macos_job_is_refused_with_how_to_run_it() {
+        assert_eq!(
+            not_hosted_reason(&labels(&["windows-latest"])).as_deref(),
+            Some("`runs-on: windows-latest`: g1t's hosted runners are Linux only. A self-hosted runner can run it: `runs-on: [self-hosted, windows]`.")
+        );
+        assert!(not_hosted_reason(&labels(&["xcode-27"])).unwrap().ends_with("`runs-on: [self-hosted, macos]`."));
+        assert!(not_hosted_reason(&labels(&["macos-12"])).is_some());
+        // Every Linux label runs, Arm ones (on x64) and unknown ones included.
+        for label in ["ubuntu-latest", "ubuntu-slim", "ubuntu-24.04-arm", "g1t-4core", "linux"] {
+            assert_eq!(not_hosted_reason(&labels(&[label])), None, "{label}");
+        }
     }
 }

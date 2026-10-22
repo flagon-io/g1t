@@ -11,7 +11,7 @@
 //   node scripts/deploy.mjs migrate               pending D1 migrations only
 //   node scripts/deploy.mjs manifest [--check]    the resolved manifest, or its problems
 //   node scripts/deploy.mjs doctor                which units lack their secrets
-//   node scripts/deploy.mjs install --only a,b    npm ci of just what those units need (CI)
+//   node scripts/deploy.mjs install --only a,b    npm ci of just what those units need (CI; --prebuilt: to deploy a build)
 //   node scripts/deploy.mjs build-base            build and push the runner's base image (Docker)
 //   node scripts/deploy.mjs image                 make the runner's image for this checkout in the registry (--no-push: build it with Docker)
 //
@@ -68,7 +68,7 @@ import {
   writeBaseLock,
   writeDeployConfig,
 } from "./deploy/image.mjs";
-import { decide, git, planJson, pool, table } from "./deploy/plan.mjs";
+import { decide, git, planJson, pool, table, workflowOutputs } from "./deploy/plan.mjs";
 import { reportDeployment } from "./deploy/report.mjs";
 import {
   ROOT,
@@ -142,29 +142,7 @@ const log = (...args) => console.error(...args);
  * $GITHUB_OUTPUT, and the plan as a table in $GITHUB_STEP_SUMMARY.
  */
 function writeGithubOutputs(data, p) {
-  const lines = [
-    `commit=${data.commit}`,
-    `migrate=${data.migrations.length > 0}`,
-    `migrate_units=${data.migrations.map((m) => m.unit).join(",")}`,
-    `deploying=${data.units
-      .filter((u) => u.deploy)
-      .map((u) => u.unit)
-      .join(",")}`,
-  ];
-  // Each job names its stage, which names the artifact its build is kept in.
-  const builds = [];
-  for (const [stage, { jobs }] of Object.entries(data.stages)) {
-    const staged = jobs.map((job) => ({ ...job, stage }));
-    builds.push(...staged.filter((job) => job.prebuilt));
-    // A matrix needs one entry; an empty stage's job is skipped by its `if`.
-    const include = staged.length ? staged : [{ group: "none", units: "", stage }];
-    lines.push(`has_${stage}=${staged.length > 0}`, `${stage}=${JSON.stringify({ include })}`);
-  }
-  // Every stage's builds, made at once before any stage deploys.
-  lines.push(
-    `has_builds=${builds.length > 0}`,
-    `builds=${JSON.stringify({ include: builds.length ? builds : [{ group: "none", units: "", stage: "none" }] })}`,
-  );
+  const lines = workflowOutputs(data);
   if (data.migration_errors.length) {
     // The units, then why for the first: one cause (a token, say) is usually all of them.
     throw new Error(`Could not read pending migrations: ${data.migration_errors.map((e) => e.unit).join(", ")}
@@ -632,7 +610,10 @@ async function doctor(stack, opts) {
 }
 
 async function install(stack, opts) {
-  const units = selected(stack, opts);
+  // --prebuilt: the units will deploy what their build job left (`deploy
+  // --prebuilt`), which needs Wrangler and nothing of their own packages:
+  // a site's server is bundled already, and its assets are files.
+  const units = selected(stack, opts).filter((unit) => !(opts.prebuilt && buildOutputs(unit).length));
   const args = npmCiArgs(units, npmWorkspace());
   log(`npm ${args.join(" ")}`);
   // Through npm-ci.mjs, which runs it again when a connection drops.

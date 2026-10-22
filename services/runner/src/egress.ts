@@ -121,8 +121,7 @@ export function throughWorker(job: { brokered?: boolean } | null | undefined, se
  */
 export const SANDBOX_BINDINGS: Record<string, string> = {
   AttemptSandbox: "SANDBOX",
-  Sandbox2Core: "SANDBOX_2CORE",
-  Sandbox4Core: "SANDBOX_4CORE",
+  SandboxSlim: "SANDBOX_SLIM",
 };
 
 /** The namespace of a sandbox of `className`; the standard one when unknown. */

@@ -170,7 +170,7 @@ Nothing else deploys anything: a crate's `tests/`, `benches/` and
 and `*.spec.ts` files, the docs outside `apps/docs`, other workflows
 (`ci.yml`), and the deploy tool's planning and CI files
 (`plan.mjs`, `lockfiles.mjs`, `report.mjs`, `status-window.mjs`,
-`ci-affected.mjs`, `ci-cache.mjs`, and its tests). A new file in
+`ci-affected.mjs`, `ci-cache.mjs`, `ci-workspaces.mjs`, `preview.mjs`, and its tests). A new file in
 `scripts/deploy/` counts for every unit until it is listed as one of
 those (`TOOL_NOT_INPUTS` in `scripts/deploy/stack.mjs`). `plan` prints,
 for each unit, the first changed file that reached it.
@@ -207,21 +207,32 @@ Migrations never run backwards: undoing one is a new migration.
 hand (**Actions → Deploy → Run workflow**) with `units`, `all` and
 `dry_run`.
 
-| Job                     | Does                                                 |
-| ----------------------- | ---------------------------------------------------- |
-| `check`                 | `manifest --check` and `npm run test:deploy`         |
-| `plan`                  | The plan, shown in the run's summary                 |
-| `build`                 | Every stage's Rust Workers and sites, all at once    |
-| `migrate`               | Pending migrations; skipped when there are none      |
-| `core`, `edge`, `front` | Each stage's units, deployed from what `build` made  |
-| `smoke`                 | Loads the landing page, sign-in, sign-up and pricing |
+| Job                      | Does                                                      |
+| ------------------------ | --------------------------------------------------------- |
+| `check`                  | `manifest --check` and `npm run test:deploy`              |
+| `plan`                   | The plan, shown in the run's summary                      |
+| `build`                  | Every stage's Rust Workers and sites, all at once         |
+| `migrate`                | Pending migrations; skipped when there are none           |
+| `core`, `edge`, `front`  | Each stage's units, deployed from what `build` made       |
+| `core_rest`, `edge_rest` | A stage's jobs no later unit calls, beside the next stage |
+| `smoke`                  | Loads the landing page, sign-in, sign-up and pricing      |
 
 Deploys run one at a time; a second push waits. Rust units build on
-`g1t-4core` machines, at most four to a job, with Cargo's target and
-sccache kept in the Actions cache. The build jobs start as soon as the
-plan is known and keep what they built as artifacts; each stage's jobs
-unpack theirs and deploy it with `deploy --prebuilt`, which builds
-nothing, so a stage waits only for the uploads of the one before.
+`ubuntu-latest` (2 vCPU, 8 GiB), split by how long each takes to build
+(`RUST_JOB_SECONDS` in `scripts/deploy/stack.mjs`): the slowest Workers
+build alone, the small ones share a job, with Cargo's target and sccache
+kept in the Actions cache. The build jobs start as soon as the plan is
+known and keep what they built as artifacts; each stage's jobs unpack
+theirs and deploy it with `deploy --prebuilt`, which builds nothing and
+installs only Wrangler, so a stage waits only for the uploads of the one
+before.
+
+A stage waits only for the jobs before it that a unit deploying after
+them calls (binds to, or sends its traces to). The plan puts the others
+in `core_rest` and `edge_rest`, which deploy beside the next stage:
+the runner's image when the API is not deploying, and the API, which the
+site does not call. One of them failing fails the run and stops `smoke`,
+not the units that never call it.
 
 The deploy jobs use `environment: production`, so only they can read the
 Cloudflare token. Jobs on g1t's machines reach Cloudflare's API and
@@ -383,13 +394,13 @@ minutes, so a deploy never cuts one short. New jobs get the new image a
 few minutes after the rollout is marked complete. When a fix cannot wait
 for running jobs, make an [urgent deploy](#urgent-deploys).
 
-The standard sandbox is the instance type `standard-3` (2 vCPU, 8 GiB,
-16 GB), and so is `runs-on: g1t-2core`, in a class of its own; jobs that
-ask for `runs-on: g1t-4core`, and `ubuntu-latest` jobs in a public
-repository, get `standard-4` (4 vCPU, 12 GiB, 20 GB). At
-the `max_instances` in `services/runner/wrangler.jsonc` (20, 10 and 30),
-60 sandboxes at once hold 180 vCPU, 600 GiB of memory and 1,080 GB of disk,
-which your account's Containers limits for live instances must allow.
+The standard sandbox, which `ubuntu-latest` and every other Linux label
+get, is the instance type `standard-3` (2 vCPU, 8 GiB, 16 GB); jobs that
+ask for `runs-on: ubuntu-slim` get `standard-2` (1 vCPU, 6 GiB, 12 GB), in
+a class of their own. At the `max_instances` in
+`services/runner/wrangler.jsonc` (50 and 10), 60 sandboxes at once hold
+110 vCPU, 460 GiB of memory and 920 GB of disk, which your account's
+Containers limits for live instances must allow.
 
 Set the runner Worker's `DOCKER` variable to `off` to give workflow jobs no
 Docker Engine.

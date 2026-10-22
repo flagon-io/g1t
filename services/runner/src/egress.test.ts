@@ -39,11 +39,12 @@ test("the harness is told the run's time cap and branch, and nothing about the n
 });
 
 test("each sandbox class reports to its own namespace", () => {
-  const env = { SANDBOX: "standard", SANDBOX_2CORE: "two", SANDBOX_4CORE: "four" } as unknown as object;
+  const env = { SANDBOX: "standard", SANDBOX_SLIM: "slim" } as unknown as object;
   assert.equal(sandboxNamespace(env, "AttemptSandbox"), "standard");
-  assert.equal(sandboxNamespace(env, "Sandbox4Core"), "four");
-  assert.equal(sandboxNamespace(env, "Sandbox2Core"), "two");
+  assert.equal(sandboxNamespace(env, "SandboxSlim"), "slim");
   assert.equal(sandboxNamespace(env, undefined), "standard");
-  assert.equal(sandboxNamespace({ SANDBOX: "standard" }, "Sandbox4Core"), "standard");
-  assert.deepEqual(Object.keys(SANDBOX_BINDINGS), ["AttemptSandbox", "Sandbox2Core", "Sandbox4Core"]);
+  assert.equal(sandboxNamespace({ SANDBOX: "standard" }, "SandboxSlim"), "standard");
+  // A retired class's sandbox reports to the standard namespace.
+  assert.equal(sandboxNamespace(env, "Sandbox4Core"), "standard");
+  assert.deepEqual(Object.keys(SANDBOX_BINDINGS), ["AttemptSandbox", "SandboxSlim"]);
 });

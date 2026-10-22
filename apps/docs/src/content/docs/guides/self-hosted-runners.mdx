@@ -679,8 +679,11 @@ that runs jobs in Docker is `linux`, whatever the machine is, since that is
 what its jobs run on. Labels are matched without regard to case.
 
 A job takes a runner only when every label in its `runs-on` is one of the
-runner's. Labels that name g1t's own machines, such as `ubuntu-latest` or
-`g1t-4core`, never go to a self-hosted runner.
+runner's. A job without `self-hosted` in its `runs-on` never goes to a
+self-hosted runner: GitHub's Linux labels, such as `ubuntu-latest`, run on
+g1t's machines, and a Windows or macOS label alone (`windows-latest`)
+fails, since g1t's hosted runners are Linux only. Name `self-hosted` to
+run one here: `runs-on: [self-hosted, windows]`.
 
 ### What a job gets
 

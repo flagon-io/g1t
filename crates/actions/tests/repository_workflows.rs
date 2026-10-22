@@ -125,6 +125,11 @@ fn plan_outputs(
         "core": matrix(entries("core", core)),
         "has_edge": (!edge.is_empty()).to_string(),
         "edge": matrix(entries("edge", edge)),
+        // What no later unit calls: none here (deploy_stages_skip_what_nothing_later_calls).
+        "has_core_rest": "false",
+        "core_rest": matrix(Vec::new()),
+        "has_edge_rest": "false",
+        "edge_rest": matrix(Vec::new()),
         "has_front": (!front.is_empty()).to_string(),
         "front": matrix(entries("front", front)),
     })
@@ -207,13 +212,25 @@ fn deploy_runs_on_main_and_by_hand_one_at_a_time() {
     assert_eq!(concurrency.cancel_in_progress, json!(false));
     assert_eq!(
         deploy.job_order(),
-        ["check", "plan", "build", "migrate", "core", "edge", "front", "smoke"]
+        [
+            "check",
+            "plan",
+            "build",
+            "migrate",
+            "core",
+            "core_rest",
+            "edge",
+            "edge_rest",
+            "front",
+            "smoke"
+        ]
     );
     // The stages share their steps (a YAML alias), and read the token only
     // where they deploy.
     let steps = |id: &str| deploy.jobs.iter().find(|j| j.id == id).unwrap().steps.len();
-    assert_eq!(steps("core"), steps("edge"));
-    assert_eq!(steps("core"), steps("front"));
+    for id in ["core_rest", "edge", "edge_rest", "front"] {
+        assert_eq!(steps("core"), steps(id), "{id}");
+    }
     let source = std::fs::read_to_string(workflows_dir().join("deploy.yml")).unwrap();
     assert!(!source.contains("cancel-in-progress: true"));
 }
@@ -357,7 +374,7 @@ fn each_cache_has_one_set_of_paths_wherever_it_is_used() {
         "cargo-workers-",
         "runner-musl-",
         "runner-release-",
-        "desktop-check-",
+        "desktop-check-nodebug-",
         "desktop-release-linux-",
         "desktop-release-windows-",
         "apt-tauri-",
@@ -702,7 +719,7 @@ fn deploy_stages_follow_one_another() {
     // Check and plan run side by side: plan waits for nothing.
     let plan = deploy.jobs.iter().find(|j| j.id == "plan").unwrap();
     assert!(plan.needs.is_empty(), "{:?}", plan.needs);
-    for id in ["migrate", "core", "edge", "front", "smoke"] {
+    for id in ["migrate", "core", "core_rest", "edge", "edge_rest", "front", "smoke"] {
         let job = deploy.jobs.iter().find(|j| j.id == id).unwrap();
         assert!(
             job.needs.iter().any(|n| n == "check") && job.needs.iter().any(|n| n == "plan"),
@@ -907,6 +924,112 @@ fn deploy_stages_follow_one_another() {
 }
 
 #[test]
+fn deploy_stages_skip_what_nothing_later_calls() {
+    // The plan puts a job no later unit calls in `<stage>_rest`
+    // (scripts/deploy/plan.mjs workflowOutputs): the runner's image when
+    // the API is not deploying, the API (the site does not bind it).
+    let deploy = read("deploy.yml");
+    let mut outputs = plan_outputs(
+        false,
+        &[("ts", "projects", false)],
+        &[("ts", "status", false)],
+        &[("web", "web", false)],
+    );
+    let rest = |stage: &str, group: &str, units: &str| {
+        json!({ "include": [{ "group": group, "units": units, "rust": false, "prebuilt": false, "stage": stage }] }).to_string()
+    };
+    outputs["has_core_rest"] = json!("true");
+    outputs["core_rest"] = json!(rest("core", "runner-image", "runner"));
+    outputs["has_edge_rest"] = json!("true");
+    outputs["edge_rest"] = json!(rest("edge", "rust", "api"));
+    let push = json!({});
+    let needs = |id: &str| deploy.jobs.iter().find(|j| j.id == id).unwrap().needs.clone();
+
+    // Beside core: it waits for what core waits for, and nothing but smoke
+    // waits for it.
+    assert_eq!(needs("core_rest"), needs("core"));
+    assert!(starts(&deploy, "core_rest", &[("migrate", "skipped")], &outputs, push.clone(), false));
+    for id in ["edge", "edge_rest", "front"] {
+        assert!(!needs(id).iter().any(|n| n == "core_rest"), "{id}");
+    }
+    // Beside front: after core, not before front.
+    assert_eq!(needs("edge_rest"), needs("edge"));
+    assert!(needs("front").iter().any(|n| n == "edge"));
+    assert!(!needs("front").iter().any(|n| n == "edge_rest"));
+    assert!(starts(
+        &deploy,
+        "edge_rest",
+        &[("migrate", "skipped"), ("core", "success")],
+        &outputs,
+        push.clone(),
+        false
+    ));
+    // A failed core stops both; a failed runner's image stops neither edge
+    // nor front, only smoke.
+    assert!(!starts(
+        &deploy,
+        "edge_rest",
+        &[("migrate", "skipped"), ("core", "failure")],
+        &outputs,
+        push.clone(),
+        false
+    ));
+    assert!(starts(
+        &deploy,
+        "front",
+        &[
+            ("migrate", "skipped"),
+            ("core", "success"),
+            ("edge", "success")
+        ],
+        &outputs,
+        push.clone(),
+        false
+    ));
+    assert!(!starts(
+        &deploy,
+        "smoke",
+        &[
+            ("core", "success"),
+            ("core_rest", "failure"),
+            ("edge", "success"),
+            ("edge_rest", "success"),
+            ("front", "success")
+        ],
+        &outputs,
+        push.clone(),
+        false
+    ));
+    // Smoke waits for every deploy job, the rest included.
+    for id in ["core", "core_rest", "edge", "edge_rest", "front"] {
+        assert!(needs("smoke").iter().any(|n| n == id), "{id}");
+    }
+    // Only the rest deploying: smoke still runs after it.
+    let mut alone = plan_outputs(false, &[], &[], &[]);
+    alone["has_core_rest"] = json!("true");
+    alone["core_rest"] = json!(rest("core", "runner-image", "runner"));
+    assert!(starts(
+        &deploy,
+        "smoke",
+        &[
+            ("core", "skipped"),
+            ("core_rest", "success"),
+            ("edge", "skipped"),
+            ("edge_rest", "skipped"),
+            ("front", "skipped")
+        ],
+        &alone,
+        push.clone(),
+        false
+    ));
+    assert!(!starts(&deploy, "core", &[], &alone, push.clone(), false));
+    // A dry run deploys none of it.
+    let dry = json!({ "dry_run": true, "units": "", "all": false });
+    assert!(!starts(&deploy, "core_rest", &[], &outputs, dry.clone(), false));
+    assert!(!starts(&deploy, "edge_rest", &[], &outputs, dry, false));
+}
+
+#[test]
 fn deploy_stage_matrices_come_from_the_plan() {
     let deploy = read("deploy.yml");
     let outputs = plan_outputs(
@@ -921,7 +1044,7 @@ fn deploy_stage_matrices_come_from_the_plan() {
     );
     let core = deploy.jobs.iter().find(|j| j.id == "core").unwrap();
     assert!(!core.fail_fast);
-    assert_eq!(core.max_parallel, Some(4));
+    assert_eq!(core.max_parallel, Some(12));
     let mut contexts = Map::new();
     contexts.insert(
         "needs".into(),
@@ -1001,7 +1124,7 @@ fn deploy_stage_matrices_come_from_the_plan() {
     };
     let name = "build-${{ matrix.stage }}-${{ matrix.group }}";
     assert_eq!(artifact(build, "actions/upload-artifact@"), name);
-    for stage in ["core", "edge", "front"] {
+    for stage in ["core", "core_rest", "edge", "edge_rest", "front"] {
         let job = deploy.jobs.iter().find(|j| j.id == stage).unwrap();
         assert_eq!(artifact(job, "actions/download-artifact@"), name, "{stage}");
     }
@@ -1014,7 +1137,7 @@ fn deploy_stage_matrices_come_from_the_plan() {
 #[test]
 fn deploy_builds_on_ubuntu_latest_with_its_target_cached() {
     let deploy = read("deploy.yml");
-    for stage in ["core", "edge", "front"] {
+    for stage in ["core", "core_rest", "edge", "edge_rest", "front"] {
         let job = deploy.jobs.iter().find(|j| j.id == stage).unwrap();
         let on = |rust: bool, image: bool| {
             let mut contexts = Map::new();
@@ -1029,9 +1152,10 @@ fn deploy_builds_on_ubuntu_latest_with_its_target_cached() {
             };
             expr::interpolate_value(&job.runs_on, &scope).unwrap()
         };
-        // Every job on ubuntu-latest, as on GitHub: 4 vCPU in this public
-        // repository (g1t_contracts::actions::instance_for), Rust builds and
-        // the runner's image included.
+        // Every job on ubuntu-latest, as on GitHub: 2 vCPU and 8 GiB, the
+        // size GitHub gives a private repository, in this public one too
+        // (g1t_contracts::actions::instance_for), Rust builds and the
+        // runner's image included.
         assert_eq!(on(true, false), json!("ubuntu-latest"), "{stage}");
         assert_eq!(on(false, true), json!("ubuntu-latest"), "{stage}");
         assert_eq!(on(false, false), json!("ubuntu-latest"), "{stage}");
@@ -1082,7 +1206,9 @@ fn rust_builds_go_through_sccache_before_cargo_and_report_after() {
     for (id, through) in [
         ("build", [true, false, false]),
         ("core", [false, true, false]),
+        ("core_rest", [false, true, false]),
         ("edge", [false, true, false]),
+        ("edge_rest", [false, true, false]),
         ("front", [false, true, false]),
     ] {
         let stage = id;
@@ -1348,6 +1474,80 @@ fn workspace_crates() -> Vec<String> {
     names
 }
 
+/// The TypeScript job's type checks, of the workspaces ci-affected.mjs names.
+const TYPE_CHECKS: &str =
+    "node scripts/deploy/ci-workspaces.mjs typecheck ${{ steps.affected.outputs.typecheck }}";
+
+/// What `ci-affected.mjs --npm` writes for a run on `event`: every
+/// workspace and check when `reached`, none otherwise; a push the merge
+/// queue `tested` only type checks.
+fn npm_outputs(event: &str, tested: bool, reached: bool) -> Value {
+    let all = "@g1t/contracts @g1t/web";
+    let run = reached && !tested;
+    json!({
+        "github": { "event_name": event },
+        "steps": { "affected": { "outputs": {
+            "tested": tested.to_string(),
+            "typecheck": if reached { all } else { "" },
+            "test": if run { all } else { "" },
+            "install": reached.to_string(),
+            "install-args": "",
+            "whole": reached.to_string(),
+            "deploy": run.to_string(),
+            "conformance": run.to_string(),
+            "ops": run.to_string(),
+            "manifest": run.to_string(),
+            "plugins": run.to_string(),
+        } } },
+    })
+}
+
+#[test]
+fn ci_checks_only_the_npm_workspaces_a_pull_request_reaches() {
+    let ci = read("ci.yml");
+    let typescript = ci.jobs.iter().find(|j| j.id == "typescript").unwrap();
+    // The test merge commit and its parents, to compare it with the base.
+    assert_eq!(typescript.steps[0].raw["with"]["fetch-depth"], json!(2));
+    let affected = &typescript.steps[1];
+    assert_eq!(affected.id.as_deref(), Some("affected"));
+    assert!(affected.condition.is_none());
+    // A pull request that reaches no workspace and no check installs and
+    // runs nothing but ci-affected's own tests, and passes.
+    for step in &typescript.steps[2..] {
+        let name = step.name.clone().unwrap_or_default();
+        let always = step.run.as_deref() == Some("node --test scripts/deploy/ci-affected.test.mjs");
+        assert_eq!(
+            runs_with(step, &npm_outputs("pull_request", false, false), Status::Success),
+            always,
+            "{name}"
+        );
+        // One that reaches them runs every step but the save, main's alone.
+        assert_eq!(
+            runs_with(step, &npm_outputs("pull_request", false, true), Status::Success),
+            !(saves(step) && step.raw["with"]["key"].as_str().is_some_and(|k| k.starts_with("tsc-"))),
+            "{name}"
+        );
+    }
+    // The workspaces' scripts run through ci-workspaces.mjs, and only a
+    // whole check saves tsc's build info.
+    for run in [
+        TYPE_CHECKS,
+        "node scripts/deploy/ci-workspaces.mjs test ${{ steps.affected.outputs.test }}",
+        "node scripts/deploy/npm-ci.mjs --prefer-offline --no-audit --no-fund ${{ steps.affected.outputs.install-args }}",
+    ] {
+        assert!(typescript.steps.iter().any(|s| s.run.as_deref() == Some(run)), "{run}");
+    }
+    let save = typescript
+        .steps
+        .iter()
+        .find(|s| s.uses.as_deref().is_some_and(|u| u.starts_with("actions/cache/save@")))
+        .unwrap();
+    let mut part = npm_outputs("push", false, true);
+    part["steps"]["affected"]["outputs"]["whole"] = json!("false");
+    assert!(!runs_with(save, &part, Status::Success));
+    assert!(runs_with(save, &npm_outputs("push", false, true), Status::Success));
+}
+
 #[test]
 fn ci_keeps_only_tsc_build_info_between_type_checks() {
     // tsc hashes every file it reads against its build info, so an entry
@@ -1365,7 +1565,7 @@ fn ci_keeps_only_tsc_build_info_between_type_checks() {
     let check = typescript
         .steps
         .iter()
-        .position(|s| s.run.as_deref() == Some("npm run typecheck"))
+        .position(|s| s.run.as_deref() == Some(TYPE_CHECKS))
         .unwrap();
     assert!(at < check);
 }
@@ -1527,16 +1727,17 @@ fn a_push_the_merge_queue_tested_keeps_mains_caches_and_runs_no_tests_again() {
         &Value::Object(queued),
         Status::Success
     ));
-    // TypeScript type checks, saving tsc's build info, and runs no tests.
+    // TypeScript type checks every workspace, saving tsc's build info, and
+    // runs no tests: ci-affected.mjs --npm says which (npmPlan).
     let typescript = ci.jobs.iter().find(|j| j.id == "typescript").unwrap();
     let queue = typescript
         .steps
         .iter()
-        .position(|s| s.id.as_deref() == Some("queue"))
+        .position(|s| s.id.as_deref() == Some("affected"))
         .unwrap();
     assert_eq!(
         typescript.steps[queue].run.as_deref(),
-        Some("node scripts/deploy/ci-affected.mjs --tested")
+        Some("node scripts/deploy/ci-affected.mjs --npm")
     );
     assert_eq!(
         typescript.steps[queue].raw["env"]["GITHUB_TOKEN"],
@@ -1545,16 +1746,15 @@ fn a_push_the_merge_queue_tested_keeps_mains_caches_and_runs_no_tests_again() {
     let check = typescript
         .steps
         .iter()
-        .position(|s| s.run.as_deref() == Some("npm run typecheck"))
+        .position(|s| s.run.as_deref() == Some(TYPE_CHECKS))
         .unwrap();
     assert!(queue < check);
-    let tested = |yes: bool| json!({ "steps": { "queue": { "outputs": { "tested": yes.to_string() } } }, "github": { "event_name": "push" } });
     for step in &typescript.steps[check..] {
         let name = step.name.clone().unwrap_or_default();
-        assert!(runs_with(step, &tested(false), Status::Success), "{name}");
-        let kept = step.run.as_deref() == Some("npm run typecheck") || saves(step);
+        assert!(runs_with(step, &npm_outputs("push", false, true), Status::Success), "{name}");
+        let kept = step.run.as_deref() == Some(TYPE_CHECKS) || saves(step);
         assert_eq!(
-            runs_with(step, &tested(true), Status::Success),
+            runs_with(step, &npm_outputs("push", true, true), Status::Success),
             kept,
             "{name}"
         );

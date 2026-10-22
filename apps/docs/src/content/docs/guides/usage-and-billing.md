@@ -110,9 +110,8 @@ part of the price.
 
 - **$10 of usage each month**, used first: everything g1t runs, at the
   [prices below](#what-it-costs) (runner minutes at their flat rate per
-  machine, everything else at cost plus 20%). That is 2,500 runner minutes on the standard machine, or
-  about 1,428 on `g1t-4core` (which `ubuntu-latest` gets in a public
-  repository).
+  machine, everything else at cost plus 20%). That is 2,500 runner minutes on the standard machine
+  (`ubuntu-latest`), or about 3,333 on `ubuntu-slim`.
 - **Everyone in the workspace** at one price, never per person.
 - **Unlimited** repositories and previews.
 - Workflows, the merge queue,
@@ -154,22 +153,22 @@ Pricing has two rules:
 There are no seats. The live figures are on
 [g1t.sh/pricing](https://g1t.sh/pricing).
 
-| What                                                                                                                     | Unit                                                                          | Costs g1t                                                      | You pay                          |
-| ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------- |
-| [Runner minutes](#runner-minutes) on the standard machine (2 vCPU, 8 GiB, 16 GB): workflow jobs, checks, the merge queue | Minute, each job rounded up                                                   | From $0.0014 a minute idle to $0.0038 with both vCPUs busy     | $0.004 a minute                  |
-| [Runner minutes](#runner-minutes) on `g1t-4core` (4 vCPU, 12 GiB, 20 GB)                                                 | Minute, each job rounded up                                                   | From $0.0020 a minute idle to $0.0068 with all four vCPUs busy | $0.007 a minute                  |
-| Deploy builds                                                                                                            | Second                                                                        | About $0.0017 a minute                                         | About $0.002 a minute            |
-| App requests                                                                                                             | Million                                                                       | $0.30                                                          | $0.36                            |
-| App CPU time                                                                                                             | Million CPU milliseconds                                                      | $0.02                                                          | $0.024                           |
-| Custom domains                                                                                                           | Domain-month                                                                  | $0.10                                                          | $0.12                            |
-| [Container apps](/guides/deployments/#docker-deployments), while awake                                                   | Second, by the minute: vCPU, memory, disk and the Durable Object, by the size | From $0.0129 an hour (`lite`)                                  | Cost + 20%: from $0.0155 an hour |
-| Data container apps send                                                                                                 | GB                                                                            | $0.05                                                          | $0.06                            |
-| Private storage, past the free 1 GB                                                                                      | GB-month                                                                      | $0.50                                                          | $0.60                            |
-| [Actions cache](#actions-cache) storage                                                                                  | GB-month                                                                      | $0.015                                                         | $0.018                           |
-| Git operations, past the free 50,000 a month                                                                             | 1,000                                                                         | $0.15                                                          | $0.18                            |
-| Search embeddings                                                                                                        | Million tokens                                                                | $0.067                                                         | $0.0804                          |
-| Security scans                                                                                                           | Million CPU ms / million rows                                                 | $0.02 / $1.00                                                  | $0.024 / $1.20                   |
-| Repositories, previews and apps                                                                                          |                                                                               | Next to nothing                                                | Not charged                      |
+| What                                                                                                                     | Unit                                                                          | Costs g1t                                                  | You pay                          |
+| ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- | ---------------------------------------------------------- | -------------------------------- |
+| [Runner minutes](#runner-minutes) on the standard machine (2 vCPU, 8 GiB, 16 GB): workflow jobs, checks, the merge queue | Minute, each job rounded up                                                   | From $0.0014 a minute idle to $0.0038 with both vCPUs busy | $0.004 a minute                  |
+| [Runner minutes](#runner-minutes) on `ubuntu-slim` (1 vCPU, 6 GiB, 12 GB)                                                | Minute, each job rounded up                                                   | From $0.0010 a minute idle to $0.0022 with its vCPU busy   | $0.003 a minute                  |
+| Deploy builds                                                                                                            | Second                                                                        | About $0.0017 a minute                                     | About $0.002 a minute            |
+| App requests                                                                                                             | Million                                                                       | $0.30                                                      | $0.36                            |
+| App CPU time                                                                                                             | Million CPU milliseconds                                                      | $0.02                                                      | $0.024                           |
+| Custom domains                                                                                                           | Domain-month                                                                  | $0.10                                                      | $0.12                            |
+| [Container apps](/guides/deployments/#docker-deployments), while awake                                                   | Second, by the minute: vCPU, memory, disk and the Durable Object, by the size | From $0.0129 an hour (`lite`)                              | Cost + 20%: from $0.0155 an hour |
+| Data container apps send                                                                                                 | GB                                                                            | $0.05                                                      | $0.06                            |
+| Private storage, past the free 1 GB                                                                                      | GB-month                                                                      | $0.50                                                      | $0.60                            |
+| [Actions cache](#actions-cache) storage                                                                                  | GB-month                                                                      | $0.015                                                     | $0.018                           |
+| Git operations, past the free 50,000 a month                                                                             | 1,000                                                                         | $0.15                                                      | $0.18                            |
+| Search embeddings                                                                                                        | Million tokens                                                                | $0.067                                                     | $0.0804                          |
+| Security scans                                                                                                           | Million CPU ms / million rows                                                 | $0.02 / $1.00                                              | $0.024 / $1.20                   |
+| Repositories, previews and apps                                                                                          |                                                                               | Next to nothing                                            | Not charged                      |
 
 Build seconds follow what Cloudflare bills g1t, so that figure moves a
 little; the pricing page always has today's. Runner minutes are fixed
@@ -254,8 +253,8 @@ The card check unlocks:
 
 Once its card is checked, a workspace gets **$5 of trial credit**, once. It
 pays for usage at the plan's prices: runner minutes for checks, workflows
-and the merge queue (1,250 on the standard machine, about 714 on the
-4-core one), and semantic search. It never pays for deployments.
+and the merge queue (1,250 on the standard machine, about 1,666 on
+`ubuntu-slim`), and semantic search. It never pays for deployments.
 
 - Each card gets one trial, whichever workspace it is checked in. Prepaid
   cards start none.
@@ -272,10 +271,9 @@ by g1t**. When the trial is used up, new compute waits for the plan.
 ## The open-source pool
 
 g1t sets aside **$50 a month** for public repositories, at most **$4 a
-month** for any one repository: about 7,142 and 571 minutes of
-workflow jobs, which run on the 4-core machine in a public repository,
-or 12,500 and 1,000 minutes of checks and merge queue runs on the
-standard machine. It pays for **checks, workflows and the merge queue on
+month** for any one repository: 12,500 and 1,000 minutes of workflow
+jobs, checks and merge queue runs on the standard machine, which public
+repositories get as private ones do. It pays for **checks, workflows and the merge queue on
 public repositories**, after a card check. It does not pay
 for deployments, storage or embeddings.
 
@@ -375,16 +373,16 @@ Every job g1t runs on its own machines (a workflow job, a check, a merge
 queue run) is charged by the minute, at a fixed rate for the machine it
 ran on:
 
-| `runs-on`                                                                        | Machine             | vCPUs | Memory | Disk  | A minute |
-| -------------------------------------------------------------------------------- | ------------------- | ----- | ------ | ----- | -------- |
-| `ubuntu-latest` or any other Linux label in a private repository, or `g1t-2core` | Standard (`2-core`) | 2     | 8 GiB  | 16 GB | $0.004   |
-| `ubuntu-latest` or any other Linux label in a public repository, or `g1t-4core`  | `4-core`            | 4     | 12 GiB | 20 GB | $0.007   |
+| `runs-on`                                                            | Machine             | vCPUs | Memory | Disk  | A minute |
+| -------------------------------------------------------------------- | ------------------- | ----- | ------ | ----- | -------- |
+| `ubuntu-latest`, any other Linux label, or a label g1t does not know | Standard (`2-core`) | 2     | 8 GiB  | 16 GB | $0.004   |
+| `ubuntu-slim`                                                        | `1-core`            | 1     | 6 GiB  | 12 GB | $0.003   |
 
-`ubuntu-latest` gets what it gets on GitHub: 4 vCPUs in a public
-repository, 2 in a private one. A job is charged as the machine it ran
-on. Checks and the merge queue run on the standard machine. `g1t-2core` is
-kept as a name of the standard machine, so workflows that ask for it keep
-working, at its rate.
+The labels are GitHub's, at the sizes GitHub gives a private repository,
+in public repositories too ([machine sizes](/guides/actions/#machine-sizes)).
+A job is charged as the machine it ran on. Checks and the merge queue run
+on the standard machine. `g1t-2core` and `g1t-4core`, the labels g1t had
+before, get the standard machine, at its rate.
 
 **How a job's minutes are counted.** Each job's time, from when its
 machine starts to when it stops, is rounded up to the whole minute: a
@@ -404,17 +402,20 @@ cent, and never under what it costs with every vCPU busy:
 | Machine             | Costs g1t a minute, idle | With half its vCPUs busy | With every vCPU busy | A minute |
 | ------------------- | ------------------------ | ------------------------ | -------------------- | -------- |
 | Standard (`2-core`) | $0.0014                  | $0.0026                  | $0.0038              | $0.004   |
-| `4-core`            | $0.0020                  | $0.0044                  | $0.0068              | $0.007   |
+| `1-core`            | $0.0010                  | $0.0016                  | $0.0022              | $0.003   |
 
-Should a job ever cost g1t more than its minutes at the rate, it is
-charged that cost instead. A build that compiles often finishes several
-times sooner on `g1t-4core`, so it can cost about the same.
+`ubuntu-slim`'s rate is its cost with its vCPU busy, rounded up: with
+half of it busy plus 20%, $0.0020, would be under that. Should a job ever
+cost g1t more than its minutes at the rate, it is charged that cost
+instead.
 
 Each job is one line on the [statement](#the-statement), naming its
-machine and minutes, such as _A workflow job in acme/api on g1t-4core:
-6m 40s, 7 minutes on the 4-core machine_. Usage, the statement and the API
-total them as **Runner minutes, 2-core** and **Runner minutes, 4-core**;
-months before runner minutes show **Sandbox time**, by the second.
+machine and minutes, such as _A workflow job in acme/api on ubuntu-slim:
+6m 40s, 7 minutes on the 1-core machine_. Usage, the statement and the API
+total them as **Runner minutes, 2-core** and **Runner minutes, 1-core**;
+minutes from before the `4-core` machine was retired stay under
+**Runner minutes, 4-core**, and months before runner minutes show
+**Sandbox time**, by the second.
 Deploy builds are not counted here: [Deployments](/guides/deployments/)
 charges them by the second, from the first, under **Builds**. Jobs on
 [your own runners](/guides/self-hosted-runners/) are free: they show as
@@ -991,7 +992,7 @@ time. Every member can see it.
 
   | Line                                              | What it holds                                                                                                                             |
   | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-  | Runner minutes, 2-core and Runner minutes, 4-core | Each job on g1t's machines, with the minutes charged on that machine.                                                                     |
+  | Runner minutes, 2-core and Runner minutes, 1-core | Each job on g1t's machines, with the minutes charged on that machine (and Runner minutes, 4-core, for minutes from before it retired).    |
   | Sandbox time                                      | Each sandbox's time, in months before runner minutes.                                                                                     |
   | Self-hosted runner time                           | Each job on your own runners, at $0.                                                                                                      |
   | Deployments                                       | Builds as they finish; each month's requests, CPU time, custom domains and container time when it closes.                                 |
