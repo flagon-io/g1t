@@ -14,6 +14,9 @@ COPY Cargo.toml Cargo.lock ./
 COPY apps/api apps/api
 COPY crates crates
 COPY services services
+# What the services embed from outside them: integrations hands agents the
+# plugin's skills (agent_sessions.rs). deploy.test.mjs checks none is missed.
+COPY plugins/claude-code/skills plugins/claude-code/skills
 # The same build hosted g1t deploys (each wrangler.jsonc's build command).
 # No cache mount for target/: cargo trusts file times, and a cached build
 # from a newer tree would be taken as fresh for an older one.

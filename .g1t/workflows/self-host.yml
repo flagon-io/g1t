@@ -1,0 +1,97 @@
+# Self-hosting keeps working: the compose stack (deploy/self-host/) built
+# from this commit, and deploy/self-host/smoke.sh run against it from end to
+# end, every cron included. On a change to anything the stack builds or
+# deploys, nightly on main (what changed since, all at once), and by hand.
+# A failure names the step that broke (smoke.sh prints each), and the
+# stack's logs are kept as an artifact. See CONTRIBUTING.md, "Self-hosting".
+name: Self-host
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - apps/**
+      - crates/**
+      - services/**
+      - packages/**
+      - deploy/**
+      - scripts/deploy/**
+      - Cargo.toml
+      - Cargo.lock
+      - package.json
+      - package-lock.json
+      - .g1t/workflows/self-host.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/**
+      - crates/**
+      - services/**
+      - packages/**
+      - deploy/**
+      - scripts/deploy/**
+      - Cargo.toml
+      - Cargo.lock
+      - package.json
+      - package-lock.json
+      - .g1t/workflows/self-host.yml
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer commit on the same branch makes an older run moot.
+concurrency:
+  group: self-host-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Smoke test
+    runs-on: ubuntu-latest
+    # The most g1t's own machines give a job; building every Rust service
+    # to WebAssembly and the site is most of it. Docker inside the job's
+    # sandbox cannot start a builder of its own (BuildKit in a container),
+    # so the build's layers are not kept between runs.
+    timeout-minutes: 60
+    env:
+      COMPOSE: docker compose -p g1t-selfhost -f deploy/self-host/docker-compose.yml
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build and start the stack
+        run: |
+          started=$(date +%s)
+          $COMPOSE up --build -d
+          echo "::notice::The stack built and started in $(( $(date +%s) - started ))s."
+      # The site answers once its workerd has migrated and loaded every service.
+      - name: Wait for the site and the API
+        run: |
+          for _ in $(seq 1 120); do
+            if curl -fsS -o /dev/null http://localhost:8787/login && curl -sS -o /dev/null http://localhost:8789/; then exit 0; fi
+            sleep 5
+          done
+          echo "::error::The site did not answer within 10 minutes."
+          exit 1
+      - name: Smoke test
+        run: |
+          SCHEDULER_ONCE="$COMPOSE exec -T g1t node deploy/self-host/scheduler.mjs --once /data/generated/schedules.json" \
+            bash deploy/self-host/smoke.sh
+      - name: The stack's logs
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p self-host-logs
+          $COMPOSE ps -a > self-host-logs/ps.txt 2>&1 || true
+          for service in $($COMPOSE config --services); do
+            $COMPOSE logs --no-color --timestamps "$service" > "self-host-logs/$service.log" 2>&1 || true
+          done
+      - uses: actions/upload-artifact@v4
+        if: ${{ failure() }}
+        with:
+          name: self-host-logs
+          path: self-host-logs
+          retention-days: 7
+      - name: Stop the stack
+        if: ${{ always() }}
+        run: $COMPOSE down -v --remove-orphans || true

@@ -177,6 +177,21 @@ and in the one on [Services and contracts](https://docs.g1t.sh/architecture/serv
 covers the tool, the workflow, rollbacks, adding a unit and first-time
 setup.
 
+**Self-hosting keeps working.** Anyone can run g1t from `main` on their
+own machine (`deploy/self-host/`), so a change must not need g1t.sh's own
+Cloudflare resources: a new binding is optional in code, or the self-host
+stack provides it. `.g1t/workflows/self-host.yml` builds the stack from
+the commit and runs `deploy/self-host/smoke.sh` against it, on every change
+to what it builds and nightly on `main`; a failure names the step, and the
+stack's logs are the run's artifact. Run it yourself with:
+
+```sh
+docker compose -p g1t-selfhost -f deploy/self-host/docker-compose.yml up --build -d
+SCHEDULER_ONCE="docker compose -p g1t-selfhost -f deploy/self-host/docker-compose.yml exec -T g1t \
+  node deploy/self-host/scheduler.mjs --once /data/generated/schedules.json" bash deploy/self-host/smoke.sh
+docker compose -p g1t-selfhost -f deploy/self-host/docker-compose.yml down -v
+```
+
 - **An urgent deploy** replaces the runner's sandboxes and git edges now,
   stopping running jobs, instead of letting them finish for up to two hours:
   Deploy run by hand with **urgent**. For incidents only; the checklist is

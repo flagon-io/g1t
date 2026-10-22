@@ -1,9 +1,9 @@
 // node --test "scripts/deploy/*.test.mjs"   (npm run test:deploy)
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { test } from "node:test";
 
 import { isStaticElf } from "../build-runner.mjs";
@@ -1165,6 +1165,46 @@ test("self-hosting builds every Rust service the manifest says it runs", () => {
     .sort();
   assert.ok(loops.length >= 2);
   for (const loop of loops) assert.deepEqual(loop, wanted);
+});
+
+test("self-hosting's Rust stage copies every file the services it builds embed", () => {
+  // integrations embeds the plugin's skills (agent_sessions.rs); before
+  // plugins/ was copied, the image did not build (#398).
+  const dockerfile = readFileSync(join(ROOT, "deploy/self-host/Dockerfile"), "utf8");
+  const start = dockerfile.indexOf("\nFROM rust");
+  const stage = dockerfile.slice(start, dockerfile.indexOf("\nFROM ", start + 1));
+  const copied = [...stage.matchAll(/^COPY (.+) \S+$/gm)].flatMap((m) => m[1].split(/\s+/)).map((p) => p.replace(/\/$/, ""));
+  const services = [...stage.matchAll(/for service in ([a-z ]+); do/g)][0][1].trim().split(/\s+/);
+  const rust = (dir) =>
+    readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory() ? (["target", "build", "tests"].includes(e.name) ? [] : rust(`${dir}/${e.name}`)) : e.name.endsWith(".rs") ? [`${dir}/${e.name}`] : [],
+    );
+  const missing = [];
+  for (const file of [...services.map((s) => `services/${s}`), "apps/api"].flatMap(rust)) {
+    const code = readFileSync(join(ROOT, file), "utf8").split("#[cfg(test)]")[0];
+    for (const [, target] of code.matchAll(/include_(?:str|bytes)!\(\s*"([^"]+)"/g)) {
+      const path = relative(ROOT, resolve(ROOT, dirname(file), target))
+        .split(sep)
+        .join("/");
+      if (!copied.some((c) => path === c || path.startsWith(`${c}/`))) missing.push(`${file}: ${path}`);
+    }
+  }
+  assert.deepEqual(missing, [], "copy these into the Dockerfile's Rust stage");
+});
+
+test("a TypeScript Worker's entry module exports only handlers and classes", () => {
+  // workerd takes every export of the entry module for an entrypoint: an
+  // exported constant there (status's LATE_MS) stops the self-hosted
+  // runtime starting it, though Cloudflare's accepts it (#398).
+  const found = [];
+  for (const u of stack.units) {
+    const main = u.config?.main;
+    if (!main || !/\.(?:ts|js|mjs)$/.test(main)) continue;
+    const file = join(ROOT, u.path, main);
+    if (!existsSync(file)) continue;
+    for (const [line] of readFileSync(file, "utf8").matchAll(/^export (?:const|let|var) \w+/gm)) found.push(`${u.path}/${main}: ${line}`);
+  }
+  assert.deepEqual(found, [], "move these out of the entry module, or stop exporting them");
 });
 
 test("the self-hosting architecture page names every unit", () => {
