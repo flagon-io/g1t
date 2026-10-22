@@ -434,7 +434,7 @@ scope but `runners:read` and `chat:read`, plus `repo:create`, `code:write`,
 `workflows:write`, `checks:read`, `checks:write`, `deployments:read`,
 `deployments:write`). Automation that works for a team rather than a
 person (CI, publishing, integrations) takes a workspace token, made by an
-owner at g1t.sh/<workspace>/-/tokens: it acts as the workspace, reaches
+owner at g1t.sh/<workspace>/-/settings/tokens: it acts as the workspace, reaches
 only that workspace's chosen repositories, and keeps working when its
 creator leaves; never ask your person for a personal token for that.
 `chat:read` and `chat:write` are in no preset either: with them a person's

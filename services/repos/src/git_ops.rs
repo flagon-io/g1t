@@ -427,7 +427,7 @@ pub fn too_many(namespace: &str, free_cap: u64, hourly: u64) -> Result<Response>
 
 fn too_many_message(namespace: &str, free_cap: u64, hourly: u64) -> String {
     format!(
-        "{namespace} has made more than {free_cap} git operations this month, so g1t allows {hourly} an hour until the month turns. Free workspaces are never charged for git operations. On the g1t plan they are never slowed: past {free_cap} a month they are usage at cost plus 20%: https://g1t.sh/{namespace}/-/billing\n"
+        "{namespace} has made more than {free_cap} git operations this month, so g1t allows {hourly} an hour until the month turns. Free workspaces are never charged for git operations. On the g1t plan they are never slowed: past {free_cap} a month they are usage at cost plus 20%: https://g1t.sh/{namespace}/-/settings/billing\n"
     )
 }
 
