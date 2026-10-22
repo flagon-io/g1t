@@ -12,17 +12,17 @@ pull request with required checks, and its own workflows deploy it.
 
 ## The repository
 
-| Folder            | Holds                                                                                                                                                  |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `apps/`           | What people open: `web` (the site), `api`, `status`, `sudo`, `docs`, and the `desktop` (Tauri) and `mobile` (Expo) apps                                |
-| `services/`       | The services, one folder each, with their `wrangler.jsonc` and `migrations`                                                                            |
-| `crates/`         | Shared Rust: `contracts`, `kit`, `rules`, `scan`, `secrets`, `blobstore`, `actions`, the `runner` binary and the `g1t` CLI                             |
-| `packages/`       | Shared TypeScript: `contracts` and `theme` (the design tokens)                                                                                         |
-| `deploy/`         | `stack.jsonc`, the inventory; `self-host`, the Docker Compose installation; `runner` and `sandbox`, the self-hosted runner's images                    |
-| `scripts/`        | `deploy.mjs` and its helpers, releases, operations                                                                                                     |
-| `plugins/`        | The [Claude Code plugin](/guides/claude-code-plugin/), [Codex plugin](/guides/bring-your-own-agent/#codex-marketplace), and setup for other AI clients |
-| `.g1t/workflows/` | CI, deploys and releases, run by g1t Actions                                                                                                           |
-| `conformance/`    | Checks that a job's environment matches what workflows expect                                                                                          |
+| Folder            | Holds                                                                                                                                                                                                                                                                          |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `apps/`           | What people open: `web` (the site), `api`, `status`, `sudo`, `docs`, and the `desktop` (Tauri) and `mobile` (Expo) apps                                                                                                                                                        |
+| `services/`       | The services, one folder each, with their `wrangler.jsonc` and `migrations`                                                                                                                                                                                                    |
+| `crates/`         | Shared Rust: `contracts`, `kit`, `rules`, `scan`, `secrets`, `blobstore`, `actions`, the `runner` binary and the `g1t` CLI                                                                                                                                                     |
+| `packages/`       | Shared TypeScript: `contracts` and `theme` (the design tokens)                                                                                                                                                                                                                 |
+| `deploy/`         | `stack.jsonc`, the inventory; `self-host`, the Docker Compose installation; `runner` and `sandbox`, the self-hosted runner's images                                                                                                                                            |
+| `scripts/`        | `deploy.mjs` and its helpers, releases, operations                                                                                                                                                                                                                             |
+| `plugins/`        | The [Claude Code plugin](/guides/claude-code-plugin/), [Codex plugin](/guides/bring-your-own-agent/#codex-marketplace), the [Cursor and Copilot CLI plugins and Gemini CLI extension](/guides/bring-your-own-agent/#recording-other-harnesses), and setup for other AI clients |
+| `.g1t/workflows/` | CI, deploys and releases, run by g1t Actions                                                                                                                                                                                                                                   |
+| `conformance/`    | Checks that a job's environment matches what workflows expect                                                                                                                                                                                                                  |
 
 ## Building
 

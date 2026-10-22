@@ -104,6 +104,13 @@ priced at Anthropic's and OpenAI's list prices. A Codex session on a
 ChatGPT plan isn't billed per token: its cost is what those tokens would
 cost at list price, a measure of the work rather than a bill.
 
+GitHub Copilot CLI and Gemini CLI sessions report theirs through g1t's
+[plugins for them](/guides/bring-your-own-agent/#recording-other-harnesses),
+priced at the model provider's list price; Copilot bills premium requests,
+so its sessions' cost is likewise a measure of the work. Cursor's hooks
+carry no token counts, so a Cursor session recorded by its plugin has no
+known cost.
+
 ## Who sees each person's spend
 
 Everyone always sees their own. Who else sees each person's is a

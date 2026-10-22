@@ -51,7 +51,9 @@ codex mcp login g1t
 The [Codex marketplace plugin](https://docs.g1t.sh/guides/bring-your-own-agent/#codex-marketplace)
 also supplies a work coordination skill. Use it or the standalone connection
 above to avoid duplicate tools. Claude Code's plugin records sessions through
-hooks; other clients record sessions through the CLI or MCP.
+hooks, as do g1t's plugins for Codex, Cursor and GitHub Copilot CLI and its
+[Gemini CLI extension](https://docs.g1t.sh/guides/bring-your-own-agent/#recording-other-harnesses);
+other clients record sessions through the CLI or MCP.
 [Getting started](https://docs.g1t.sh/quickstart/) walks through a coding task.
 An assistant can follow <https://g1t.sh/llms.txt>.
 
