@@ -6,16 +6,17 @@
 # required "CI" too). People may still push to main directly, agents may
 # not. Deploy (deploy.yml) ships what lands on main.
 #
-#   rust        every crate's tests, natively, in three jobs at once
+#   rust        every crate's tests, natively, in six jobs at once
 #   typescript  type checks and tests of the apps and TS services, the
 #               deploy and ops scripts, and the deploy manifest
 #   build       the site, sudo and the docs build as they deploy
 #   desktop     the desktop app's checks and tests, and the release scripts'
 #
-# On a pull request, and on a merge queue state, `rust`, `build` and
-# `desktop` run only for what it changes (scripts/deploy/ci-affected.mjs:
-# a pull request against its base, a queue state against the main it was
-# built on) and pass without running otherwise; `typescript` always runs.
+# On a pull request, and on a merge queue state, every job runs only for
+# what it changes (scripts/deploy/ci-affected.mjs: a pull request against
+# its base, a queue state against the main it was built on) and passes
+# without running otherwise: `rust` the crates it reaches, `typescript`
+# the npm workspaces it reaches and the checks whose files it changes.
 #
 # A push to main the merge queue landed is the very commit its merge_group
 # run passed on, so it is not tested again: `rust` only compiles its
@@ -56,11 +57,15 @@ env:
   WRANGLER_SEND_METRICS: "false"
 
 jobs:
-  # The workspace's crates in three parts, each compiled and tested by a job
-  # of its own at the same time. Compiling the ~90 test binaries was most of
-  # CI's time (4m18s of a 5m41s run on one 4-vCPU machine: sccache answers
-  # the libraries, but a test binary is linked and never cached), and the
-  # suites then ran one after another. The parts are about even in Rust;
+  # The workspace's crates in six parts, each compiled and tested by a job
+  # of its own at the same time. Compiling the test binaries is most of
+  # CI's time (sccache answers the libraries, but a test binary is linked
+  # and never cached), and a machine is 2 vCPU and 8 GiB (ubuntu-latest), so
+  # each part is about 60k lines of Rust: three parts of ~120k took 1-2.5
+  # minutes of tests each on 4 vCPU, and one ran out of memory on 12 GiB.
+  # A crate sits with those it depends on where the sizes allow (work with
+  # rules, kit and scan; the runner with actions), so a part compiles fewer
+  # of the workspace's libraries.
   # repository_workflows.rs checks every workspace crate is in exactly one.
   # On a pull request or a queue state a part tests only its crates the
   # change reaches (scripts/deploy/ci-affected.mjs), and a part it does not
@@ -75,12 +80,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Lines of Rust, roughly: 60k, 52k, 64k, 63k, 64k, 60k.
           - part: 1
-            crates: -p g1t-contracts -p g1t-billing -p g1t-packages -p g1t-events -p g1t-search -p g1t-rules -p g1t-blobstore -p g1t-sshd -p g1t-secrets
+            crates: -p g1t-contracts -p g1t-events -p g1t-search -p g1t-blobstore -p g1t-secrets
           - part: 2
-            crates: -p g1t-work -p g1t-api -p g1t-identity -p g1t-security -p g1t-scan -p g1t-webhooks
+            crates: -p g1t-work -p g1t-rules -p g1t-kit -p g1t-scan -p g1t-webhooks -p g1t-sshd
           - part: 3
-            crates: -p g1t-repos -p g1t-runner -p g1t -p g1t-actions-service -p g1t-integrations -p g1t-actions -p g1t-kit
+            crates: -p g1t-repos -p g1t-security -p g1t-integrations
+          - part: 4
+            crates: -p g1t-billing -p g1t-api
+          - part: 5
+            crates: -p g1t-runner -p g1t-actions -p g1t
+          - part: 6
+            crates: -p g1t-identity -p g1t-actions-service -p g1t-packages
     env:
       # Line tables, not full debug info: a panic still names its file and
       # line, and the test build is a fraction of the size to link, keep
@@ -91,6 +103,12 @@ jobs:
       # pile up. Every cargo command below compiles with it, so the cache
       # entries it saves are built the same way.
       RUSTFLAGS: -D warnings
+      # Two of everything, the machine's vCPUs: rustc and the linker each
+      # take a gigabyte or more for a large crate, and a container may
+      # report the host's CPUs, not its share, so neither Cargo nor the
+      # tests take that many at once.
+      CARGO_BUILD_JOBS: 2
+      RUST_TEST_THREADS: 2
     steps:
       # Two commits deep: a pull request's run builds its test merge commit,
       # and what it changes is that commit against its first parent, the
@@ -191,26 +209,54 @@ jobs:
     name: TypeScript
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # Workspaces checked at once: the machine's two vCPUs (a container may
+      # report the host's CPUs, and the site's tsc alone takes gigabytes).
+      G1T_CI_CONCURRENCY: 2
     steps:
+      # Two commits deep, as for the Rust parts: what the pull request or
+      # the queue state changes.
       - uses: actions/checkout@v5
-      # A push the merge queue landed only type checks, for tsc's cache:
-      # its tests passed in the queue on this very commit.
-      - name: Whether the merge queue tested this commit
-        id: queue
+        with:
+          fetch-depth: 2
+      # What this run checks (ci-affected.mjs --npm). On a pull request or
+      # a queue state: the npm workspaces it changes and every workspace
+      # that depends on them (a change to packages/contracts reaches the
+      # apps and the services, one to apps/web only the site), each type
+      # checked and tested; and the job's other checks whose files it
+      # changes. The lockfile, the root package.json, tsconfig.base.json or
+      # this workflow reach everything. It installs only the workspaces
+      # checked and what they depend on, and nothing when none is. A push
+      # checks everything; one the merge queue landed (`tested`) only type
+      # checks, for tsc's cache: its tests passed in the queue on this very
+      # commit.
+      - name: What this change checks
+        id: affected
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node scripts/deploy/ci-affected.mjs --tested
-      # npm's downloads, kept between runs: an install reads them first
-      # and asks the registry only for what changed, so a dropped
-      # connection to it rarely stops the job.
+        run: node scripts/deploy/ci-affected.mjs --npm
+      # Its tests check that what it reaches covers every file a crate or a
+      # workspace reads outside its folder, so they read the whole
+      # repository and run for any change (a second or so, nothing to
+      # install), not only with the deploy tool's.
+      - name: What CI runs covers what each part reads
+        if: ${{ steps.affected.outputs.tested != 'true' }}
+        run: node --test scripts/deploy/ci-affected.test.mjs
+      # npm's downloads, as the Caches workflow keeps them for main
+      # (caches.yml): an install reads them first and asks the registry only
+      # for what changed, so a dropped connection to it rarely stops the
+      # job. Only restored: an install of part of the lockfile never saves
+      # its part under the whole's key.
       - name: Cache npm's downloads
-        uses: actions/cache@v4
+        if: ${{ steps.affected.outputs.install == 'true' }}
+        uses: actions/cache/restore@v4
         with:
           path: ~/.npm
           key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-full-${{ runner.os }}-
       - name: Install
-        run: node scripts/deploy/npm-ci.mjs --prefer-offline --no-audit --no-fund
+        if: ${{ steps.affected.outputs.install == 'true' }}
+        run: node scripts/deploy/npm-ci.mjs --prefer-offline --no-audit --no-fund ${{ steps.affected.outputs.install-args }}
       # What tsc found last time, one .tsbuildinfo per config
       # (tsconfig.base.json "incremental"): it hashes every file the check
       # reads, its own and node_modules' alike, and checks again each one
@@ -222,6 +268,7 @@ jobs:
       # run. main's runs save (below), and a pull request's starts from
       # main's latest.
       - name: Cache the type checks
+        if: ${{ steps.affected.outputs.typecheck }}
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -232,10 +279,15 @@ jobs:
           restore-keys: |
             tsc-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
             tsc-${{ runner.os }}-
+      # Each workspace's own typecheck script, as many at once as the
+      # machine has CPUs, each one's output kept together
+      # (scripts/deploy/ci-workspaces.mjs).
       - name: Type checks
-        run: npm run typecheck
+        if: ${{ steps.affected.outputs.typecheck }}
+        run: node scripts/deploy/ci-workspaces.mjs typecheck ${{ steps.affected.outputs.typecheck }}
+      # A push checks every workspace, so its entry is a whole one.
       - name: Save the type checks
-        if: ${{ github.event_name == 'push' }}
+        if: ${{ github.event_name == 'push' && steps.affected.outputs.whole == 'true' }}
         uses: actions/cache/save@v4
         with:
           path: |
@@ -244,27 +296,27 @@ jobs:
             packages/*/*.tsbuildinfo
           key: tsc-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
       - name: Tests
-        if: ${{ steps.queue.outputs.tested != 'true' }}
-        run: npm test --workspaces --if-present
+        if: ${{ steps.affected.outputs.test }}
+        run: node scripts/deploy/ci-workspaces.mjs test ${{ steps.affected.outputs.test }}
       - name: The deploy tool's tests
-        if: ${{ steps.queue.outputs.tested != 'true' }}
+        if: ${{ steps.affected.outputs.deploy == 'true' }}
         run: npm run test:deploy
       - name: The conformance report's tests
-        if: ${{ steps.queue.outputs.tested != 'true' }}
+        if: ${{ steps.affected.outputs.conformance == 'true' }}
         run: npm run test:conformance
       - name: The ops scripts' tests
-        if: ${{ steps.queue.outputs.tested != 'true' }}
+        if: ${{ steps.affected.outputs.ops == 'true' }}
         run: npm run test:ops
       - name: The manifest matches every wrangler.jsonc
-        if: ${{ steps.queue.outputs.tested != 'true' }}
+        if: ${{ steps.affected.outputs.manifest == 'true' }}
         run: node scripts/deploy.mjs manifest --check
       - name: The Claude Code plugin's tests
-        if: ${{ steps.queue.outputs.tested != 'true' }}
+        if: ${{ steps.affected.outputs.plugins == 'true' }}
         run: node --test plugins/claude-code/test/hooks.test.mjs
       # What plugins-release.yml publishes to flagon-io/g1t-plugins: the
       # manifests agree, and the tree is only the plugin.
       - name: The plugin's published marketplace
-        if: ${{ steps.queue.outputs.tested != 'true' }}
+        if: ${{ steps.affected.outputs.plugins == 'true' }}
         run: |
           node scripts/plugins-release.mjs check
           node --test scripts/plugins-release.test.mjs
@@ -276,37 +328,48 @@ jobs:
     timeout-minutes: 30
     steps:
       # Two commits deep, as for the Rust parts: what the pull request or
-      # the queue state changes. A change of only Rust source, which none of
-      # the three reads, passes without building (ci-affected.mjs JOBS).
+      # the queue state changes. A change that reaches none of the three's
+      # npm workspaces (or the packages they depend on), nor the deploy
+      # tool that builds them, passes without building (ci-affected.mjs
+      # JOBS).
       - uses: actions/checkout@v5
         with:
           fetch-depth: 2
       - name: Whether this change needs it
         id: affected
         run: node scripts/deploy/ci-affected.mjs --job build
-      # npm's downloads, kept between runs: an install reads them first
-      # and asks the registry only for what changed, so a dropped
-      # connection to it rarely stops the job.
+      # npm's downloads, as the Caches workflow keeps them for main
+      # (caches.yml): an install reads them first and asks the registry only
+      # for what changed, so a dropped connection to it rarely stops the
+      # job. Only restored: the install below is part of the lockfile.
       - name: Cache npm's downloads
         if: ${{ steps.affected.outputs.run == 'true' }}
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.npm
           key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-full-${{ runner.os }}-
+      # Only the three workspaces and what they depend on, as Deploy
+      # installs them: not the phone app's or the services' packages.
       - name: Install
         if: ${{ steps.affected.outputs.run == 'true' }}
-        run: node scripts/deploy/npm-ci.mjs --prefer-offline --no-audit --no-fund
+        run: node scripts/deploy.mjs install --only web,sudo,docs
       - name: The site, sudo and the docs
         if: ${{ steps.affected.outputs.run == 'true' }}
         run: node scripts/deploy.mjs build --only web,sudo,docs
 
   desktop:
     name: Desktop app
-    # ubuntu-latest is 4 vCPU in this public repository, as on GitHub; linking
-    # Tauri needs it (on 2 vCPU it ran out of room and died with a bus error).
+    # ubuntu-latest is 2 vCPU and 8 GiB. Linking Tauri with full debug info
+    # once ran out of room there and died with a bus error, so its test
+    # build carries no debug info and links two crates at a time: the
+    # objects and the link are a fraction of the size.
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_BUILD_JOBS: "2"
     steps:
       # A pull request or queue state that changes none of the app's files,
       # its release scripts or the build's own (ci-affected.mjs DESKTOP)
@@ -355,8 +418,8 @@ jobs:
             ~/.cargo/registry/cache
             apps/desktop/src-tauri/target/debug
             !apps/desktop/src-tauri/target/debug/incremental
-          key: desktop-check-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ steps.keys.outputs.desktop }}
-          restore-keys: desktop-check-${{ runner.os }}-${{ steps.keys.outputs.rust }}-
+          key: desktop-check-nodebug-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ steps.keys.outputs.desktop }}
+          restore-keys: desktop-check-nodebug-${{ runner.os }}-${{ steps.keys.outputs.rust }}-
       # Outside the workspace on purpose (Cargo.toml says why): checked and
       # tested here, built into installers by desktop-release.yml.
       - name: Check and test
