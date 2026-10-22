@@ -58,6 +58,10 @@ jobs:
     env:
       COMPOSE: docker compose -p g1t-selfhost -f deploy/self-host/docker-compose.yml -f self-host-cache.yml
       BUILDX_BUILDER: self-host
+      # Compose builds through bake, which asks before reading or writing a
+      # folder outside the build's context (the cache in /tmp) and has no
+      # flag for it through Compose.
+      BUILDX_BAKE_ENTITLEMENTS_FS: "0"
     steps:
       - uses: actions/checkout@v5
       - name: Restore the image's build cache
