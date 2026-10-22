@@ -227,6 +227,10 @@ export function detect(
     }
     out.streaks.push(streak);
   }
+  // A part this round did not check (a late round's binding checks, index.ts
+  // `checkAll`) keeps its run as it was: leaving it out of `streaks` would end it.
+  const seen = new Set(observations.map((o) => o.component));
+  for (const [key, streak] of previous) if (!seen.has(key)) out.streaks.push(streak);
   return out;
 }
 

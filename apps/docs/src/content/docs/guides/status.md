@@ -123,7 +123,9 @@ the checks.
 
 A brief blip does not become an incident. A slow answer is checked again
 straight away, and counts as slow only if the second answer is slow too.
-Billing and git storage, which are asked from inside g1t, are also asked
+Billing and git storage, which are asked from inside g1t, are not
+counted in a round of checks that Cloudflare starts 8 seconds or more
+late, since those rounds often cannot reach them; they are also asked
 again when they do not answer at all, and count as down only if the
 second call goes unanswered too.
 If the part recovers and stays healthy for 10 minutes before anyone
