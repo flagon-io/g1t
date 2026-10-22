@@ -11,8 +11,10 @@ import { Bot } from "lucide-react";
 import { type CSSProperties, useState } from "react";
 import { Link } from "react-router";
 
+import { agentTitle } from "../lib/agent-rule";
 import { cn } from "../lib/cn";
 import { type FlowNode, type FlowPull, agentStep, flowAgentShare, dollars, percent } from "../lib/signals";
+import { Hint } from "./ui/hint";
 
 /** The five steps of agent use: the accent, from a wash to full. */
 const STEP_FILL = [
@@ -133,7 +135,13 @@ function PullRow({ pull, style }: { pull: FlowPull; style?: CSSProperties }) {
     <Link to={pull.to} className="flex items-center gap-3 border-b border-line px-3 text-sm last:border-b-0 hover:bg-raised" style={style}>
       <span className="shrink-0 font-mono text-xs text-muted">#{pull.number}</span>
       <span className="min-w-0 grow truncate font-medium text-fg">{pull.title}</span>
-      {pull.agent && <Bot size={13} className="shrink-0 text-accent" aria-label="An agent's" />}
+      {pull.agent && (
+        <Hint label={agentTitle(pull.agentRule)}>
+          <span className="shrink-0">
+            <Bot size={13} className="text-accent" aria-label={agentTitle(pull.agentRule)} />
+          </span>
+        </Hint>
+      )}
     </Link>
   );
 }

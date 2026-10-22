@@ -10,12 +10,14 @@ import { Link } from "react-router";
 
 import { COST_PROVIDERS, type CostProvider, isCostProvider } from "@g1t/contracts";
 
+import { agentTitle } from "../lib/agent-rule";
 import type { Ground } from "../lib/ground";
 import { dollars } from "../lib/signals";
 import { Boundary, Unavailable } from "./boundary";
 import { Rhythm } from "./rhythm";
 import { PulseSkeleton, PulseStrip } from "./signals";
 import { SpendFlow } from "./spend-flow";
+import { Hint } from "./ui/hint";
 import { Skeleton } from "./ui/skeleton";
 
 export function GroundSkeleton() {
@@ -182,7 +184,13 @@ export function GroundTruth({
                           {pull.blocks.length > 0 && ` · holds up ${pull.blocks.length}`}
                         </span>
                       </span>
-                      {pull.agent && <Bot size={13} className="mt-0.5 shrink-0 text-accent" aria-label="An agent's" />}
+                      {pull.agent && (
+                        <Hint label={agentTitle(pull.agentRule)}>
+                          <span className="mt-0.5 shrink-0">
+                            <Bot size={13} className="text-accent" aria-label={agentTitle(pull.agentRule)} />
+                          </span>
+                        </Hint>
+                      )}
                     </Link>
                   </li>
                 ))}

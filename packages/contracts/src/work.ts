@@ -693,6 +693,12 @@ export type Pull = {
    * `workOwner`.
    */
   requestedBy: User | null;
+  /**
+   * When its commits say a coding agent made it (a cloud agent's trailer,
+   * the agent's address as author or co-author): which, by what rule, and
+   * for whom. Absent otherwise.
+   */
+  agentWork?: AgentWork;
   /** RFC 3339. */
   createdAt: string;
   /** RFC 3339. */
@@ -700,6 +706,22 @@ export type Pull = {
   /** Who last moved its head (a user id), and when; absent until a push after rulesets arrived. */
   headPushedBy?: string;
   headPushedAt?: string;
+};
+
+/**
+ * A coding agent's work on a pull request, as its commits tell it: the
+ * strongest rule any of them matched, and of those commits the oldest.
+ */
+export type AgentWork = {
+  /** The coding agent's id (`coding-agents.ts`), such as `copilot` or `cursor`. */
+  agent: string;
+  /**
+   * The rule that matched: `trailer:agent-logs-url`, `trailer:claude-session`,
+   * `author:<agent>`, `coauthor:<agent>` or `trailer:made-with-cursor`.
+   */
+  rule: string;
+  /** The member it counts for: whoever started the agent, when the address the commit names for them is one they verified. */
+  startedBy?: User;
 };
 
 /** One file a pull request changes, and by how much. */
@@ -2411,6 +2433,8 @@ export type WaitingPull = {
   title: string;
   createdAt: string;
   agent: boolean;
+  /** For an agent's: why g1t says so, as `SignalPull.agentRule`. */
+  agentRule?: string | null;
   draftSeconds: number | null;
   item: number | null;
   blocks: number[];
@@ -2421,6 +2445,13 @@ export type SignalPull = {
   title: string;
   status: "draft" | "open" | "merged" | "closed";
   agent: boolean;
+  /**
+   * For an agent's: why g1t says so. `g1t` (g1t's agent opened it, or it
+   * was opened as an agent's), `session` (a harness session is tied to
+   * it), else the rule its commits matched (`AgentWork.rule`).
+   */
+  agentRule?: string | null;
+  /** Whoever asked for it, else the person who started the coding agent whose commits it holds, else its author. */
   ownerId: string;
   ownerName: string;
   createdAt: string;
