@@ -62,10 +62,11 @@ anything in it that runs differently.
 
 ### Not yet
 
-- **Windows and macOS on g1t's machines.** g1t's own runners are Linux; a
-  job with `runs-on: windows-latest` or `macos-latest` fails, and says so.
-  [Self-hosted runners](/guides/self-hosted-runners/) of any OS run them:
-  `runs-on: [self-hosted, windows]`.
+- **Windows and macOS on g1t's machines.** g1t's hosted runners are Linux
+  only; a job with `runs-on: windows-latest`, `macos-latest` or any other
+  Windows or macOS label fails at once, and says so, rather than running on
+  Linux. [Self-hosted runners](/guides/self-hosted-runners/) of any OS run
+  them: `runs-on: [self-hosted, windows]`.
 - **Docker's `type=gha` build cache.** Buildx skips it on g1t, and the
   build runs without a cache. Use a registry cache instead; see
   [caching image builds](#caching-image-builds).
@@ -558,32 +559,40 @@ say; see [the job's token](#the-jobs-token). The
 
 ### Machine sizes
 
-`ubuntu-latest` gets what it gets on GitHub: 4 vCPUs in a public
-repository, 2 in a private one. Any other Linux label is the same.
+g1t answers GitHub's hosted-runner labels, at the sizes GitHub gives a
+private repository. A public repository gets the same machines: GitHub's
+larger machines for public repositories (4 vCPUs, 16 GB) are not offered.
 
-| `runs-on`                                                         | vCPUs | Memory | Disk  | A minute |
-| ----------------------------------------------------------------- | ----- | ------ | ----- | -------- |
-| `ubuntu-latest`, or any other Linux label, in a public repository | 4     | 12 GiB | 20 GB | $0.007   |
-| `ubuntu-latest`, or any other Linux label, in a private one       | 2     | 8 GiB  | 16 GB | $0.004   |
-| `g1t-4core`, in any repository                                    | 4     | 12 GiB | 20 GB | $0.007   |
-| `g1t-2core`, in any repository                                    | 2     | 8 GiB  | 16 GB | $0.004   |
+| GitHub label                                                            | On GitHub (private)  | On g1t                             | A minute |
+| ----------------------------------------------------------------------- | -------------------- | ---------------------------------- | -------- |
+| `ubuntu-slim`                                                           | 1 vCPU, 5 GB, 14 GB  | 1 vCPU, 6 GiB, 12 GB               | $0.003   |
+| `ubuntu-latest`, `ubuntu-24.04`, `ubuntu-22.04`, `ubuntu-26.04`         | 2 vCPUs, 8 GB, 14 GB | 2 vCPUs, 8 GiB, 16 GB              | $0.004   |
+| `ubuntu-24.04-arm`, `ubuntu-22.04-arm`, `ubuntu-26.04-arm`              | 2 vCPUs (Arm), 8 GB  | 2 vCPUs, 8 GiB, 16 GB, on x64      | $0.004   |
+| `windows-latest`, `windows-2025`, `windows-2025-vs2026`, `windows-2022` | 2 vCPUs, 8 GB        | None: a self-hosted Windows runner | Free     |
+| `windows-11-arm`, `windows-11-vs2026-arm`                               | 2 vCPUs (Arm), 8 GB  | None: a self-hosted Windows runner | Free     |
+| `macos-15-intel`, `macos-26-intel`                                      | 4 vCPUs, 14 GB       | None: a self-hosted macOS runner   | Free     |
+| `macos-latest`, `macos-14`, `macos-15`, `macos-26`, `xcode-27`          | 3 vCPUs (M1), 7 GB   | None: a self-hosted macOS runner   | Free     |
 
-GitHub's machine for public repositories has 16 GB of memory; g1t's has
-12 GiB, the most its machines have.
-
-To choose a machine whatever the repository's visibility, name it:
+Any other Linux label, or none g1t knows, gets the `ubuntu-latest`
+machine. `g1t-2core` and `g1t-4core`, the labels g1t had before, are
+among them: they get the `ubuntu-latest` machine, and the workflows that
+name them keep running. Name `ubuntu-slim` for light jobs (linting,
+labelling, a script that calls an API), where a smaller machine costs
+less:
 
 ```yaml
 jobs:
-  build:
-    runs-on: g1t-4core
+  label:
+    runs-on: ubuntu-slim
 ```
 
-`g1t-4core` suits heavier jobs in a private repository: builds that
-compile, such as Rust or a large TypeScript project, image builds and
-databases. `g1t-2core` keeps a public repository's light jobs on the
-smaller machine. The label can come from the matrix or the run's inputs
-(`runs-on: ${{ matrix.big && 'g1t-4core' || 'ubuntu-latest' }}`).
+The label can come from the matrix or the run's inputs
+(`runs-on: ${{ matrix.light && 'ubuntu-slim' || 'ubuntu-latest' }}`).
+
+GitHub's [larger runners](https://docs.github.com/en/actions/concepts/runners/larger-runners)
+(more vCPUs, GPUs, named by the organization) are not offered yet: the
+largest machine is `ubuntu-latest`'s. A job that needs more can run on a
+[self-hosted runner](/guides/self-hosted-runners/).
 
 Each job is charged its time rounded up to the whole minute (61 seconds
 is 2 minutes, and a job that ran is at least 1), at its machine's rate:
@@ -597,8 +606,8 @@ no `timeout-minutes`, as on GitHub, and can ask for up to 24 hours. A job
 stopped at its time cap fails saying so.
 
 g1t's machines are x64. A job whose `runs-on` names an Arm label, such
-as `ubuntu-24.04-arm`, runs on x64, and the workflow's page says so; a
-self-hosted Arm runner runs it on Arm.
+as `ubuntu-24.04-arm`, runs on x64 (`runner.arch` is `X64`), and the
+workflow's page says so; a self-hosted Arm runner runs it on Arm.
 
 A workspace always has room for 4 jobs at once on g1t's machines, and runs
 up to 12 at once while the machines have room to spare; the rest stay queued,
@@ -741,7 +750,7 @@ not signed in. See [container registry](/guides/containers/#in-workflows).
 ```yaml
 jobs:
   image:
-    runs-on: g1t-4core
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v3
@@ -773,8 +782,8 @@ unless the job brings a cache:
 ### Limits
 
 - **Machine.** Containers share the job's machine: its vCPUs, memory and
-  disk ([machine sizes](#machine-sizes)). Image builds and databases want
-  `g1t-4core`. `--cpus` and `--memory` limit a container within that.
+  disk ([machine sizes](#machine-sizes)). `--cpus` and `--memory` limit a
+  container within that.
 - **Disk.** Images take room on the job's disk. On a machine whose disk
   cannot hold layered images, the Engine stores plain copies, which take
   more room; the log says when it does.

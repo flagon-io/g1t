@@ -127,7 +127,7 @@ test("prices are each machine's rate a minute, from the catalogue", () => {
     cloudPrices().map((p) => [p.machine, p.perMinuteMicros, p.title]),
     [
       ["2-core", 4000, "2-core: 2 vCPU, 8 GiB, 16 GB"],
-      ["4-core", 7000, "4-core: 4 vCPU, 12 GiB, 20 GB"],
+      ["1-core", 3000, "1-core: 1 vCPU, 6 GiB, 12 GB"],
     ],
   );
   assert.equal(perMinute(4000), "$0.004");

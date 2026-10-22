@@ -53,7 +53,7 @@ env:
 jobs:
   publish:
     name: Publish g1t/<action>
-    runs-on: g1t-2core # builds nothing: the 2-vCPU machine is enough
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5

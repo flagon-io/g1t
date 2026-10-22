@@ -71,23 +71,25 @@ what is kept.
 
 ## Sandboxes on g1t's runners
 
-`runner` defines three Container classes, picked by `runs-on`, each a
-named Cloudflare instance type:
+`runner` defines two Container classes for sandboxes, picked by
+`runs-on`, each a named Cloudflare instance type:
 
-| `runs-on`                                                                    | Class            | Size                                            |
-| ---------------------------------------------------------------------------- | ---------------- | ----------------------------------------------- |
-| Any other hosted label in a private repository, and every other kind of work | `AttemptSandbox` | `standard-3`: 2 vCPU, 8 GiB memory, 16 GB disk  |
-| `g1t-2core`                                                                  | `Sandbox2Core`   | `standard-3`: 2 vCPU, 8 GiB memory, 16 GB disk  |
-| `g1t-4core`, and any other hosted label in a public repository               | `Sandbox4Core`   | `standard-4`: 4 vCPU, 12 GiB memory, 20 GB disk |
+| `runs-on`                                                                                 | Class            | Size                                           |
+| ----------------------------------------------------------------------------------------- | ---------------- | ---------------------------------------------- |
+| `ubuntu-latest`, every other Linux label, any label g1t does not know, and all other work | `AttemptSandbox` | `standard-3`: 2 vCPU, 8 GiB memory, 16 GB disk |
+| `ubuntu-slim`                                                                             | `SandboxSlim`    | `standard-2`: 1 vCPU, 6 GiB memory, 12 GB disk |
 
-`ubuntu-latest` follows GitHub's hosted runners: the actions service
-resolves it to `g1t-4core` when the run's repository is public (its
-event's `repository.private`), and the job is billed as that machine.
-`g1t-2core` is kept as a name of the standard machine, so workflows that
-ask for it keep working; it keeps its class and its own `max_instances`
-in `services/runner/wrangler.jsonc`. The contracts' instance table
-(`INSTANCE_TYPES`) and billing's price keeper say the same sizes, and a
-test holds them to `wrangler.jsonc`.
+The labels are GitHub's, at the sizes GitHub gives a private repository,
+in public repositories too (`GITHUB_HOSTED_LABELS` in
+`crates/contracts/src/actions.rs`). Arm Ubuntu labels run on the x64
+standard machine. A job naming a Windows or macOS label, and not
+`self-hosted`, fails when it is queued: hosted runners are Linux only.
+`g1t-2core` and `g1t-4core`, the labels g1t had before, are unknown labels
+now and get the standard machine; their classes were deleted (migration
+`v6`), and minutes billed on the `4-core` machine still read under it
+(`RETIRED_MACHINES`). The contracts' instance table (`INSTANCE_TYPES`)
+and billing's price keeper say the same sizes, and a test holds them to
+`wrangler.jsonc`.
 
 Every sandbox starts from one image: `services/runner/base/Dockerfile`,
 which has Node, Python, Go, Rust, Java, .NET, Ruby and Docker, with the
