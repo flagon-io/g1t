@@ -184,10 +184,19 @@ another tag's entries; a key is written once; and a repository holds
 100 GiB (10 GiB in a workspace on the Free plan), past which the entries
 restored longest ago go. So:
 
-- **`main` saves; pull requests and tags restore.** CI's Rust, TypeScript
-  and desktop jobs keep their caches on each push to `main`, and the
-  Caches workflow (`.g1t/workflows/caches.yml`) builds and saves what only
-  releases use, when its key is missing. Release workflows only restore.
+- **`main` saves; pull requests, queue states and tags restore.** CI's
+  Rust and TypeScript jobs keep their caches on each push to `main`, and
+  the Caches workflow (`.g1t/workflows/caches.yml`) builds and saves what
+  only releases use, when its key is missing. Release workflows only
+  restore.
+- **A push the merge queue landed only warms the caches.** It is the very
+  commit CI's `merge_group` run passed on, so it is not tested again: the
+  Rust parts compile their tests (`cargo test --no-run`) and save the test
+  build, TypeScript type checks and saves tsc's build info, and the
+  desktop job passes without building. `scripts/deploy/ci-affected.mjs`
+  tells it from a push made directly, which asks the API for a passing
+  `merge_group` run of `ci.yml` on that commit; a direct push, or one the
+  API cannot answer for, runs everything, desktop included.
 - **Rust caches are keyed by the toolchain and the dependencies**, from
   `node scripts/deploy/ci-cache.mjs keys`: `rustc -V`, and a hash of the
   packages `Cargo.lock` takes from crates.io and git. A release bumping a
@@ -197,11 +206,13 @@ restored longest ago go. So:
   saved** (`ci-cache.mjs prune`), to what this build used.
 - **A partial install never saves a whole-install key.** npm's downloads
   and the crates are saved only by jobs that fetch all of them.
-- **A partial test build is never saved.** On a pull request, CI's Rust
-  parts test only the crates it changes and those that depend on them
-  (`scripts/deploy/ci-affected.mjs`); a part that tested some of its
-  crates saves no entry, and one with none to test does nothing. On
-  `main` every part tests, and saves, all of its crates.
+- **A partial test build is never saved.** On a pull request or a merge
+  queue state, CI's Rust parts test only the crates it changes and those
+  that depend on them (`scripts/deploy/ci-affected.mjs`); a part that
+  tested some of its crates saves no entry, and one with none to test does
+  nothing. A queue state saves no test build at all: its branch is gone
+  once it lands. On `main` every part builds, and saves, all of its
+  crates.
 - **One set of paths per entry.** An entry's version is the hash of its
   paths, so every step that names it, in every workflow, names the same
   ones. `crates/actions/tests/repository_workflows.rs` holds all of this.
@@ -232,14 +243,14 @@ restored longest ago go. So:
 | -------------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------- | --------------------------- |
 | npm's downloads            | `npm-full-<os>-<package-lock.json>`                                                     | Caches (`npm`)                                | every npm install           |
 | Crates and their index     | `cargo-crates-<os>-<deps>`                                                              | CI Rust (`cargo fetch` of the whole lockfile) | Deploy, the runner release  |
-| The test builds            | `cargo-test-<os>-<rust>-<part>-<deps>`, one for each of CI Rust's three parts           | CI Rust, when it tests a whole part           | CI Rust on pull requests    |
+| The test builds            | `cargo-test-<os>-<rust>-<part>-<deps>`, one for each of CI Rust's three parts           | CI Rust, when it builds a whole part          | CI Rust on pull requests    |
 | tsc's build info           | `tsc-<os>-<package-lock.json>-<commit>` (every `*.tsbuildinfo`)                         | CI TypeScript on `main`                       | CI TypeScript               |
 | Workers' builds            | `cargo-workers-<os>-<rust>-<group>-<deps>`                                              | Deploy                                        | Deploy                      |
 | The runner's image build   | `runner-musl-<os>-<rust>-<deps>`                                                        | Deploy                                        | Deploy                      |
 | worker-build and its tools | `worker-build-…`, `worker-build-tools-…`                                                | Deploy                                        | Deploy                      |
 | Compiled crates            | sccache's, one per crate                                                                | every Rust job                                | every Rust job              |
-| The desktop app's check    | `desktop-check-<os>-<rust>-<desktop deps>`                                              | CI desktop                                    | CI desktop on pull requests |
-| apt for Tauri              | `apt-tauri-<os>-<scripts/apt-install.sh>`, only where the image lacks Tauri's packages  | CI desktop                                    | the desktop release         |
+| The desktop app's check    | `desktop-check-<os>-<rust>-<desktop deps>`                                              | CI desktop, on a push not from the queue      | CI desktop on pull requests |
+| apt for Tauri              | `apt-tauri-<os>-<scripts/apt-install.sh>`, only where the image lacks Tauri's packages  | CI desktop, on a push not from the queue      | the desktop release         |
 | The runner release         | `runner-release-<os>-<target>-<rust>-<deps>`, zig                                       | Caches (`runner`)                             | the runner release          |
 | The desktop release        | `desktop-release-linux-…`, `desktop-release-windows-…`, `xwin-…`, `apt-tauri-windows-…` | Caches (`desktop-linux`, `desktop-windows`)   | the desktop release         |
 | The CLI release            | `cli-release-<os>-<zigbuild>-<deps>` (`target/zig`, every platform)                     | Caches (`cli`), built whole                   | the CLI release             |

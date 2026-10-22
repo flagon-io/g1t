@@ -1,27 +1,42 @@
-// Which of a CI Rust part's crates a run tests. On a pull request, the
-// workspace crates whose files it changes and every workspace crate that
-// depends on them (from `cargo metadata`, through dependencies of every
-// kind); anywhere else, every one. Most pull requests touch a few crates,
-// and a part compiled and tested all of its own whatever changed.
+// Which of a CI Rust part's crates a run tests. On a pull request or a
+// merge queue state, the workspace crates whose files it changes and every
+// workspace crate that depends on them (from `cargo metadata`, through
+// dependencies of every kind); anywhere else, every one. Most pull
+// requests touch a few crates, and a part compiled and tested all of its
+// own whatever changed.
 //
 //   node scripts/deploy/ci-affected.mjs -p <crate>...
 //   node scripts/deploy/ci-affected.mjs --job desktop|build
+//   node scripts/deploy/ci-affected.mjs --tested
 //
-// With --job it says whether a pull request needs one of CI's other jobs
-// (JOBS), as the output `run` (true or false), on the same terms: not a
-// pull request, or anything failing, runs it.
+// With --job it says whether a run needs one of CI's other jobs (JOBS), as
+// the output `run` (true or false), on the same terms: anything but a pull
+// request or a queue state, or anything failing, runs it, except a push of
+// a commit the merge queue tested (below).
 //
 // It takes the part's `-p` arguments and writes to the step's outputs
 // (GITHUB_OUTPUT):
 //
 //   crates  those of them to test, in the same order: all, some or none
 //   whole   true when that is all of them
+//   tested  true when the merge queue tested this commit (below): the part
+//           compiles its tests, for main's caches, and runs none
 //
 // What a pull request changes is its test merge commit against its first
 // parent, the base branch's tip it was merged into (services/repos
-// test_merge.rs), so the checkout fetches two commits deep. When the commit
-// is not a merge (g1t could not make one and the run builds the head), or
-// anything here fails, every crate is tested.
+// test_merge.rs), so the checkout fetches two commits deep. What a merge
+// queue state changes is its commit against the default branch's tip it
+// was built on (the event's `merge_group.base_sha`), fetched when the
+// entries ahead put it deeper than that. When the commit is not a merge
+// (g1t could not make one and the run builds the head), or anything here
+// fails, every crate is tested.
+//
+// A push to main of a commit a `merge_group` run of CI passed on is one
+// the merge queue landed: it moves main to exactly the commit it tested
+// (services/work queue.rs lands by fast-forward to the tested state). Such
+// a push is `tested` (--tested writes only that), asked of the API with
+// the job's token (GITHUB_TOKEN, which needs `actions: read`). Any other
+// push, or a question that fails, is not, and CI tests everything.
 //
 // A file outside every crate's folder tests the crates that read it
 // (READS), or every crate when the build itself reads it (EVERYTHING), and
@@ -30,7 +45,7 @@
 // crate's source names outside its own folder is in one or the other.
 
 import { spawnSync } from "node:child_process";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { basename, dirname, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -192,19 +207,100 @@ function git(...args) {
   return out.stdout;
 }
 
-/** The files a pull request's test merge commit changes, or why they are not known. */
+/** The run's event payload (GITHUB_EVENT_PATH), or an empty one. */
+function eventPayload() {
+  const path = process.env.GITHUB_EVENT_PATH;
+  return path ? JSON.parse(readFileSync(path, "utf8")) : {};
+}
+
+/** The commit a run's changes are against: a pull request's base tip, or a queue state's. */
+function base() {
+  const event = process.env.GITHUB_EVENT_NAME;
+  if (event === "pull_request") {
+    const parents = git("rev-list", "--parents", "-n", "1", "HEAD").trim().split(" ").slice(1);
+    return parents.length === 2 ? { base: parents[0] } : { why: "HEAD is not the pull request's test merge commit" };
+  }
+  if (event === "merge_group") {
+    const sha = eventPayload().merge_group?.base_sha;
+    if (!sha) return { why: "the merge group names no base commit" };
+    // Behind the entries ahead of this one, past the checkout's depth.
+    if (spawnSync("git", ["cat-file", "-e", `${sha}^{commit}`], { cwd: ROOT }).status !== 0) {
+      git("fetch", "--no-tags", "--quiet", "--depth=1", "origin", sha);
+    }
+    return { base: sha };
+  }
+  return { why: `a ${event ?? "local"} run tests every crate` };
+}
+
+/** The files a pull request's test merge commit, or a merge queue state, changes, or why they are not known. */
 function changedFiles() {
-  if (process.env.GITHUB_EVENT_NAME !== "pull_request") return { why: `a ${process.env.GITHUB_EVENT_NAME ?? "local"} run tests every crate` };
-  const parents = git("rev-list", "--parents", "-n", "1", "HEAD").trim().split(" ").slice(1);
-  if (parents.length !== 2) return { why: "HEAD is not the pull request's test merge commit" };
+  const { base: from, why } = base();
+  if (!from) return { why };
   // Both sides of a rename: the crate it left changed too.
-  const files = git("diff", "--name-only", "--no-renames", "-z", parents[0], "HEAD").split("\0").filter(Boolean);
+  const files = git("diff", "--name-only", "--no-renames", "-z", from, "HEAD").split("\0").filter(Boolean);
   return { files };
 }
 
+/** The workflow whose `merge_group` runs vouch for a push. */
+export const WORKFLOW = "ci.yml";
+
+/**
+ * Whether `runs` (the API's answer for CI's runs on `sha`) hold a
+ * `merge_group` run that passed on that very commit. Each is checked, not
+ * only filtered by the query: a filter the API ignored never vouches.
+ */
+export function queueTested(runs, sha) {
+  const list = Array.isArray(runs) ? runs : (runs?.workflow_runs ?? []);
+  return list.some(
+    (run) =>
+      run.event === "merge_group" && (run.sha ?? run.head_sha) === sha && run.conclusion === "success" && (!run.path || run.path.split("/").pop() === WORKFLOW),
+  );
+}
+
+/**
+ * Whether this run is a push of a commit the merge queue tested (see the
+ * top of this file), and why. Never throws: a failure says no.
+ */
+async function tested() {
+  const { GITHUB_EVENT_NAME: event, GITHUB_SHA: sha, GITHUB_API_URL: api, GITHUB_REPOSITORY: repo, GITHUB_TOKEN: token } = process.env;
+  if (event !== "push") return { tested: false, why: `a ${event ?? "local"} run is not one the merge queue landed` };
+  try {
+    if (!sha || !api || !repo) throw new Error("GITHUB_SHA, GITHUB_API_URL and GITHUB_REPOSITORY are needed");
+    const query = new URLSearchParams({ event: "merge_group", head_sha: sha, status: "success", per_page: "10" });
+    const response = await fetch(`${api}/repos/${repo}/actions/workflows/${WORKFLOW}/runs?${query}`, {
+      headers: { accept: "application/vnd.github+json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) throw new Error(`${WORKFLOW}'s runs: ${response.status} ${(await response.text()).slice(0, 200)}`);
+    const yes = queueTested(await response.json(), sha);
+    return {
+      tested: yes,
+      why: yes
+        ? `the merge queue tested ${sha.slice(0, 12)}, so its tests are not run again`
+        : `no merge_group run passed on ${sha.slice(0, 12)}: a push that did not come through the merge queue tests everything`,
+    };
+  } catch (error) {
+    console.log(`::warning title=Merge queue::${error.message.split("\n")[0]}; this push tests everything`);
+    return { tested: false, why: "whether the merge queue tested it is not known" };
+  }
+}
+
+/** `--tested`: writes `tested`, whether the merge queue tested this push's commit. */
+async function mainTested() {
+  const { tested: yes, why } = await tested();
+  console.log(why);
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `tested=${yes}\n`);
+}
+
 /** `--job <name>`: writes `run`, whether this run needs the job. */
-function mainJob(job) {
+async function mainJob(job) {
   if (!JOBS[job]) throw new Error(`no job ${job}: one of ${Object.keys(JOBS).join(", ")}`);
+  const queue = await tested();
+  if (queue.tested) {
+    console.log(`${queue.why}; the ${job} job passes without running`);
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, "run=false\n");
+    return;
+  }
   let run = true;
   try {
     const { files, why } = changedFiles();
@@ -221,10 +317,15 @@ function mainJob(job) {
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `run=${run}\n`);
 }
 
-function main(args) {
+async function main(args) {
   if (args[0] === "--job") return mainJob(args[1]);
+  if (args[0] === "--tested") return mainTested();
   const part = partCrates(args);
   let test = part;
+  // A push: every crate, compiled, and tested unless the queue did.
+  const queue = await tested();
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `tested=${queue.tested}\n`);
+  if (queue.tested) console.log(queue.why);
   try {
     const { files, why } = changedFiles();
     if (files) {
@@ -243,8 +344,10 @@ function main(args) {
     test = part;
   }
   const outputs = { crates: test.map((name) => `-p ${name}`).join(" "), whole: String(test.length === part.length) };
-  console.log(`This part tests ${test.length} of its ${part.length} crates${test.length ? `: ${test.join(", ")}` : ""}`);
+  console.log(
+    `This part ${queue.tested ? "compiles the tests of" : "tests"} ${test.length} of its ${part.length} crates${test.length ? `: ${test.join(", ")}` : ""}`,
+  );
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `crates=${outputs.crates}\nwhole=${outputs.whole}\n`);
 }
 
-if (process.argv[1] && basename(process.argv[1]) === "ci-affected.mjs") main(process.argv.slice(2));
+if (process.argv[1] && basename(process.argv[1]) === "ci-affected.mjs") await main(process.argv.slice(2));

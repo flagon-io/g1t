@@ -1,7 +1,10 @@
-# Tests every pull request into main, so main can always be deployed. The
-# "Default branch" ruleset requires this workflow ("CI") to pass before a
-# pull request merges; people may still push to main directly, agents
-# may not. Deploy (deploy.yml) ships what lands on main.
+# Tests every pull request into main, and then, in the merge queue, each
+# one together with those ahead of it, so main can always be deployed.
+# The "Main stays deployable" ruleset requires this workflow ("CI") to pass
+# before a pull request merges, and the merge queue lands it only once CI
+# passed on its queue state (a merge_group run; "CI / merge_group" meets the
+# required "CI" too). People may still push to main directly, agents may
+# not. Deploy (deploy.yml) ships what lands on main.
 #
 #   rust        every crate's tests, natively, in three jobs at once
 #   typescript  type checks and tests of the apps and TS services, the
@@ -9,14 +12,19 @@
 #   build       the site, sudo and the docs build as they deploy
 #   desktop     the desktop app's checks and tests, and the release scripts'
 #
-# On a pull request, `rust`, `build` and `desktop` run only for what it
-# changes (scripts/deploy/ci-affected.mjs) and pass without running
-# otherwise; `typescript` always runs.
+# On a pull request, and on a merge queue state, `rust`, `build` and
+# `desktop` run only for what it changes (scripts/deploy/ci-affected.mjs:
+# a pull request against its base, a queue state against the main it was
+# built on) and pass without running otherwise; `typescript` always runs.
 #
-# On a push to main `rust`, `typescript` and `desktop` run, keeping main's
-# caches current:
-# a pull request's run restores from main's cache, never from another pull
-# request's, so without them each pull request would start from nothing.
+# A push to main the merge queue landed is the very commit its merge_group
+# run passed on, so it is not tested again: `rust` only compiles its
+# tests and `typescript` only type checks, keeping main's caches current,
+# and `desktop` passes without running. A pull request's run restores
+# from main's cache, never from another pull request's, so without them
+# each pull request would start from nothing. Any other push to main (one
+# made directly, or one the API could not vouch for) runs `rust`,
+# `typescript` and `desktop` in full (ci-affected.mjs says which it is).
 # What each cache holds, its key and which job saves it: CONTRIBUTING.md,
 # "How g1t's own CI caches". The Caches workflow (caches.yml) keeps the
 # ones only releases build.
@@ -25,14 +33,20 @@ name: CI
 on:
   pull_request:
     branches: [main]
+  merge_group:
   push:
     branches: [main]
   workflow_dispatch:
 
-# Its token only reads: it checks the code out and nothing more.
+# Its token only reads: it checks the code out, and asks whether a push's
+# commit passed in the merge queue (ci-affected.mjs).
 permissions:
   contents: read
+  actions: read
 
+# Each merge queue state is a branch of its own (g1t-queue/<entry>-<attempt>),
+# so a run on one never cancels another's; the queue starts a state again
+# when it needs to.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -48,9 +62,10 @@ jobs:
   # the libraries, but a test binary is linked and never cached), and the
   # suites then ran one after another. The parts are about even in Rust;
   # repository_workflows.rs checks every workspace crate is in exactly one.
-  # On a pull request a part tests only its crates the change reaches
-  # (scripts/deploy/ci-affected.mjs), and a part it does not reach passes
-  # without compiling; on main every part tests all of its crates.
+  # On a pull request or a queue state a part tests only its crates the
+  # change reaches (scripts/deploy/ci-affected.mjs), and a part it does not
+  # reach passes without compiling; on main every part compiles all of its
+  # crates' tests, and runs them unless the merge queue already did.
   rust:
     name: Rust (${{ matrix.part }})
     runs-on: ubuntu-latest
@@ -79,15 +94,20 @@ jobs:
     steps:
       # Two commits deep: a pull request's run builds its test merge commit,
       # and what it changes is that commit against its first parent, the
-      # base branch's tip.
+      # base branch's tip. A queue state is compared with the main it was
+      # built on, which the script fetches when it is deeper.
       - uses: actions/checkout@v5
         with:
           fetch-depth: 2
-      # The crates this part tests: on a pull request, those whose files it
-      # changes and those that depend on them, else every one. With none,
-      # every step after this one is skipped and the part passes.
+      # The crates this part tests: on a pull request or a queue state,
+      # those whose files it changes and those that depend on them, else
+      # every one. With none, every step after this one is skipped and the
+      # part passes. `tested`: a push the merge queue landed, whose tests
+      # are compiled and not run.
       - name: What this part tests
         id: affected
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/deploy/ci-affected.mjs ${{ matrix.crates }}
       # rust: the toolchain; cargo: Cargo.lock's crates.io and git packages,
       # not the workspace's own versions (scripts/deploy/ci-cache.mjs).
@@ -136,21 +156,27 @@ jobs:
         if: ${{ steps.affected.outputs.crates }}
         run: bash scripts/sccache.sh install
       - name: Tests
-        if: ${{ steps.affected.outputs.crates }}
+        if: ${{ steps.affected.outputs.crates && steps.affected.outputs.tested != 'true' }}
         run: cargo test ${{ steps.affected.outputs.crates }} --locked --quiet
+      # The merge queue ran these tests on this very commit: built, not run,
+      # so the test build below and sccache's entries are main's again.
+      - name: Tests, compiled only
+        if: ${{ steps.affected.outputs.crates && steps.affected.outputs.tested == 'true' }}
+        run: cargo test ${{ steps.affected.outputs.crates }} --locked --quiet --no-run
       # A restored target keeps the old versions of whatever changed beside
       # the new ones; only what this build used goes into the new entry.
-      # And only a run that tested all of the part's crates saves one: a run
+      # And only a run that built all of the part's crates saves one: a run
       # that tested some built only those, and saved under the key a whole
       # build is found by, its entry would be a hit for the runs after it,
       # which would compile the rest every time and never save a whole one.
-      # main's runs test everything, and keep the entries pull requests
-      # start from.
+      # main's runs build everything, and keep the entries pull requests
+      # start from. A queue state's branch is gone once it lands, and no
+      # run would read what it saved.
       - name: Only this build's files are saved
-        if: ${{ steps.test-build.outputs.cache-hit != 'true' && steps.affected.outputs.whole == 'true' }}
+        if: ${{ steps.test-build.outputs.cache-hit != 'true' && steps.affected.outputs.whole == 'true' && github.event_name != 'merge_group' }}
         run: node scripts/deploy/ci-cache.mjs prune target/debug -- test ${{ matrix.crates }} --locked --no-run
       - name: Save the test build
-        if: ${{ steps.test-build.outputs.cache-hit != 'true' && steps.affected.outputs.whole == 'true' }}
+        if: ${{ steps.test-build.outputs.cache-hit != 'true' && steps.affected.outputs.whole == 'true' && github.event_name != 'merge_group' }}
         uses: actions/cache/save@v4
         with:
           path: |
@@ -167,6 +193,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+      # A push the merge queue landed only type checks, for tsc's cache:
+      # its tests passed in the queue on this very commit.
+      - name: Whether the merge queue tested this commit
+        id: queue
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/deploy/ci-affected.mjs --tested
       # npm's downloads, kept between runs: an install reads them first
       # and asks the registry only for what changed, so a dropped
       # connection to it rarely stops the job.
@@ -211,20 +244,27 @@ jobs:
             packages/*/*.tsbuildinfo
           key: tsc-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
       - name: Tests
+        if: ${{ steps.queue.outputs.tested != 'true' }}
         run: npm test --workspaces --if-present
       - name: The deploy tool's tests
+        if: ${{ steps.queue.outputs.tested != 'true' }}
         run: npm run test:deploy
       - name: The conformance report's tests
+        if: ${{ steps.queue.outputs.tested != 'true' }}
         run: npm run test:conformance
       - name: The ops scripts' tests
+        if: ${{ steps.queue.outputs.tested != 'true' }}
         run: npm run test:ops
       - name: The manifest matches every wrangler.jsonc
+        if: ${{ steps.queue.outputs.tested != 'true' }}
         run: node scripts/deploy.mjs manifest --check
       - name: The Claude Code plugin's tests
+        if: ${{ steps.queue.outputs.tested != 'true' }}
         run: node --test plugins/claude-code/test/hooks.test.mjs
       # What plugins-release.yml publishes to flagon-io/g1t-plugins: the
       # manifests agree, and the tree is only the plugin.
       - name: The plugin's published marketplace
+        if: ${{ steps.queue.outputs.tested != 'true' }}
         run: |
           node scripts/plugins-release.mjs check
           node --test scripts/plugins-release.test.mjs
@@ -235,13 +275,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      # Two commits deep, as for the Rust parts: what the pull request
-      # changes. A change of only Rust source, which none of the three
-      # reads, passes without building (ci-affected.mjs JOBS).
+      # Two commits deep, as for the Rust parts: what the pull request or
+      # the queue state changes. A change of only Rust source, which none of
+      # the three reads, passes without building (ci-affected.mjs JOBS).
       - uses: actions/checkout@v5
         with:
           fetch-depth: 2
-      - name: Whether this pull request needs it
+      - name: Whether this change needs it
         id: affected
         run: node scripts/deploy/ci-affected.mjs --job build
       # npm's downloads, kept between runs: an install reads them first
@@ -268,14 +308,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      # A pull request that changes none of the app's files, its release
-      # scripts or the build's own (ci-affected.mjs DESKTOP) passes without
-      # building; main's runs build it, keeping its cache.
+      # A pull request or queue state that changes none of the app's files,
+      # its release scripts or the build's own (ci-affected.mjs DESKTOP)
+      # passes without building, as does a push the merge queue landed;
+      # a push made directly builds it, keeping its cache.
       - uses: actions/checkout@v5
         with:
           fetch-depth: 2
-      - name: Whether this pull request needs it
+      - name: Whether this change needs it
         id: affected
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/deploy/ci-affected.mjs --job desktop
       - name: Cache keys
         id: keys
@@ -290,8 +333,9 @@ jobs:
         if: ${{ steps.affected.outputs.run == 'true' }}
         run: bash scripts/apt-install.sh tauri --check
       # apt's lists and downloads (scripts/apt-install.sh): 110 s of every
-      # run before, mostly fetching 335 MB. Saved here, on main; the desktop
-      # release's Linux build restores the same entry.
+      # run before, mostly fetching 335 MB. Saved here, on a push to main
+      # that builds the app; the desktop release's Linux build restores the
+      # same entry.
       - name: Cache apt's downloads
         if: ${{ steps.affected.outputs.run == 'true' && steps.tauri-apt.outputs.installed != 'true' }}
         uses: actions/cache@v4
