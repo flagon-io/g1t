@@ -326,6 +326,14 @@ export function npmClosure(graph, names) {
  *              the workspaces checked and what they depend on
  *   whole      every workspace is checked and tested
  */
+/**
+ * The TypeScript services conformance/erasure.test.mjs bundles and runs
+ * (their code, with `@g1t/contracts` and `yjs`): installed whenever the
+ * conformance check runs, or it cannot resolve them (#391). A test checks
+ * this names every service a conformance test reads the source of.
+ */
+export const CONFORMANCE_WORKSPACES = ["@g1t/artifacts", "@g1t/chat", "@g1t/notify"];
+
 export function npmPlan(graph, { reached, checks: run, tested = false }) {
   const all = reached === null || tested;
   const names = all ? graph.map((w) => w.name) : reached;
@@ -334,11 +342,14 @@ export function npmPlan(graph, { reached, checks: run, tested = false }) {
   const test = tested ? [] : has("test");
   const checks = tested ? [] : run;
   const workspaces = [...new Set([...typecheck, ...test])];
+  // Conformance runs Miniflare and esbuild, the root's (wrangler's), and
+  // bundles the TypeScript services it tests, which need their packages.
+  const conformance = checks.includes("conformance") ? CONFORMANCE_WORKSPACES.filter((name) => graph.some((w) => w.name === name)) : [];
+  const installed = [...new Set([...workspaces, ...conformance])];
   let install;
   if (all) install = "all";
-  // Conformance runs Miniflare and esbuild, the root's (wrangler's).
-  else if (!workspaces.length) install = checks.includes("conformance") ? "--workspaces=false" : "none";
-  else install = ["--include-workspace-root", ...npmClosure(graph, workspaces).flatMap((name) => ["-w", name])].join(" ");
+  else if (!installed.length) install = checks.includes("conformance") ? "--workspaces=false" : "none";
+  else install = ["--include-workspace-root", ...npmClosure(graph, installed).flatMap((name) => ["-w", name])].join(" ");
   return { typecheck, test, checks, install, whole: all };
 }
 
