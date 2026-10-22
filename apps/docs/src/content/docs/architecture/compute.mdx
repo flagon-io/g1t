@@ -86,13 +86,18 @@ private repository (`GITHUB_HOSTED_LABELS` in
 `crates/contracts/src/actions.rs`, a row a label with its size and
 machine for each). The actions service takes the visibility from the
 run's event (`repository.private`; private when it does not say) and
-names the machine the job starts on, which billing charges it as. Arm
+names the machine the job starts on. The job is charged as that
+machine's `billed_as`: a public repository's 4-core machine is charged
+as the standard one, as GitHub charges a public repository nothing for
+its larger runner, so the runner reserves, and billing prices, the
+standard machine's minutes. Arm
 Ubuntu labels run on the x64 machine of the same size. A job naming a
 Windows or macOS label, and not `self-hosted`, fails when it is queued:
 hosted runners are Linux only. `g1t-2core` and `g1t-4core`, the labels
 g1t had before, are unknown labels and get the standard machine; their
 classes were deleted (migration `v6`), and the 4-core machine came back
-in a class of its own (`v7`), billed under its old key (`4-core`). The
+in a class of its own (`v7`) under its old key (`4-core`), whose rate
+still prices the minutes charged on it before. The
 contracts' instance table (`INSTANCE_TYPES`) and billing's price keeper
 say the same sizes, and a test holds them to `wrangler.jsonc`.
 

@@ -336,12 +336,16 @@ g1t's hosted machines are one catalogue: `INSTANCE_TYPES` in
 `crates/contracts/src/actions.rs`, mirrored row for row in
 `packages/contracts/src/instances.ts`. Each row is the machine's name in
 a job's start and billing record (`label`: `standard`, `ubuntu-slim`,
-`g1t-4core`), the machine it bills as (`machine`, such as `2-core`), the runner's Durable
+`g1t-4core`), the machine it is (`machine`, such as `2-core`), the runner's Durable
 Object class that runs it (`class` / `sandboxClass`), the Cloudflare
 Containers instance type behind that class (`container`), its vCPUs,
-memory and disk, and its price a minute (`micros_per_minute`). The runner
-starts a job in its label's class, billing charges its minutes at its
-rate and reports them by machine, and the docs' tables follow it.
+memory and disk, its price a minute (`micros_per_minute`), and the
+machine a job on it is charged as (`billed_as`: its own `machine`, or a
+smaller one's, as for the 4-core machine a public repository's Ubuntu
+labels get at the standard machine's price). The runner starts a job in
+its label's class, billing charges its minutes at its `billed_as`
+machine's rate and reports them by that machine, and the docs' tables
+follow it.
 
 `runs-on` labels are GitHub's hosted-runner labels: `GITHUB_HOSTED_LABELS`
 (in the same file, also mirrored) lists each with GitHub's size in a

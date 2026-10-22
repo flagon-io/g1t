@@ -38,15 +38,22 @@ export type InstanceType = {
    * charged its minutes, rounded up, at this rate (`runnerMinutes`).
    */
   microsPerMinute: number;
+  /**
+   * The machine (`machine` key) a job on it is charged as: its own, or a
+   * smaller one's, where g1t gives a larger machine at the smaller one's
+   * price (a public repository's Ubuntu labels, as on GitHub).
+   */
+  billedAs: string;
 };
 
 /** Every machine a job can run on, the default first. One row a line, as the Rust table's test reads them. */
+// prettier-ignore
 export const INSTANCE_TYPES: readonly InstanceType[] = [
-  { label: "standard", machine: "2-core", sandboxClass: "AttemptSandbox", container: "standard-3", vcpu: 2, memoryGib: 8, diskGb: 16, microsPerMinute: 4000 },
+  { label: "standard", machine: "2-core", sandboxClass: "AttemptSandbox", container: "standard-3", vcpu: 2, memoryGib: 8, diskGb: 16, microsPerMinute: 4000, billedAs: "2-core" },
   // GitHub's `ubuntu-slim`; its rate is worked out in crates/contracts/src/actions.rs.
-  { label: "ubuntu-slim", machine: "1-core", sandboxClass: "SandboxSlim", container: "standard-2", vcpu: 1, memoryGib: 6, diskGb: 12, microsPerMinute: 3000 },
-  // GitHub's Ubuntu labels in a public repository; its rate is worked out there too.
-  { label: "g1t-4core", machine: "4-core", sandboxClass: "SandboxLarge", container: "standard-4", vcpu: 4, memoryGib: 12, diskGb: 20, microsPerMinute: 7000 },
+  { label: "ubuntu-slim", machine: "1-core", sandboxClass: "SandboxSlim", container: "standard-2", vcpu: 1, memoryGib: 6, diskGb: 12, microsPerMinute: 3000, billedAs: "1-core" },
+  // GitHub's Ubuntu labels in a public repository, charged as the standard machine; its rate prices past minutes.
+  { label: "g1t-4core", machine: "4-core", sandboxClass: "SandboxLarge", container: "standard-4", vcpu: 4, memoryGib: 12, diskGb: 20, microsPerMinute: 7000, billedAs: "2-core" },
 ];
 
 /** Machines no job runs on any more, kept so minutes billed on them still read and price under their key. Neither label nor class is deployed. None today. */
@@ -106,9 +113,17 @@ export function instanceNamed(label: string | null | undefined): InstanceType {
   return INSTANCE_TYPES.find((instance) => instance.label === wanted) ?? STANDARD_INSTANCE;
 }
 
-/** The machines a job can run on, once each, in the catalogue's order: the first row of each. */
+/** The machines jobs are charged as today, once each, in the catalogue's order: the first row of each, of those billed as themselves. */
 export function machines(): InstanceType[] {
-  return INSTANCE_TYPES.filter((instance, at) => INSTANCE_TYPES.findIndex((other) => other.machine === instance.machine) === at);
+  return INSTANCE_TYPES.filter(
+    (instance, at) => instance.billedAs === instance.machine && INSTANCE_TYPES.findIndex((other) => other.machine === instance.machine) === at,
+  );
+}
+
+/** The machine a job on `instance` is charged as (`billedAs`): itself, or that machine's first row. */
+export function chargedAs(instance: InstanceType): InstanceType {
+  if (instance.billedAs === instance.machine) return instance;
+  return INSTANCE_TYPES.find((other) => other.machine === instance.billedAs) ?? STANDARD_INSTANCE;
 }
 
 /** A machine by its key (`2-core`), retired ones included; null when there is none. */

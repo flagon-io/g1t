@@ -27,6 +27,7 @@ import {
   workClient,
   type InstanceType,
   STANDARD_INSTANCE,
+  chargedAs,
   instanceNamed,
   priceScale,
   runnerMinutes,
@@ -1115,9 +1116,13 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
     // runs, smaller, rather than failing.
     const asked = instanceNamed(args.instance);
     const instance = this.jobNamespace(asked) ? asked : STANDARD_INSTANCE;
+    // What it is charged as (`billedAs`): its own machine, or the standard
+    // one for a public repository's 4-core machine, which GitHub gives at
+    // no extra charge. Its reservation, minutes and rate are that machine's.
+    const billed = chargedAs(instance);
     // Workflow jobs run on g1t's machines: only as the workspace's plan
     // allows, or on a public repository, from the open-source pool.
-    const admitted = await this.admitSandbox("workflow", args.repo, args.timeoutMinutes, instance);
+    const admitted = await this.admitSandbox("workflow", args.repo, args.timeoutMinutes, billed);
     if (!admitted.ok) return fail("payment_required", `Not started: ${admitted.message}`);
     const namespace = this.jobNamespace(instance);
     if (!namespace) {
@@ -1125,7 +1130,9 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
       return fail("invalid", `Not started: ${instance.label} machines are not available here.`);
     }
     const sandbox = namespace.get(namespace.idFromName(`actions:${args.job}`));
-    const on = instance === STANDARD_INSTANCE ? "" : ` on ${instance.label}`;
+    // The statement line says what it ran on; billing adds the minutes on
+    // the machine it is charged as.
+    const on = instance === STANDARD_INSTANCE ? "" : billed === instance ? ` on ${instance.label}` : ` on the ${instance.machine} machine`;
     try {
       await sandbox.run({
         kind: "actions",
@@ -1142,7 +1149,7 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
         },
         meter: {
           ...meter(args.repo, `A workflow job in ${args.repo.namespace}/${args.repo.name}${on}`),
-          instance: instance === STANDARD_INSTANCE ? null : instance.label,
+          instance: billed === STANDARD_INSTANCE ? null : billed.label,
         },
         envVars: {
           MODE: "actions",

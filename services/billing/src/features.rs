@@ -126,7 +126,8 @@ pub(crate) fn per_units(each: f64, units: f64) -> String {
 }
 
 /// Runner minutes' flat rates, one per machine in the catalogue's order:
-/// "$0.004 a minute on 2-core, $0.003 on 1-core, $0.007 on 4-core".
+/// "$0.004 a minute on 2-core, $0.003 on 1-core". A machine charged as
+/// another (a public repository's 4-core one) is not listed.
 pub(crate) fn runner_rates() -> String {
     g1t_contracts::actions::machines()
         .iter()
@@ -905,7 +906,7 @@ mod tests {
 
     #[test]
     fn runner_minutes_are_quoted_at_their_flat_rate_per_machine() {
-        assert_eq!(runner_rates(), "$0.004 a minute on 2-core, $0.003 on 1-core, $0.007 on 4-core");
+        assert_eq!(runner_rates(), "$0.004 a minute on 2-core, $0.003 on 1-core");
     }
 
     #[test]

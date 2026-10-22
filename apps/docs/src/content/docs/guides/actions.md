@@ -569,8 +569,8 @@ For public repositories:
 | GitHub label                                                            | On GitHub             | On g1t                             | A minute |
 | ----------------------------------------------------------------------- | --------------------- | ---------------------------------- | -------- |
 | `ubuntu-slim`                                                           | 1 vCPU, 5 GB, 14 GB   | 1 vCPU, 6 GiB, 12 GB               | $0.003   |
-| `ubuntu-latest`, `ubuntu-24.04`, `ubuntu-22.04`, `ubuntu-26.04`         | 4 vCPUs, 16 GB, 14 GB | 4 vCPUs, 12 GiB, 20 GB             | $0.007   |
-| `ubuntu-24.04-arm`, `ubuntu-22.04-arm`, `ubuntu-26.04-arm`              | 4 vCPUs (Arm), 16 GB  | 4 vCPUs, 12 GiB, 20 GB, on x64     | $0.007   |
+| `ubuntu-latest`, `ubuntu-24.04`, `ubuntu-22.04`, `ubuntu-26.04`         | 4 vCPUs, 16 GB, 14 GB | 4 vCPUs, 12 GiB, 20 GB             | $0.004   |
+| `ubuntu-24.04-arm`, `ubuntu-22.04-arm`, `ubuntu-26.04-arm`              | 4 vCPUs (Arm), 16 GB  | 4 vCPUs, 12 GiB, 20 GB, on x64     | $0.004   |
 | `windows-latest`, `windows-2025`, `windows-2025-vs2026`, `windows-2022` | 4 vCPUs, 16 GB        | None: a self-hosted Windows runner | Free     |
 | `windows-11-arm`, `windows-11-vs2026-arm`                               | 4 vCPUs (Arm), 16 GB  | None: a self-hosted Windows runner | Free     |
 | `macos-15-intel`, `macos-26-intel`                                      | 4 vCPUs, 14 GB        | None: a self-hosted macOS runner   | Free     |
@@ -589,7 +589,9 @@ For private repositories:
 | `macos-latest`, `macos-14`, `macos-15`, `macos-26`, `xcode-27`          | 3 vCPUs (M1), 7 GB   | None: a self-hosted macOS runner   | Free     |
 
 GitHub's machine for public repositories has 16 GB of memory; g1t's has
-12 GiB, the most its machines have. A repository's visibility is taken
+12 GiB, the most its machines have. As on GitHub, the larger machine costs
+a public repository nothing more: its jobs are charged at the 2-vCPU
+machine's rate. A repository's visibility is taken
 from the event that started the run.
 
 Any other label, or none, gets the 2-vCPU machine in any repository.

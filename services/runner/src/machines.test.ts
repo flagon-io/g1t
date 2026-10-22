@@ -7,6 +7,7 @@ import {
   INSTANCE_TYPES,
   RETIRED_MACHINES,
   STANDARD_INSTANCE,
+  chargedAs,
   instanceNamed,
   machineNamed,
   machineSize,
@@ -110,9 +111,14 @@ test("the machines a job starts on are the catalogue's, and a job is charged its
     [
       ["2-core", 4000, "2 vCPU, 8 GiB, 16 GB"],
       ["1-core", 3000, "1 vCPU, 6 GiB, 12 GB"],
-      ["4-core", 7000, "4 vCPU, 12 GiB, 20 GB"],
     ],
   );
+  // The 4-core machine runs a public repository's Ubuntu jobs, charged as
+  // the standard machine; its own rate still prices minutes billed on it.
+  assert.equal(chargedAs(instanceNamed("g1t-4core")), STANDARD_INSTANCE);
+  assert.equal(chargedAs(instanceNamed("ubuntu-slim")).machine, "1-core");
+  assert.equal(chargedAs(STANDARD_INSTANCE), STANDARD_INSTANCE);
+  assert.equal(machineNamed("4-core")?.microsPerMinute, 7000);
   assert.equal(machineNamed("4-core")?.label, "g1t-4core");
   assert.equal(machineNamed("8-core"), null);
   assert.equal(priceScale(instanceNamed("ubuntu-slim")), 0.75);

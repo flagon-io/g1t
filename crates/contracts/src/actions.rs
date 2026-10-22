@@ -1151,9 +1151,25 @@ pub struct InstanceType {
     /// and never under its cost with every vCPU busy (Cloudflare bills
     /// memory, disk and the Durable Object for every second, CPU as used).
     pub micros_per_minute: i64,
+    /// The machine (`machine` key) a job on it is charged as: its own,
+    /// or a smaller one's, where g1t gives a larger machine at the smaller
+    /// one's price, as GitHub gives a public repository's Ubuntu labels
+    /// 4 vCPU at no charge. A job's minutes, rate and statement line are
+    /// that machine's ([`InstanceType::charged_as`]).
+    pub billed_as: &'static str,
 }
 
 impl InstanceType {
+    /// The machine a job on it is charged as (`billed_as`): itself, or
+    /// that machine's first row.
+    pub fn charged_as(&self) -> InstanceType {
+        if self.billed_as == self.machine {
+            *self
+        } else {
+            machine_named(self.billed_as).unwrap_or(STANDARD_INSTANCE)
+        }
+    }
+
     /// Its price as a multiple of the standard machine's.
     pub fn price_scale(&self) -> f64 {
         self.micros_per_minute as f64 / STANDARD_INSTANCE.micros_per_minute as f64
@@ -1181,6 +1197,7 @@ pub const STANDARD_INSTANCE: InstanceType = InstanceType {
     memory_gib: 8.0,
     disk_gb: 16.0,
     micros_per_minute: 4_000,
+    billed_as: "2-core",
 };
 
 /// Every machine a workflow job can run on, the default first.
@@ -1203,6 +1220,7 @@ pub const INSTANCE_TYPES: [InstanceType; 3] = [
         memory_gib: 6.0,
         disk_gb: 12.0,
         micros_per_minute: 3_000,
+        billed_as: "1-core",
     },
     // GitHub's Ubuntu labels in a public repository (4 vCPU, 16 GB, 14 GB),
     // on standard-4, the largest Containers instance type. Its name and
@@ -1213,7 +1231,11 @@ pub const INSTANCE_TYPES: [InstanceType; 3] = [
     // 0.125 x 12.5 = 32.9625 a second. Half its vCPUs busy,
     // (32.9625 + 40) x 60 = 4,377.75 a minute, plus 20% = 5,253.3, rounded
     // up = 6,000. All four busy, (32.9625 + 80) x 60 = 6,777.75, rounded up
-    // = 7,000, the higher: $0.007 a minute.
+    // = 7,000, the higher: $0.007 a minute. Nothing is charged at it today:
+    // GitHub gives a public repository this machine at no extra charge, so
+    // its jobs are charged as the standard machine. The rate prices the
+    // minutes billed on it before, and a larger runner asked for by name
+    // (#376) would be a row of its own with its own rate.
     InstanceType {
         label: "g1t-4core",
         machine: "4-core",
@@ -1223,6 +1245,7 @@ pub const INSTANCE_TYPES: [InstanceType; 3] = [
         memory_gib: 12.0,
         disk_gb: 20.0,
         micros_per_minute: 7_000,
+        billed_as: "2-core",
     },
 ];
 
@@ -1232,9 +1255,9 @@ pub const INSTANCE_TYPES: [InstanceType; 3] = [
 /// None today: the 4-core machine, retired once, runs again.
 pub const RETIRED_MACHINES: [InstanceType; 0] = [];
 
-/// The machines a job can run on, once each, in the catalogue's order: the
-/// first row of each.
-pub fn machines() -> Vec<InstanceType> {
+/// Every machine a job can run on, once each, in the catalogue's order:
+/// the first row of each.
+fn running_machines() -> Vec<InstanceType> {
     let mut seen: Vec<InstanceType> = Vec::new();
     for instance in INSTANCE_TYPES {
         if !seen.iter().any(|m| m.machine == instance.machine) {
@@ -1244,10 +1267,25 @@ pub fn machines() -> Vec<InstanceType> {
     seen
 }
 
-/// Every machine minutes were ever billed on: [`machines`], then the
+/// The machines jobs are charged as today, once each, in the catalogue's
+/// order: those billed as themselves. Prices and rates list these.
+pub fn machines() -> Vec<InstanceType> {
+    running_machines()
+        .into_iter()
+        .filter(|m| m.billed_as == m.machine)
+        .collect()
+}
+
+/// Every machine minutes may be reported under: [`machines`], then those
+/// charged as another (billed under their own key before), then the
 /// retired ones. Usage reports list these.
 pub fn billed_machines() -> Vec<InstanceType> {
     let mut all = machines();
+    all.extend(
+        running_machines()
+            .into_iter()
+            .filter(|m| m.billed_as != m.machine),
+    );
     all.extend(RETIRED_MACHINES);
     all
 }
@@ -1293,15 +1331,18 @@ pub fn instance_named(label: &str) -> Option<InstanceType> {
 }
 
 /// The machine a job that ran with `label` (as the runner reports it) is
-/// billed for: its catalogue row, or a retired machine's, so a job started
-/// on one before it was retired is charged for what it ran on.
+/// billed for: what its catalogue row is charged as
+/// ([`InstanceType::charged_as`]), or a retired machine's row, so a job
+/// started on one before it was retired is charged for what it ran on.
 pub fn billed_instance(label: &str) -> Option<InstanceType> {
-    instance_named(label).or_else(|| {
-        RETIRED_MACHINES
-            .iter()
-            .find(|instance| instance.label.eq_ignore_ascii_case(label.trim()))
-            .copied()
-    })
+    instance_named(label)
+        .map(|instance| instance.charged_as())
+        .or_else(|| {
+            RETIRED_MACHINES
+                .iter()
+                .find(|instance| instance.label.eq_ignore_ascii_case(label.trim()))
+                .copied()
+        })
 }
 
 /// GitHub's runner for a label in a repository of one visibility, and the
@@ -1995,10 +2036,15 @@ mod instance_tests {
         assert_eq!(instance_named("g1t-2core"), None);
         assert_eq!(instance_named("standard"), Some(STANDARD_INSTANCE));
         assert_eq!(instance_named("g1t-64core"), None);
-        // What the runner reports a job ran on is what it is billed for.
+        // A job is billed as what its machine is charged as: a public
+        // repository's 4-core machine as the standard one.
         assert_eq!(
             billed_instance("g1t-4core").map(|i| i.machine),
-            Some("4-core")
+            Some("2-core")
+        );
+        assert_eq!(
+            instance_named("g1t-4core").map(|i| i.charged_as()),
+            Some(STANDARD_INSTANCE)
         );
         assert_eq!(
             billed_instance("ubuntu-slim").map(|i| i.machine),
@@ -2161,9 +2207,11 @@ mod instance_tests {
                 retired.machine
             );
         }
+        // Jobs are charged as 2-core or 1-core today; 4-core minutes are
+        // still reported (and priced) under their own key.
         assert_eq!(
             machines().iter().map(|m| m.machine).collect::<Vec<_>>(),
-            ["2-core", "1-core", "4-core"]
+            ["2-core", "1-core"]
         );
         assert_eq!(
             billed_machines()
@@ -2175,6 +2223,17 @@ mod instance_tests {
         assert_eq!(STANDARD_INSTANCE.size(), "2 vCPU, 8 GiB, 16 GB");
         assert!((INSTANCE_TYPES[1].price_scale() - 0.75).abs() < 1e-12);
         assert!((INSTANCE_TYPES[2].price_scale() - 1.75).abs() < 1e-12);
+        // A machine is charged as one charged as itself, never dearer.
+        for instance in INSTANCE_TYPES {
+            let charged = instance.charged_as();
+            assert_eq!(charged.machine, instance.billed_as, "{}", instance.label);
+            assert_eq!(charged.billed_as, charged.machine, "{}", instance.label);
+            assert!(
+                charged.micros_per_minute <= instance.micros_per_minute,
+                "{}",
+                instance.label
+            );
+        }
     }
 
     #[test]
@@ -2222,7 +2281,7 @@ mod instance_tests {
         assert_eq!(rows, INSTANCE_TYPES.len() + RETIRED_MACHINES.len());
         for i in INSTANCE_TYPES.iter().chain(RETIRED_MACHINES.iter()) {
             let row = format!(
-                r#"{{ label: "{}", machine: "{}", sandboxClass: "{}", container: "{}", vcpu: {}, memoryGib: {}, diskGb: {}, microsPerMinute: {} }}"#,
+                r#"{{ label: "{}", machine: "{}", sandboxClass: "{}", container: "{}", vcpu: {}, memoryGib: {}, diskGb: {}, microsPerMinute: {}, billedAs: "{}" }}"#,
                 i.label,
                 i.machine,
                 i.class,
@@ -2230,7 +2289,8 @@ mod instance_tests {
                 i.vcpu,
                 i.memory_gib,
                 i.disk_gb,
-                i.micros_per_minute
+                i.micros_per_minute,
+                i.billed_as
             );
             assert!(mirror.contains(&row), "instances.ts has no row\n{row}");
         }
