@@ -22,6 +22,9 @@ pub use insights::*;
 mod signals;
 pub use signals::*;
 
+mod spend;
+pub use spend::*;
+
 mod coordination;
 pub use coordination::*;
 

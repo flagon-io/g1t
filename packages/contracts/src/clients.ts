@@ -478,6 +478,15 @@ export function workClient(service: ServiceBinding): WorkApi {
       call("get_plan", { workspace, viewer, ...(options.repo ? { repo: options.repo } : {}), ...(options.all ? { all: true } : {}) }),
     nextWorkItem: (workspace, viewer, repo) => call("next_work_item", { workspace, viewer, ...(repo ? { repo } : {}) }),
     configurePlan: (actor, workspace, nowCap) => call("configure_plan", { actor, workspace, now_cap: nowCap }),
+    getSpend: (workspace, viewer, options = {}) =>
+      call("get_spend", {
+        workspace,
+        viewer,
+        ...(options.person ? { person: options.person } : {}),
+        ...(options.since ? { since: options.since } : {}),
+        ...(options.until ? { until: options.until } : {}),
+      }),
+    configureSpend: (actor, workspace, visibility) => call("configure_spend", { actor, workspace, visibility }),
     listCycles: (workspace, viewer, limit) => call("list_cycles", { workspace, viewer, ...(limit === undefined ? {} : { limit }) }),
     getCycle: (workspace, viewer, number) => call("get_cycle", { workspace, viewer, ...(number === undefined ? {} : { number }) }),
     configureCycles: (actor, workspace, change) =>

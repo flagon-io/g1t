@@ -16,6 +16,7 @@ import {
   SpanSkeleton,
   SpendCard,
   SpendSkeleton,
+  YourSpendLink,
   WindowSwitch,
 } from "../../components/home";
 import { HomeAsk, WhatChangedCard } from "../../components/home-ask";
@@ -567,6 +568,8 @@ export function HomePage({ data: loaderData }: { data: Route.ComponentProps["loa
               </Await>
             </HeldSuspense>
           )}
+          {/* What your own agent sessions cost: for everyone, not only billing. */}
+          <YourSpendLink slug={slug} />
           <HeldSuspense
             id={`home:${slug}:settled`}
             fallback={

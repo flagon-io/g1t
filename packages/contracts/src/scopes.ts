@@ -510,6 +510,8 @@ export const OPERATION_SCOPES = [
   ["next_work_item", "work:read"],
   ["plan_work_item", "work:write"],
   ["configure_plan", "work:write"],
+  ["get_spend", "work:read"],
+  ["configure_spend", "work:write"],
   ["link_work_item", "work:write"],
   ["set_work_item_parent", "work:write"],
   ["check_work_item_task", "work:write"],

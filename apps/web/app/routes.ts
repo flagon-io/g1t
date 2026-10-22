@@ -137,6 +137,8 @@ export default [
       // Single sign-on through the workspace's own identity provider.
       route("-/settings/sso", "routes/workspace/sso.tsx"),
       route("-/insights", "routes/workspace/insights.tsx"),
+      // What a person's harness sessions cost: your own, or someone else's as the workspace allows.
+      route("-/spend", "routes/workspace/spend.tsx"),
       // Pinning its repositories, for the person signed in.
       route("-/pins", "routes/workspace/pins.ts"),
       // Getting started, for its owners: the guide's state, and dismissing

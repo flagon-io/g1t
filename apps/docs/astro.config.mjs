@@ -35,7 +35,6 @@ const moved = {
   "/guides/context-hub/": "/guides/bring-your-own-agent/",
   // Project and workspace memory is gone: harnesses keep their own.
   "/guides/memory/": "/guides/bring-your-own-agent/",
-  "/guides/spend/": "/guides/usage-and-billing/",
   "/guides/outcomes/": "/work/milestones/",
   // Issues became workspace work items: their operations moved with them.
   "/reference/api/issues/list-issues/": "/reference/api/work-items/list-work-items/",
@@ -246,6 +245,7 @@ export default defineConfig({
             { label: "Build and ship an app with an agent", slug: "guides/build-and-ship" },
             { label: "Claude Code plugin", slug: "guides/claude-code-plugin" },
             { label: "Recording sessions", slug: "guides/sessions" },
+            { label: "Spend", slug: "guides/spend" },
             { label: "Sessions and why-blame", slug: "guides/why-blame" },
           ],
         },

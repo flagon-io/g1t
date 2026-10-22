@@ -148,6 +148,7 @@ const PAGES: Record<string, { title: string; about: string }> = {
     about: "Goals with a due date, that work items and pull requests from every repository of the workspace are gathered under.",
   },
   insights: { title: "Insights", about: "Delivery, review times, work in progress and costs across your workspace." },
+  spend: { title: "Spend", about: "What agent sessions cost, by day and by what they went into, and how much of it went into work that landed." },
   "settings/usage": { title: "Usage", about: "What the workspace used and what it cost, by product, repository and day." },
   "settings/billing": { title: "Billing and plans", about: "The g1t plan, the trial, your spend limit, prepaying, and every charge." },
   "settings/audit": {

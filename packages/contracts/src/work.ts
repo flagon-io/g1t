@@ -1366,6 +1366,14 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
   nextWorkItem(workspace: string, viewer: Viewer, repo?: RepoPath): Promise<Result<WorkItem | null>>;
   /** Sets Now's cap (1 to `MAX_NOW_CAP`). Needs the right to manage milestones. */
   configurePlan(actor: User, workspace: string, nowCap: number): Promise<Result<Plan>>;
+  /**
+   * What one person's harness sessions cost in a workspace over a span of
+   * days (the last 30 by default): the viewer's own, or `person`'s when the
+   * workspace's `SpendVisibility` lets the viewer see other people's.
+   */
+  getSpend(workspace: string, viewer: Viewer, options?: { person?: string; since?: string; until?: string }): Promise<Result<Spend>>;
+  /** Who sees each person's spend, besides that person. Owners only. */
+  configureSpend(actor: User, workspace: string, visibility: SpendVisibility): Promise<Result<SpendSettings>>;
   /** A workspace's cycle settings, its current cycle and the next one's days, and its last `limit` closed cycles (12 by default; 0 for none). */
   listCycles(workspace: string, viewer: Viewer, limit?: number): Promise<Result<Cycles>>;
   /** A cycle and its report: the current one without `number`. */
@@ -2454,3 +2462,56 @@ export type WorkspaceSignals = {
   items: SignalItem[];
   milestones: SignalMilestone[];
 };
+
+// --- Spend ------------------------------------------------------------------------
+
+/** The fewest people a total over others' spend covers. */
+export const MIN_ROLLUP_PEOPLE = 3;
+
+/** Who sees each person's spend, besides that person: owners and billing managers (the default), every member, or nobody. */
+export type SpendVisibility = "owners" | "members" | "nobody";
+
+/** Part of a person's spend: one day, repository, work item, harness, model and landed. */
+export type SpendRow = {
+  /** The UTC day its sessions started. */
+  day: string;
+  /** `owner/name`; null for a repository the viewer cannot read (someone else's spend there still counts). */
+  repo: string | null;
+  /** The work item it went into: its pull request's, else one the session claimed, landed by a push naming it, or said it works on. */
+  item: number | null;
+  harness: string;
+  model: string | null;
+  /** Its pull request merged, or a push that names the session landed its work item. */
+  landed: boolean;
+  sessions: number;
+  costUsd: number;
+};
+
+/** One person's total over the span. */
+export type PersonSpend = { id: string; username: string; sessions: number; costUsd: number };
+
+/** One person's spend over a span of days, estimated at list price from the tokens each session reported. */
+export type Spend = {
+  workspace: string;
+  person: { id: string; username: string; own: boolean };
+  since: string;
+  until: string;
+  costUsd: number;
+  /** Of `costUsd`, what went into work that landed. */
+  landedUsd: number;
+  sessions: number;
+  /** Sessions that reported no usage, so cost no known amount. */
+  unknownSessions: number;
+  /** The costliest first. */
+  rows: SpendRow[];
+  visibility: SpendVisibility;
+  /** Whether the viewer may see other people's spend. */
+  canSeePeople: boolean;
+  /** Each person with sessions in the span, by name: only when `canSeePeople`. */
+  people: PersonSpend[];
+  /** Everyone's spend: when `canSeePeople`, or when it covers at least `MIN_ROLLUP_PEOPLE` people. */
+  workspaceUsd: number | null;
+  workspacePeople: number;
+};
+
+export type SpendSettings = { workspace: string; visibility: SpendVisibility };

@@ -1182,6 +1182,9 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("next_work_item", Scope::WorkRead),
     ("plan_work_item", Scope::WorkWrite),
     ("configure_plan", Scope::WorkWrite),
+    // Spend: what a person's sessions cost, and who else may see it.
+    ("get_spend", Scope::WorkRead),
+    ("configure_spend", Scope::WorkWrite),
     ("link_work_item", Scope::WorkWrite),
     ("set_work_item_parent", Scope::WorkWrite),
     ("check_work_item_task", Scope::WorkWrite),

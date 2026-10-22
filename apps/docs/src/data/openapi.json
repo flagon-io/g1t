@@ -405,6 +405,8 @@
         "get_plan",
         "next_work_item",
         "configure_plan",
+        "get_spend",
+        "configure_spend",
         "list_work_item_links",
         "link_work_item",
         "unlink_work_item",
@@ -63732,6 +63734,393 @@
         },
         "x-example-query": {
           "repo": "flagon-io/hello"
+        }
+      }
+    },
+    "/workspaces/{workspace}/spend": {
+      "get": {
+        "operationId": "get_spend",
+        "tags": [
+          "Work items"
+        ],
+        "summary": "Get a person's spend",
+        "description": "What one person's harness sessions (their subagents too) that started from since through until cost in a workspace's repositories: the viewer's own when person is left out, else person's, by username. Your own spend you always see in full; someone else's only as the workspace's setting allows: its owners and billing managers (the default), every member, or nobody; otherwise refused with `403`. since and until are UTC days (YYYY-MM-DD): the last 30 days through today when left out, at most 400 days. Returns `person`, the span, `cost_usd`, `landed_usd` (of it, what went into work that landed: a merged pull request, or a work item a push landed), `sessions` and `unknown_sessions` (those that reported no usage, so cost no known amount), and `rows` by day, repository (`repo` null for one you cannot read), work item, harness, model and `landed`, the costliest first. Then the setting (`visibility`) and `can_see_people`: when you may see others' spend, `people` lists each person with spend in the span by name, never ranked by what they spent. `workspace_usd`, everyone's spend, with `workspace_people`, shows to those who may see each person's, or when it covers 3 people or more. Cost is an estimate at list price, from the tokens each session reported.\n\nYour own spend over the last 30 days. Someone else's needs person and the workspace's setting to allow it. Only owners and billing managers see others' here, so people is empty; the workspace's total shows because it covers 5 people. Figures are estimates at list price from the tokens each session reported; unknown_sessions reported none.",
+        "x-operation": "get_spend",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "spend",
+        "x-scope": "work:read",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "work:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "person",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Whose spend, by username; yours when left out. Someone else's needs the workspace's setting to allow it."
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "The first UTC day, YYYY-MM-DD; 30 days before until when left out."
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "The last UTC day, YYYY-MM-DD; today when left out. At most 400 days after since."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "workspace": "flagon-io",
+                  "person": {
+                    "id": "usr_01m3xbq8r2ef0a8m6n2vkxgq7t",
+                    "username": "ada",
+                    "own": true
+                  },
+                  "since": "2026-09-23",
+                  "until": "2026-10-22",
+                  "cost_usd": 12.34,
+                  "landed_usd": 9.1,
+                  "sessions": 41,
+                  "unknown_sessions": 3,
+                  "rows": [
+                    {
+                      "day": "2026-10-21",
+                      "repo": "flagon-io/web",
+                      "item": 318,
+                      "harness": "claude_code",
+                      "model": "claude-opus-4-1",
+                      "landed": true,
+                      "sessions": 6,
+                      "cost_usd": 4.82
+                    },
+                    {
+                      "day": "2026-10-20",
+                      "repo": "flagon-io/api",
+                      "item": null,
+                      "harness": "codex",
+                      "model": null,
+                      "landed": false,
+                      "sessions": 2,
+                      "cost_usd": 0.71
+                    }
+                  ],
+                  "visibility": "owners",
+                  "can_see_people": false,
+                  "people": [],
+                  "workspace_usd": 214.6,
+                  "workspace_people": 5
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "since": "2026-09-23",
+          "until": "2026-10-22"
+        }
+      },
+      "patch": {
+        "operationId": "configure_spend",
+        "tags": [
+          "Work items"
+        ],
+        "summary": "Configure who sees spend",
+        "description": "Who sees each person's spend in a workspace, besides that person: visibility owners (its owners and billing managers, for budgets and plan fit; the default), members (every member) or nobody (each person sees only their own). Needs an owner. Returns the workspace's `visibility`.\n\nEvery member now sees each person's spend, listed by name. Owners only.",
+        "x-operation": "configure_spend",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "configure_spend",
+        "x-scope": "work:write",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "work:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "workspace": "flagon-io",
+                  "visibility": "members"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "owners",
+                      "members",
+                      "nobody"
+                    ],
+                    "description": "Who sees each person's spend besides them: owners (owners and billing managers), members (every member) or nobody."
+                  }
+                },
+                "required": [
+                  "visibility"
+                ]
+              },
+              "example": {
+                "visibility": "members"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
         }
       }
     },

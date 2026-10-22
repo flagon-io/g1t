@@ -7086,6 +7086,20 @@ pub static OPERATIONS: &[Operation] = &[
         ],
     },
     Operation {
+        id: "configure_spend",
+        method: "PATCH",
+        path: "/workspaces/{workspace}/spend",
+        tag: "Work items",
+        summary: "Configure who sees spend",
+        scope: Some("work:write"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+        ],
+        body: &[
+            Field { name: "visibility", kind: "string", required: true, values: &["owners", "members", "nobody"] },
+        ],
+    },
+    Operation {
         id: "delete_work_item_comment",
         method: "DELETE",
         path: "/workspaces/{workspace}/work/comments/{comment_id}",
@@ -7127,6 +7141,21 @@ pub static OPERATIONS: &[Operation] = &[
             Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
             Param { name: "repo", location: In::Query, kind: "string", required: false, values: &[] },
             Param { name: "all", location: In::Query, kind: "boolean", required: false, values: &[] },
+        ],
+        body: &[],
+    },
+    Operation {
+        id: "get_spend",
+        method: "GET",
+        path: "/workspaces/{workspace}/spend",
+        tag: "Work items",
+        summary: "Get a person's spend",
+        scope: Some("work:read"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "person", location: In::Query, kind: "string", required: false, values: &[] },
+            Param { name: "since", location: In::Query, kind: "string", required: false, values: &[] },
+            Param { name: "until", location: In::Query, kind: "string", required: false, values: &[] },
         ],
         body: &[],
     },

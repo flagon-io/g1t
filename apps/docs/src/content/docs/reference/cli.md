@@ -1816,6 +1816,37 @@ start day or cooldown applies from the next cycle. Needs the Write role in the w
 
 Calls [`configure_cycles`](/reference/api/cycles/configure-cycles/), [`list_cycles`](/reference/api/cycles/list-cycles/).
 
+## g1t spend
+
+What your sessions cost in a workspace, by work item, repository, harness, model or day.
+
+```text
+g1t spend [OPTIONS]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `--person <USERNAME>` | Whose spend, by username; yours when left out. |
+| `--since <DAY\|Nd>` | The first day: YYYY-MM-DD, or a number of days such as 7d (the last 7 days, today among them). 30 days before --until when left out. |
+| `--until <DAY>` | The last day, YYYY-MM-DD (UTC); today when left out. |
+| `--by <BY>` | What to group the table by. One of `repo`, `item`, `harness`, `model`, `day`. Default: `item`. |
+| `--workspace <SLUG>` | The workspace, by its slug; the current repository's when left out. Also `G1T_WORKSPACE`. |
+
+```text
+Cost is an estimate at list price, from the tokens each session reported; a session that reported
+none (an older plugin, or a harness that reports no usage) counts with no known cost. Your own spend
+you always see in full. Someone else's (--person) only as the workspace's setting allows: its owners
+and billing managers by default, every member, or nobody. People are listed by name, never ranked.
+Examples:
+  g1t spend
+  g1t spend --since 7d --by repo
+  g1t spend --since 2026-09-01 --until 2026-09-30 --by day
+  g1t spend --person ada --workspace flagon-io
+  g1t spend --json --jq '.rows[] | select(.landed | not)'
+```
+
+Calls [`get_spend`](/reference/api/work-items/get-spend/).
+
 ## g1t why
 
 Why a file or line is as it is: its commit, pull request, work item, decisions and sessions.
