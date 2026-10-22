@@ -2231,7 +2231,7 @@ impl Work {
             None => merging::merged_note(landed.method).to_owned(),
         };
         self.note(&repo.id, pull.number, who, &note).await?;
-        let landing = items::Landing { pull: Some(pull.number), commit: None, pushed_by: None };
+        let landing = items::Landing { pull: Some(pull.number), commit: None, pushed_by: None, tie: None };
         items::land(self, repo, &landing, actor, &named.close_ids(), &named.part_ids(), None, false).await?;
         let through_queue = self.landed_through_queue(&pull.id).await?;
         self.keep_decision_quietly(

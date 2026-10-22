@@ -172,8 +172,8 @@ mod tests {
 
     #[test]
     fn a_landing_that_leaves_a_blocker_open_never_stands_in_for_its_close() {
-        let commit = items::Landing { pull: None, commit: Some("abc".into()), pushed_by: None };
-        let merged = items::Landing { pull: Some(5), commit: None, pushed_by: None };
+        let commit = items::Landing { pull: None, commit: Some("abc".into()), pushed_by: None, tie: None };
+        let merged = items::Landing { pull: Some(5), commit: None, pushed_by: None, tie: None };
         let landed = resolution_key("wki_2", "wki_1", false, Some(&commit));
         let closed = resolution_key("wki_2", "wki_1", true, None);
         assert_ne!(landed, closed);
