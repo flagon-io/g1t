@@ -713,7 +713,7 @@ function GitEdgeSection({ edge, unavailable }: { edge: GitEdgeReport | null; una
       className="mt-6"
       id="git-edge"
       title="Git edge"
-      description="Containers that answer clones and fetches with real git, one per busy repository: started for a repository cloned twice within the hour, asleep after 10 idle minutes, at most max_instances at once. Anything else is answered by Artifacts. Cost is Containers' list price for memory, CPU and disk (standard-2: 1 vCPU, 6 GiB, 12 GB). Turn it off with the git edge level of the platform pause: every service sees it within 30 seconds, no deploy."
+      description="Containers that answer clones and fetches with real git, one per busy repository: started for a repository cloned twice within the hour, asleep after 10 idle minutes, at most max_instances at once. Anything else is answered by Artifacts. Cost is Containers' list price for memory, CPU and disk (standard-1: 1/2 vCPU, 4 GiB, 8 GB). Turn it off with the git edge level of the platform pause: every service sees it within 30 seconds, no deploy."
     >
       {!edge ? (
         <Notice tone="warn">Billing did not answer for the git edge: {unavailable}</Notice>
