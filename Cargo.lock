@@ -1630,7 +1630,7 @@ dependencies = [
 
 [[package]]
 name = "g1t-runner"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1638,6 +1638,7 @@ dependencies = [
  "ed25519-dalek",
  "flate2",
  "g1t-actions",
+ "g1t-contracts",
  "g1t-scan",
  "hex",
  "libc",

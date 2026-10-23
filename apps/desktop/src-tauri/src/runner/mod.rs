@@ -209,6 +209,15 @@ pub struct Shared {
     tx: Mutex<Option<Sender<Ask>>>,
     updates: Mutex<Updates>,
     setup: Mutex<SetUp>,
+    /// A change of the sizes under way, and why the last one failed.
+    sizes: Mutex<SizesChange>,
+}
+
+/// How the last change of the Linux jobs' sizes went.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct SizesChange {
+    saving: bool,
+    error: Option<String>,
 }
 
 /// What settings, the tray and the site are shown.
@@ -236,6 +245,12 @@ pub struct View {
     pub log: Vec<String>,
     /// In a few words, for the title bar's chip.
     pub chip: diagnosis::Chip,
+    /// The sandbox's Linux jobs' sizes, as its launcher says them (which of
+    /// g1t's machines they are taken for, and what each would cost this
+    /// computer), with `saving` while a change is under way and `error`
+    /// when the last one failed. None for another backend, or a launcher
+    /// before sizes: the site then shows no choices.
+    pub sizes: Option<serde_json::Value>,
 }
 
 /// What the thread is told.
@@ -262,6 +277,11 @@ enum Ask {
     Sandbox(u64, Result<Box<Status>, String>),
     /// Set up is done (setup.rs): how it went, and what it logged.
     SetUp(setup::Outcome, Vec<String>),
+    /// The Linux jobs' sizes, to change (`sandbox sizes`): a list, or none
+    /// to pick again.
+    Sizes(Option<String>),
+    /// What `sandbox sizes` said once it was done.
+    SizesDone(Result<Box<Status>, String>),
     Quit(Sender<()>),
 }
 
@@ -468,7 +488,33 @@ pub fn view(app: &AppHandle) -> View {
         machine: facts.machine,
         platform: facts.platform,
         log: shared.tail.held().iter().cloned().collect(),
+        sizes: sizes_view(facts.sandbox.as_ref(), &shared.sizes.held()),
     }
+}
+
+/// The sizes the site shows, with how their last change went.
+fn sizes_view(sandbox: Option<&Status>, change: &SizesChange) -> Option<serde_json::Value> {
+    let mut sizes = sandbox?.sizes.clone().filter(serde_json::Value::is_object)?;
+    sizes["saving"] = change.saving.into();
+    sizes["error"] = change.error.clone().into();
+    Some(sizes)
+}
+
+/// The site's settings changed the Linux jobs' sizes: `list` is
+/// `1-core,2-core:4:16g` (empty for none), or none to have one picked
+/// again. Only for the sandbox, whose launcher says its sizes.
+pub fn set_sizes(app: &AppHandle, list: Option<String>) -> Result<(), String> {
+    if config::settings(app).runner_backend != Backend::Sandboxed {
+        return Err("Sizes are the sandbox's: choose Sandboxed to set them.".into());
+    }
+    let shown = app.state::<Shared>().now.held().sandbox.as_ref().is_some_and(|status| status.sizes.is_some());
+    if !shown {
+        return Err("This g1t-runner can't change its sizes yet: it does once it updates.".into());
+    }
+    *app.state::<Shared>().sizes.held() = SizesChange { saving: true, error: None };
+    ask(app, Ask::Sizes(list));
+    publish(app);
+    Ok(())
 }
 
 /// Whether the runner is running a job: what restarts g1t waits for it,
@@ -1142,6 +1188,34 @@ impl Keeper {
                 }
             }
             Ask::Check => self.check(true),
+            Ask::Sizes(list) => {
+                let tx = self.tx.clone();
+                let binary = native::binary(&folder(&self.app));
+                let dir = native_dir(&self.app, Backend::Sandboxed);
+                self.write_log(&format!("g1t: Linux jobs' sizes: {}.", list.as_deref().map_or("picked for this computer".to_owned(), |l| if l.is_empty() { "none".to_owned() } else { l.to_owned() })));
+                // It waits for a running job before starting Linux jobs again with them.
+                let spawned = std::thread::Builder::new().name("g1t-sandbox-sizes".into()).spawn(move || {
+                    let _ = tx.send(Ask::SizesDone(launcher::sizes(&binary, &dir, list.as_deref()).map(Box::new)));
+                });
+                if spawned.is_err() {
+                    *self.app.state::<Shared>().sizes.held() = SizesChange { saving: false, error: Some("g1t couldn't change the sizes: try again.".into()) };
+                    publish(&self.app);
+                }
+            }
+            Ask::SizesDone(done) => {
+                let error = match done {
+                    Ok(status) => {
+                        self.app.state::<Shared>().now.held().sandbox = Some(*status);
+                        None
+                    }
+                    Err(why) => {
+                        self.write_log(&format!("g1t: the sizes couldn't be changed: {why}"));
+                        Some(why)
+                    }
+                };
+                *self.app.state::<Shared>().sizes.held() = SizesChange { saving: false, error };
+                publish(&self.app);
+            }
             Ask::Checked(found) => self.checked(found),
             Ask::Token { workspace, token } => {
                 let shared = self.app.state::<Shared>();
@@ -2373,6 +2447,7 @@ mod tests {
             machine: "box".into(),
             platform: "windows".into(),
             log: vec![],
+            sizes: None,
         }
     }
 

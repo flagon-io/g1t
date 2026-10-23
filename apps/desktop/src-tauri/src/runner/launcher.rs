@@ -164,6 +164,11 @@ pub struct Status {
     /// A sentence for a person, whenever something is wrong.
     pub error: Option<String>,
     pub capabilities: Vec<Capability>,
+    /// The Linux runner's sizes: which of g1t's machines it takes jobs
+    /// for, and what each would cost this computer (the launcher's
+    /// sizes.rs), passed to the site as it is for its settings. None from
+    /// a launcher before them, which can't change them either.
+    pub sizes: Option<serde_json::Value>,
 }
 
 impl Status {
@@ -397,6 +402,31 @@ pub fn status_args(dir: &Path) -> Vec<OsString> {
 
 pub fn update_args(dir: &Path) -> Vec<OsString> {
     args("update", dir)
+}
+
+/// `sizes --set LIST`, or `--pick` with none: which of g1t's machines the
+/// Linux runner takes jobs for (`1-core,2-core:4:16g`). The launcher keeps
+/// them, and drains a running Linux runner and starts it again with them.
+pub fn sizes_args(dir: &Path, list: Option<&str>) -> Vec<OsString> {
+    let mut args = args("sizes", dir);
+    match list {
+        Some(list) => {
+            args.push("--set".into());
+            args.push(list.into());
+        }
+        None => args.push("--pick".into()),
+    }
+    args
+}
+
+/// Changes the Linux runner's sizes, waiting for it: how the sandbox is
+/// then. A running one is started again after its job, so this can take
+/// as long as that job.
+pub fn sizes(binary: &Path, dir: &Path, list: Option<&str>) -> Result<Status, String> {
+    match run_done(binary, sizes_args(dir, list))? {
+        (status, true) => Ok(status),
+        (status, false) => Err(status.error.unwrap_or_else(|| "g1t-runner sandbox sizes failed.".into())),
+    }
 }
 
 /// A launcher command whose output the app reads a line at a time
@@ -702,6 +732,13 @@ mod tests {
     }
 
     #[test]
+    fn a_launcher_says_its_sizes_or_nothing_of_them() {
+        assert_eq!(parse(RUNNING).unwrap().sizes, None, "a launcher before sizes");
+        let status = parse(r#"{"schema":1,"state":"running","sizes":{"applies":"restart","picked":true,"choices":[]}}"#).unwrap();
+        assert_eq!(status.sizes.unwrap()["applies"], "restart");
+    }
+
+    #[test]
     fn a_download_says_how_far_it_is() {
         assert_eq!(download("2026-10-12T08:00:00Z Fetching the sandbox's wsl-x64 image (612 MB)"), Some(Download { key: "wsl-x64".into(), percent: 0 }));
         assert_eq!(download("2026-10-12T08:01:00Z Fetching the sandbox's wsl-x64 image: 40% of 612 MB"), Some(Download { key: "wsl-x64".into(), percent: 40 }));
@@ -724,6 +761,9 @@ mod tests {
         assert_eq!(&up[5..], ["--url", "https://g1t.sh", "--name", "build-box", "--labels", "desktop", "--only", "linux,windows"]);
         assert_eq!(text(down_only_args(&dir, "windows"))[5..], ["--only", "windows"]);
         assert_eq!(text(drain_only_args(&dir, "windows"))[5..], ["--only", "windows", "--drain"]);
+        assert_eq!(text(sizes_args(&dir, Some("1-core,2-core:4:16g")))[..2], ["sandbox", "sizes"]);
+        assert_eq!(text(sizes_args(&dir, Some("1-core,2-core:4:16g")))[5..], ["--set", "1-core,2-core:4:16g"]);
+        assert_eq!(text(sizes_args(&dir, None))[5..], ["--pick"]);
         assert!(!up.iter().any(|a| a == "--token" || a.starts_with("g1trt_")));
         let mut command = command(Path::new("g1t-runner"), up_args(&dir, &first));
         with_token(&mut command, first.token);

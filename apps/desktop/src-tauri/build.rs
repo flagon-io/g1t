@@ -28,6 +28,7 @@ fn main() {
         "runner_offer",
         "runner_register",
         "runner_control",
+        "runner_sizes",
         "site_ready",
         "open_devtools",
     ])))

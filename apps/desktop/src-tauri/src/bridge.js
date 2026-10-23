@@ -218,6 +218,11 @@
         if (capability != null) args.capability = String(capability);
         return invoke("runner_control", args);
       },
+      // The sizes of g1t's machines Linux jobs are taken for: `1-core,2-core:4:16g`
+      // (empty for none), or null to have one picked again.
+      setSizes: function (sizes) {
+        return invoke("runner_sizes", { sizes: sizes == null ? null : String(sizes) });
+      },
       // The app wants a registration token for a workspace.
       onWanted: function (listener) {
         return on("g1t-runner-wanted", listener);
