@@ -60,12 +60,19 @@ Two fields in `data` matter everywhere:
    - tells `notify`, so open pages of that repository refresh, and puts
      items in people's inboxes, at most once per person per event.
 3. If a send to a subscriber fails, `events` notes which queues already
-   have the batch (`fanout_sent`, kept a day) and throws. The retry skips
-   those queues.
-4. After three tries, a batch goes to `g1t-events-dlq`.
+   have the batch (`fanout_sent`, kept a day) and asks for it again 30
+   seconds later. The retry skips those queues.
+4. After ten tries, a batch goes to `g1t-events-dlq`.
 
-Every subscriber's consumer is set up the same way: three tries, then the
-dead-letter queue.
+Every subscriber's consumer ends at the dead-letter queue too, after three
+tries; `work` and `actions`, which start a pull request's checks, retry each
+event on its own 30 seconds later, ten times, to ride out the database being
+overloaded. `events` consumes `g1t-events-dlq`: each message is logged as an
+error and kept 30 days, and the status page's **Event delivery** counts
+them. They are not sent again, since the queue does not say which consumer
+gave up. A push whose event was lost is caught up by `work`, which every
+five minutes compares open pull requests' branches with their heads and
+handles the logged push of any that moved.
 
 ### Subscriber queues
 

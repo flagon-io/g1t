@@ -252,7 +252,7 @@ const eventFanout: Graph = {
     { from: "bus", to: "deliver", async: true },
     { from: "deliver", to: "log", label: "`INSERT OR IGNORE`" },
     { from: "deliver", to: "notify", label: "`repo_changed`" },
-    { from: "bus", to: "dlq", label: "after 3 tries", async: true, tone: "warn" },
+    { from: "bus", to: "dlq", label: "after 10 tries", async: true, tone: "warn" },
     ...SUBSCRIBERS.map((name) => ({ from: "deliver", to: `s-${name}`, fromSide: "right" as const, toSide: "left" as const, bend: 770, async: true })),
   ],
 };

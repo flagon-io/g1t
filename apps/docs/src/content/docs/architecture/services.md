@@ -18,7 +18,7 @@ and fails if this table and the bindings disagree.
 | --- | --- | --- | --- | --- | --- |
 | `apps/web` | TypeScript | front | The site on `g1t.sh`: pages, git over HTTPS and the package registries passed to their services, and `g1tusercontent.com` | The downloads bucket | `actions`, `artifacts`, `billing`, `chat`, `deployments`, `events`, `identity`, `integrations`, `notify`, `og`, `packages`, `projects`, `repos`, `search`, `security`, `telemetry`, `webhooks`, `work` |
 | `apps/api` | Rust | edge | REST, MCP, OAuth, the runner protocol, OTLP ingest, Actions toolkit and OIDC | Nothing; writes Actions cache and artifact files | `actions`, `artifacts`, `billing`, `deployments`, `events`, `identity`, `integrations`, `packages`, `projects`, `repos`, `runner`, `search`, `security`, `telemetry`, `webhooks`, `work` |
-| `apps/status` | TypeScript | edge | `status.g1t.sh`: probes every minute and keeps incidents | D1 `g1t-status` | `billing`, `repos` |
+| `apps/status` | TypeScript | edge | `status.g1t.sh`: probes every minute and keeps incidents | D1 `g1t-status` | `billing`, `events`, `repos` |
 | `apps/sudo` | TypeScript | front | g1t.sh's staff console, behind Cloudflare Access | Nothing | `actions`, `billing`, `events`, `identity`, `projects`, `repos`, `status`, `telemetry` |
 | `apps/docs` | Astro | front | `docs.g1t.sh`, these pages | Nothing | none |
 | `services/identity` | Rust | core | Accounts, sessions, workspaces, members, teams, repository roles, tokens, OAuth, device sign-in, 2FA | D1 `g1t`, the avatars KV | `artifacts`, `billing`, `chat`, `events`, `notify`, `projects`, `repos` |

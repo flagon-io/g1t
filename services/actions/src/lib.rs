@@ -55,7 +55,10 @@ use g1t_secrets::Sealer;
 use serde::Deserialize;
 use serde_json::Value;
 use worker::wasm_bindgen::JsValue;
-use worker::{Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
+use worker::{
+    Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, QueueRetryOptionsBuilder, Request, Response, Result, ScheduleContext,
+    ScheduledEvent, event,
+};
 
 /// The most workflow files read from a repository.
 pub const MAX_WORKFLOWS: usize = 50;
@@ -442,10 +445,18 @@ async fn answer(service: &Actions, method: &str, body: Value) -> Result<Response
     }
 }
 
-/// Events from the bus, on this service's own queue.
+/// How long a failed event waits before it is tried again.
+const RETRY_DELAY_SECONDS: u32 = 30;
+
+/// Events from the bus, on this service's own queue. One that fails is
+/// retried on its own, after a while: what fails is nearly always the
+/// database being overloaded, which a retry straight away finds still
+/// overloaded. After its retries it goes to the dead-letter queue
+/// (wrangler.jsonc), which the events service counts.
 #[event(queue)]
 async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()> {
     let service = Actions::new(&env)?;
+    let later = QueueRetryOptionsBuilder::new().with_delay_seconds(RETRY_DELAY_SECONDS).build();
     for message in batch.messages()? {
         // A workspace renamed: its rows move to the slug it has now.
         if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), rename::STATEMENTS).await? {
@@ -471,7 +482,7 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
         if let Some(repo_id) = plan::stops_runs(message.body()) {
             if let Err(error) = service.stop_runs(&repo_id).await {
                 worker::console_error!("actions: event {} failed: {error}", message.body().id);
-                message.retry();
+                message.retry_with_options(&later);
                 continue;
             }
             message.ack();
@@ -479,7 +490,7 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
         }
         if let Err(error) = service.on_event(message.body()).await {
             worker::console_error!("actions: event {} failed: {error}", message.body().id);
-            message.retry();
+            message.retry_with_options(&later);
             continue;
         }
         message.ack();

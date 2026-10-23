@@ -10,6 +10,7 @@ import {
   coloOf,
   combine,
   confirmSlow,
+  judgeDelivery,
   judgeStorage,
   judgedMs,
   limit,
@@ -174,6 +175,17 @@ test("git storage is judged by how its calls went, and quiet is up", async () =>
   const viaCheck = await runCheck({ kind: "storage" }, { fetch: answer(200), billing: null, storage: async () => report(row(1, 0, 0, 0, 5)) });
   assert.deepEqual(viaCheck, { ok: true, ms: 5 });
   assert.equal(await runCheck({ kind: "storage" }, { fetch: answer(200), billing: null }), null);
+});
+
+test("event delivery is degraded by any event given up on, and down by many", async () => {
+  const report = (dead: number, ...types: string[]) => ({ minutes: 15, dead, types: types.map((type) => ({ type, count: 1 })) });
+  assert.deepEqual(judgeDelivery(report(0)), { ok: true, ms: 0 });
+  assert.deepEqual(judgeDelivery(report(1, "git.push")), { ok: true, ms: 0, degraded: "1 event not delivered in 15 minutes (git.push)" });
+  const many = judgeDelivery(report(12, "git.push", "comment.created", "pull.updated", "review.completed"));
+  assert.deepEqual([many.ok, many.error], [false, "12 events not delivered in 15 minutes (git.push, comment.created, pull.updated)"]);
+  const viaCheck = await runCheck({ kind: "delivery" }, { fetch: answer(200), billing: null, delivery: async () => report(2, "git.push") });
+  assert.equal(viaCheck?.degraded, "2 events not delivered in 15 minutes (git.push)");
+  assert.equal(await runCheck({ kind: "delivery" }, { fetch: answer(200), billing: null }), null);
 });
 
 test("the site's own time is read from Server-Timing's total", () => {

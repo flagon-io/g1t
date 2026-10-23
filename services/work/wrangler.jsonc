@@ -36,7 +36,9 @@
     { "binding": "INTEGRATIONS", "service": "g1t-integrations" }
   ],
   "queues": {
-    "consumers": [{ "queue": "g1t-events-work", "max_batch_size": 100, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
+    // An event that fails is tried again 30 s later (src/lib.rs `queue`),
+    // ten times, riding out the database being overloaded for minutes.
+    "consumers": [{ "queue": "g1t-events-work", "max_batch_size": 100, "max_batch_timeout": 1, "max_retries": 10, "dead_letter_queue": "g1t-events-dlq" }]
   },
   // Logs of a quarter of requests: every work item and pull request page asks
   // it, so keeping every one costs more than it tells, and a quarter

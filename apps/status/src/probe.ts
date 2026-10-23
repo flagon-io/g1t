@@ -55,6 +55,29 @@ export type StoreHealthRow = {
 
 export type StorageReport = { minutes: number; stores: StoreHealthRow[] };
 
+/** What the queues gave up on lately: events `delivery_health`. */
+export type DeliveryReport = { minutes: number; dead: number; types: { type: string; count: number }[] };
+
+/** This many events given up on in the span, and event delivery is down. */
+const DELIVERY_DOWN = 10;
+
+/**
+ * What the events the queues gave up on mean: none is up, any is degraded,
+ * naming the types, and many is down. A dropped event is a push whose
+ * checks never start, or a comment nobody hears of, while everything else
+ * answers as usual.
+ */
+export function judgeDelivery(report: DeliveryReport, ms = 0): ProbeResult {
+  const dead = Number(report.dead) || 0;
+  if (dead === 0) return { ok: true, ms };
+  const types = report.types
+    .slice(0, 3)
+    .map((row) => row.type)
+    .join(", ");
+  const said = `${dead} ${dead === 1 ? "event" : "events"} not delivered in ${report.minutes} minutes${types ? ` (${types})` : ""}`;
+  return dead >= DELIVERY_DOWN ? { ok: false, ms, error: said } : { ok: true, ms, degraded: said };
+}
+
 /** At least this many failed calls, and this share of them, before git storage is down. */
 const STORAGE_MIN_ERRORS = 5;
 const STORAGE_DOWN_SHARE = 0.25;
@@ -159,7 +182,7 @@ export async function timed(work: (signal: AbortSignal) => Promise<true | string
     const ms = now() - started;
     return { ok: false, ms, error: error instanceof Timeout ? "timed out" : "could not connect" };
   } finally {
-    clearTimeout(timer);
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 
@@ -268,6 +291,8 @@ export type Probers = {
   billing: ((signal: AbortSignal) => Promise<unknown>) | null;
   /** Git storage's recent health, through the repos service; null when not bound. */
   storage?: ((signal: AbortSignal) => Promise<StorageReport>) | null;
+  /** What the queues gave up on lately, through the events service; null when not bound. */
+  delivery?: ((signal: AbortSignal) => Promise<DeliveryReport>) | null;
   timeoutMs?: number;
   /** Room for each request; none waits when left out. */
   gate?: Gate;
@@ -303,6 +328,18 @@ export async function runCheck(check: Check, probers: Probers): Promise<ProbeRes
       );
       return report ? judgeStorage(report) : asked;
     }
+    case "delivery": {
+      const delivery = probers.delivery;
+      if (!delivery) return null;
+      let report: DeliveryReport | null = null;
+      const asked = await gate(() =>
+        timed(async (signal) => {
+          report = await delivery(signal);
+          return true;
+        }, timeoutMs),
+      );
+      return report ? judgeDelivery(report, asked.ms) : asked;
+    }
     case "none":
       return null;
   }
@@ -322,8 +359,9 @@ export function unanswered(result: ProbeResult): boolean {
  * the second answer counts: the cron runs in a different data centre each
  * minute, where billing and repos are seldom running yet, and starting
  * one there can take longer than the check waits. Billing answering slowly
- * is confirmed as an address is. What git storage reports is not asked
- * twice: it covers the minutes gone by, and asking again says the same.
+ * is confirmed as an address is. What git storage and event delivery
+ * report is not asked twice: it covers the minutes gone by, and asking
+ * again says the same.
  */
 export async function probe(check: Check, probers: Probers, slowMs: number): Promise<ProbeResult | null> {
   const first = await runCheck(check, probers);

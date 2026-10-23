@@ -22,6 +22,7 @@
 //! (live.rs), which tells those watching the repository.
 
 mod audit;
+mod dead_letters;
 mod digest;
 mod fanout;
 mod inbox;
@@ -40,7 +41,7 @@ use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use worker::js_sys::{Array, Object};
 use worker::wasm_bindgen::{JsCast, JsValue};
-use worker::{Context, D1Database, Env, MessageBatch, Request, Response, Result, event};
+use worker::{Context, D1Database, Env, MessageBatch, MessageExt, QueueRetryOptionsBuilder, Request, Response, Result, event};
 
 const DEFAULT_PAGE: u32 = 50;
 const MAX_PAGE: u32 = 200;
@@ -330,6 +331,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
             reply(&inbox::list(&events.db, &repos, args(body)?).await?)
         }
         "inbox_counts" => reply(&inbox::counts(&events.db, args(body)?).await?),
+        // What the queues gave up on lately, for the status page (dead_letters.rs).
+        "delivery_health" => reply(&dead_letters::health(&events.db, args(body)?, now_ms()).await?),
         "inbox_mark" => {
             let marked: g1t_contracts::inbox::MarkInboxArgs = args(body)?;
             let username = marked.username.clone();
@@ -364,25 +367,44 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     }
 }
 
-/// Events from the bus. A batch that fails is retried whole, which is safe
-/// because the log ignores an event it has seen, and queues that already
-/// have it are skipped (`deliver`). After its retries it goes to the
-/// dead-letter queue (wrangler.jsonc).
+/// Events from the bus. A batch that fails is retried whole, after a
+/// while (a queue or the database overloaded is still overloaded straight
+/// away), which is safe because the log ignores an event it has seen, and
+/// queues that already have it are skipped (`deliver`). After its retries
+/// it goes to the dead-letter queue (wrangler.jsonc), which this service
+/// consumes too: what every queue gave up on is recorded and counted
+/// (dead_letters.rs).
 #[event(queue)]
-async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()> {
-    let events = Events {
-        db: env.d1("DB")?,
-        env,
-    };
+async fn queue(batch: MessageBatch<serde_json::Value>, env: Env, _ctx: Context) -> Result<()> {
+    let db = env.d1("DB")?;
+    if batch.queue() == dead_letters::QUEUE {
+        let letters: Vec<dead_letters::DeadLetter> = batch
+            .messages()?
+            .into_iter()
+            .map(|message| dead_letters::DeadLetter { id: message.id(), body: message.into_body() })
+            .collect();
+        dead_letters::record(&db, &letters, now_ms()).await?;
+        batch.ack_all();
+        return Ok(());
+    }
+    let events = Events { db, env };
     let delivered: Vec<Event> = batch
         .messages()?
         .into_iter()
-        .map(|message| message.into_body())
-        .collect();
-    events.deliver(&delivered).await?;
-    batch.ack_all();
+        .map(|message| serde_json::from_value(message.into_body()))
+        .collect::<std::result::Result<_, _>>()?;
+    match events.deliver(&delivered).await {
+        Ok(()) => batch.ack_all(),
+        Err(error) => {
+            worker::console_error!("events: a batch of {} failed, tried again in {RETRY_DELAY_SECONDS} s: {error}", delivered.len());
+            batch.retry_all_with_options(&QueueRetryOptionsBuilder::new().with_delay_seconds(RETRY_DELAY_SECONDS).build());
+        }
+    }
     Ok(())
 }
+
+/// How long a batch that failed waits before it is tried again.
+const RETRY_DELAY_SECONDS: u32 = 30;
 
 /// Once a day, old audit entries are removed: first everything older than
 /// any workspace keeps (`AUDIT_MAX_DAYS`, 400 days), then each workspace's
@@ -424,6 +446,11 @@ async fn scheduled(event: worker::ScheduledEvent, env: Env, _ctx: worker::Schedu
     };
     if let Err(error) = purged {
         worker::console_error!("could not remove old fan-out records: {error}");
+    }
+    match dead_letters::purge(&db, now).await {
+        Ok(removed) if removed > 0 => worker::console_log!("removed {removed} old dead letters"),
+        Ok(_) => {}
+        Err(error) => worker::console_error!("could not remove old dead letters: {error}"),
     }
     match inbox::purge(&db, now).await {
         Ok(removed) if removed > 0 => worker::console_log!("removed {removed} old inbox items"),

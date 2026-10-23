@@ -771,6 +771,37 @@ pub struct ListArgs {
 /// The most repositories one `list` reads with `repo_ids`.
 pub const MAX_LIST_REPOS: usize = 100;
 
+/// `delivery_health`: what the queues gave up on lately (the dead-letter
+/// queue), for the status page. Returns [`DeliveryHealth`].
+#[derive(Debug, Default, Serialize, serde::Deserialize)]
+pub struct DeliveryHealthArgs {
+    /// How many minutes back to count; [`DELIVERY_HEALTH_MINUTES`] when absent.
+    #[serde(default)]
+    pub minutes: Option<u32>,
+}
+
+/// The span `delivery_health` counts when asked for none, and the most it
+/// counts.
+pub const DELIVERY_HEALTH_MINUTES: u32 = 15;
+pub const MAX_DELIVERY_HEALTH_MINUTES: u32 = 24 * 60;
+
+#[derive(Debug, Default, Serialize, serde::Deserialize, PartialEq)]
+pub struct DeliveryHealth {
+    pub minutes: u32,
+    /// Messages the queues gave up on in that span.
+    pub dead: u32,
+    /// Of those, how many of each event type, most first.
+    pub types: Vec<DeadType>,
+}
+
+#[derive(Debug, Serialize, serde::Deserialize, PartialEq)]
+pub struct DeadType {
+    /// The event type; `unknown` for a message that was not an event.
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub count: u32,
+}
+
 /// `workspace.renamed`: a workspace's slug changed from `from` to `to`.
 /// Every service that stores a slug moves its rows to the workspace's
 /// *current* slug (ask identity by `workspace_id`), so that a repeated or

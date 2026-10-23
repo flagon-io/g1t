@@ -313,6 +313,16 @@ test("buildPage: incident impacts and maintenance reach the parts and the banner
   assert.equal(resolved.report.components.find((c) => c.key === "api")!.state, "up", "a resolved incident no longer colours its part");
 });
 
+test("event delivery is listed only with the events service", () => {
+  assert.equal(
+    components(VARS, true, true).some((part) => part.key === "delivery"),
+    false,
+  );
+  const delivery = components(VARS, true, true, true).find((part) => part.key === "delivery");
+  assert.equal(delivery?.check.kind, "delivery");
+  assert.equal(delivery?.core, false);
+});
+
 test("git storage is listed only with the repos service, and degraded says why", () => {
   assert.equal(
     components(VARS, true).some((part) => part.key === "storage"),

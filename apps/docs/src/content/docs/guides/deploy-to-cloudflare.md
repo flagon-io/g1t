@@ -536,9 +536,11 @@ deploy, then resume.
 ### The dead-letter queue
 
 Every queue consumer retries a message a fixed number of times, then puts
-it on `g1t-events-dlq`. Nothing consumes that queue: read it with
-`npx wrangler queues info g1t-events-dlq`, fix the cause, and replay by
-hand.
+it on `g1t-events-dlq`. The events service consumes that queue and keeps
+each message in its `dead_letters` table for 30 days, and the status page's
+**Event delivery** counts them. Nothing is replayed by itself: read them with
+`npx wrangler d1 execute g1t-events --remote --command "SELECT * FROM dead_letters ORDER BY created_at DESC LIMIT 20"`,
+fix the cause, and replay by hand.
 
 ### OIDC tokens for workflow jobs
 

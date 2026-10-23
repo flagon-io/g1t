@@ -40,7 +40,13 @@
       //   npx wrangler queues create g1t-events-docs
       { "binding": "SUBSCRIBER_DOCS", "queue": "g1t-events-docs" }
     ],
-    "consumers": [{ "queue": "g1t-events", "max_batch_size": 100, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
+    "consumers": [
+      { "queue": "g1t-events", "max_batch_size": 100, "max_batch_timeout": 1, "max_retries": 10, "dead_letter_queue": "g1t-events-dlq" },
+      // What every consumer gave up on, recorded and counted for the
+      // status page (src/dead_letters.rs). It has no dead-letter queue of
+      // its own: one it fails on is dropped after its retries.
+      { "queue": "g1t-events-dlq", "max_batch_size": 100, "max_batch_timeout": 5, "max_retries": 10 }
+    ]
   },
   // Each workspace's audit log keeps as many days as billing says (7 free,
   // 90 on the plan, or what staff set), asked for over this binding.
