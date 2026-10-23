@@ -200,8 +200,9 @@ You can't resolve a merge conflict on the pull request's page.
 ### Large merges, squashes and rebases
 
 g1t merges, squashes, rebases and updates a pull request's branch by itself
-up to 1,000 changed files, 100 files merged line by line (each up to 1 MiB)
-and 250 commits in a rebase. Beyond them it refuses, and nothing changes.
+up to 1,000 changed files, 100 files merged line by line (each up to 8 MiB,
+with up to 10,000 lines added and removed on either side) and 250 commits in
+a rebase. Beyond them it refuses, and nothing changes.
 
 - **Instead.** Squash or merge instead of rebasing, or merge the base into
   the branch in a clone and push. See

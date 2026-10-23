@@ -257,7 +257,9 @@ the target, without parsing it or holding it whole.
 
 `repos` also builds the test merge for every pull request,
 `refs/pull/<n>/merge`, without a sandbox, using a line-level merge on
-files up to 1 MiB (`test_merge.rs`). When a pull request is behind and the
+files up to 8 MiB where neither side added and removed more than 10,000
+lines (`test_merge.rs`): the diff costs about the square of the lines
+changed, not the file's size. When a pull request is behind and the
 two sides' changes do not clash, updating its branch is done the same way
 (`catch_up.rs`), by a merge or a rebase; so are merge, squash and rebase
 merges, up to 1,000 changed files, 100 files merged line by line and 250

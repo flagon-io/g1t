@@ -1702,7 +1702,8 @@ taken from it, and changes both made to the same file merge unless they
 change the same or neighbouring lines differently, or the file is binary.
 When g1t cannot make the merge itself (a file one side renamed or deleted
 while the other changed it, a file where the other side has a directory,
-more than 300 changed files, or a file over 1 MB that both changed), the
+more than 300 changed files, or a file both changed that is over 8 MiB or
+has over 10,000 lines changed on one side), the
 run builds the head commit instead, as it did before.
 
 A pull request from outside the workspace may wait for approval before

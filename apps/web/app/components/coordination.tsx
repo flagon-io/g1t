@@ -55,6 +55,8 @@ import {
   type SessionNode,
   checkHref,
   evidenceOf,
+  ownCause,
+  unbuilt,
   expiresIn,
   harnessName,
   type LiveGroup,
@@ -795,6 +797,7 @@ export function IntegrationFailure({
   className?: string;
 }) {
   const evidence = evidenceOf(failure);
+  const never = unbuilt(evidence);
   return (
     <Alert tone={fixed ? "info" : "danger"} className={className}>
       <AlertTitle className="flex flex-wrap items-center gap-x-2 gap-y-1 text-fg">
@@ -804,7 +807,9 @@ export function IntegrationFailure({
             <NumberLink to={pullAt(base, pullHref, failure.pull)} className="hover:underline">
               #{failure.pull}
             </NumberLink>{" "}
-            failed in the merge queue {evidence.combination.length > 1 ? "together with others" : "on its own"}
+            {never
+              ? "could not be tested in the merge queue"
+              : `failed in the merge queue ${evidence.combination.length > 1 ? "together with others" : "on its own"}`}
           </span>
         ) : (
           <span>A combination failed in the merge queue</span>
@@ -817,23 +822,23 @@ export function IntegrationFailure({
       <AlertDescription className="space-y-1.5">
         {evidence.combination.length > 0 && (
           <p className="flex flex-wrap items-center gap-1.5 text-xs">
-            Tested as <span className="font-mono text-fg">{branch}</span> <span className="text-faint">+</span>
+            {never ? "Combined as" : "Tested as"} <span className="font-mono text-fg">{branch}</span> <span className="text-faint">+</span>
             <Combination numbers={evidence.combination} base={base} pullHref={pullHref} culprit={failure.pull} />
           </p>
         )}
-        {evidence.check && (
+        {evidence.check && !never && (
           <p className="text-xs">
             Failing check: <CheckLink check={evidence.check} />
           </p>
         )}
         <p className="text-xs">
-          {evidence.suspects.length > 0 ? (
+          {evidence.suspects.length > 0 && !never ? (
             <>
               Fails with <NumberedText text={evidence.suspects.map((n) => `#${n}`).join(", ")} base={base} pullHref={pullHref} />
               {evidence.bisected ? ", narrowed down by building smaller combinations." : "."}
             </>
           ) : (
-            "It fails by itself: the change is the cause."
+            ownCause(evidence)
           )}
         </p>
         {fixed && (

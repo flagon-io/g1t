@@ -10,6 +10,8 @@ import {
   checkHref,
   endReasonText,
   evidenceOf,
+  ownCause,
+  unbuilt,
   expiresIn,
   feedLine,
   harnessName,
@@ -252,11 +254,27 @@ test("evidence is read as far as it goes", () => {
     combination: [4, 5],
     suspects: [4],
     bisected: false,
+    error: null,
   });
   assert.deepEqual(evidenceOf(decision("note", "2026-10-12T10:00:00Z", { evidence: { combination: "nope" } })).combination, []);
   assert.equal(checkHref("https://g1t.sh/acme/web/actions/runs/run_1"), "/acme/web/actions/runs/run_1");
   assert.equal(checkHref("https://ci.example.com/build/9"), "https://ci.example.com/build/9");
   assert.equal(checkHref(null), null);
+});
+
+test("a state that could not be built does not blame the change", () => {
+  const failure = (check: { name: string; conclusion: string }, error?: string) =>
+    evidenceOf(decision("integration_failure", "2026-10-23T15:35:56Z", { evidence: { check, combination: [446], suspects: [], error } }));
+  const why = "g1t cannot merge this pull request itself: openapi.json is too large to merge line by line.";
+  const unbuiltState = failure({ name: "build", conclusion: "error" }, why);
+  assert.ok(unbuilt(unbuiltState));
+  assert.equal(ownCause(unbuiltState), `Nothing was checked: ${why}`);
+  // Recorded before the reason was kept.
+  assert.equal(ownCause(failure({ name: "build", conclusion: "error" })), "Nothing was checked: g1t could not build the combined state.");
+  assert.equal(ownCause(failure({ name: "CI", conclusion: "missing" })), "CI never reported, so it was not checked.");
+  const failed = failure({ name: "CI / merge_group", conclusion: "failure" });
+  assert.ok(!unbuilt(failed));
+  assert.equal(ownCause(failed), "It fails by itself: the change is the cause.");
 });
 
 test("a failure stands until the pull request passes in the queue or merges, and a fix after it answers it", () => {

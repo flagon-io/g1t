@@ -967,6 +967,9 @@ impl Work {
                 evidence: json!({
                     "commit": failure.combined_commit,
                     "check": failure.check,
+                    // Why it could not be built: the page says so rather
+                    // than blaming the change.
+                    "error": if matches!(failure.kind, FailureKind::Build) { failure.error.as_deref() } else { None },
                     "combination": combination,
                     "other_pulls": ahead,
                     "suspects": suspects,
