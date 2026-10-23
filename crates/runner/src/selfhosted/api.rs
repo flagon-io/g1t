@@ -39,6 +39,27 @@ pub struct Poll {
     pub removed: bool,
 }
 
+/// What a job on this runner gets, as g1t is told at registration and in
+/// each poll: g1t offers a job asking for one of its own machines
+/// (`ubuntu-latest`) to a runner at least that machine's size, and with
+/// Docker when the job uses it. An older g1t ignores it.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Capacity {
+    pub cpus: Option<u32>,
+    pub memory_mib: Option<u64>,
+    /// Whether a job can use Docker, for `services:` and `container:`.
+    pub docker: bool,
+}
+
+impl Capacity {
+    /// Its fields, into a registration's or a poll's body.
+    pub fn add_to(&self, body: &mut Value) {
+        body["cpus"] = json!(self.cpus);
+        body["memory_mib"] = json!(self.memory_mib);
+        body["docker"] = json!(self.docker);
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct RegisteredRunner {
     pub id: String,
@@ -114,10 +135,13 @@ impl Api {
     }
 
     /// Asks for work. `isolation` is how this runner keeps work from its
-    /// machine now, which g1t keeps up to date from each poll (it gives a
-    /// host-mode runner no public repository's work); an older g1t ignores it.
-    pub fn poll(&self, running: &[String], wait_ms: u64, isolation: &str) -> std::result::Result<Poll, Failure> {
-        let body = poll_body(running, wait_ms, isolation);
+    /// machine now, and `capacity` what a job on it gets, which g1t keeps
+    /// up to date from each poll (it gives a host-mode runner no public
+    /// repository's work, and a job asking for one of its machines only to
+    /// a runner as large); an older g1t ignores them.
+    pub fn poll(&self, running: &[String], wait_ms: u64, isolation: &str, capacity: &Capacity) -> std::result::Result<Poll, Failure> {
+        let mut body = poll_body(running, wait_ms, isolation);
+        capacity.add_to(&mut body);
         let answer = post(&format!("{}/runners/{}/poll", self.base, self.runner), Some(&self.credential), &body)?;
         serde_json::from_value(answer).map_err(|e| Failure::Unreachable(e.to_string()))
     }
@@ -167,5 +191,15 @@ mod tests {
         assert_eq!(body["isolation"], "host");
         assert_eq!(body["running"], json!(["job_1"]));
         assert_eq!(body["version"], VERSION);
+    }
+
+    #[test]
+    fn a_poll_says_what_a_job_gets() {
+        let mut body = poll_body(&[], 0, "nested-container");
+        Capacity { cpus: Some(8), memory_mib: Some(12_000), docker: true }.add_to(&mut body);
+        assert_eq!((body["cpus"].clone(), body["memory_mib"].clone(), body["docker"].clone()), (json!(8), json!(12_000), json!(true)));
+        let mut unknown = poll_body(&[], 0, "host");
+        Capacity::default().add_to(&mut unknown);
+        assert!(unknown["cpus"].is_null() && unknown["memory_mib"].is_null());
     }
 }

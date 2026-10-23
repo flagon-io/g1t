@@ -1049,12 +1049,16 @@ impl Actions {
             let Some(environment) = job.environment.as_deref() else { continue };
             match self.gate(run, environment).await? {
                 Gate::Open => {
-                    // A self-hosted job waits for a runner again.
-                    let reason = job
-                        .labels
-                        .as_deref()
-                        .and_then(|labels| serde_json::from_str::<Vec<String>>(labels).ok())
-                        .map(|stored| g1t_contracts::runners::waiting_reason(&g1t_contracts::runners::Wanted::from_stored(&stored)));
+                    // A self-hosted job waits for a runner again, and one
+                    // asking for a hosted label is offered to them again.
+                    let reason = if job.fallback_instance.is_some() {
+                        Some(g1t_contracts::runners::OFFERED_TO_OWN.to_owned())
+                    } else {
+                        job.labels
+                            .as_deref()
+                            .and_then(|labels| serde_json::from_str::<Vec<String>>(labels).ok())
+                            .map(|stored| g1t_contracts::runners::waiting_reason(&g1t_contracts::runners::Wanted::from_stored(&stored)))
+                    };
                     self.db
                         .prepare("UPDATE jobs SET status = 'queued', reason = ?, queued_at = ? WHERE id = ? AND status = 'pending'")
                         .bind(&[optional(reason.as_deref()), at.as_str().into(), job.id.as_str().into()])?

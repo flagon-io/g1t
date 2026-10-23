@@ -27,7 +27,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 
-use super::api::Assignment;
+use super::api::{Assignment, Capacity};
 use super::config::Config;
 use super::sandbox::{self, Isolation};
 use super::{log, update};
@@ -339,6 +339,31 @@ pub fn limits(config: &Config) -> Limits {
         .unwrap_or_else(|| "4g".into());
     let cpus = config.cpus.clone().unwrap_or_else(|| std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2).to_string());
     Limits { memory, cpus, pids: config.pids_limit.unwrap_or(DEFAULT_PIDS_LIMIT) }
+}
+
+/// What a job here gets, for g1t (`Capacity`): a job container's CPUs and
+/// memory (`--cpus` and `--memory`, else what `limits` gives it), a VM's,
+/// or the machine's for a job run on it directly; and whether the job can
+/// use Docker: its own engine inside the runner's sandbox, or the
+/// machine's in host mode. `memory` and `cpus` are the runner's options.
+pub fn capacity(memory: Option<&str>, cpus: Option<&str>, job_docker: bool, isolation: Isolation) -> Capacity {
+    let machine_cpus = std::thread::available_parallelism().map_or(1, |n| n.get()) as u32;
+    let given_cpus = cpus.and_then(|c| c.trim().parse::<f64>().ok()).map(|c| c.floor() as u32).filter(|c| *c > 0);
+    match isolation {
+        Isolation::Host => Capacity { cpus: Some(machine_cpus), memory_mib: super::launcher::total_memory_mib(), docker: docker_ready() },
+        Isolation::Vm => Capacity { cpus: Some(machine_cpus), memory_mib: Some(memory.and_then(mib).unwrap_or(4096)), docker: false },
+        Isolation::NestedContainer | Isolation::Container => {
+            let memory = memory
+                .map(str::to_owned)
+                .or_else(|| default_memory(&std::fs::read_to_string("/proc/meminfo").unwrap_or_default()))
+                .unwrap_or_else(|| "4g".into());
+            Capacity {
+                cpus: Some(given_cpus.unwrap_or(machine_cpus)),
+                memory_mib: mib(&memory),
+                docker: isolation == Isolation::NestedContainer && job_docker && cfg!(unix),
+            }
+        }
+    }
 }
 
 /// Everything a job's `docker run` is made from.
@@ -737,6 +762,16 @@ mod tests {
     #[test]
     fn limits_default_sensibly() {
         assert_eq!(default_memory("MemTotal:       16384000 kB\nMemFree: 1 kB\n"), Some("12000m".into()));
+        // What g1t is told a job gets: the limits a job container is given.
+        let given = capacity(Some("12g"), Some("6.5"), true, Isolation::NestedContainer);
+        assert_eq!((given.cpus, given.memory_mib), (Some(6), Some(12 * 1024)));
+        assert_eq!(given.docker, cfg!(unix), "a job's own engine, inside the runner's sandbox");
+        let shared = capacity(Some("8192m"), None, true, Isolation::Container);
+        assert_eq!(shared.memory_mib, Some(8192));
+        assert!(!shared.docker, "never the machine's engine");
+        assert!(shared.cpus.is_some_and(|n| n >= 1));
+        let vm = capacity(None, None, true, Isolation::Vm);
+        assert_eq!((vm.memory_mib, vm.docker), (Some(4096), false));
         assert_eq!(default_memory(""), None);
         let mut config = config();
         config.memory = Some("2g".into());

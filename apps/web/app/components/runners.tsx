@@ -1,4 +1,4 @@
-import { Bot, Boxes, Cpu, Plus, ServerCog, ShieldAlert, Trash2 } from "lucide-react";
+import { Bot, Boxes, Cpu, Laptop, Plus, ServerCog, ShieldAlert, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Form, Link } from "react-router";
 
@@ -65,6 +65,19 @@ export const ISOLATION: Record<RunnerIsolation, { label: string; tone: BadgeTone
   },
 };
 
+/** What a job on a runner gets, as it last said: `8 CPUs · 12 GB · Docker`. Null for a runner too old to say. */
+export function runnerResources(runner: Pick<Runner, "cpus" | "memoryMib" | "docker">): string | null {
+  if (runner.cpus == null && runner.memoryMib == null) return null;
+  const parts: string[] = [];
+  if (runner.cpus != null) parts.push(`${runner.cpus} ${runner.cpus === 1 ? "CPU" : "CPUs"}`);
+  if (runner.memoryMib != null) {
+    const gib = runner.memoryMib / 1024;
+    parts.push(`${Number.isInteger(gib) ? gib : gib.toFixed(1)} GB`);
+  }
+  if (runner.docker) parts.push("Docker");
+  return parts.join(" · ");
+}
+
 function IsolationBadge({ isolation }: { isolation: Runner["isolation"] }) {
   if (!isolation) return null;
   const level = ISOLATION[isolation];
@@ -99,6 +112,7 @@ function Section({ icon, title, about, children }: { icon: React.ReactNode; titl
 export function RunnerRow({ runner, manage }: { runner: Runner; manage: boolean }) {
   const status = STATUS[runner.status];
   const href = runner.work ? workHref(runner.work) : null;
+  const resources = runnerResources(runner);
   return (
     <li className="flex flex-wrap items-start gap-x-4 gap-y-2 px-4 py-3">
       <span className={`mt-1.5 size-2 shrink-0 rounded-full ${status.dot}`} aria-hidden />
@@ -139,6 +153,11 @@ export function RunnerRow({ runner, manage }: { runner: Runner; manage: boolean 
           {OS_NAMES[runner.os]} {runner.arch}
           {runner.version && <> · {runner.version}</>}
         </div>
+        {resources && (
+          <div className="mt-0.5" title="What a job on it gets">
+            {resources}
+          </div>
+        )}
         <div className="mt-0.5">
           {runner.lastSeenAt ? (
             <>
@@ -425,6 +444,7 @@ export function RunnerSettingsForm({ data, manage, scope }: { data: RunnersData;
   const settings = data.settings;
   const [agents, setAgents] = useState(settings?.agentsOnSelfHosted ?? false);
   const [forks, setForks] = useState(settings?.forkPullRequests ?? false);
+  const [preferOwn, setPreferOwn] = useState(settings?.preferOwnRunners ?? true);
   if (!settings) return null;
   // The intent comes from the button pressed: a hidden one before it would
   // win the form's first "intent", and Follow the workspace would only save.
@@ -433,6 +453,25 @@ export function RunnerSettingsForm({ data, manage, scope }: { data: RunnersData;
       {scope === "project" && settings.inherited && (
         <p className="text-sm text-muted">These are the workspace&apos;s settings. Saving here gives this repository its own.</p>
       )}
+      <Card asChild className="flex items-start justify-between gap-4 p-4">
+        <label>
+          <span className="min-w-0">
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <Laptop size={15} className="text-muted" />
+              Prefer our runners for hosted labels
+            </span>
+            <span className="mt-1 block text-sm text-muted">
+              Jobs asking for <code className="font-mono text-fg-soft">ubuntu-latest</code> or another of g1t&apos;s Linux labels run on one of these runners
+              when one is idle and fits: the job&apos;s OS and architecture, at least the CPUs and memory of the machine g1t would give it, and Docker if it
+              uses services or a container. Otherwise they run on g1t&apos;s machines, within 15 seconds. Their time on your runners is free.
+            </span>
+            <span className="mt-1 block text-sm text-muted">
+              Those jobs then run on your members&apos; own machines, desktops included, and get the run&apos;s secrets there.
+            </span>
+          </span>
+          <Switch name="preferOwn" checked={preferOwn} onCheckedChange={setPreferOwn} disabled={!manage} aria-label="Prefer our runners for hosted labels" />
+        </label>
+      </Card>
       <Card asChild className="flex items-start justify-between gap-4 p-4">
         <label>
           <span className="min-w-0">
@@ -550,7 +589,7 @@ export function RunnersPanel({
         <RunnerSettingsForm
           key={
             data.settings
-              ? `${data.settings.inherited}:${data.settings.agentsOnSelfHosted}:${data.settings.forkPullRequests}:${data.settings.agentLabels.join(",")}`
+              ? `${data.settings.inherited}:${data.settings.agentsOnSelfHosted}:${data.settings.forkPullRequests}:${data.settings.preferOwnRunners}:${data.settings.agentLabels.join(",")}`
               : "none"
           }
           data={data}

@@ -23,6 +23,13 @@
 //!   `self-hosted` (or a `group`) only ever runs on self-hosted runners; it
 //!   waits, saying for which labels, until one picks it up, for a day at
 //!   most.
+//! - A job whose `runs-on` is one of the hosted Linux labels
+//!   (`ubuntu-latest`) is offered to the workspace's own runners first,
+//!   unless its settings say otherwise (`prefer_own_runners`): a runner of
+//!   its OS and architecture that is online, idle and at least as large as
+//!   the machine g1t would give it takes it ([`stands_in_for`]). With none
+//!   free, it runs on g1t's machine at once; with one free that did not
+//!   take it within [`OFFER_TO_OWN_MS`], then ([`falls_back`]).
 //!
 //! The management methods take an `actor` and an owner (`repo` or
 //! `workspace`), as secrets do. The runner's own methods take its id and
@@ -111,6 +118,15 @@ pub struct Runner {
     /// ([`ISOLATIONS`]); null for a runner from before runners said.
     #[serde(default)]
     pub isolation: Option<String>,
+    /// What a job on it gets, as it last said: CPUs, memory in MiB, and
+    /// whether the job can use Docker (`services:`, `container:`). Null
+    /// for a runner from before runners said.
+    #[serde(default)]
+    pub cpus: Option<u32>,
+    #[serde(default)]
+    pub memory_mib: Option<u64>,
+    #[serde(default)]
+    pub docker: Option<bool>,
 }
 
 /// Which of a workspace's repositories may use its runners.
@@ -157,6 +173,11 @@ pub struct RunnerSettings {
     /// Off by default: anyone who can open a pull request could run code
     /// on the machine.
     pub fork_pull_requests: bool,
+    /// A job asking for one of g1t's hosted Linux labels runs on one of the
+    /// workspace's own runners when one that fits it is free, and on g1t's
+    /// machines otherwise. On by default. The job gets the run's secrets
+    /// on that machine, as on any self-hosted runner.
+    pub prefer_own_runners: bool,
     /// For a repository: these are its workspace's, not its own.
     pub inherited: bool,
 }
@@ -413,6 +434,8 @@ pub struct SetRunnerSettingsArgs {
     #[serde(default)]
     pub fork_pull_requests: Option<bool>,
     #[serde(default)]
+    pub prefer_own_runners: Option<bool>,
+    #[serde(default)]
     pub inherit: bool,
 }
 
@@ -535,6 +558,15 @@ pub struct RegisterArgs {
     /// tell, leave it out.
     #[serde(default)]
     pub machine: Option<String>,
+    /// What a job on it gets (`Runner::cpus`). A runner that does not say
+    /// takes no job asking for a hosted label ([`stands_in_for`]); older
+    /// runners leave them out.
+    #[serde(default)]
+    pub cpus: Option<u32>,
+    #[serde(default)]
+    pub memory_mib: Option<u64>,
+    #[serde(default)]
+    pub docker: Option<bool>,
 }
 
 /// The isolation levels a runner may say it has (`RegisterArgs::isolation`).
@@ -572,6 +604,14 @@ pub struct PollArgs {
     /// runners leave it out.
     #[serde(default)]
     pub isolation: Option<String>,
+    /// What a job on it gets now, as at registration; kept up to date from
+    /// each poll. Older runners leave them out.
+    #[serde(default)]
+    pub cpus: Option<u32>,
+    #[serde(default)]
+    pub memory_mib: Option<u64>,
+    #[serde(default)]
+    pub docker: Option<bool>,
 }
 
 /// Work for a runner.
@@ -807,6 +847,127 @@ pub fn waiting_reason(wanted: &Wanted) -> String {
     format!("Waiting for a self-hosted runner with labels {}.", wanted.describe())
 }
 
+// --- Hosted labels on the workspace's own runners ----------------------------
+
+/// How long a job asking for a hosted label is offered to the workspace's
+/// own runners before it runs on g1t's machines. A free runner is in a
+/// poll already and looks every few seconds, so it takes the job well
+/// within this.
+pub const OFFER_TO_OWN_MS: u64 = 15 * 1000;
+
+/// What a job offered to the workspace's own runners says while it waits.
+pub const OFFERED_TO_OWN: &str =
+    "Offered to the workspace's own runners first: it runs on g1t's machines if none that fits takes it within 15 seconds.";
+
+/// The runner labels a job's hosted `runs-on` stands for, when the job may
+/// run on the workspace's own runners instead: every label one of g1t's
+/// Linux labels (`ubuntu-latest`, `ubuntu-24.04-arm`, or an older or newer
+/// `ubuntu-*`), all of one architecture. `linux` and `x64`, or `arm64` for
+/// an `-arm` label. None for any other `runs-on`: Windows and macOS labels,
+/// which only a self-hosted runner runs, and labels of the person's own.
+pub fn hosted_wanted(labels: &[String]) -> Option<Wanted> {
+    let mut arch: Option<&'static str> = None;
+    for label in labels {
+        let label = label.trim().to_ascii_lowercase();
+        let this = match crate::actions::github_label(&label) {
+            Some(github) if github.os == "linux" => github.arch,
+            Some(_) => return None,
+            None if label.starts_with("ubuntu-") => {
+                if label.ends_with("-arm") {
+                    "arm64"
+                } else {
+                    "x64"
+                }
+            }
+            None => return None,
+        };
+        if arch.is_some_and(|known| known != this) {
+            return None;
+        }
+        arch = Some(this);
+    }
+    arch.map(|arch| Wanted::of(&["linux".to_owned(), arch.to_owned()], None))
+}
+
+/// Whether a job asking for a hosted label is offered to the workspace's
+/// own runners: its settings prefer them, and the run is trusted, or is
+/// a pull request from a fork where those may use self-hosted runners.
+pub fn offered_to_own(prefer_own_runners: bool, trusted: bool, fork_pull_requests: bool) -> bool {
+    prefer_own_runners && (trusted || fork_pull_requests)
+}
+
+/// What a runner says a job on it gets.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Capacity {
+    pub cpus: Option<u32>,
+    pub memory_mib: Option<u64>,
+    pub docker: Option<bool>,
+}
+
+/// Whether a runner may take, in place of `machine` (the machine g1t would
+/// give it), a job asking for a hosted label: at least the machine's CPUs
+/// and memory, Docker when the job has `services:` or `container:`, and,
+/// for a runner that runs jobs directly on its machine, only a repository
+/// known to be private. A runner that does not say what it has takes none:
+/// the job runs on g1t's machine instead, where it fits.
+pub fn stands_in_for(
+    capacity: Capacity,
+    isolation: Option<&str>,
+    visibility: Option<&str>,
+    machine: &crate::actions::InstanceType,
+    needs_docker: bool,
+) -> bool {
+    let (Some(cpus), Some(memory_mib)) = (capacity.cpus, capacity.memory_mib) else {
+        return false;
+    };
+    let isolated = isolation != Some("host") || visibility == Some("private");
+    f64::from(cpus) >= machine.vcpu
+        && memory_mib as f64 >= machine.memory_gib * 1024.0
+        && (!needs_docker || capacity.docker == Some(true))
+        && isolated
+}
+
+/// Why a job offered to the workspace's own runners runs on g1t's machines.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fallback {
+    /// No runner of the workspace that fits it is online and idle, or its
+    /// runners already have all the jobs its plan lets them run at once.
+    NoneFree,
+    /// One was, and it did not take the job within [`OFFER_TO_OWN_MS`].
+    NotTaken,
+}
+
+/// Whether a job offered to the workspace's own runners since `queued_at`
+/// (RFC 3339) runs on g1t's machines at `now`, and why: at once when no
+/// runner that fits it is free, else once it has waited
+/// [`OFFER_TO_OWN_MS`]. One whose time cannot be read has waited enough.
+pub fn falls_back(runner_free: bool, queued_at: Option<&str>, now: u64) -> Option<Fallback> {
+    if !runner_free {
+        return Some(Fallback::NoneFree);
+    }
+    let waited = queued_at.and_then(crate::time::parse_rfc3339).is_none_or(|at| now.saturating_sub(at) >= OFFER_TO_OWN_MS);
+    waited.then_some(Fallback::NotTaken)
+}
+
+/// What a job that asked for a hosted label says in "Set up job" when the
+/// workspace's runner `runner` took it.
+pub fn on_own_runner_note(runner: &str) -> String {
+    format!(
+        "This job asked for one of g1t's machines and runs on the workspace's own runner {runner} instead: the workspace prefers its own runners when one that fits is free (Settings, Runners). Its time there is free."
+    )
+}
+
+/// What a job that asked for a hosted label says in "Set up job" when it
+/// runs on g1t's machines after all.
+pub fn fallback_note(why: Fallback) -> &'static str {
+    match why {
+        Fallback::NoneFree => {
+            "This job runs on g1t's machines: the workspace prefers its own runners, and none that fits this job (its OS and architecture, at least this machine's CPUs and memory, and Docker if it uses services or a container) was free."
+        }
+        Fallback::NotTaken => "This job runs on g1t's machines: the workspace prefers its own runners, and none of them took it within 15 seconds.",
+    }
+}
+
 // --- Staff only (sudo.g1t.sh) ---
 
 /// `admin_runners`: a workspace's self-hosted runners, its own and its
@@ -918,6 +1079,94 @@ mod tests {
     }
 
     #[test]
+    fn a_hosted_linux_label_stands_for_linux_and_its_architecture() {
+        let linux = |arch: &str| Some(Wanted::of(&strings(&["linux", arch]), None));
+        assert_eq!(hosted_wanted(&strings(&["ubuntu-latest"])), linux("x64"));
+        assert_eq!(hosted_wanted(&strings(&[" Ubuntu-24.04 "])), linux("x64"));
+        assert_eq!(hosted_wanted(&strings(&["ubuntu-slim"])), linux("x64"));
+        assert_eq!(hosted_wanted(&strings(&["ubuntu-24.04-arm"])), linux("arm64"));
+        // Older and newer images than the table has.
+        assert_eq!(hosted_wanted(&strings(&["ubuntu-20.04"])), linux("x64"));
+        assert_eq!(hosted_wanted(&strings(&["ubuntu-28.04-arm"])), linux("arm64"));
+        assert_eq!(hosted_wanted(&strings(&["ubuntu-latest", "ubuntu-24.04"])), linux("x64"));
+        // Windows and macOS stay as they are, and so do labels of one's own.
+        assert_eq!(hosted_wanted(&strings(&["windows-latest"])), None);
+        assert_eq!(hosted_wanted(&strings(&["macos-15"])), None);
+        assert_eq!(hosted_wanted(&strings(&["ubuntu-latest", "gpu"])), None);
+        assert_eq!(hosted_wanted(&strings(&["ubuntu-latest", "ubuntu-24.04-arm"])), None, "two architectures");
+        assert_eq!(hosted_wanted(&strings(&[])), None);
+        let runner = strings(&["self-hosted", "linux", "x64", "desktop"]);
+        assert!(hosted_wanted(&strings(&["ubuntu-latest"])).unwrap().matches(&runner, Some("default")));
+        assert!(!hosted_wanted(&strings(&["ubuntu-24.04-arm"])).unwrap().matches(&runner, None));
+        assert!(!hosted_wanted(&strings(&["ubuntu-latest"])).unwrap().self_hosted);
+    }
+
+    #[test]
+    fn a_fork_pull_request_is_offered_only_where_forks_may_use_runners() {
+        assert!(offered_to_own(true, true, false));
+        assert!(!offered_to_own(true, false, false));
+        assert!(offered_to_own(true, false, true));
+        assert!(!offered_to_own(false, true, true));
+    }
+
+    #[test]
+    fn a_runner_stands_in_only_for_a_machine_it_is_as_large_as() {
+        let standard = crate::actions::STANDARD_INSTANCE;
+        let large = crate::actions::instance_named("g1t-4core").unwrap();
+        let laptop = Capacity { cpus: Some(8), memory_mib: Some(16 * 1024), docker: Some(true) };
+        assert!(stands_in_for(laptop, Some("nested-container"), Some("public"), &standard, false));
+        assert!(stands_in_for(laptop, Some("nested-container"), Some("public"), &large, true));
+        // Exactly the machine's size is enough; a CPU or a MiB less is not.
+        let exact = Capacity { cpus: Some(2), memory_mib: Some(8 * 1024), docker: None };
+        assert!(stands_in_for(exact, Some("container"), None, &standard, false));
+        assert!(!stands_in_for(Capacity { cpus: Some(1), ..exact }, Some("container"), None, &standard, false));
+        assert!(!stands_in_for(Capacity { memory_mib: Some(8 * 1024 - 1), ..exact }, Some("container"), None, &standard, false));
+        assert!(!stands_in_for(exact, Some("container"), None, &large, false));
+        // A runner that does not say what it has takes none.
+        assert!(!stands_in_for(Capacity { cpus: None, ..laptop }, None, None, &standard, false));
+        assert!(!stands_in_for(Capacity { memory_mib: None, ..laptop }, None, None, &standard, false));
+        assert!(!stands_in_for(Capacity::default(), None, None, &standard, false));
+    }
+
+    #[test]
+    fn services_and_containers_need_a_runner_with_docker() {
+        let standard = crate::actions::STANDARD_INSTANCE;
+        let without = Capacity { cpus: Some(4), memory_mib: Some(16 * 1024), docker: Some(false) };
+        assert!(stands_in_for(without, None, None, &standard, false));
+        assert!(!stands_in_for(without, None, None, &standard, true));
+        assert!(!stands_in_for(Capacity { docker: None, ..without }, None, None, &standard, true));
+        assert!(stands_in_for(Capacity { docker: Some(true), ..without }, None, None, &standard, true));
+    }
+
+    #[test]
+    fn a_host_mode_runner_stands_in_only_for_a_private_repository() {
+        let standard = crate::actions::STANDARD_INSTANCE;
+        let big = Capacity { cpus: Some(16), memory_mib: Some(64 * 1024), docker: Some(true) };
+        assert!(stands_in_for(big, Some("host"), Some("private"), &standard, false));
+        assert!(!stands_in_for(big, Some("host"), Some("public"), &standard, false));
+        // Unknown: g1t's machine runs it, rather than the runner deciding.
+        assert!(!stands_in_for(big, Some("host"), None, &standard, false));
+        assert!(stands_in_for(big, Some("vm"), None, &standard, false));
+    }
+
+    #[test]
+    fn a_job_falls_back_at_once_with_no_runner_free_and_after_fifteen_seconds_untaken() {
+        let queued = crate::time::rfc3339(1_000_000);
+        let at = |ms: u64| 1_000_000 + ms;
+        assert_eq!(falls_back(false, Some(&queued), at(0)), Some(Fallback::NoneFree));
+        assert_eq!(falls_back(true, Some(&queued), at(0)), None);
+        assert_eq!(falls_back(true, Some(&queued), at(OFFER_TO_OWN_MS - 1)), None);
+        assert_eq!(falls_back(true, Some(&queued), at(OFFER_TO_OWN_MS)), Some(Fallback::NotTaken));
+        assert_eq!(falls_back(true, None, at(0)), Some(Fallback::NotTaken));
+        assert_eq!(falls_back(true, Some("not a time"), at(0)), Some(Fallback::NotTaken));
+        // What the log says names the runner, or why none ran it.
+        assert!(on_own_runner_note("box-linux").contains("own runner box-linux"));
+        assert!(fallback_note(Fallback::NoneFree).contains("none that fits"));
+        assert!(fallback_note(Fallback::NotTaken).contains("15 seconds"));
+        assert!(OFFERED_TO_OWN.contains("15 seconds") && OFFER_TO_OWN_MS == 15_000);
+    }
+
+    #[test]
     fn waiting_says_for_what() {
         let wanted = Wanted::of(&strings(&["self-hosted", "linux", "gpu"]), None);
         assert_eq!(waiting_reason(&wanted), "Waiting for a self-hosted runner with labels self-hosted, linux, gpu.");
@@ -948,5 +1197,11 @@ mod tests {
         // An older runner's registration, without an isolation level.
         let register: RegisterArgs = serde_json::from_value(serde_json::json!({ "token": "g1trt_x", "name": "a", "os": "linux", "arch": "x64" })).unwrap();
         assert_eq!(register.isolation, None);
+        assert_eq!((register.cpus, register.memory_mib, register.docker), (None, None, None), "an older runner says nothing of its size");
+        let poll: PollArgs = serde_json::from_value(serde_json::json!({
+            "runner": "rnr_1", "credential": "c", "cpus": 8, "memory_mib": 16384, "docker": true
+        }))
+        .unwrap();
+        assert_eq!((poll.cpus, poll.memory_mib, poll.docker), (Some(8), Some(16384), Some(true)));
     }
 }
