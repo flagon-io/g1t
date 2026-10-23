@@ -43,6 +43,10 @@ import {
   answered,
   capReached,
   describeError,
+  holdContainer,
+  inactivityTimeoutMs,
+  KEEP_RESIDENT_SECONDS,
+  keepsResident,
   type Owed,
   recordOwed,
   START_POLL_MS,
@@ -341,6 +345,12 @@ const CHECKS_TOKEN_TTL_SECONDS = 45 * 60;
 /** Long enough to clone and merge two commits; then the read token stops working. */
 const MERGECHECK_TOKEN_TTL_SECONDS = 10 * 60;
 
+/** The git edge's `sleepAfter`, in minutes: how long it stays warm after its last request. */
+const GIT_EDGE_SLEEP_MINUTES = 10;
+
+/** A sandbox's `sleepAfter`, in minutes: past the longest default time cap (90 minutes) and its alarm. */
+const SANDBOX_SLEEP_MINUTES = 100;
+
 /**
  * One sandbox, for one piece of work: a workflow job, a build, a state of
  * the merge queue, a merge check, an update or a backup. The image's entrypoint
@@ -348,10 +358,10 @@ const MERGECHECK_TOKEN_TTL_SECONDS = 10 * 60;
  * it and cleans up if it dies without reporting.
  */
 export class AttemptSandbox extends Container<RunnerEnv> {
-  // Past the longest default time cap (90 minutes) and its alarm. A run whose guardrails allow longer (up to 240 minutes) is kept
+  // Past the longest default time cap (90 minutes) and its alarm (`SANDBOX_SLEEP_MINUTES`). A run whose guardrails allow longer (up to 240 minutes) is kept
   // past it by `onActivityExpired`, so only its own cap ends it. A finished
   // run's process exits and stops the sandbox well before this.
-  sleepAfter = "100m";
+  sleepAfter = `${SANDBOX_SLEEP_MINUTES}m`;
   // HTTPS to an intercepted host goes through its handler too (guard.ts).
   interceptHttps = true;
   static {
@@ -359,6 +369,13 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     // registers the handler with the containers library. Which one a
     // sandbox uses is chosen as it starts (`run`).
     AttemptSandbox.outboundHandlers = { egress, abuse, git };
+  }
+
+  constructor(ctx: DurableObjectState<{}>, env: RunnerEnv) {
+    super(ctx, env);
+    // An object started again while its container runs (a deploy, an
+    // eviction) has no inactivity timeout and no keep-alive: given back.
+    if (ctx.container?.running) void ctx.blockConcurrencyWhile(() => this.resumeHold());
   }
 
   /**
@@ -477,6 +494,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
         await this.ctx.storage.put("timeCap", cap);
         await this.schedule(cap * 60 + ALARM_GRACE_SECONDS, "timeUp");
       }
+      await this.holdRun();
     } catch (error) {
       console.error("sandbox not started", run.kind, describeError(error));
       await revokeCredentials(this.env.IDENTITY, this.ctx.storage);
@@ -487,6 +505,53 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       await this.ctx.storage.delete(["meter", "started", "run"]);
       throw error;
     }
+  }
+
+  /**
+   * Keeps this sandbox's container running while its work does. Cloudflare
+   * evicts a Durable Object about 70 seconds after the last request or
+   * alarm reached it, and stops its container with a SIGTERM; the
+   * library's keep-alive alarm waits inside one invocation, which does not
+   * count, and the runner never fetches the container. Jobs died that way
+   * mid-step (flagon-io#426, Cloudflare case #02393300: CI Rust (1) of #436,
+   * evicted 13:51:45, SIGTERM 13:52:11 on 2026-10-23). So the sandbox wakes
+   * itself every `KEEP_RESIDENT_SECONDS` (`keepResident`), which also keeps
+   * its time cap and stop hook running here; and should it be evicted
+   * anyway, the container is kept to the end of its time cap
+   * (`setInactivityTimeout`), not stopped. Never throws.
+   */
+  private async holdRun(): Promise<void> {
+    try {
+      const started = await this.ctx.storage.get<number>("started");
+      const cap = await this.ctx.storage.get<number>("timeCap");
+      await holdContainer(this.ctx.container, inactivityTimeoutMs(started, cap, Date.now(), ALARM_GRACE_SECONDS, SANDBOX_SLEEP_MINUTES));
+      this.deleteSchedules("keepResident");
+      await this.schedule(KEEP_RESIDENT_SECONDS, "keepResident");
+    } catch (error) {
+      console.error("sandbox not held", this.ctx.id.toString(), describeError(error));
+    }
+  }
+
+  /** `holdRun` again, for an object started anew under a running container. Never throws. */
+  private async resumeHold(): Promise<void> {
+    try {
+      if (!keepsResident(this.ctx.container?.running === true, (await this.ctx.storage.get<boolean>("remote")) ?? false)) return;
+      await this.holdRun();
+    } catch (error) {
+      console.error("sandbox not held", this.ctx.id.toString(), describeError(error));
+    }
+  }
+
+  /**
+   * The sandbox's keep-alive (`holdRun`): an alarm every
+   * `KEEP_RESIDENT_SECONDS` while its container runs, so Cloudflare never
+   * finds the object idle. Ends once the container has stopped.
+   */
+  async keepResident(): Promise<void> {
+    this.deleteSchedules("keepResident");
+    const remote = (await this.ctx.storage.get<boolean>("remote")) ?? false;
+    if (!keepsResident(this.ctx.container?.running === true, remote)) return;
+    await this.schedule(KEEP_RESIDENT_SECONDS, "keepResident");
   }
 
   /**
@@ -846,6 +911,8 @@ export class AttemptSandbox extends Container<RunnerEnv> {
   }
 
   override async onStop({ exitCode, reason }: StopParams): Promise<void> {
+    // Nothing left to keep awake (`holdRun`).
+    this.deleteSchedules("keepResident");
     await revokeCredentials(this.env.IDENTITY, this.ctx.storage);
     const started = await this.ctx.storage.get<number>("started");
     await this.meterStop();
@@ -1006,13 +1073,29 @@ export class SandboxLarge extends AttemptSandbox {
  */
 export class GitEdge extends Container<RunnerEnv> {
   defaultPort = GIT_EDGE_PORT;
-  sleepAfter = "10m";
+  sleepAfter = `${GIT_EDGE_SLEEP_MINUTES}m`;
   enableInternet = true;
   envVars = GIT_EDGE_ENV;
   /** The start under way, shared by every request that finds it cold. */
   private warming: Promise<void> | null = null;
   /** Until when no start is tried, after one failed. */
   private restUntil = 0;
+
+  constructor(ctx: DurableObjectState<{}>, env: RunnerEnv) {
+    super(ctx, env);
+    // An object started again under its running container has no inactivity timeout (`hold`).
+    if (ctx.container?.running) ctx.waitUntil(this.hold());
+  }
+
+  /**
+   * Keeps the container for its `sleepAfter` once the object goes idle:
+   * Cloudflare evicts an idle object after about 70 seconds and stops its
+   * container with it (flagon-io#426), so the edge went cold a minute after
+   * its last clone, not ten. Never throws.
+   */
+  private hold(): Promise<boolean> {
+    return holdContainer(this.ctx.container, GIT_EDGE_SLEEP_MINUTES * 60 * 1000, (...data) => console.error("git edge", ...data));
+  }
 
   override async fetch(request: Request): Promise<Response> {
     const forward = (forwarded: Request) => this.containerFetch(forwarded, GIT_EDGE_PORT);
@@ -1065,6 +1148,7 @@ export class GitEdge extends Container<RunnerEnv> {
         this.restUntil = Date.now() + START_REST_MS;
         throw error;
       }
+      await this.hold();
       if (!running && store) {
         await restoreSnapshot(repoId, store, (request) => this.containerFetch(request, GIT_EDGE_PORT)).catch((error: unknown) =>
           console.error("git edge snapshot not restored", repoId, describeError(error)),
