@@ -432,7 +432,7 @@ function twoRegistries({ limit }) {
 
 test("an image is copied registry to registry in chunks under the target's request limit, exactly", async () => {
   const r = twoRegistries({ limit: 100 });
-  assert.equal(await copyImage({ from: r.from, to: r.to, digest: r.digest, tag: "base-1", chunkSize: 100 }), r.digest);
+  assert.equal(await copyImage({ from: r.from, to: r.to, digest: r.digest, tag: "base-1", chunkSize: 100, concurrency: 1 }), r.digest);
   for (const [digest, bytes] of r.source) assert.deepEqual(r.kept.get(digest), bytes, `${digest} as it was`);
   assert.deepEqual(r.manifests.get("base-1"), r.manifest, "the manifest's own bytes, so the same digest");
   const patches = r.requests.filter(([host, method]) => host === "to.test" && method === "PATCH").map(([, , , n]) => n);
@@ -447,4 +447,11 @@ test("a copy whose chunks are over the target's limit fails, and finishes no blo
   const r = twoRegistries({ limit: 100 });
   await assert.rejects(copyImage({ from: r.from, to: r.to, digest: r.digest, tag: "base-1", chunkSize: 200, attempts: 1 }), /413/);
   assert.ok(!r.manifests.has("base-1"));
+});
+
+test("blobs are copied several at once, each still whole and exact", async () => {
+  const r = twoRegistries({ limit: 100 });
+  assert.equal(await copyImage({ from: r.from, to: r.to, digest: r.digest, tag: "base-1", chunkSize: 100, concurrency: 4 }), r.digest);
+  for (const [digest, bytes] of r.source) assert.deepEqual(r.kept.get(digest), bytes, `${digest} as it was`);
+  assert.deepEqual(r.manifests.get("base-1"), r.manifest);
 });

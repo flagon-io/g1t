@@ -187,13 +187,15 @@ jobs:
     # runner, copied from Cloudflare's private registry to the public
     # g1t.sh/flagon-io/g1t-hosted under the base's tag, unless g1t.sh has
     # its digest already (scripts/hosted-image.mjs). Registry to registry:
+    # slow (about 0.4 MB/s a layer into g1t.sh, several at once), but each
+    # layer that lands stays, so a re-run goes on from there.
     # nothing is pulled here, so the machine's disk is no matter.
     name: g1t's machine image
     runs-on: ubuntu-latest
     environment:
       name: production
       deployment: false
-    timeout-minutes: 45
+    timeout-minutes: 150
     # Its token pushes the image to g1t's registry.
     permissions:
       contents: read
