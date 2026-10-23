@@ -71,10 +71,36 @@ pub struct Manifest {
     pub sandbox: Option<SandboxRelease>,
 }
 
-#[derive(Default, Deserialize)]
+/// What a release names of the sandbox, to tell it from what the
+/// sandbox was made from (launcher.rs `Status::image_behind`).
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct SandboxRelease {
-    #[serde(default)]
-    pub files: BTreeMap<String, serde::de::IgnoredAny>,
+    /// The runner's image inside the sandbox, by digest.
+    pub runner_image: Option<String>,
+    /// Its image files by kind (`wsl-x64`…).
+    pub files: BTreeMap<String, SandboxFile>,
+    /// g1t's machine image by architecture (`x64` alone).
+    pub hosted_images: BTreeMap<String, HostedImage>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct SandboxFile {
+    pub sha256: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct HostedImage {
+    pub image: String,
+}
+
+impl SandboxRelease {
+    /// g1t's machine image it names for this computer's architecture.
+    pub fn hosted_image(&self, arch: &str) -> Option<&str> {
+        self.hosted_images.get(arch).map(|hosted| hosted.image.as_str()).filter(|image| !image.trim().is_empty())
+    }
 }
 
 impl Manifest {
@@ -84,6 +110,11 @@ impl Manifest {
     }
 }
 
+/// This computer's architecture, as releases name it.
+pub fn arch() -> &'static str {
+    if std::env::consts::ARCH == "aarch64" { "arm64" } else { "x64" }
+}
+
 /// This computer's platform, as releases name it.
 pub fn platform() -> String {
     let os = match std::env::consts::OS {
@@ -91,8 +122,7 @@ pub fn platform() -> String {
         "windows" => "windows",
         _ => "linux",
     };
-    let arch = if std::env::consts::ARCH == "aarch64" { "arm64" } else { "x64" };
-    format!("{os}-{arch}")
+    format!("{os}-{}", arch())
 }
 
 /// Where the program is kept.
@@ -103,6 +133,24 @@ pub fn binary(folder: &Path) -> PathBuf {
 /// The version installed, as the manifest named it.
 pub fn installed(folder: &Path) -> Option<String> {
     binary(folder).exists().then(|| std::fs::read_to_string(folder.join("bin").join("version")).ok()).flatten().map(|v| v.trim().to_owned())
+}
+
+/// The SHA-256 of the program installed, as a release names its file's.
+pub fn installed_sha256(folder: &Path) -> Option<String> {
+    std::fs::read(binary(folder)).ok().map(|bytes| sha256(&bytes))
+}
+
+/// Whether `manifest`'s program replaces the one installed (`installed`,
+/// its version): a newer version does, and so does its own version
+/// published again with another build for this platform (flagon-io#476),
+/// told by the installed program's SHA-256 (`have`, read only then).
+pub fn takes(manifest: &Manifest, installed: Option<&str>, have: impl FnOnce() -> Option<String>) -> bool {
+    let Some(installed) = installed else { return true };
+    if newer(&manifest.version, installed) {
+        return true;
+    }
+    let same = manifest.version.trim_start_matches('v') == installed.trim_start_matches('v');
+    same && manifest.files.get(&platform()).is_some_and(|file| have().is_some_and(|have| !file.sha256.eq_ignore_ascii_case(&have)))
 }
 
 /// `a.b.c` newer than `x.y.z`.
@@ -364,6 +412,32 @@ mod tests {
         let old = std::fs::read_dir(dir.join("bin")).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".old")).count();
         assert_eq!(old, 1);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_release_published_again_with_another_build_replaces_the_program() {
+        let manifest: Manifest = serde_json::from_str(&format!(r#"{{"version":"0.3.7","files":{{"{}":{{"name":"g1t-runner","sha256":"aa"}}}}}}"#, platform())).unwrap();
+        assert!(takes(&manifest, None, || None), "nothing installed");
+        assert!(takes(&manifest, Some("0.3.6"), || panic!("a newer version isn't hashed for")));
+        assert!(!takes(&manifest, Some("0.3.8"), || Some("bb".into())), "never an older one");
+        assert!(takes(&manifest, Some("0.3.7"), || Some("bb".into())), "published again with another build");
+        assert!(!takes(&manifest, Some("0.3.7"), || Some("AA".into())), "the same build");
+        assert!(!takes(&manifest, Some("0.3.7"), || None), "one that can't be read stays");
+        let elsewhere: Manifest = serde_json::from_str(r#"{"version":"0.3.7","files":{"plan9-x64":{"name":"g1t-runner","sha256":"aa"}}}"#).unwrap();
+        assert!(!takes(&elsewhere, Some("0.3.7"), || Some("bb".into())), "no build for this platform");
+    }
+
+    #[test]
+    fn a_sandbox_release_names_its_images_files_and_machine_image() {
+        let manifest: Manifest = serde_json::from_str(
+            r#"{"version":"0.3.7","files":{},"sandbox":{"runner_image":"r@sha256:d9","files":{"wsl-x64":{"name":"w.tar.gz","sha256":"aa","size":1}},"hosted_images":{"x64":{"image":"h@sha256:d5","size":5636544756}}}}"#,
+        )
+        .unwrap();
+        let sandbox = manifest.sandbox.unwrap();
+        assert_eq!(sandbox.runner_image.as_deref(), Some("r@sha256:d9"));
+        assert_eq!(sandbox.files["wsl-x64"].sha256, "aa");
+        assert_eq!(sandbox.hosted_image("x64"), Some("h@sha256:d5"));
+        assert_eq!(sandbox.hosted_image("arm64"), None);
     }
 
     #[test]

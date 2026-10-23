@@ -27,6 +27,9 @@ pub struct Local {
     pub version: String,
     /// By kind (`wsl-x64`, `vm-arm64-disk`…).
     pub files: BTreeMap<String, PathBuf>,
+    /// Each file's SHA-256, as the signed release names it, by kind: none
+    /// for a local image (`--image-file`), which no release names.
+    pub hashes: BTreeMap<String, String>,
     /// The runner's image, by digest.
     pub runner_image: Option<String>,
     /// g1t's machine image for this machine's architecture, as the release
@@ -39,7 +42,7 @@ pub fn hosted_image(sandbox: &SandboxRelease) -> Option<HostedImage> {
     hosted_image_for(sandbox, arch())
 }
 
-fn hosted_image_for(sandbox: &SandboxRelease, arch: &str) -> Option<HostedImage> {
+pub fn hosted_image_for(sandbox: &SandboxRelease, arch: &str) -> Option<HostedImage> {
     sandbox.hosted_images.get(arch).filter(|hosted| !hosted.image.trim().is_empty()).cloned()
 }
 
@@ -77,7 +80,7 @@ pub fn obtain(site: &str, manifest: &update::Manifest, keys: &[String], images: 
     let sandbox = manifest.sandbox.as_ref().ok_or_else(|| anyhow!("release {} has no sandbox images", manifest.version))?;
     let dir = images.join(&manifest.version);
     std::fs::create_dir_all(&dir).with_context(|| format!("could not make {}", dir.display()))?;
-    let mut files = BTreeMap::new();
+    let (mut files, mut hashes) = (BTreeMap::new(), BTreeMap::new());
     for key in keys {
         let file = sandbox.files.get(key).ok_or_else(|| anyhow!("release {} has no sandbox image {key} for this machine", manifest.version))?;
         let path = dir.join(safe_name(&file.name)?);
@@ -88,8 +91,9 @@ pub fn obtain(site: &str, manifest: &update::Manifest, keys: &[String], images: 
             })?;
         }
         files.insert(key.clone(), path);
+        hashes.insert(key.clone(), file.sha256.clone());
     }
-    Ok(Local { version: manifest.version.clone(), files, runner_image: sandbox.runner_image.clone(), hosted_image: hosted_image(sandbox) })
+    Ok(Local { version: manifest.version.clone(), files, hashes, runner_image: sandbox.runner_image.clone(), hosted_image: hosted_image(sandbox) })
 }
 
 /// How far a download is, as a log line the desktop app reads for its
@@ -168,7 +172,7 @@ pub fn local(keys: &[String], given: &Path, runner_image: Option<String>) -> Res
             files.insert(key.clone(), found);
         }
     }
-    Ok(Local { version: "local".into(), files, runner_image, hosted_image: None })
+    Ok(Local { version: "local".into(), files, hashes: BTreeMap::new(), runner_image, hosted_image: None })
 }
 
 /// Removes every version but `keep`.

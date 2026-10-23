@@ -90,6 +90,13 @@
 //! sizes.rs); `sizes --set` changes them, growing the sandbox's share
 //! (`resources`) to hold the largest, and `resources` sets the share
 //! itself. Launchers before it leave it out.
+//! `made_from` is what the sandbox's image was made from, as its signed
+//! release named it: `runner_image` (by digest), `files` (each image
+//! file's SHA-256 by kind, left out when not known) and `hosted_image`
+//! (g1t's machine image for this architecture). A release published again
+//! under the same version can name others, and `update` then takes it as
+//! it takes a newer version; the desktop app compares them with the
+//! release to know there is an update. Launchers before it leave it out.
 //! `turned_off` is true for a capability someone stopped (`down --only`,
 //! `--no-native`), whose state is then `stopped`: stopped by a person, not
 //! failing. `needs` names what the computer still lacks for a capability,
@@ -112,6 +119,7 @@ mod sysbox;
 mod vm;
 mod wsl;
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -236,6 +244,17 @@ pub struct Saved {
     /// or last updated from. None on arm64, and from releases before it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub release_hosted_image: Option<HostedImage>,
+    /// The runner's image the sandbox's release names, kept as
+    /// `release_hosted_image` is: `runner_image` may be `up --runner-image`'s
+    /// instead. None from launchers before it, whose `runner_image` is the
+    /// release's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release_runner_image: Option<String>,
+    /// The SHA-256 of each image file the sandbox was made from, by kind,
+    /// as its signed release named them. None from launchers before it,
+    /// and for a local image (`--image-file`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_files: Option<BTreeMap<String, String>>,
 }
 
 /// What `up --hosted-image none` keeps: no image, so no jobs asking for
@@ -266,11 +285,93 @@ pub fn hosted_of(saved: &Saved) -> Option<HostedImage> {
     }
 }
 
-/// Keeps what a release says of g1t's machine image; an unchecked local
-/// image (`--image-file`) says nothing, so the last release's stays.
-fn keep_release_hosted(saved: &mut Saved, local: &image::Local) {
-    if local.version != "local" {
-        saved.release_hosted_image = local.hosted_image.clone();
+/// Keeps what a release names of the sandbox (g1t's machine image, the
+/// runner's image, the image files' hashes), to tell a release
+/// republished under the same version from the one the sandbox has
+/// (`behind`). An unchecked local image (`--image-file`) is no release:
+/// its files' hashes are unknown, and the last release's images stay.
+fn keep_release(saved: &mut Saved, local: &image::Local) {
+    if local.version == "local" {
+        saved.image_files = None;
+        return;
+    }
+    saved.release_hosted_image = local.hosted_image.clone();
+    if local.runner_image.is_some() {
+        saved.release_runner_image = local.runner_image.clone();
+    }
+    saved.image_files = Some(local.hashes.clone());
+}
+
+/// What the sandbox's image was made from, as its release named it: what
+/// `status` says (`made_from`), and what the newest release is compared
+/// with (`behind`).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MadeFrom {
+    /// The runner's image, by digest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runner_image: Option<String>,
+    /// Each image file's SHA-256, by kind (`wsl-x64`…). None when it isn't
+    /// known: a sandbox an older launcher made, or a local image.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files: Option<BTreeMap<String, String>>,
+    /// g1t's machine image for this computer's architecture, as the release
+    /// names it (not `--hosted-image`'s): none on arm64 and from releases
+    /// before it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hosted_image: Option<String>,
+}
+
+/// What the sandbox was made from, by what `saved` kept: the runner's
+/// image, from a launcher before `release_runner_image`, as it kept it.
+pub fn made_from(saved: &Saved) -> MadeFrom {
+    MadeFrom {
+        runner_image: saved.release_runner_image.clone().or_else(|| saved.runner_image.clone()),
+        files: saved.image_files.clone(),
+        hosted_image: saved.release_hosted_image.as_ref().map(|hosted| hosted.image.clone()).filter(|image| !image.trim().is_empty()),
+    }
+}
+
+/// How the newest signed release differs from what the sandbox was made
+/// from. A release is republished under the same version when it was
+/// published without something (flagon-io#476: 0.3.7 had its sandbox
+/// images added, then g1t's machine image), so its version alone doesn't
+/// say.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Behind {
+    /// A newer version (or a sandbox on a local image, or on none).
+    pub version: bool,
+    /// An image file of this sandbox's (`keys`) whose SHA-256 is another.
+    pub files: bool,
+    /// Another runner's image.
+    pub runner_image: bool,
+    /// Another g1t's machine image for this architecture, or none.
+    pub hosted_image: bool,
+}
+
+impl Behind {
+    /// Whether the sandbox's system is made again from the release
+    /// (drained, swapped, started again), as for a newer version. Another
+    /// machine image alone only needs the runner started again.
+    pub fn image(&self) -> bool {
+        self.version || self.files || self.runner_image
+    }
+}
+
+/// How `manifest` differs from what the sandbox was made from, for a
+/// sandbox made from the files of `keys`, on a computer of `arch`.
+pub fn behind(saved: &Saved, manifest: &super::update::Manifest, keys: &[String], arch: &str) -> Behind {
+    let made = made_from(saved);
+    let sandbox = manifest.sandbox.as_ref();
+    let files = match (&made.files, sandbox) {
+        (Some(have), Some(sandbox)) => keys.iter().any(|key| sandbox.files.get(key).is_some_and(|file| have.get(key) != Some(&file.sha256))),
+        // Not known: a sandbox an older launcher made says nothing of them.
+        _ => false,
+    };
+    Behind {
+        version: saved.image_version.as_deref().is_none_or(|current| super::update::newer(&manifest.version, current)),
+        files,
+        runner_image: sandbox.and_then(|sandbox| sandbox.runner_image.as_deref()).is_some_and(|wanted| made.runner_image.as_deref() != Some(wanted)),
+        hosted_image: sandbox.and_then(|sandbox| image::hosted_image_for(sandbox, arch)) != saved.release_hosted_image,
     }
 }
 
@@ -346,6 +447,12 @@ pub struct Status {
     /// it out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hosted_image: Option<String>,
+    /// What the sandbox's image was made from, as its release named it,
+    /// for the desktop app to tell a release republished under the same
+    /// version from it (`behind`); none before an image is installed.
+    /// Older launchers leave it out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub made_from: Option<MadeFrom>,
 }
 
 /// One kind of job this computer can run sandboxed.
@@ -777,6 +884,7 @@ pub fn status(dir: &Path) -> Status {
         warnings: warnings(dir),
         sizes: sizes_view(&saved),
         hosted_image: hosted_of(&saved).map(|hosted| hosted.image),
+        made_from: saved.image_version.is_some().then(|| made_from(&saved)),
     }
 }
 
@@ -1275,7 +1383,7 @@ fn up(options: &Options, dir: &Path) -> Result<()> {
                 if local.runner_image.is_some() {
                     saved.runner_image = local.runner_image.clone();
                 }
-                keep_release_hosted(saved, &local);
+                keep_release(saved, &local);
             }
             // An update that stopped half-way, after the old system was
             // removed, left the registration here.
@@ -1367,6 +1475,7 @@ fn obtain_image(options: &Options, saved: &Saved, backend: &dyn Backend, dir: &P
         return Ok(image::Local {
             version,
             files: Default::default(),
+            hashes: Default::default(),
             runner_image: sandbox.as_ref().and_then(|s| s.runner_image.clone()).or_else(|| saved.runner_image.clone()),
             hosted_image: sandbox.as_ref().and_then(image::hosted_image),
         });
@@ -1441,20 +1550,25 @@ fn update_sandbox(options: &Options, dir: &Path) -> Result<()> {
         obtain_image(options, &saved, backend.as_ref(), dir)?
     } else {
         let manifest = image::latest(saved.site())?;
-        if saved.image_version.as_deref().is_some_and(|current| !super::update::newer(&manifest.version, current)) {
+        let keys = backend.image_keys();
+        // Not the version alone: a release republished under the same one
+        // (flagon-io#476) names other images, and is taken as a newer one is.
+        let behind = behind(&saved, &manifest, &keys, image::arch());
+        if !behind.image() {
             log(&format!("The sandbox's image is the newest, {}.", manifest.version));
             // Its release may name g1t's machine image where the one the
             // sandbox was made from didn't.
-            let hosted = manifest.sandbox.as_ref().and_then(image::hosted_image);
-            if hosted != saved.release_hosted_image {
+            if behind.hosted_image {
                 let mut saved = saved;
-                saved.release_hosted_image = hosted;
+                saved.release_hosted_image = manifest.sandbox.as_ref().and_then(image::hosted_image);
                 saved.save(dir)?;
                 return restart_linux(dir, "g1t's machine image as the release names it");
             }
             return Ok(());
         }
-        let keys = backend.image_keys();
+        if !behind.version {
+            log(&format!("Release {} was published again with other images: the sandbox takes them.", manifest.version));
+        }
         if keys.is_empty() {
             obtain_image(options, &saved, backend.as_ref(), dir)?
         } else {
@@ -1494,7 +1608,7 @@ fn update_sandbox(options: &Options, dir: &Path) -> Result<()> {
         if local.runner_image.is_some() {
             saved.runner_image = local.runner_image.clone();
         }
-        keep_release_hosted(saved, &local);
+        keep_release(saved, &local);
         let settings = Settings {
             runner_image: saved.runner_image.clone().unwrap_or_default(),
             image_version: local.version.clone(),
@@ -1595,15 +1709,115 @@ mod tests {
     fn an_update_keeps_what_its_release_says_of_the_machine_image_and_a_local_image_says_nothing() {
         let release = HostedImage { image: "g1t.sh/flagon-io/g1t-hosted@sha256:d5".into(), size: None };
         let mut saved = Saved::default();
-        keep_release_hosted(&mut saved, &image::Local { version: "0.3.7".into(), hosted_image: Some(release.clone()), ..image::Local::default() });
+        keep_release(&mut saved, &image::Local { version: "0.3.7".into(), hosted_image: Some(release.clone()), ..image::Local::default() });
         assert_eq!(saved.release_hosted_image, Some(release.clone()));
-        keep_release_hosted(&mut saved, &image::Local { version: "local".into(), ..image::Local::default() });
+        keep_release(&mut saved, &image::Local { version: "local".into(), ..image::Local::default() });
         assert_eq!(saved.release_hosted_image, Some(release), "--image-file is not a release");
-        keep_release_hosted(&mut saved, &image::Local { version: "0.3.8".into(), ..image::Local::default() });
+        keep_release(&mut saved, &image::Local { version: "0.3.8".into(), ..image::Local::default() });
         assert_eq!(saved.release_hosted_image, None, "a release that names none");
         let kept: Saved = serde_json::from_str(r#"{"hosted_image":"img@sha256:1"}"#).unwrap();
         assert_eq!(kept.release_hosted_image, None, "a launcher before it kept only the image it was given");
         assert_eq!(hosted_of(&kept).map(|h| h.image).as_deref(), Some("img@sha256:1"));
+    }
+
+    /// Release 0.3.7 as it was published the third time (flagon-io#476):
+    /// its sandbox images, and g1t's machine image for x64.
+    fn release(runner: &str, wsl: &str, hosted: Option<&str>) -> super::super::update::Manifest {
+        let hosted = hosted.map_or(String::new(), |image| format!(r#","hosted_images":{{"x64":{{"image":"{image}","size":5636544756}}}}"#));
+        serde_json::from_str(&format!(
+            r#"{{"version":"0.3.7","files":{{}},"sandbox":{{"runner_image":"{runner}","files":{{"wsl-x64":{{"name":"g1t-sandbox-wsl-x64.tar.gz","sha256":"{wsl}"}}}}{hosted}}}}}"#
+        ))
+        .unwrap()
+    }
+
+    const RUNNER_19: &str = "g1t.sh/flagon-io/g1t-runner@sha256:5f0a2833";
+    const RUNNER_21: &str = "g1t.sh/flagon-io/g1t-runner@sha256:d9b20968";
+    const HOSTED_21: &str = "g1t.sh/flagon-io/g1t-hosted@sha256:d53c41d2";
+
+    /// A sandbox made from `manifest` by this launcher.
+    fn made(manifest: &super::super::update::Manifest, arch: &str) -> Saved {
+        let sandbox = manifest.sandbox.clone().unwrap();
+        let local = image::Local {
+            version: manifest.version.clone(),
+            hashes: sandbox.files.iter().map(|(key, file)| (key.clone(), file.sha256.clone())).collect(),
+            runner_image: sandbox.runner_image.clone(),
+            hosted_image: image::hosted_image_for(&sandbox, arch),
+            ..image::Local::default()
+        };
+        let mut saved = Saved { image_version: Some(local.version.clone()), runner_image: local.runner_image.clone(), ..Saved::default() };
+        keep_release(&mut saved, &local);
+        saved
+    }
+
+    #[test]
+    fn a_release_published_again_under_its_version_with_another_runner_image_is_an_update() {
+        let keys = ["wsl-x64".to_owned()];
+        let saved = made(&release(RUNNER_19, "aa", Some(HOSTED_21)), "x64");
+        let behind = behind(&saved, &release(RUNNER_21, "aa", Some(HOSTED_21)), &keys, "x64");
+        assert_eq!(behind, Behind { runner_image: true, ..Behind::default() });
+        assert!(behind.image(), "drained, swapped and started again, as for a newer version");
+    }
+
+    #[test]
+    fn a_release_published_again_under_its_version_with_other_image_files_is_an_update() {
+        let keys = ["wsl-x64".to_owned()];
+        let saved = made(&release(RUNNER_21, "aa", Some(HOSTED_21)), "x64");
+        let behind = behind(&saved, &release(RUNNER_21, "bb", Some(HOSTED_21)), &keys, "x64");
+        assert_eq!(behind, Behind { files: true, ..Behind::default() });
+        assert!(behind.image());
+        // A file of another machine's changing is not this sandbox's update.
+        assert_eq!(super::behind(&saved, &release(RUNNER_21, "bb", Some(HOSTED_21)), &["vm-arm64-disk".to_owned()], "x64"), Behind::default());
+    }
+
+    #[test]
+    fn a_release_published_again_under_its_version_with_a_machine_image_restarts_the_runner() {
+        let keys = ["wsl-x64".to_owned()];
+        let saved = made(&release(RUNNER_21, "aa", None), "x64");
+        let behind = behind(&saved, &release(RUNNER_21, "aa", Some(HOSTED_21)), &keys, "x64");
+        assert_eq!(behind, Behind { hosted_image: true, ..Behind::default() });
+        assert!(!behind.image(), "the runner is started again with it; its system stays");
+        // Another one, and none again, too.
+        let other = super::behind(&made(&release(RUNNER_21, "aa", Some("g1t.sh/flagon-io/g1t-hosted@sha256:0ld")), "x64"), &release(RUNNER_21, "aa", Some(HOSTED_21)), &keys, "x64");
+        assert!(other.hosted_image);
+        assert!(super::behind(&made(&release(RUNNER_21, "aa", Some(HOSTED_21)), "x64"), &release(RUNNER_21, "aa", None), &keys, "x64").hosted_image);
+        // An arm64 sandbox is given none either way.
+        assert_eq!(super::behind(&made(&release(RUNNER_21, "aa", None), "arm64"), &release(RUNNER_21, "aa", Some(HOSTED_21)), &keys, "arm64"), Behind::default());
+    }
+
+    #[test]
+    fn the_same_release_again_is_no_update() {
+        let keys = ["wsl-x64".to_owned()];
+        let manifest = release(RUNNER_21, "aa", Some(HOSTED_21));
+        let saved = made(&manifest, "x64");
+        assert_eq!(behind(&saved, &manifest, &keys, "x64"), Behind::default());
+        // Kept and read again, as the next `update` reads it.
+        let read: Saved = serde_json::from_slice(&serde_json::to_vec(&saved).unwrap()).unwrap();
+        assert_eq!(behind(&read, &manifest, &keys, "x64"), Behind::default());
+        // `up --runner-image` names another, which the release's isn't compared with.
+        let mine = Saved { runner_image: Some("my.registry/runner:1".into()), ..read };
+        assert_eq!(behind(&mine, &manifest, &keys, "x64"), Behind::default());
+        // A newer version is one, whatever it names.
+        let newer: super::super::update::Manifest = serde_json::from_str(&serde_json::to_string(&serde_json::json!({
+            "version": "0.3.8", "files": {}, "sandbox": { "runner_image": RUNNER_21, "files": { "wsl-x64": { "name": "w", "sha256": "aa" } },
+            "hosted_images": { "x64": { "image": HOSTED_21, "size": 5_636_544_756u64 } } }
+        })).unwrap()).unwrap();
+        assert_eq!(behind(&mine, &newer, &keys, "x64"), Behind { version: true, ..Behind::default() });
+    }
+
+    #[test]
+    fn a_sandbox_an_older_launcher_updated_to_a_release_published_again_takes_it() {
+        // The desktop app's sandbox after release #19 of 0.3.7: its image
+        // files' hashes weren't kept, and the release named no machine image.
+        let kept: Saved = serde_json::from_str(&format!(r#"{{"image_version":"0.3.7","runner_image":"{RUNNER_19}"}}"#)).unwrap();
+        let keys = ["wsl-x64".to_owned()];
+        let behind = behind(&kept, &release(RUNNER_21, "aa", Some(HOSTED_21)), &keys, "x64");
+        assert_eq!(behind, Behind { runner_image: true, hosted_image: true, ..Behind::default() });
+        assert!(behind.image());
+        assert_eq!(made_from(&kept), MadeFrom { runner_image: Some(RUNNER_19.into()), files: None, hosted_image: None });
+        // What it is made from once it has: the status says it.
+        let saved = made(&release(RUNNER_21, "aa", Some(HOSTED_21)), "x64");
+        let said = serde_json::to_value(made_from(&saved)).unwrap();
+        assert_eq!(said, serde_json::json!({ "runner_image": RUNNER_21, "files": { "wsl-x64": "aa" }, "hosted_image": HOSTED_21 }));
     }
 
     #[test]
