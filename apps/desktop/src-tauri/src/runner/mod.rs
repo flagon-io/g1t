@@ -37,7 +37,12 @@
 //!   person asks ("Check for runner updates"), the app looks for a newer
 //!   release on a thread of its own: its manifest only when g1t's release
 //!   key signed it (native.rs), its program only when its SHA-256 is the
-//!   manifest's. What it finds waits, downloaded, until each kind of job
+//!   manifest's. A release is newer when its version is, and also when
+//!   it was published again under the same version with another program
+//!   for this platform (by SHA-256) or other sandbox images (the runner's
+//!   image, the image files, g1t's machine image, against the launcher's
+//!   `made_from`): such a release goes in as a newer one does. What it
+//!   finds waits, downloaded, until each kind of job
 //!   is idle, and goes in kind by kind, never in the middle of a job: the
 //!   sandbox's Linux jobs take its image (`sandbox update`, which drains
 //!   them itself) once they have no job; its Windows jobs, whose runner is
@@ -178,13 +183,16 @@ struct Updates {
 /// What a look at the releases found.
 struct Found {
     version: String,
-    /// Newer than the program here.
+    /// Newer than the program here, or its version published again with
+    /// another build (native::takes).
     newer: bool,
     /// Its program, downloaded and checked: None when it isn't newer, or is
     /// already waiting.
     program: Option<Vec<u8>>,
     /// The release has the sandbox's images.
     images: bool,
+    /// What it names of the sandbox, to tell it from what the sandbox was made from.
+    sandbox: Option<native::SandboxRelease>,
 }
 
 /// What the site last said about the person.
@@ -1833,7 +1841,7 @@ impl Keeper {
         self.asked |= asked;
         publish(&self.app);
         let (server, folder) = (config::server(&self.app), folder(&self.app));
-        let waiting = self.program.as_ref().map(|(version, _)| version.clone());
+        let waiting = self.program.as_ref().map(|(_, bytes)| native::sha256(bytes));
         let tx = self.tx.clone();
         let spawned = std::thread::Builder::new().name("g1t-runner-releases".into()).spawn(move || {
             let _ = tx.send(Ask::Checked(look_for_release(&server, &folder, waiting.as_deref())));
@@ -1872,13 +1880,18 @@ impl Keeper {
         if !found.newer {
             self.program = None;
         }
-        // The sandbox's image is the release's version; one older takes the newest.
+        // The sandbox's image takes a newer release, and one published again
+        // under its version with other images. A launcher before it
+        // (no `made_from`) can't say, so its replacement's `update` does.
         let sandbox = self.app.state::<Shared>().now.held().sandbox.clone();
         let launcher = self.run.as_ref().is_some_and(|run| run.engine == Engine::Launcher);
+        let program = self.program.is_some();
         let image = launcher
             && found.images
-            && sandbox.is_some_and(|status| status.linux().state != State::Absent && status.image_version.as_deref().is_some_and(|have| native::newer(&found.version, have)));
-        let program = self.program.is_some();
+            && sandbox.is_some_and(|status| {
+                status.linux().state != State::Absent
+                    && (status.image_behind(&found.version, found.sandbox.as_ref(), native::arch()) || (program && status.made_from.is_none()))
+            });
         self.with_updates(|updates| {
             updates.checked_at = Some(SystemTime::now());
             updates.program = program;
@@ -2526,18 +2539,20 @@ const TAKING_UP: &str = "Taking up the sandbox, which kept running while g1t was
 /// What the tray says while the sandbox starts.
 const STARTING_SANDBOX: &str = "Starting the sandbox. The first time, it downloads and checks the sandbox's image, which takes a few minutes.";
 
-/// The newest release, signed, and its program when it is newer than the
-/// one in `folder` and isn't already `waiting`: downloaded and checked
-/// against its SHA-256. On the update thread, never the runner's.
+/// The newest release, signed, and its program when it replaces the one
+/// in `folder` (native::takes) and isn't already `waiting` (by its
+/// SHA-256): downloaded and checked against its SHA-256. On the update
+/// thread, never the runner's.
 fn look_for_release(server: &Url, folder: &std::path::Path, waiting: Option<&str>) -> Result<Found, Fault> {
     let manifest = native::latest(server)?;
-    let newer = native::installed(folder).is_none_or(|have| native::newer(&manifest.version, &have));
-    let program = if newer && waiting != Some(manifest.version.as_str()) {
+    let newer = native::takes(&manifest, native::installed(folder).as_deref(), || native::installed_sha256(folder));
+    let wanted = manifest.files.get(&native::platform()).map(|file| file.sha256.to_ascii_lowercase());
+    let program = if newer && waiting.is_none_or(|waiting| wanted.as_deref() != Some(waiting)) {
         Some(native::download(server, &manifest).map_err(|why| Fault::Failed(format!("{} didn't download: {why}", manifest.version)))?)
     } else {
         None
     };
-    Ok(Found { images: manifest.has_images(), version: manifest.version, newer, program })
+    Ok(Found { images: manifest.has_images(), version: manifest.version, newer, program, sandbox: manifest.sandbox })
 }
 
 fn some_text(text: &str) -> Option<String> {

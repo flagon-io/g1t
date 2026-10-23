@@ -112,6 +112,23 @@ pub fn sha256(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
+/// Whether `latest` replaces a program of `version` for `platform`, whose
+/// SHA-256 is `have`: a newer version does, and so does its own version
+/// published again with another build (flagon-io#476), which a program
+/// whose hash isn't known (`have` None) can't tell.
+pub fn takes(latest: &Manifest, version: &str, platform: &str, have: Option<&str>) -> bool {
+    if newer(&latest.version, version) {
+        return true;
+    }
+    let same = latest.version.trim_start_matches('v') == version.trim_start_matches('v');
+    same && have.is_some_and(|have| latest.files.get(platform).is_some_and(|file| !file.sha256.eq_ignore_ascii_case(have)))
+}
+
+/// This program's SHA-256, as a release names its file's.
+fn own_sha256() -> Option<String> {
+    std::env::current_exe().ok().and_then(|me| std::fs::read(me).ok()).map(|bytes| sha256(&bytes))
+}
+
 /// Whether `signature` (base64) is g1t's release key's over `message`.
 pub fn verify(message: &[u8], signature: &str, key: &str) -> Result<()> {
     let key: [u8; 32] = STANDARD
@@ -191,7 +208,7 @@ pub fn update(config: &Config) -> Result<Option<String>> {
     let Some(latest) = latest_signed(config)? else {
         bail!("this build of g1t-runner has no release key, so it cannot check releases; download a release from {}", downloads(config));
     };
-    if !newer(&latest.version, VERSION) {
+    if !takes(&latest, VERSION, &platform(), own_sha256().as_deref()) {
         return Ok(None);
     }
     let file = latest
@@ -244,6 +261,18 @@ mod tests {
         assert!(newer("v1.0.0", "0.9.0"));
         assert!(!newer("0.2.0", "0.2.0"));
         assert!(!newer("0.1.9", "0.2.0"));
+    }
+
+    #[test]
+    fn a_release_published_again_with_another_build_replaces_this_one() {
+        let release: Manifest = serde_json::from_str(r#"{"version":"0.3.7","files":{"linux-x64":{"name":"g1t-runner-linux-x64","sha256":"aa"}}}"#).unwrap();
+        assert!(!takes(&release, "0.3.7", "linux-x64", Some("aa")), "the same build");
+        assert!(!takes(&release, "0.3.7", "linux-x64", Some("AA")), "hashes compare as hex");
+        assert!(takes(&release, "0.3.7", "linux-x64", Some("bb")), "published again with another");
+        assert!(!takes(&release, "0.3.7", "linux-x64", None), "one whose hash isn't known stays");
+        assert!(!takes(&release, "0.3.7", "macos-arm64", Some("bb")), "a release with no build for it");
+        assert!(takes(&release, "0.3.6", "linux-x64", Some("aa")), "a newer version, whatever its hash");
+        assert!(!takes(&release, "0.3.8", "linux-x64", Some("bb")), "never an older one");
     }
 
     #[test]

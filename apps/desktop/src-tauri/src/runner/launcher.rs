@@ -40,6 +40,7 @@ use std::time::Duration;
 use serde::Deserialize;
 
 use super::backend::quiet;
+use super::native;
 
 /// The launcher's state folder, under the app's runner folder.
 pub const FOLDER: &str = "sandbox";
@@ -169,6 +170,22 @@ pub struct Status {
     /// sizes.rs), passed to the site as it is for its settings. None from
     /// a launcher before them, which can't change them either.
     pub sizes: Option<serde_json::Value>,
+    /// What the sandbox's image was made from, as its release named it.
+    /// None from a launcher before it (0.3.8), whose `update` compares
+    /// versions alone.
+    pub made_from: Option<MadeFrom>,
+}
+
+/// What the sandbox's image was made from (the launcher's `made_from`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+pub struct MadeFrom {
+    /// The runner's image, by digest.
+    pub runner_image: Option<String>,
+    /// Each image file's SHA-256, by kind: None when the launcher doesn't know them.
+    pub files: Option<std::collections::BTreeMap<String, String>>,
+    /// g1t's machine image for this architecture, as the release names it.
+    pub hosted_image: Option<String>,
 }
 
 impl Status {
@@ -186,6 +203,23 @@ impl Status {
             job: self.job.clone(),
             ..Capability::default()
         })
+    }
+
+    /// Whether the sandbox's image is to take release `version`, whose
+    /// sandbox is `release`, on a computer of `arch`: when it is newer, or
+    /// the same version published again naming another runner's image,
+    /// other image files or another of g1t's machine images (flagon-io#476),
+    /// as the launcher's `update` tells them apart.
+    pub fn image_behind(&self, version: &str, release: Option<&native::SandboxRelease>, arch: &str) -> bool {
+        let Some(have) = self.image_version.as_deref() else { return false };
+        if native::newer(version, have) {
+            return true;
+        }
+        let (Some(made), Some(release)) = (&self.made_from, release) else { return false };
+        let runner = release.runner_image.as_deref().is_some_and(|wanted| made.runner_image.as_deref() != Some(wanted));
+        let files = made.files.as_ref().is_some_and(|files| files.iter().any(|(kind, sha)| release.files.get(kind).is_some_and(|file| &file.sha256 != sha)));
+        let hosted = release.hosted_image(arch) != made.hosted_image.as_deref().filter(|image| !image.trim().is_empty());
+        runner || files || hosted
     }
 
     /// Whether any of its runners is running.
@@ -665,6 +699,43 @@ mod tests {
         assert!(!windows.available);
         assert_eq!(why(windows.cause.as_deref().unwrap()), Why::WindowsSandboxOff);
         assert_eq!(status.trouble(), None);
+    }
+
+    /// Release 0.3.7 as it was published the third time (flagon-io#476).
+    fn release_21(runner: &str, wsl: &str, hosted: Option<&str>) -> native::SandboxRelease {
+        let hosted = hosted.map_or(String::new(), |image| format!(r#","hosted_images":{{"x64":{{"image":"{image}"}}}}"#));
+        serde_json::from_str(&format!(r#"{{"runner_image":"{runner}","files":{{"wsl-x64":{{"name":"w.tar.gz","sha256":"{wsl}"}}}}{hosted}}}"#)).unwrap()
+    }
+
+    #[test]
+    fn a_release_published_again_with_other_images_is_an_update_and_the_same_one_is_not() {
+        let (runner, hosted) = ("g1t.sh/flagon-io/g1t-runner@sha256:d9b20968", "g1t.sh/flagon-io/g1t-hosted@sha256:d53c41d2");
+        let status = parse(&format!(
+            r#"{{"schema":1,"state":"running","image_version":"0.3.7","made_from":{{"runner_image":"{runner}","files":{{"wsl-x64":"aa"}},"hosted_image":"{hosted}"}}}}"#
+        ))
+        .unwrap();
+        let same = release_21(runner, "aa", Some(hosted));
+        assert!(!status.image_behind("0.3.7", Some(&same), "x64"), "everything the same: up to date");
+        assert!(status.image_behind("0.3.8", Some(&same), "x64"), "a newer version");
+        assert!(!status.image_behind("0.3.6", Some(&same), "x64"), "an older one");
+        assert!(status.image_behind("0.3.7", Some(&release_21("g1t.sh/flagon-io/g1t-runner@sha256:5f0a2833", "aa", Some(hosted))), "x64"), "another runner's image");
+        assert!(status.image_behind("0.3.7", Some(&release_21(runner, "bb", Some(hosted))), "x64"), "another image file");
+        assert!(status.image_behind("0.3.7", Some(&release_21(runner, "aa", Some("g1t.sh/flagon-io/g1t-hosted@sha256:0"))), "x64"), "another machine image");
+        assert!(status.image_behind("0.3.7", Some(&release_21(runner, "aa", None)), "x64"), "no machine image any more");
+        assert!(!status.image_behind("0.3.7", None, "x64"), "a release without the sandbox's images");
+
+        // The desktop app's sandbox after release #19: no machine image,
+        // and its files' hashes not known.
+        let at_19 = parse(r#"{"schema":1,"state":"running","image_version":"0.3.7","made_from":{"runner_image":"g1t.sh/flagon-io/g1t-runner@sha256:5f0a2833"}}"#).unwrap();
+        assert!(at_19.image_behind("0.3.7", Some(&same), "x64"));
+        let arm = parse(&format!(r#"{{"schema":1,"state":"running","image_version":"0.3.7","made_from":{{"runner_image":"{runner}","files":{{"wsl-x64":"aa"}}}}}}"#)).unwrap();
+        assert!(!arm.image_behind("0.3.7", Some(&same), "arm64"), "no machine image for arm64 either way");
+
+        // A launcher before `made_from` says nothing but its version.
+        let older = parse(r#"{"schema":1,"state":"running","image_version":"0.3.7"}"#).unwrap();
+        assert_eq!(older.made_from, None);
+        assert!(!older.image_behind("0.3.7", Some(&same), "x64"));
+        assert!(older.image_behind("0.3.8", Some(&same), "x64"));
     }
 
     #[test]
