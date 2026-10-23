@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  actionsSandboxesToStop,
+  actionsSandboxName,
   answered,
   capReached,
   describeError,
@@ -18,6 +20,17 @@ import {
 } from "./lifecycle.ts";
 
 const quiet = { waitMs: 0 };
+
+test("each start of a job has a sandbox of its own, so stopping a lost start leaves the next alone", () => {
+  const first = actionsSandboxName("job_1", "2026-10-23T07:17:34.830Z");
+  const again = actionsSandboxName("job_1", "2026-10-23T07:22:56.572Z");
+  assert.notEqual(first, again);
+  assert.deepEqual(actionsSandboxesToStop("job_1", "2026-10-23T07:17:34.830Z"), [first, "actions:job_1"]);
+  assert.ok(!actionsSandboxesToStop("job_1", "2026-10-23T07:17:34.830Z").includes(again));
+  // From an actions service that names no start: the job's one sandbox.
+  assert.equal(actionsSandboxName("job_1"), "actions:job_1");
+  assert.deepEqual(actionsSandboxesToStop("job_1", null), ["actions:job_1"]);
+});
 
 test("a stop that is told the first time is told once and logs nothing", async () => {
   const logged: unknown[][] = [];

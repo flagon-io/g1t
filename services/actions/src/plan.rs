@@ -1764,6 +1764,9 @@ impl Actions {
                 timeout_minutes: job.timeout_minutes,
                 instance,
                 brokered,
+                // Its sandbox is this start's own, which a stop of an
+                // earlier, lost start of the job cannot reach.
+                start: Some(at.clone()),
             };
             claimed_jobs.push((job, at, run, args));
         }
@@ -1945,7 +1948,7 @@ impl Actions {
     async fn hard_stop(&self, job: &JobRow, reason: &str) -> Result<()> {
         // A self-hosted runner hears it was cancelled on its next poll.
         if job.status == "in_progress" && job.runner_id.is_none() {
-            let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id })).await;
+            let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id, "start": job.started_at })).await;
         }
         let stopped = self
             .db
@@ -2974,14 +2977,14 @@ impl Actions {
                 let reason = format!("It ran longer than its time limit of {} minutes.", job.timeout_minutes);
                 // A self-hosted runner is told to stop on its next poll.
                 if job.runner_id.is_none() {
-                    let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id })).await;
+                    let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id, "start": job.started_at })).await;
                 }
                 self.finish_job(&job.id, "failure", Some(&reason), None).await?;
             } else if job.runner_id.is_none() && crate::never_reported(job.started_at.as_deref(), job.seen_at.as_deref(), now_ms) {
                 // Its sandbox never ran it: nothing it did needs undoing.
-                // It starts again at the next sweep, not this one: the same
-                // sandbox takes it, and the stop of the lost one finishes
-                // in that sandbox's alarm, after this.
+                // It starts again in a sandbox of its own (`start`), so the
+                // stop of the lost one, which finishes later in that
+                // sandbox's alarm, cannot reach it (#426).
                 if self.retry_lost_start(&job, now_ms).await? {
                     lost.insert(job.id.clone());
                 }
@@ -3063,7 +3066,7 @@ impl Actions {
     async fn retry_lost_start(&self, job: &JobRow, now_ms: u64) -> Result<bool> {
         let since = job.waiting_since.clone().or_else(|| job.started_at.clone()).unwrap_or_else(|| rfc3339(now_ms));
         if crate::waited_for_a_machine(Some(&since), now_ms) {
-            let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id })).await;
+            let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id, "start": job.started_at })).await;
             let minutes = crate::WAIT_FOR_MACHINE_MS / 60_000;
             let reason = format!("No machine ran the job in {minutes} minutes: each one it was given stopped answering before it started.");
             self.finish_job(&job.id, "failure", Some(&reason), None).await?;
@@ -3088,7 +3091,7 @@ impl Actions {
         }
         worker::console_warn!("actions: job {} never reported; it goes back in the queue", job.id);
         self.revoke_job_tokens(&job.id).await;
-        let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id })).await;
+        let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id, "start": job.started_at })).await;
         Ok(true)
     }
 
@@ -3130,7 +3133,7 @@ impl Actions {
         }
         worker::console_warn!("actions: job {} lost its machine: {reason}", job.id);
         self.revoke_job_tokens(&job.id).await;
-        let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id })).await;
+        let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id, "start": job.started_at })).await;
         self.db
             .batch(vec![
                 self.db.prepare("DELETE FROM logs WHERE job_id = ?").bind(&[job.id.as_str().into()])?,
