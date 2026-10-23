@@ -236,14 +236,15 @@ pub fn forget(binary: &Path, dir: &Path) {
 }
 
 /// Stops the runner and what it started: the job it ran in host mode
-/// included. A job cut short this way fails on g1t.
+/// included. A job cut short this way fails on g1t. Ended within 8
+/// seconds, inside the 10 that g1t going waits for it (mod.rs `bound`).
 pub fn stop(child: &mut Child) {
     let pid = child.id().to_string();
     if cfg!(windows) {
         let _ = quiet("taskkill").args(["/T", "/F", "/PID", &pid]).stdout(Stdio::null()).stderr(Stdio::null()).status();
     } else {
         let _ = quiet("kill").args(["-TERM", &format!("-{pid}")]).stdout(Stdio::null()).stderr(Stdio::null()).status();
-        for _ in 0..40 {
+        for _ in 0..32 {
             if matches!(child.try_wait(), Ok(Some(_))) {
                 return;
             }

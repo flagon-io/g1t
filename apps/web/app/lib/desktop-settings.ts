@@ -67,8 +67,9 @@ export type DesktopSettingsBridge = {
   setOpenAtLogin(on: boolean): Promise<DesktopSettingsView>;
   /** "current", "ready:<version>", or rejects with why. */
   checkForUpdates(): Promise<string>;
-  restart(): Promise<void>;
-  restartToUpdate(): Promise<void>;
+  /** "restarting", or "stayed" when the person kept g1t open for a job running on it; nothing, from an app before that. */
+  restart(): Promise<string | void>;
+  restartToUpdate(): Promise<string | void>;
   changeServer(): Promise<void>;
   onOpen(listener: (opening: DesktopSettingsOpening) => void): () => void;
   onRunnerMenu(listener: (menu: DesktopRunnerMenuEvent) => void): () => void;
@@ -174,6 +175,11 @@ export function updateLine(view: Pick<DesktopSettingsView, "updateReady" | "chec
   if (view.updateReady) return `Version ${view.updateReady} is downloaded and installs when g1t restarts.`;
   if (view.checkedAt) return `Up to date. Last checked ${when(view.checkedAt, now)}.`;
   return view.autoUpdate ? "Not checked yet since g1t started; it checks on its own shortly." : "Checking on its own is off.";
+}
+
+/** Whether g1t stayed open after a restart was asked: the person kept it open for a job. An app that doesn't say is restarting. */
+export function stayed(answer: unknown): boolean {
+  return answer === "stayed";
 }
 
 /** Why a check for updates didn't answer, in a line. */

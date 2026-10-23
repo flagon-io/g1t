@@ -221,24 +221,27 @@ pub fn title_bar_act(app: AppHandle, webview: Webview, action: String, at: Optio
 }
 
 /// Restarts g1t, installing a downloaded update on the way: the settings
-/// window offers it after a change that needs one.
+/// window offers it after a change that needs one. `restarting`, or
+/// `stayed` when the person kept g1t open for a job (updates.rs `leave`).
 #[tauri::command]
-pub fn restart(app: AppHandle, webview: Webview) -> Result<(), String> {
+pub async fn restart(app: AppHandle, webview: Webview) -> Result<&'static str, String> {
     from_settings(&webview).or_else(|_| from_site_page(&app, &webview))?;
-    if updates::ready(&app).is_some() {
-        updates::restart(&app);
-    } else {
-        updates::leave(&app, |app| app.restart());
-    }
-    Ok(())
+    let going = if updates::ready(&app).is_some() { updates::restart(&app) } else { updates::restart_only(&app) };
+    Ok(said(going).await)
 }
 
-/// The settings window's "Restart now": installs the downloaded update and starts it.
+/// The settings' "Restart now": installs the downloaded update and starts
+/// it. `restarting`, or `stayed`, as `restart` says.
 #[tauri::command]
-pub fn restart_to_update(app: AppHandle, webview: Webview) -> Result<(), String> {
+pub async fn restart_to_update(app: AppHandle, webview: Webview) -> Result<&'static str, String> {
     from_settings(&webview).or_else(|_| from_site_page(&app, &webview))?;
-    updates::restart(&app);
-    Ok(())
+    Ok(said(updates::restart(&app)).await)
+}
+
+/// Whether g1t goes, once the person has answered, if they were asked.
+async fn said(going: std::sync::mpsc::Receiver<bool>) -> &'static str {
+    let going = tauri::async_runtime::spawn_blocking(move || going.recv().unwrap_or(true)).await.unwrap_or(true);
+    if going { "restarting" } else { "stayed" }
 }
 
 /// Opens the app's settings: the site's account menu asks for it. They

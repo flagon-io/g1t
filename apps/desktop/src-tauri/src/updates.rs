@@ -3,20 +3,35 @@
 //! background. One found as it starts is installed straight away, and g1t
 //! opens again on it, before anyone has begun working in it: so a person
 //! whose copy misbehaves only has to open g1t again to be on the newest,
-//! fixed one (unless the runner is in the middle of a job, which is never
-//! cut short; then it waits like any other). One found later says so, with
-//! a notification and the tray's "Restart to update", since nothing is
-//! installed under someone mid-sentence; the restart, or quitting,
-//! installs it. The manifest is signed with g1t's
+//! fixed one (unless the runner g1t runs itself is in the middle of a job,
+//! which is never cut short; then it waits like any other). One found
+//! later says so, with a notification and the tray's "Restart to update",
+//! since nothing is installed under someone mid-sentence; the restart, or
+//! quitting, installs it. The manifest is signed with g1t's
 //! release key, built into the app, and a download whose signature does
 //! not check out is thrown away (scripts/desktop-release.mjs).
+//!
+//! Restarting, to update or otherwise, and quitting go at once (`leave`):
+//! the windows go, the tray says what g1t is doing until the process ends,
+//! and the runner is seen to as runner/mod.rs `plan` says. The sandbox runs
+//! on across a restart, its jobs with it, and the new version takes it up
+//! again; a runner g1t runs itself is stopped, within about 10 seconds,
+//! and if it is running a job the person is asked first (ask.rs). What
+//! happened goes in the app's log, `g1t.log` in its log folder, and the
+//! runner's.
 
+use std::io::Write;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_updater::{Update, UpdaterExt};
+use tauri_plugin_window_state::AppHandleExt;
 
+use crate::ask::{self, Answer};
+use crate::runner::{self, Going, Leave};
 use crate::{config, settings, tray};
 
 /// An update downloaded and checked, waiting to be installed.
@@ -46,11 +61,12 @@ pub fn schedule(app: AppHandle) {
                 let at_start = first && started.elapsed() < AT_START;
                 let found = look(&app, false, at_start).await;
                 if at_start && let Some(version) = found.ok().as_deref().and_then(|answer| answer.strip_prefix("ready:")).map(str::to_owned) {
-                    if crate::runner::busy(&app) {
+                    // Only a job the restart would cut short holds it back: a sandbox's runs on.
+                    if runner::leaving(&app, Going::Restart).1 {
                         tell(&app, "g1t is ready to update", &format!("Version {version} is downloaded. Restart g1t from the tray to use it."));
                     } else {
                         tell(&app, "Updating g1t", &format!("g1t opens again on version {version} in a moment."));
-                        restart(&app);
+                        let _ = restart(&app);
                     }
                 }
             }
@@ -137,56 +153,160 @@ async fn look(app: &AppHandle, asked: bool, at_start: bool) -> Result<String, St
 }
 
 /// Installs what is downloaded, if anything. On Windows the installer
-/// ends this process itself; elsewhere the caller goes on.
+/// ends this process itself, and opens the new version once it is in;
+/// elsewhere the caller goes on.
 fn install(app: &AppHandle) -> bool {
     let ready = app.state::<config::State>().update.lock().unwrap().take();
     let Some(ready) = ready else { return false };
+    log(app, &format!("Installing {}.", ready.version));
+    // On Windows the installer starts once the app has let go: its runner
+    // stopped (or the sandbox left to itself), its windows' places kept
+    // (`leave`), its icon out of the tray.
+    if cfg!(windows) {
+        tray::gone(app);
+    }
     match ready.update.install(ready.bytes) {
         Ok(()) => true,
         Err(error) => {
+            log(app, &format!("The update could not be installed: {error}"));
             tell(app, "The update could not be installed", &error.to_string());
             false
         }
     }
 }
 
-/// The tray's restart: installs the update and starts the new version.
-/// The runner stops first, since on Windows the installer ends g1t.
-pub fn restart(app: &AppHandle) {
-    if ready(app).is_none() {
-        return;
-    }
-    leave(app, |app| {
+/// The restart, from the tray, the menu, the settings or the update at
+/// start: installs the update and starts the new version. Says whether g1t
+/// is going, or stayed (the person kept it open for a job, or there is
+/// nothing to install).
+pub fn restart(app: &AppHandle) -> Receiver<bool> {
+    let Some(version) = ready(app) else { return answered(false) };
+    leave(app, Going::Restart, "Updating g1t…", move |app| {
         if install(app) {
             app.restart();
         }
-    });
+        // It didn't install: g1t stays as it was, on the version it has.
+        log(app, &format!("Staying on {} rather than {version}.", env!("CARGO_PKG_VERSION")));
+        stay(app);
+    })
+}
+
+/// Restarts g1t with no update, for a setting that needs it.
+pub fn restart_only(app: &AppHandle) -> Receiver<bool> {
+    leave(app, Going::Restart, "Restarting g1t…", |app| app.restart())
 }
 
 /// Quit, stopping the runner and installing a downloaded update on the way out.
-pub fn quit(app: &AppHandle) {
-    leave(app, |app| {
+pub fn quit(app: &AppHandle) -> Receiver<bool> {
+    leave(app, Going::Quit, "Quitting g1t…", |app| {
         install(app);
         app.exit(0);
-    });
+    })
 }
 
-/// Stops the runner, then `then`, on a thread of its own. Restart and quit
-/// are asked on the main thread (menus, and the settings' commands, which
-/// Windows runs there), and the runner, stopping, updates the tray, which
-/// waits for the main thread: waiting on the runner there froze g1t until
-/// its 30 seconds ran out.
-pub fn leave(app: &AppHandle, then: impl FnOnce(&AppHandle) + Send + 'static) {
+/// g1t is on its way: a second press waits for the first.
+static LEAVING: AtomicBool = AtomicBool::new(false);
+
+fn answered(going: bool) -> Receiver<bool> {
+    let (tx, rx) = mpsc::channel();
+    let _ = tx.send(going);
+    rx
+}
+
+/// Goes, then `then`, `doing` what the tray says. On a thread of its own:
+/// restart and quit are asked on the main thread (menus, and the settings'
+/// commands, which Windows runs there), and the runner, stopping, updates
+/// the tray, which waits for the main thread; waiting on the runner there
+/// froze g1t until its 30 seconds ran out.
+///
+/// If going would cut a job short, the person is asked first: keep g1t
+/// open, stop the job, or go once it finishes, without asking again. Then
+/// the windows go at once, the tray says what g1t is doing, and the runner
+/// is seen to (runner::shut) before `then`. The answer is whether g1t goes.
+fn leave(app: &AppHandle, going: Going, doing: &'static str, then: impl FnOnce(&AppHandle) + Send + 'static) -> Receiver<bool> {
+    let (tx, rx) = mpsc::channel();
+    if LEAVING.swap(true, Ordering::SeqCst) {
+        let _ = tx.send(true);
+        return rx;
+    }
     let app = app.clone();
     let spawned = std::thread::Builder::new().name("g1t-leave".into()).spawn({
         let app = app.clone();
         move || {
-            crate::runner::shutdown(&app);
+            let (leave, cuts_short) = runner::leaving(&app, going);
+            let answer = if cuts_short { ask::job_running(going) } else { Answer::Now };
+            if answer == Answer::Stay {
+                log(&app, &format!("{doing} Kept open: a job is running on this computer."));
+                LEAVING.store(false, Ordering::SeqCst);
+                let _ = tx.send(false);
+                return;
+            }
+            let _ = tx.send(true);
+            log(&app, &format!("{doing} {}", said(leave, cuts_short, answer)));
+            let _ = app.save_window_state(crate::KEPT);
+            for window in app.windows().values() {
+                let _ = window.hide();
+            }
+            let after_job = answer == Answer::WhenDone;
+            tray::leaving(&app, Some(if after_job { format!("{} when the job finishes…", doing.trim_end_matches('…')) } else { doing.to_owned() }));
+            runner::shut(&app, going, after_job, || {
+                if after_job {
+                    log(&app, "The job finished.");
+                    tray::leaving(&app, Some(doing.to_owned()));
+                }
+            });
             then(&app);
         }
     });
     if spawned.is_err() {
-        crate::runner::shutdown(&app);
+        runner::shutdown(&app);
         app.exit(0);
+    }
+    rx
+}
+
+/// What going does to the runner, for the app's log.
+fn said(leave: Leave, cuts_short: bool, answer: Answer) -> &'static str {
+    match (leave, cuts_short, answer) {
+        (Leave::Running, _, _) => "The sandbox, if it runs, is left running, its jobs with it.",
+        (Leave::Stop, true, Answer::WhenDone) => "Waiting for the job running on this computer, then stopping the runner.",
+        (Leave::Stop, true, _) => "Stopping the runner and the job it is running, as asked.",
+        (Leave::Stop, false, _) => "Stopping the runner, which has no job.",
+    }
+}
+
+/// g1t stays after all: its windows and tray as they were, and its runner
+/// started again (a sandbox left running is taken up again).
+fn stay(app: &AppHandle) {
+    LEAVING.store(false, Ordering::SeqCst);
+    tray::leaving(app, None);
+    tray::show(app);
+    runner::install(app);
+}
+
+/// A line in the app's own log: `g1t.log` in its log folder, started over
+/// past a megabyte.
+fn log(app: &AppHandle, line: &str) {
+    let Ok(dir) = app.path().app_log_dir() else { return };
+    let path = dir.join("g1t.log");
+    let _ = std::fs::create_dir_all(&dir);
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() > 1024 * 1024) {
+        let _ = std::fs::rename(&path, path.with_extension("log.old"));
+    }
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(file, "{} {} {line}", runner::timestamp(), env!("CARGO_PKG_VERSION"));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_log_says_what_going_did_to_the_runner() {
+        assert!(said(Leave::Running, false, Answer::Now).contains("left running"));
+        assert!(said(Leave::Stop, true, Answer::WhenDone).starts_with("Waiting for the job"));
+        assert!(said(Leave::Stop, true, Answer::Now).contains("the job it is running"));
+        assert!(said(Leave::Stop, false, Answer::Now).contains("no job"));
     }
 }

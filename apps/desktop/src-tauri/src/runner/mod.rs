@@ -262,7 +262,55 @@ enum Ask {
     Sandbox(u64, Result<Box<Status>, String>),
     /// Set up is done (setup.rs): how it went, and what it logged.
     SetUp(setup::Outcome, Vec<String>),
-    Quit(Sender<()>),
+    Quit(Quitting),
+}
+
+/// g1t is going: how, and whether the job running ends first. `done` is
+/// sent to as the runner begins to stop, when it waited for a job, and
+/// again once it has stopped.
+struct Quitting {
+    going: Going,
+    after_job: bool,
+    done: Sender<()>,
+}
+
+/// Why g1t goes: restarting (to update, or for a setting), or quitting.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Going {
+    Restart,
+    Quit,
+}
+
+/// What g1t going does to the runner.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Leave {
+    /// The sandbox runs on by itself, its jobs with it, and the next start takes it up again.
+    Running,
+    /// Stopped: the runner g1t runs as its own process, always; the sandbox
+    /// as g1t quits, since it runs jobs "while g1t is open".
+    Stop,
+}
+
+/// What going does to the runner: only quitting stops the sandbox.
+pub fn plan(sandboxed: bool, going: Going) -> Leave {
+    if sandboxed && going == Going::Restart { Leave::Running } else { Leave::Stop }
+}
+
+/// Whether the person is asked first: what stops is in the middle of a job.
+pub fn asks(leave: Leave, busy: bool) -> bool {
+    leave == Leave::Stop && busy
+}
+
+/// How long g1t waits for the runner to stop before going anyway: a
+/// sandbox left running only has a launcher command to end; a runner of
+/// its own is stopped in about 10 s (native::stop); the sandbox, stopped as
+/// g1t quits, as long as it always had.
+fn bound(leave: Leave, sandboxed: bool) -> Duration {
+    match (leave, sandboxed) {
+        (Leave::Running, _) => Duration::from_secs(3),
+        (Leave::Stop, false) => Duration::from_secs(10),
+        (Leave::Stop, true) => Duration::from_secs(30),
+    }
 }
 
 /// The registration the app made, besides what the runner keeps itself.
@@ -429,6 +477,11 @@ fn native_kinds(status: &Status) -> Vec<&launcher::Capability> {
     status.capabilities.iter().filter(|c| c.id != "linux" && !c.off() && matches!(c.state, State::Running | State::Starting)).collect()
 }
 
+/// Now, as RFC 3339, for the app's log.
+pub fn timestamp() -> String {
+    rfc3339(SystemTime::now())
+}
+
 /// A time as RFC 3339, in UTC to the second: `2026-10-12T12:04:05Z`.
 fn rfc3339(at: SystemTime) -> String {
     let seconds = at.duration_since(SystemTime::UNIX_EPOCH).map_or(0, |since| since.as_secs());
@@ -471,11 +524,12 @@ pub fn view(app: &AppHandle) -> View {
     }
 }
 
-/// Whether the runner is running a job: what restarts g1t waits for it,
-/// since restarting stops the runner and would cut the job short.
-pub fn busy(app: &AppHandle) -> bool {
+/// What g1t going now would do to the runner, and whether that cuts a job short.
+pub fn leaving(app: &AppHandle, going: Going) -> (Leave, bool) {
     let now = app.state::<Shared>().now.held().clone();
-    now.code == Code::Busy || now.sandbox.as_ref().is_some_and(|status| status.job().is_some())
+    let busy = if now.live { now.sandbox.as_ref().is_some_and(|status| status.job().is_some()) } else { now.code == Code::Busy };
+    let leave = plan(now.live, going);
+    (leave, asks(leave, busy))
 }
 
 /// The tray's line: `Runner: Waiting for jobs`, at most 60 characters.
@@ -518,8 +572,8 @@ pub fn install(app: &AppHandle) {
 fn supervise(app: AppHandle, tx: Sender<Ask>, rx: Receiver<Ask>) {
     let mut held = match settle(&app, &rx) {
         Ok(held) => held,
-        Err(done) => {
-            let _ = done.send(());
+        Err(quitting) => {
+            let _ = quitting.done.send(());
             return;
         }
     };
@@ -535,8 +589,8 @@ fn supervise(app: AppHandle, tx: Sender<Ask>, rx: Receiver<Ask>) {
                 let until = Instant::now() + AFTER_PANIC;
                 while let Some(left) = until.checked_duration_since(Instant::now()).filter(|d| !d.is_zero()) {
                     match rx.recv_timeout(left) {
-                        Ok(Ask::Quit(done)) => {
-                            let _ = done.send(());
+                        Ok(Ask::Quit(quitting)) => {
+                            let _ = quitting.done.send(());
                             return;
                         }
                         Ok(ask) => held.push(ask),
@@ -553,7 +607,7 @@ fn supervise(app: AppHandle, tx: Sender<Ask>, rx: Receiver<Ask>) {
 /// loaded (or SITE_WAIT has passed) and AFTER_START more: the runner starts
 /// with the app, but never in its way. What is asked meanwhile is kept for
 /// after; Quit returns its sender at once.
-fn settle(app: &AppHandle, rx: &Receiver<Ask>) -> Result<Vec<Ask>, Sender<()>> {
+fn settle(app: &AppHandle, rx: &Receiver<Ask>) -> Result<Vec<Ask>, Quitting> {
     let began = Instant::now();
     let mut loaded: Option<Instant> = None;
     let mut held = Vec::new();
@@ -565,7 +619,7 @@ fn settle(app: &AppHandle, rx: &Receiver<Ask>) -> Result<Vec<Ask>, Sender<()>> {
             return Ok(held);
         }
         match rx.recv_timeout(Duration::from_millis(250)) {
-            Ok(Ask::Quit(done)) => return Err(done),
+            Ok(Ask::Quit(quitting)) => return Err(quitting),
             Ok(ask) => held.push(ask),
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => return Ok(held),
@@ -838,15 +892,27 @@ pub fn log_file(app: &AppHandle) -> PathBuf {
     folder(app).join("runner.log")
 }
 
-/// Stops the runner as g1t quits or restarts, and waits for it.
+/// However g1t ends, the runner it started ends with it.
 pub fn shutdown(app: &AppHandle) {
-    let tx = app.state::<Shared>().tx.held().take();
-    if let Some(tx) = tx {
-        let (done, wait) = mpsc::channel();
-        if tx.send(Ask::Quit(done)).is_ok() {
-            let _ = wait.recv_timeout(Duration::from_secs(30));
-        }
+    shut(app, Going::Quit, false, || {});
+}
+
+/// Stops the runner as g1t goes, as `plan` says, and waits for it, within
+/// `bound`: a sandbox runs on across a restart. With `after_job`, the job
+/// running ends first, however long it takes, and `stopping` is called as
+/// the runner begins to stop.
+pub fn shut(app: &AppHandle, going: Going, after_job: bool, stopping: impl FnOnce()) {
+    let live = app.state::<Shared>().now.held().live;
+    let Some(tx) = app.state::<Shared>().tx.held().take() else { return stopping() };
+    let (done, wait) = mpsc::channel();
+    if tx.send(Ask::Quit(Quitting { going, after_job, done })).is_err() {
+        return stopping();
     }
+    if after_job && wait.recv().is_err() {
+        return stopping();
+    }
+    stopping();
+    let _ = wait.recv_timeout(bound(plan(live, going), live));
 }
 
 /// How the runner is started this time.
@@ -962,6 +1028,8 @@ struct Keeper {
     /// A kind of job that should run and doesn't, while another runs:
     /// when it is tried again, and how many times it has been.
     retry: Vec<(String, Instant, u32)>,
+    /// g1t goes once the job running ends.
+    leaving: Option<Quitting>,
 }
 
 /// What a set of the state carries besides its code.
@@ -995,6 +1063,7 @@ impl Keeper {
             asked: false,
             said_checked: String::new(),
             retry: Vec::new(),
+            leaving: None,
         }
     }
 
@@ -1006,11 +1075,12 @@ impl Keeper {
         }
         loop {
             match rx.recv_timeout(TICK) {
-                Ok(Ask::Quit(done)) => {
-                    self.halt();
-                    let _ = done.send(());
-                    return;
+                Ok(Ask::Quit(quitting)) if quitting.after_job && self.busy() => {
+                    let job = self.job();
+                    self.write_log(&format!("g1t: g1t {} once {job} finishes.", going_words(quitting.going)));
+                    self.leaving = Some(quitting);
                 }
+                Ok(Ask::Quit(quitting)) => return self.go(quitting),
                 Ok(ask) => self.handle(ask),
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => {
@@ -1018,9 +1088,58 @@ impl Keeper {
                     return;
                 }
             }
+            // Waiting for the job, nothing new starts; the sandbox is still asked how it is.
+            if self.leaving.is_some() {
+                if !self.busy() {
+                    let quitting = self.leaving.take().expect("checked above");
+                    self.write_log(&format!("g1t: the job finished: g1t {} now.", going_words(quitting.going)));
+                    return self.go(quitting);
+                }
+                self.poll();
+                continue;
+            }
             self.look();
             self.said_when();
         }
+    }
+
+    fn busy(&self) -> bool {
+        self.run.as_ref().is_some_and(|run| run.busy)
+    }
+
+    /// The job running, in the log's words.
+    fn job(&self) -> String {
+        self.app.state::<Shared>().now.held().job.clone().unwrap_or_else(|| "the job".into())
+    }
+
+    /// g1t goes: the sandbox is left running across a restart, its launcher
+    /// command ended (the next start runs `up` again, which takes up a
+    /// sandbox already running); anything else is stopped. The log says which.
+    fn go(&mut self, quitting: Quitting) {
+        if quitting.after_job {
+            let _ = quitting.done.send(());
+        }
+        let sandboxed = self.run.as_ref().is_some_and(|run| run.engine == Engine::Launcher);
+        let busy = self.busy();
+        match (plan(sandboxed, quitting.going), self.run.take()) {
+            (_, None) => {}
+            (Leave::Running, Some(mut run)) => {
+                if let Process::Sandbox(Some((step, child))) = &mut run.process {
+                    native::stop(child);
+                    self.write_log(&format!("g1t: ended `g1t-runner sandbox {}`, which runs again when g1t opens.", step.name()));
+                }
+                let _ = std::fs::remove_file(folder(&self.app).join("pid"));
+                let jobs = if busy { format!(", and {} with it", self.job()) } else { String::new() };
+                self.write_log(&format!("g1t: g1t is restarting: the sandbox runs on{jobs}, and g1t takes it up again when it opens."));
+            }
+            (Leave::Stop, Some(run)) => {
+                let what = if busy { format!("stopped {}", self.job()) } else { "stopped the runner".to_owned() };
+                self.write_log(&format!("g1t: {what} as g1t {}.", going_words(quitting.going)));
+                self.run = Some(run);
+                self.halt();
+            }
+        }
+        let _ = quitting.done.send(());
     }
 
     /// Settings say when g1t last looked for a newer runner, in minutes
@@ -1879,11 +1998,18 @@ impl Keeper {
             Step::Update => (launcher::update_args(&dir), vec![]),
             _ => (launcher::up_args(&dir, &up), wanted.clone()),
         };
+        // Left running as g1t restarted, or ended: `up` finds it running
+        // and starts nothing, so its jobs run on.
+        let taking_up = step == Step::Up && status.running();
         if let Err(why) = self.spawn_step(step, args, up.token) {
             self.run = None;
             return self.not_started(workspace, token, why);
         }
         self.now_starting(starting);
+        if taking_up {
+            self.write_log("g1t: the sandbox ran on while g1t was closed: taking it up again.");
+            return self.set(Code::Starting, detail(TAKING_UP));
+        }
         self.set(Code::Starting, detail(STARTING_SANDBOX));
     }
 
@@ -2278,6 +2404,17 @@ impl Keeper {
     }
 }
 
+/// What g1t does, in the runner's log: `restarts`, `quits`.
+fn going_words(going: Going) -> &'static str {
+    match going {
+        Going::Restart => "restarts",
+        Going::Quit => "quits",
+    }
+}
+
+/// What the tray says while g1t takes up a sandbox already running.
+const TAKING_UP: &str = "Taking up the sandbox, which kept running while g1t was closed.";
+
 /// What the tray says while the sandbox starts.
 const STARTING_SANDBOX: &str = "Starting the sandbox. The first time, it downloads and checks the sandbox's image, which takes a few minutes.";
 
@@ -2473,6 +2610,24 @@ mod tests {
         );
         assert!(kinds(r#"{"schema":1,"state":"running","capabilities":[{"id":"linux","available":true,"state":"running","turned_off":false},{"id":"windows","available":true,"state":"stopped","turned_off":true}]}"#).is_empty());
         assert!(kinds(r#"{"schema":1,"state":"running","capabilities":[{"id":"linux","available":true,"state":"running"},{"id":"windows","available":false,"state":"absent"}]}"#).is_empty());
+    }
+
+    /// A restart, to update or for a setting, leaves the sandbox and its
+    /// jobs running; quitting stops it; a runner of g1t's own always stops.
+    /// Only stopping cuts a job short, and only then is the person asked.
+    #[test]
+    fn going_stops_only_what_must_and_asks_before_cutting_a_job_short() {
+        assert_eq!(plan(true, Going::Restart), Leave::Running);
+        assert_eq!(plan(true, Going::Quit), Leave::Stop);
+        assert_eq!(plan(false, Going::Restart), Leave::Stop);
+        assert_eq!(plan(false, Going::Quit), Leave::Stop);
+        assert!(!asks(plan(true, Going::Restart), true));
+        assert!(asks(plan(false, Going::Restart), true));
+        assert!(asks(plan(true, Going::Quit), true));
+        assert!(!asks(plan(false, Going::Restart), false));
+        assert_eq!(bound(Leave::Stop, false), Duration::from_secs(10));
+        assert!(bound(Leave::Running, true) < bound(Leave::Stop, false));
+        assert_eq!(going_words(Going::Restart), "restarts");
     }
 
     #[test]

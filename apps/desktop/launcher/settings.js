@@ -174,13 +174,22 @@
   }
 
   byId("check").addEventListener("click", check);
+  // "Restarting…" until g1t goes, at once; "stayed" when a job was
+  // running on this computer and the person kept g1t open.
   byId("restart").addEventListener("click", function () {
     window.g1tBusy.start(byId("restart"));
-    byId("update-status").textContent = "Installing…";
-    invoke("restart_to_update").catch(function (error) {
-      window.g1tBusy.stop(byId("restart"));
-      fail(error);
-    });
+    byId("update-status").textContent = "Restarting…";
+    invoke("restart_to_update").then(
+      function (answer) {
+        if (answer !== "stayed") return;
+        window.g1tBusy.stop(byId("restart"));
+        if (current) updateStatus(current);
+      },
+      function (error) {
+        window.g1tBusy.stop(byId("restart"));
+        fail(error);
+      },
+    );
   });
 
   // The menu's or tray's "Check for updates…" with this window open, and a
@@ -203,10 +212,15 @@
 
   byId("restart-app").addEventListener("click", function () {
     window.g1tBusy.start(byId("restart-app"));
-    invoke("restart").catch(function (error) {
-      window.g1tBusy.stop(byId("restart-app"));
-      fail(error);
-    });
+    invoke("restart").then(
+      function (answer) {
+        if (answer === "stayed") window.g1tBusy.stop(byId("restart-app"));
+      },
+      function (error) {
+        window.g1tBusy.stop(byId("restart-app"));
+        fail(error);
+      },
+    );
   });
 
   byId("change-server").addEventListener("click", function () {

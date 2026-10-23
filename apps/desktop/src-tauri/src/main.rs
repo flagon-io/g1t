@@ -13,6 +13,7 @@
 //! configured server's.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod ask;
 mod badge;
 mod bridge;
 mod config;
@@ -32,7 +33,7 @@ use tauri_plugin_window_state::{StateFlags, WindowExt};
 
 /// What the window keeps between launches: its size, place, and whether it
 /// was maximized or full screen; not its frame.
-const KEPT: StateFlags = StateFlags::all().difference(StateFlags::DECORATIONS);
+pub const KEPT: StateFlags = StateFlags::all().difference(StateFlags::DECORATIONS);
 
 /// The one window's label.
 pub const WINDOW: &str = "main";

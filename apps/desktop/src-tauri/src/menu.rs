@@ -147,8 +147,12 @@ pub fn handle(app: &AppHandle, id: &str) {
         "server" => tray::launcher(app, "change"),
         // The settings ask, and show the answer where it cannot be missed.
         "check" => settings::open_and_check(app),
-        "restart" => updates::restart(app),
-        "quit" => updates::quit(app),
+        "restart" => {
+            let _ = updates::restart(app);
+        }
+        "quit" => {
+            let _ = updates::quit(app);
+        }
         "close" => tray::close(app),
         "reload" => {
             if let Some(site) = crate::frame::site(app) {
