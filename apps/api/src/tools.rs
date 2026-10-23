@@ -319,7 +319,7 @@ pub const TOOLS: &[Tool] = &[
             a("create_runner_group", Op::CreateRunnerGroup, "Make a group, for some repositories"),
             a("update_runner_group", Op::UpdateRunnerGroup, "Rename a group or change its repositories"),
             a("delete_runner_group", Op::DeleteRunnerGroup, "Delete a group; its runners join the default"),
-            a("get_runner_settings", Op::GetRunnerSettings, "Where checks and the merge queue run; whether forks may use runners"),
+            a("get_runner_settings", Op::GetRunnerSettings, "Whether hosted labels run on your runners first, where checks and the merge queue run, and whether forks may use runners"),
             a("update_runner_settings", Op::UpdateRunnerSettings, "Change them"),
         ],
     },

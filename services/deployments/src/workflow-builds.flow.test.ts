@@ -302,6 +302,25 @@ test("another branch builds its preview; a pull request's run builds the pull re
   );
 });
 
+test("a pull request's preview stays up while it is open, and comes down if it closed while the preview built", async () => {
+  w.state.run = { ...w.state.run, event: "pull_request", ref: "refs/pull/9/merge", pull: 9 };
+  const finish = { worker: { compatibilityDate: "2026-09-26", vars: {} }, completionJwt: "done", buildSeconds: 5 };
+  const live = (await open()).value;
+  assert.equal((await post(`/jobs/${live.deploy_id}/finish`, { token: live.token, ...finish })).ok, true);
+  assert.deepEqual(rows("SELECT script, number FROM apps"), [{ script: "web-git-feature-acme", number: 9 }]);
+  // Its next build is still under way when it merges: `pull.closed` has
+  // nothing new to take down, so the build's finish does.
+  const late = (await open()).value;
+  w.state.pull = { ...w.state.pull, status: "merged" };
+  w.state.calls = [];
+  assert.equal((await post(`/jobs/${late.deploy_id}/finish`, { token: late.token, ...finish })).ok, true);
+  assert.deepEqual(rows("SELECT script FROM apps"), []);
+  assert.deepEqual(rows("SELECT status FROM deployments ORDER BY created_at, id").map((row) => row.status).sort(), ["down", "replaced"]);
+  assert.ok(w.state.calls.some((call) => call.endsWith("/scripts/web-git-feature-acme")));
+  // Not announced as live.
+  assert.ok(!w.state.calls.includes("WORK set_commit_status"));
+});
+
 test("a pull request from a fork, or one that had to be approved, gets no build secrets", async () => {
   w.state.run = { ...w.state.run, event: "pull_request", ref: "refs/pull/9/merge", pull: 9 };
   w.state.pull = { ...w.state.pull, branch: null, fork: { namespace: "eve", name: "web" } };

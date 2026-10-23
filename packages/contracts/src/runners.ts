@@ -40,6 +40,14 @@ export type Runner = {
   createdBy: string | null;
   /** How it keeps work from its machine, as it last said; null for a runner from before runners said. */
   isolation?: RunnerIsolation | null;
+  /**
+   * What a job on it gets, as it last said: CPUs, memory in MiB, and whether the job can use Docker
+   * (`services:`, `container:`). Null for a runner from before runners said, which takes no job asking
+   * for a hosted label.
+   */
+  cpus?: number | null;
+  memoryMib?: number | null;
+  docker?: boolean | null;
 };
 
 /**
@@ -74,6 +82,11 @@ export type RunnerSettings = {
   agentsOnSelfHosted: boolean;
   agentLabels: string[];
   forkPullRequests: boolean;
+  /**
+   * A job asking for one of g1t's Linux labels (`ubuntu-latest`) runs on one of these runners when one
+   * that fits it is free, and on g1t's machines otherwise. On by default.
+   */
+  preferOwnRunners: boolean;
   /** For a repository: these are its workspace's. */
   inherited: boolean;
 };
@@ -84,6 +97,7 @@ export type RunnerSettingsChange = {
   agents_on_self_hosted?: boolean;
   agent_labels?: string[];
   fork_pull_requests?: boolean;
+  prefer_own_runners?: boolean;
   inherit?: boolean;
 };
 

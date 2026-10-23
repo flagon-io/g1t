@@ -117,6 +117,19 @@ export function noMachine(error: unknown): boolean {
 }
 
 /**
+ * Whether a start failed on Cloudflare's side in a way that says nothing
+ * about the work: an internal error (with Cloudflare's reference), a lost
+ * connection, or the object reset under the call by a deploy. Each start
+ * has a sandbox of its own (`actionsSandboxName`), so the work waits for a
+ * machine and starts again in a fresh one, as for `noMachine`, rather than
+ * failing: on 2026-10-23 two deploys failed on "internal error; reference
+ * = …" when a job's start was refused (#426).
+ */
+export function transientStart(error: unknown): boolean {
+  return /internal error; reference =|network connection lost|durable object reset|no longer active|code (was|has been) updated/i.test(describeError(error));
+}
+
+/**
  * How often a start asks Cloudflare for a container. The containers
  * library asks every 300 ms; every ask Cloudflare refuses (`noMachine`)
  * is logged at error level from the object's alarm, so one sandbox in a

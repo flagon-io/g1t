@@ -225,6 +225,13 @@ and **Start**. Stopping Windows jobs leaves Linux jobs running, and the
 other way round; a kind you stop stays stopped, across restarts, until you
 start it again. Both are on until you stop one.
 
+Jobs that ask for `ubuntu-latest` or another Linux label of g1t's machines
+run on it too, while it is idle and at least as large as the machine g1t
+would give them, unless your workspace turned off **Prefer our runners for
+hosted labels**; otherwise they run on g1t's machines. Such a job gets its
+run's secrets on your computer, as any job here does. See [jobs that ask
+for g1t's machines](/guides/self-hosted-runners/#jobs-that-ask-for-g1ts-machines).
+
 A job still runs only on a runner with every label it names. The app's
 runner has `self-hosted`, its OS and architecture (`linux` for a runner
 whose jobs run in containers, whatever the computer is), and `desktop`.

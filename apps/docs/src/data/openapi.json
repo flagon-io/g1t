@@ -90290,7 +90290,7 @@
           "Runners"
         ],
         "summary": "List self-hosted runners",
-        "description": "A workspace's self-hosted runners, or a repository's: its own and the workspace's that its runner group lets it use. Each has its `labels` (always `self-hosted`, its OS and its architecture), `status` (`online`, `busy` or `offline`), the `work` it is doing, its `version`, when it was last seen, and its `isolation`: how it keeps work from its machine (`nested-container`, `vm`, `container` or `host`; null for a runner too old to say). A workspace's are seen by its owners; a repository's need the Admin role on it.\n\nA repository's list holds its own runners (`repo` set) and the workspace's that its runner group lets it use. A runner is `offline` when it has not polled for 90 seconds.",
+        "description": "A workspace's self-hosted runners, or a repository's: its own and the workspace's that its runner group lets it use. Each has its `labels` (always `self-hosted`, its OS and its architecture), `status` (`online`, `busy` or `offline`), the `work` it is doing, its `version`, when it was last seen, and its `isolation`: how it keeps work from its machine (`nested-container`, `vm`, `container` or `host`; null for a runner too old to say), and `cpus`, `memory_mib` and `docker`: what a job on it gets, which decides the jobs asking for `ubuntu-latest` it may take (null for a runner too old to say, which takes none). A workspace's are seen by its owners; a repository's need the Admin role on it.\n\nA repository's list holds its own runners (`repo` set) and the workspace's that its runner group lets it use. A runner is `offline` when it has not polled for 90 seconds. `cpus`, `memory_mib` and `docker` are what a job on it gets, as it last said: g1t gives a job asking for `ubuntu-latest` to a runner only when it is at least that machine's size.",
         "x-operation": "list_runners",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "list_runners",
@@ -90363,7 +90363,10 @@
                     "last_seen_at": "2026-10-06T14:05:40.512Z",
                     "created_at": "2026-10-02T09:30:00.000Z",
                     "created_by": null,
-                    "isolation": "nested-container"
+                    "isolation": "nested-container",
+                    "cpus": 8,
+                    "memory_mib": 12288,
+                    "docker": true
                   },
                   {
                     "id": "rnr_01kq2m8v4c7f0h3k6n9q2t5w9a",
@@ -90385,7 +90388,10 @@
                     "last_seen_at": "2026-10-06T14:05:40.512Z",
                     "created_at": "2026-10-02T09:30:00.000Z",
                     "created_by": null,
-                    "isolation": "host"
+                    "isolation": "host",
+                    "cpus": 8,
+                    "memory_mib": 16384,
+                    "docker": false
                   }
                 ]
               }
@@ -90857,7 +90863,7 @@
           "Runners"
         ],
         "summary": "Get runner settings",
-        "description": "Where a workspace's (or a repository's) own g1t jobs run, and whether pull requests from forks may use its self-hosted runners. `agents_on_self_hosted` sends pull request checks and merge checks to runners with `agent_labels` instead of g1t's sandboxes. A repository's are its workspace's unless it has its own (`inherited`).",
+        "description": "Where a workspace's (or a repository's) jobs run, and whether pull requests from forks may use its self-hosted runners. `prefer_own_runners` (on by default) runs a job asking for one of g1t's Linux labels, such as `ubuntu-latest`, on one of its self-hosted runners when one that fits it is online and idle, and on g1t's machines otherwise. `agents_on_self_hosted` sends pull request checks and merge checks to runners with `agent_labels` instead of g1t's sandboxes. A repository's are its workspace's unless it has its own (`inherited`).",
         "x-operation": "get_runner_settings",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "get_runner_settings",
@@ -90908,6 +90914,7 @@
                     "linux"
                   ],
                   "fork_pull_requests": false,
+                  "prefer_own_runners": true,
                   "inherited": true
                 }
               }
@@ -91004,7 +91011,7 @@
           "Runners"
         ],
         "summary": "Change runner settings",
-        "description": "Change where g1t's own jobs (pull request checks and merge checks) run and whether pull requests from forks may use self-hosted runners, for a workspace or one repository. Left out is unchanged; `inherit` drops a repository's own settings. Allowing forks lets anyone who can open a pull request run code on your machines. Owners of the workspace, or admins of the repository.",
+        "description": "Change where jobs run, for a workspace or one repository: whether jobs asking for g1t's Linux labels run on your own runners first (`prefer_own_runners`), where g1t's own jobs (pull request checks and merge checks) run, and whether pull requests from forks may use self-hosted runners. Left out is unchanged; `inherit` drops a repository's own settings. With `prefer_own_runners`, those jobs run on your members' machines and get the run's secrets there. Allowing forks lets anyone who can open a pull request run code on your machines. Owners of the workspace, or admins of the repository.",
         "x-operation": "update_runner_settings",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "update_runner_settings",
@@ -91055,6 +91062,7 @@
                     "linux"
                   ],
                   "fork_pull_requests": false,
+                  "prefer_own_runners": true,
                   "inherited": true
                 }
               }
@@ -91184,6 +91192,10 @@
                     "type": "boolean",
                     "description": "Let jobs of pull requests from forks run on self-hosted runners."
                   },
+                  "prefer_own_runners": {
+                    "type": "boolean",
+                    "description": "Run a job asking for one of g1t's Linux labels (`ubuntu-latest`) on one of your self-hosted runners when one that fits it is free, and on g1t's machines otherwise. On by default. The job runs on your members' machines and gets the run's secrets there."
+                  },
                   "inherit": {
                     "type": "boolean",
                     "description": "For a repository: drop its own settings and follow its workspace's."
@@ -91209,7 +91221,7 @@
           "Runners"
         ],
         "summary": "List self-hosted runners for a workspace",
-        "description": "A workspace's self-hosted runners, or a repository's: its own and the workspace's that its runner group lets it use. Each has its `labels` (always `self-hosted`, its OS and its architecture), `status` (`online`, `busy` or `offline`), the `work` it is doing, its `version`, when it was last seen, and its `isolation`: how it keeps work from its machine (`nested-container`, `vm`, `container` or `host`; null for a runner too old to say). A workspace's are seen by its owners; a repository's need the Admin role on it.",
+        "description": "A workspace's self-hosted runners, or a repository's: its own and the workspace's that its runner group lets it use. Each has its `labels` (always `self-hosted`, its OS and its architecture), `status` (`online`, `busy` or `offline`), the `work` it is doing, its `version`, when it was last seen, and its `isolation`: how it keeps work from its machine (`nested-container`, `vm`, `container` or `host`; null for a runner too old to say), and `cpus`, `memory_mib` and `docker`: what a job on it gets, which decides the jobs asking for `ubuntu-latest` it may take (null for a runner too old to say, which takes none). A workspace's are seen by its owners; a repository's need the Admin role on it.",
         "x-operation": "list_runners",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "list_runners",
@@ -91273,7 +91285,10 @@
                     "last_seen_at": "2026-10-06T14:05:40.512Z",
                     "created_at": "2026-10-02T09:30:00.000Z",
                     "created_by": null,
-                    "isolation": "nested-container"
+                    "isolation": "nested-container",
+                    "cpus": 8,
+                    "memory_mib": 12288,
+                    "docker": true
                   },
                   {
                     "id": "rnr_01kq2m8v4c7f0h3k6n9q2t5w9a",
@@ -91295,7 +91310,10 @@
                     "last_seen_at": "2026-10-06T14:05:40.512Z",
                     "created_at": "2026-10-02T09:30:00.000Z",
                     "created_by": null,
-                    "isolation": "host"
+                    "isolation": "host",
+                    "cpus": 8,
+                    "memory_mib": 16384,
+                    "docker": false
                   }
                 ]
               }
@@ -91739,7 +91757,7 @@
           "Runners"
         ],
         "summary": "Get runner settings for a workspace",
-        "description": "Where a workspace's (or a repository's) own g1t jobs run, and whether pull requests from forks may use its self-hosted runners. `agents_on_self_hosted` sends pull request checks and merge checks to runners with `agent_labels` instead of g1t's sandboxes. A repository's are its workspace's unless it has its own (`inherited`).",
+        "description": "Where a workspace's (or a repository's) jobs run, and whether pull requests from forks may use its self-hosted runners. `prefer_own_runners` (on by default) runs a job asking for one of g1t's Linux labels, such as `ubuntu-latest`, on one of its self-hosted runners when one that fits it is online and idle, and on g1t's machines otherwise. `agents_on_self_hosted` sends pull request checks and merge checks to runners with `agent_labels` instead of g1t's sandboxes. A repository's are its workspace's unless it has its own (`inherited`).",
         "x-operation": "get_runner_settings",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "get_runner_settings",
@@ -91781,6 +91799,7 @@
                     "linux"
                   ],
                   "fork_pull_requests": false,
+                  "prefer_own_runners": true,
                   "inherited": false
                 }
               }
@@ -91880,7 +91899,7 @@
           "Runners"
         ],
         "summary": "Change runner settings for a workspace",
-        "description": "Change where g1t's own jobs (pull request checks and merge checks) run and whether pull requests from forks may use self-hosted runners, for a workspace or one repository. Left out is unchanged; `inherit` drops a repository's own settings. Allowing forks lets anyone who can open a pull request run code on your machines. Owners of the workspace, or admins of the repository.\n\n`agents_on_self_hosted` and `agent_labels` keep their names from before g1t ran agents of its own: they now send g1t's own work (pull request checks and merge checks) to your runners with those labels.",
+        "description": "Change where jobs run, for a workspace or one repository: whether jobs asking for g1t's Linux labels run on your own runners first (`prefer_own_runners`), where g1t's own jobs (pull request checks and merge checks) run, and whether pull requests from forks may use self-hosted runners. Left out is unchanged; `inherit` drops a repository's own settings. With `prefer_own_runners`, those jobs run on your members' machines and get the run's secrets there. Allowing forks lets anyone who can open a pull request run code on your machines. Owners of the workspace, or admins of the repository.\n\n`agents_on_self_hosted` and `agent_labels` keep their names from before g1t ran agents of its own: they now send g1t's own work (pull request checks and merge checks) to your runners with those labels. `prefer_own_runners`, on by default, runs a job asking for one of g1t's Linux labels (`ubuntu-latest`) on one of your runners when one that fits it is free, and on g1t's machines otherwise.",
         "x-operation": "update_runner_settings",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "update_runner_settings",
@@ -91922,6 +91941,7 @@
                     "linux"
                   ],
                   "fork_pull_requests": false,
+                  "prefer_own_runners": true,
                   "inherited": false
                 }
               }
@@ -92050,6 +92070,10 @@
                   "fork_pull_requests": {
                     "type": "boolean",
                     "description": "Let jobs of pull requests from forks run on self-hosted runners."
+                  },
+                  "prefer_own_runners": {
+                    "type": "boolean",
+                    "description": "Run a job asking for one of g1t's Linux labels (`ubuntu-latest`) on one of your self-hosted runners when one that fits it is free, and on g1t's machines otherwise. On by default. The job runs on your members' machines and gets the run's secrets there."
                   },
                   "inherit": {
                     "type": "boolean",

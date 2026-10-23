@@ -50,6 +50,7 @@ import {
   START_WAIT,
   stoppedShort,
   tellStopped,
+  transientStart,
   withinTimeCap,
 } from "./lifecycle";
 import {
@@ -1181,6 +1182,13 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
       // queue for its next sweep. What was reserved is given back already.
       if (noMachine(error)) {
         return { ok: false, error: { code: "unavailable", message: `No ${instance.label} machine was free to start the job.` } };
+      }
+      // Cloudflare failed the start on its side: the same wait, in a fresh
+      // sandbox. Only with a sandbox of its own (`start`): the job's one
+      // sandbox might still be starting what failed.
+      if (args.start && transientStart(error)) {
+        const why = describeError(error).replace(/^Error: /, "");
+        return { ok: false, error: { code: "unavailable", message: `Its ${instance.label} machine could not start (${why}); it waits for another.` } };
       }
       // A sandbox that could not start, or stopped at once: the job fails
       // with why, rather than waiting to be noticed.

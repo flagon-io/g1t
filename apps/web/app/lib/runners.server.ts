@@ -149,6 +149,7 @@ export async function actOnRunners(owner: RunnersOwner, actor: User, form: FormD
         agents_on_self_hosted: form.get("agents") === "on",
         agent_labels: list("agentLabels"),
         fork_pull_requests: form.get("forks") === "on",
+        prefer_own_runners: form.get("preferOwn") === "on",
       });
       return saved.ok ? { notice: "Saved." } : { error: saved.error.message };
     }

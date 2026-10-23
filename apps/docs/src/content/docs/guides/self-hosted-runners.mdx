@@ -23,6 +23,10 @@ and picks up jobs that ask for it with `runs-on: self-hosted`.
   computer, `g1t-runner sandbox up` runs Linux jobs in a Linux VM of the
   runner's own and Windows jobs each in a Windows Sandbox: see
   [sandbox on your computer](#sandbox-on-your-computer).
+- **Your runners first, for `ubuntu-latest` too.** A job that asks for one
+  of g1t's Linux machines runs on one of your runners when one that fits
+  it is idle, and on g1t's machines otherwise. See [jobs that ask for
+  g1t's machines](#jobs-that-ask-for-g1ts-machines).
 
 | Where | Page | Who manages it |
 | --- | --- | --- |
@@ -494,8 +498,8 @@ by side, with what each is running now and this month's time on each.
 | **Your runners** | How many are online, busy, idle and offline, this month's self-hosted time (always $0), how many jobs are waiting for one of them, and whether they take [g1t's work](#g1ts-work-on-your-runners). |
 | **On g1t cloud now** | Each running workflow job, linked to its run, with its kind, repository and when it started. Work handed to one of your runners is listed under that runner instead. |
 | **Machine time** | This month's time on g1t cloud against your runners', from your [usage](/guides/usage-and-billing/). |
-| **Your runners** list | Each runner's status, labels, OS, architecture, `g1t-runner` version and when it was last heard from, and what it is running, linked to its run. |
-| **Where work runs** | What decides where each kind of work runs, and whether [g1t's work](#g1ts-work-on-your-runners) runs on your runners. |
+| **Your runners** list | Each runner's status, labels, OS, architecture, `g1t-runner` version and when it was last heard from, what a job on it gets (*8 CPUs · 12 GB · Docker*), and what it is running, linked to its run. |
+| **Where work runs** | What decides where each kind of work runs: whether jobs that ask for g1t's machines [run on your runners first](#jobs-that-ask-for-g1ts-machines), and whether [g1t's work](#g1ts-work-on-your-runners) runs on them. |
 
 A runner is **Idle** when it is online with nothing to do, **Busy** while it
 runs a job, and **Offline** when it has not polled for 90
@@ -679,11 +683,13 @@ that runs jobs in Docker is `linux`, whatever the machine is, since that is
 what its jobs run on. Labels are matched without regard to case.
 
 A job takes a runner only when every label in its `runs-on` is one of the
-runner's. A job without `self-hosted` in its `runs-on` never goes to a
-self-hosted runner: GitHub's Linux labels, such as `ubuntu-latest`, run on
-g1t's machines, and a Windows or macOS label alone (`windows-latest`)
-fails, since g1t's hosted runners are Linux only. Name `self-hosted` to
-run one here: `runs-on: [self-hosted, windows]`.
+runner's. A job that names `self-hosted` only ever runs on your runners.
+One that names a Linux label of g1t's machines, such as `ubuntu-latest`,
+runs on one of your runners when one that fits it is free, and on g1t's
+machines otherwise: see [jobs that ask for g1t's
+machines](#jobs-that-ask-for-g1ts-machines). A Windows or macOS label alone
+(`windows-latest`) fails, since g1t's hosted machines are Linux only. Name
+`self-hosted` to run one here: `runs-on: [self-hosted, windows]`.
 
 ### What a job gets
 
@@ -709,6 +715,87 @@ and `runner.arch` are the machine's, and `RUNNER_ENVIRONMENT` is
 A self-hosted job stops at 360 minutes unless its `timeout-minutes` says
 otherwise, as on GitHub, and can ask for up to 24 hours (1440). Jobs on
 g1t's own machines stop at 60 minutes.
+
+## Jobs that ask for g1t's machines
+
+A job whose `runs-on` is one of the Linux labels of g1t's machines, such as
+`ubuntu-latest`, `ubuntu-24.04`, `ubuntu-slim` or `ubuntu-24.04-arm`, runs
+on one of your runners when one that fits it is idle, and on g1t's machines
+otherwise. Nothing in the workflow changes, and its time on your runner is
+free. This is **Prefer our runners for hosted labels** under **Runners →
+Where work runs**, on by default. A repository can have its own setting, or
+follow the workspace's.
+
+Every computer with [the desktop app](/guides/desktop/#the-runner) open
+has a runner, so with this on, the jobs your team pushes run on the
+team's own machines whenever one of them is free and large enough.
+
+### How a runner is matched
+
+The job is offered to your runners first. A runner takes it when all of
+these hold:
+
+- **It is free**: online, running nothing, and its [group](#groups) lets
+  the job's repository use it (a repository's own runner, only its
+  repository).
+- **The job's OS and architecture**: `linux` and `x64` for `ubuntu-latest`
+  and the other Ubuntu labels (an older or newer `ubuntu-*` too), `linux`
+  and `arm64` for an `-arm` label.
+- **At least the machine's size.** A job on the runner gets at least the
+  CPUs and memory of the machine g1t would give the job: 2 vCPUs and
+  8 GiB for `ubuntu-latest` in a private repository, 4 vCPUs and 12 GiB in
+  a public one, 1 vCPU and 6 GiB for `ubuntu-slim` ([machine
+  sizes](/guides/actions/#machine-sizes)). What counts is what the runner
+  says a job gets: a job container's `--cpus` and `--memory` ([register
+  options](#register-options)), a Windows Sandbox's memory, or the
+  machine's for host mode. A runner too old to say takes none of these
+  jobs.
+- **Docker, when the job uses it.** A job with `services:` or `container:`
+  goes only to a runner whose jobs can use Docker: a sandboxed runner,
+  whose jobs get [a Docker Engine of their own](#docker-in-jobs) unless it
+  was registered with `--no-job-docker`, or a host-mode runner on a machine
+  with Docker. A runner with shared Docker (`container` isolation) takes
+  only jobs that need neither.
+- **Isolation.** A [host-mode](#host-mode-is-deprecated) runner takes such
+  a job only from a private repository.
+- **Trust.** The run is trusted, or it is a pull request from a fork and
+  **Let pull requests from forks use self-hosted runners** is on. A fork's
+  pull request otherwise runs on g1t's machines, as before.
+
+Labels you gave a runner do not matter here: the job asks only for its OS
+and architecture. Windows and macOS labels are not offered: `windows-latest`
+alone still fails, and `runs-on: [self-hosted, windows]` runs it on yours.
+
+### When it runs on g1t's machines
+
+- **At once**, when no runner that fits it is free, or when your runners
+  already run as many jobs at once as your plan allows (4 on the free
+  plan, see [billing](#billing)).
+- **After 15 seconds**, when a runner that fits was free but did not take
+  it. A free runner is already waiting for work and looks every few
+  seconds, so this is rare: a runner that stopped answering a moment ago,
+  for instance.
+
+Your runners and g1t's machines claim a job the same way, so whichever
+claims it first runs it, and the other never starts it. On your runner the
+job has the self-hosted time limit (360 minutes unless it says otherwise,
+up to 24 hours); on g1t's machines, theirs (60 minutes at most).
+
+While it is offered, the job's page says *Offered to the workspace's own
+runners first*. The first lines of its log, under **Set up job**, say
+where it ran and why: on the workspace's runner, by name, because the
+workspace prefers its own runners; or on g1t's machines because none that
+fits was free, or none took it within 15 seconds. `runner.name` and
+`RUNNER_ENVIRONMENT` (`self-hosted` on your runner) say which as well.
+
+### When to turn it off
+
+Turn it off for the workspace, or for one repository, when its jobs should
+only ever run on g1t's machines: when a job's secrets must not reach your
+members' computers, when it relies on what g1t's machines have installed
+and your runners' image does not, or when its timings must come from the
+same machine every run. Jobs that name `self-hosted` are not affected
+either way.
 
 ## Groups
 
@@ -738,12 +825,16 @@ A repository can have its own setting, or follow the workspace's.
 
 Time on your runners is free. Each job's minutes go on
 [usage](/guides/usage-and-billing/) as **Self-hosted runner time** at $0,
-so you can see how much ran there.
+so you can see how much ran there. That includes a job that asked for
+`ubuntu-latest` and [ran on your runner](#jobs-that-ask-for-g1ts-machines):
+it adds no runner minutes. One that ran on g1t's machines is charged as
+any job there.
 
 - Workflow jobs on your runners need no plan and no card: they work on the
   free tier. A workspace on the free plan runs **4** of its workflow jobs
   on its runners at once, however many runners it has; the rest stay
-  queued until one finishes. On the g1t plan there is no such cap.
+  queued until one finishes, except jobs that asked for g1t's machines,
+  which run there instead. On the g1t plan there is no such cap.
 - A workspace g1t has put a hold on cannot register new runners: making a
   registration token answers that it is held.
 
@@ -756,6 +847,14 @@ so you can see how much ran there.
   the next job. Such jobs get no secrets either way.
 - **Secrets** reach a job on your runner under the same rules as on g1t's:
   only trusted runs get them, and only the ones for the job's environment.
+- **Jobs that ask for g1t's machines run on your runners too**, when one
+  that fits is free ([how](#jobs-that-ask-for-g1ts-machines)): on your
+  members' computers when they have the desktop app open, and with the
+  run's secrets there, as a `runs-on: self-hosted` job has them. A public
+  repository's job never goes to a host-mode runner this way, and a fork's
+  pull request only where forks may use your runners. If a repository's
+  secrets must stay on g1t's machines, turn **Prefer our runners for
+  hosted labels** off for it.
 - **The runner's credential** can poll for work, report on what it was
   given and remove itself, and nothing else; every other endpoint refuses
   it. It is kept only as a hash on g1t's side, rotates every day, and stops
@@ -874,6 +973,8 @@ running fails. Runners offline for 14 days are removed by themselves.
 | What you see | What to do |
 | --- | --- |
 | The job says *Waiting for a self-hosted runner with labels …* | No online runner has every one of those labels in a group that allows the repository. Compare the labels on the **Runners** page, check the runner's group, or start the runner. |
+| A job that asked for `ubuntu-latest` ran on g1t's machines while a runner was idle | Its log's **Set up job** says why. Compare what the runner says a job gets on the **Runners** page with the [machine's size](/guides/actions/#machine-sizes): give its jobs more with `--cpus` and `--memory`, or update a runner that shows no size. A job with `services:` or `container:` needs a runner whose jobs have Docker. Check its group allows the repository. |
+| A job that asked for `ubuntu-latest` ran on someone's computer | Their desktop app's runner was free and fit the job. Turn **Prefer our runners for hosted labels** off for the repository (or the workspace) to keep its jobs on g1t's machines. |
 | *Pull requests from forks do not run on self-hosted runners here.* | The run is from a fork. Allow it under **Where work runs**, if you trust everyone who can open a pull request. |
 | `register` says the token is not valid | It expired after an hour, or was mistyped. Make a new one. |
 | `register` says a runner with that name is registered | Another computer's runner has that name, or one registered before the computer was known. Choose another `--name`, or add `--replace`. |

@@ -16,6 +16,7 @@ import {
   START_WAIT,
   stoppedShort,
   tellStopped,
+  transientStart,
   withinTimeCap,
 } from "./lifecycle.ts";
 
@@ -191,6 +192,16 @@ test("a sandbox Cloudflare has no container for waits for a machine; any other f
   assert.equal(noMachine("Error: There is no Container instance available at this time"), true);
   assert.equal(noMachine(new Error("the container exited with code 1")), false);
   assert.equal(noMachine(undefined), false);
+});
+
+test("a start Cloudflare failed on its side waits for another machine; one the work failed does not", () => {
+  assert.equal(transientStart(new Error("internal error; reference = qjfnejnrm51ofpb4mobgkapf")), true);
+  assert.equal(transientStart("Error: Network connection lost."), true);
+  assert.equal(transientStart(new Error("Durable Object reset because its code was updated.")), true);
+  assert.equal(transientStart(new Error("Connection closed: this Durable Object instance is no longer active. Reconnect or retry the request.")), true);
+  assert.equal(transientStart(new Error("the container exited with code 1")), false);
+  assert.equal(transientStart(new Error("Not started: ubuntu-slim machines are not available here.")), false);
+  assert.equal(transientStart(undefined), false);
 });
 
 test("a start asks for a container once a second, for the library's 8 seconds", () => {

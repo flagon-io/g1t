@@ -5159,6 +5159,7 @@ pub static OPERATIONS: &[Operation] = &[
             Field { name: "agents_on_self_hosted", kind: "boolean", required: false, values: &[] },
             Field { name: "fork_pull_requests", kind: "boolean", required: false, values: &[] },
             Field { name: "inherit", kind: "boolean", required: false, values: &[] },
+            Field { name: "prefer_own_runners", kind: "boolean", required: false, values: &[] },
             Field { name: "workspace", kind: "string", required: false, values: &[] },
         ],
     },
@@ -5177,6 +5178,7 @@ pub static OPERATIONS: &[Operation] = &[
             Field { name: "agents_on_self_hosted", kind: "boolean", required: false, values: &[] },
             Field { name: "fork_pull_requests", kind: "boolean", required: false, values: &[] },
             Field { name: "inherit", kind: "boolean", required: false, values: &[] },
+            Field { name: "prefer_own_runners", kind: "boolean", required: false, values: &[] },
         ],
     },
     Operation {

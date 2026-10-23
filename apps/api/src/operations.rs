@@ -2209,13 +2209,13 @@ impl Op {
             Op::SetActionsVariable => "Add or change a variable's row, as for secrets.",
             Op::DeleteActionsVariable => "Remove a variable: one row by `id`, or every row of the key.",
             Op::ListRunners => {
-                "A workspace's self-hosted runners, or a repository's: its own and the workspace's that its runner group lets it use. Each has its `labels` (always `self-hosted`, its OS and its architecture), `status` (`online`, `busy` or `offline`), the `work` it is doing, its `version`, when it was last seen, and its `isolation`: how it keeps work from its machine (`nested-container`, `vm`, `container` or `host`; null for a runner too old to say). A workspace's are seen by its owners; a repository's need the Admin role on it."
+                "A workspace's self-hosted runners, or a repository's: its own and the workspace's that its runner group lets it use. Each has its `labels` (always `self-hosted`, its OS and its architecture), `status` (`online`, `busy` or `offline`), the `work` it is doing, its `version`, when it was last seen, and its `isolation`: how it keeps work from its machine (`nested-container`, `vm`, `container` or `host`; null for a runner too old to say), and `cpus`, `memory_mib` and `docker`: what a job on it gets, which decides the jobs asking for `ubuntu-latest` it may take (null for a runner too old to say, which takes none). A workspace's are seen by its owners; a repository's need the Admin role on it."
             }
             Op::ListRunnerGroups => {
                 "A workspace's runner groups: which of its repositories may use the runners in each. The default group (every repository) is where runners go when no group is named. Owners only."
             }
             Op::GetRunnerSettings => {
-                "Where a workspace's (or a repository's) own g1t jobs run, and whether pull requests from forks may use its self-hosted runners. `agents_on_self_hosted` sends pull request checks and merge checks to runners with `agent_labels` instead of g1t's sandboxes. A repository's are its workspace's unless it has its own (`inherited`)."
+                "Where a workspace's (or a repository's) jobs run, and whether pull requests from forks may use its self-hosted runners. `prefer_own_runners` (on by default) runs a job asking for one of g1t's Linux labels, such as `ubuntu-latest`, on one of its self-hosted runners when one that fits it is online and idle, and on g1t's machines otherwise. `agents_on_self_hosted` sends pull request checks and merge checks to runners with `agent_labels` instead of g1t's sandboxes. A repository's are its workspace's unless it has its own (`inherited`)."
             }
             Op::CreateRunnerRegistrationToken => {
                 "A registration token for `g1t-runner register`, shown once. It lasts an hour and registers any number of runners until then, into `group` (the default group if none) for a workspace, or as a repository's own runners. It can do nothing else. Owners of the workspace, or admins of the repository, signed in or with a person's token; workspace tokens, G1T_TOKEN included, are refused."
@@ -2229,7 +2229,7 @@ impl Op {
             Op::UpdateRunnerGroup => "Rename a runner group, or change which repositories may use it. Owners only.",
             Op::DeleteRunnerGroup => "Delete a runner group. Its runners join the default group, which cannot be deleted. Owners only.",
             Op::UpdateRunnerSettings => {
-                "Change where g1t's own jobs (pull request checks and merge checks) run and whether pull requests from forks may use self-hosted runners, for a workspace or one repository. Left out is unchanged; `inherit` drops a repository's own settings. Allowing forks lets anyone who can open a pull request run code on your machines. Owners of the workspace, or admins of the repository."
+                "Change where jobs run, for a workspace or one repository: whether jobs asking for g1t's Linux labels run on your own runners first (`prefer_own_runners`), where g1t's own jobs (pull request checks and merge checks) run, and whether pull requests from forks may use self-hosted runners. Left out is unchanged; `inherit` drops a repository's own settings. With `prefer_own_runners`, those jobs run on your members' machines and get the run's secrets there. Allowing forks lets anyone who can open a pull request run code on your machines. Owners of the workspace, or admins of the repository."
             }
             Op::ImportWorkItems => {
                 "Open a work item in a workspace from a ticket in Jira or Linear, or from a Sentry issue, by its key or address. The work item is linked to it: agents read the original, and when the work lands the ticket is told. With repo (a repository of the workspace), the work item is filed from it, its origin. Importing the same ticket again returns the work item already made."
@@ -3930,6 +3930,10 @@ impl Op {
                         "description": "The labels a runner needs to take pull request checks and merge checks. self-hosted is always one.",
                     },
                     "fork_pull_requests": { "type": "boolean", "description": "Let jobs of pull requests from forks run on self-hosted runners." },
+                    "prefer_own_runners": {
+                        "type": "boolean",
+                        "description": "Run a job asking for one of g1t's Linux labels (`ubuntu-latest`) on one of your self-hosted runners when one that fits it is free, and on g1t's machines otherwise. On by default. The job runs on your members' machines and gets the run's secrets there.",
+                    },
                     "inherit": { "type": "boolean", "description": "For a repository: drop its own settings and follow its workspace's." },
                 })),
                 &[],
@@ -7081,7 +7085,7 @@ impl Op {
                 if let Some(id) = optional_text(input, "id") {
                     args["id"] = json!(id);
                 }
-                for key in ["agents_on_self_hosted", "fork_pull_requests", "inherit"] {
+                for key in ["agents_on_self_hosted", "fork_pull_requests", "prefer_own_runners", "inherit"] {
                     if let Some(on) = input[key].as_bool() {
                         args[key] = json!(on);
                     }
