@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { AgentRun, RunnerActivity, UsageReport } from "@g1t/contracts";
 
-import { cloudNow, cloudPrices, machineTime, ownWaiting, perMinute, runnerCost } from "./runners.ts";
+import { cloudNow, cloudPrices, machineTime, ownWaiting, perMinute, runnerCost, sizesLine } from "./runners.ts";
 
 function run(id: string, status: AgentRun["status"], over: Partial<AgentRun> = {}): AgentRun {
   return {
@@ -141,4 +141,11 @@ test("machine time and prices read as people say them", () => {
   assert.equal(perMinute(1500), "$0.0015");
   assert.equal(perMinute(870), "$0.00087");
   assert.equal(perMinute(0), "$0");
+});
+
+test("a runner's row says the sizes it takes, and what their jobs get beyond them", () => {
+  assert.equal(sizesLine(undefined), null, "a runner too old to say");
+  assert.equal(sizesLine([]), "Takes none of g1t's sizes");
+  assert.equal(sizesLine([{ size: "1-core" }, { size: "2-core" }]), "Takes Small, Standard");
+  assert.equal(sizesLine([{ size: "2-core", cpus: 4, memory_mib: 16384 }]), "Takes Standard → 4 vCPU · 16 GB");
 });

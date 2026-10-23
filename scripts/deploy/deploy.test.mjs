@@ -156,8 +156,9 @@ test("shared crates and packages are read from workspace metadata", () => {
 
 test("the runner's image is built from the runner crate and what it uses, on the base its lock names", () => {
   const runner = unit("runner");
-  // The runner bumps lockfiles with the scanner's lockfile parser (security updates).
-  assert.deepEqual(runner.image.dirs, ["crates/actions", "crates/runner", "crates/scan"]);
+  // The runner bumps lockfiles with the scanner's lockfile parser (security
+  // updates), and reads the sizes of g1t's machines from the contracts.
+  assert.deepEqual(runner.image.dirs, ["crates/actions", "crates/contracts", "crates/runner", "crates/scan"]);
   assert.deepEqual(runner.image.baseDirs, ["services/runner/base"]);
   assert.ok(runner.dependsOn.includes("crates/runner"));
   assert.ok(touchesImage(runner, ["crates/actions/src/expr.rs"]));

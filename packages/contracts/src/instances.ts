@@ -1,3 +1,5 @@
+import type { OfferedSize } from "./runners";
+
 /**
  * The machine catalogue: every machine a workflow job can run on. Mirrors
  * `g1t_contracts::actions::INSTANCE_TYPES` row for row (a Rust test reads
@@ -150,4 +152,52 @@ export function machineSize(instance: InstanceType): string {
 /** The minutes a job is charged for: its time rounded up to the minute, at least 1 for a job that ran. */
 export function runnerMinutes(seconds: number): number {
   return seconds <= 0 ? 0 : Math.ceil(seconds / 60);
+}
+
+// --- Sizes: g1t's machines as the sizes a self-hosted runner takes jobs for ---
+
+/** One of g1t's machines as a size a runner takes: `Standard`, 2 vCPU, 8 GiB. */
+export type RunnerSize = { machine: string; name: string; vcpu: number; memoryMib: number };
+
+/** What people call each machine as a size (`SIZE_NAMES` in the Rust contracts). */
+const SIZE_NAMES: Record<string, string> = { "1-core": "Small", "2-core": "Standard", "4-core": "Large" };
+
+/** Every size, smallest first: each of g1t's machines once (`sizes()` in the Rust contracts). */
+export function runnerSizes(): RunnerSize[] {
+  const out: RunnerSize[] = [];
+  for (const instance of INSTANCE_TYPES) {
+    if (out.some((size) => size.machine === instance.machine)) continue;
+    out.push({ machine: instance.machine, name: SIZE_NAMES[instance.machine] ?? instance.machine, vcpu: instance.vcpu, memoryMib: instance.memoryGib * 1024 });
+  }
+  return out.sort((a, b) => a.vcpu - b.vcpu || a.memoryMib - b.memoryMib);
+}
+
+/** A size by its machine's key; null when it is not one. */
+export function runnerSize(machine: string): RunnerSize | null {
+  return runnerSizes().find((size) => size.machine === machine.trim().toLowerCase()) ?? null;
+}
+
+/** Memory for people: `8 GB`, `1.5 GB`, `512 MB`. */
+export function memorySaid(mib: number): string {
+  if (mib < 1024) return `${mib} MB`;
+  return `${Math.round((mib / 1024) * 100) / 100} GB`;
+}
+
+/** `2 vCPU · 8 GB`. */
+export function roomSaid(cpus: number, memoryMib: number): string {
+  return `${Math.round(cpus * 100) / 100} vCPU · ${memorySaid(memoryMib)}`;
+}
+
+/** A size for people: `Standard`, or `Standard → 4 vCPU · 16 GB` when its jobs get more than the size. */
+export function offeredSizeSaid(offered: OfferedSize): string {
+  const size = runnerSize(offered.size);
+  if (!size) return offered.size;
+  const cpus = Math.max(offered.cpus ?? size.vcpu, size.vcpu);
+  const memory = Math.max(offered.memory_mib ?? size.memoryMib, size.memoryMib);
+  return cpus === size.vcpu && memory === size.memoryMib ? size.name : `${size.name} → ${roomSaid(cpus, memory)}`;
+}
+
+/** What a runner takes, for people: `Small, Standard → 4 vCPU · 16 GB`; `no sizes` when it takes none. */
+export function sizesSaid(sizes: OfferedSize[]): string {
+  return sizes.length === 0 ? "no sizes" : sizes.map(offeredSizeSaid).join(", ");
 }

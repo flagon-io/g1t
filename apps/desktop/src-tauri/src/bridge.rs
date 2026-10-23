@@ -358,6 +358,19 @@ pub fn runner_control(app: AppHandle, webview: Webview, action: String, capabili
     runner::act(&app, &action, capability.as_deref())
 }
 
+/// The sizes the sandbox's Linux jobs are taken for, from the site's
+/// settings: `1-core,2-core:4:16g` (empty for none), or null to have one
+/// picked for this computer again. Kept by the launcher, which starts
+/// Linux jobs again with them after the job they are running.
+#[tauri::command]
+pub fn runner_sizes(app: AppHandle, webview: Webview, sizes: Option<String>) -> Result<(), String> {
+    from_site(&app, &webview).or_else(|_| from_settings_or_runner(&webview))?;
+    if sizes.as_deref().is_some_and(|list| list.len() > 200 || list.chars().any(|c| !(c.is_ascii_alphanumeric() || matches!(c, '-' | ',' | ':' | '.')))) {
+        return Err("Those aren't sizes.".into());
+    }
+    runner::set_sizes(&app, sizes)
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

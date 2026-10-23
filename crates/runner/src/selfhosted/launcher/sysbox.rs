@@ -114,6 +114,9 @@ impl Backend for SysboxHost {
             runner_image: if given.runner_image.is_empty() { merged.runner_image } else { given.runner_image },
             image_version: if given.image_version.is_empty() { merged.image_version } else { given.image_version },
             stop: None,
+            sizes: given.sizes.or(merged.sizes),
+            computer_cpus: if given.computer_cpus > 0 { given.computer_cpus } else { merged.computer_cpus },
+            computer_memory_mib: if given.computer_cpus > 0 { given.computer_memory_mib } else { merged.computer_memory_mib },
         };
         super::write_private(&self.settings_path(), &serde_json::to_vec_pretty(&merged)?)
     }

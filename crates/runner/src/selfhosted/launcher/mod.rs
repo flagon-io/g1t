@@ -10,6 +10,7 @@
 //! g1t-runner sandbox down [--only linux,windows] [--drain] [--delete] [--json]
 //! g1t-runner sandbox status [--json]
 //! g1t-runner sandbox update [--image-file PATH] [--json]
+//! g1t-runner sandbox sizes [--set 1-core,2-core:4:16g | --pick] [--json]
 //! ```
 //!
 //! It gives a computer up to two capabilities, each a runner of its own:
@@ -83,6 +84,9 @@
 //! sandbox: a runner of the same account registered for host mode, whose
 //! jobs could look inside it, or a state folder others can read. It is
 //! empty when nothing does, and left out by launchers before it.
+//! `sizes` is the Linux runner's: which of g1t's machines it takes jobs
+//! for, and what each would cost this computer (`g1t-runner sizes --json`,
+//! sizes.rs); `sizes --set` changes them. Launchers before it leave it out.
 //! `turned_off` is true for a capability someone stopped (`down --only`,
 //! `--no-native`), whose state is then `stopped`: stopped by a person, not
 //! failing. `needs` names what the computer still lacks for a capability,
@@ -116,6 +120,7 @@ use super::native::{Availability, MacVm, WsbFound};
 use super::needs::{self, Need, WindowsFacts};
 use super::private::{self, write_private};
 use super::{JobStatus, Options, RunnerStatus, VERSION, config, log};
+use super::sizes::{self, SizeChoice, SizesView};
 use guest::{GuestStatus, Settings};
 
 /// What `status --json`'s shape is.
@@ -204,6 +209,13 @@ pub struct Saved {
     /// What went wrong last, for `status`.
     #[serde(default)]
     pub error: Option<String>,
+    /// The sizes of g1t's machines the Linux runner takes jobs for: picked
+    /// at its first `up` for a sandbox told nothing (`sizes_picked`), and
+    /// changed by `sizes --set`. None before then.
+    #[serde(default)]
+    pub sizes: Option<Vec<SizeChoice>>,
+    #[serde(default)]
+    pub sizes_picked: bool,
 }
 
 impl Saved {
@@ -266,6 +278,12 @@ pub struct Status {
     /// read); empty when nothing does. Older launchers leave it out.
     #[serde(default)]
     pub warnings: Vec<String>,
+    /// The Linux runner's sizes: which of g1t's machines it takes jobs
+    /// asking for one of for, and what each would cost this computer
+    /// (`g1t-runner sizes --json`), for the desktop app's settings. `sizes
+    /// --set` changes them. Older launchers leave it out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sizes: Option<SizesView>,
 }
 
 /// One kind of job this computer can run sandboxed.
@@ -695,7 +713,82 @@ pub fn status(dir: &Path) -> Status {
         capabilities,
         state_dir: dir.display().to_string(),
         warnings: warnings(dir),
+        sizes: sizes_view(&saved),
     }
+}
+
+// --- Sizes -------------------------------------------------------------------------
+
+/// The Linux runner's machine: this computer, with its sandbox's share.
+fn linux_machine(resources: &Resources) -> g1t_contracts::runners::Machine {
+    let cpus = std::thread::available_parallelism().map_or(1, |n| n.get()) as u32;
+    let share = (resources.cpus > 0 && resources.memory_mib > 0)
+        .then_some(g1t_contracts::runners::Room { cpus: f64::from(resources.cpus), memory_mib: resources.memory_mib });
+    g1t_contracts::runners::Machine { cpus, memory_mib: total_memory_mib().unwrap_or(8192), share }
+}
+
+/// The sandbox's share: as kept, or what `up` would give it.
+fn resources_of(saved: &Saved) -> Resources {
+    if saved.resources == Resources::default() {
+        default_resources(std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2), total_memory_mib())
+    } else {
+        saved.resources
+    }
+}
+
+/// The sizes the Linux runner takes: those kept, else, for a sandbox told
+/// nothing, the one picked for it (`picked_size`), kept from now on so it
+/// stays the same and the person sees it chosen.
+fn settle_sizes(saved: &mut Saved) -> Vec<SizeChoice> {
+    if saved.sizes.is_none() {
+        saved.sizes = Some(sizes::pick(linux_machine(&resources_of(saved))));
+        saved.sizes_picked = true;
+    }
+    saved.sizes.clone().unwrap_or_default()
+}
+
+/// What the Linux runner's settings tell the guest of its sizes, and of
+/// the computer its share is of.
+fn sized(settings: Settings, saved: &mut Saved) -> Settings {
+    let machine = linux_machine(&resources_of(saved));
+    Settings { sizes: Some(settle_sizes(saved)), computer_cpus: machine.cpus, computer_memory_mib: machine.memory_mib, ..settings }
+}
+
+fn sizes_view(saved: &Saved) -> Option<SizesView> {
+    let machine = linux_machine(&resources_of(saved));
+    let chosen = saved.sizes.clone().unwrap_or_else(|| sizes::pick(machine));
+    let taken = sizes::offered(&chosen).unwrap_or_default();
+    Some(sizes::view(machine, &taken, saved.sizes.is_none() || saved.sizes_picked, "restart"))
+}
+
+/// `sizes --set LIST` or `--pick`: which of g1t's machines the Linux
+/// runner takes jobs for. Kept here and handed to the runner as it starts,
+/// so a running one is drained (it finishes the job it is running) and
+/// started again with them, keeping its registration.
+fn set_sizes(options: &Options, dir: &Path) -> Result<()> {
+    let mut saved = Saved::load(dir);
+    if let Some(list) = options.value("set") {
+        saved.sizes = Some(sizes::parse_list(list)?);
+        saved.sizes_picked = false;
+    } else if options.flag("pick") {
+        saved.sizes = Some(sizes::pick(linux_machine(&resources_of(&saved))));
+        saved.sizes_picked = true;
+    } else {
+        return Ok(());
+    }
+    saved.save(dir)?;
+    let backend = backend(dir);
+    if !(backend.exists() && backend.running()) {
+        log("Saved: the Linux runner takes these sizes when it next starts.");
+        return Ok(());
+    }
+    in_phase(dir, "starting", |saved| {
+        log("Draining: the Linux runner finishes the job it is running, then starts again with these sizes.");
+        backend.stop(StopMode::Drain)?;
+        backend.configure(&sized(Settings::default(), saved))?;
+        backend.start()?;
+        wait_running(backend.as_ref(), Duration::from_secs(180))
+    })
 }
 
 // --- What weakens it ---------------------------------------------------------------
@@ -818,6 +911,7 @@ const HELP: &str = "g1t-runner sandbox: self-hosted runners on your own computer
   g1t-runner sandbox down [--only linux,windows] [--drain] [--delete] [--json]
   g1t-runner sandbox status [--json]
   g1t-runner sandbox update [--json]
+  g1t-runner sandbox sizes [--set 1-core,2-core:4:16g | --pick] [--json]
 
 Linux jobs run in a Linux VM of the runner's own (a WSL distribution on
 Windows, a vfkit VM on macOS; on Linux, Sysbox, or a QEMU VM), each in a
@@ -831,7 +925,9 @@ for it. Each kind of job starts and stops on its own: `down --only
 windows` stops Windows jobs and keeps them off, leaving Linux jobs
 running, until `up --only windows` turns them on again. `update` drains,
 swaps in the newest signed image, and starts
-again, keeping the registration. Every command takes --state-dir DIR
+again, keeping the registration. `sizes` says which of g1t's machines
+Linux jobs are taken for (`--set 2-core,4-core:8:16g`, or `--pick` to
+choose again); a running Linux runner drains and starts again with them. Every command takes --state-dir DIR
 (default ~/.g1t-runner/sandbox).
 Docs: https://docs.g1t.sh/guides/self-hosted-runners/#sandbox-on-your-computer";
 
@@ -850,6 +946,7 @@ const SANDBOX_VALUES: &[&str] = &[
     "runner-image-file",
     "wait",
     "only",
+    "set",
 ];
 
 /// `g1t-runner sandbox <command>`: the process's exit code.
@@ -879,6 +976,7 @@ pub fn main(args: &[String]) -> i32 {
         Some("up") => private().and_then(|()| up(&options, &dir)),
         Some("down") => private().and_then(|()| down(&options, &dir)),
         Some("update") => private().and_then(|()| update_sandbox(&options, &dir)),
+        Some("sizes") => private().and_then(|()| set_sizes(&options, &dir)),
         Some("status") => Ok(()),
         _ => {
             println!("{HELP}");
@@ -889,6 +987,13 @@ pub fn main(args: &[String]) -> i32 {
     match outcome {
         Ok(()) => {
             print(&status, json);
+            if args.first().map(String::as_str) == Some("sizes")
+                && !json
+                && let Some(view) = &status.sizes
+            {
+                println!("Linux jobs' sizes:");
+                sizes::print(view);
+            }
             0
         }
         Err(error) => {
@@ -1007,7 +1112,7 @@ fn up(options: &Options, dir: &Path) -> Result<()> {
             let Some(runner_image) = saved.runner_image.clone() else {
                 bail!("there is no runner image for the sandbox: this build is not a release, so pass --runner-image or --runner-image-file");
             };
-            backend.configure(&Settings {
+            let settings = Settings {
                 url: saved.url.clone(),
                 token: token.clone(),
                 name: Some(format!("{}-linux", base_name(saved))),
@@ -1019,7 +1124,9 @@ fn up(options: &Options, dir: &Path) -> Result<()> {
                 runner_image,
                 image_version: saved.image_version.clone().unwrap_or_default(),
                 stop: None,
-            })?;
+                ..Settings::default()
+            };
+            backend.configure(&sized(settings, saved))?;
             backend.start()?;
             wait_running(backend.as_ref(), Duration::from_secs(if fresh { 600 } else { 180 }))
         }))
@@ -1196,7 +1303,7 @@ fn update_sandbox(options: &Options, dir: &Path) -> Result<()> {
         if local.runner_image.is_some() {
             saved.runner_image = local.runner_image.clone();
         }
-        backend.configure(&Settings {
+        let settings = Settings {
             runner_image: saved.runner_image.clone().unwrap_or_default(),
             image_version: local.version.clone(),
             cpus: saved.resources.cpus,
@@ -1207,7 +1314,8 @@ fn update_sandbox(options: &Options, dir: &Path) -> Result<()> {
             group: saved.group.clone(),
             machine: super::machine_fingerprint(),
             ..Settings::default()
-        })?;
+        };
+        backend.configure(&sized(settings, saved))?;
         if was_running {
             backend.start()?;
             wait_running(backend.as_ref(), Duration::from_secs(600))?;

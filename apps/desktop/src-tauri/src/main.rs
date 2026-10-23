@@ -88,6 +88,7 @@ fn main() {
             bridge::runner_offer,
             bridge::runner_register,
             bridge::runner_control,
+            bridge::runner_sizes,
             bridge::site_ready,
             bridge::open_devtools,
         ])

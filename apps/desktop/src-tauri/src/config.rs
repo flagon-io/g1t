@@ -174,6 +174,7 @@ const SITE: &[&str] = &[
     "allow-runner-offer",
     "allow-runner-register",
     "allow-runner-control",
+    "allow-runner-sizes",
     // The settings dialog and the runner menu, which the site draws over itself.
     "allow-site-ready",
     "allow-get-settings",

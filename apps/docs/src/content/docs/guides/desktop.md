@@ -226,8 +226,7 @@ other way round; a kind you stop stays stopped, across restarts, until you
 start it again. Both are on until you stop one.
 
 Jobs that ask for `ubuntu-latest` or another Linux label of g1t's machines
-run on it too, while it is idle and at least as large as the machine g1t
-would give them, unless your workspace turned off **Prefer our runners for
+run on it too, while it is idle and takes their [size](#job-sizes), unless your workspace turned off **Prefer our runners for
 hosted labels**; otherwise they run on g1t's machines. Such a job gets its
 run's secrets on your computer, as any job here does. See [jobs that ask
 for g1t's machines](/guides/self-hosted-runners/#jobs-that-ask-for-g1ts-machines).
@@ -282,6 +281,33 @@ only from its own pages, never from a page g1t's server sends; going back
 to **Sandboxed** works from either.
 
 [Seeing it](#seeing-it) says what else it shows.
+
+### Job sizes
+
+Sandboxed, the **Runner** section has a **Job sizes** card: which of g1t's
+machines your Linux jobs take jobs that ask for one of them for
+([sizes](/guides/self-hosted-runners/#sizes)). It shows:
+
+- **Sandbox**: how a job is kept from your computer, in plain words: a
+  nested container (each job in a fresh container inside the runner's own
+  sandbox), a VM, or the host.
+- **This computer**: its CPUs and memory, and the Linux sandbox's share of
+  them.
+- Each size, **Small** (1 vCPU, 6 GB), **Standard** (2 vCPU, 8 GB) and
+  **Large** (4 vCPU, 12 GB), ticked when your runner takes it, with
+  **CPUs** and **Memory (GB)** to give its jobs more than the size (never
+  less), and a warning under a size that is more than half your computer
+  or more than the sandbox has. A warning never stops you offering it.
+
+You choose nothing to start with: the first time the sandbox starts, one
+size is picked and ticked for you, with why: Standard if it fits in half
+your computer and in the sandbox's share, else Small, else none (_Chosen
+for you: Standard fits in half this machine's 16 CPUs and 32 GB and in the
+sandbox's 8 vCPU, 8 GB_). It is never Large. Tick more, untick it, or give
+it more, and **Save sizes**; **Choose for me** picks again. What you save
+is kept, and Linux jobs start again with it after the job they are
+running, if any, without registering again. The card shows with g1t-runner
+0.3.6 and the app 0.3.11 or later.
 
 ### How jobs run
 

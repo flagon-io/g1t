@@ -1,12 +1,14 @@
 [package]
 name = "g1t-runner"
-version = "0.3.5"
+version = "0.3.6"
 edition.workspace = true
 license.workspace = true
 description = "The program inside a g1t sandbox: runs a GitHub Actions job, a merge queue state, a merge check, a build, a dependency update or a backup, and reports back. Also the self-hosted runner, g1t-runner register/run, on your own machines."
 
 [dependencies]
 g1t-actions = { path = "../actions" }
+# The sizes of g1t's machines a self-hosted runner takes jobs for (selfhosted/sizes.rs).
+g1t-contracts = { workspace = true }
 # Reading lockfiles again after a security update (bump.rs).
 g1t-scan = { workspace = true }
 sha2 = "0.10"

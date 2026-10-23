@@ -14,8 +14,8 @@
  *   name sandbox time by the second, and agent sandbox time);
  *   self-hosted runner time is the workspace's own, at $0.
  */
-import type { AgentRun, MeterLine, RunnerActivity, UsageReport } from "@g1t/contracts";
-import { machineSize, machines } from "@g1t/contracts/instances";
+import type { AgentRun, MeterLine, OfferedSize, RunnerActivity, UsageReport } from "@g1t/contracts";
+import { machineSize, machines, sizesSaid } from "@g1t/contracts/instances";
 
 /** One thing running in one of g1t's sandboxes. */
 export type CloudWork = {
@@ -165,4 +165,14 @@ export function perMinute(micros: number): string {
   const dollars = micros / 1_000_000;
   const digits = dollars >= 0.01 ? 3 : Math.min(6, Math.max(4, 2 - Math.floor(Math.log10(dollars))));
   return `$${dollars.toFixed(digits).replace(/0+$/, "").replace(/\.$/, "")}`;
+}
+
+/**
+ * Which of g1t's machines a runner takes jobs asking for one of for, for its row:
+ * `Takes Small, Standard → 4 vCPU · 16 GB`. Null for a runner too old to say, which takes
+ * them by its CPUs and memory.
+ */
+export function sizesLine(sizes: OfferedSize[] | null | undefined): string | null {
+  if (!sizes) return null;
+  return sizes.length === 0 ? "Takes none of g1t's sizes" : `Takes ${sizesSaid(sizes)}`;
 }

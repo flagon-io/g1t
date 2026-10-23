@@ -13,7 +13,7 @@ import {
   type RunnerIsolation,
 } from "@g1t/contracts";
 
-import { sandboxRunHref, workflowRunHref } from "../lib/runners";
+import { sandboxRunHref, sizesLine, workflowRunHref } from "../lib/runners";
 import type { RunnersAction, RunnersData } from "../lib/runners.server";
 import { CopyLine, EmptyState, ErrorText, Field, Input, SubmitButton, TimeAgo } from "./ui";
 import { Badge, type BadgeTone } from "./ui/badge";
@@ -113,6 +113,7 @@ export function RunnerRow({ runner, manage }: { runner: Runner; manage: boolean 
   const status = STATUS[runner.status];
   const href = runner.work ? workHref(runner.work) : null;
   const resources = runnerResources(runner);
+  const sizes = sizesLine(runner.sizes);
   return (
     <li className="flex flex-wrap items-start gap-x-4 gap-y-2 px-4 py-3">
       <span className={`mt-1.5 size-2 shrink-0 rounded-full ${status.dot}`} aria-hidden />
@@ -161,6 +162,18 @@ export function RunnerRow({ runner, manage }: { runner: Runner; manage: boolean 
               </div>
             </TooltipTrigger>
             <TooltipContent>What a job on it gets</TooltipContent>
+          </Tooltip>
+        )}
+        {sizes && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="mt-0.5" tabIndex={0}>
+                {sizes}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-72">
+              Jobs that ask for one of g1t's machines run on it at these sizes, each in a sandbox of that size or of what follows the arrow.
+            </TooltipContent>
           </Tooltip>
         )}
         <div className="mt-0.5">

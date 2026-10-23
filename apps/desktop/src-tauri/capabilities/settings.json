@@ -15,6 +15,7 @@
     "allow-open-url",
     "allow-window-control",
     "allow-runner-status",
-    "allow-runner-control"
+    "allow-runner-control",
+    "allow-runner-sizes"
   ]
 }

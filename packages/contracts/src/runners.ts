@@ -48,6 +48,12 @@ export type Runner = {
   cpus?: number | null;
   memoryMib?: number | null;
   docker?: boolean | null;
+  /**
+   * The sizes it takes jobs asking for a hosted label for, as it last said, each with the sandbox's CPUs
+   * and memory where it gives more than the size. Null for a runner from before runners said, which
+   * takes those jobs by `cpus` and `memoryMib`.
+   */
+  sizes?: OfferedSize[] | null;
 };
 
 /**
@@ -301,3 +307,10 @@ export const RUNNER_FILES: Record<"linux-x64" | "linux-arm64" | "macos-arm64" | 
   "macos-x64": "g1t-runner-macos-x64",
   "windows-x64": "g1t-runner-windows-x64.exe",
 };
+
+/**
+ * A size a runner takes jobs for: one of g1t's machines by its key (`2-core`), and, where the runner
+ * gives a job taken for it more than the machine, its sandbox's CPUs and memory in MiB (never less).
+ * Snake case, as the runner says it. Mirrors `OfferedSize` in crates/contracts/src/runners.rs.
+ */
+export type OfferedSize = { size: string; cpus?: number | null; memory_mib?: number | null };

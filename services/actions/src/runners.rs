@@ -95,11 +95,19 @@ pub struct RunnerRow {
     pub memory_mib: Option<u64>,
     #[serde(default)]
     pub docker: Option<u32>,
+    /// The sizes it takes, as it last said (migration 0031): JSON, as
+    /// [`kept_sizes`] keeps them; none for a runner that never said.
+    #[serde(default)]
+    pub sizes: Option<String>,
 }
 
 impl RunnerRow {
     fn labels(&self) -> Vec<String> {
         serde_json::from_str(&self.labels).unwrap_or_default()
+    }
+
+    fn sizes(&self) -> Option<Vec<model::OfferedSize>> {
+        self.sizes.as_deref().and_then(|text| serde_json::from_str(text).ok())
     }
 
     fn capacity(&self) -> model::Capacity {
@@ -208,6 +216,12 @@ fn kept_capacity(cpus: Option<u32>, memory_mib: Option<u64>, docker: Option<bool
         memory_mib: memory_mib.filter(|n| (1..=64 * 1024 * 1024).contains(n)),
         docker,
     }
+}
+
+/// The sizes a runner says it takes, as they are kept: JSON of
+/// [`model::kept_sizes`], g1t's machines only, none below its size.
+fn sized(given: &[model::OfferedSize]) -> String {
+    serde_json::to_string(&model::kept_sizes(given)).unwrap_or_else(|_| "[]".to_owned())
 }
 
 fn valid_name(name: &str) -> std::result::Result<String, String> {
@@ -453,6 +467,7 @@ impl Actions {
             cpus: row.cpus,
             memory_mib: row.memory_mib,
             docker: row.docker.map(|docker| docker != 0),
+            sizes: row.sizes(),
         })
     }
 
@@ -1096,14 +1111,15 @@ impl Actions {
         // it said (older runners do not).
         let isolation = a.isolation.as_deref().filter(|level| model::ISOLATIONS.contains(level));
         let capacity = kept_capacity(a.cpus, a.memory_mib, a.docker);
+        let sizes = a.sizes.as_deref().map(sized);
         let id = new_id("rnr", at);
         let credential = format!("{}{}", model::CREDENTIAL_PREFIX, random_hex(32));
         let created = rfc3339(at);
         self.db
             .prepare(
                 "INSERT INTO runners (id, workspace, repo_id, repo, group_id, name, labels, os, arch, version, ephemeral, credential_hash,
-                   rotated_at, last_seen_at, created_at, created_by, isolation, machine_hash, cpus, memory_mib, docker)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   rotated_at, last_seen_at, created_at, created_by, isolation, machine_hash, cpus, memory_mib, docker, sizes)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 id.as_str().into(),
@@ -1128,6 +1144,7 @@ impl Actions {
                 capacity.cpus.map_or(JsValue::NULL, JsValue::from),
                 capacity.memory_mib.map_or(JsValue::NULL, |mib| JsValue::from(mib as f64)),
                 capacity.docker.map_or(JsValue::NULL, |docker| JsValue::from(u32::from(docker))),
+                optional(sizes.as_deref()),
             ])?
             .run()
             .await?;
@@ -1239,15 +1256,18 @@ impl Actions {
         let cpus = said.cpus.or(row.cpus);
         let memory_mib = said.memory_mib.or(row.memory_mib);
         let docker = said.docker.map(u32::from).or(row.docker);
+        // And the sizes it takes: changed in its settings, they count from now.
+        let sizes = a.sizes.as_deref().map(sized).or_else(|| row.sizes.clone());
         let changed = version != row.version
             || work_id != row.work_id.as_deref()
             || work_kind != row.work_kind.as_deref()
             || isolation != row.isolation
-            || (cpus, memory_mib, docker) != (row.cpus, row.memory_mib, row.docker);
+            || (cpus, memory_mib, docker) != (row.cpus, row.memory_mib, row.docker)
+            || sizes != row.sizes;
         if changed || seen_is_stale(row.last_seen_at.as_deref(), at) {
             self.db
                 .prepare(
-                    "UPDATE runners SET last_seen_at = ?, version = ?, work_id = ?, work_kind = ?, isolation = ?, cpus = ?, memory_mib = ?, docker = ? WHERE id = ?",
+                    "UPDATE runners SET last_seen_at = ?, version = ?, work_id = ?, work_kind = ?, isolation = ?, cpus = ?, memory_mib = ?, docker = ?, sizes = ? WHERE id = ?",
                 )
                 .bind(&[
                     seen.as_str().into(),
@@ -1258,12 +1278,13 @@ impl Actions {
                     cpus.map_or(JsValue::NULL, JsValue::from),
                     memory_mib.map_or(JsValue::NULL, |mib| JsValue::from(mib as f64)),
                     docker.map_or(JsValue::NULL, JsValue::from),
+                    optional(sizes.as_deref()),
                     row.id.as_str().into(),
                 ])?
                 .run()
                 .await?;
         }
-        let row = RunnerRow { isolation, cpus, memory_mib, docker, ..row };
+        let row = RunnerRow { isolation, cpus, memory_mib, docker, sizes, ..row };
         let mut poll = Poll { assignment: None, cancel, credential, removed: false };
         // Busy, or an ephemeral runner that has had its one job.
         if active.is_some() || !a.running.is_empty() {
@@ -1345,19 +1366,25 @@ impl Actions {
                 continue;
             }
             // A job that asked for one of g1t's machines, offered to the
-            // workspace's runners first: only one as large as that machine,
-            // with Docker if it uses it, takes it, and a host-mode runner
-            // only a repository known to be private. The rest run on g1t's.
+            // workspace's runners first: only one that takes that machine's
+            // size (or, saying no sizes, is as large), with Docker if it uses
+            // it, takes it, and a host-mode runner only a repository known to
+            // be private. The rest run on g1t's.
             let offered = job.fallback_instance.is_some();
+            let mut size: Option<model::OfferedSize> = None;
             if let Some(instance) = job.fallback_instance.as_deref() {
                 let machine = g1t_contracts::actions::instance_named(instance).unwrap_or(g1t_contracts::actions::STANDARD_INSTANCE);
                 let visibility = match runner.isolation.as_deref() {
                     Some("host") => self.visibility_once(looked, &job.repo_id).await,
                     _ => None,
                 };
-                if !model::stands_in_for(runner.capacity(), runner.isolation.as_deref(), visibility.as_deref(), &machine, job.needs_docker != 0) {
+                let sizes = runner.sizes();
+                if !model::stands_in_for(runner.capacity(), sizes.as_deref(), runner.isolation.as_deref(), visibility.as_deref(), &machine, job.needs_docker != 0) {
                     continue;
                 }
+                // Taken for that size: its sandbox is the size's, or what the
+                // runner gives that size.
+                size = sizes.iter().flatten().find(|offered| offered.size == machine.machine).and_then(model::OfferedSize::assigned);
             } else if runner.isolation.as_deref() == Some("host") {
                 // A host-mode runner takes no public repository's job: it
                 // waits for a sandboxed runner, and says so when none could.
@@ -1419,7 +1446,7 @@ impl Actions {
             .await;
             // It says in "Set up job" why it is here and not on g1t's machine.
             if offered {
-                self.note_log(&job.id, 0, &format!("{}\n", model::on_own_runner_note(&runner.name))).await?;
+                self.note_log(&job.id, 0, &format!("{}\n", model::on_own_runner_note(&runner.name, size.as_ref(), runner.isolation.as_deref()))).await?;
             }
             // A job that deploys: its run's deployment is under way.
             self.job_started(&job.id).await?;
@@ -1435,6 +1462,7 @@ impl Actions {
                 token: Some(token),
                 env: None,
                 visibility,
+                size,
             }));
         }
 
@@ -1520,6 +1548,7 @@ impl Actions {
                 token: None,
                 env: Some(env),
                 visibility,
+                size: None,
             }));
         }
         Ok(None)
@@ -2076,7 +2105,7 @@ fn takes_offered_job(
         && runner.repo_id.as_deref().is_none_or(|repo| repo == repo_id)
         && (runner.repo_id.is_some() || group.is_none_or(|g| g.allows(run_repo)))
         && wanted.matches(&runner.labels(), group.map(|g| g.name.as_str()))
-        && model::stands_in_for(runner.capacity(), runner.isolation.as_deref(), visibility, machine, needs_docker)
+        && model::stands_in_for(runner.capacity(), runner.sizes().as_deref(), runner.isolation.as_deref(), visibility, machine, needs_docker)
 }
 
 fn group_view(group: &GroupRow, runners: &[RunnerRow]) -> RunnerGroup {
@@ -2163,6 +2192,7 @@ mod tests {
             cpus: None,
             memory_mib: None,
             docker: None,
+            sizes: None,
         };
         let wanted = Wanted::of(&["self-hosted".to_owned(), "linux".to_owned()], None);
         let takes = |row: &RunnerRow| takes_public_job(row, &[], "rep_1", "acme/web", &wanted, at);
@@ -2204,6 +2234,7 @@ mod tests {
             cpus: Some(8),
             memory_mib: Some(16 * 1024),
             docker: Some(1),
+            sizes: None,
         };
         let groups = [group(&["web"])];
         let wanted = model::hosted_wanted(&["ubuntu-latest".to_owned()]).unwrap();
@@ -2219,6 +2250,11 @@ mod tests {
         assert!(!takes(&RunnerRow { docker: Some(0), ..runner.clone() }, true), "services without Docker");
         assert!(!takes(&RunnerRow { isolation: Some("host".into()), ..runner.clone() }, false), "host mode, visibility unknown");
         assert!(!takes(&RunnerRow { repo_id: Some("rep_2".into()), ..runner.clone() }, false), "another repository's");
+        // A runner that says its sizes takes the machine's, whatever it has.
+        let sized = |json: &str| RunnerRow { cpus: Some(1), memory_mib: Some(1024), sizes: Some(json.into()), ..runner.clone() };
+        assert!(takes(&sized(r#"[{"size":"2-core"}]"#), false), "its sizes, not its resources");
+        assert!(!takes(&sized(r#"[{"size":"1-core"}]"#), false), "not a size it takes");
+        assert!(!takes(&sized("[]"), false), "it takes none");
         let elsewhere = [group(&["docs"])];
         assert!(!takes_offered_job(&runner, &elsewhere, "rep_1", "acme/web", &wanted, &standard, false, None, at), "its group leaves the repository out");
     }
@@ -2228,6 +2264,14 @@ mod tests {
         assert_eq!(kept_capacity(Some(8), Some(16384), Some(true)), model::Capacity { cpus: Some(8), memory_mib: Some(16384), docker: Some(true) });
         assert_eq!(kept_capacity(Some(0), Some(0), None), model::Capacity::default());
         assert_eq!(kept_capacity(Some(1_000_000), None, None).cpus, None);
+        // Its sizes: g1t's machines, each once, never below the size.
+        let said = [
+            model::OfferedSize { size: "2-core".into(), cpus: Some(1.0), memory_mib: Some(16 * 1024) },
+            model::OfferedSize::of("1-core"),
+            model::OfferedSize::of("1-core"),
+            model::OfferedSize::of("gpu"),
+        ];
+        assert_eq!(sized(&said), r#"[{"size":"1-core"},{"size":"2-core","memory_mib":16384}]"#);
     }
 
     #[test]
@@ -2258,6 +2302,7 @@ mod tests {
             cpus: None,
             memory_mib: None,
             docker: None,
+            sizes: None,
         };
         assert!(row.online(1_000_000_000 + 60_000));
         assert!(!row.online(1_000_000_000 + 120_000));
@@ -2305,6 +2350,7 @@ mod tests {
             cpus: None,
             memory_mib: None,
             docker: None,
+            sizes: None,
         };
         // The same computer, even while the old one still looks online.
         assert!(takes_over(&row(ours.clone(), Some("u1"), at), false, ours.as_deref(), Some("u1"), at));

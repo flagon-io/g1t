@@ -64,6 +64,14 @@ pub struct Config {
     /// (`--native`, native.rs): Windows Sandbox on Windows.
     #[serde(default)]
     pub native: bool,
+    /// The sizes of g1t's machines it takes jobs asking for one of them
+    /// for (sizes.rs): each a key (`2-core`), or a key with what its jobs
+    /// get. None until the runner first starts, which picks one and keeps it.
+    #[serde(default)]
+    pub sizes: Option<Vec<super::sizes::SizeChoice>>,
+    /// `sizes` were picked for the person, not chosen by them.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub sizes_picked: bool,
 }
 
 fn yes() -> bool {
@@ -139,6 +147,7 @@ mod tests {
         let config: Config = serde_json::from_str(old).unwrap();
         assert!(config.docker && config.job_docker && config.auto_update);
         assert_eq!(config.memory, None);
+        assert_eq!((config.sizes, config.sizes_picked), (None, false), "picked at its next start");
     }
 
     #[test]
@@ -166,12 +175,15 @@ mod tests {
             job_docker: true,
             job_docker_image: None,
             native: false,
+            sizes: Some(vec![super::super::sizes::SizeChoice::Key("1-core".into())]),
+            sizes_picked: false,
         };
         save(&dir, &config).unwrap();
         let back = load(&dir).unwrap();
         assert_eq!(back.runner, "rnr_1");
         assert_eq!(back.labels, config.labels);
         assert_eq!(back.memory.as_deref(), Some("4g"));
+        assert_eq!(back.sizes, config.sizes);
         forget(&dir);
         assert!(load(&dir).is_err());
         let _ = std::fs::remove_dir_all(&dir);
