@@ -464,8 +464,9 @@ export const BUILD_SECONDS_DEFAULT = 100;
 /**
  * The most build time (BUILD_SECONDS) one CI job is given. A job's Workers
  * take turns on Cargo's lock on their shared target, so a job takes about
- * the sum of its Workers' builds; on 2 vCPU and 8 GiB (ubuntu-latest, as
- * on GitHub) one big Worker is a job's worth. So the slowest Worker sets
+ * the sum of its Workers' builds; on ubuntu-latest (4 vCPU in a public
+ * repository, 2 in a private one, as on GitHub) one big Worker is a job's
+ * worth. So the slowest Worker sets
  * the budget, and the small ones share a job up to it: a deploy waits for
  * its slowest Worker's build and no more. A job costs a minute or so of
  * setup (checkout, caches), which is why the small ones share.
