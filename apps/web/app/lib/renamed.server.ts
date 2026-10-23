@@ -5,7 +5,7 @@ import { isNamespaceShaped } from "@g1t/contracts";
 import type { Viewer } from "@g1t/contracts";
 
 import { identity, repos } from "./services.server";
-import { underWorkspace } from "./workspace-nav";
+import { pagePath, underWorkspace } from "./workspace-nav";
 
 /**
  * A workspace that was renamed keeps its old address as a redirect for
@@ -50,7 +50,8 @@ export async function redirectIfTransferred(request: Request, owner: string, rep
     return;
   }
   const url = new URL(request.url);
-  const segments = url.pathname.split("/");
+  // The page's address, not its data's: a click asks for `….data`.
+  const segments = pagePath(url.pathname).split("/");
   segments[1] = now.namespace;
   segments[2] = now.name;
   throw redirect(segments.join("/") + url.search, 301);

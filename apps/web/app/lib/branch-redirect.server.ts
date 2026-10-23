@@ -4,6 +4,7 @@ import type { RepoPath, Viewer } from "@g1t/contracts";
 
 import { renamedBranchPath } from "./repo-lifecycle";
 import { repos } from "./services.server";
+import { pagePath } from "./workspace-nav";
 
 /**
  * A renamed branch keeps its old name as a redirect. Call this where a
@@ -21,7 +22,8 @@ export async function redirectIfBranchRenamed(request: Request, path: RepoPath, 
     const now = ref === "HEAD" ? repo.value.defaultBranch : await repos.resolveBranch(repo.value.id, ref);
     if (!now || now === ref) return;
     const url = new URL(request.url);
-    to = renamedBranchPath(url.pathname, url.search, now);
+    // The page's address, not its data's: a click asks for `….data`.
+    to = renamedBranchPath(pagePath(url.pathname), url.search, now);
   } catch {
     // A lookup that fails leaves the page a 404, never a 500.
     return;

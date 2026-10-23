@@ -24,7 +24,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs): Pr
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
   const slug = params.owner.toLowerCase();
   const id = folioIdFrom(params.folio);
-  if (!id) throw data(null, { status: 404 });
+  // Its route is `:folio/*` (routes.ts): only `history` is a page.
+  if (!id || params["*"]?.toLowerCase() !== "history") throw data(null, { status: 404 });
   const [folio, versions] = await Promise.all([folios.folio(slug, viewer, id), folios.versions(slug, viewer, id)]);
   if (!folio.ok || !versions.ok) throw data(null, { status: 404 });
   const url = new URL(request.url);

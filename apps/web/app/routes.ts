@@ -1,5 +1,5 @@
 import { type RouteConfig, index, layout, route } from "@react-router/dev/routes";
-import { PROFILE_TABS } from "./lib/tab-paths";
+import { PROFILE_TABS } from "./lib/tab-paths.ts";
 
 export default [
   index("routes/home.tsx"),
@@ -63,14 +63,16 @@ export default [
   route("settings/menu.json", "routes/settings-menu-json.ts"),
   // People, apart from workspaces: `u` is a reserved name. Their profile's
   // tabs are paths (`/u/ada/pulls`); `?tab=` is sent on (lib/tab-paths.ts).
-  // Each tab is named outright: `u/:username/:tab` ranks level with
-  // `:owner/:repo/pulls`, and the browser, which learns routes as it goes,
-  // can break that tie the other way from the server and ask the profile's
-  // address for the repository's data.
+  // Each tab is named outright, with no `u/:username/:tab`: that ranks level
+  // with `:owner/:repo/pulls` and every page beside it, and the browser,
+  // which learns routes as it goes, can break the tie the other way from
+  // the server and ask the profile's address for the repository's data
+  // (routes.test.ts). A tab it never had is the repository `u/<name>`'s
+  // page, so not found.
+  route("u/:username", "routes/user.tsx"),
   ...[...PROFILE_TABS.filter((tab) => tab !== "overview"), "issues"].map((tab) =>
     route(`u/:username/${tab}`, "routes/user.tsx", { id: `routes/user/${tab}` }),
   ),
-  route("u/:username/:tab?", "routes/user.tsx"),
   // The card that opens over a person's name or avatar (lib/hovercard.ts).
   // `-` is no workspace's name, so nothing else is ever found here.
   route("-/hovercard/user/:username", "routes/hovercard-user.ts"),
@@ -266,7 +268,10 @@ export default [
         route("spaces/:space/settings", "routes/workspace/folios/space-settings.tsx"),
         route("repo/:repoOwner/:repoName/*", "routes/workspace/folios/repo-file.tsx"),
         route(":folio", "routes/workspace/folios/folio.tsx"),
-        route(":folio/history", "routes/workspace/folios/history.tsx"),
+        // `:folio/history` would rank level with `new/:kind` and
+        // `spaces/:space` (a space named History): a splat ranks below
+        // both, and the page takes only `history` (routes.test.ts).
+        route(":folio/*", "routes/workspace/folios/history.tsx"),
       ]),
       // Home, the workspace's front page (`-/today` leads there), where it
       // marks your visit, and every app in it you can use, with pinning them

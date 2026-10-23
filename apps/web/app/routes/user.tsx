@@ -38,7 +38,7 @@ import { ItemIcon, PullIcon } from "../components/work-icons";
 import { itemPath } from "../lib/refs";
 import { lastDay } from "../lib/contribution-calendar";
 import { notFound } from "../lib/not-found.server";
-import { type ProfileTab, movedTab, profilePath, profileTab } from "../lib/tab-paths";
+import { type ProfileTab, movedTab, profilePath, profileSegment, profileTab } from "../lib/tab-paths";
 import { identity, projects, repos, work } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";
 import { Unavailable } from "../components/boundary";
@@ -86,9 +86,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   // Its tabs are paths: `?tab=pulls`, the address before, is `/u/ada/pulls`.
   const moved = movedTab(url, (asked) => profilePath(profile.username, asked));
   if (moved) throw redirect(moved, 301);
-  // The tab is the path's third segment: each known tab has a route of its
-  // own (routes.ts), so it is not always `params.tab`.
-  const segment: string | undefined = url.pathname.split("/")[3] || undefined;
+  const segment = profileSegment(url.pathname);
   const tab: Tab | null = profileTab(segment);
   if (!tab) throw notFound("page");
   // One address per person: `/u/Ada` is `/u/ada`.
