@@ -82,6 +82,25 @@ cd apps/docs && npm run build
 - Look at what you changed in a browser. Screenshots catch what type
   checks do not.
 
+## Fewer, fuller pull requests
+
+Every merge into `main` costs the same however small it is: CI on each
+push to the pull request, CI again in the merge queue, a push to `main`
+that warms the caches, and a deploy of 13 to 16 jobs (~18 minutes). In
+October 2026 that was about 1.3 machine-hours per merged change, and 30 to
+45 merges a day made it most of CI's cost. So:
+
+- **Fold a follow-up into the pull request it follows** while that one is
+  open, rather than opening another. Hold auto-merge until the batch is
+  done.
+- **Parallel tracks of one piece of work land as one pull request**: merge
+  the tracks' branches into one, run the checks once, and let it close
+  every work item it covers (`Closes #N` for each).
+- **Run what CI runs before you push** (above), so a push is usually the
+  last one. Each push to an open pull request runs CI again.
+- **Stack pull requests that need separate review** (each based on the
+  one before) and merge them together, so `main` deploys once.
+
 ## Previewing a change to the site
 
 A pull request that changes the site (`apps/web`, a package it uses, or the
