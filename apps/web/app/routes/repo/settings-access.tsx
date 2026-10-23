@@ -152,7 +152,10 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
   const base = `/${params.owner}/${params.repo}`;
   const full = `${params.owner}/${params.repo}`;
   const pending = access.invitations.filter((invitation) => invitation.status === "pending");
-  const people = [...access.people].sort((a, b) => REPO_ROLES.indexOf(b.role) - REPO_ROLES.indexOf(a.role) || a.username.localeCompare(b.username));
+  // Only roles given here, as GitHub lists them: owners and what the base
+  // permission gives every member are said once, in Base permission, and
+  // a team's members are on the team.
+  const people = access.people.filter((person) => person.direct != null && person.source !== "owner").sort((a, b) => REPO_ROLES.indexOf(b.role) - REPO_ROLES.indexOf(a.role) || a.username.localeCompare(b.username));
   const result = actionData?.intent === "add" ? actionData : undefined;
   const teamResult = actionData?.intent === "team-add" ? actionData : undefined;
   const repoTeams = [...(access.teams ?? [])].sort((a, b) => REPO_ROLES.indexOf(b.role) - REPO_ROLES.indexOf(a.role) || a.name.localeCompare(b.name));
@@ -202,25 +205,31 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
           title="People with access"
           about={
             manage
-              ? "Who can see the repository, and what each can do. Outside collaborators are not members of the workspace; they see only the repositories shared with them."
-              : "Who can see the repository, and what each can do. Changing who has access needs the Admin role."
+              ? "People given a role on this repository. Outside collaborators are not members of the workspace; they see only the repositories shared with them."
+              : "People given a role on this repository. Changing who has access needs the Admin role."
           }
         >
-          <Card asChild tone="plain" divided>
-            <ul>
-              {people.map((person) => (
-                <PersonRow
-                  key={person.username}
-                  person={person}
-                  manage={manage}
-                  base={access.base_permission}
-                  full={full}
-                  workspace={params.owner}
-                  onDone={setNotice}
-                />
-              ))}
-            </ul>
-          </Card>
+          {people.length === 0 ? (
+            <Card asChild tone="plain" className="border-dashed px-4 py-6 text-center text-sm text-muted">
+              <p>No one has been given a role here.</p>
+            </Card>
+          ) : (
+            <Card asChild tone="plain" divided>
+              <ul>
+                {people.map((person) => (
+                  <PersonRow
+                    key={person.username}
+                    person={person}
+                    manage={manage}
+                    base={access.base_permission}
+                    full={full}
+                    workspace={params.owner}
+                    onDone={setNotice}
+                  />
+                ))}
+              </ul>
+            </Card>
+          )}
           {notice && (
             <p className="text-sm text-success" role="status">
               {notice}
