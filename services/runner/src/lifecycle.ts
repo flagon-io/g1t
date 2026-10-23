@@ -143,6 +143,65 @@ export const START_POLL_MS = 1000;
 /** A sandbox's start asks for this long, as the library's does (8 s); then the job waits for a machine. */
 export const START_WAIT = { waitInterval: START_POLL_MS, retries: 8 } as const;
 
+/**
+ * The pauses between a workflow job's asks for a container while none is
+ * free, in its sandbox's own alarm (`startPatiently`): refusals come in
+ * bursts that end within seconds (#292), and a job that has just finished
+ * holds its container a few seconds more. Then the job goes back in the
+ * queue and waits for a machine there.
+ */
+export const MACHINE_PAUSES_MS = [2_000, 5_000, 10_000] as const;
+
+/**
+ * Starts a container with `start`, asking again after each of `pauses`
+ * while Cloudflare has none to give (`noMachine`). Anything else, and the
+ * last refusal, is thrown as it came.
+ */
+export async function startPatiently(
+  start: () => Promise<void>,
+  pauses: readonly number[] = MACHINE_PAUSES_MS,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await start();
+      return;
+    } catch (error) {
+      if (attempt >= pauses.length || !noMachine(error)) throw error;
+      await sleep(pauses[attempt]);
+    }
+  }
+}
+
+/**
+ * How many times a sandbox's alarm takes up a start it accepted
+ * (`startAccepted`) before it gives up on it: a deploy that resets the
+ * object, or an alarm cancelled under it, ends one try, and the next alarm
+ * takes the start up again.
+ */
+export const START_TRIES = 3;
+
+/** Why a workflow job's start failed, as the actions service is told it. */
+export type StartRefusal = { code: "unavailable" | "conflict"; message: string };
+
+/**
+ * What a failed start of a workflow job tells the actions service. No
+ * machine free (`noMachine`), or Cloudflare failing the start on its side
+ * (`transientStart`) in a sandbox of the start's own (`own`): `unavailable`,
+ * and the job waits for another machine. Anything else: `conflict`, and the
+ * job fails with why. `label` is the machine's (`g1t-4core`).
+ */
+export function startRefusal(error: unknown, label: string, own: boolean): StartRefusal {
+  if (noMachine(error)) return { code: "unavailable", message: `No ${label} machine was free to start the job.` };
+  // Only with a sandbox of its own: the job's one sandbox might still be
+  // starting what failed.
+  if (own && transientStart(error)) {
+    const why = describeError(error).replace(/^Error: /, "");
+    return { code: "unavailable", message: `Its ${label} machine could not start (${why}); it waits for another.` };
+  }
+  return { code: "conflict", message: `The runner could not start the job: ${String(error).replace(/^Error: /, "")}` };
+}
+
 /** An error as one line, for a log: its message, or what was thrown. */
 export function describeError(error: unknown): string {
   if (error instanceof Error) return error.message || error.name;

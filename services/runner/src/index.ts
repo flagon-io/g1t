@@ -43,14 +43,16 @@ import {
   answered,
   capReached,
   describeError,
-  noMachine,
   type Owed,
   recordOwed,
   START_POLL_MS,
+  START_TRIES,
   START_WAIT,
+  type StartRefusal,
+  startPatiently,
+  startRefusal,
   stoppedShort,
   tellStopped,
-  transientStart,
   withinTimeCap,
 } from "./lifecycle";
 import {
@@ -235,6 +237,15 @@ type RunRequest = Run & {
   selfHosted?: string[] | null;
 };
 
+/** Where a sandbox keeps the start it accepted (`begin`) until it is done. */
+const ACCEPTED = "accepted";
+/**
+ * A workflow job's start its sandbox accepted: the work, the start it is
+ * (the job's `started_at`, which the actions service checks), the machine's
+ * label for what it is told, and how many alarms have taken it up.
+ */
+type AcceptedStart = { request: RunRequest; start: string; label: string; tries?: number };
+
 /** What a sandbox is, as billing meters it. */
 function computeKindOf(kind: Run["kind"]): ComputeKind | null {
   switch (kind) {
@@ -350,7 +361,13 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     AttemptSandbox.outboundHandlers = { egress, abuse, git };
   }
 
-  async run(request: RunRequest): Promise<void> {
+  /**
+   * Starts the work in this sandbox and answers once its container has
+   * started, or throws why it could not. `patient`: a workflow job's start
+   * this sandbox accepted (`begin`), run in its own alarm, which asks again
+   * a few times while no machine is free (`startPatiently`).
+   */
+  async run(request: RunRequest, patient = false): Promise<void> {
     const { envVars, meter, track, limits, reservation, build, owner, selfHosted, ...run } = request;
     // What billing reserved is settled however this ends, once.
     if (reservation) await this.ctx.storage.put("reservation", reservation);
@@ -445,7 +462,15 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       const watch: Record<string, string> = this.env.ABUSE_WATCH === "off" ? { G1T_ABUSE: "off" } : {};
       // No port of its own: `start` checks the library's default when
       // `portToCheck` is left out, as it does with no wait options at all.
-      await this.start({ envVars: { ...vars, ...harness, ...trust, ...watch }, enableInternet: true }, START_WAIT as WaitOptions);
+      const start = () => this.start({ envVars: { ...vars, ...harness, ...trust, ...watch }, enableInternet: true }, START_WAIT as WaitOptions);
+      if (patient) {
+        await startPatiently(start);
+        // Its time runs from when it got its machine, not from the wait.
+        if (meter) await this.ctx.storage.put("meter", { ...meter, started: Date.now() });
+        await this.ctx.storage.put("started", Date.now());
+      } else {
+        await start();
+      }
       // A backup has no guardrails, but still a time cap.
       const cap = guard?.minutes ?? (run.kind === "backup" ? BACKUP_MINUTES : null);
       if (cap) {
@@ -462,6 +487,97 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       await this.ctx.storage.delete(["meter", "started", "run"]);
       throw error;
     }
+  }
+
+  /**
+   * Accepts a workflow job's start and answers at once: the sandbox starts
+   * it in its own alarm (`startAccepted`), which nobody calling can cancel.
+   * A start that waited in the call for a machine was cancelled with the
+   * request that made it once that request's time ran out, after the job
+   * was marked running, and the job waited minutes to be noticed
+   * (flagon-io#463: five jobs of Deploy #587 and CI #782, 2026-10-23). A
+   * start's sandbox is its own (`actionsSandboxName`): one accepted again
+   * (the call retried) is left to the first.
+   */
+  async begin(accepted: AcceptedStart): Promise<void> {
+    if (await this.ctx.storage.get<AcceptedStart>(ACCEPTED)) return;
+    // Kept apart from the start, so a stop before the alarm gives it back.
+    if (accepted.request.reservation) await this.ctx.storage.put("reservation", accepted.request.reservation);
+    await this.ctx.storage.put<AcceptedStart>(ACCEPTED, { ...accepted, tries: 0 });
+    await this.schedule(0, "startAccepted");
+  }
+
+  /** The start of the job this sandbox accepted, already going in this isolate. */
+  private accepting: Promise<void> | null = null;
+
+  /**
+   * The library's alarm runs this for the start `begin` accepted: the
+   * container starts, asking again a few times while no machine is free,
+   * and on a failure the actions service hears at once whether the job
+   * waits for a machine or fails (`startRefusal`), rather than at its
+   * sweep. Kept until it is done, so an alarm cut short (a deploy, a
+   * cancelled invocation) takes it up again, START_TRIES times at most.
+   * Never throws.
+   */
+  async startAccepted(): Promise<void> {
+    this.accepting ??= this.takeUpAccepted().finally(() => {
+      this.accepting = null;
+    });
+    await this.accepting;
+  }
+
+  private async takeUpAccepted(): Promise<void> {
+    const accepted = await this.ctx.storage.get<AcceptedStart>(ACCEPTED);
+    if (!accepted) return;
+    const tries = (accepted.tries ?? 0) + 1;
+    let refusal: StartRefusal;
+    if (tries > START_TRIES) {
+      console.error("sandbox start given up", this.ctx.id.toString(), `after ${START_TRIES} tries`);
+      refusal = { code: "unavailable", message: `Its ${accepted.label} machine could not start; it waits for another.` };
+      await revokeCredentials(this.env.IDENTITY, this.ctx.storage);
+      await this.settle(0);
+      await this.ctx.storage.delete(["meter", "started", "run"]);
+    } else {
+      await this.ctx.storage.put<AcceptedStart>(ACCEPTED, { ...accepted, tries });
+      try {
+        await this.run(accepted.request, true);
+        await this.ctx.storage.delete(ACCEPTED);
+        return;
+      } catch (error) {
+        refusal = startRefusal(error, accepted.label, true);
+      }
+    }
+    // Stopped meanwhile (`destroy`): whoever stopped it has moved the job on.
+    if (!(await this.ctx.storage.get<AcceptedStart>(ACCEPTED))) return;
+    await this.ctx.storage.delete(ACCEPTED);
+    // Left alone, the library goes on trying to start the container from
+    // its alarm, and could take a machine for a start nobody waits on (#426).
+    await super.destroy().catch(() => undefined);
+    const { request, start } = accepted;
+    if (request.kind !== "actions") return;
+    await tellStopped("actions start", async () => {
+      const response = await this.env.ACTIONS.fetch("https://actions/rpc/job_unstarted", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ job: request.jobId, token: request.token, start, code: refusal.code, message: refusal.message }),
+      });
+      await answered("job_unstarted", response);
+    });
+  }
+
+  /**
+   * Destroys the container, and a start this sandbox accepted and has not
+   * begun is dropped, with what billing reserved for it: a job stopped
+   * before its sandbox's alarm came round never starts.
+   */
+  override async destroy(): Promise<void> {
+    if (await this.ctx.storage.get<AcceptedStart>(ACCEPTED)) {
+      await this.ctx.storage.delete(ACCEPTED);
+      this.deleteSchedules("startAccepted");
+      // Begun already, its own failure settles it; settling twice is harmless.
+      if (!(await this.ctx.storage.get("run"))) await this.settle(0);
+    }
+    await super.destroy();
   }
 
   /** Settles what billing reserved for this sandbox at `micros`, once. */
@@ -1144,33 +1260,39 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
     // The statement line says what it ran on; billing adds the minutes on
     // the machine it is charged as.
     const on = instance === STANDARD_INSTANCE ? "" : billed === instance ? ` on ${instance.label}` : ` on the ${instance.machine} machine`;
-    try {
-      await sandbox.run({
+    const request: RunRequest = {
+      kind: "actions",
+      jobId: args.job,
+      token: args.token,
+      reservation: admitted.held,
+      limits: admitted.limits,
+      // The job's own time limit, and whether its requests pass the
+      // Worker for its brokered secrets.
+      build: {
         kind: "actions",
-        jobId: args.job,
-        token: args.token,
-        reservation: admitted.held,
-        limits: admitted.limits,
-        // The job's own time limit, and whether its requests pass the
-        // Worker for its brokered secrets.
-        build: {
-          kind: "actions",
-          minutes: Math.max(1, args.timeoutMinutes),
-          brokered: args.brokered === true,
-        },
-        meter: {
-          ...meter(args.repo, `A workflow job in ${args.repo.namespace}/${args.repo.name}${on}`),
-          instance: billed === STANDARD_INSTANCE ? null : billed.label,
-        },
-        envVars: {
-          MODE: "actions",
-          G1T_API: "https://api.g1t.sh",
-          ACTIONS_JOB: args.job,
-          ACTIONS_TOKEN: args.token,
-          // Docker of the job's own, inside its sandbox (crates/runner docker/).
-          G1T_DOCKER: dockerFor(this.env.DOCKER),
-        },
-      });
+        minutes: Math.max(1, args.timeoutMinutes),
+        brokered: args.brokered === true,
+      },
+      meter: {
+        ...meter(args.repo, `A workflow job in ${args.repo.namespace}/${args.repo.name}${on}`),
+        instance: billed === STANDARD_INSTANCE ? null : billed.label,
+      },
+      envVars: {
+        MODE: "actions",
+        G1T_API: "https://api.g1t.sh",
+        ACTIONS_JOB: args.job,
+        ACTIONS_TOKEN: args.token,
+        // Docker of the job's own, inside its sandbox (crates/runner docker/).
+        G1T_DOCKER: dockerFor(this.env.DOCKER),
+      },
+    };
+    try {
+      // A start of its own: its sandbox accepts it and answers at once, and
+      // starts it in its own alarm, telling the actions service if it
+      // cannot (`begin`). Without one (an actions service from before), the
+      // job's one sandbox starts it while this call waits.
+      if (args.start) await sandbox.begin({ request, start: args.start, label: instance.label });
+      else await sandbox.run(request);
     } catch (error) {
       // This start's own sandbox is done with: left alone, the containers
       // library goes on trying to start its container from its alarm, and
@@ -1178,24 +1300,15 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
       // start of its own: the job's one sandbox is the one it starts in
       // again.
       if (args.start) await sandbox.destroy().catch(() => undefined);
-      // No machine free: the actions service puts the job back in the
-      // queue for its next sweep. What was reserved is given back already.
-      if (noMachine(error)) {
-        return { ok: false, error: { code: "unavailable", message: `No ${instance.label} machine was free to start the job.` } };
-      }
-      // Cloudflare failed the start on its side: the same wait, in a fresh
-      // sandbox. Only with a sandbox of its own (`start`): the job's one
-      // sandbox might still be starting what failed.
-      if (args.start && transientStart(error)) {
-        const why = describeError(error).replace(/^Error: /, "");
-        return { ok: false, error: { code: "unavailable", message: `Its ${instance.label} machine could not start (${why}); it waits for another.` } };
-      }
-      // A sandbox that could not start, or stopped at once: the job fails
-      // with why, rather than waiting to be noticed.
-      return {
-        ok: false,
-        error: { code: "conflict", message: `The runner could not start the job: ${String(error).replace(/^Error: /, "")}` },
-      };
+      // Settled already by a sandbox that began; settling twice at nothing
+      // is harmless.
+      await this.release(admitted.held).catch(() => undefined);
+      // No machine free, or Cloudflare failing the start on its side: the
+      // actions service puts the job back in the queue to wait for one.
+      // Anything else: the job fails with why, rather than waiting to be
+      // noticed.
+      const refusal = startRefusal(error, instance.label, Boolean(args.start));
+      return { ok: false, error: refusal };
     }
     // `true`, not null: an outcome needs a value.
     return ok(true);

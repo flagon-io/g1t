@@ -7,13 +7,17 @@ import {
   answered,
   capReached,
   describeError,
+  MACHINE_PAUSES_MS,
   noMachine,
   OWED_GIVE_UP_MS,
   OWED_MAX_DELAY_SECONDS,
   owedDelaySeconds,
   recordOwed,
   START_POLL_MS,
+  START_TRIES,
   START_WAIT,
+  startPatiently,
+  startRefusal,
   stoppedShort,
   tellStopped,
   transientStart,
@@ -208,4 +212,66 @@ test("a start asks for a container once a second, for the library's 8 seconds", 
   assert.equal(START_POLL_MS, 1000);
   assert.equal(START_WAIT.waitInterval, START_POLL_MS);
   assert.equal(START_WAIT.waitInterval * START_WAIT.retries, 8000);
+});
+
+test("a start Cloudflare has no container for asks again after each pause, then gives up", async () => {
+  const slept: number[] = [];
+  let asks = 0;
+  const refused = new Error("there is no container instance that can be provided to this durable object");
+  await assert.rejects(
+    startPatiently(
+      async () => {
+        asks++;
+        throw refused;
+      },
+      MACHINE_PAUSES_MS,
+      async (ms) => void slept.push(ms),
+    ),
+    (error) => error === refused,
+  );
+  assert.equal(asks, MACHINE_PAUSES_MS.length + 1);
+  assert.deepEqual(slept, [...MACHINE_PAUSES_MS]);
+  // Within the 15 minutes an alarm may run, with the library's own asks.
+  assert.ok(slept.reduce((sum, ms) => sum + ms, 0) + asks * 8000 < 60_000);
+});
+
+test("a start that gets a container on a later ask starts, and any other failure is not asked again", async () => {
+  let asks = 0;
+  await startPatiently(
+    async () => {
+      if (++asks < 3) throw new Error("There is no container instance that can be provided to this Durable Object, try again later");
+    },
+    MACHINE_PAUSES_MS,
+    async () => undefined,
+  );
+  assert.equal(asks, 3);
+  let failed = 0;
+  await assert.rejects(
+    startPatiently(
+      async () => {
+        failed++;
+        throw new Error("Container exited before we could determine the container health, exit code: 1");
+      },
+      MACHINE_PAUSES_MS,
+      async () => undefined,
+    ),
+    /exit code: 1/,
+  );
+  assert.equal(failed, 1);
+});
+
+test("a failed start tells the actions service to wait for a machine, or why the job fails", () => {
+  const none = new Error("there is no container instance that can be provided to this durable object");
+  assert.deepEqual(startRefusal(none, "g1t-4core", true), { code: "unavailable", message: "No g1t-4core machine was free to start the job." });
+  assert.deepEqual(startRefusal(new Error("internal error; reference = qjfnejnrm51ofpb4mobgkapf"), "g1t-4core", true), {
+    code: "unavailable",
+    message: "Its g1t-4core machine could not start (internal error; reference = qjfnejnrm51ofpb4mobgkapf); it waits for another.",
+  });
+  // In the job's one sandbox, a start Cloudflare failed may still be going.
+  assert.equal(startRefusal(new Error("internal error; reference = x"), "g1t-4core", false).code, "conflict");
+  assert.deepEqual(startRefusal(new Error("the container exited with code 1"), "ubuntu-latest", true), {
+    code: "conflict",
+    message: "The runner could not start the job: the container exited with code 1",
+  });
+  assert.ok(START_TRIES >= 2);
 });

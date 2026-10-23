@@ -634,8 +634,11 @@ for more. One on a self-hosted runner runs for 360 minutes when it names
 no `timeout-minutes`, as on GitHub, and can ask for up to 24 hours. A job
 stopped at its time cap fails saying so.
 
-A job on g1t's machines whose machine stops answering before its first
-step waits for another, for up to 30 minutes. One whose machine stops
+When none of g1t's machines of a job's size is free, as when a merge
+starts many jobs at once, the job goes back to queued saying so (`No
+g1t-4core machine was free to start the job.`) and starts as soon as one
+is, for up to 30 minutes. A job on g1t's machines whose machine stops
+answering before its first step waits for another the same way. One whose machine stops
 answering after it started runs again from the start on another machine,
 once, after 10 minutes without a word: its steps, log, summary and
 artifacts from the lost machine are cleared, and the job says where it

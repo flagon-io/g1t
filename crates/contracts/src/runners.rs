@@ -635,7 +635,7 @@ pub struct PollArgs {
     /// from the poll that says it. Older runners leave it out.
     #[serde(default)]
     pub sizes: Option<Vec<OfferedSize>>,
-    /// Whether it runs those jobs in g1t's runner image now, as at
+    /// Whether it runs those jobs in g1t's machine image now, as at
     /// registration (`RegisterArgs::hosted_image`). Older runners leave it
     /// out.
     #[serde(default)]
@@ -936,7 +936,7 @@ pub struct Capacity {
     pub cpus: Option<u32>,
     pub memory_mib: Option<u64>,
     pub docker: Option<bool>,
-    /// It runs a job asking for a hosted label in g1t's runner image
+    /// It runs a job asking for a hosted label in g1t's machine image
     /// (`RegisterArgs::hosted_image`).
     pub hosted_image: Option<bool>,
 }
@@ -950,7 +950,7 @@ pub struct Capacity {
 /// machine takes only a repository known to be private. A runner that says
 /// neither what it takes nor what it has takes none: the job runs on g1t's
 /// machine instead, where it fits. Nor does one that does not run these
-/// jobs in g1t's runner image ([`Capacity::hosted_image`]): in its own
+/// jobs in g1t's machine image ([`Capacity::hosted_image`]): in its own
 /// image, a job written for g1t's machines finds no Rust, Go or Python and
 /// fails (flagon-io#458).
 pub fn stands_in_for(
@@ -1015,11 +1015,11 @@ pub fn on_own_runner_note(runner: &str, size: Option<&OfferedSize>, isolation: O
     let runs = format!("Runs as {} ({given}) on the workspace's runner {runner}", size.name);
     match isolation {
         Some("host") => format!("{runs}, directly on its machine: host mode sets no limits. {why}"),
-        _ if sandbox == size.room() => format!("{runs}, in g1t's runner image, in a sandbox of exactly that size. {why}"),
+        _ if sandbox == size.room() => format!("{runs}, in g1t's machine image, in a sandbox of exactly that size. {why}"),
         _ if sandbox.cpus == size.vcpu && sandbox.memory_mib < size.room().memory_mib => {
-            format!("{runs}, in g1t's runner image: its sandbox has less memory than the size, and a job that runs out of it runs again on g1t's machines. {why}")
+            format!("{runs}, in g1t's machine image: its sandbox has less memory than the size, and a job that runs out of it runs again on g1t's machines. {why}")
         }
-        _ => format!("{runs}, in g1t's runner image, which gives {} jobs a sandbox of {}. {why}", size.name, sandbox.words()),
+        _ => format!("{runs}, in g1t's machine image, which gives {} jobs a sandbox of {}. {why}", size.name, sandbox.words()),
     }
 }
 
@@ -1837,7 +1837,7 @@ mod tests {
     fn set_up_job_says_the_size_and_the_sandbox() {
         let standard = OfferedSize::of("2-core").assigned();
         let exact = on_own_runner_note("box-linux", standard.as_ref(), Some("nested-container"));
-        assert!(exact.starts_with("Runs as Standard (2 vCPU, 8 GB) on the workspace's runner box-linux, in g1t's runner image, in a sandbox of exactly that size."), "{exact}");
+        assert!(exact.starts_with("Runs as Standard (2 vCPU, 8 GB) on the workspace's runner box-linux, in g1t's machine image, in a sandbox of exactly that size."), "{exact}");
         let more = OfferedSize { size: "2-core".into(), cpus: Some(4.0), memory_mib: Some(16 * 1024) }.assigned();
         let given = on_own_runner_note("box-linux", more.as_ref(), Some("nested-container"));
         assert!(given.contains("which gives Standard jobs a sandbox of 4 vCPU, 16 GB"), "{given}");

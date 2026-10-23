@@ -39,10 +39,19 @@ const TOKEN_ROTATE: &str = "UPDATE jobs SET first_token_hash = COALESCE(first_to
 /// `?3` its time limit there, `?4` the job. One offered to the workspace's
 /// runners leaves them (its labels and their reason cleared); a runner
 /// takes one with `RUNNER_CLAIM` (runners.rs), and only the first of the
-/// two finds it still queued.
+/// two finds it still queued. It keeps since when it has waited for a
+/// machine (`waiting_since`): its sandbox may say later that it found none
+/// (`job_unstarted`), and the wait goes on from then, not from this start.
 const HOSTED_CLAIM: &str = "UPDATE jobs SET status = 'in_progress', token_hash = ?1, first_token_hash = NULL, started_at = ?2, seen_at = ?2,
-       waiting_since = NULL, timeout_minutes = ?3, reason = CASE WHEN labels IS NULL THEN reason ELSE NULL END, labels = NULL, queued_at = NULL
+       timeout_minutes = ?3, reason = CASE WHEN labels IS NULL THEN reason ELSE NULL END, labels = NULL, queued_at = NULL
      WHERE id = ?4 AND status = 'queued' RETURNING id";
+/// Puts a job whose start found no machine back in the queue: `?1` since
+/// when it has waited, `?2` why, `?3` the job, `?4` the start (its
+/// `started_at`). Only while that start is still the job's and it never
+/// reported: a sandbox telling of an earlier start, or of one that ran
+/// after all, changes nothing.
+const MACHINE_REQUEUE: &str = "UPDATE jobs SET status = 'queued', token_hash = NULL, started_at = NULL, seen_at = NULL, waiting_since = ?1, reason = ?2
+     WHERE id = ?3 AND status = 'in_progress' AND started_at = ?4 AND seen_at = started_at RETURNING id";
 
 /// Whether `token` is a running job's: its current one, or with `started`
 /// (`brokered_secrets` only) the one it started with before its harness
@@ -51,6 +60,28 @@ fn token_opens(current: Option<&str>, first: Option<&str>, token: &str, started:
     let hash = sha256_hex(token);
     current.is_some_and(|h| same(h, &hash)) || (started && first.is_some_and(|h| same(h, &hash)))
 }
+/// `job_unstarted`: a sandbox that accepted a job's start and could not
+/// start it. `start` is the job's `started_at` for that start; `code`
+/// `unavailable` when no machine was free, and `message` says why.
+#[derive(Deserialize)]
+pub struct UnstartedArgs {
+    pub job: String,
+    pub token: String,
+    pub start: String,
+    pub code: String,
+    pub message: String,
+}
+
+/// Whether a sandbox's `job_unstarted` is about the job as it stands: its
+/// token, the start it is on now, and that start never reported.
+fn unstarted_is_the_jobs(job: &JobRow, a: &UnstartedArgs) -> bool {
+    job.status == "in_progress"
+        && job.runner_id.is_none()
+        && token_opens(job.token_hash.as_deref(), None, &a.token, false)
+        && job.started_at.as_deref() == Some(a.start.as_str())
+        && job.seen_at == job.started_at
+}
+
 /// A batch of a job's log, under the next `seq` of that job's, worked out
 /// in the same statement (SQLite runs one write at a time). `?4` is the
 /// runner's number for the batch (null from runners that send none): a
@@ -1854,31 +1885,14 @@ impl Actions {
                 // within seconds (start_queued_retrying) or at the next
                 // sweep, until it has waited WAIT_FOR_MACHINE_MS.
                 if refused.code == FailureCode::Unavailable {
-                    let since = job.waiting_since.clone().unwrap_or_else(|| at.clone());
-                    if crate::waited_for_a_machine(Some(&since), now_ms()) {
-                        let minutes = crate::WAIT_FOR_MACHINE_MS / 60_000;
-                        let reason = format!("{} None came free in {minutes} minutes.", refused.message);
-                        Box::pin(self.finish_job(&job.id, "failure", Some(&reason), None)).await?;
-                        continue;
-                    }
-                    self.db
-                        .prepare(
-                            "UPDATE jobs SET status = 'queued', token_hash = NULL, started_at = NULL, seen_at = NULL, waiting_since = ?, reason = ?
-                               WHERE id = ? AND status = 'in_progress'",
-                        )
-                        .bind(&[since.as_str().into(), refused.message.as_str().into(), job.id.as_str().into()])?
-                        .run()
-                        .await?;
                     // With how many of g1t's machines its jobs hold, this one
                     // claimed among them: far below a class's max_instances
                     // (50 standard, 10 slim), Cloudflare was short of
                     // containers, not g1t of room (#391).
-                    worker::console_warn!(
-                        "actions: job {} waits for a machine: {} ({in_pool} jobs on g1t's machines)",
-                        job.id,
-                        refused.message
-                    );
-                    no_machine = true;
+                    let pool = format!(" ({in_pool} jobs on g1t's machines)");
+                    if self.wait_for_machine(&job, &at, &refused.message, &pool).await? {
+                        no_machine = true;
+                    }
                     continue;
                 }
                 // Billing would not pay for a scheduled run's job: the
@@ -1898,6 +1912,53 @@ impl Actions {
             }
         }
         Ok(no_machine || again)
+    }
+
+    /// A start of `job` (its `started_at`, `start`) that found no machine,
+    /// as `message` says: back in the queue to wait for one, from when it
+    /// first waited, or failed once it has waited WAIT_FOR_MACHINE_MS. Only
+    /// while that start is still the job's and it never reported. Returns
+    /// whether it waits. `note` ends its line in the log.
+    async fn wait_for_machine(&self, job: &JobRow, start: &str, message: &str, note: &str) -> Result<bool> {
+        let since = job.waiting_since.clone().unwrap_or_else(|| start.to_owned());
+        if crate::waited_for_a_machine(Some(&since), now_ms()) {
+            let minutes = crate::WAIT_FOR_MACHINE_MS / 60_000;
+            let reason = format!("{message} None came free in {minutes} minutes.");
+            Box::pin(self.finish_job(&job.id, "failure", Some(&reason), None)).await?;
+            return Ok(false);
+        }
+        let requeued = self
+            .db
+            .prepare(MACHINE_REQUEUE)
+            .bind(&[since.as_str().into(), message.into(), job.id.as_str().into(), start.into()])?
+            .first::<Value>(None)
+            .await?;
+        if requeued.is_none() {
+            return Ok(false);
+        }
+        worker::console_warn!("actions: job {} waits for a machine: {message}{note}", job.id);
+        Ok(true)
+    }
+
+    /// `job_unstarted`: the runner's sandbox accepted a job's start, which
+    /// it starts in its own alarm, and could not start it (#463). Told at
+    /// once, so the job does not sit as running until the sweep notices it
+    /// never reported (FIRST_REPORT_MS): with no machine free (`code`
+    /// `unavailable`) it goes back in the queue to wait for one; otherwise
+    /// it fails with why. With the job's token, for the start it names, and
+    /// only while that start never reported: anything else is answered
+    /// `false` and changes nothing. The runner Worker's alone: no API route
+    /// passes it on.
+    pub async fn job_unstarted(&self, a: UnstartedArgs) -> Result<Outcome<Value>> {
+        let job = self.db.prepare("SELECT * FROM jobs WHERE id = ?").bind(&[a.job.as_str().into()])?.first::<JobRow>(None).await?;
+        let Some(job) = job.filter(|job| unstarted_is_the_jobs(job, &a)) else {
+            return Ok(Outcome::Ok(json!(false)));
+        };
+        if a.code == "unavailable" {
+            return Ok(Outcome::Ok(json!(self.wait_for_machine(&job, &a.start, &a.message, "").await?)));
+        }
+        Box::pin(self.finish_job(&job.id, "failure", Some(&a.message), None)).await?;
+        Ok(Outcome::Ok(json!(true)))
     }
 
     /// Finishes a job and moves its run along.
@@ -2470,7 +2531,8 @@ impl Actions {
                         "UPDATE jobs SET status = 'waiting', conclusion = NULL, steps = '[]', annotations = '[]', outputs = '{}', reason = NULL,
                            matrix = NULL, call = NULL, token_hash = NULL, first_token_hash = NULL, seen_at = NULL, started_at = NULL, finished_at = NULL,
                            labels = NULL, queued_at = NULL, runner_id = NULL, runner_name = NULL, environment = NULL, fallback_instance = NULL, needs_docker = 0,
-                           concurrency_group = NULL, cancel_in_progress = 0, cancel_requested_at = NULL, log_bytes = 0, machine_lost = 0 WHERE run_id = ? AND key = ?",
+                           concurrency_group = NULL, cancel_in_progress = 0, cancel_requested_at = NULL, log_bytes = 0, machine_lost = 0, waiting_since = NULL
+                           WHERE run_id = ? AND key = ?",
                     )
                     .bind(&[run.id.as_str().into(), key.as_str().into()])?,
             );
@@ -3427,6 +3489,116 @@ mod offered_jobs {
         .unwrap();
         let on: i64 = db.query_row("SELECT prefer_own FROM runner_settings WHERE owner = 'acme'", [], |row| row.get(0)).unwrap();
         assert_eq!(on, 1);
+    }
+}
+
+#[cfg(test)]
+mod unstarted {
+    use rusqlite::{Connection, params};
+    use serde_json::json;
+
+    use super::{HOSTED_CLAIM, JobRow, MACHINE_REQUEUE, UnstartedArgs, unstarted_is_the_jobs};
+    use g1t_secrets::sha256_hex;
+
+    /// Every migration, in order, as D1 applies them.
+    fn database() -> Connection {
+        let db = Connection::open_in_memory().unwrap();
+        let folder = format!("{}/migrations", env!("CARGO_MANIFEST_DIR"));
+        let mut names: Vec<String> = std::fs::read_dir(&folder)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .filter(|name| name.ends_with(".sql"))
+            .collect();
+        names.sort();
+        for name in names {
+            db.execute_batch(&std::fs::read_to_string(format!("{folder}/{name}")).unwrap())
+                .unwrap_or_else(|error| panic!("{name}: {error}"));
+        }
+        db
+    }
+
+    const WAITED: &str = "2026-10-23T19:02:41.000Z";
+    const FIRST: &str = "2026-10-23T19:03:00.100Z";
+
+    /// A job refused a machine once, claimed again at FIRST.
+    fn claimed(db: &Connection) {
+        db.execute(
+            "INSERT INTO jobs (id, run_id, repo_id, namespace, key, name, status, reason, timeout_minutes, waiting_since)
+             VALUES ('job_1', 'run_1', 'repo_1', 'acme', 'k', 'k', 'queued', 'No g1t-4core machine was free to start the job.', 60, ?1)",
+            params![WAITED],
+        )
+        .unwrap();
+        db.query_row(HOSTED_CLAIM, params![sha256_hex("tok"), FIRST, 60, "job_1"], |_| Ok(())).unwrap();
+    }
+
+    fn requeue(db: &Connection, start: &str) -> bool {
+        db.query_row(MACHINE_REQUEUE, params![WAITED, "No g1t-4core machine was free to start the job.", "job_1", start], |_| Ok(()))
+            .is_ok()
+    }
+
+    fn state(db: &Connection) -> (String, Option<String>, Option<String>) {
+        db.query_row("SELECT status, started_at, waiting_since FROM jobs WHERE id = 'job_1'", [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+    }
+
+    #[test]
+    fn a_start_keeps_since_when_its_job_has_waited_for_a_machine() {
+        let db = database();
+        claimed(&db);
+        assert_eq!(state(&db), ("in_progress".into(), Some(FIRST.into()), Some(WAITED.into())));
+    }
+
+    #[test]
+    fn a_start_its_sandbox_could_not_start_goes_back_to_waiting_from_when_it_first_waited() {
+        let db = database();
+        claimed(&db);
+        assert!(requeue(&db, FIRST));
+        assert_eq!(state(&db), ("queued".into(), None, Some(WAITED.into())));
+        // Told twice, or late: nothing more changes.
+        assert!(!requeue(&db, FIRST));
+    }
+
+    #[test]
+    fn a_sandbox_telling_of_another_start_or_of_one_that_ran_changes_nothing() {
+        let db = database();
+        claimed(&db);
+        // An earlier start's sandbox, whose job has started again since.
+        assert!(!requeue(&db, "2026-10-23T18:59:00.000Z"));
+        // The job reported after all.
+        db.execute("UPDATE jobs SET seen_at = '2026-10-23T19:03:09.000Z' WHERE id = 'job_1'", []).unwrap();
+        assert!(!requeue(&db, FIRST));
+        assert_eq!(state(&db).0, "in_progress");
+    }
+
+    fn row(seen_at: &str, runner_id: Option<&str>) -> JobRow {
+        serde_json::from_value(json!({
+            "id": "job_1", "run_id": "run_1", "repo_id": "repo_1", "namespace": "acme", "key": "k", "ordinal": 0, "name": "k",
+            "needs": "[]", "matrix": null, "status": "in_progress", "conclusion": null, "steps": "[]", "annotations": "[]",
+            "outputs": "{}", "reason": null, "token_hash": sha256_hex("tok"), "timeout_minutes": 60, "continue_on_error": 0,
+            "max_parallel": null, "call": null, "seen_at": seen_at, "started_at": FIRST, "finished_at": null, "runner_id": runner_id,
+        }))
+        .unwrap()
+    }
+
+    fn told(token: &str, start: &str) -> UnstartedArgs {
+        UnstartedArgs {
+            job: "job_1".into(),
+            token: token.into(),
+            start: start.into(),
+            code: "unavailable".into(),
+            message: "No g1t-4core machine was free to start the job.".into(),
+        }
+    }
+
+    #[test]
+    fn only_the_sandbox_of_the_jobs_start_with_its_token_is_heard() {
+        assert!(unstarted_is_the_jobs(&row(FIRST, None), &told("tok", FIRST)));
+        assert!(!unstarted_is_the_jobs(&row(FIRST, None), &told("not its", FIRST)));
+        assert!(!unstarted_is_the_jobs(&row(FIRST, None), &told("tok", "2026-10-23T18:59:00.000Z")));
+        // It reported: it started after all.
+        assert!(!unstarted_is_the_jobs(&row("2026-10-23T19:03:09.000Z", None), &told("tok", FIRST)));
+        // A self-hosted runner's job has no sandbox of g1t's.
+        assert!(!unstarted_is_the_jobs(&row(FIRST, Some("rnr_1")), &told("tok", FIRST)));
     }
 }
 
