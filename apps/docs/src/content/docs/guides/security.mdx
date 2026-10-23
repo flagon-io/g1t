@@ -310,7 +310,11 @@ can skip packages, group fixes into one pull request, and set the title's
 prefix, assignees and reviewers.
 
 1. g1t starts a sandbox, which raises the package to the fixed version in
-   each lockfile that resolves it, using the ecosystem's own tool.
+   each lockfile that resolves it, using the ecosystem's own tool. When
+   another package's version range holds one copy back (an older major
+   nested under a tool, say), the copies that could move are still raised,
+   and the pull request names the one left behind. That copy's alert stays
+   open until the package holding it moves.
 2. It commits as `g1t <g1t@users.noreply.g1t.sh>` and pushes a branch named
    `g1t/security/<package>-<version>`.
 3. It opens a pull request, authored by `g1t`, that names the advisories it
@@ -330,7 +334,7 @@ Each alert shows its update's status and links the pull request:
 | Closed             | The pull request was closed without merging.                                                                          |
 | Superseded         | A newer security update for the same package replaced it, or the alerts it fixes were fixed another way or dismissed. |
 | Needs code changes | An earlier update that g1t opened a work item for. g1t closes that work item, and the update shows as failed.         |
-| Failed             | The update could not be made.                                                                                         |
+| Failed             | The update could not be made, with why: shown as soon as the sandbox stops.                                           |
 
 ### When an update is no longer needed
 

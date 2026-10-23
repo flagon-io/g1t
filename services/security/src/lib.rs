@@ -125,6 +125,18 @@ struct PullHappened {
     number: u32,
 }
 
+/// `bump.stopped`: an update's sandbox stopped before it pushed.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BumpStopped {
+    namespace: String,
+    name: String,
+    branch: String,
+    exit_code: i32,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
 /// The longest comment a dismissal keeps.
 const MAX_COMMENT_CHARS: usize = MAX_REASON_CHARS;
 /// Activity rows the Security page reads, newest first.
@@ -578,6 +590,11 @@ impl Security {
                     // One of g1t's update pull requests closed or merged, by
                     // g1t or by a person: its branch goes.
                     self.pull_finished(&happened.repo_id, happened.number).await?;
+                }
+            }
+            "bump.stopped" => {
+                if let Ok(stopped) = serde_json::from_value::<BumpStopped>(event.data.clone()) {
+                    self.bump_stopped(&stopped.namespace, &stopped.name, &stopped.branch, stopped.exit_code, stopped.reason.as_deref()).await?;
                 }
             }
             "comment.created" => self.update_comment(event).await?,

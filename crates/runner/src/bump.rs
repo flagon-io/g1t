@@ -107,6 +107,11 @@
 //! - `G1T_USER`, `G1T_TOKEN`: to clone and push; passed per command, never
 //!   written to the clone's config or remote.
 //!
+//! A security update whose package moved in some places but is held back
+//! in others (a dependent's range pins an old major) pushes what moved,
+//! naming what is still behind in its commit message and in `behind`. A
+//! version update moves everywhere or not at all.
+//!
 //! It prints one line of JSON on stdout saying what happened, and exits 0
 //! once the branch is pushed; otherwise non-zero, with why on stderr:
 //! `NEEDS_CHANGES_EXIT` when the update needs code changes,
@@ -141,9 +146,9 @@ const MAX_PACKAGES: usize = 50;
 const LOCKFILE_ONLY: &str = "needs a manifest change, which lockfile-only does not make";
 
 /// The exit code when the update needs code changes, not just a lockfile.
-pub const NEEDS_CHANGES_EXIT: i32 = 3;
+pub const NEEDS_CHANGES_EXIT: i32 = g1t_contracts::security::BUMP_NEEDS_CHANGES_EXIT;
 /// The exit code for a lockfile or ecosystem this cannot update.
-pub const UNSUPPORTED_EXIT: i32 = 4;
+pub const UNSUPPORTED_EXIT: i32 = g1t_contracts::security::BUMP_UNSUPPORTED_EXIT;
 
 /// Why a bump stopped, when that is not just an error.
 #[derive(Debug)]
@@ -1402,12 +1407,24 @@ impl Bump {
                         // Held back by what asks for it: a security update
                         // forces the version; a version update never does.
                         if self.kind == Kind::Security && !self.still_below(workdir, job, target)?.is_empty() {
+                            // As they were before the override, to go back to
+                            // should it not take: what moved without it is
+                            // still pushed.
+                            let mut saved = vec![(manifest_path.clone(), read(&manifest_path)?)];
+                            for path in &job.paths {
+                                saved.push((workdir.join(path), read(&workdir.join(path))?));
+                            }
                             manifest = serde_json::from_str(&read(&manifest_path)?).context("package.json is not JSON")?;
                             if add_override(&mut manifest, node.override_path(), package, version)? {
                                 let indent = if read(&manifest_path)?.contains("\n    \"") { "    " } else { "  " };
                                 write_json(&manifest_path, &manifest, indent)?;
                             }
                             attempt(node.relock(), said)?;
+                            if !self.still_below(workdir, job, target)?.is_empty() {
+                                for (file, text) in saved {
+                                    std::fs::write(&file, text).with_context(|| format!("could not restore {}", file.display()))?;
+                                }
+                            }
                         }
                     }
                 }
@@ -1488,6 +1505,16 @@ struct Pushed {
     commit: String,
     /// The branch was there already, with the same files.
     existed: bool,
+    /// Where a package is still below its version: `package-lock.json
+    /// still resolves zod 3.25.76`.
+    behind: Vec<String>,
+}
+
+/// Whether an update some of whose lockfiles are still behind pushes what
+/// did move: a security update does, since each vulnerable copy raised is
+/// one fewer; a version update is all or nothing.
+fn pushes_partial(kind: Kind, moved: bool) -> bool {
+    kind == Kind::Security && moved
 }
 
 /// The packages as a reason names them: `lodash 4.17.21, vitest 1.6.0`.
@@ -1520,30 +1547,36 @@ fn bump() -> Result<(Bump, String, Pushed)> {
     tools.write()?;
 
     let mut behind = Vec::new();
+    let mut held = Vec::new();
+    let mut moved = false;
     let mut changed: Vec<String> = Vec::new();
     for target in &bump.packages {
         for job in &bump.jobs {
-            if bump.still_below(workdir, job, target)?.is_empty() {
+            let was = bump.still_below(workdir, job, target)?;
+            if was.is_empty() {
                 continue; // Already at the version or later here.
             }
             let outcome = bump.update(workdir, job, target, &tools)?;
             changed.extend(outcome.files);
             let left = bump.still_below(workdir, job, target)?;
+            moved |= left.len() < was.len();
             if !left.is_empty() {
+                let still = format!("{} still resolves {} {}", job.paths.join(", "), target.package, left.join(", "));
                 let why = outcome.said.last().map(|said| format!("\n{said}")).unwrap_or_default();
-                behind.push(format!(
-                    "{} still resolves {} {} (wanted {} or later){why}",
-                    job.paths.join(", "),
-                    target.package,
-                    left.join(", "),
-                    target.version
-                ));
+                behind.push(format!("{still} (wanted {} or later){why}", target.version));
+                held.push(still);
             }
         }
     }
-    if !behind.is_empty() {
+    if !behind.is_empty() && !pushes_partial(bump.kind, moved) {
         return Err(needs_changes(behind.join("\n\n")));
     }
+    let message = if held.is_empty() {
+        message
+    } else {
+        let lines: Vec<String> = held.iter().map(|line| format!("- {line}")).collect();
+        format!("{message}\n\nStill behind, held back by packages that depend on them:\n{}", lines.join("\n"))
+    };
 
     let mut touched: Vec<String> = bump.jobs.iter().flat_map(Job::touched).chain(changed).collect();
     touched.sort();
@@ -1578,9 +1611,9 @@ fn bump() -> Result<(Bump, String, Pushed)> {
             return Err(error.context(format!("{branch} already exists with other changes")));
         }
         let commit = git(workdir, &["rev-parse", "FETCH_HEAD"])?;
-        return Ok((bump, branch, Pushed { commit, existed: true }));
+        return Ok((bump, branch, Pushed { commit, existed: true, behind: held }));
     }
-    Ok((bump, branch, Pushed { commit, existed: false }))
+    Ok((bump, branch, Pushed { commit, existed: false, behind: held }))
 }
 
 pub fn main() -> i32 {
@@ -1599,6 +1632,7 @@ pub fn main() -> i32 {
                     "version": first.version,
                     "packages": bump.packages,
                     "lockfiles": bump.jobs.iter().flat_map(|job| job.paths.clone()).collect::<Vec<_>>(),
+                    "behind": pushed.behind,
                 })
             );
             0
@@ -1987,6 +2021,13 @@ serde = []
         assert_eq!(registries[0].scopes, ["@acme"]);
         // Its debug form never holds the token.
         assert!(!format!("{:?}", registries[0]).contains("t0k"));
+    }
+
+    #[test]
+    fn only_a_security_update_pushes_what_moved() {
+        assert!(pushes_partial(Kind::Security, true));
+        assert!(!pushes_partial(Kind::Security, false));
+        assert!(!pushes_partial(Kind::Version, true));
     }
 
     #[test]
