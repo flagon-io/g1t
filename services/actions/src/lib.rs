@@ -95,7 +95,11 @@ pub const WAIT_FOR_MACHINE_MS: u64 = 30 * 60 * 1000;
 /// after a request or the minute's sweep: refusals come in bursts that end
 /// within seconds, and the next sweep left such a job waiting a median
 /// 13.5 s and p90 120 s (#292). Together well under the 30 s a request's
-/// `wait_until` may run after its answer.
+/// `wait_until` may run after its answer. Only for a runner that answers a
+/// start once it has started (one from before #463): one that accepts a
+/// start answers at once, and its sandbox asks again itself while no
+/// machine is free (services/runner lifecycle.ts `MACHINE_PAUSES_MS`)
+/// before it says so (`job_unstarted`).
 pub const MACHINE_RETRY_MS: [u64; 3] = [2_000, 5_000, 10_000];
 
 /// How long a job on g1t's machines has to say anything after it starts.
@@ -105,7 +109,13 @@ pub const MACHINE_RETRY_MS: [u64; 3] = [2_000, 5_000, 10_000];
 /// two jobs of Deploy #443 were started from the request of a job that
 /// reported its end: no container was free, the library's retries took
 /// longer than that job's container stayed connected, and the start was
-/// cancelled with the request, after the jobs were marked as running.
+/// cancelled with the request, after the jobs were marked as running; on
+/// 2026-10-23 five of Deploy #587 and CI #782 were, with a request's
+/// `wait_until` out of time (#463). The runner's sandbox now accepts a
+/// start, starts it in its own alarm and says at once when it cannot
+/// (`job_unstarted`), so this is the backstop for a start that is lost
+/// all the same: a sandbox whose alarm never came, or that could not
+/// reach this service.
 pub const FIRST_REPORT_MS: u64 = 3 * 60 * 1000;
 
 /// Whether a job that started at `started` and was last heard from at
@@ -251,10 +261,11 @@ pub struct Actions {
     /// Whether repositories' Actions are on, read once per request.
     actions_on: protection::ActionsOn,
     /// In a request, queued jobs are not started inline: whoever made the
-    /// request may be gone before a sandbox starts, which can take seconds
-    /// while Cloudflare has no container free, and the start would be
-    /// cancelled with it, after the jobs were marked as running. They are
-    /// started after the answer instead (`fetch`, `wait_until`).
+    /// request may be gone before a sandbox starts, which could take
+    /// seconds while Cloudflare had no container free, and the start would
+    /// be cancelled with it, after the jobs were marked as running. They are
+    /// started after the answer instead (`fetch`, `wait_until`), where the
+    /// runner's sandbox accepts each start and answers at once (#463).
     defer_starts: bool,
     /// Whether this request queued jobs or freed room for them.
     starts_wanted: std::cell::Cell<bool>,
@@ -367,8 +378,9 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
     let service = Actions { defer_starts: true, ..Actions::new(&env)? };
     let response = answer(&service, &method, body).await;
     // The jobs this request queued or made room for start after the
-    // answer, where the caller leaving cannot cancel them. A start that is
-    // cut short anyway is tried again (FIRST_REPORT_MS).
+    // answer, where the caller leaving cannot cancel them. Each start's
+    // sandbox accepts it at once and starts it in its own alarm (#463); a
+    // start that is cut short anyway is tried again (FIRST_REPORT_MS).
     if service.starts_wanted.get() {
         ctx.wait_until(async move {
             match Actions::new(&env) {
@@ -429,6 +441,9 @@ async fn answer(service: &Actions, method: &str, body: Value) -> Result<Response
         "job_action_archive" => reply(&service.job_action_archive(args(body)?).await?),
         "check_runs" => reply(&service.check_runs(args(body)?).await?),
         "job_report" => reply(&service.job_report(args(body)?).await?),
+        // A start the runner's sandbox accepted and could not start: the
+        // runner Worker's alone, never passed on by the API.
+        "job_unstarted" => reply(&service.job_unstarted(args(body)?).await?),
         // A running job's stand-ins for brokered secrets: the runner
         // Worker's alone, never passed on by the API.
         "brokered_secrets" => reply(&service.brokered_secrets(args(body)?).await?),
