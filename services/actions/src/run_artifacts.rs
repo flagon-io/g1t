@@ -106,6 +106,14 @@ fn number(id: u64) -> JsValue {
     JsValue::from_f64(id as f64)
 }
 
+/// Whether an artifact `uploader` made at `created` came from an earlier
+/// attempt of `job`, which started this attempt at `started`: the same job
+/// before it, or one the re-run made again under a new id (`gone`). Its
+/// upload then replaces it. Times in g1t's format compare as text.
+fn from_an_earlier_attempt(uploader: &str, created: &str, job: &str, started: Option<&str>, gone: bool) -> bool {
+    gone || (uploader == job && started.is_some_and(|started| created < started))
+}
+
 impl Actions {
     /// How long the repository keeps artifacts.
     pub(crate) async fn retention_setting(&self, repo_id: &str) -> Result<u32> {
@@ -210,7 +218,17 @@ impl Actions {
             .artifact_rows("artifacts.run_id = ? AND artifacts.name = ? AND artifacts.status <> 'expired'", &[job.run_id.as_str().into(), a.name.as_str().into()])
             .await?;
         if !existing.is_empty() {
-            if !a.overwrite {
+            // Uploaded by this job before it was run again: a re-run makes
+            // the same uploads, which replace what its earlier attempt left,
+            // as on GitHub. A matrix leg run again is a new job, its earlier
+            // one gone from `jobs`.
+            let mut earlier = true;
+            for row in &existing {
+                let gone = row.job_id != job.id
+                    && self.db.prepare("SELECT id FROM jobs WHERE id = ?").bind(&[row.job_id.as_str().into()])?.first::<serde_json::Value>(None).await?.is_none();
+                earlier &= from_an_earlier_attempt(&row.job_id, &row.created_at, &job.id, job.started_at.as_deref(), gone);
+            }
+            if !a.overwrite && !earlier {
                 return Ok(fail(
                     FailureCode::Conflict,
                     format!("This run already has an artifact named {}. Give the upload another name, or `overwrite: true` to replace it.", a.name),
@@ -509,6 +527,19 @@ impl Actions {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_re_run_replaces_what_its_earlier_attempt_uploaded() {
+        let started = "2026-10-23T12:36:54.000Z";
+        // The same job, uploaded before this attempt started.
+        assert!(from_an_earlier_attempt("job_a", "2026-10-23T07:20:00.000Z", "job_a", Some(started), false));
+        // A matrix leg made again: its earlier one is gone.
+        assert!(from_an_earlier_attempt("job_old", "2026-10-23T07:20:00.000Z", "job_new", Some(started), true));
+        // Uploaded in this attempt already, or by another job that is still in the run.
+        assert!(!from_an_earlier_attempt("job_a", "2026-10-23T12:38:00.000Z", "job_a", Some(started), false));
+        assert!(!from_an_earlier_attempt("job_b", "2026-10-23T07:20:00.000Z", "job_a", Some(started), false));
+        assert!(!from_an_earlier_attempt("job_a", "2026-10-23T07:20:00.000Z", "job_a", None, false));
+    }
 
     #[test]
     fn names_follow_github_s_rule() {
