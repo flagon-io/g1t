@@ -139,6 +139,18 @@ export function desktopRunner(): DesktopRunnerBridge | null {
   return runner && typeof runner.status === "function" ? runner : null;
 }
 
+/**
+ * Whether what the app answered is a whole runner view. While it updates
+ * its runner, the app has answered without a `diagnosis`, and every
+ * screen that read one crashed the page (flagon-io#447); such an answer is
+ * passed over, and the last whole one stays.
+ */
+export function isRunnerView(view: unknown): view is DesktopRunnerView {
+  if (!view || typeof view !== "object") return false;
+  const { diagnosis, closed, log } = view as Partial<DesktopRunnerView>;
+  return !!diagnosis && typeof diagnosis === "object" && !!closed && typeof closed === "object" && Array.isArray(log);
+}
+
 /** This computer's runner, live, inside the desktop app; null elsewhere. */
 export function useDesktopRunner(): DesktopRunnerView | null {
   const [view, setView] = useState<DesktopRunnerView | null>(null);
@@ -149,10 +161,12 @@ export function useDesktopRunner(): DesktopRunnerView | null {
     runner
       .status()
       .then((first) => {
-        if (live) setView(first);
+        if (live && isRunnerView(first)) setView(first);
       })
       .catch(() => {});
-    const stop = runner.onStatus((next) => setView(next));
+    const stop = runner.onStatus((next) => {
+      if (isRunnerView(next)) setView(next);
+    });
     return () => {
       live = false;
       stop();
