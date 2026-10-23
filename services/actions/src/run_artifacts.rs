@@ -146,6 +146,18 @@ impl Actions {
         Ok(sum.and_then(|s| s.bytes).unwrap_or(0.0) as u64)
     }
 
+    /// Forgets what a job uploaded, before it runs again from the start
+    /// (plan.rs `retry_lost_machine`), so its uploads are not refused as
+    /// names the run already has.
+    pub(crate) async fn forget_job_artifacts(&self, job_id: &str) -> Result<()> {
+        let rows = self.artifact_rows("artifacts.job_id = ? AND artifacts.status <> 'expired'", &[job_id.into()]).await?;
+        let rows: Vec<(u64, String)> = rows.iter().map(|row| (row.id as u64, row.object.clone())).collect();
+        if rows.is_empty() {
+            return Ok(());
+        }
+        self.forget_artifacts(&rows).await
+    }
+
     /// Deletes artifacts' objects, then their rows. Objects that cannot be
     /// deleted now are left to the sweep, their rows marked expired.
     async fn forget_artifacts(&self, rows: &[(u64, String)]) -> Result<()> {

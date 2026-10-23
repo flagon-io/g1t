@@ -933,6 +933,14 @@ pub(crate) struct Machine {
     pub(crate) image: Option<(String, String)>,
     pub(crate) cpus: usize,
     pub(crate) memory_bytes: Option<u64>,
+    /// On g1t's machines, the container's instance, placement and host as
+    /// Cloudflare names them (`CLOUDFLARE_DEPLOYMENT_ID`,
+    /// `CLOUDFLARE_PLACEMENT_ID`, `CLOUDFLARE_NODE_ID`), so a job whose
+    /// machine was stopped under it can be matched to what stopped it
+    /// (#426); the actions service reads `Instance:` back for its reason.
+    pub(crate) instance: Option<String>,
+    pub(crate) placement: Option<String>,
+    pub(crate) host: Option<String>,
     /// The job token's permissions, by GitHub's names.
     pub(crate) permissions: Vec<(String, String)>,
 }
@@ -964,9 +972,20 @@ impl Machine {
                 std::fs::read_to_string("/sys/fs/cgroup/memory.max").ok().as_deref(),
                 std::fs::read_to_string("/proc/meminfo").ok().as_deref(),
             ),
+            instance: cloudflare("CLOUDFLARE_DEPLOYMENT_ID", self_hosted),
+            placement: cloudflare("CLOUDFLARE_PLACEMENT_ID", self_hosted),
+            host: cloudflare("CLOUDFLARE_NODE_ID", self_hosted),
             permissions,
         }
     }
+}
+
+/// What Cloudflare's container sets in `name`, on g1t's machines only.
+fn cloudflare(name: &str, self_hosted: bool) -> Option<String> {
+    if self_hosted {
+        return None;
+    }
+    std::env::var(name).ok().map(|value| value.trim().to_owned()).filter(|value| !value.is_empty())
 }
 
 /// The memory a job has: its cgroup's limit, else the machine's.
@@ -1032,6 +1051,11 @@ pub(crate) fn setup_header(machine: &Machine) -> Vec<String> {
         let gib = bytes as f64 / (1024.0 * 1024.0 * 1024.0);
         let shown = if (gib - gib.round()).abs() < 0.05 { format!("{}", gib.round()) } else { format!("{gib:.1}") };
         lines.push(format!("Memory: {shown} GB"));
+    }
+    for (label, value) in [("Instance", &machine.instance), ("Placement", &machine.placement), ("Host", &machine.host)] {
+        if let Some(value) = value {
+            lines.push(format!("{label}: {value}"));
+        }
     }
     lines.push("##[endgroup]".into());
     let granted: Vec<&(String, String)> = machine.permissions.iter().filter(|(_, access)| access != "none" && !access.is_empty()).collect();
@@ -1313,6 +1337,10 @@ mod tests {
         let text = setup_header(&own).join("\n");
         assert!(text.contains("Runner name: 'build-box'\n##[group]Operating System\nmacOS ARM64\n##[endgroup]\n##[group]Machine\nSelf-hosted"), "{text}");
         assert!(!text.contains("Runner Image") && !text.contains("Memory") && !text.contains("Permissions"), "{text}");
+        // On g1t's machines, the container it ran in.
+        let hosted = Machine { cpus: 4, instance: Some("7f3a9c".into()), host: Some("node-12".into()), ..Machine::default() };
+        let text = setup_header(&hosted).join("\n");
+        assert!(text.contains("##[group]Machine\nHosted by g1t\nArchitecture: \nCPUs: 4\nInstance: 7f3a9c\nHost: node-12\n##[endgroup]"), "{text}");
         assert_eq!(memory_limit(Some("max\n"), Some("MemTotal:       16384000 kB\n")), Some(16_384_000 * 1024));
         assert_eq!(memory_limit(Some("4294967296\n"), Some("MemTotal:       16384000 kB\n")), Some(4_294_967_296));
         assert_eq!(memory_limit(None, None), None);
