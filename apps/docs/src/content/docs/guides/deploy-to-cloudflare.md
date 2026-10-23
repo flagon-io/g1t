@@ -219,7 +219,8 @@ hand (**Actions → Deploy → Run workflow**) with `units`, `all` and
 
 Deploys run one at a time; a second push waits. Rust units build on
 `ubuntu-latest` (4 vCPU and 12 GiB in a public repository, 2 vCPU and
-8 GiB in a private one), split by how long each takes to build
+8 GiB in a private one, with Cargo running one compiler per vCPU),
+split by how long each takes to build
 (`RUST_JOB_SECONDS` in `scripts/deploy/stack.mjs`): the slowest Workers
 build alone, the small ones share a job, with Cargo's target and sccache
 kept in the Actions cache. The build jobs start as soon as the plan is
