@@ -54,8 +54,10 @@ fn open_items(condition: &str, limit: u32) -> String {
 const COUNTS: &str = "SELECT COALESCE(work_items.horizon, 'triage') AS horizon, count(*) AS count FROM work_items
    WHERE {OPEN_VISIBLE} GROUP BY 1";
 
-/// Later, by the repository each work item is filed in.
-const LATER_GROUPS: &str = "SELECT (SELECT COALESCE(rw.path, o.path) FROM work_item_repos o
+/// Later, by the repository each work item is filed in. One filed in a
+/// deleted repository is counted with those filed in the workspace: its
+/// repository has nothing to open, so a group of its own would not open.
+const LATER_GROUPS: &str = "SELECT (SELECT CASE WHEN rw.deleted_at IS NULL THEN COALESCE(rw.path, o.path) END FROM work_item_repos o
      LEFT JOIN repo_workspaces rw ON rw.repo_id = o.repo_id
      WHERE o.item_id = work_items.id AND o.role = 'origin') AS repo, count(*) AS count
    FROM work_items WHERE {OPEN_VISIBLE} AND COALESCE(work_items.horizon, 'triage') = 'later'
@@ -750,6 +752,16 @@ mod tests {
             .map(Result::unwrap)
             .collect();
         assert_eq!(groups, [(Some("acme/web".into()), 2)]);
+        // A deleted repository's work items are counted with the workspace's.
+        db.execute("UPDATE repo_workspaces SET deleted_at = '2026-10-15T00:00:00Z' WHERE repo_id = 'rep_web'", []).unwrap();
+        let groups: Vec<(Option<String>, u32)> = db
+            .prepare(&LATER_GROUPS.replace("{OPEN_VISIBLE}", OPEN_VISIBLE))
+            .unwrap()
+            .query_map(&values[..], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(groups, [(None, 2)]);
     }
 
     /// The facts `FACTS` reads for work item `number`.

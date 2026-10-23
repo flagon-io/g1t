@@ -168,9 +168,14 @@ export function moveFrom(form: Fields): Move | null {
   return { number, horizon };
 }
 
-/** The repository a work item is filed in (its origin), by path; null for one filed in the workspace. */
+/**
+ * The repository a work item is filed in (its origin), by path; null for one
+ * filed in the workspace, or in a repository since deleted, which Later
+ * counts with the workspace's since it has nothing to open.
+ */
 export function originPath(item: Pick<WorkItem, "repos">): string | null {
-  return item.repos.find((repo) => repo.role === "origin")?.path || null;
+  const origin = item.repos.find((repo) => repo.role === "origin");
+  return (!origin?.deleted && origin?.path) || null;
 }
 
 /** The moves a row's menu offers, given where it is and whether the viewer may move work into or out of Now. */

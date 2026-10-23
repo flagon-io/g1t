@@ -173,6 +173,12 @@ test("a move shows at once where it lands", () => {
   ]);
   const filed = item(6, { repos: [{ repoId: "rep_1", path: "acme/api", role: "origin", legacyNumber: null, landed: false }] });
   assert.deepEqual(applyMove(view({ next: [filed], nextTotal: 1 }), { number: 6, horizon: "later" }).later.at(-1), { repo: "acme/api", count: 1 });
+  // Filed in a deleted repository: counted with the workspace's, as the plan counts it.
+  const orphan = item(8, { repos: [{ repoId: "rep_2", path: "acme/gone", role: "origin", legacyNumber: null, landed: false, deleted: true }] });
+  assert.deepEqual(applyMove(view({ next: [orphan], nextTotal: 1 }), { number: 8, horizon: "later" }).later, [
+    { repo: "acme/web", count: 3 },
+    { repo: null, count: 2 },
+  ]);
   // From an open Later group into Next: it leaves Later's count and its group.
   const fromLater = item(7, { horizon: "later" });
   const pulled = applyMove(view(), { number: 7, horizon: "next", before: 4 }, fromLater);
