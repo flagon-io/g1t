@@ -182,7 +182,7 @@ export async function timed(work: (signal: AbortSignal) => Promise<true | string
     const ms = now() - started;
     return { ok: false, ms, error: error instanceof Timeout ? "timed out" : "could not connect" };
   } finally {
-    clearTimeout(timer);
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 
