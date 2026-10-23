@@ -10,6 +10,8 @@
  * No Workers or DOM imports, so it is tested under Node.
  */
 
+import { pagePath } from "./workspace-nav.ts";
+
 /** Where an address that still says `?tab=` goes now, or null when it says no `?tab=`. */
 export function movedTab(url: URL, pathFor: (tab: string) => string): string | null {
   const tab = url.searchParams.get("tab");
@@ -57,7 +59,7 @@ export function profilePath(username: string, tab: ProfileTab | string = "overvi
  * route of its own (routes.ts), so it is read from the path, not `params.tab`.
  */
 export function profileSegment(pathname: string): string | undefined {
-  return pathname.replace(/\.data$/, "").split("/")[3] || undefined;
+  return pagePath(pathname).split("/")[3] || undefined;
 }
 
 /** The profile tab a path segment names; null for one it does not (a 404). */
