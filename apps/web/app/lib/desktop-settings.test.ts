@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { type DesktopSettingsView, KEPT, checkFailed, hostOf, sectionOf, settingsOf, updateLine } from "./desktop-settings.ts";
+import { type DesktopSettingsView, KEPT, checkFailed, hostOf, sectionOf, settingsOf, stayed, updateLine } from "./desktop-settings.ts";
 
 function view(over: Partial<DesktopSettingsView> = {}): DesktopSettingsView {
   return {
@@ -54,6 +54,13 @@ test("updates say where this copy stands", () => {
   assert.match(updateLine(view({ checkedAt: Date.now() })), /^Up to date\. Last checked today at /);
   assert.match(updateLine(view()), /checks on its own shortly/);
   assert.equal(updateLine(view({ autoUpdate: false })), "Checking on its own is off.");
+});
+
+test("a restart says Restarting until g1t goes, unless the person kept it open", () => {
+  assert.equal(stayed("stayed"), true);
+  assert.equal(stayed("restarting"), false);
+  // An app from before it answered.
+  assert.equal(stayed(undefined), false);
 });
 
 test("a failed check says why in a line", () => {

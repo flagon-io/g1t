@@ -23,6 +23,10 @@ static RESTART: Mutex<Vec<MenuItem<Wry>>> = Mutex::new(Vec::new());
 /// The runner's rows: what it is doing, and Start or Stop.
 static RUNNER: Mutex<Option<(MenuItem<Wry>, MenuItem<Wry>)>> = Mutex::new(None);
 
+/// What g1t is doing as it goes, "Updating g1t…", said by the tooltip and
+/// the restart rows until the process ends (updates.rs `leave`).
+static LEAVING: Mutex<Option<String>> = Mutex::new(None);
+
 /// A row that restarts into the update, kept so `update_ready` can turn it on.
 pub fn restart_item(app: &AppHandle) -> tauri::Result<MenuItem<Wry>> {
     let item = MenuItem::with_id(app, "restart", "Restart to finish updating", false, None::<&str>)?;
@@ -95,10 +99,46 @@ pub fn runner_changed(app: &AppHandle, view: &crate::runner::View) {
             let _ = status.set_text(&headline);
             let _ = toggle.set_text(toggle_line);
         }
-        if let Some(tray) = handle.tray_by_id(TRAY) {
+        // Going, the tooltip says so, whatever the runner does meanwhile.
+        if let Some(tray) = handle.tray_by_id(TRAY).filter(|_| LEAVING.lock().unwrap().is_none()) {
             let _ = tray.set_tooltip(Some(format!("g1t · {headline}")));
         }
     });
+}
+
+/// g1t is going: the tooltip and the restart rows say what it is doing,
+/// "Updating g1t…", until the process ends; None, it stayed after all.
+pub fn leaving(app: &AppHandle, doing: Option<String>) {
+    *LEAVING.lock().unwrap() = doing.clone();
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let items = RESTART.lock().unwrap().clone();
+        let ready = crate::updates::ready(&handle);
+        for item in &items {
+            let _ = match (&doing, &ready) {
+                (Some(doing), _) => item.set_text(doing),
+                (None, Some(version)) => item.set_text(format!("Restart to update to {version}")),
+                (None, None) => item.set_text("Restart to finish updating"),
+            };
+            let _ = item.set_enabled(doing.is_none() && ready.is_some());
+        }
+        if let Some(tray) = handle.tray_by_id(TRAY) {
+            // Back from `gone`, when the update didn't install.
+            if doing.is_none() {
+                let _ = tray.set_visible(true);
+            }
+            let _ = tray.set_tooltip(Some(doing.unwrap_or_else(|| "g1t".into())));
+        }
+    });
+}
+
+/// The moment before the process ends: the icon goes with it, rather than
+/// staying in the tray until the pointer passes over it, as an icon whose
+/// process ended does on Windows. Waits for the main thread to take it away.
+pub fn gone(app: &AppHandle) {
+    if let Some(tray) = app.tray_by_id(TRAY) {
+        let _ = tray.set_visible(false);
+    }
 }
 
 /// The update is downloaded: the menus say so, and offer the restart.
@@ -127,7 +167,7 @@ pub fn close(app: &AppHandle) {
     if config::settings(app).close_to_tray {
         hide(app);
     } else {
-        updates::quit(app);
+        let _ = updates::quit(app);
     }
 }
 

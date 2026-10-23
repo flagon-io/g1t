@@ -209,7 +209,8 @@ The app runs a [self-hosted runner](/guides/self-hosted-runners/) for
 you while it is open: your workspace's jobs that ask for `self-hosted`
 run on your computer, at no cost, and nothing has to be downloaded,
 registered or started by hand. It starts a few seconds after g1t's page has loaded
-(or after 20 seconds without it), and stops when g1t quits. It runs apart
+(or after 20 seconds without it), and stops when g1t quits; sandboxed, it
+runs on while g1t restarts ([Updates](#updates)). It runs apart
 from the window: a runner that fails starts again on its own, and never takes
 the app down with it. Time on it is free, as on any of your
 runners.
@@ -349,7 +350,8 @@ never roams to other computers with your profile
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | A few seconds after g1t's page loads                        | `g1t-runner sandbox up --json --state-dir <data folder>/sandbox --url <server> --name <computer> --labels desktop`, with the registration token the first time only, in its environment as `G1T_RUNNER_TOKEN`, never on its command line, where anyone on the computer could read it. The first `up` downloads and checks the sandbox's image and makes the VM, which takes a few minutes. |
 | Every few seconds while it runs                             | `g1t-runner sandbox status --json`, for the tray, the settings and the Runners page.                                                                                                                                                                                                                                                                                                       |
-| When g1t quits, or you press **Stop running jobs**          | `g1t-runner sandbox down`: a job that is running is cut short.                                                                                                                                                                                                                                                                                                                             |
+| When g1t quits, or you press **Stop running jobs**          | `g1t-runner sandbox down`: a job that is running is cut short. Quitting asks first ([Updates](#updates)).                                                                                                                                                                                                                                                                                  |
+| When g1t restarts, to update or for a setting               | Nothing: the sandbox runs on by itself, a job it is running too, and the `up` as g1t opens again finds it running and starts nothing.                                                                                                                                                                                                                                                      |
 | When you press **Stop** on one kind of job's card           | `g1t-runner sandbox down --only windows` (or `linux`): that kind stops, a job of its own cut short, and stays off; the other runs on. Every `up` names the kinds that are on, `--only linux,windows`, so one you stopped never starts by itself.                                                                                                                                           |
 | When you press **Start** on one kind of job's card          | `g1t-runner sandbox up --only windows` (or `linux`), leaving the other as it is. A kind never registered is registered first, with a token as above.                                                                                                                                                                                                                                       |
 | While one kind of job runs and the other should and doesn't | `g1t-runner sandbox up --only` it again, by itself: every five minutes while the newest release has no sandbox images, else after a wait that grows each time, up to ten minutes. **Retry** or **Check now** tries at once.                                                                                                                                                                |
@@ -626,9 +628,10 @@ as it starts and every hour, and downloads one in the background.
 - **As it starts**, a newer version is installed straight away, and g1t
   opens again on it a moment later, before you have begun working in it.
   If something in the app misbehaves, quitting and opening g1t again is
-  enough to be on the newest version. The one exception is your runner
-  in the middle of a job, which is never cut short: then the update waits
-  like any other.
+  enough to be on the newest version. The one exception is a runner in
+  Docker or directly on this computer in the middle of a job, which is
+  never cut short: then the update waits like any other. A sandboxed
+  runner's job runs on through the update.
 - **Later on**, it never installs under you: a notification and the
   tray's **Restart to update** say it is ready, and the restart, or
   quitting, installs it.
@@ -654,6 +657,34 @@ Every release is signed with g1t's key, whose public half is built into
 the app; a download whose signature does not check out is thrown away.
 Because the window shows the site itself, most changes to g1t need no
 update at all: the app updates when something native changes.
+
+### Restarting
+
+**Restart now**, **Restart to update** and **Quit g1t** go at once: the
+settings say _Restarting…_, the windows close, and until g1t has gone the
+tray's icon says _Updating g1t…_ (or _Restarting g1t…_, _Quitting g1t…_).
+On Windows the installer starts once g1t has let go of its runner, and it
+opens the new version itself, once.
+
+What happens to [the runner](#the-runner):
+
+- **Sandboxed**, a restart leaves it running, and a job it is running
+  runs on. The new version takes it up again as it opens. Quitting stops
+  it, as it runs jobs only while g1t is open.
+- **In Docker or directly on this computer**, the runner is g1t's own, so
+  it stops, within about 10 seconds. If it is running a job, g1t asks
+  first: _A job is running on this computer. Restart when it finishes, or
+  stop it now?_ Restarting when it finishes waits for the job, however
+  long it takes, and then goes without asking again; the tray says
+  _Updating g1t when the job finishes…_ meanwhile. Cancel keeps g1t open.
+  Quitting asks the same of the sandbox's jobs.
+
+What happened is in the runner's log (**Open the whole log** in [the
+runner menu](#the-runner-menu)), and in the app's own, `g1t.log`
+(`%LOCALAPPDATA%\sh.g1t.desktop\logs` on Windows,
+`~/Library/Logs/sh.g1t.desktop` on macOS,
+`~/.local/share/sh.g1t.desktop/logs` on Linux): whether the runner was
+left running, waited for a job, or stopped.
 
 ## Your own g1t
 
