@@ -50,8 +50,10 @@ const isIndex = (json) => [OCI_INDEX, DOCKER_LIST].includes(json.mediaType) || A
  * machine, and the manifest's own bytes are written, so the target has
  * the same digest. An index's images go first, by digest. Writes the top
  * manifest under `tag`. A blob that fails is tried again from its start.
+ * `concurrency` blobs go at once: each is slow alone (about 0.4 MB/s into
+ * g1t.sh in runner release #19), and the image has dozens.
  */
-export async function copyImage({ from, to, digest, tag, onLine = () => {}, attempts = 3, chunkSize = CHUNK_BYTES }) {
+export async function copyImage({ from, to, digest, tag, onLine = () => {}, attempts = 3, chunkSize = CHUNK_BYTES, concurrency = 6 }) {
   const copyBlob = async (blob) => {
     if (await to.hasBlob(blob.digest)) return;
     const size = blob.size ? ` (${(blob.size / 1e6).toFixed(1)} MB)` : "";
@@ -59,8 +61,14 @@ export async function copyImage({ from, to, digest, tag, onLine = () => {}, atte
       try {
         const started = Date.now();
         const response = await from.blobStream(blob.digest);
-        const sent = await to.putBlobChunked(response.body, blob.digest, { chunkSize });
-        onLine(`  ${blob.digest.slice(0, 19)}${size}: ${Math.ceil(sent / chunkSize) || 1} chunk(s) in ${Math.round((Date.now() - started) / 1000)}s`);
+        const timing = { writeMs: 0 };
+        const sent = await to.putBlobChunked(response.body, blob.digest, { chunkSize, timing });
+        const took = Date.now() - started;
+        // Writing is the PATCHes; the rest is waiting on the source.
+        onLine(
+          `  ${blob.digest.slice(0, 19)}${size}: ${Math.ceil(sent / chunkSize) || 1} chunk(s) in ${Math.round(took / 1000)}s ` +
+            `(${(sent / 1e6 / Math.max(took / 1000, 0.001)).toFixed(1)} MB/s; writing ${Math.round(timing.writeMs / 1000)}s, reading ${Math.round((took - timing.writeMs) / 1000)}s)`,
+        );
         return;
       } catch (error) {
         if (attempt >= attempts) throw error;
@@ -76,7 +84,12 @@ export async function copyImage({ from, to, digest, tag, onLine = () => {}, atte
     if (isIndex(manifest.json)) {
       for (const child of manifest.json.manifests) await copyManifest(child.digest, child.digest);
     } else {
-      for (const blob of [manifest.json.config, ...manifest.json.layers]) await copyBlob(blob);
+      const blobs = [manifest.json.config, ...manifest.json.layers];
+      let next = 0;
+      const lane = async () => {
+        while (next < blobs.length) await copyBlob(blobs[next++]);
+      };
+      await Promise.all(Array.from({ length: Math.min(concurrency, blobs.length) }, lane));
     }
     const type = manifest.json.mediaType ?? manifestType(manifest.json);
     await to.putManifest(writeAs, manifest.bytes, type);
@@ -280,7 +293,7 @@ export function repositoryClient(host, name, { credentials, fetchImpl = fetch, s
      * at most 100 MB a request, and a layer is often more. The bytes are
      * hashed as they go, and a blob that isn't `digest` is never finished.
      */
-    async putBlobChunked(body, digest, { chunkSize = CHUNK_BYTES, onChunk = () => {} } = {}) {
+    async putBlobChunked(body, digest, { chunkSize = CHUNK_BYTES, onChunk = () => {}, timing = { writeMs: 0 } } = {}) {
       const started = await send("POST", at("blobs/uploads/"));
       if (started.status !== 202) throw await fail(`starting an upload of ${digest}`, started);
       let location = started.headers.get("location");
@@ -289,11 +302,13 @@ export function repositoryClient(host, name, { credentials, fetchImpl = fetch, s
       let offset = 0;
       let held = Buffer.alloc(0);
       const patch = async (chunk) => {
+        const writing = Date.now();
         const patched = await send("PATCH", location, {
           headers: { "content-type": "application/octet-stream", "content-range": `${offset}-${offset + chunk.length - 1}` },
           body: chunk,
         });
         if (patched.status !== 202) throw await fail(`uploading ${digest} at byte ${offset}`, patched);
+        timing.writeMs += Date.now() - writing;
         location = new URL(patched.headers.get("location") ?? location, root).toString();
         offset += chunk.length;
         onChunk(offset);
