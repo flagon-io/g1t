@@ -51,6 +51,15 @@ export function profilePath(username: string, tab: ProfileTab | string = "overvi
   return known === "overview" ? `/u/${username}` : `/u/${username}/${known}`;
 }
 
+/**
+ * The tab segment of a profile's path: `/u/ada/pulls` (its data at
+ * `/u/ada/pulls.data`) is `pulls`, `/u/ada` none. Each known tab has a
+ * route of its own (routes.ts), so it is read from the path, not `params.tab`.
+ */
+export function profileSegment(pathname: string): string | undefined {
+  return pathname.replace(/\.data$/, "").split("/")[3] || undefined;
+}
+
 /** The profile tab a path segment names; null for one it does not (a 404). */
 export function profileTab(segment: string | undefined): ProfileTab | null {
   return PROFILE_MOVED[segment?.toLowerCase() ?? ""] ?? segmentTab(PROFILE_TABS, segment);

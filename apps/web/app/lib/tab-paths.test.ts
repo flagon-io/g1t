@@ -11,6 +11,7 @@ import {
   notificationsAddress,
   notificationsPath,
   profilePath,
+  profileSegment,
   profileTab,
   pullPath,
   pullTab,
@@ -36,6 +37,14 @@ test("a profile's tabs are paths, and its overview is the profile", () => {
   // The overview has one address; anything else is no page.
   assert.equal(profileTab("overview"), null);
   assert.equal(profileTab("repositories"), null);
+});
+
+test("a profile's tab is read from its path, or its data's when opened in the app", () => {
+  assert.equal(profileSegment("/u/ada"), undefined);
+  assert.equal(profileSegment("/u/ada.data"), undefined);
+  assert.equal(profileSegment("/u/ada/pulls"), "pulls");
+  assert.equal(profileSegment("/u/ada/pulls.data"), "pulls");
+  assert.equal(profileSegment("/u/ada/Stars.data"), "Stars");
 });
 
 test("an old profile address with ?tab= goes to the tab's path, keeping its filters", () => {
