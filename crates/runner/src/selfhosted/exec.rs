@@ -5,12 +5,14 @@
 //! - **In Docker** (the default): one container per job, removed when it
 //!   ends, from the job's `container:` image or the runner's `--image`. A
 //!   Linux build of the harness is mounted into it read-only; that and the
-//!   job's own work volume, removed after, are its only mounts. It runs
+//!   job's own volumes, removed after, are its only mounts. It runs
 //!   with every capability dropped but the few a build needs, no new
 //!   privileges, a process, memory and CPU limit, and a network of its
 //!   own. With nested-container isolation (sandbox.rs), all of this is on
 //!   the runner's own Docker Engine, inside the runner's container, and a
-//!   job that uses Docker gets an engine of its own (engine.rs).
+//!   job that uses Docker gets an engine of its own (engine.rs), which
+//!   mounts the job's volumes where the job has them (`job_volumes`), so a
+//!   step's `docker run -v "$PWD":/w` finds the job's files.
 //! - **Directly** (`--no-docker`, deprecated): the harness runs as a child
 //!   process, in a fresh folder under the runner's work folder that is
 //!   removed after. Unsandboxed: the job's log says so, and a public
@@ -77,9 +79,9 @@ pub struct Running {
     pub repo: String,
     child: Child,
     container: Option<String>,
-    /// The job's network and work volume, removed after.
+    /// The job's network and volumes, removed after.
     network: Option<String>,
-    volume: Option<String>,
+    volumes: Vec<String>,
     /// The job's own Docker Engine, when it may have one.
     engine: Option<JobEngine>,
     folder: Option<PathBuf>,
@@ -183,8 +185,8 @@ impl Running {
         if let Some(network) = &self.network {
             quietly(docker().args(["network", "rm", network]));
         }
-        if let Some(volume) = &self.volume {
-            quietly(docker().args(["volume", "rm", "-f", volume]));
+        if !self.volumes.is_empty() {
+            quietly(docker().args(["volume", "rm", "-f"]).args(&self.volumes));
         }
         if let Some(folder) = &self.folder {
             let _ = std::fs::remove_dir_all(folder);
@@ -300,7 +302,7 @@ fn in_native_vm(config: &Config, folder: &Path, work: &Assignment, env: BTreeMap
         child,
         container: None,
         network: None,
-        volume: None,
+        volumes: Vec::new(),
         engine: None,
         folder: None,
         native: Some(job),
@@ -401,8 +403,8 @@ pub struct Plan<'a> {
     pub image: &'a str,
     pub harness: &'a Path,
     pub network: &'a str,
-    /// The job's work volume, for a workflow job's `/home/runner`.
-    pub volume: Option<&'a str>,
+    /// The job's own volumes and where they are mounted (`job_volumes`).
+    pub volumes: &'a [(String, &'static str)],
     pub limits: &'a Limits,
     /// The names of the harness's variables, whose values come from the
     /// runner's process, never its command line.
@@ -434,10 +436,10 @@ pub fn run_args(plan: &Plan) -> Vec<String> {
     for name in &plan.env_names {
         add(&mut args, &["-e", name]);
     }
-    // Its only mounts: the harness, read-only, and its own volume.
+    // Its only mounts: the harness, read-only, and its own volumes.
     add(&mut args, &["-v", &format!("{}:/opt/g1t/g1t-runner:ro", plan.harness.display())]);
-    if let Some(volume) = plan.volume {
-        add(&mut args, &["-v", &format!("{volume}:/home/runner")]);
+    for (volume, path) in plan.volumes {
+        add(&mut args, &["-v", &format!("{volume}:{path}")]);
     }
     args.extend(plan.engine_args.iter().cloned());
     add(&mut args, &["--entrypoint", "/opt/g1t/g1t-runner", plan.image]);
@@ -470,6 +472,39 @@ pub fn job_image(config: &Config, work: &Assignment, hosted: Option<String>) -> 
     Ok((image.clone(), image))
 }
 
+/// GitHub's runner layout, where a workflow job keeps its files: the
+/// workspace (`work/`), `RUNNER_TEMP` (`_temp/`) and the tool cache
+/// (`_tool/`) are all under it (actions/paths.rs).
+pub const JOB_HOME: &str = "/home/runner";
+
+/// A job's own volumes, removed after it, and where they are mounted: a
+/// workflow job's `/home/runner`, and, for a job with Docker of its own,
+/// `/tmp`. The job's engine mounts the same volumes at the same paths, so
+/// a bind mount of a job's path from a step (`docker run -v "$PWD":/w`, a
+/// compose file's `./data:/data`, a build script's `-v $RUNNER_TEMP/out`)
+/// is the job's folder, as on g1t's machines and GitHub's runners, where
+/// the job and its Docker share one filesystem (flagon-io#480). Nothing of
+/// the runner's or the machine's is shared: only volumes made for the job.
+/// Not the image's `HOME` (`/root`, `/home/node`): in g1t's machine image
+/// it holds gigabytes of toolchains, which a new volume would copy for
+/// every job.
+pub fn job_volumes(name: &str, kind: &str, own_docker: bool) -> Vec<(String, &'static str)> {
+    let mut volumes = Vec::new();
+    if kind == "workflow" {
+        volumes.push((format!("{name}-work"), JOB_HOME));
+    }
+    if own_docker {
+        volumes.push((format!("{name}-tmp"), "/tmp"));
+    }
+    volumes
+}
+
+/// Whether a job here may have Docker of its own: only inside the runner's
+/// own sandbox, where it is not the machine's.
+fn wants_job_engine(config: &Config, isolation: Isolation) -> bool {
+    isolation == Isolation::NestedContainer && config.job_docker && cfg!(unix)
+}
+
 fn in_docker(config: &Config, isolation: Isolation, folder: &Path, work: &Assignment, mut env: BTreeMap<String, String>) -> Result<Running> {
     let (image, image_said) = job_image(config, work, hosted_image(config))?;
     #[cfg(unix)]
@@ -496,14 +531,15 @@ fn in_docker(config: &Config, isolation: Isolation, folder: &Path, work: &Assign
     if !output.status.success() {
         bail!("could not make the job's network: {}", String::from_utf8_lossy(&output.stderr).trim());
     }
-    let volume = (work.kind == "workflow").then(|| format!("{name}-work"));
-    if let Some(volume) = &volume {
+    let volumes = job_volumes(&name, &work.kind, wants_job_engine(config, isolation));
+    for (volume, _) in &volumes {
         quietly(docker().args(["volume", "rm", "-f", volume]));
         quietly(docker().args(["volume", "create", "--label", &format!("sh.g1t.runner={}", config.runner), volume]));
     }
     // A job's own Docker, only inside the runner's own sandbox: on a
-    // shared engine it would be the machine's.
-    let engine: Option<JobEngine> = job_engine(config, isolation, &name);
+    // shared engine it would be the machine's. It mounts the job's volumes
+    // where the job has them.
+    let engine: Option<JobEngine> = job_engine(config, isolation, &name, &volumes);
     let limits = job_limits(config, work);
     // A job given less memory than its size: one that runs out of it says
     // so as it ends, and g1t runs it again on its own machines.
@@ -516,7 +552,7 @@ fn in_docker(config: &Config, isolation: Isolation, folder: &Path, work: &Assign
         image: &image,
         harness: &harness,
         network: &name,
-        volume: volume.as_deref(),
+        volumes: &volumes,
         limits: &limits,
         env_names: env.keys().map(String::as_str).collect(),
         engine_args: engine.as_ref().map(JobEngine::job_args).unwrap_or_default(),
@@ -541,6 +577,9 @@ fn in_docker(config: &Config, isolation: Isolation, folder: &Path, work: &Assign
                 engine.remove();
             }
             quietly(docker().args(["network", "rm", &name]));
+            for (volume, _) in &volumes {
+                quietly(docker().args(["volume", "rm", "-f", volume]));
+            }
             return Err(error).context("could not run docker: is Docker installed and running?");
         }
     };
@@ -552,7 +591,7 @@ fn in_docker(config: &Config, isolation: Isolation, folder: &Path, work: &Assign
         child,
         container: Some(name.clone()),
         network: Some(name),
-        volume,
+        volumes: volumes.into_iter().map(|(volume, _)| volume).collect(),
         engine,
         folder: None,
         native: None,
@@ -562,12 +601,12 @@ fn in_docker(config: &Config, isolation: Isolation, folder: &Path, work: &Assign
 }
 
 #[cfg(unix)]
-fn job_engine(config: &Config, isolation: Isolation, name: &str) -> Option<JobEngine> {
-    if isolation != Isolation::NestedContainer || !config.job_docker {
+fn job_engine(config: &Config, isolation: Isolation, name: &str, volumes: &[(String, &'static str)]) -> Option<JobEngine> {
+    if !wants_job_engine(config, isolation) {
         return None;
     }
     let image = config.job_docker_image.as_deref().unwrap_or(super::engine::DEFAULT_JOB_ENGINE_IMAGE);
-    match JobEngine::prepare(name, &config.runner, image) {
+    match JobEngine::prepare(name, &config.runner, image, volumes) {
         Ok(engine) => Some(engine),
         Err(error) => {
             log(&format!("This job has no Docker of its own: {error:#}"));
@@ -577,7 +616,7 @@ fn job_engine(config: &Config, isolation: Isolation, name: &str) -> Option<JobEn
 }
 
 #[cfg(not(unix))]
-fn job_engine(_config: &Config, _isolation: Isolation, _name: &str) -> Option<JobEngine> {
+fn job_engine(_config: &Config, _isolation: Isolation, _name: &str, _volumes: &[(String, &'static str)]) -> Option<JobEngine> {
     None
 }
 
@@ -619,7 +658,7 @@ fn directly(config: &Config, work: &Assignment, env: BTreeMap<String, String>) -
         child,
         container: None,
         network: None,
-        volume: None,
+        volumes: Vec::new(),
         engine: None,
         folder,
         native: None,
@@ -747,6 +786,8 @@ mod tests {
     }
 
     fn args_for(kind: &str, engine_args: Vec<String>) -> (Vec<String>, BTreeMap<String, String>) {
+        let own_docker = !engine_args.is_empty();
+        let volumes = job_volumes("g1t-job_1", kind, own_docker);
         let config = config();
         let env = harness_env(&config, &assignment(kind)).unwrap();
         let limits = Limits { memory: "6144m".into(), cpus: "4".into(), pids: 4096 };
@@ -757,7 +798,7 @@ mod tests {
             image: DEFAULT_IMAGE,
             harness: &harness,
             network: "g1t-job_1",
-            volume: (kind == "workflow").then_some("g1t-job_1-work"),
+            volumes: &volumes,
             limits: &limits,
             env_names: env.keys().map(String::as_str).collect(),
             engine_args,
@@ -827,6 +868,36 @@ mod tests {
         assert!(!mounts.iter().any(|m| m.starts_with("/var/run/docker.sock") || m.starts_with("/run/g1t-runner/docker.sock")));
         // The entrypoint and image stay last.
         assert_eq!(&args[args.len() - 3..], ["--entrypoint", "/opt/g1t/g1t-runner", DEFAULT_IMAGE]);
+    }
+
+    #[test]
+    fn a_job_with_docker_shares_its_home_and_tmp_with_its_engine_and_nothing_else() {
+        let engine_args = vec!["-v".into(), "/run/g1t-runner/jobs/g1t-job_1/proxy:/run/g1t-docker:ro".into()];
+        let (args, _) = args_for("workflow", engine_args);
+        let mounts = value_of(&args, "-v");
+        // The workspace, RUNNER_TEMP and the tool cache are all under
+        // /home/runner; /tmp is the job's own too, for a build's files.
+        assert!(mounts.contains(&"g1t-job_1-work:/home/runner"));
+        assert!(mounts.contains(&"g1t-job_1-tmp:/tmp"));
+        // Volumes made for the job, never a folder of the runner's.
+        for (volume, _) in job_volumes("g1t-job_1", "workflow", true) {
+            assert!(volume.starts_with("g1t-job_1-") && !volume.contains('/'), "{volume}");
+        }
+        assert_eq!(job_volumes("g1t-job_1", "workflow", false), vec![("g1t-job_1-work".to_owned(), JOB_HOME)]);
+        assert_eq!(job_volumes("g1t-job_1", TASK_KIND, true), vec![("g1t-job_1-tmp".to_owned(), "/tmp")]);
+        // The walls stay as they were.
+        assert_eq!(value_of(&args, "--cap-drop"), vec!["ALL"]);
+        assert_eq!(value_of(&args, "--security-opt"), vec!["no-new-privileges"]);
+        assert!(!args.iter().any(|a| a == "--privileged"));
+        // Only the runner's own sandbox gives a job an engine, and so a /tmp volume.
+        let config = config();
+        assert_eq!(wants_job_engine(&config, Isolation::NestedContainer), cfg!(unix));
+        for isolation in [Isolation::Container, Isolation::Host, Isolation::Vm] {
+            assert!(!wants_job_engine(&config, isolation));
+        }
+        let mut without = config.clone();
+        without.job_docker = false;
+        assert!(!wants_job_engine(&without, Isolation::NestedContainer));
     }
 
     #[test]

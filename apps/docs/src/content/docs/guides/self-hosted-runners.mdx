@@ -121,7 +121,7 @@ container made for it and removed after it:
 | | |
 | --- | --- |
 | Image | The job's `container:`, else the runner's `--image`, else `node:24-bookworm`. A job that asked for one of [g1t's machines](#jobs-that-ask-for-g1ts-machines) runs in [g1t's machine image](#g1ts-machine-image) instead (`--hosted-image`), which has what those machines have. |
-| Mounts | The harness (`g1t-runner`), read-only, and a volume of its own at `/home/runner`, removed after the job. Nothing else of the runner's or the machine's. |
+| Mounts | The harness (`g1t-runner`), read-only, and a volume of its own at `/home/runner` (its workspace, `RUNNER_TEMP` and the tool cache), removed after the job. A job with [Docker of its own](#docker-in-jobs) also has a volume of its own at `/tmp`. Nothing else of the runner's or the machine's. |
 | Network | A Docker network of its own, removed after the job. Never the machine's network. |
 | Capabilities | Every one dropped but `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `FSETID`, `SETUID`, `SETGID`, `KILL` and `NET_BIND_SERVICE`, which installing packages and running test servers need. Raw sockets (`ping`) are among those dropped. |
 | Privileges | `no-new-privileges`: a setuid program such as `sudo` gains nothing. Run steps as the image's root user rather than with `sudo`. |
@@ -137,6 +137,15 @@ Docker, from `docker:28-dind`, beside the job's container and on the job's
 network, so a service's published ports are on the job's `localhost`. It
 is removed, with its images and containers, when the job ends. A job that
 does not use Docker never starts one.
+
+The job's engine sees the job's files where the job does: it mounts the
+job's own volumes at `/home/runner` and `/tmp`, so the workspace,
+`RUNNER_TEMP`, the tool cache and `/tmp` are at the same paths for
+both. Bind mounts of the job's paths work as on g1t's machines and
+GitHub's runners: `docker run -v "$PWD":/work`, a compose file's
+`./data:/data`, a build that writes its output to `-v $RUNNER_TEMP/out:/out`.
+A path outside those, such as the image's `HOME` (`/root`, `/home/node`)
+or `/opt`, is the engine's own, empty folder, not the job's. Nothing of the runner's or the machine's is shared.
 
 The job's engine is privileged inside the runner's container. Sysbox keeps
 it off the machine, but a job that uses Docker can reach the runner's own

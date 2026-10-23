@@ -14,8 +14,11 @@
 //!   action, `docker` in a step) gets an engine of its own, started the
 //!   first time the job's Docker socket is used: a `docker:dind` container
 //!   beside the job's, in the job's network namespace, so what it
-//!   publishes is on the job's `localhost`. The job sees only a socket
-//!   that the runner passes on. The engine is privileged within the
+//!   publishes is on the job's `localhost`. It mounts the job's own volumes
+//!   at the job's paths (`/home/runner`, `/tmp`: exec.rs's `job_volumes`),
+//!   so a bind mount of a job's path from a step is the job's folder, as
+//!   where the job and its Docker share one filesystem; nothing else is
+//!   shared. The job sees only a socket that the runner passes on. The engine is privileged within the
 //!   runner's container, never on the machine (Sysbox maps its root to an
 //!   unprivileged user there), and is removed with its data after the job.
 
@@ -211,6 +214,9 @@ struct EngineSpec {
     job: String,
     label: String,
     engine_dir: PathBuf,
+    /// The job's own volumes and where the job has them: the engine mounts
+    /// each at the same path.
+    shared: Vec<(String, String)>,
 }
 
 /// The `docker run` for a job's engine. Privileged within the runner's
@@ -227,6 +233,11 @@ fn engine_args(spec: &EngineSpec) -> Vec<String> {
     args.extend(["-e".into(), "DOCKER_TLS_CERTDIR=".into()]);
     args.extend(["-v".into(), format!("{}:/run/g1t-engine", spec.engine_dir.display())]);
     args.extend(["-v".into(), format!("{}:/var/lib/docker", spec.volume)]);
+    // The job's files where the job has them, so `-v /home/runner/work/…`
+    // resolves here to the job's folder (flagon-io#480).
+    for (volume, path) in &spec.shared {
+        args.extend(["-v".into(), format!("{volume}:{path}")]);
+    }
     args.extend([spec.image.clone(), "dockerd".into(), "--host=unix:///run/g1t-engine/docker.sock".into()]);
     args
 }
@@ -276,7 +287,8 @@ fn serve(mut client: UnixStream, spec: &EngineSpec, started: &Mutex<Option<Resul
 
 impl JobEngine {
     /// Sets a job's Docker socket up, with no engine behind it yet.
-    pub fn prepare(job: &str, runner: &str, image: &str) -> Result<JobEngine> {
+    /// `shared`: the job's own volumes and where the job mounts them.
+    pub fn prepare(job: &str, runner: &str, image: &str, shared: &[(String, &str)]) -> Result<JobEngine> {
         let dir = Path::new(JOBS_DIR).join(job);
         let _ = std::fs::remove_dir_all(&dir);
         let (proxy, engine_dir) = (dir.join("proxy"), dir.join("engine"));
@@ -296,6 +308,7 @@ impl JobEngine {
             job: job.to_owned(),
             label: format!("sh.g1t.runner={runner}"),
             engine_dir,
+            shared: shared.iter().map(|(volume, path)| (volume.clone(), (*path).to_owned())).collect(),
         };
         let stop = Arc::new(AtomicBool::new(false));
         let (stopping, thread_spec) = (stop.clone(), spec.clone());
@@ -364,6 +377,7 @@ mod tests {
             job: "g1t-job_1".into(),
             label: "sh.g1t.runner=rnr_1".into(),
             engine_dir: PathBuf::from("/run/g1t-runner/jobs/g1t-job_1/engine"),
+            shared: Vec::new(),
         };
         let args = engine_args(&spec);
         let joined = args.join(" ");
@@ -376,6 +390,30 @@ mod tests {
         assert!(mounts[0].starts_with("/run/g1t-runner/jobs/"));
         assert!(mounts[1].starts_with("g1t-job_1-docker:"));
         assert!(args.iter().any(|a| a == "DOCKER_TLS_CERTDIR="));
+    }
+
+    #[test]
+    fn a_jobs_engine_sees_the_jobs_files_at_the_jobs_paths() {
+        let shared = crate::selfhosted::exec::job_volumes("g1t-job_1", "workflow", true);
+        let spec = EngineSpec {
+            image: DEFAULT_JOB_ENGINE_IMAGE.into(),
+            container: "g1t-job_1-docker".into(),
+            volume: "g1t-job_1-docker".into(),
+            job: "g1t-job_1".into(),
+            label: "sh.g1t.runner=rnr_1".into(),
+            engine_dir: PathBuf::from("/run/g1t-runner/jobs/g1t-job_1/engine"),
+            shared: shared.iter().map(|(volume, path)| (volume.clone(), (*path).to_owned())).collect(),
+        };
+        let args = engine_args(&spec);
+        let mounts: Vec<&str> = args.windows(2).filter(|w| w[0] == "-v").map(|w| w[1].as_str()).collect();
+        // The same volumes at the same paths as the job's container has them.
+        assert_eq!(mounts[2..], ["g1t-job_1-work:/home/runner", "g1t-job_1-tmp:/tmp"]);
+        // Nothing else: the runner's folder for the engine's socket and the
+        // engine's data, as before; no folder of the runner's or the machine's.
+        assert_eq!(mounts.len(), 4);
+        assert!(!mounts.iter().any(|m| m.starts_with("/home") || m.starts_with("/tmp") || m.starts_with("/var/run")));
+        // Its image and command stay last.
+        assert_eq!(&args[args.len() - 3..], [DEFAULT_JOB_ENGINE_IMAGE, "dockerd", "--host=unix:///run/g1t-engine/docker.sock"]);
     }
 
     /// Against a real Docker Engine, as root, with `docker:28-dind` at
@@ -391,10 +429,18 @@ mod tests {
             let _ = docker().args(args).stdout(Stdio::null()).stderr(Stdio::null()).status();
         };
         quiet(&["rm", "-f", job]);
-        let engine = JobEngine::prepare(job, "test", DEFAULT_JOB_ENGINE_IMAGE).unwrap();
+        let shared = crate::selfhosted::exec::job_volumes(job, "workflow", true);
+        for (volume, _) in &shared {
+            quiet(&["volume", "rm", "-f", volume]);
+            quiet(&["volume", "create", volume]);
+        }
+        let engine = JobEngine::prepare(job, "test", DEFAULT_JOB_ENGINE_IMAGE, &shared).unwrap();
         // A job's container with the job's Docker: the dind image has a CLI.
         let mut run = docker();
         run.args(["run", "-d", "--rm", "--name", job, "--cap-drop", "ALL", "--security-opt", "no-new-privileges"]);
+        for (volume, path) in &shared {
+            run.args(["-v", &format!("{volume}:{path}")]);
+        }
         let mut job_args = engine.job_args();
         // This machine's CLI may not run in Alpine; the image has its own.
         if let Some(at) = job_args.iter().position(|a| a.starts_with(DOCKER_CLI)) {
@@ -409,8 +455,19 @@ mod tests {
         let errors = String::from_utf8_lossy(&version.stderr).trim().to_owned();
         // The job cannot change its socket's folder.
         let wrote = docker().args(["exec", job, "touch", "/run/g1t-docker/x"]).stderr(Stdio::null()).status().unwrap();
+        // A step's bind mounts of the job's paths are the job's folders
+        // (flagon-io#480): its workspace, and /tmp.
+        let script = "mkdir -p /home/runner/work/repo && cd /home/runner/work/repo && echo hi > f && echo there > /tmp/g \
+            && docker run --rm -v \"$PWD\":/w -v /tmp:/t docker:28-dind sh -c 'cat /w/f /t/g && echo back > /w/out'";
+        let bound = docker().args(["exec", job, "sh", "-c", script]).output().unwrap();
+        let back = docker().args(["exec", job, "cat", "/home/runner/work/repo/out"]).output().unwrap();
         quiet(&["rm", "-f", job]);
         engine.remove();
+        for (volume, _) in &shared {
+            quiet(&["volume", "rm", "-f", volume]);
+        }
+        assert_eq!(String::from_utf8_lossy(&bound.stdout), "hi\nthere\n", "{}", String::from_utf8_lossy(&bound.stderr));
+        assert_eq!(String::from_utf8_lossy(&back.stdout), "back\n");
         assert!(version.status.success(), "docker version in the job: {errors}");
         assert!(shown.starts_with("28."), "{shown}");
         assert!(!wrote.success());
