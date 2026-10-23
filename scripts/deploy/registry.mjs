@@ -50,8 +50,8 @@ const isIndex = (json) => [OCI_INDEX, DOCKER_LIST].includes(json.mediaType) || A
  * machine, and the manifest's own bytes are written, so the target has
  * the same digest. An index's images go first, by digest. Writes the top
  * manifest under `tag`. A blob that fails is tried again from its start.
- * `concurrency` blobs go at once: each is slow alone (about 0.4 MB/s into
- * g1t.sh in runner release #19), and the image has dozens.
+ * `concurrency` blobs go at once: the image has dozens, and each chunk to
+ * g1t.sh is one request that the registry writes as it reads.
  */
 export async function copyImage({ from, to, digest, tag, onLine = () => {}, attempts = 3, chunkSize = CHUNK_BYTES, concurrency = 6 }) {
   const copyBlob = async (blob) => {
@@ -300,7 +300,13 @@ export function repositoryClient(host, name, { credentials, fetchImpl = fetch, s
       if (!location) throw new Error(`the registry started an upload of ${digest} without saying where`);
       const hash = createHash("sha256");
       let offset = 0;
-      let held = Buffer.alloc(0);
+      // The pieces read since the last chunk went, joined once a chunk's
+      // worth is in. Joining each piece onto what was held copied the
+      // chunk again for every piece: at 16 KiB pieces a 90 MiB chunk took
+      // minutes of copying, and the copies sharing the event loop starved
+      // each other's reads and writes alike (#474).
+      let pieces = [];
+      let held = 0;
       const patch = async (chunk) => {
         const writing = Date.now();
         const patched = await send("PATCH", location, {
@@ -315,13 +321,18 @@ export function repositoryClient(host, name, { credentials, fetchImpl = fetch, s
       };
       for await (const piece of body) {
         hash.update(piece);
-        held = held.length ? Buffer.concat([held, piece]) : Buffer.from(piece);
-        while (held.length >= chunkSize) {
-          await patch(held.subarray(0, chunkSize));
-          held = held.subarray(chunkSize);
+        pieces.push(piece);
+        held += piece.length;
+        if (held < chunkSize) continue;
+        let joined = Buffer.concat(pieces, held);
+        while (joined.length >= chunkSize) {
+          await patch(joined.subarray(0, chunkSize));
+          joined = joined.subarray(chunkSize);
         }
+        pieces = joined.length ? [joined] : [];
+        held = joined.length;
       }
-      if (held.length) await patch(held);
+      if (held) await patch(Buffer.concat(pieces, held));
       const got = `sha256:${hash.digest("hex")}`;
       if (got !== digest) throw new Error(`blob ${digest} came as ${got}: not finishing its upload`);
       const done = new URL(location, root);

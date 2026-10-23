@@ -9,6 +9,20 @@
 //! fills a part is stored whole, at its digest's key, when it finishes.
 //! The digest is worked out as the bytes pass, so finishing never reads
 //! the blob back.
+//!
+//! A part goes up while the request's next bytes are read: each part is
+//! one request to the store, which takes about two seconds for 10 MiB, so
+//! reading nothing until it was in held one request to about 4 MB/s
+//! (#474). Up to [`PARTS_IN_FLIGHT`] of a request's parts go at once, and
+//! no more than [`ISOLATE_PARTS`] across the requests this Worker is
+//! answering, which bounds what they hold in memory together; a request's
+//! first part always goes, as one did before.
+
+use std::cell::Cell;
+use std::collections::VecDeque;
+use std::future::{Future, poll_fn};
+use std::pin::Pin;
+use std::task::Poll;
 
 use serde::{Deserialize, Serialize};
 use worker::Result;
@@ -19,6 +33,56 @@ use crate::store::{BlobStore, Part};
 /// The size of every part but the last: over R2's least (5 MiB), and
 /// small enough to hold in memory while it fills.
 pub const PART_BYTES: usize = 10 * 1024 * 1024;
+
+/// The most parts one request has going up at once.
+pub const PARTS_IN_FLIGHT: usize = 3;
+
+/// The most parts going up at once across every request this Worker
+/// answers: each holds its 10 MiB until the store has it, in a Worker of
+/// 128 MB. A request's first part goes beyond it.
+pub const ISOLATE_PARTS: usize = 6;
+
+thread_local! {
+    /// Parts going up now, across every request this Worker answers.
+    static SENDING: Cell<usize> = const { Cell::new(0) };
+}
+
+/// One part counted in [`SENDING`] while it goes up; let go when it is in,
+/// fails or is dropped.
+struct Sending;
+
+impl Sending {
+    fn start() -> Sending {
+        SENDING.with(|n| n.set(n.get() + 1));
+        Sending
+    }
+}
+
+impl Drop for Sending {
+    fn drop(&mut self) {
+        SENDING.with(|n| n.set(n.get().saturating_sub(1)));
+    }
+}
+
+/// Whether a request with `mine` parts going up may start another now.
+pub fn may_send(mine: usize, everyone: usize) -> bool {
+    mine == 0 || (mine < PARTS_IN_FLIGHT && everyone < ISOLATE_PARTS)
+}
+
+/// A part going up, which says what the store made of it when it is in.
+type PartSent<'a> = Pin<Box<dyn Future<Output = Result<Part>> + 'a>>;
+
+/// Polls `future` once, which starts its request to the store; its answer
+/// is `Some` if it has one already.
+async fn poll_once<F: Future + Unpin>(future: &mut F) -> Option<F::Output> {
+    poll_fn(|cx| {
+        Poll::Ready(match Pin::new(&mut *future).poll(cx) {
+            Poll::Ready(output) => Some(output),
+            Poll::Pending => None,
+        })
+    })
+    .await
+}
 
 /// How many whole parts `buffered` bytes make, and how many are left over.
 pub fn whole_parts(buffered: usize, part: usize) -> (usize, usize) {
@@ -78,6 +142,8 @@ pub struct Writer<'a, S: BlobStore> {
     store: &'a S,
     progress: Progress,
     buffer: Vec<u8>,
+    /// Parts going up, oldest first; `progress.parts` has those before.
+    sending: VecDeque<PartSent<'a>>,
 }
 
 impl<'a, S: BlobStore> Writer<'a, S> {
@@ -95,7 +161,7 @@ impl<'a, S: BlobStore> Writer<'a, S> {
         } else {
             Vec::with_capacity(64 * 1024)
         };
-        Ok(Writer { store, progress, buffer })
+        Ok(Writer { store, progress, buffer, sending: VecDeque::new() })
     }
 
 
@@ -127,17 +193,61 @@ impl<'a, S: BlobStore> Writer<'a, S> {
                 id
             }
         };
-        let number = self.progress.parts.len() as u16 + 1;
-        let part = self.store.upload_part(&key, &upload_id, number, bytes).await?;
-        self.progress.parts.push(part);
+        // Room for it first: the oldest part going up is waited for.
+        while !may_send(self.sending.len(), SENDING.with(Cell::get)) {
+            self.settle_oldest().await?;
+        }
+        let number = (self.progress.parts.len() + self.sending.len() + 1) as u16;
+        let store = self.store;
+        let counted = Sending::start();
+        let mut sent: PartSent<'a> = Box::pin(async move {
+            let _counted = counted;
+            store.upload_part(&key, &upload_id, number, bytes).await
+        });
+        // Started now, and left to finish while the next bytes are read.
+        if let Some(done) = poll_once(&mut sent).await {
+            sent = Box::pin(std::future::ready(done));
+        }
+        self.sending.push_back(sent);
         Ok(())
+    }
+
+    /// Waits for the oldest part going up, and keeps what the store made
+    /// of it.
+    async fn settle_oldest(&mut self) -> Result<()> {
+        if let Some(sent) = self.sending.pop_front() {
+            self.progress.parts.push(sent.await?);
+        }
+        Ok(())
+    }
+
+    /// Waits for every part going up, in order. On a failure the rest are
+    /// still waited for by `abandon`, so none is left going up.
+    async fn settle(&mut self) -> Result<()> {
+        while !self.sending.is_empty() {
+            self.settle_oldest().await?;
+        }
+        Ok(())
+    }
+
+    /// Waits for every part going up, whatever becomes of them.
+    async fn let_settle(&mut self) {
+        while let Some(sent) = self.sending.pop_front() {
+            if let Ok(part) = sent.await {
+                self.progress.parts.push(part);
+            }
+        }
     }
 
     /// Ends this request: what is left is kept as the tail, and the
     /// progress comes back to be saved. If the tail cannot be kept, the
     /// upload is let go, so nothing it stored is left behind.
-    pub async fn pause(self) -> Result<Progress> {
-        let Writer { store, mut progress, buffer } = self;
+    pub async fn pause(mut self) -> Result<Progress> {
+        if let Err(error) = self.settle().await {
+            let _ = self.abandon().await;
+            return Err(error);
+        }
+        let Writer { store, mut progress, buffer, .. } = self;
         let key = tail_key(&progress.id);
         let kept = if buffer.is_empty() {
             if progress.tail > 0 { store.delete(&key).await } else { Ok(()) }
@@ -154,14 +264,20 @@ impl<'a, S: BlobStore> Writer<'a, S> {
 
     /// Gives the upload up part way: a refused or failed request. Everything
     /// it stored goes, the parts this request sent included.
-    pub async fn abandon(self) -> Result<()> {
+    pub async fn abandon(mut self) -> Result<()> {
+        // A part still going up would outlive the abort, and be kept.
+        self.let_settle().await;
         abort(self.store, &self.progress).await
     }
 
     /// Ends the upload. `stored` says the blob with the expected digest is
     /// already kept, so these bytes are only checked and let go. If storing
     /// fails, what the upload stored is let go before the error is given.
-    pub async fn finish(self, expected: &Digest, stored: bool) -> Result<Finished> {
+    pub async fn finish(mut self, expected: &Digest, stored: bool) -> Result<Finished> {
+        if let Err(error) = self.settle().await {
+            let _ = self.abandon().await;
+            return Err(error);
+        }
         let store = self.store;
         let progress = self.progress.clone();
         match self.finish_inner(expected, stored).await {
@@ -174,7 +290,7 @@ impl<'a, S: BlobStore> Writer<'a, S> {
     }
 
     async fn finish_inner(self, expected: &Digest, stored: bool) -> Result<Finished> {
-        let Writer { store, progress, buffer } = self;
+        let Writer { store, progress, buffer, .. } = self;
         let size = progress.offset;
         let actual = progress.hasher.clone().finish();
         if &actual != expected || stored {
@@ -304,8 +420,12 @@ mod tests {
             Ok(Part { number, etag: format!("e{number}") })
         }
         async fn complete_multipart(&self, key: &str, upload_id: &str, parts: &[Part]) -> Result<()> {
-            let uploaded = self.parts.borrow_mut().remove(upload_id).expect("started");
+            let mut uploaded = self.parts.borrow_mut().remove(upload_id).expect("started");
             assert_eq!(uploaded.len(), parts.len());
+            // Parts may arrive in any order; they are joined by number, as R2 does.
+            uploaded.sort_by_key(|(number, _)| *number);
+            let numbers: Vec<u16> = parts.iter().map(|part| part.number).collect();
+            assert_eq!(numbers, (1..=parts.len() as u16).collect::<Vec<_>>(), "the parts are named in order");
             let sizes: Vec<usize> = uploaded.iter().map(|(_, b)| b.len()).collect();
             if let Some((_, rest)) = sizes.split_last() {
                 assert!(rest.iter().all(|size| *size == PART_BYTES), "every part but the last is the same size: {sizes:?}");
@@ -440,5 +560,114 @@ mod tests {
         assert_eq!(back.offset, 42);
         assert_eq!(parts_key("upl_1"), "blobs/parts/upl_1");
         assert_eq!(tail_key("upl_1"), "uploads/upl_1/tail");
+    }
+
+    /// A store whose parts each take a while to go up: every part waits
+    /// `polls` turns before the store has it, and the most going up at once
+    /// is counted.
+    struct Slow {
+        memory: Memory,
+        polls: usize,
+        going: Cell<usize>,
+        most: Cell<usize>,
+    }
+
+    /// Pending `turns` times, then ready.
+    async fn turns(mut turns: usize) {
+        poll_fn(|cx| {
+            if turns == 0 {
+                return Poll::Ready(());
+            }
+            turns -= 1;
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        })
+        .await
+    }
+
+    impl BlobStore for Slow {
+        async fn put(&self, key: &str, bytes: Vec<u8>) -> Result<()> {
+            self.memory.put(key, bytes).await
+        }
+        async fn get(&self, key: &str, range: Option<Wanted>) -> Result<Option<Got>> {
+            self.memory.get(key, range).await
+        }
+        async fn head(&self, key: &str) -> Result<Option<u64>> {
+            self.memory.head(key).await
+        }
+        async fn delete(&self, key: &str) -> Result<()> {
+            self.memory.delete(key).await
+        }
+        async fn create_multipart(&self, key: &str) -> Result<String> {
+            self.memory.create_multipart(key).await
+        }
+        async fn upload_part(&self, key: &str, upload_id: &str, number: u16, bytes: Vec<u8>) -> Result<Part> {
+            self.going.set(self.going.get() + 1);
+            self.most.set(self.most.get().max(self.going.get()));
+            turns(self.polls).await;
+            self.going.set(self.going.get() - 1);
+            self.memory.upload_part(key, upload_id, number, bytes).await
+        }
+        async fn complete_multipart(&self, key: &str, upload_id: &str, parts: &[Part]) -> Result<()> {
+            self.memory.complete_multipart(key, upload_id, parts).await
+        }
+        async fn abort_multipart(&self, key: &str, upload_id: &str) -> Result<()> {
+            self.memory.abort_multipart(key, upload_id).await
+        }
+        fn presign_get(&self, _key: &str, _expires: u32, _now_ms: u64) -> Option<String> {
+            None
+        }
+    }
+
+    /// Runs a future to its end, however often it waits.
+    fn block_on<F: Future>(future: F) -> F::Output {
+        let mut future = pin!(future);
+        loop {
+            if let Poll::Ready(output) = future.as_mut().poll(&mut Context::from_waker(Waker::noop())) {
+                return output;
+            }
+        }
+    }
+
+    #[test]
+    fn parts_go_up_while_the_next_bytes_are_read_a_few_at_once() {
+        let store = Slow { memory: Memory::default(), polls: 3, going: Cell::new(0), most: Cell::new(0) };
+        let data = bytes(5 * PART_BYTES + 77);
+        let mut writer = block_on(Writer::resume(&store, Progress::new("upl_5"))).unwrap();
+        for piece in data.chunks(PART_BYTES / 2) {
+            block_on(writer.write(piece)).unwrap();
+        }
+        assert!(store.going.get() > 0, "parts are still going up as the request reads on");
+        let progress = block_on(writer.pause()).unwrap();
+        assert_eq!(store.going.get(), 0, "a paused request has every part in");
+        assert_eq!(store.most.get(), PARTS_IN_FLIGHT, "no more than {PARTS_IN_FLIGHT} at once");
+        assert_eq!(progress.parts.iter().map(|p| p.number).collect::<Vec<_>>(), vec![1, 2, 3, 4, 5]);
+        assert_eq!(progress.tail, 77);
+        let writer = block_on(Writer::resume(&store, progress)).unwrap();
+        let finished = block_on(writer.finish(&Digest::of(&data), false)).unwrap();
+        assert_eq!(finished, Finished::Stored { key: parts_key("upl_5"), size: data.len() as u64 });
+        assert_eq!(store.memory.objects.borrow()[&parts_key("upl_5")], data, "joined in order");
+        assert_eq!(SENDING.with(Cell::get), 0, "every part counted is let go");
+    }
+
+    #[test]
+    fn a_request_given_up_with_parts_going_up_waits_for_them_and_leaves_nothing() {
+        let store = Slow { memory: Memory::default(), polls: 2, going: Cell::new(0), most: Cell::new(0) };
+        let data = bytes(2 * PART_BYTES);
+        let mut writer = block_on(Writer::resume(&store, Progress::new("upl_6"))).unwrap();
+        block_on(writer.write(&data)).unwrap();
+        assert!(store.going.get() > 0);
+        block_on(writer.abandon()).unwrap();
+        assert_eq!(store.going.get(), 0, "nothing is left going up after the abort");
+        assert!(store.memory.parts.borrow().is_empty(), "the multipart upload is aborted");
+    }
+
+    #[test]
+    fn a_request_sends_its_first_part_always_and_more_while_the_worker_has_room() {
+        assert!(may_send(0, ISOLATE_PARTS + 10), "its first part goes however busy the Worker is");
+        assert!(may_send(1, 0));
+        assert!(may_send(PARTS_IN_FLIGHT - 1, ISOLATE_PARTS - 1));
+        assert!(!may_send(PARTS_IN_FLIGHT, 0), "no more than {PARTS_IN_FLIGHT} of its own");
+        assert!(!may_send(1, ISOLATE_PARTS), "no more than {ISOLATE_PARTS} across the Worker beyond each first");
     }
 }
