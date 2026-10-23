@@ -56,6 +56,26 @@ fn seen_is_stale(seen: Option<&str>, at: u64) -> bool {
     seen.is_none_or(|seen| seen < rfc3339(at.saturating_sub(SEEN_RESOLUTION_MS)).as_str())
 }
 
+/// How long a runner may go on listing a job it finished as running: its
+/// container exits a moment after the job's last report.
+const WRAPPING_UP_MS: u64 = 60 * 1000;
+
+/// Whether a poll tells the runner to stop `job`, which it says it is
+/// running but which is no longer in progress on it. Not one it finished
+/// itself in the last [`WRAPPING_UP_MS`]: the job reported its end and its
+/// container is on its way out, and a stop then only kills it early and
+/// logs it as cancelled (Deploy #596's Smoke, 2026-10-23). A job cancelled,
+/// taken from it, or finished longer ago is stopped.
+fn stops_on_poll(job: &JobRow, runner_id: &str, at: u64) -> bool {
+    let finished_here = job.status == "completed" && job.runner_id.as_deref() == Some(runner_id) && job.conclusion.as_deref() != Some("cancelled");
+    let just_now = job
+        .finished_at
+        .as_deref()
+        .and_then(g1t_contracts::time::parse_rfc3339)
+        .is_some_and(|finished| at.saturating_sub(finished) < WRAPPING_UP_MS);
+    !(finished_here && just_now)
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct RunnerRow {
     pub id: String,
@@ -1236,7 +1256,7 @@ impl Actions {
                         self.db.prepare("UPDATE jobs SET seen_at = ? WHERE id = ?").bind(&[seen.as_str().into(), id.as_str().into()])?.run().await?;
                     }
                     active = Some((id.clone(), "workflow"));
-                } else {
+                } else if stops_on_poll(&job, &row.id, at) {
                     cancel.push(id.clone());
                 }
                 continue;
@@ -2277,6 +2297,30 @@ mod tests {
         assert!(!takes(&sized("[]"), false), "it takes none");
         let elsewhere = [group(&["docs"])];
         assert!(!takes_offered_job(&runner, &elsewhere, "rep_1", "acme/web", &wanted, &standard, false, None, at), "its group leaves the repository out");
+    }
+
+    #[test]
+    fn a_job_its_runner_just_finished_is_left_to_exit_and_any_other_is_stopped() {
+        let at = 1_000_000_000_000;
+        let job = |status: &str, conclusion: Option<&str>, runner: &str, finished: Option<u64>| -> JobRow {
+            serde_json::from_value(json!({
+                "id": "job_1", "run_id": "run_1", "repo_id": "rep_1", "namespace": "n", "key": "k", "ordinal": 0,
+                "name": "Smoke", "needs": "[]", "status": status, "conclusion": conclusion, "steps": "[]",
+                "annotations": "[]", "outputs": "{}", "timeout_minutes": 60, "continue_on_error": 0,
+                "runner_id": runner, "finished_at": finished.map(rfc3339),
+            }))
+            .unwrap()
+        };
+        // Deploy #596's Smoke: done a second ago, its container still exiting.
+        assert!(!stops_on_poll(&job("completed", Some("success"), "rnr_1", Some(at - 1_000)), "rnr_1", at));
+        assert!(!stops_on_poll(&job("completed", Some("failure"), "rnr_1", Some(at - 30_000)), "rnr_1", at));
+        // A runner still holding it a minute on is stopped.
+        assert!(stops_on_poll(&job("completed", Some("success"), "rnr_1", Some(at - WRAPPING_UP_MS)), "rnr_1", at));
+        assert!(stops_on_poll(&job("completed", Some("success"), "rnr_1", None), "rnr_1", at));
+        // Cancelled, another runner's, or back in the queue: stopped at once.
+        assert!(stops_on_poll(&job("completed", Some("cancelled"), "rnr_1", Some(at - 1_000)), "rnr_1", at));
+        assert!(stops_on_poll(&job("completed", Some("success"), "rnr_2", Some(at - 1_000)), "rnr_1", at));
+        assert!(stops_on_poll(&job("queued", None, "rnr_1", Some(at - 1_000)), "rnr_1", at));
     }
 
     #[test]
