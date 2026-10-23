@@ -1359,6 +1359,15 @@ class Deployments {
           // A name that redirected elsewhere (a move undone) is an app again.
           this.db.prepare("DELETE FROM redirects WHERE script = ?").bind(row.script),
         ]);
+        // A pull request closed while its preview built: `pull.closed` took
+        // down what was up then, so the preview this build just put up is
+        // taken down here, or it would stay up for good. Asked after the app
+        // is written, so a close that comes later finds it.
+        if (await this.pullGone(row)) {
+          await this.removeApp(row.script);
+          await this.buildChanged(id);
+          return Response.json(ok(true));
+        }
         // Under its own hostname, what the dispatcher files each request
         // under (src/telemetry.ts); this also replaces a redirect the name
         // held while it was not an app.
@@ -1817,6 +1826,17 @@ class Deployments {
       // Its build is no longer live anywhere.
       this.db.prepare("UPDATE deployments SET status = 'down' WHERE script = ? AND status = 'ready'").bind(script),
     ]);
+  }
+
+  /** Whether a pull request's preview build is for one now closed or merged. */
+  private async pullGone(row: DeploymentRow): Promise<boolean> {
+    if (row.kind !== "preview" || row.number == null) return false;
+    const actor = await this.workspaceActor(row.workspace);
+    if (!actor) return false;
+    const [namespace, name] = row.repo.split("/") as [string, string];
+    const detail = await workClient(this.env.WORK).getPull({ namespace, name }, row.number, actor);
+    if (!detail.ok) return false;
+    return detail.value.pull.status !== "open" && detail.value.pull.status !== "draft";
   }
 
   private async takeDownBranchPreview(projectId: string, branch: string): Promise<void> {
