@@ -456,6 +456,9 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       await revokeCredentials(this.env.IDENTITY, this.ctx.storage);
       if (tracked) await this.closeRun("failed", `The sandbox could not start: ${String(error)}`);
       await this.settle(0);
+      // It never ran: nothing is metered, and a stop that follows (its
+      // sandbox destroyed) has nothing to report.
+      await this.ctx.storage.delete(["meter", "started", "run"]);
       throw error;
     }
   }
@@ -1168,6 +1171,12 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
         },
       });
     } catch (error) {
+      // This start's own sandbox is done with: left alone, the containers
+      // library goes on trying to start its container from its alarm, and
+      // could take a machine for a start nobody waits on (#426). Only a
+      // start of its own: the job's one sandbox is the one it starts in
+      // again.
+      if (args.start) await sandbox.destroy().catch(() => undefined);
       // No machine free: the actions service puts the job back in the
       // queue for its next sweep. What was reserved is given back already.
       if (noMachine(error)) {
