@@ -1,4 +1,5 @@
 import { type RouteConfig, index, layout, route } from "@react-router/dev/routes";
+import { PROFILE_TABS } from "./lib/tab-paths";
 
 export default [
   index("routes/home.tsx"),
@@ -62,6 +63,13 @@ export default [
   route("settings/menu.json", "routes/settings-menu-json.ts"),
   // People, apart from workspaces: `u` is a reserved name. Their profile's
   // tabs are paths (`/u/ada/pulls`); `?tab=` is sent on (lib/tab-paths.ts).
+  // Each tab is named outright: `u/:username/:tab` ranks level with
+  // `:owner/:repo/pulls`, and the browser, which learns routes as it goes,
+  // can break that tie the other way from the server and ask the profile's
+  // address for the repository's data.
+  ...[...PROFILE_TABS.filter((tab) => tab !== "overview"), "issues"].map((tab) =>
+    route(`u/:username/${tab}`, "routes/user.tsx", { id: `routes/user/${tab}` }),
+  ),
   route("u/:username/:tab?", "routes/user.tsx"),
   // The card that opens over a person's name or avatar (lib/hovercard.ts).
   // `-` is no workspace's name, so nothing else is ever found here.
