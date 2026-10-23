@@ -30,6 +30,7 @@ mod migrated;
 mod merge_message;
 mod mergeability;
 mod merging;
+mod opened;
 mod prefetch;
 mod pull_edits;
 mod pushed;
@@ -1064,6 +1065,8 @@ impl Work {
         let number = items::next_number(self, &workspace, Some(&repo.id)).await?;
         let timestamp = rfc3339(now);
         let (author, requested_by) = authorship(&a.actor);
+        // Opened by a workflow job's token: its event starts no workflows.
+        let job_run = g1t_contracts::events::job_run_of(&a.actor);
         // The work items it says it closes and is part of (closing.rs).
         let item_id = item.as_ref().map(|held| held.item.id.clone());
         let named =
@@ -1074,8 +1077,9 @@ impl Work {
                    (id, repo_id, number, item_id, title, body, agent, runtime,
                     status, fork_repo_id, fork_namespace, fork_name, source_branch, head_commit,
                     author_id, author_name, requested_by_id, requested_by_name, created_at, updated_at,
-                    base_branch, head_repo_id, head_namespace, head_name, closes_items, parts)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    base_branch, head_repo_id, head_namespace, head_name, closes_items, parts, opened_job_run,
+                    opened_event_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
             )
             .bind(&[
                 id.as_str().into(),
@@ -1104,6 +1108,7 @@ impl Work {
                 optional(&head_path.as_ref().map(|path| path.name.clone())),
                 serde_json::to_string(&named.close_ids())?.into(),
                 serde_json::to_string(&named.part_ids())?.into(),
+                optional(&job_run.map(str::to_owned)),
             ])?
             .run()
             .await?;
@@ -1117,21 +1122,9 @@ impl Work {
             items::note(self, &held.item.id, &a.actor, &text).await?;
             items::touch(self, held, &repo, &a.actor).await?;
         }
-        // Its head and merge refs in the repository, before its events go out.
-        self.keep_pull_refs(&pull).await;
-        // A coding agent's commits make it that agent's (cloud_agents.rs).
-        self.mark_agent_pull(&pull, None).await;
-        self.publish(
-            "pull.opened",
-            &repo.id,
-            &a.actor,
-            PullEvent {
-                agent: Some(pull.agent.clone()),
-                base: pull.base.clone(),
-                ..Self::pull_event(&pull)
-            },
-        )
-        .await?;
+        // Its refs, then `pull.opened`; sent by the cron instead when this is
+        // cut short before it (opened.rs).
+        self.tell_opened(&pull, Some(a.actor.id.clone()), job_run).await?;
         // Its code owners asked to review (codeowners.rs).
         self.refresh_code_owners(&pull).await;
         let pull = self.pull(&repo.id, number).await?.unwrap_or(pull);
@@ -2806,7 +2799,8 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
 /// that are due (coordination/titles.rs), keeps the plan up
 /// (items/plan_settle.rs), closes the cycles that are over, carrying
 /// what is open in them into the next (items/cycles.rs), and catches up on
-/// pushes to pull requests whose event never arrived (heads.rs).
+/// pushes to pull requests whose event never arrived (heads.rs), and
+/// tells of pull requests whose opening was cut short (opened.rs).
 #[event(scheduled)]
 async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     let moved = async {
@@ -2843,6 +2837,13 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     };
     if let Err(error) = swept.await {
         worker::console_error!("comparing pull requests with their branches: {error}");
+    }
+    let told = async {
+        let work = service(&env)?;
+        work.sweep_opened().await
+    };
+    if let Err(error) = told.await {
+        worker::console_error!("telling of pull requests opened without their event: {error}");
     }
 }
 
