@@ -7,7 +7,13 @@ import {
   answered,
   capReached,
   describeError,
+  holdContainer,
+  INACTIVITY_MARGIN_SECONDS,
+  inactivityTimeoutMs,
+  KEEP_RESIDENT_SECONDS,
+  keepsResident,
   MACHINE_PAUSES_MS,
+  MAX_INACTIVITY_MS,
   noMachine,
   OWED_GIVE_UP_MS,
   OWED_MAX_DELAY_SECONDS,
@@ -274,4 +280,59 @@ test("a failed start tells the actions service to wait for a machine, or why the
     message: "The runner could not start the job: the container exited with code 1",
   });
   assert.ok(START_TRIES >= 2);
+});
+
+test("a running sandbox wakes itself well inside the 70 seconds after which Cloudflare evicts an idle object", () => {
+  // Cloudflare case #02393300: evicted about 70 s after the last request or
+  // alarm. Two wake-ups fit in that, so one that starts late still counts.
+  assert.ok(KEEP_RESIDENT_SECONDS * 2 < 70);
+  assert.ok(KEEP_RESIDENT_SECONDS >= 10);
+  assert.equal(keepsResident(true, false), true);
+  // Stopped, or a self-hosted runner's task: nothing here to keep awake.
+  assert.equal(keepsResident(false, false), false);
+  assert.equal(keepsResident(true, true), false);
+});
+
+test("a sandbox's container outlives an eviction to the end of its time cap, its alarm's grace and a margin", () => {
+  const started = Date.parse("2026-10-23T13:50:30Z");
+  const grace = 180;
+  const margin = INACTIVITY_MARGIN_SECONDS * 1000;
+  // CI Rust (1) of #436: a 60-minute job, held as it started.
+  assert.equal(inactivityTimeoutMs(started, 60, started, grace, 100), (60 * 60 + grace) * 1000 + margin);
+  // Taken up again 20 minutes in (a deploy restarted the object): what is left.
+  assert.equal(inactivityTimeoutMs(started, 60, started + 20 * 60_000, grace, 100), (40 * 60 + grace) * 1000 + margin);
+  // Past its cap, still there for `timeUp` to stop.
+  assert.equal(inactivityTimeoutMs(started, 60, started + 2 * 60 * 60_000, grace, 100), margin);
+  // No cap: the sandbox's `sleepAfter`.
+  assert.equal(inactivityTimeoutMs(started, null, started, grace, 100), 100 * 60_000 + margin);
+  assert.equal(inactivityTimeoutMs(undefined, 60, started, grace, 100), 100 * 60_000 + margin);
+  // The longest guardrail (240 minutes) fits Cloudflare's 6 hours; nothing exceeds it.
+  assert.ok(inactivityTimeoutMs(started, 240, started, grace, 100) < MAX_INACTIVITY_MS);
+  assert.equal(inactivityTimeoutMs(started, 24 * 60, started, grace, 100), MAX_INACTIVITY_MS);
+});
+
+test("a container's inactivity timeout is set when the runtime has the call, and a refusal is logged, never thrown", async () => {
+  const set: number[] = [];
+  assert.equal(await holdContainer({ setInactivityTimeout: async (ms) => void set.push(ms) }, 3_900_000.4), true);
+  assert.deepEqual(set, [3_900_000]);
+  // Never 0 (a TypeError) nor past 6 hours (a rejection).
+  await holdContainer({ setInactivityTimeout: async (ms) => void set.push(ms) }, 0);
+  await holdContainer({ setInactivityTimeout: async (ms) => void set.push(ms) }, MAX_INACTIVITY_MS * 2);
+  assert.deepEqual(set, [3_900_000, 1, MAX_INACTIVITY_MS]);
+
+  const logged: unknown[][] = [];
+  const refused = await holdContainer(
+    {
+      setInactivityTimeout: async () => {
+        throw new RangeError("inactivity timeout too long");
+      },
+    },
+    60_000,
+    (...data) => logged.push(data),
+  );
+  assert.equal(refused, false);
+  assert.deepEqual(logged, [["container inactivity timeout not set", "inactivity timeout too long"]]);
+  // A runtime without it, or no container: nothing to do.
+  assert.equal(await holdContainer({}, 60_000), false);
+  assert.equal(await holdContainer(undefined, 60_000), false);
 });

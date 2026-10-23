@@ -86,6 +86,76 @@ export function withinTimeCap(started: number | null | undefined, capMinutes: nu
 }
 
 /**
+ * How often a sandbox whose container runs is woken by its own alarm
+ * (`keepResident`). Cloudflare evicts a Durable Object about 70 seconds
+ * after the last request or alarm reached it, and stops its container with
+ * a SIGTERM: on 2026-10-23 CI Rust (1) of #436 died that way at 13:52:11,
+ * its object evicted at 13:51:45 with the library's keep-alive alarm still
+ * waiting in it (Cloudflare case #02393300). The library's alarm waits
+ * inside one invocation for up to three minutes, which does not count; a
+ * new alarm every 25 seconds does, with room for one that starts late.
+ */
+export const KEEP_RESIDENT_SECONDS = 25;
+
+/** The longest inactivity timeout Cloudflare accepts (`setInactivityTimeout`): 6 hours. */
+export const MAX_INACTIVITY_MS = 6 * 60 * 60 * 1000;
+
+/** How long a container outlives its run's time cap and its alarm, should its object be evicted anyway. */
+export const INACTIVITY_MARGIN_SECONDS = 5 * 60;
+
+/**
+ * How long a sandbox's container keeps running after its Durable Object
+ * goes inactive (`setInactivityTimeout`): to the end of its run's time cap,
+ * its alarm's grace and `INACTIVITY_MARGIN_SECONDS`, counted from `started`;
+ * without a cap, `fallbackMinutes` from now. At least the margin, so a
+ * sandbox whose cap has just passed is still there for its `timeUp` to
+ * stop, and at most `MAX_INACTIVITY_MS`.
+ */
+export function inactivityTimeoutMs(
+  started: number | null | undefined,
+  capMinutes: number | null | undefined,
+  now: number,
+  graceSeconds: number,
+  fallbackMinutes: number,
+): number {
+  const margin = INACTIVITY_MARGIN_SECONDS * 1000;
+  const capped = typeof started === "number" && typeof capMinutes === "number" && capMinutes > 0;
+  const left = capped ? started + (capMinutes * 60 + graceSeconds) * 1000 - now : fallbackMinutes * 60 * 1000;
+  return Math.min(MAX_INACTIVITY_MS, Math.max(0, left) + margin);
+}
+
+/**
+ * Tells Cloudflare to keep `container` running for `ms` after its Durable
+ * Object goes inactive. Never throws: a runtime without the call, or one
+ * that refuses the value, leaves the container as it was, and the
+ * sandbox's own alarm (`KEEP_RESIDENT_SECONDS`) still keeps it awake.
+ * Returns whether it was set.
+ */
+export async function holdContainer(
+  container: { setInactivityTimeout?: (durationMs: number) => Promise<void> } | undefined,
+  ms: number,
+  log: (...data: unknown[]) => void = console.error,
+): Promise<boolean> {
+  if (typeof container?.setInactivityTimeout !== "function") return false;
+  try {
+    await container.setInactivityTimeout(Math.min(MAX_INACTIVITY_MS, Math.max(1, Math.round(ms))));
+    return true;
+  } catch (error) {
+    log("container inactivity timeout not set", describeError(error));
+    return false;
+  }
+}
+
+/**
+ * Whether a sandbox's keep-alive alarm (`keepResident`) is due again: its
+ * container runs here. A self-hosted runner's task has no container, and a
+ * stopped sandbox has nothing to keep.
+ */
+export function keepsResident(running: boolean, remote: boolean): boolean {
+  return running && !remote;
+}
+
+/**
  * Whether the run a sandbox holds now has used its whole time cap, so a
  * `timeUp` alarm may stop it. A sandbox's Durable Object is named for its
  * work (`actions:{job}` and the like), and a re-run of that work starts in
