@@ -106,11 +106,16 @@ pub struct Settings {
     pub computer_cpus: u32,
     #[serde(default)]
     pub computer_memory_mib: u64,
-    /// g1t's runner image, which jobs asking for one of g1t's machines run
-    /// in: passed to the runner as `G1T_HOSTED_IMAGE`. None: it takes none
-    /// of those jobs.
+    /// g1t's machine image, which jobs asking for one of g1t's machines
+    /// run in: passed to the runner as `G1T_HOSTED_IMAGE`. Empty or None:
+    /// it takes none of those jobs. The launcher always says it, empty
+    /// when it is off, so a configure turns it off too.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hosted_image: Option<String>,
+    /// Its size unpacked, as the release says, for the runner's word on
+    /// pulling it: `G1T_HOSTED_IMAGE_SIZE`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hosted_image_size: Option<u64>,
 }
 
 /// What `guest status` says, and the launcher reports.
@@ -295,6 +300,9 @@ pub fn sysbox_run_args(settings: &Settings, name: &str, data: &str, env_file: Op
     }
     if let Some(image) = settings.hosted_image.as_deref().filter(|image| !image.trim().is_empty()) {
         args.extend(["-e".into(), format!("{}={image}", crate::selfhosted::exec::HOSTED_IMAGE_ENV)]);
+        if let Some(size) = settings.hosted_image_size.filter(|size| *size > 0) {
+            args.extend(["-e".into(), format!("{}={size}", crate::selfhosted::exec::HOSTED_IMAGE_SIZE_ENV)]);
+        }
     }
     if let Some(file) = env_file {
         args.extend(["--env-file".into(), file.into()]);
@@ -441,7 +449,7 @@ fn configure(bytes: &[u8]) -> Result<()> {
         (settings.computer_cpus, settings.computer_memory_mib) = (given.computer_cpus, given.computer_memory_mib);
     }
     if given.hosted_image.is_some() {
-        settings.hosted_image = given.hosted_image;
+        (settings.hosted_image, settings.hosted_image_size) = (given.hosted_image, given.hosted_image_size);
     }
     write_private(SETTINGS, &serde_json::to_vec_pretty(&settings)?)
 }
@@ -946,6 +954,11 @@ eth0\t00E01EAC\t00000000\t0001\t0\t0\t0\t00F0FFFF\t0\t0\t0\n";
         assert!(!plain.contains("G1T_HOSTED_IMAGE"), "no image of g1t's machines: none of their jobs");
         let hosted = Settings { hosted_image: Some("g1t.sh/flagon-io/g1t-hosted@sha256:cd".into()), ..Settings::default() };
         assert!(runner_run_args(&hosted, false).contains(&"G1T_HOSTED_IMAGE=g1t.sh/flagon-io/g1t-hosted@sha256:cd".to_owned()));
+        assert!(!runner_run_args(&hosted, false).join(" ").contains("G1T_HOSTED_IMAGE_SIZE"), "no size known: none said");
+        let sized = Settings { hosted_image_size: Some(5_636_544_756), ..hosted };
+        assert!(runner_run_args(&sized, false).contains(&"G1T_HOSTED_IMAGE_SIZE=5636544756".to_owned()));
+        let off = Settings { hosted_image: Some(String::new()), hosted_image_size: Some(1), ..Settings::default() };
+        assert!(!runner_run_args(&off, false).join(" ").contains("G1T_HOSTED_IMAGE"), "turned off: none of their jobs");
     }
 
     #[test]

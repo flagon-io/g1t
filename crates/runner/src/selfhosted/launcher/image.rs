@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, anyhow, bail};
 use sha2::{Digest, Sha256};
 
-use crate::selfhosted::update::{self, SandboxFile};
+use crate::selfhosted::update::{self, HostedImage, SandboxFile, SandboxRelease};
 
 /// The images a sandbox needs, on disk and checked.
 #[derive(Clone, Debug, Default)]
@@ -29,6 +29,18 @@ pub struct Local {
     pub files: BTreeMap<String, PathBuf>,
     /// The runner's image, by digest.
     pub runner_image: Option<String>,
+    /// g1t's machine image for this machine's architecture, as the release
+    /// names it: none on arm64, which it isn't built for.
+    pub hosted_image: Option<HostedImage>,
+}
+
+/// g1t's machine image a release names for this machine's architecture.
+pub fn hosted_image(sandbox: &SandboxRelease) -> Option<HostedImage> {
+    hosted_image_for(sandbox, arch())
+}
+
+fn hosted_image_for(sandbox: &SandboxRelease, arch: &str) -> Option<HostedImage> {
+    sandbox.hosted_images.get(arch).filter(|hosted| !hosted.image.trim().is_empty()).cloned()
 }
 
 /// This machine's architecture, as releases name it.
@@ -77,7 +89,7 @@ pub fn obtain(site: &str, manifest: &update::Manifest, keys: &[String], images: 
         }
         files.insert(key.clone(), path);
     }
-    Ok(Local { version: manifest.version.clone(), files, runner_image: sandbox.runner_image.clone() })
+    Ok(Local { version: manifest.version.clone(), files, runner_image: sandbox.runner_image.clone(), hosted_image: hosted_image(sandbox) })
 }
 
 /// How far a download is, as a log line the desktop app reads for its
@@ -156,7 +168,7 @@ pub fn local(keys: &[String], given: &Path, runner_image: Option<String>) -> Res
             files.insert(key.clone(), found);
         }
     }
-    Ok(Local { version: "local".into(), files, runner_image })
+    Ok(Local { version: "local".into(), files, runner_image, hosted_image: None })
 }
 
 /// Removes every version but `keep`.
@@ -200,6 +212,20 @@ mod tests {
             serde_json::from_str(r#"{"version":"0.3.0","files":{},"sandbox":{"runner_image":"r@sha256:1","files":{"wsl-x64":{"name":"w.tar.gz","sha256":"00"}}}}"#).unwrap();
         let refused = obtain("https://g1t.sh", &manifest, &["vm-arm64-disk".into()], &std::env::temp_dir(), &|_| {}).unwrap_err();
         assert!(refused.to_string().contains("no sandbox image vm-arm64-disk"));
+    }
+
+    #[test]
+    fn g1ts_machine_image_is_named_for_x64_alone() {
+        let manifest: update::Manifest = serde_json::from_str(
+            r#"{"version":"0.3.7","files":{},"sandbox":{"runner_image":"r@sha256:1","hosted_images":{"x64":{"image":"g1t.sh/flagon-io/g1t-hosted@sha256:d5","size":5636544756}},"files":{}}}"#,
+        )
+        .unwrap();
+        let sandbox = manifest.sandbox.unwrap();
+        let x64 = hosted_image_for(&sandbox, "x64").unwrap();
+        assert_eq!((x64.image.as_str(), x64.size), ("g1t.sh/flagon-io/g1t-hosted@sha256:d5", Some(5_636_544_756)));
+        assert_eq!(hosted_image_for(&sandbox, "arm64"), None, "an arm64 sandbox can't run it, so it isn't given it");
+        let older: update::Manifest = serde_json::from_str(r#"{"version":"0.3.6","files":{},"sandbox":{"runner_image":"r@sha256:1","files":{}}}"#).unwrap();
+        assert_eq!(hosted_image_for(&older.sandbox.unwrap(), "x64"), None, "a release from before it names none");
     }
 
     #[test]

@@ -117,6 +117,7 @@ impl Backend for SysboxHost {
             sizes: given.sizes.or(merged.sizes),
             computer_cpus: if given.computer_cpus > 0 { given.computer_cpus } else { merged.computer_cpus },
             computer_memory_mib: if given.computer_cpus > 0 { given.computer_memory_mib } else { merged.computer_memory_mib },
+            hosted_image_size: if given.hosted_image.is_some() { given.hosted_image_size } else { merged.hosted_image_size },
             hosted_image: given.hosted_image.or(merged.hosted_image),
         };
         super::write_private(&self.settings_path(), &serde_json::to_vec_pretty(&merged)?)

@@ -30,6 +30,7 @@ mod config;
 #[cfg(unix)]
 mod engine;
 mod exec;
+mod hosted;
 mod launcher;
 mod native;
 mod needs;
@@ -387,6 +388,8 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
         "machine": options.value("machine").map(str::to_owned).or_else(machine_fingerprint),
     });
     let hosted_image = options.value("hosted-image").map(str::to_owned).or_else(|| std::env::var(exec::HOSTED_IMAGE_ENV).ok()).filter(|i| !i.trim().is_empty());
+    // Said only once it is here: `run` pulls it first (hosted.rs).
+    let hosted_image = hosted_image.filter(|image| hosted::present(image));
     exec::capacity(options.value("memory"), options.value("cpus"), !options.flag("no-job-docker"), isolation, hosted_image.as_deref()).add_to(&mut body);
     body["sizes"] = json!(offered_sizes);
     let registered = Api::register(&api, &body)?;
@@ -595,7 +598,13 @@ fn run(folder: &Path, once: bool) -> Result<()> {
     // What a job here gets, told to g1t with each poll: asked once, as
     // whether Docker answers takes a moment.
     let hosted_image = exec::hosted_image(&config);
-    let capacity = exec::capacity(config.memory.as_deref(), config.cpus.as_deref(), config.job_docker, isolation, hosted_image.as_deref());
+    let given = exec::capacity(config.memory.as_deref(), config.cpus.as_deref(), config.job_docker, isolation, hosted_image.as_deref());
+    // g1t's machine image, pulled once before g1t is told this runner has
+    // it, so no job waits on it (hosted.rs).
+    let hosted_ready = match hosted_image.as_deref() {
+        Some(image) if given.hosted_image => hosted::Ready::start(image, hosted::size_from_env()),
+        _ => hosted::Ready::now(false),
+    };
     // Which of g1t's machines it takes jobs for: picked once for a runner
     // told nothing, and kept.
     let machine = sizes::machine(isolation);
@@ -704,6 +713,7 @@ fn run(folder: &Path, once: bool) -> Result<()> {
         }
         let running: Vec<String> = current.iter().map(|r| r.id.clone()).collect();
         let wait = if current.is_some() { 0 } else { IDLE_WAIT_MS };
+        let capacity = api::Capacity { hosted_image: given.hosted_image && hosted_ready.ready(), ..given };
         let poll = match api.poll(&running, wait, isolation.as_str(), &capacity, &offered) {
             Ok(poll) => {
                 backoff = Duration::from_secs(2);

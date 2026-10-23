@@ -5,7 +5,7 @@
 //! ```text
 //! g1t-runner sandbox up [--url https://g1t.sh --token g1trt_…] [--name NAME]
 //!     [--labels a,b] [--group GROUP] [--cpus N] [--memory 8g] [--disk 64g]
-//!     [--hosted-image REF] [--only linux,windows] [--no-native | --native] [--state-dir DIR] [--json]
+//!     [--hosted-image REF|none|default] [--only linux,windows] [--no-native | --native] [--state-dir DIR] [--json]
 //!     [--image-file PATH] [--runner-image REF] [--runner-image-file TAR]
 //! g1t-runner sandbox down [--only linux,windows] [--drain] [--delete] [--json]
 //! g1t-runner sandbox status [--json]
@@ -124,6 +124,7 @@ use super::needs::{self, Need, WindowsFacts};
 use super::private::{self, write_private};
 use super::{JobStatus, Options, RunnerStatus, VERSION, config, log};
 use super::sizes::{self, SizeChoice, SizesView};
+use super::update::HostedImage;
 use guest::{GuestStatus, Settings};
 
 /// What `status --json`'s shape is.
@@ -225,10 +226,52 @@ pub struct Saved {
     pub sizes: Option<Vec<SizeChoice>>,
     #[serde(default)]
     pub sizes_picked: bool,
-    /// g1t's runner image, which jobs asking for one of g1t's machines run
-    /// in (`up --hosted-image`). None: the Linux runner takes none of them.
+    /// g1t's machine image as `up --hosted-image` named it, over the
+    /// release's: an image, or `none` to take no jobs asking for g1t's
+    /// machines. None: the release's (`release_hosted_image`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hosted_image: Option<String>,
+    /// g1t's machine image the sandbox's release names for this computer's
+    /// architecture (x64 alone), kept from the release the sandbox was made
+    /// or last updated from. None on arm64, and from releases before it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release_hosted_image: Option<HostedImage>,
+}
+
+/// What `up --hosted-image none` keeps: no image, so no jobs asking for
+/// g1t's machines.
+const HOSTED_OFF: &str = "none";
+
+/// What `up --hosted-image VALUE` keeps: `none` (or `off`) turns g1t's
+/// machine image off, `default` (or nothing) goes back to the release's,
+/// and anything else is the image.
+fn hosted_choice(given: &str) -> Option<String> {
+    match given.trim() {
+        "" | "default" => None,
+        "none" | "off" => Some(HOSTED_OFF.to_owned()),
+        image => Some(image.to_owned()),
+    }
+}
+
+/// g1t's machine image the Linux runner is given: the one `--hosted-image`
+/// named, else the release's for this computer (x64 alone: on arm64 there
+/// is none, and the runner takes no jobs asking for g1t's machines), unless
+/// it was turned off.
+pub fn hosted_of(saved: &Saved) -> Option<HostedImage> {
+    let release = saved.release_hosted_image.clone().filter(|hosted| !hosted.image.trim().is_empty());
+    match saved.hosted_image.as_deref() {
+        Some(HOSTED_OFF) => None,
+        Some(image) => Some(HostedImage { image: image.to_owned(), size: release.filter(|r| r.image == image).and_then(|r| r.size) }),
+        None => release,
+    }
+}
+
+/// Keeps what a release says of g1t's machine image; an unchecked local
+/// image (`--image-file`) says nothing, so the last release's stays.
+fn keep_release_hosted(saved: &mut Saved, local: &image::Local) {
+    if local.version != "local" {
+        saved.release_hosted_image = local.hosted_image.clone();
+    }
 }
 
 impl Saved {
@@ -297,6 +340,12 @@ pub struct Status {
     /// --set` changes them. Older launchers leave it out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sizes: Option<SizesView>,
+    /// g1t's machine image the Linux runner runs jobs asking for g1t's
+    /// machines in (`hosted_of`); none when it takes none of them (arm64,
+    /// `--hosted-image none`, a release before it). Older launchers leave
+    /// it out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hosted_image: Option<String>,
 }
 
 /// One kind of job this computer can run sandboxed.
@@ -727,6 +776,7 @@ pub fn status(dir: &Path) -> Status {
         state_dir: dir.display().to_string(),
         warnings: warnings(dir),
         sizes: sizes_view(&saved),
+        hosted_image: hosted_of(&saved).map(|hosted| hosted.image),
     }
 }
 
@@ -764,11 +814,14 @@ fn settle_sizes(saved: &mut Saved) -> Vec<SizeChoice> {
 /// the computer its share is of.
 fn sized(settings: Settings, saved: &mut Saved) -> Settings {
     let machine = linux_machine(&resources_of(saved));
+    let hosted = hosted_of(saved);
     Settings {
         sizes: Some(settle_sizes(saved)),
         computer_cpus: machine.cpus,
         computer_memory_mib: machine.memory_mib,
-        hosted_image: saved.hosted_image.clone(),
+        // Always said, empty when off, so a runner that had one loses it.
+        hosted_image: Some(hosted.as_ref().map(|hosted| hosted.image.clone()).unwrap_or_default()),
+        hosted_image_size: hosted.and_then(|hosted| hosted.size),
         ..settings
     }
 }
@@ -1042,8 +1095,11 @@ Linux jobs are taken for (`--set 2-core,4-core:8:16g`, or `--pick` to
 choose again); a running Linux runner drains and starts again with them,
 and the sandbox's share grows to hold the largest. `resources` sets the
 share itself (CPUs and memory), and starts Linux jobs again the same way.
-`up --hosted-image REF` names g1t's runner image, which jobs asking for
-g1t's machines run in: without one, Linux jobs take none of them. Every command takes --state-dir DIR
+Jobs asking for g1t's machines run in g1t's machine image, which the
+release names for x64 computers (none on arm64) and the Linux runner
+pulls once (5.6 GB) before it takes them: `up --hosted-image REF` names
+another, `none` takes none of those jobs, and `default` goes back to the
+release's. Every command takes --state-dir DIR
 (default ~/.g1t-runner/sandbox).
 Docs: https://docs.g1t.sh/guides/self-hosted-runners/#sandbox-on-your-computer";
 
@@ -1157,7 +1213,7 @@ fn up(options: &Options, dir: &Path) -> Result<()> {
         saved.group = Some(group.to_owned());
     }
     if let Some(image) = options.value("hosted-image") {
-        saved.hosted_image = Some(image.trim().to_owned()).filter(|image| !image.is_empty());
+        saved.hosted_image = hosted_choice(image);
     }
     let defaults = default_resources(std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2), total_memory_mib());
     let mut resources = if saved.resources == Resources::default() { defaults } else { saved.resources };
@@ -1219,6 +1275,7 @@ fn up(options: &Options, dir: &Path) -> Result<()> {
                 if local.runner_image.is_some() {
                     saved.runner_image = local.runner_image.clone();
                 }
+                keep_release_hosted(saved, &local);
             }
             // An update that stopped half-way, after the old system was
             // removed, left the registration here.
@@ -1305,10 +1362,13 @@ fn obtain_image(options: &Options, saved: &Saved, backend: &dyn Backend, dir: &P
     if keys.is_empty() {
         // Sysbox on Linux: only the runner's image, named in the release.
         let manifest = image::latest(saved.site());
+        let version = manifest.as_ref().map(|m| m.version.clone()).unwrap_or_else(|_| VERSION.to_owned());
+        let sandbox = manifest.ok().and_then(|m| m.sandbox);
         return Ok(image::Local {
-            version: manifest.as_ref().map(|m| m.version.clone()).unwrap_or_else(|_| VERSION.to_owned()),
+            version,
             files: Default::default(),
-            runner_image: manifest.ok().and_then(|m| m.sandbox).and_then(|s| s.runner_image).or_else(|| saved.runner_image.clone()),
+            runner_image: sandbox.as_ref().and_then(|s| s.runner_image.clone()).or_else(|| saved.runner_image.clone()),
+            hosted_image: sandbox.as_ref().and_then(image::hosted_image),
         });
     }
     let manifest = image::latest(saved.site())?;
@@ -1383,6 +1443,15 @@ fn update_sandbox(options: &Options, dir: &Path) -> Result<()> {
         let manifest = image::latest(saved.site())?;
         if saved.image_version.as_deref().is_some_and(|current| !super::update::newer(&manifest.version, current)) {
             log(&format!("The sandbox's image is the newest, {}.", manifest.version));
+            // Its release may name g1t's machine image where the one the
+            // sandbox was made from didn't.
+            let hosted = manifest.sandbox.as_ref().and_then(image::hosted_image);
+            if hosted != saved.release_hosted_image {
+                let mut saved = saved;
+                saved.release_hosted_image = hosted;
+                saved.save(dir)?;
+                return restart_linux(dir, "g1t's machine image as the release names it");
+            }
             return Ok(());
         }
         let keys = backend.image_keys();
@@ -1425,6 +1494,7 @@ fn update_sandbox(options: &Options, dir: &Path) -> Result<()> {
         if local.runner_image.is_some() {
             saved.runner_image = local.runner_image.clone();
         }
+        keep_release_hosted(saved, &local);
         let settings = Settings {
             runner_image: saved.runner_image.clone().unwrap_or_default(),
             image_version: local.version.clone(),
@@ -1485,6 +1555,55 @@ mod tests {
         assert_eq!(linux_state(true, true, true, None, Some(&failed), None), "error");
         assert_eq!(linux_state(true, true, true, Some("updating"), Some(&running), None), "updating");
         assert_eq!(linux_state(true, false, false, Some("starting"), None, None), "starting");
+    }
+
+    #[test]
+    fn the_linux_runner_is_given_the_releases_machine_image_unless_told_otherwise() {
+        let release = HostedImage { image: "g1t.sh/flagon-io/g1t-hosted@sha256:d5".into(), size: Some(5_636_544_756) };
+        let mut saved = Saved { release_hosted_image: Some(release.clone()), ..Saved::default() };
+        assert_eq!(hosted_of(&saved), Some(release.clone()), "the release's, by default");
+        let settings = sized(Settings::default(), &mut saved);
+        assert_eq!((settings.hosted_image.as_deref(), settings.hosted_image_size), (Some(release.image.as_str()), Some(5_636_544_756)));
+
+        // `--hosted-image REF` over it; the same image keeps the release's size.
+        saved.hosted_image = hosted_choice("my.registry/hosted:1");
+        assert_eq!(hosted_of(&saved), Some(HostedImage { image: "my.registry/hosted:1".into(), size: None }));
+        saved.hosted_image = hosted_choice(&release.image);
+        assert_eq!(hosted_of(&saved), Some(release.clone()));
+
+        // `none` (or `off`) turns it off, and the runner is told so.
+        for off in ["none", "off", " none "] {
+            saved.hosted_image = hosted_choice(off);
+            assert_eq!(hosted_of(&saved), None, "{off}");
+        }
+        let settings = sized(Settings::default(), &mut saved);
+        assert_eq!(settings.hosted_image.as_deref(), Some(""), "said, empty, so a runner that had one loses it");
+
+        // `default`, or nothing, goes back to the release's.
+        for back in ["default", ""] {
+            saved.hosted_image = hosted_choice(back);
+            assert_eq!(hosted_of(&saved), Some(release.clone()), "{back:?}");
+        }
+
+        // An arm64 computer's release names none, and a release before it none.
+        let arm = Saved::default();
+        assert_eq!(hosted_of(&arm), None);
+        assert_eq!(sized(Settings::default(), &mut arm.clone()).hosted_image.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn an_update_keeps_what_its_release_says_of_the_machine_image_and_a_local_image_says_nothing() {
+        let release = HostedImage { image: "g1t.sh/flagon-io/g1t-hosted@sha256:d5".into(), size: None };
+        let mut saved = Saved::default();
+        keep_release_hosted(&mut saved, &image::Local { version: "0.3.7".into(), hosted_image: Some(release.clone()), ..image::Local::default() });
+        assert_eq!(saved.release_hosted_image, Some(release.clone()));
+        keep_release_hosted(&mut saved, &image::Local { version: "local".into(), ..image::Local::default() });
+        assert_eq!(saved.release_hosted_image, Some(release), "--image-file is not a release");
+        keep_release_hosted(&mut saved, &image::Local { version: "0.3.8".into(), ..image::Local::default() });
+        assert_eq!(saved.release_hosted_image, None, "a release that names none");
+        let kept: Saved = serde_json::from_str(r#"{"hosted_image":"img@sha256:1"}"#).unwrap();
+        assert_eq!(kept.release_hosted_image, None, "a launcher before it kept only the image it was given");
+        assert_eq!(hosted_of(&kept).map(|h| h.image).as_deref(), Some("img@sha256:1"));
     }
 
     #[test]

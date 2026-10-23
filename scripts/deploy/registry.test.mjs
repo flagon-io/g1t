@@ -16,6 +16,7 @@ import {
   appendRunnerImage,
   bearerChallenge,
   parseRef,
+  repositoryClient,
   runnerConfig,
   runnerLayer,
   runnerManifest,
@@ -273,6 +274,21 @@ test("the runner's image is made in the registry from the base's manifest and on
   const before = registry.calls.length;
   await appendRunnerImage({ ref, base, binary, credentials, fetchImpl: registry.fetchImpl, created: "2026-10-13T00:00:00.000Z" });
   assert.ok(!registry.calls.slice(before).some((call) => call.startsWith("PATCH")));
+});
+
+test("a manifest is asked for by tag or digest, and one that is not there is no error", async () => {
+  const registry = fakeRegistry({ name: "acct/r" });
+  const bytes = Buffer.from(JSON.stringify({ schemaVersion: 2, layers: [] }));
+  registry.manifests.set(sha256(bytes), { bytes, type: OCI_MANIFEST });
+  const client = repositoryClient("r.example", "acct/r", { credentials: async () => ({ username: "u", password: "p" }), fetchImpl: registry.fetchImpl });
+  assert.equal(await client.hasManifest(sha256(bytes)), true);
+  assert.equal(await client.hasManifest("sha256:" + "0".repeat(64)), false);
+  assert.ok(
+    registry.calls.every((call) => call.startsWith("HEAD ")),
+    "nothing is downloaded",
+  );
+  const refused = repositoryClient("r.example", "acct/r", { credentials: async () => ({ username: "u", password: "no" }), fetchImpl: registry.fetchImpl });
+  await assert.rejects(refused.hasManifest(sha256(bytes)), /401/);
 });
 
 test("a base that is not where it should be, or not what base.json says, stops it", async () => {

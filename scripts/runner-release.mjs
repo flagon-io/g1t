@@ -17,7 +17,8 @@
 //   -windows-x64.exe    the binaries
 //   SHA256SUMS          `sha256  name`, one line each
 //   manifest.json       { version, published_at, files: { platform: { name, sha256 } },
-//                         sandbox: { runner_image, files: { "wsl-x64": { name, sha256, size }, … } } }
+//                         sandbox: { runner_image, hosted_images: { x64: { image, size } },
+//                                    files: { "wsl-x64": { name, sha256, size }, … } } }
 //   g1t-sandbox-*       the sandbox's images (scripts/sandbox-image.mjs), when built
 //
 // and at runner/: latest.json (the newest release's manifest) and
@@ -167,7 +168,10 @@ function verifyRelease() {
   for (const file of all) {
     if (sha256(readFileSync(join(dir, file.name))) !== file.sha256) throw new Error(`${file.name}'s SHA-256 is not the manifest's`);
   }
-  console.log(`verified ${m.version}: ${all.length} files${m.sandbox ? `, the sandbox's runner image ${m.sandbox.runner_image ?? "(none)"}` : ""}`);
+  const hosted = m.sandbox?.hosted_images?.x64?.image;
+  console.log(
+    `verified ${m.version}: ${all.length} files${m.sandbox ? `, the sandbox's runner image ${m.sandbox.runner_image ?? "(none)"}, g1t's machine image ${hosted ?? "(none)"}` : ""}`,
+  );
 }
 
 function publish(dryRun) {

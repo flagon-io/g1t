@@ -228,11 +228,16 @@ start it again. Both are on until you stop one.
 
 Jobs that ask for `ubuntu-latest` or another Linux label of g1t's machines
 run on it too, while it is idle and takes their [size](#job-sizes), unless your workspace turned off **Prefer our runners for
-hosted labels**; otherwise they run on g1t's machines. They run in g1t's
-runner image, which has what g1t's machines have, so only g1t-runner 0.3.7
-and later, given that image, take them. Such a job gets its
-run's secrets on your computer, as any job here does. See [jobs that ask
-for g1t's machines](/guides/self-hosted-runners/#jobs-that-ask-for-g1ts-machines).
+hosted labels**; otherwise they run on g1t's machines. They run in
+[g1t's machine image](/guides/self-hosted-runners/#g1ts-machine-image),
+which has what g1t's machines have, published at
+`g1t.sh/flagon-io/g1t-hosted` with each runner release. The runner pulls it
+once, about 5.6 GB, in the background when it first starts, and takes these
+jobs only once it has it; until then they run on g1t's machines. It is x64
+only: on an Apple silicon Mac or another arm64 computer, the runner takes
+none of them. Such a job gets its run's secrets on your computer, as any
+job here does. See [jobs that ask for g1t's
+machines](/guides/self-hosted-runners/#jobs-that-ask-for-g1ts-machines).
 
 A job still runs only on a runner with every label it names. The app's
 runner has `self-hosted`, its OS and architecture (`linux` for a runner

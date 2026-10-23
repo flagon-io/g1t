@@ -183,6 +183,13 @@ export function repositoryClient(host, name, { credentials, fetchImpl = fetch, s
       const bytes = Buffer.from(await response.arrayBuffer());
       return { bytes, digest: sha256(bytes), json: JSON.parse(bytes.toString("utf8")) };
     },
+    /** Whether the repository has a manifest by that tag or digest. */
+    async hasManifest(reference) {
+      const response = await send("HEAD", at(`manifests/${reference}`), { headers: { accept: ACCEPT } });
+      if (response.status === 404) return false;
+      if (!response.ok) throw await fail(`asking for ${name} ${reference}`, response);
+      return true;
+    },
     async blob(digest) {
       const response = await send("GET", at(`blobs/${digest}`));
       if (!response.ok) throw await fail(`reading blob ${digest}`, response);

@@ -120,7 +120,7 @@ container made for it and removed after it:
 
 | | |
 | --- | --- |
-| Image | The job's `container:`, else the runner's `--image`, else `node:24-bookworm`. A job that asked for one of [g1t's machines](#jobs-that-ask-for-g1ts-machines) runs in g1t's runner image instead (`--hosted-image`), which has what those machines have. |
+| Image | The job's `container:`, else the runner's `--image`, else `node:24-bookworm`. A job that asked for one of [g1t's machines](#jobs-that-ask-for-g1ts-machines) runs in [g1t's machine image](#g1ts-machine-image) instead (`--hosted-image`), which has what those machines have. |
 | Mounts | The harness (`g1t-runner`), read-only, and a volume of its own at `/home/runner`, removed after the job. Nothing else of the runner's or the machine's. |
 | Network | A Docker network of its own, removed after the job. Never the machine's network. |
 | Capabilities | Every one dropped but `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `FSETID`, `SETUID`, `SETGID`, `KILL` and `NET_BIND_SERVICE`, which installing packages and running test servers need. Raw sockets (`ping`) are among those dropped. |
@@ -220,7 +220,7 @@ and needs no token.
 | `--labels`, `--group` | As for [register](#register-options), for both runners. |
 | `--cpus` | The Linux VM's runner's CPUs, and so its jobs'. Half the computer's, at most 16, if left out. |
 | `--memory` | Its memory, such as `16g`. A quarter of the computer's, between 2 and 16 GB and never more than half, if left out. |
-| `--hosted-image` | g1t's runner image, which jobs [asking for g1t's machines](#jobs-that-ask-for-g1ts-machines) run in. Without it, the Linux runner takes none of those jobs. |
+| `--hosted-image` | The image jobs [asking for g1t's machines](#jobs-that-ask-for-g1ts-machines) run in. [g1t's machine image](#g1ts-machine-image) if left out, on an x64 computer: an arm64 one takes none of those jobs. `none` takes none of them; `default` goes back to g1t's. Kept until said otherwise, and `update` picks up a release's new one. |
 | `--disk` | The VM's disk on macOS and Linux, such as `64g` (64 GB if left out). On Windows the disk is not limited: WSL can only resize it with all of WSL shut down. |
 | `--only` | The kinds of job to start, of `linux`, `windows` and `macos` (`native` is this computer's own): turned on, and kept on. The others are left as they are, running or not. Without it, `up` starts every kind that isn't turned off. `down` takes it too. |
 | `--no-native`, `--native` | Turn the native capability off, or on again, as `down --only` and `up --only` do. Kept until said otherwise. |
@@ -502,6 +502,7 @@ the same object with `--json` when they are done, and exit 1 with
 | `turned_off` | On each capability: someone stopped it (`down --only`, `--no-native`). Its `state` is then `stopped`: stopped by a person, not failing, and nothing in `error`. |
 | `warnings` | Sentences about what on the computer weakens the sandbox ([what your computer can see](#what-your-computer-can-see)): a host-mode runner registered for the same account, or a state folder other users can read. Empty when nothing does; left out by earlier versions of `g1t-runner`. `status` without `--json` prints each as a line starting `Warning:`. |
 | `sizes` | The Linux runner's [sizes](#sizes): `machine` (this computer's `cpus` and `memory_mib`) and `share` (the sandbox's), `picked` and `reason` when the sizes were picked for you, `applies` (`restart`: a change starts Linux jobs again after their job), and `choices`, each size with `offered`, `given_cpus` and `given_memory_mib` when its jobs get more, `sandbox` (what a job gets) and `warning`. `g1t-runner sandbox sizes` changes them. Left out before 0.3.6. |
+| `hosted_image` | [g1t's machine image](#g1ts-machine-image) the Linux runner runs jobs asking for g1t's machines in, by digest. Left out when it takes none of them (an arm64 computer, `--hosted-image none`), and before 0.3.7. |
 
 Fields are only added; `schema` changes if one changes meaning.
 
@@ -629,7 +630,7 @@ isolation with `--no-docker`. See [isolation](#isolation).
 | `--no-docker` | Deprecated. Run jobs directly on the machine instead of in containers ([host mode](#host-mode-is-deprecated)). |
 | `--native` | Run jobs native to this OS, each in a throwaway VM of its own: [Windows Sandbox](#windows-jobs-in-windows-sandbox) on Windows. Registers with the OS's label and `vm` isolation, and refuses if the sandbox is not there. |
 | `--image` | The image workflow jobs run in when they name no `container:`. `node:24-bookworm` if left out. |
-| `--hosted-image` | g1t's runner image, which jobs asking for [g1t's machines](#jobs-that-ask-for-g1ts-machines) run in. `G1T_HOSTED_IMAGE` in the runner's environment overrides it. Without it, the runner takes none of those jobs. |
+| `--hosted-image` | The image jobs asking for [g1t's machines](#jobs-that-ask-for-g1ts-machines) run in: [g1t's machine image](#g1ts-machine-image), `g1t.sh/flagon-io/g1t-hosted@sha256:…` (x64 only). `G1T_HOSTED_IMAGE` in the runner's environment overrides it. Without it, the runner takes none of those jobs. |
 | `--memory` | Each job container's memory, such as `8g`. Three quarters of the runner's memory if left out. |
 | `--cpus` | Each job container's CPUs, such as `4` or `1.5`. Every CPU if left out. |
 | `--pids-limit` | The most processes in a job container. 4096 if left out. |
@@ -769,15 +770,15 @@ these hold:
   0.3.6, which says no sizes, takes the job when a job on it gets at least
   that machine's CPUs and memory (a job container's `--cpus` and
   `--memory`), and one too old to say either takes none.
-- **It runs them in g1t's runner image.** A job written for g1t's
-  machines expects what they have installed (Node, Python, Go, Rust and
-  the rest), which a runner's own image, `node:24-bookworm` by default,
-  lacks: such a job ran there and failed at once with `spawnSync cargo
-  ENOENT`. So only g1t-runner 0.3.7 and later take these jobs, and only
-  when given g1t's runner image (`--hosted-image`, or `up --hosted-image`
-  for the sandbox on your computer), which they run them in. Older
-  runners, and runners without it, never take them; the job runs on g1t's
-  machines.
+- **It runs them in [g1t's machine image](#g1ts-machine-image).** A job
+  written for g1t's machines expects what they have installed (Node,
+  Python, Go, Rust and the rest), which a runner's own image,
+  `node:24-bookworm` by default, lacks: such a job ran there and failed at
+  once with `spawnSync cargo ENOENT`. So only g1t-runner 0.3.7 and later
+  take these jobs, and only once they have that image to run them in:
+  given with `--hosted-image`, or by default in the sandbox on an x64
+  computer, and pulled. Older runners, runners without it, and arm64
+  sandboxes never take them; the job runs on g1t's machines.
 - **Docker, when the job uses it.** A job with `services:` or `container:`
   goes only to a runner whose jobs can use Docker: a sandboxed runner,
   whose jobs get [a Docker Engine of their own](#docker-in-jobs) unless it
@@ -793,6 +794,36 @@ these hold:
 Labels you gave a runner do not matter here: the job asks only for its OS
 and architecture. Windows and macOS labels are not offered: `windows-latest`
 alone still fails, and `runs-on: [self-hosted, windows]` runs it on yours.
+
+### g1t's machine image
+
+g1t's machines run jobs in one image, built from g1t's
+`services/runner/base/Dockerfile` with Node, Python, Go, Rust, Java, .NET, Ruby, Docker and the rest. Each
+runner release publishes it at `g1t.sh/flagon-io/g1t-hosted`, tagged as
+the base it is (`base-20261021-…`), and names it by digest in its signed
+manifest, so a runner pulls exactly the image the release names.
+
+- **It is large**: about 5.6 GB unpacked, and pulled **once**: a runner
+  keeps it, and pulls it again only when a release names a newer one
+  (the sandbox's runner then removes the old one).
+- **It is x64 only.** It is built for `linux/amd64`, so an arm64 sandbox
+  (an Apple silicon Mac, an arm64 Linux machine) is given none, and takes
+  no jobs asking for g1t's machines; `-arm` jobs run on g1t's machines.
+- **The sandbox uses it by default.** On an x64 computer, `sandbox up`
+  and `update` give the Linux runner the one the release names, with no
+  setup; `up --hosted-image none` turns it off, and `--hosted-image REF`
+  names another.
+- **No job waits for it.** A runner pulls it in the background as it
+  starts, and tells g1t it takes these jobs only once it has it: until
+  then they run on g1t's machines, and its log says *Pulling g1t's
+  machine image (5.6 GB, once)*. Should a job find it gone anyway
+  (removed by hand), it is pulled as the job starts, and **Set up job**
+  says why the job waited.
+
+A runner you register yourself takes it with `--hosted-image
+g1t.sh/flagon-io/g1t-hosted@sha256:…`; the digest is the
+`hosted_images.x64.image` in the `sandbox` section of the newest
+release's manifest, `https://g1t.sh/downloads/runner/latest.json`.
 
 ### Sizes
 
@@ -894,8 +925,8 @@ Turn it off for the workspace, or for one repository, when its jobs should
 only ever run on g1t's machines: when a job's secrets must not reach your
 members' computers, or when its timings must come from the same machine
 every run. What g1t's machines have installed is no longer a reason: the
-runners that take these jobs (0.3.7 and later, given g1t's runner image)
-run them in the same image as g1t's machines. Jobs that name `self-hosted` are not affected
+runners that take these jobs (0.3.7 and later, with [g1t's machine
+image](#g1ts-machine-image)) run them in the same image as g1t's machines. Jobs that name `self-hosted` are not affected
 either way.
 
 ## Groups
@@ -1075,7 +1106,7 @@ running fails. Runners offline for 14 days are removed by themselves.
 | --- | --- |
 | The job says *Waiting for a self-hosted runner with labels …* | No online runner has every one of those labels in a group that allows the repository. Compare the labels on the **Runners** page, check the runner's group, or start the runner. |
 | A job that asked for `ubuntu-latest` ran on g1t's machines while a runner was idle | Its log's **Set up job** says why. Compare what the runner says a job gets on the **Runners** page with the [machine's size](/guides/actions/#machine-sizes): give its jobs more with `--cpus` and `--memory`, or update a runner that shows no size. A job with `services:` or `container:` needs a runner whose jobs have Docker. Check its group allows the repository. |
-| A job that asked for `ubuntu-latest` never runs on your runners | A runner takes these jobs only from g1t-runner 0.3.7, and only with g1t's runner image (`--hosted-image`). Update it and give it one. |
+| A job that asked for `ubuntu-latest` never runs on your runners | A runner takes these jobs only from g1t-runner 0.3.7, and only once it has [g1t's machine image](#g1ts-machine-image): the sandbox on an x64 computer has it by default (`sandbox update` to a release that names it), and its log says when the pull is done; an arm64 one never does. A runner you registered yourself needs `--hosted-image`. |
 | *Runs with 8 GB instead of 12 GB* by a size, or *8 of 12 GB* in **Set up job** | The sandbox (or the machine) has less memory than the size, and at least its least: its jobs run with what there is. Give the sandbox's share more memory, or untick the size. |
 | A job ran out of memory on your runner, then *ran again on g1t's machines* | It was given less memory than its size and the kernel stopped a process of it for want of more, so g1t ran it once on its own machines. Give the share more memory, or untick the size, to keep such jobs on g1t's machines from the start. |
 | A job that asked for `ubuntu-latest` ran on someone's computer | Their desktop app's runner was free and fit the job. Turn **Prefer our runners for hosted labels** off for the repository (or the workspace) to keep its jobs on g1t's machines. |
