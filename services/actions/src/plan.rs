@@ -1068,7 +1068,14 @@ impl Actions {
         let mut forks_allowed: Option<bool> = None;
         // Each concurrency group its jobs join, and whether it cancels.
         let mut groups: Vec<(String, bool)> = Vec::new();
+        // The other combinations' rows, then the job's own row: one batch,
+        // so one transaction. Two passes of `advance` may decide on the same
+        // job at once (two jobs it needs finishing together); each row is
+        // written only while the job's own row still waits, so the second
+        // writes nothing, where it used to add every combination again
+        // (Deploy #561, #417).
         let mut statements = Vec::new();
+        let mut own = None;
         for (index, combination) in combinations.iter().enumerate() {
             let mut contexts = contexts.clone();
             contexts.insert("matrix".into(), Value::Object(combination.clone()));
@@ -1194,12 +1201,12 @@ impl Actions {
             if index == 0 {
                 let mut bound = values;
                 bound.push(row.id.as_str().into());
-                statements.push(
+                own = Some(
                     self.db
                         .prepare(
                             "UPDATE jobs SET name = ?, matrix = ?, status = ?, conclusion = ?, reason = ?, timeout_minutes = ?,
                                continue_on_error = ?, max_parallel = ?, finished_at = ?, labels = ?, queued_at = ?, environment = ?,
-                               concurrency_group = ?, cancel_in_progress = ? WHERE id = ?",
+                               concurrency_group = ?, cancel_in_progress = ? WHERE id = ? AND status = 'waiting'",
                         )
                         .bind(&bound)?,
                 );
@@ -1215,18 +1222,21 @@ impl Actions {
                     optional(row.call.as_deref()),
                 ];
                 bound.extend(values);
+                bound.push(row.id.as_str().into());
                 statements.push(
                     self.db
                         .prepare(
                             "INSERT INTO jobs (id, run_id, repo_id, namespace, key, ordinal, needs, call, name, matrix, status, conclusion, reason,
                                timeout_minutes, continue_on_error, max_parallel, finished_at, labels, queued_at, environment,
                                concurrency_group, cancel_in_progress)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                             SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                             WHERE EXISTS (SELECT 1 FROM jobs WHERE id = ? AND status = 'waiting')",
                         )
                         .bind(&bound)?,
                 );
             }
         }
+        statements.extend(own);
         self.db.batch(statements).await?;
         self.replace_in_groups(run, &row.key, &groups).await
     }
