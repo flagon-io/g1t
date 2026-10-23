@@ -657,6 +657,48 @@ pub struct RepoAccess {
     pub can_manage: bool,
 }
 
+/// Which of the people with access a list of collaborators holds, as
+/// GitHub's `affiliation`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Affiliation {
+    /// Those given a role on the repository itself, members or not: not
+    /// owners, and not members only through the base permission or a team.
+    #[default]
+    Direct,
+    /// Those given a role who are not members of the workspace.
+    Outside,
+    /// Everyone with access.
+    All,
+}
+
+impl Affiliation {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "direct" => Some(Self::Direct),
+            "outside" => Some(Self::Outside),
+            "all" => Some(Self::All),
+            _ => None,
+        }
+    }
+
+    pub fn includes(self, person: &Collaborator) -> bool {
+        match self {
+            Self::Direct => person.direct.is_some() && person.source != AccessSource::Owner,
+            Self::Outside => person.workspace_role.is_none(),
+            Self::All => true,
+        }
+    }
+}
+
+impl RepoAccess {
+    /// Only the people `affiliation` names.
+    pub fn affiliated(mut self, affiliation: Affiliation) -> Self {
+        self.people.retain(|person| affiliation.includes(person));
+        self
+    }
+}
+
 /// What adding someone did.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "result", rename_all = "snake_case")]
@@ -1366,5 +1408,62 @@ mod tests {
             .collect();
         let expected: Vec<&str> = OWNER_ONLY.iter().map(|capability| capability.as_str()).collect();
         assert_eq!(mirrored, expected);
+    }
+
+    #[test]
+    fn affiliation_lists_only_roles_given_here_by_default() {
+        let person = |username: &str,
+                      source: AccessSource,
+                      direct: Option<RepoRole>,
+                      workspace_role: Option<Role>| Collaborator {
+            username: username.into(),
+            name: None,
+            avatar: None,
+            role: direct.unwrap_or(RepoRole::Write),
+            source,
+            direct,
+            workspace_role,
+            team_role: None,
+            team: None,
+        };
+        let access = RepoAccess {
+            repo: "acme/web".into(),
+            base_permission: BasePermission::Write,
+            people: vec![
+                person(
+                    "owner",
+                    AccessSource::Owner,
+                    Some(RepoRole::Admin),
+                    Some(Role::Owner),
+                ),
+                person("member", AccessSource::Base, None, Some(Role::Member)),
+                person("teamed", AccessSource::Team, None, Some(Role::Member)),
+                person(
+                    "raised",
+                    AccessSource::Direct,
+                    Some(RepoRole::Maintain),
+                    Some(Role::Member),
+                ),
+                person("guest", AccessSource::Direct, Some(RepoRole::Read), None),
+            ],
+            teams: vec![],
+            invitations: vec![],
+            viewer_role: Some(RepoRole::Admin),
+            can_manage: true,
+        };
+        let names = |affiliation: Affiliation| -> Vec<String> {
+            access
+                .clone()
+                .affiliated(affiliation)
+                .people
+                .into_iter()
+                .map(|person| person.username)
+                .collect()
+        };
+        assert_eq!(names(Affiliation::default()), ["raised", "guest"]);
+        assert_eq!(names(Affiliation::Outside), ["guest"]);
+        assert_eq!(names(Affiliation::All).len(), 5);
+        assert_eq!(Affiliation::parse("outside"), Some(Affiliation::Outside));
+        assert_eq!(Affiliation::parse("everyone"), None);
     }
 }

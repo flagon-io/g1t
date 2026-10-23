@@ -86,7 +86,7 @@ pub const ROUTES: &[Route] = &[
     route("DELETE", "/workspaces/:workspace/invitations/:id", Op::RevokeWorkspaceInvite, &[]),
     // Who has access. GitHub's addresses, but for adding someone, which
     // takes an email address as well as a username.
-    route("GET", "/repos/:owner/:name/collaborators", Op::ListCollaborators, &[]),
+    route("GET", "/repos/:owner/:name/collaborators", Op::ListCollaborators, &[("affiliation", "affiliation")]),
     route("POST", "/repos/:owner/:name/collaborators", Op::AddCollaborator, &[]),
     route("PATCH", "/repos/:owner/:name/collaborators/:username", Op::UpdateCollaborator, &[]),
     route("DELETE", "/repos/:owner/:name/collaborators/:username", Op::RemoveCollaborator, &[]),
