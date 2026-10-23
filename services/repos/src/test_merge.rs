@@ -31,8 +31,15 @@ use crate::registry::store_key;
 use crate::store::{GitRepo, GitStore, Scope};
 use crate::{MAX_ANCESTRY, Repos, descends_from, land, refs};
 
-/// Files larger than this are not merged line by line.
-pub(crate) const MAX_MERGE_BYTES: usize = 1024 * 1024;
+/// Files larger than this are not merged line by line. Size is not what
+/// makes a merge slow (see [`MAX_MERGE_EDITS`]): this bounds the memory
+/// the three texts take.
+pub(crate) const MAX_MERGE_BYTES: usize = 8 * 1024 * 1024;
+/// The most lines one side may add and remove of a file merged line by
+/// line. Diffing costs about the square of it: 10,000 takes a third of a
+/// second on a 100,000-line file, so a file both sides rewrote is not
+/// merged here rather than taking the whole request.
+pub(crate) const MAX_MERGE_EDITS: usize = 10_000;
 const ZERO_ID: &str = "0000000000000000000000000000000000000000";
 
 /// One side's change to the base: its lines `start..end` become `lines`.
@@ -76,14 +83,58 @@ fn apply<'a>(base: &[&'a str], hunks: &[Hunk<'a>], start: usize, end: usize) -> 
     out
 }
 
+fn lines(text: &str) -> Vec<&str> {
+    text.split_inclusive('\n').collect()
+}
+
+/// Whether `side` is at most `max` lines added and removed from `base`.
+/// Myers' greedy search without its trace, which stops at `max`: about
+/// `max²` steps, however different the two are.
+fn edits_within(base: &[&str], side: &[&str], max: usize) -> bool {
+    let prefix = base.iter().zip(side).take_while(|(a, b)| a == b).count();
+    let (base, side) = (&base[prefix..], &side[prefix..]);
+    let suffix = base.iter().rev().zip(side.iter().rev()).take_while(|(a, b)| a == b).count();
+    let (base, side) = (&base[..base.len() - suffix], &side[..side.len() - suffix]);
+    let (n, m) = (base.len(), side.len());
+    if n + m <= max {
+        return true;
+    }
+    // The furthest `x` reached on each diagonal `k = x - y`, at `k + max + 1`.
+    let mut reached = vec![0usize; 2 * max + 3];
+    let at = |k: isize| (k + max as isize + 1) as usize;
+    for d in 0..=max as isize {
+        for k in (-d..=d).step_by(2) {
+            let mut x = if k == -d || (k != d && reached[at(k - 1)] < reached[at(k + 1)]) {
+                reached[at(k + 1)]
+            } else {
+                reached[at(k - 1)] + 1
+            };
+            let mut y = (x as isize - k) as usize;
+            while x < n && y < m && base[x] == side[y] {
+                x += 1;
+                y += 1;
+            }
+            reached[at(k)] = x;
+            if x >= n && y >= m {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Whether either side changed more of `base` than is merged line by line
+/// ([`MAX_MERGE_EDITS`]).
+pub(crate) fn changes_too_much(base: &str, ours: &str, theirs: &str) -> bool {
+    let base = lines(base);
+    [ours, theirs].into_iter().any(|side| !edits_within(&base, &lines(side), MAX_MERGE_EDITS))
+}
+
 /// Merges two texts that each changed `base`, as git does: a change only
 /// one side made is taken, and where the two sides' changes overlap or
 /// touch (no unchanged line between them) they must be the same. `None`
 /// when they conflict.
 pub(crate) fn merge_text(base: &str, ours: &str, theirs: &str) -> Option<String> {
-    fn lines(text: &str) -> Vec<&str> {
-        text.split_inclusive('\n').collect()
-    }
     let (base, ours, theirs) = (lines(base), lines(ours), lines(theirs));
     let (mine, other) = (hunks(&base, &ours), hunks(&base, &theirs));
     let mut out = String::new();
@@ -295,6 +346,9 @@ async fn make<R: GitRepo>(git: &R, base: &str, head: &str) -> Result<Made> {
                         }
                         return Ok(Made::Unsupported(format!("{path} is too large to merge without a sandbox")));
                     };
+                    if changes_too_much(&base, &ours, &theirs) {
+                        return Ok(Made::Unsupported(format!("{path} changed too much to merge without a sandbox")));
+                    }
                     match merge_text(&base, &ours, &theirs) {
                         Some(merged) => {
                             let blob = merged.into_bytes();
@@ -470,6 +524,36 @@ mod tests {
         assert_eq!(merge_text("", "one\n", "two\n"), None);
         // One unchanged line between them is enough.
         assert_eq!(merge_text(base, "X\nb\nc\nd\n", "a\nb\nY\nd\n").as_deref(), Some("X\nb\nY\nd\n"));
+    }
+
+    #[test]
+    fn edits_are_counted_up_to_the_limit() {
+        let base = lines("a\nb\nc\nd\ne\n");
+        // One line changed is one removed and one added.
+        assert!(edits_within(&base, &lines("a\nB\nc\nd\ne\n"), 2));
+        assert!(!edits_within(&base, &lines("a\nB\nc\nd\ne\n"), 1));
+        assert!(edits_within(&base, &base, 0));
+        // Reversed: everything but one line taken out and put back.
+        let reversed = lines("e\nd\nc\nb\na\n");
+        assert!(edits_within(&base, &reversed, 8));
+        assert!(!edits_within(&base, &reversed, 7));
+        assert!(edits_within(&[], &lines("x\ny\n"), 2));
+        assert!(!edits_within(&base, &[], 4));
+    }
+
+    #[test]
+    fn a_large_file_with_small_changes_merges_and_a_rewritten_one_does_not() {
+        // Larger than the old 1 MiB limit, as a generated openapi.json is.
+        let base: String = (0..100_000).map(|i| format!("\"line\": {i},\n")).collect();
+        assert!(base.len() > 1024 * 1024 && base.len() < MAX_MERGE_BYTES);
+        let ours = base.replacen("\"line\": 10,\n", "\"line\": ten,\n", 1);
+        let theirs = base.replacen("\"line\": 90000,\n", "\"line\": ninety thousand,\n", 1);
+        assert!(!changes_too_much(&base, &ours, &theirs));
+        let merged = merge_text(&base, &ours, &theirs).unwrap();
+        assert!(merged.contains("ten,\n") && merged.contains("ninety thousand,\n"));
+        // Every line moved: refused at once rather than diffed.
+        let rewritten: String = base.split_inclusive('\n').rev().collect();
+        assert!(changes_too_much(&base, &rewritten, &theirs));
     }
 
     #[test]

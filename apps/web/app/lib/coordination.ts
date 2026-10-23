@@ -351,6 +351,8 @@ export type Evidence = {
   /** Those ahead it fails with. */
   suspects: number[];
   bisected: boolean;
+  /** Why the state could not be built, when it could not. */
+  error: string | null;
 };
 
 function numbers(value: unknown): number[] {
@@ -373,7 +375,23 @@ export function evidenceOf(decision: Pick<Decision, "evidence">): Evidence {
     combination: numbers(raw.combination),
     suspects: numbers(raw.suspects),
     bisected: raw.bisected === true,
+    error: typeof raw.error === "string" && raw.error ? raw.error : null,
   };
+}
+
+/** Whether a combined state was never checked, because it could not be built. */
+export function unbuilt(evidence: Evidence): boolean {
+  return evidence.check?.conclusion === "error";
+}
+
+/** What a merge-queue failure says of its cause when no other pull request is blamed. */
+export function ownCause(evidence: Evidence): string {
+  if (unbuilt(evidence)) {
+    return evidence.error ? `Nothing was checked: ${evidence.error}` : "Nothing was checked: g1t could not build the combined state.";
+  }
+  if (evidence.check?.conclusion === "missing") return `${evidence.check.name} never reported, so it was not checked.`;
+  if (evidence.check?.conclusion === "conflict") return "It does not merge cleanly into the default branch.";
+  return "It fails by itself: the change is the cause.";
 }
 
 /** Where a check's address leads on the site: its path when it is g1t's own, else the address as it is. */

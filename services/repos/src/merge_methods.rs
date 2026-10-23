@@ -17,7 +17,8 @@
 //!
 //! The work is bounded for a Worker: at most [`MAX_LAND_FILES`] files
 //! applied at a time, [`MAX_LINE_MERGES`] of them merged line by line
-//! (each at most test_merge.rs `MAX_MERGE_BYTES`), and at most
+//! (each at most test_merge.rs `MAX_MERGE_BYTES`, with at most
+//! `MAX_MERGE_EDITS` lines changed on either side), and at most
 //! [`MAX_REBASE_COMMITS`] commits made again by a rebase. Beyond those g1t
 //! says it cannot do it itself, and nothing is changed.
 
@@ -42,7 +43,7 @@ use crate::diff::{FileEntry, changed_entries_up_to};
 use crate::merge_base::{MergeBase, merge_base};
 use crate::registry::store_key;
 use crate::store::{GitRepo, GitStore, Scope};
-use crate::test_merge::{as_text, merge_text};
+use crate::test_merge::{as_text, changes_too_much, merge_text};
 use crate::{MAX_ANCESTRY, Repos, descends_from, land};
 
 /// The most files one side's change may touch for g1t to apply it.
@@ -275,6 +276,9 @@ pub(crate) async fn apply<R: GitRepo>(
             }
             return Ok(Applied::Unsupported(format!("{path} is too large to merge line by line")));
         };
+        if changes_too_much(&base, &ours, &theirs) {
+            return Ok(Applied::Unsupported(format!("{path} changed too much to merge line by line")));
+        }
         match merge_text(&base, &ours, &theirs) {
             Some(merged) => {
                 let blob = merged.into_bytes();
