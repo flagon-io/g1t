@@ -208,6 +208,28 @@ pub fn adjust(current: Vec<String>, add: &[String], remove: &[String]) -> Vec<St
     out
 }
 
+/// How many polls in a row a watch rides out before it gives up: one
+/// answer of HTTP 500, or the network dropping for a moment, ends no watch.
+pub const WATCH_TRIES: u32 = 5;
+
+/// One poll of a watch. A failure, while fewer than `tries` in a row have
+/// failed, is said on stderr and comes back as `None`, to be waited out;
+/// being signed out never is.
+pub fn polled<T>(result: Result<T>, failures: &mut u32, tries: u32) -> Result<Option<T>> {
+    match result {
+        Ok(value) => {
+            *failures = 0;
+            Ok(Some(value))
+        }
+        Err(error) if error.kind != crate::error::Kind::Auth && *failures + 1 < tries => {
+            *failures += 1;
+            eprintln!("g1t: {} (trying again, {} of {tries})", error.message, *failures + 1);
+            Ok(None)
+        }
+        Err(error) => Err(error),
+    }
+}
+
 /// A thread's comments: notes of what happened dimmed, the rest in full.
 pub fn print_comments(out: &crate::output::Output, comments: &serde_json::Value) {
     use crate::output::{ago, s};
@@ -242,6 +264,24 @@ pub fn print_comments(out: &crate::output::Output, comments: &serde_json::Value)
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_watch_rides_out_a_few_failed_polls() {
+        let mut failures = 0;
+        for _ in 0..WATCH_TRIES - 1 {
+            assert!(polled::<u32>(Err(Error::failed("api.g1t.sh answered HTTP 500")), &mut failures, WATCH_TRIES).unwrap().is_none());
+        }
+        // Too many in a row: it gives up with the last.
+        assert!(polled::<u32>(Err(Error::failed("again")), &mut failures, WATCH_TRIES).is_err());
+        // An answer starts the count again.
+        let mut failures = WATCH_TRIES - 1;
+        assert_eq!(polled(Ok(7), &mut failures, WATCH_TRIES).unwrap(), Some(7));
+        assert_eq!(failures, 0);
+        // Signed out, or not watching: at once.
+        let signed_out = Error { kind: crate::error::Kind::Auth, message: "Sign in".into(), silent: false };
+        assert!(polled::<u32>(Err(signed_out), &mut 0, WATCH_TRIES).is_err());
+        assert!(polled::<u32>(Err(Error::failed("once")), &mut 0, 1).is_err());
+    }
 
     #[test]
     fn lists_are_adjusted_without_case() {
