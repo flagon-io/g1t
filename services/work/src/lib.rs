@@ -19,6 +19,7 @@ mod coordination;
 mod decisions;
 mod guardrails;
 mod head_repo;
+mod heads;
 mod inbox;
 mod insights;
 mod integration;
@@ -63,7 +64,7 @@ use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::Serialize;
 use worker::wasm_bindgen::JsValue;
 use worker::{
-    Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, Request, Response, Result, ScheduleContext, ScheduledEvent,
+    Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, QueueRetryOptionsBuilder, Request, Response, Result, ScheduleContext, ScheduledEvent,
     event,
 };
 
@@ -2480,28 +2481,18 @@ impl Work {
         // Who moved it, for rules about the most recent push.
         let pusher: JsValue = event.actor.as_deref().map_or(JsValue::NULL, Into::into);
         // The head moved, so whatever the checks said no longer applies, and
-        // whatever step g1t was waiting on has been taken.
-        let moved = "UPDATE pulls
-             SET head_commit = ?, updated_at = ?, head_pushed_by = ?, head_pushed_at = ?, check_status = NULL, check_run_id = NULL,
-                 working_on = NULL, working_until = NULL, stalled = NULL";
-        let active = "status IN ('draft', 'open') AND head_commit IS NOT ?";
-        let returning = "RETURNING id, repo_id, number, status, author_id, author_name, requested_by_id, requested_by_name";
+        // whatever step g1t was waiting on has been taken. The same event
+        // handled again finds the pull requests it moved (heads.rs).
+        let (moved, active) = (heads::MOVE, heads::ACTIVE);
+        let returning = "RETURNING id, repo_id, number, author_id, author_name, requested_by_id, requested_by_name";
+        let moving = [after.into(), now.as_str().into(), pusher, event.id.as_str().into(), event.time.as_str().into(), repo_id.into()];
         let mut pulls: Vec<MovedRow> = Vec::new();
         // A fork carries its pull request on its default branch.
         if event.data["defaultBranch"].as_bool() == Some(true) {
             pulls.extend(
                 self.db
-                    .prepare(format!(
-                        "{moved} WHERE fork_repo_id = ? AND {active} {returning}"
-                    ))
-                    .bind(&[
-                        after.into(),
-                        now.as_str().into(),
-                        pusher.clone(),
-                        now.as_str().into(),
-                        repo_id.into(),
-                        after.into(),
-                    ])?
+                    .prepare(format!("{moved} WHERE fork_repo_id = ?6 AND {active} {returning}"))
+                    .bind(&moving)?
                     .all()
                     .await?
                     .results::<MovedRow>()?,
@@ -2510,22 +2501,12 @@ impl Work {
         if let Some(branch) = git_ref.strip_prefix("refs/heads/") {
             // A branch of the repository, and a branch of a fork pull
             // requests into other repositories were opened from.
+            let mut values = moving.to_vec();
+            values.extend([repo_id.into(), branch.into()]);
             pulls.extend(
                 self.db
-                    .prepare(format!(
-                        "{moved} WHERE {} AND {active} {returning}",
-                        head_repo::ON_BRANCH
-                    ))
-                    .bind(&[
-                        after.into(),
-                        now.as_str().into(),
-                        pusher.clone(),
-                        now.as_str().into(),
-                        repo_id.into(),
-                        repo_id.into(),
-                        branch.into(),
-                        after.into(),
-                    ])?
+                    .prepare(format!("{moved} WHERE {} AND {active} {returning}", head_repo::ON_BRANCH))
+                    .bind(&values)?
                     .all()
                     .await?
                     .results::<MovedRow>()?,
@@ -2571,11 +2552,9 @@ impl Work {
             },
         };
         self.after_push(repo_id, into, &moved_ids).await;
-        // A draft is announced when it is marked ready instead.
-        for pull in pulls
-            .into_iter()
-            .filter(|pull| pull.status == PullStatus::Open)
-        {
+        // A draft's too, as on GitHub: its workflows run on `synchronize`
+        // whether or not it is ready.
+        for pull in pulls {
             let item = moved_pulls.iter().find(|moved| moved.id == pull.id).and_then(|moved| moved.item);
             self.publish_as(
                 "pull.updated",
@@ -2807,8 +2786,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
 /// The cron trigger: moves on the job that moves issues into work items
 /// (items/migration.rs), until it is done, settles the sessions' titles
 /// that are due (coordination/titles.rs), keeps the plan up
-/// (items/plan_settle.rs), and closes the cycles that are over, carrying
-/// what is open in them into the next (items/cycles.rs).
+/// (items/plan_settle.rs), closes the cycles that are over, carrying
+/// what is open in them into the next (items/cycles.rs), and catches up on
+/// pushes to pull requests whose event never arrived (heads.rs).
 #[event(scheduled)]
 async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     let moved = async {
@@ -2839,59 +2819,79 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     if let Err(error) = cycled.await {
         worker::console_error!("rolling cycles over: {error}");
     }
+    let swept = async {
+        let work = service(&env)?;
+        work.sweep_heads().await
+    };
+    if let Err(error) = swept.await {
+        worker::console_error!("comparing pull requests with their branches: {error}");
+    }
 }
 
-/// Events from the bus, delivered on this service's own queue.
+/// Events from the bus, delivered on this service's own queue. One that
+/// fails is retried on its own, after a while: what fails is nearly always
+/// the database being overloaded, which a retry straight away finds still
+/// overloaded. The others are acknowledged. After its retries an event goes
+/// to the dead-letter queue (wrangler.jsonc), which the events service
+/// counts; a push it held is caught up by the sweep (heads.rs).
 #[event(queue)]
 async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()> {
     let work = service(&env)?;
+    let later = QueueRetryOptionsBuilder::new().with_delay_seconds(RETRY_DELAY_SECONDS).build();
     for message in batch.messages()? {
-        // A workspace renamed: its runs, work items, labels, milestones,
-        // projects and numbers move to the slug it has now.
-        let renamed = [runs::RENAMED, guardrails::RENAMED, rulesets::RENAMED, items::RENAMED, items::PROJECTS_RENAMED, items::CYCLES_RENAMED, attachments::RENAMED].concat();
-        if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), &renamed).await? {
-            message.ack();
-            continue;
+        match on_message(&work, &env, message.body()).await {
+            Ok(()) => message.ack(),
+            Err(error) => {
+                worker::console_error!("work: event {} ({}) failed: {error}", message.body().id, message.body().kind);
+                message.retry_with_options(&later);
+            }
         }
-        // A repository renamed or transferred: its runs and guardrails
-        // follow, and where it is is recorded for work items and numbers.
-        let transferred = [runs::TRANSFERRED, guardrails::TRANSFERRED, head_repo::TRANSFERRED, items::TRANSFERRED].concat();
-        if g1t_kit::transfer::on_event(&env, &env.d1("DB")?, message.body(), &transferred).await? {
-            message.ack();
-            continue;
-        }
-        // A workspace deleted: what it kept for itself goes, its work items'
-        // attachments' bytes first.
-        if message.body().kind == "workspace.deleted"
-            && let Some(slug) = message.body().data["slug"].as_str()
-        {
-            attachments::purge_workspace(&env, &work.db, slug).await?;
-        }
-        let deleted = [guardrails::DELETED, items::DELETED, items::PROJECTS_DELETED, items::CYCLES_DELETED, attachments::DELETED].concat();
-        if g1t_kit::deleted::on_event(&env.d1("DB")?, message.body(), &deleted).await? {
-            message.ack();
-            continue;
-        }
-        // An account purged: what it wrote shows as ghost (ghost.rs).
-        let ghost = ghost::statements();
-        let ghost: Vec<&str> = ghost.iter().map(String::as_str).collect();
-        if g1t_kit::user_deleted::on_event(&env.d1("DB")?, message.body(), &ghost).await? {
-            message.ack();
-            continue;
-        }
-        // A repository purged: its attachments' bytes go before their rows do.
-        if let Some(g1t_kit::lifecycle::Lifecycle::Purged(purged)) = g1t_kit::lifecycle::read(message.body()) {
-            attachments::purge(&env, &work.db, &purged.repo_id).await?;
-        }
-        // A repository deleted, archived or purged, or a branch renamed (retired.rs).
-        if work.on_retired(message.body()).await? {
-            message.ack();
-            continue;
-        }
-        work.on_event(message.body()).await?;
-        message.ack();
     }
     Ok(())
+}
+
+/// How long a failed event waits before it is tried again.
+const RETRY_DELAY_SECONDS: u32 = 30;
+
+async fn on_message(work: &Work, env: &Env, event: &Event) -> Result<()> {
+    // A workspace renamed: its runs, work items, labels, milestones,
+    // projects and numbers move to the slug it has now.
+    let renamed = [runs::RENAMED, guardrails::RENAMED, rulesets::RENAMED, items::RENAMED, items::PROJECTS_RENAMED, items::CYCLES_RENAMED, attachments::RENAMED].concat();
+    if g1t_kit::rename::on_event(env, &env.d1("DB")?, event, &renamed).await? {
+        return Ok(());
+    }
+    // A repository renamed or transferred: its runs and guardrails
+    // follow, and where it is is recorded for work items and numbers.
+    let transferred = [runs::TRANSFERRED, guardrails::TRANSFERRED, head_repo::TRANSFERRED, items::TRANSFERRED].concat();
+    if g1t_kit::transfer::on_event(env, &env.d1("DB")?, event, &transferred).await? {
+        return Ok(());
+    }
+    // A workspace deleted: what it kept for itself goes, its work items'
+    // attachments' bytes first.
+    if event.kind == "workspace.deleted"
+        && let Some(slug) = event.data["slug"].as_str()
+    {
+        attachments::purge_workspace(env, &work.db, slug).await?;
+    }
+    let deleted = [guardrails::DELETED, items::DELETED, items::PROJECTS_DELETED, items::CYCLES_DELETED, attachments::DELETED].concat();
+    if g1t_kit::deleted::on_event(&env.d1("DB")?, event, &deleted).await? {
+        return Ok(());
+    }
+    // An account purged: what it wrote shows as ghost (ghost.rs).
+    let ghost = ghost::statements();
+    let ghost: Vec<&str> = ghost.iter().map(String::as_str).collect();
+    if g1t_kit::user_deleted::on_event(&env.d1("DB")?, event, &ghost).await? {
+        return Ok(());
+    }
+    // A repository purged: its attachments' bytes go before their rows do.
+    if let Some(g1t_kit::lifecycle::Lifecycle::Purged(purged)) = g1t_kit::lifecycle::read(event) {
+        attachments::purge(env, &work.db, &purged.repo_id).await?;
+    }
+    // A repository deleted, archived or purged, or a branch renamed (retired.rs).
+    if work.on_retired(event).await? {
+        return Ok(());
+    }
+    work.on_event(event).await
 }
 
 /// The rules that once read a pull request's author read its owner now:

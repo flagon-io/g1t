@@ -26,11 +26,14 @@
   ],
   // Billing has no public address: its price book is read through this.
   // Git storage (Cloudflare Artifacts) has none either: how it answered
-  // lately is read from the repos service (`store_health`). Nothing else
-  // is bound, so every other check goes over the internet.
+  // lately is read from the repos service (`store_health`). Nor do the
+  // queues: what they gave up on lately is read from the events service
+  // (`delivery_health`). Nothing else is bound, so every other check goes
+  // over the internet.
   "services": [
     { "binding": "BILLING", "service": "g1t-billing" },
-    { "binding": "REPOS", "service": "g1t-repos" }
+    { "binding": "REPOS", "service": "g1t-repos" },
+    { "binding": "EVENTS", "service": "g1t-events" }
   ],
   // Email to subscribers (confirmations, incident and maintenance
   // updates) and the staff alert for detected drafts, through Cloudflare

@@ -390,7 +390,6 @@ pub struct MovedRow {
     pub id: String,
     pub repo_id: String,
     pub number: u32,
-    pub status: PullStatus,
     pub author_id: String,
     pub author_name: String,
     #[serde(default)]

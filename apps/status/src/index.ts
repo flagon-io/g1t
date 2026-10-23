@@ -52,7 +52,7 @@ import bricolage from "@g1t/theme/fonts/bricolage-grotesque-latin.woff2";
 import hanken from "@g1t/theme/fonts/hanken-grotesk-latin.woff2";
 import plexMono from "@g1t/theme/fonts/ibm-plex-mono-latin-400.woff2";
 
-import { type Targets, components } from "./components.ts";
+import { DELIVERY_MINUTES, type Targets, components } from "./components.ts";
 import {
   COOLDOWN_MS,
   autoDismissText,
@@ -102,7 +102,7 @@ import {
 } from "./incidents.ts";
 import { INCIDENT_STATUS, type PageModel, SLOW_MS, buildPage, classify, underMaintenance } from "./model.ts";
 import { stamp } from "./postmortem.ts";
-import { type StorageReport, limit, probe } from "./probe.ts";
+import { type DeliveryReport, type StorageReport, limit, probe } from "./probe.ts";
 import { readZone } from "./time.ts";
 import {
   FAVICON,
@@ -165,6 +165,8 @@ export interface Env extends Partial<Targets> {
   BILLING?: Fetcher;
   /** The repos service, for git storage's recent health. Optional: without it, git storage is not listed. */
   REPOS?: Fetcher;
+  /** The events service, for what the queues gave up on lately. Optional: without it, event delivery is not listed. */
+  EVENTS?: Fetcher;
   /** Where help is. */
   SUPPORT_URL?: string;
   /**
@@ -209,7 +211,7 @@ const BEHIND_MS = 3 * 60 * 1000;
 const MAX_RECIPIENTS = 900;
 
 function parts(env: Env) {
-  return components(env, env.BILLING != null, env.REPOS != null);
+  return components(env, env.BILLING != null, env.REPOS != null, env.EVENTS != null);
 }
 
 function names(env: Env): Map<string, string> {
@@ -240,6 +242,18 @@ async function storeHealth(repos: Fetcher, signal: AbortSignal): Promise<Storage
   });
   if (!response.ok) throw new Error(`store_health failed with status ${response.status}`);
   return (await response.json()) as StorageReport;
+}
+
+/** What the queues gave up on lately, from the events service (`delivery_health`). */
+async function deliveryHealth(events: Fetcher, signal: AbortSignal): Promise<DeliveryReport> {
+  const response = await events.fetch("https://service/rpc/delivery_health", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ minutes: DELIVERY_MINUTES }),
+    signal,
+  });
+  if (!response.ok) throw new Error(`delivery_health failed with status ${response.status}`);
+  return (await response.json()) as DeliveryReport;
 }
 
 /**
@@ -277,6 +291,7 @@ const LATE_MS = 8_000;
 export async function checkAll(env: Env, now = new Date(), { late = false }: { late?: boolean } = {}): Promise<Observation[]> {
   const billing = env.BILLING;
   const repos = env.REPOS;
+  const events = env.EVENTS;
   const list = parts(env);
   // The checks through a binding ask first: they reach the services
   // nothing else checks so directly, and wait behind nobody (probe.ts `limit`).
@@ -292,6 +307,7 @@ export async function checkAll(env: Env, now = new Date(), { late = false }: { l
             fetch: (url, init) => fetch(url, init),
             billing: billing ? (signal) => prices(billing, signal) : null,
             storage: repos ? (signal) => storeHealth(repos, signal) : null,
+            delivery: events ? (signal) => deliveryHealth(events, signal) : null,
             gate,
           },
           info.slowMs ?? SLOW_MS,
@@ -313,7 +329,7 @@ export async function checkAll(env: Env, now = new Date(), { late = false }: { l
   }
   // Checks through a binding have no cf-ray of their own: they ran where the others did.
   const roundColo = results.find((r) => r.result?.colo)?.result?.colo ?? null;
-  const left = late ? results.filter(({ info }) => info.check.kind === "billing" || info.check.kind === "storage") : [];
+  const left = late ? results.filter(({ info }) => info.check.kind !== "http" && info.check.kind !== "none") : [];
   if (left.length) {
     const said = left.map(({ info, result }) => ({ part: info.key, ...classify(result, info.slowMs), ms: result ? Math.round(result.ms) : null }));
     console.log(JSON.stringify({ event: "status.late_round", colo: roundColo, left_out: said }));

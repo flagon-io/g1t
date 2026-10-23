@@ -55,6 +55,8 @@ export type Check =
   | { kind: "billing" }
   /** Git storage, through the repos service binding: how the store answered lately. */
   | { kind: "storage" }
+  /** Event delivery, through the events service binding: what the queues gave up on lately. */
+  | { kind: "delivery" }
   /** No check yet: the page says so rather than showing green. */
   | { kind: "none" };
 
@@ -97,8 +99,14 @@ const trim = (url: string | undefined) => (url ?? "").trim().replace(/\/+$/, "")
 /** Git storage counts as degraded when its calls took longer than this on average. */
 export const STORAGE_SLOW_MS = 1500;
 
-/** The parts, in the order the page lists them. `storage`: whether the repos service is bound. */
-export function components(vars: Partial<Targets>, billing = true, storage = false): ComponentInfo[] {
+/** How far back event delivery counts what the queues gave up on. */
+export const DELIVERY_MINUTES = 15;
+
+/**
+ * The parts, in the order the page lists them. `storage`: whether the repos
+ * service is bound; `delivery`: whether the events service is.
+ */
+export function components(vars: Partial<Targets>, billing = true, storage = false, delivery = false): ComponentInfo[] {
   const site = trim(vars.SITE_URL);
   const api = trim(vars.API_URL);
   const mcp = trim(vars.MCP_URL);
@@ -153,6 +161,16 @@ export function components(vars: Partial<Targets>, billing = true, storage = fal
           core: false,
           check: { kind: "storage" },
           slowMs: STORAGE_SLOW_MS,
+        }
+      : null,
+    delivery && site
+      ? {
+          key: "delivery",
+          name: "Event delivery",
+          address: "What a push or a comment sets off: checks, workflows, notifications",
+          checks: `Whether g1t gave up delivering any event in the last ${DELIVERY_MINUTES} minutes, after retrying it. One is degraded: something a push or a comment should have started may not have.`,
+          core: false,
+          check: { kind: "delivery" },
         }
       : null,
     site && repo
