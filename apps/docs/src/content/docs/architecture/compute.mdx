@@ -46,9 +46,11 @@ differently.
    (step 9), where [required checks](/architecture/work/#checks-and-statuses)
    find it, and `workflow.completed` is published (step 10).
 
-A job that says nothing for 10 minutes is taken as lost. A cron in
-`actions` runs every minute for schedules, jobs waiting for room, and
-jobs whose runner went quiet.
+A job that says nothing for 10 minutes is taken as lost. On g1t's
+machines it goes back in the queue once, cleared, to run on another
+sandbox (`machine_lost` counts it), unless it deploys to an environment; a
+second loss fails it. A cron in `actions` runs every minute for schedules,
+jobs waiting for room, and jobs whose runner went quiet.
 
 ### Limits
 

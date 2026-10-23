@@ -280,6 +280,10 @@ pub struct JobRow {
     /// How many bytes of log it has kept so far (migration 0027).
     #[serde(default)]
     pub log_bytes: u32,
+    /// How many times it lost its machine after it reported, and went back
+    /// in the queue (migration 0028).
+    #[serde(default)]
+    pub machine_lost: u32,
 }
 
 /// How long a cancelled job has to run its `if: always()` and `cancelled()`
@@ -2396,7 +2400,7 @@ impl Actions {
                         "UPDATE jobs SET status = 'waiting', conclusion = NULL, steps = '[]', annotations = '[]', outputs = '{}', reason = NULL,
                            matrix = NULL, call = NULL, token_hash = NULL, first_token_hash = NULL, seen_at = NULL, started_at = NULL, finished_at = NULL,
                            labels = NULL, queued_at = NULL, runner_id = NULL, runner_name = NULL, environment = NULL,
-                           concurrency_group = NULL, cancel_in_progress = 0, cancel_requested_at = NULL, log_bytes = 0 WHERE run_id = ? AND key = ?",
+                           concurrency_group = NULL, cancel_in_progress = 0, cancel_requested_at = NULL, log_bytes = 0, machine_lost = 0 WHERE run_id = ? AND key = ?",
                     )
                     .bind(&[run.id.as_str().into(), key.as_str().into()])?,
             );
@@ -2982,9 +2986,19 @@ impl Actions {
                     lost.insert(job.id.clone());
                 }
             } else if silent {
-                let reason = match &job.runner_name {
-                    Some(name) => format!("The self-hosted runner {name} stopped answering."),
-                    None => "The runner stopped answering.".to_owned(),
+                // Its machine was lost under it: on g1t's, it runs again
+                // once on another, at the next sweep as a lost start does.
+                if job.runner_id.is_none()
+                    && crate::runs_again_when_lost(job.machine_lost, job.environment.as_deref(), job.cancel_requested_at.is_some())
+                    && self.retry_lost_machine(&job, now_ms).await?
+                {
+                    lost.insert(job.id.clone());
+                    continue;
+                }
+                let reason = match (&job.runner_name, job.machine_lost) {
+                    (Some(name), _) => format!("The self-hosted runner {name} stopped answering."),
+                    (None, 0) => "The runner stopped answering.".to_owned(),
+                    (None, _) => "The runner stopped answering, on the second machine it was given too.".to_owned(),
                 };
                 self.finish_job(&job.id, "failure", Some(&reason), None).await?;
             }
@@ -3075,6 +3089,59 @@ impl Actions {
         worker::console_warn!("actions: job {} never reported; it goes back in the queue", job.id);
         self.revoke_job_tokens(&job.id).await;
         let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id })).await;
+        Ok(true)
+    }
+
+    /// A job on g1t's machines that reported, then went silent
+    /// (`runs_again_when_lost`): back in the queue to run again from the
+    /// start, as a lost start is. What it did is cleared (its steps, log,
+    /// summaries, outputs and uploads), its token voided, its builds ended
+    /// and its cache uploads released, and its reason says where it stopped.
+    /// Returns whether it went back in the queue.
+    async fn retry_lost_machine(&self, job: &JobRow, now_ms: u64) -> Result<bool> {
+        #[derive(Deserialize)]
+        struct Head {
+            text: String,
+        }
+        let head = self
+            .db
+            .prepare("SELECT text FROM logs WHERE job_id = ? ORDER BY seq LIMIT 3")
+            .bind(&[job.id.as_str().into()])?
+            .all()
+            .await?
+            .results::<Head>()?
+            .into_iter()
+            .map(|chunk| chunk.text)
+            .collect::<String>();
+        let reason = crate::lost_machine_reason(&job.steps, Some(&head));
+        // Not if it reported after all, since it was read.
+        let requeued = self
+            .db
+            .prepare(
+                "UPDATE jobs SET status = 'queued', steps = '[]', annotations = '[]', outputs = '{}', token_hash = NULL, first_token_hash = NULL,
+                   started_at = NULL, seen_at = NULL, waiting_since = ?, reason = ?, log_bytes = 0, machine_lost = machine_lost + 1
+                   WHERE id = ? AND status = 'in_progress' AND seen_at = ? RETURNING id",
+            )
+            .bind(&[rfc3339(now_ms).into(), reason.as_str().into(), job.id.as_str().into(), job.seen_at.as_deref().unwrap_or_default().into()])?
+            .first::<Value>(None)
+            .await?;
+        if requeued.is_none() {
+            return Ok(false);
+        }
+        worker::console_warn!("actions: job {} lost its machine: {reason}", job.id);
+        self.revoke_job_tokens(&job.id).await;
+        let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id })).await;
+        self.db
+            .batch(vec![
+                self.db.prepare("DELETE FROM logs WHERE job_id = ?").bind(&[job.id.as_str().into()])?,
+                self.db.prepare("DELETE FROM job_summaries WHERE job_id = ?").bind(&[job.id.as_str().into()])?,
+            ])
+            .await?;
+        if let Err(error) = self.forget_job_artifacts(&job.id).await {
+            worker::console_error!("actions: the artifacts of job {} were not cleared before it runs again: {error}", job.id);
+        }
+        self.end_job_builds(&job.id, "failure").await;
+        self.release_cache(&job.id).await;
         Ok(true)
     }
 }
