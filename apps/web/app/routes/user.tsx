@@ -86,10 +86,13 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   // Its tabs are paths: `?tab=pulls`, the address before, is `/u/ada/pulls`.
   const moved = movedTab(url, (asked) => profilePath(profile.username, asked));
   if (moved) throw redirect(moved, 301);
-  const tab: Tab | null = profileTab(params.tab);
+  // The tab is the path's third segment: each known tab has a route of its
+  // own (routes.ts), so it is not always `params.tab`.
+  const segment: string | undefined = url.pathname.split("/")[3] || undefined;
+  const tab: Tab | null = profileTab(segment);
   if (!tab) throw notFound("page");
   // One address per person: `/u/Ada` is `/u/ada`.
-  if (params.username !== profile.username || (params.tab != null && params.tab !== tab)) {
+  if (params.username !== profile.username || (segment != null && segment !== tab)) {
     throw redirect(`${profilePath(profile.username, tab)}${url.search}`);
   }
 
