@@ -189,13 +189,14 @@ jobs:
     # its digest already (scripts/hosted-image.mjs). Registry to registry:
     # nothing is pulled here, so the machine's disk is no matter. It is
     # slow (about 0.4 MB/s a layer into g1t.sh, so several go at once), but
-    # each layer that lands stays, and a re-run goes on from there.
+    # each layer that lands stays, and a re-run goes on from there. 60
+    # minutes is the most a job on g1t's machines may run.
     name: g1t's machine image
     runs-on: ubuntu-latest
     environment:
       name: production
       deployment: false
-    timeout-minutes: 150
+    timeout-minutes: 60
     # Its token pushes the image to g1t's registry.
     permissions:
       contents: read
