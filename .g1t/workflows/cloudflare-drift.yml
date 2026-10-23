@@ -1,0 +1,37 @@
+# Lists what is on g1t's Cloudflare account that no unit's wrangler.jsonc
+# declares (`node scripts/ops/cloudflare-drift.mjs`, which says how it
+# decides). A deleted service's database, queues, index and domain stay on
+# the account until someone deletes them by hand; this is what says they are
+# there. It deletes nothing: the run goes red with the list in its summary,
+# for someone to delete what was left behind or declare what is meant to
+# stay. Weekly is soon enough for what costs little while it waits.
+name: Cloudflare drift
+
+on:
+  schedule:
+    - cron: "17 14 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-drift
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    name: Undeclared resources
+    runs-on: ubuntu-latest
+    # Production's Cloudflare token, without a deployment: this only lists.
+    environment:
+      name: production
+      deployment: false
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: List them
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/ops/cloudflare-drift.mjs

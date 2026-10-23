@@ -88,6 +88,8 @@ function world() {
     kv: new Map<string, { value: string; expiration?: number }>(),
     /** The repository's branches. */
     branches: ["main", "v2"],
+    /** Pull request #1's status. */
+    pullStatus: "open",
   };
   const project = () => ({
     id: PROJECT,
@@ -151,7 +153,7 @@ function world() {
     }),
     WORK: service((method) => {
       if (method === "get_pull") {
-        return ok({ pull: { status: "open", headCommit: "pr1head", branch: "v2", author: { username: "syntaqx", kind: "user" } } });
+        return ok({ pull: { status: state.pullStatus, headCommit: "pr1head", branch: "v2", author: { username: "syntaqx", kind: "user" } } });
       }
       return ok(null);
     }),
@@ -358,4 +360,16 @@ test("a branch's preview comes down once its branch is gone, and a pull request'
   const deleted = { ...transferred, id: "evt_2", type: "git.deleted", data: { repoId: API, ref: "refs/heads/feature", before: "abc1234" } };
   assert.equal(await deliver(deleted), true);
   assert.deepEqual(previews(), ["lab-api-git-v2-syntaqx"]);
+});
+
+test("a pull request's preview its close missed comes down with the next sweep", async () => {
+  const previews = () => rows("SELECT script FROM apps WHERE kind = 'preview'").map((r) => r.script);
+  // Open: the sweep leaves it.
+  await worker.scheduled({} as never, w.env as never);
+  assert.deepEqual(previews(), ["lab-api-git-v2-syntaqx"]);
+  // Merged with no `pull.merged` taking it down (one lost, or that raced its build).
+  w.state.pullStatus = "merged";
+  await worker.scheduled({} as never, w.env as never);
+  assert.deepEqual(previews(), []);
+  assert.equal(rows("SELECT status FROM deployments WHERE id = 'dpl_prev'")[0].status, "down");
 });
