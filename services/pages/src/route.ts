@@ -77,6 +77,23 @@ export function overLimits(error: unknown): boolean {
   return /exceeded (its )?cpu|cpu time limit|too many subrequests|subrequest limit/i.test(String(error));
 }
 
+/**
+ * Whether a request is a crawler's or a scanner's, not a person's. A
+ * preview answers these itself, without running the app, so they never
+ * count as visits: the deployments service takes down a preview nobody has
+ * visited for its project's idle days, and crawlers fetched every preview's
+ * robots.txt and sitemap.xml daily. A link unfurler (Slack, Discord and the
+ * like) fetches a preview because someone shared it, and is let through.
+ */
+export function crawler(userAgent: string | null): boolean {
+  if (!userAgent) return true;
+  if (/slackbot|discordbot|twitterbot|facebookexternalhit|linkedinbot|telegrambot|whatsapp|mastodon/i.test(userAgent)) return false;
+  return /bot\b|bot\/|crawl|spider|slurp|scrapy|curl\/|wget\/|python-requests|go-http-client|security-research/i.test(userAgent);
+}
+
+/** What a preview answers for robots.txt: nothing on it is for crawlers. */
+export const PREVIEW_ROBOTS = "User-agent: *\nDisallow: /\n";
+
 /** The header each app is handed with its request's id, which its logs can name. */
 export const REQUEST_ID_HEADER = "x-g1t-request-id";
 /** The first word of each request's line, which observability reads (services/telemetry). */
