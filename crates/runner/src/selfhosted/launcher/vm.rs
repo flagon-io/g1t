@@ -308,6 +308,15 @@ impl Backend for DiskVm {
         Ok(())
     }
 
+    fn resize(&self, resources: &Resources) -> Result<()> {
+        let path = self.dir.join("vm").join("resources.json");
+        if !path.exists() {
+            return Ok(());
+        }
+        std::fs::write(path, serde_json::to_vec(resources)?)?;
+        Ok(())
+    }
+
     fn configure(&self, settings: &Settings) -> Result<()> {
         let paths = self.paths();
         let mut merged = std::fs::read(&paths.seed).ok().and_then(|b| guest::read_seed(&b).ok()).unwrap_or_default();
@@ -333,6 +342,7 @@ impl Backend for DiskVm {
         }
         merged.stop = given.stop.or(merged.stop);
         merged.sizes = given.sizes.or(merged.sizes);
+        merged.hosted_image = given.hosted_image.or(merged.hosted_image);
         if given.computer_cpus > 0 {
             (merged.computer_cpus, merged.computer_memory_mib) = (given.computer_cpus, given.computer_memory_mib);
         }

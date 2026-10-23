@@ -223,6 +223,10 @@
       setSizes: function (sizes) {
         return invoke("runner_sizes", { sizes: sizes == null ? null : String(sizes) });
       },
+      // The Linux sandbox's share of this computer: whole CPUs, and memory in MiB.
+      setShare: function (cpus, memoryMib) {
+        return invoke("runner_share", { cpus: Number(cpus), memoryMib: Number(memoryMib) });
+      },
       // The app wants a registration token for a workspace.
       onWanted: function (listener) {
         return on("g1t-runner-wanted", listener);

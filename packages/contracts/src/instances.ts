@@ -157,17 +157,25 @@ export function runnerMinutes(seconds: number): number {
 // --- Sizes: g1t's machines as the sizes a self-hosted runner takes jobs for ---
 
 /** One of g1t's machines as a size a runner takes: `Standard`, 2 vCPU, 8 GiB. */
-export type RunnerSize = { machine: string; name: string; vcpu: number; memoryMib: number };
+export type RunnerSize = { machine: string; name: string; vcpu: number; memoryMib: number; leastMemoryMib: number };
 
 /** What people call each machine as a size (`SIZE_NAMES` in the Rust contracts). */
 const SIZE_NAMES: Record<string, string> = { "1-core": "Small", "2-core": "Standard", "4-core": "Large" };
+
+/**
+ * The least memory, in GiB, a size's jobs run with where a runner's sandbox has less than the size
+ * (`SIZE_LEAST_MEMORY` in the Rust contracts): about two-thirds of it. CPUs are never fewer.
+ */
+const SIZE_LEAST_MEMORY: Record<string, number> = { "1-core": 4, "2-core": 6, "4-core": 8 };
 
 /** Every size, smallest first: each of g1t's machines once (`sizes()` in the Rust contracts). */
 export function runnerSizes(): RunnerSize[] {
   const out: RunnerSize[] = [];
   for (const instance of INSTANCE_TYPES) {
     if (out.some((size) => size.machine === instance.machine)) continue;
-    out.push({ machine: instance.machine, name: SIZE_NAMES[instance.machine] ?? instance.machine, vcpu: instance.vcpu, memoryMib: instance.memoryGib * 1024 });
+    const memoryMib = instance.memoryGib * 1024;
+    const leastMemoryMib = Math.min((SIZE_LEAST_MEMORY[instance.machine] ?? instance.memoryGib) * 1024, memoryMib);
+    out.push({ machine: instance.machine, name: SIZE_NAMES[instance.machine] ?? instance.machine, vcpu: instance.vcpu, memoryMib, leastMemoryMib });
   }
   return out.sort((a, b) => a.vcpu - b.vcpu || a.memoryMib - b.memoryMib);
 }
@@ -188,12 +196,15 @@ export function roomSaid(cpus: number, memoryMib: number): string {
   return `${Math.round(cpus * 100) / 100} vCPU · ${memorySaid(memoryMib)}`;
 }
 
-/** A size for people: `Standard`, or `Standard → 4 vCPU · 16 GB` when its jobs get more than the size. */
+/**
+ * A size for people: `Standard`, or `Standard → 4 vCPU · 16 GB` when its jobs get other than the size (more,
+ * or less memory down to its least).
+ */
 export function offeredSizeSaid(offered: OfferedSize): string {
   const size = runnerSize(offered.size);
   if (!size) return offered.size;
   const cpus = Math.max(offered.cpus ?? size.vcpu, size.vcpu);
-  const memory = Math.max(offered.memory_mib ?? size.memoryMib, size.memoryMib);
+  const memory = Math.max(offered.memory_mib ?? size.memoryMib, size.leastMemoryMib);
   return cpus === size.vcpu && memory === size.memoryMib ? size.name : `${size.name} → ${roomSaid(cpus, memory)}`;
 }
 

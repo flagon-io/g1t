@@ -3010,6 +3010,22 @@ impl Actions {
                 {
                     return Ok(Outcome::Ok(json!({ "ok": true, "cancelled": false })));
                 }
+                // It ran out of the less memory than its size the
+                // workspace's runner gave it: once on g1t's machines, which
+                // give it all of it.
+                if conclusion == "failure"
+                    && crate::runs_again_out_of_memory(
+                        report["out_of_memory"] == true,
+                        job.fallback_instance.is_some(),
+                        job.runner_name.as_deref(),
+                        job.machine_lost,
+                        job.environment.as_deref(),
+                        job.cancel_requested_at.is_some(),
+                    )
+                    && self.retry_on_g1ts_machines(&job, now_ms()).await?
+                {
+                    return Ok(Outcome::Ok(json!({ "ok": true, "cancelled": false })));
+                }
                 let outputs = report["outputs"].as_object().cloned();
                 Box::pin(self.finish_job(&job.id, conclusion, report["reason"].as_str(), outputs.as_ref())).await?;
             }
@@ -3170,6 +3186,49 @@ impl Actions {
         worker::console_warn!("actions: job {} never reported; it goes back in the queue", job.id);
         self.revoke_job_tokens(&job.id).await;
         let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id, "start": job.started_at })).await;
+        Ok(true)
+    }
+
+    /// A job the workspace's runner took for one of g1t's machines, gave
+    /// less memory than its size, and that ran out of it
+    /// (`runs_again_out_of_memory`): back in the queue as a job on g1t's
+    /// machines, no longer offered to the runners, cleared as a lost
+    /// machine's job is, and its new log says why. Returns whether it went
+    /// back in the queue.
+    async fn retry_on_g1ts_machines(&self, job: &JobRow, now_ms: u64) -> Result<bool> {
+        let reason = crate::out_of_memory_reason(job.runner_name.as_deref().unwrap_or_default());
+        // No longer offered to the workspace's runners: queued as a job on
+        // g1t's machines (`labels` none), at the machine its `runs-on` asks for.
+        let requeued = self
+            .db
+            .prepare(
+                "UPDATE jobs SET status = 'queued', steps = '[]', annotations = '[]', outputs = '{}', token_hash = NULL, first_token_hash = NULL,
+                   started_at = NULL, seen_at = NULL, waiting_since = ?, reason = ?, log_bytes = 0, machine_lost = machine_lost + 1,
+                   labels = NULL, fallback_instance = NULL, needs_docker = 0, runner_id = NULL, runner_name = NULL, queued_at = NULL
+                   WHERE id = ? AND status = 'in_progress' AND runner_id IS NOT NULL RETURNING id",
+            )
+            .bind(&[rfc3339(now_ms).into(), reason.as_str().into(), job.id.as_str().into()])?
+            .first::<Value>(None)
+            .await?;
+        if requeued.is_none() {
+            return Ok(false);
+        }
+        worker::console_warn!("actions: job {} ran out of memory on the runner {}", job.id, job.runner_name.as_deref().unwrap_or_default());
+        self.revoke_job_tokens(&job.id).await;
+        self.db
+            .batch(vec![
+                self.db.prepare("DELETE FROM logs WHERE job_id = ?").bind(&[job.id.as_str().into()])?,
+                self.db.prepare("DELETE FROM job_summaries WHERE job_id = ?").bind(&[job.id.as_str().into()])?,
+            ])
+            .await?;
+        if let Err(error) = self.forget_job_artifacts(&job.id).await {
+            worker::console_error!("actions: the artifacts of job {} were not cleared before it runs again: {error}", job.id);
+        }
+        self.end_job_builds(&job.id, "failure").await;
+        self.release_cache(&job.id).await;
+        // Its new log starts with why it is on g1t's machines.
+        self.note_log(&job.id, 0, &format!("{reason}
+")).await?;
         Ok(true)
     }
 

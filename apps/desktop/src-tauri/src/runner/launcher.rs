@@ -419,6 +419,23 @@ pub fn sizes_args(dir: &Path, list: Option<&str>) -> Vec<OsString> {
     args
 }
 
+/// `resources --cpus N --memory Mm`: the Linux sandbox's share of the
+/// computer. The launcher keeps it, and drains a running Linux runner and
+/// starts it again with it.
+pub fn share_args(dir: &Path, cpus: u32, memory_mib: u64) -> Vec<OsString> {
+    let mut args = args("resources", dir);
+    args.extend(["--cpus".into(), cpus.to_string().into(), "--memory".into(), format!("{memory_mib}m").into()]);
+    args
+}
+
+/// Changes the Linux sandbox's share, waiting for it, as [`sizes`] does.
+pub fn share(binary: &Path, dir: &Path, cpus: u32, memory_mib: u64) -> Result<Status, String> {
+    match run_done(binary, share_args(dir, cpus, memory_mib))? {
+        (status, true) => Ok(status),
+        (status, false) => Err(status.error.unwrap_or_else(|| "g1t-runner sandbox resources failed.".into())),
+    }
+}
+
 /// Changes the Linux runner's sizes, waiting for it: how the sandbox is
 /// then. A running one is started again after its job, so this can take
 /// as long as that job.
@@ -764,6 +781,8 @@ mod tests {
         assert_eq!(text(sizes_args(&dir, Some("1-core,2-core:4:16g")))[..2], ["sandbox", "sizes"]);
         assert_eq!(text(sizes_args(&dir, Some("1-core,2-core:4:16g")))[5..], ["--set", "1-core,2-core:4:16g"]);
         assert_eq!(text(sizes_args(&dir, None))[5..], ["--pick"]);
+        assert_eq!(text(share_args(&dir, 8, 13 * 1024))[..2], ["sandbox", "resources"]);
+        assert_eq!(text(share_args(&dir, 8, 13 * 1024))[5..], ["--cpus", "8", "--memory", "13312m"]);
         assert!(!up.iter().any(|a| a == "--token" || a.starts_with("g1trt_")));
         let mut command = command(Path::new("g1t-runner"), up_args(&dir, &first));
         with_token(&mut command, first.token);

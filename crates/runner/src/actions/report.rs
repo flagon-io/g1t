@@ -703,6 +703,11 @@ impl Log {
         if conclusion == "failure" && super::process::machine_stopped() {
             done["machine_stopped"] = json!(true);
         }
+        // It ran out of the less memory than its size a self-hosted runner
+        // gave it: g1t may run it again on its own machines.
+        if conclusion == "failure" && super::process::short_of_memory() {
+            done["out_of_memory"] = json!(true);
+        }
         self.send(Outgoing::Done(done));
         self.finish(within);
     }

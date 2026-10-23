@@ -239,7 +239,8 @@ function RunnerSection({ view, runner, change, fail }: { view: DesktopSettingsVi
       )}
       {sizes && <JobSizes sizes={sizes} isolation={linux?.isolation ?? null} onError={fail} />}
       <SwitchCard title="Run jobs on this computer while g1t is open" checked={view.runner} onCheckedChange={(on) => change({ runner: on })}>
-        Your workspace&apos;s <code>runs-on: self-hosted</code> jobs, at no cost. Off, nothing runs here until you turn it on again.
+        Your workspace&apos;s <code>runs-on: self-hosted</code> jobs, and, when it prefers its own runners, jobs that ask for g1t&apos;s machines (such as{" "}
+        <code>ubuntu-latest</code>) at a size ticked under Job sizes. At no cost. Off, nothing runs here until you turn it on again.
       </SwitchCard>
       <SettingCard
         id={backendId}

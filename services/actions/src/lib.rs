@@ -147,6 +147,21 @@ pub fn runs_again_when_lost(machine_lost: u32, environment: Option<&str>, cancel
     machine_lost == 0 && environment.is_none_or(str::is_empty) && !cancelling
 }
 
+/// Whether a job that asked for one of g1t's machines, which the
+/// workspace's runner `runner` took and gave less memory than its size,
+/// runs again on g1t's machines after running out of it
+/// (`out_of_memory` in its end, flagon-io#458): as a lost machine's job
+/// does ([`runs_again_when_lost`]), once, never one that deploys or is
+/// being cancelled.
+pub fn runs_again_out_of_memory(out_of_memory: bool, offered: bool, runner: Option<&str>, machine_lost: u32, environment: Option<&str>, cancelling: bool) -> bool {
+    out_of_memory && offered && runner.is_some() && runs_again_when_lost(machine_lost, environment, cancelling)
+}
+
+/// Why such a job went back in the queue, for its log and its reason.
+pub fn out_of_memory_reason(runner: &str) -> String {
+    format!("It ran out of memory on the workspace's runner {runner}, which gave it less than its size has; it runs again on g1t's machines.")
+}
+
 /// Why a job that lost its machine went back in the queue: the step it was
 /// on (the one running, else the one that failed, else the last done), from
 /// its `steps` as reported, and the container instance it ran on, from its
@@ -602,6 +617,18 @@ mod room_tests {
         assert!(!runs_again_when_lost(1, None, false));
         assert!(!runs_again_when_lost(0, Some("production"), false));
         assert!(!runs_again_when_lost(0, None, true));
+    }
+
+    #[test]
+    fn a_job_short_of_memory_on_a_runner_runs_again_once_on_g1ts_machines() {
+        assert!(runs_again_out_of_memory(true, true, Some("box-linux"), 0, None, false));
+        assert!(!runs_again_out_of_memory(false, true, Some("box-linux"), 0, None, false), "it failed by itself");
+        assert!(!runs_again_out_of_memory(true, false, Some("box-linux"), 0, None, false), "it asked for self-hosted");
+        assert!(!runs_again_out_of_memory(true, true, None, 0, None, false), "it ran on g1t's machines already");
+        assert!(!runs_again_out_of_memory(true, true, Some("box-linux"), 1, None, false), "once");
+        assert!(!runs_again_out_of_memory(true, true, Some("box-linux"), 0, Some("production"), false), "it deploys");
+        assert!(!runs_again_out_of_memory(true, true, Some("box-linux"), 0, None, true), "it is being cancelled");
+        assert!(out_of_memory_reason("box-linux").contains("runs again on g1t's machines"));
     }
 
     #[test]

@@ -39,6 +39,11 @@ const TEMP: &str = "/home/runner/_temp";
 /// spec, and the harness carries on with the one that replaces it
 /// (`report::Api::spec`). A `G1T_` variable, so no step sees it.
 pub(crate) const ROTATE_TOKEN: &str = "G1T_ROTATE_JOB_TOKEN";
+/// Set to `1` by the self-hosted runner for a job asking for one of g1t's
+/// machines that it gives less memory than the size: one that runs out of
+/// it says so as it ends (`out_of_memory`), and g1t runs it again on its
+/// own machines.
+pub(crate) const MEMORY_SHORT_ENV: &str = "G1T_MEMORY_SHORT";
 
 /// Who is running steps: the job itself, or a composite action inside it.
 #[derive(Clone, Default)]

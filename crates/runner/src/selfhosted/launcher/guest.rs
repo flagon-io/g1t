@@ -106,6 +106,11 @@ pub struct Settings {
     pub computer_cpus: u32,
     #[serde(default)]
     pub computer_memory_mib: u64,
+    /// g1t's runner image, which jobs asking for one of g1t's machines run
+    /// in: passed to the runner as `G1T_HOSTED_IMAGE`. None: it takes none
+    /// of those jobs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hosted_image: Option<String>,
 }
 
 /// What `guest status` says, and the launcher reports.
@@ -288,6 +293,9 @@ pub fn sysbox_run_args(settings: &Settings, name: &str, data: &str, env_file: Op
     if settings.computer_cpus > 0 && settings.computer_memory_mib > 0 {
         args.extend(["-e".into(), format!("{}={},{}", crate::selfhosted::sizes::COMPUTER_ENV, settings.computer_cpus, settings.computer_memory_mib)]);
     }
+    if let Some(image) = settings.hosted_image.as_deref().filter(|image| !image.trim().is_empty()) {
+        args.extend(["-e".into(), format!("{}={image}", crate::selfhosted::exec::HOSTED_IMAGE_ENV)]);
+    }
     if let Some(file) = env_file {
         args.extend(["--env-file".into(), file.into()]);
     }
@@ -431,6 +439,9 @@ fn configure(bytes: &[u8]) -> Result<()> {
     }
     if given.computer_cpus > 0 {
         (settings.computer_cpus, settings.computer_memory_mib) = (given.computer_cpus, given.computer_memory_mib);
+    }
+    if given.hosted_image.is_some() {
+        settings.hosted_image = given.hosted_image;
     }
     write_private(SETTINGS, &serde_json::to_vec_pretty(&settings)?)
 }
@@ -932,6 +943,9 @@ eth0\t00E01EAC\t00000000\t0001\t0\t0\t0\t00F0FFFF\t0\t0\t0\n";
         let args = runner_run_args(&settings, false);
         assert!(args.contains(&r#"G1T_RUNNER_SIZES=["2-core"]"#.to_owned()), "{args:?}");
         assert!(args.contains(&"G1T_RUNNER_COMPUTER=16,32768".to_owned()));
+        assert!(!plain.contains("G1T_HOSTED_IMAGE"), "no image of g1t's machines: none of their jobs");
+        let hosted = Settings { hosted_image: Some("g1t.sh/flagon-io/g1t-hosted@sha256:cd".into()), ..Settings::default() };
+        assert!(runner_run_args(&hosted, false).contains(&"G1T_HOSTED_IMAGE=g1t.sh/flagon-io/g1t-hosted@sha256:cd".to_owned()));
     }
 
     #[test]

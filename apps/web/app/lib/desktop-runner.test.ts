@@ -6,6 +6,7 @@ import {
   type DesktopRunnerBridge,
   type DesktopRunnerView,
   backendOf,
+  canSetShare,
   canSetSizes,
   diagnosisOf,
   draftProblem,
@@ -15,6 +16,8 @@ import {
   reportDue,
   reportKey,
   reportOf,
+  shareDraftOf,
+  shareOf,
   sizesList,
   sizesOf,
 } from "./desktop-runner.ts";
@@ -296,6 +299,7 @@ const launcherSizes = {
       spec: "1 vCPU · 6 GB",
       vcpu: 1,
       memory_mib: 6144,
+      least_memory_mib: 4096,
       offered: false,
       given_cpus: null,
       given_memory_mib: null,
@@ -308,6 +312,7 @@ const launcherSizes = {
       spec: "2 vCPU · 8 GB",
       vcpu: 2,
       memory_mib: 8192,
+      least_memory_mib: 6144,
       offered: true,
       given_cpus: null,
       given_memory_mib: null,
@@ -320,13 +325,16 @@ const launcherSizes = {
       spec: "4 vCPU · 12 GB",
       vcpu: 4,
       memory_mib: 12288,
+      least_memory_mib: 8192,
       offered: false,
       given_cpus: null,
       given_memory_mib: null,
-      sandbox: "4 vCPU · 12 GB",
-      warning: "More than the sandbox's 8 vCPU, 8 GB: a job gets at most that, so it may run slower or run out of memory.",
+      sandbox: "4 vCPU · 8 GB",
+      warning: "Runs with 8 GB instead of 12 GB: jobs that need all of it may run out of memory, and run again on g1t's machines.",
     },
   ],
+  limit: { cpus: 16, memory_mib: 16384 },
+  share_settable: true,
   saving: false,
   error: null,
 };
@@ -358,8 +366,27 @@ test("a size chosen with more says so to the launcher, and less is refused", () 
   assert.equal(sizesList(drafts), "1-core,2-core:4:16384m");
   assert.equal(draftProblem(drafts[1]!, sizes.choices[1]!), null);
   assert.equal(draftProblem({ ...drafts[1]!, cpus: "1" }, sizes.choices[1]!), "Standard jobs get at least 2 vCPU.");
-  assert.equal(draftProblem({ ...drafts[1]!, memoryGb: "4" }, sizes.choices[1]!), "Standard jobs get at least 8 GB.");
+  assert.equal(draftProblem({ ...drafts[1]!, memoryGb: "4" }, sizes.choices[1]!), "Standard jobs get at least 6 GB.");
+  assert.equal(draftProblem({ ...drafts[1]!, memoryGb: "7" }, sizes.choices[1]!), null, "less than the size, down to its least");
   assert.equal(sizesList(drafts.map((d) => ({ ...d, offered: false }))), "", "none");
-  // A Large job is more than this sandbox holds: a warning, not a refusal.
+  // A Large job runs with less memory than its size here: a warning, not a refusal.
   assert.equal(draftProblem({ ...drafts[2]!, offered: true }, sizes.choices[2]!), null);
+  assert.match(sizes.choices[2]!.warning!, /^Runs with 8 GB instead of 12 GB/);
+});
+
+test("the sandbox's share is set in whole CPUs and GB, with no more CPUs than there are", () => {
+  const sizes = sizesOf(launcherSizes)!;
+  assert.equal(sizes.shareSettable, true);
+  assert.deepEqual(sizes.limit, { cpus: 16, memory_mib: 16384 });
+  assert.equal(sizesOf({ ...launcherSizes, share_settable: undefined, limit: undefined })!.shareSettable, false, "a launcher before 0.3.7");
+  const draft = shareDraftOf(sizes.share!);
+  assert.deepEqual(draft, { cpus: "8", memoryGb: "8" });
+  assert.deepEqual(shareOf({ cpus: "8", memoryGb: "13" }, sizes.limit!), { cpus: 8, memoryMib: 13312 });
+  assert.equal(shareOf({ cpus: "2.5", memoryGb: "13" }, sizes.limit!), "CPUs are a whole number, 1 or more.");
+  assert.equal(shareOf({ cpus: "17", memoryGb: "13" }, sizes.limit!), "At most 16 CPUs here.");
+  assert.equal(shareOf({ cpus: "8", memoryGb: "0.5" }, sizes.limit!), "Memory is 1 GB or more.");
+  // More memory than the VM has: the launcher warns, and the app does not refuse it.
+  assert.deepEqual(shareOf({ cpus: "8", memoryGb: "40" }, sizes.limit!), { cpus: 8, memoryMib: 40960 });
+  assert.equal(canSetShare({ setSizes: async () => {} } as unknown as DesktopRunnerBridge), false, "an app before 0.3.12");
+  assert.equal(canSetShare({ setShare: async () => {} } as unknown as DesktopRunnerBridge), true);
 });
