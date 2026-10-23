@@ -29,7 +29,7 @@ import { ROOT } from "./stack.mjs";
 /** A tar's entries: name, mode, size, owner, type and bytes, checksums checked. */
 function untar(tar) {
   const entries = [];
-  for (let at = 0; at + 512 <= tar.length;) {
+  for (let at = 0; at + 512 <= tar.length; ) {
     const header = tar.subarray(at, at + 512);
     if (header.every((b) => b === 0)) break;
     const field = (start, length) =>
@@ -358,10 +358,12 @@ test("a registry that asks for a bearer token is given the one its realm trades 
  * Two registries in memory: `from` has an image, `to` refuses a request
  * over `limit` bytes (413) as g1t.sh refuses one over 100 MB, and keeps
  * what an upload's chunks add up to once it is finished by its digest.
+ * `from` sends a blob in pieces of `piece` bytes, as a network does, or
+ * whole; its layer is `layer` bytes.
  */
-function twoRegistries({ limit }) {
+function twoRegistries({ limit, piece = 0, layer = 250 }) {
   const config = Buffer.from('{"architecture":"amd64"}');
-  const big = Buffer.alloc(250, 7);
+  const big = Buffer.from(Array.from({ length: layer }, (_, i) => (i * 31) % 251));
   const manifest = Buffer.from(
     JSON.stringify({
       schemaVersion: 2,
@@ -386,7 +388,17 @@ function twoRegistries({ limit }) {
     if (host === "from.test") {
       if (pathname.endsWith(`/manifests/${sha256(manifest)}`)) return answer(200, { "content-type": OCI_MANIFEST }, manifest);
       const blob = source.get(pathname.split("/blobs/")[1]);
-      return blob ? answer(200, {}, blob) : answer(404);
+      if (!blob) return answer(404);
+      if (!piece) return answer(200, {}, blob);
+      let at = 0;
+      const pieces = new ReadableStream({
+        pull(controller) {
+          if (at >= blob.length) return controller.close();
+          controller.enqueue(new Uint8Array(blob.subarray(at, at + piece)));
+          at += piece;
+        },
+      });
+      return answer(200, {}, pieces);
     }
     if (init.method === "PATCH" && body.length > limit) return answer(413);
     if (init.method === "HEAD") return answer(kept.has(pathname.split("/blobs/")[1]) ? 200 : 404);
@@ -454,4 +466,22 @@ test("blobs are copied several at once, each still whole and exact", async () =>
   assert.equal(await copyImage({ from: r.from, to: r.to, digest: r.digest, tag: "base-1", chunkSize: 100, concurrency: 4 }), r.digest);
   for (const [digest, bytes] of r.source) assert.deepEqual(r.kept.get(digest), bytes, `${digest} as it was`);
   assert.deepEqual(r.manifests.get("base-1"), r.manifest);
+});
+
+test("a blob that comes in small pieces goes in chunks of the size asked for, exactly", async () => {
+  const r = twoRegistries({ limit: 100, piece: 7 });
+  assert.equal(await copyImage({ from: r.from, to: r.to, digest: r.digest, tag: "base-1", chunkSize: 100, concurrency: 1 }), r.digest);
+  for (const [digest, bytes] of r.source) assert.deepEqual(r.kept.get(digest), bytes, `${digest} as it was`);
+  const patches = r.requests.filter(([host, method]) => host === "to.test" && method === "PATCH").map(([, , , n]) => n);
+  assert.deepEqual(patches, [24, 100, 100, 50]);
+});
+
+test("a chunk is joined once from its pieces, not again for each piece", async () => {
+  // 16 MiB in 4 KiB pieces: joining each piece onto what was held copies
+  // about 32 GB, which takes many seconds; joining once copies 16 MiB.
+  const r = twoRegistries({ limit: 16 * 1024 * 1024, piece: 4096, layer: 16 * 1024 * 1024 });
+  const started = Date.now();
+  await copyImage({ from: r.from, to: r.to, digest: r.digest, tag: "base-1", chunkSize: 16 * 1024 * 1024, concurrency: 1 });
+  assert.ok(Date.now() - started < 3000, `copied in ${Date.now() - started} ms`);
+  for (const [digest, bytes] of r.source) assert.deepEqual(r.kept.get(digest), bytes);
 });

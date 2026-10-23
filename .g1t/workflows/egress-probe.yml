@@ -14,6 +14,7 @@ on:
     branches: [main]
     paths:
       - .g1t/workflows/egress-probe.yml
+      - .g1t/probe/**
   workflow_dispatch:
 
 permissions:
@@ -24,8 +25,9 @@ jobs:
   probe:
     name: Probe
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
+      - uses: actions/checkout@v5
       - name: Who signs HTTPS
         run: |
           for url in https://speed.cloudflare.com/ https://speed.cloudflare.com:8443/ https://g1t.sh/ https://g1t.sh:8443/v2/ https://releases.ubuntu.com/; do
@@ -76,3 +78,12 @@ jobs:
           chunk "g1t.sh 8443" https://g1t.sh:8443
           echo "six at once, 443:"
           for i in 1 2 3 4 5 6; do chunk "g1t.sh 443 #$i" https://g1t.sh & done; wait
+
+      - name: Six blobs streamed into g1t.sh, as copyImage does
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git fetch -q --depth 1 origin main
+          git show FETCH_HEAD:scripts/deploy/registry.mjs > /tmp/registry-main.mjs
+          timeout 900 node .g1t/probe/stream-copy.mjs scripts/deploy/registry.mjs "this branch" || true
+          timeout 900 node .g1t/probe/stream-copy.mjs /tmp/registry-main.mjs "main" || true
