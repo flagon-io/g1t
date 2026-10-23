@@ -210,6 +210,7 @@ and needs no token.
 | `g1t-runner sandbox up --only windows` | Turns Windows jobs on again and starts them, leaving Linux jobs as they are. `--only linux,windows` turns on both. |
 | `g1t-runner sandbox status` | Says how each capability is, what the computer still lacks for one that is not available, and what to do. It downloads nothing, so it is the first thing to run on a new computer. See [what the sandbox needs](#what-the-sandbox-needs). |
 | `g1t-runner sandbox update` | Drains the Linux runner (the job it is running finishes), swaps in the newest release's image, and starts it again. The registration is kept, so it is the same runner on g1t. |
+| `g1t-runner sandbox sizes` | Which of [g1t's machines](#sizes) Linux jobs are taken for. `--set 1-core,2-core:4:16g` takes those, `--pick` picks one again; a running Linux runner drains and starts again with them, keeping its registration. |
 
 | Option (`up`) | |
 | --- | --- |
@@ -484,6 +485,7 @@ the same object with `--json` when they are done, and exit 1 with
 | `needs` | On each capability: what the computer still lacks for it, by name, first what must come first; `cause` and `fix` say the first. The names are in [what the sandbox needs](#what-the-sandbox-needs). Empty when nothing is missing; left out by `g1t-runner` before 0.3.5. |
 | `turned_off` | On each capability: someone stopped it (`down --only`, `--no-native`). Its `state` is then `stopped`: stopped by a person, not failing, and nothing in `error`. |
 | `warnings` | Sentences about what on the computer weakens the sandbox ([what your computer can see](#what-your-computer-can-see)): a host-mode runner registered for the same account, or a state folder other users can read. Empty when nothing does; left out by earlier versions of `g1t-runner`. `status` without `--json` prints each as a line starting `Warning:`. |
+| `sizes` | The Linux runner's [sizes](#sizes): `machine` (this computer's `cpus` and `memory_mib`) and `share` (the sandbox's), `picked` and `reason` when the sizes were picked for you, `applies` (`restart`: a change starts Linux jobs again after their job), and `choices`, each size with `offered`, `given_cpus` and `given_memory_mib` when its jobs get more, `sandbox` (what a job gets) and `warning`. `g1t-runner sandbox sizes` changes them. Left out before 0.3.6. |
 
 Fields are only added; `schema` changes if one changes meaning.
 
@@ -498,7 +500,7 @@ by side, with what each is running now and this month's time on each.
 | **Your runners** | How many are online, busy, idle and offline, this month's self-hosted time (always $0), how many jobs are waiting for one of them, and whether they take [g1t's work](#g1ts-work-on-your-runners). |
 | **On g1t cloud now** | Each running workflow job, linked to its run, with its kind, repository and when it started. Work handed to one of your runners is listed under that runner instead. |
 | **Machine time** | This month's time on g1t cloud against your runners', from your [usage](/guides/usage-and-billing/). |
-| **Your runners** list | Each runner's status, labels, OS, architecture, `g1t-runner` version and when it was last heard from, what a job on it gets (*8 CPUs · 12 GB · Docker*), and what it is running, linked to its run. |
+| **Your runners** list | Each runner's status, labels, OS, architecture, `g1t-runner` version and when it was last heard from, what a job on it gets (*8 CPUs · 12 GB · Docker*), [the sizes](#sizes) it takes (*Takes Small, Standard*), and what it is running, linked to its run. |
 | **Where work runs** | What decides where each kind of work runs: whether jobs that ask for g1t's machines [run on your runners first](#jobs-that-ask-for-g1ts-machines), and whether [g1t's work](#g1ts-work-on-your-runners) runs on them. |
 
 A runner is **Idle** when it is online with nothing to do, **Busy** while it
@@ -621,6 +623,7 @@ isolation with `--no-docker`. See [isolation](#isolation).
 | `--replace` | Take the place of a runner with the same name, registered from any computer. A runner registering again from the computer it registered from takes its name back without it ([registering again](#registering-again)). |
 | `--machine` | Which computer this is, as 32 to 128 hex digits, for a runner that can't tell ([registering again](#registering-again)). Worked out from the operating system if left out. |
 | `--no-auto-update` | Never update itself. |
+| `--sizes` | Which of [g1t's machines](#sizes) it takes jobs for, such as `1-core,2-core:4:16g`. One is picked for it if left out. |
 
 ### Registering again
 
@@ -728,7 +731,7 @@ follow the workspace's.
 
 Every computer with [the desktop app](/guides/desktop/#the-runner) open
 has a runner, so with this on, the jobs your team pushes run on the
-team's own machines whenever one of them is free and large enough.
+team's own machines whenever one of them is free and takes their size.
 
 ### How a runner is matched
 
@@ -741,15 +744,14 @@ these hold:
 - **The job's OS and architecture**: `linux` and `x64` for `ubuntu-latest`
   and the other Ubuntu labels (an older or newer `ubuntu-*` too), `linux`
   and `arm64` for an `-arm` label.
-- **At least the machine's size.** A job on the runner gets at least the
-  CPUs and memory of the machine g1t would give the job: 2 vCPUs and
-  8 GiB for `ubuntu-latest` in a private repository, 4 vCPUs and 12 GiB in
-  a public one, 1 vCPU and 6 GiB for `ubuntu-slim` ([machine
-  sizes](/guides/actions/#machine-sizes)). What counts is what the runner
-  says a job gets: a job container's `--cpus` and `--memory` ([register
-  options](#register-options)), a Windows Sandbox's memory, or the
-  machine's for host mode. A runner too old to say takes none of these
-  jobs.
+- **It takes the job's size.** The machine g1t would give the job is one
+  of [the sizes](#sizes) the runner takes: Standard (2 vCPU, 8 GB) for
+  `ubuntu-latest` in a private repository, Large (4 vCPU, 12 GB) in a
+  public one, Small (1 vCPU, 6 GB) for `ubuntu-slim` ([machine
+  sizes](/guides/actions/#machine-sizes)). A runner older than g1t-runner
+  0.3.6, which says no sizes, takes the job when a job on it gets at least
+  that machine's CPUs and memory (a job container's `--cpus` and
+  `--memory`), and one too old to say either takes none.
 - **Docker, when the job uses it.** A job with `services:` or `container:`
   goes only to a runner whose jobs can use Docker: a sandboxed runner,
   whose jobs get [a Docker Engine of their own](#docker-in-jobs) unless it
@@ -765,6 +767,61 @@ these hold:
 Labels you gave a runner do not matter here: the job asks only for its OS
 and architecture. Windows and macOS labels are not offered: `windows-latest`
 alone still fails, and `runs-on: [self-hosted, windows]` runs it on yours.
+
+### Sizes
+
+A runner says which of g1t's machines it takes jobs for, by size:
+
+| Size | Key | A job gets |
+| --- | --- | --- |
+| **Small** | `1-core` | 1 vCPU, 6 GB |
+| **Standard** | `2-core` | 2 vCPU, 8 GB |
+| **Large** | `4-core` | 4 vCPU, 12 GB |
+
+**What it takes when you choose nothing.** The first time a runner starts
+with no sizes, it picks one: Standard if it fits in half the machine's
+CPUs and memory, so your own work keeps the other half; else Small if
+that fits; else none. It never picks Large. It keeps what it picked, so
+the choice stays the same until you change it, and it says so: the
+runner's log at start (*It takes jobs asking for g1t's machines as
+Standard (chosen for it: Standard fits in half this machine's 8 CPUs and
+16 GB.)*), `g1t-runner sizes`, and the desktop app's settings. A machine
+of 8 CPUs and 16 GB gets Standard; one of 4 CPUs and 8 GB, or less, gets
+none, since half of it is less than Small's 6 GB. In [the desktop
+app](/guides/desktop/#job-sizes) the sandbox has a set share of the
+computer, and the size picked must fit in that share too.
+
+**What a job gets.** A job taken for a size runs in a sandbox of exactly
+that size: its container's `--cpus` and `--memory` are the size's, not the
+runner's own `--cpus` and `--memory`, and a job in Windows Sandbox gets
+its memory. You can give a size's jobs more, such as 4 vCPU and 16 GB for
+Standard jobs, never less: a job always gets at least what it asked for,
+and g1t-runner refuses a size given less. A host-mode runner sets no
+limits: its jobs get the whole machine. A job that names `self-hosted`
+keeps the runner's own limits, whatever its sizes.
+
+**Offering more than fits.** You can offer any size, including one more
+than half the machine or more than it has. `g1t-runner sizes` and the
+desktop app then warn, saying what the machine has: such a job may run
+slower or run out of memory, and your own work may slow down while it
+runs. They do not refuse it.
+
+**Changing them.** `g1t-runner sizes` lists the sizes with what each would
+cost the machine; `g1t-runner sizes set 1-core,2-core:4:16g` takes Small
+and Standard, Standard's jobs given 4 vCPU and 16 GB (a size alone takes
+its own spec; `2-core::16g` gives memory alone); `g1t-runner sizes set ""`
+takes none; and `g1t-runner sizes pick` picks again. They are kept in
+the runner's configuration (`config.json` in its folder) as
+`"sizes": ["1-core", { "size": "2-core", "cpus": 4, "memory": "16g" }]`,
+which you can edit too. A running runner reads them again before each
+poll, so a change counts from its next one, within about 20 seconds, with
+no registering again. A runner in [the sandbox on your
+computer](#sandbox-on-your-computer) takes them from `g1t-runner sandbox
+sizes --set 1-core,2-core:4:16g` (or `--pick`), which keeps them and starts
+its Linux jobs again with them after the job they are running.
+
+The [Runners page](#the-runners-page) shows the sizes each runner takes:
+*Takes Small, Standard → 4 vCPU · 16 GB*.
 
 ### When it runs on g1t's machines
 
@@ -783,8 +840,10 @@ up to 24 hours); on g1t's machines, theirs (60 minutes at most).
 
 While it is offered, the job's page says *Offered to the workspace's own
 runners first*. The first lines of its log, under **Set up job**, say
-where it ran and why: on the workspace's runner, by name, because the
-workspace prefers its own runners; or on g1t's machines because none that
+where it ran and why: on the workspace's runner, by name and size (*Runs as
+Standard (2 vCPU, 8 GB) on the workspace's runner box-linux, in a sandbox of
+exactly that size*, or the sandbox it got when its runner gives that size
+more), because the workspace prefers its own runners; or on g1t's machines because none that
 fits was free, or none took it within 15 seconds. `runner.name` and
 `RUNNER_ENVIRONMENT` (`self-hosted` on your runner) say which as well.
 

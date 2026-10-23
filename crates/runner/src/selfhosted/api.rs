@@ -48,8 +48,9 @@ pub struct Poll {
 
 /// What a job on this runner gets, as g1t is told at registration and in
 /// each poll: g1t offers a job asking for one of its own machines
-/// (`ubuntu-latest`) to a runner at least that machine's size, and with
-/// Docker when the job uses it. An older g1t ignores it.
+/// (`ubuntu-latest`) with Docker only to a runner whose jobs can use it,
+/// and, to a runner that says no sizes (sizes.rs), only when it is at least
+/// that machine's size. An older g1t ignores it.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Capacity {
     pub cpus: Option<u32>,
