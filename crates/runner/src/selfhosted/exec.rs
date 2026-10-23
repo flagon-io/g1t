@@ -271,7 +271,8 @@ fn in_native_vm(config: &Config, folder: &Path, work: &Assignment, env: BTreeMap
     if !cfg!(windows) {
         bail!("this runner has no sandbox for jobs native to {}", std::env::consts::OS);
     }
-    let memory = config.memory.as_deref().and_then(mib).unwrap_or(4096);
+    // A VM sets its memory; Windows Sandbox has no setting for its CPUs.
+    let memory = work.size.as_ref().and_then(|size| size.memory_mib).or_else(|| config.memory.as_deref().and_then(mib)).unwrap_or(4096);
     let drop = folder.join("native").join(container_name(&work.id));
     let job = WsbJob::start(drop, &env, memory)?;
     let child = match job.exec().spawn() {
@@ -302,6 +303,11 @@ fn in_native_vm(config: &Config, folder: &Path, work: &Assignment, env: BTreeMap
     })
 }
 
+/// ` as Standard`, for a job taken for one of g1t's machines' sizes.
+fn sized_as(work: &Assignment) -> String {
+    work.size.as_ref().and_then(|size| g1t_contracts::runners::size_named(&size.size)).map(|size| format!(" as {}", size.name)).unwrap_or_default()
+}
+
 /// Host mode does not take a public repository's work: anyone can propose
 /// code to one, and here it would run on the machine itself.
 fn refuse_public_on_host(work: &Assignment) -> Result<()> {
@@ -329,6 +335,16 @@ fn default_memory(meminfo: &str) -> Option<String> {
     let kb: u64 = meminfo.lines().find_map(|l| l.strip_prefix("MemTotal:"))?.trim().trim_end_matches("kB").trim().parse().ok()?;
     let mib = kb / 1024 * 3 / 4;
     (mib >= 256).then(|| format!("{mib}m"))
+}
+
+/// A job's limits: the size it was taken for, when g1t gave it one of its
+/// machines' jobs ([`Assignment::size`]), exactly; else the runner's own.
+pub fn job_limits(config: &Config, work: &Assignment) -> Limits {
+    let own = limits(config);
+    match work.size.as_ref().and_then(|size| Some((size.cpus?, size.memory_mib?))) {
+        Some((cpus, memory_mib)) => Limits { memory: format!("{memory_mib}m"), cpus: cpus.to_string(), ..own },
+        None => own,
+    }
 }
 
 pub fn limits(config: &Config) -> Limits {
@@ -443,7 +459,7 @@ fn in_docker(config: &Config, isolation: Isolation, folder: &Path, work: &Assign
     // A job's own Docker, only inside the runner's own sandbox: on a
     // shared engine it would be the machine's.
     let engine: Option<JobEngine> = job_engine(config, isolation, &name);
-    let limits = limits(config);
+    let limits = job_limits(config, work);
     let plan = Plan {
         name: &name,
         runner: &config.runner,
@@ -459,9 +475,10 @@ fn in_docker(config: &Config, isolation: Isolation, folder: &Path, work: &Assign
     command.args(run_args(&plan));
     command.envs(&env);
     log(&format!(
-        "Running {} {} in {image}: its own container and network, capabilities dropped, {} memory, {} CPUs, {} processes{}",
+        "Running {} {}{} in {image}: its own container and network, capabilities dropped, {} memory, {} CPUs, {} processes{}",
         work.kind,
         work.name,
+        sized_as(work),
         limits.memory,
         limits.cpus,
         limits.pids,
@@ -622,6 +639,8 @@ mod tests {
             job_docker: true,
             job_docker_image: None,
             native: false,
+            sizes: None,
+            sizes_picked: false,
         }
     }
 
@@ -780,6 +799,21 @@ mod tests {
         assert_eq!(limits.memory, "2g");
         assert_eq!(limits.pids, 100);
         assert!(limits.cpus.parse::<f64>().unwrap() >= 1.0);
+    }
+
+    #[test]
+    fn a_job_taken_for_a_size_gets_exactly_that_size() {
+        let mut config = config();
+        config.memory = Some("2g".into());
+        let mut work = assignment("workflow");
+        assert_eq!(job_limits(&config, &work).memory, "2g", "a job that asked for self-hosted keeps the runner's limits");
+        work.size = g1t_contracts::runners::OfferedSize::of("2-core").assigned();
+        let limits = job_limits(&config, &work);
+        assert_eq!((limits.cpus.as_str(), limits.memory.as_str()), ("2", "8192m"));
+        assert_eq!(sized_as(&work), " as Standard");
+        work.size = Some(g1t_contracts::runners::OfferedSize { size: "2-core".into(), cpus: Some(4.0), memory_mib: Some(16384) });
+        let limits = job_limits(&config, &work);
+        assert_eq!((limits.cpus.as_str(), limits.memory.as_str()), ("4", "16384m"));
     }
 
     #[test]

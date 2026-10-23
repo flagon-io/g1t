@@ -5,7 +5,9 @@
 //!     [--labels gpu,cuda] [--group Default] [--ephemeral] [--work-dir DIR]
 //!     [--no-docker] [--image IMAGE] [--replace]
 //!     [--memory 8g] [--cpus 4] [--pids-limit 4096] [--no-job-docker]
+//!     [--sizes 1-core,2-core:4:16g]
 //! g1t-runner run [--once]
+//! g1t-runner sizes [set LIST | pick] [--json]
 //! g1t-runner service install|start|stop|status|uninstall
 //! g1t-runner remove
 //! g1t-runner update
@@ -34,6 +36,7 @@ mod needs;
 mod private;
 mod sandbox;
 mod service;
+mod sizes;
 mod update;
 
 use std::path::{Path, PathBuf};
@@ -58,7 +61,7 @@ const IDLE_WAIT_MS: u64 = 20_000;
 /// How often an idle runner checks for a new version.
 const UPDATE_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 
-const COMMANDS: &[&str] = &["register", "register-and-run", "run", "service", "sandbox", "remove", "update", "version", "--version", "help", "--help", "-h"];
+const COMMANDS: &[&str] = &["register", "register-and-run", "run", "service", "sandbox", "sizes", "remove", "update", "version", "--version", "help", "--help", "-h"];
 
 /// Whether `args` (without the program) are a command of this one, rather
 /// than the harness's `MODE`.
@@ -149,8 +152,8 @@ impl Options {
 }
 
 /// The options that take a value.
-const VALUE_OPTIONS: [&str; 14] =
-    ["url", "api", "token", "name", "labels", "group", "work-dir", "image", "harness", "memory", "cpus", "pids-limit", "job-docker-image", "machine"];
+const VALUE_OPTIONS: [&str; 15] =
+    ["url", "api", "token", "name", "labels", "group", "work-dir", "image", "harness", "memory", "cpus", "pids-limit", "job-docker-image", "machine", "sizes"];
 
 const HELP: &str = "g1t-runner: a self-hosted runner for g1t.
 
@@ -159,8 +162,13 @@ const HELP: &str = "g1t-runner: a self-hosted runner for g1t.
       [--work-dir DIR] [--no-docker] [--image IMAGE]
       [--api URL] [--harness PATH] [--replace] [--no-auto-update]
       [--memory 8g] [--cpus 4] [--pids-limit 4096] [--no-job-docker]
-      [--job-docker-image IMAGE] [--native]
+      [--job-docker-image IMAGE] [--native] [--sizes 1-core,2-core:4:16g]
   g1t-runner run [--once]          poll for work and run it
+  g1t-runner sizes [set LIST | pick] [--json]
+                                   which of g1t's machines this runner takes
+                                   jobs for (`set 2-core,4-core:8:16g`: those,
+                                   their jobs given more; `pick` chooses again);
+                                   a running runner takes them from its next poll
   g1t-runner sandbox up|down|status|update [--json]
                                    on your own computer: a Linux VM of the
                                    runner's own for Linux jobs, and Windows
@@ -211,6 +219,7 @@ pub fn main(args: Vec<String>) -> i32 {
             ready.and_then(|()| run(&folder, options.flag("once")))
         }
         "run" => run(&folder, options.flag("once")),
+        "sizes" => sizes_command(&options, &folder),
         "service" => match options.rest.first().map(String::as_str) {
             Some(action) => config::load(&folder).and_then(|config| service::main(action, &config, &folder)),
             None => Err(anyhow::anyhow!("service takes install, uninstall, start, stop or status")),
@@ -340,6 +349,13 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
         Some(text) => Some(text.parse::<u32>().ok().filter(|n| *n > 0).with_context(|| format!("--pids-limit takes a number of processes, not {text}"))?),
         None => None,
     };
+    // Which of g1t's machines it takes jobs for: those given, else the one
+    // picked for it, kept in its configuration either way.
+    let (chosen_sizes, sizes_picked) = match options.value("sizes") {
+        Some(list) => (sizes::parse_list(list)?, false),
+        None => (sizes::pick(sizes::machine(isolation)), true),
+    };
+    let offered_sizes = sizes::offered(&chosen_sizes)?;
     let existing = config::load(folder).ok();
     if existing.is_some() && !options.flag("replace") {
         bail!("{} already holds a registered runner: run `g1t-runner remove` first, or register with --replace or another --dir", folder.display());
@@ -369,6 +385,7 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
         "machine": options.value("machine").map(str::to_owned).or_else(machine_fingerprint),
     });
     exec::capacity(options.value("memory"), options.value("cpus"), !options.flag("no-job-docker"), isolation).add_to(&mut body);
+    body["sizes"] = json!(offered_sizes);
     let registered = Api::register(&api, &body)?;
     let work_dir = options.value("work-dir").map(PathBuf::from).unwrap_or_else(|| folder.join("work"));
     let config = Config {
@@ -393,6 +410,8 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
         job_docker: !options.flag("no-job-docker"),
         job_docker_image: options.value("job-docker-image").map(str::to_owned),
         native,
+        sizes: Some(chosen_sizes),
+        sizes_picked,
     };
     config::save(folder, &config)?;
     let place = match &config.repo {
@@ -400,6 +419,7 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
         None => format!("in {}{}", config.workspace, config.group.as_ref().map(|g| format!(", group {g}")).unwrap_or_default()),
     };
     log(&format!("Registered {} {place}, with labels {}.", config.name, config.labels.join(", ")));
+    log(&format!("It takes jobs asking for g1t's machines as {}: `g1t-runner sizes` says why, and changes them.", g1t_contracts::runners::sizes_said(&offered_sizes)));
     log("Start it with `g1t-runner run`, or `g1t-runner service install` to keep it running.");
     Ok(())
 }
@@ -466,6 +486,51 @@ fn remove(folder: &Path) -> Result<()> {
     Ok(())
 }
 
+/// `g1t-runner sizes`: which of g1t's machines this runner takes jobs for,
+/// what each would cost its machine, and, with `set LIST` or `pick`, others.
+/// A running runner reads them again before each poll, so a change counts
+/// from its next one; nothing is registered again.
+fn sizes_command(options: &Options, folder: &Path) -> Result<()> {
+    let mut config = config::load(folder)?;
+    let isolation = if config.native {
+        sandbox::Isolation::Vm
+    } else if config.docker {
+        sandbox::Isolation::NestedContainer
+    } else {
+        sandbox::Isolation::Host
+    };
+    let machine = sizes::machine(isolation);
+    let changed = match options.rest.first().map(String::as_str) {
+        Some("set") => {
+            config.sizes = Some(sizes::parse_list(options.rest.get(1).map(String::as_str).unwrap_or_default())?);
+            config.sizes_picked = false;
+            true
+        }
+        Some("pick") => {
+            config.sizes = Some(sizes::pick(machine));
+            config.sizes_picked = true;
+            true
+        }
+        Some(other) => bail!("sizes takes `set LIST` or `pick`, not {other}"),
+        None => false,
+    };
+    if changed {
+        config::save(folder, &config)?;
+    }
+    sizes::settle(&mut config, machine);
+    let taken = sizes::offered(&sizes::chosen(&config).unwrap_or_default())?;
+    let view = sizes::view(machine, &taken, config.sizes_picked, "poll");
+    if options.flag("json") {
+        println!("{}", serde_json::to_string_pretty(&view)?);
+    } else {
+        sizes::print(&view);
+        if changed {
+            log("Saved. A running runner takes these from its next poll.");
+        }
+    }
+    Ok(())
+}
+
 /// The loop, for a Windows service: its exit code.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn serve_from_service() -> i32 {
@@ -526,6 +591,19 @@ fn run(folder: &Path, once: bool) -> Result<()> {
     // What a job here gets, told to g1t with each poll: asked once, as
     // whether Docker answers takes a moment.
     let capacity = exec::capacity(config.memory.as_deref(), config.cpus.as_deref(), config.job_docker, isolation);
+    // Which of g1t's machines it takes jobs for: picked once for a runner
+    // told nothing, and kept.
+    let machine = sizes::machine(isolation);
+    if sizes::settle(&mut config, machine) {
+        config::save(folder, &config)?;
+    }
+    let mut offered = sizes::offered(&sizes::chosen(&config).unwrap_or_default()).unwrap_or_default();
+    let mut sizes_trouble: Option<String> = None;
+    log(&format!(
+        "It takes jobs asking for g1t's machines as {}{}.",
+        g1t_contracts::runners::sizes_said(&offered),
+        if config.sizes_picked { format!(" (chosen for it: {})", g1t_contracts::runners::pick_reason(machine)) } else { String::new() }
+    ));
     let mut current: Option<exec::Running> = None;
     let mut ran_one = false;
     let mut backoff = Duration::from_secs(2);
@@ -598,9 +676,30 @@ fn run(folder: &Path, once: bool) -> Result<()> {
                 log("This build cannot check releases, so it will not update itself.");
             }
         }
+        // Its sizes as its configuration says them now: `g1t-runner sizes set`
+        // changes them for the next poll.
+        if let Ok(saved) = config::load(folder) {
+            (config.sizes, config.sizes_picked) = (saved.sizes, saved.sizes_picked);
+        }
+        match sizes::offered(&sizes::chosen(&config).unwrap_or_default()) {
+            Ok(now) => {
+                if now != offered {
+                    log(&format!("It takes jobs asking for g1t's machines as {} now.", g1t_contracts::runners::sizes_said(&now)));
+                }
+                offered = now;
+                sizes_trouble = None;
+            }
+            Err(error) => {
+                let said = format!("{error:#}");
+                if sizes_trouble.as_deref() != Some(said.as_str()) {
+                    log(&format!("Its sizes do not read ({said}); it keeps taking {}.", g1t_contracts::runners::sizes_said(&offered)));
+                }
+                sizes_trouble = Some(said);
+            }
+        }
         let running: Vec<String> = current.iter().map(|r| r.id.clone()).collect();
         let wait = if current.is_some() { 0 } else { IDLE_WAIT_MS };
-        let poll = match api.poll(&running, wait, isolation.as_str(), &capacity) {
+        let poll = match api.poll(&running, wait, isolation.as_str(), &capacity, &offered) {
             Ok(poll) => {
                 backoff = Duration::from_secs(2);
                 poll

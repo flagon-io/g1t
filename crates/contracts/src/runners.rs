@@ -26,8 +26,9 @@
 //! - A job whose `runs-on` is one of the hosted Linux labels
 //!   (`ubuntu-latest`) is offered to the workspace's own runners first,
 //!   unless its settings say otherwise (`prefer_own_runners`): a runner of
-//!   its OS and architecture that is online, idle and at least as large as
-//!   the machine g1t would give it takes it ([`stands_in_for`]). With none
+//!   its OS and architecture that is online, idle and takes the machine g1t
+//!   would give it as one of its sizes takes it ([`stands_in_for`]), and
+//!   runs it in a sandbox of that size ([`OfferedSize`], [`picked_size`]). With none
 //!   free, it runs on g1t's machine at once; with one free that did not
 //!   take it within [`OFFER_TO_OWN_MS`], then ([`falls_back`]).
 //!
@@ -127,6 +128,12 @@ pub struct Runner {
     pub memory_mib: Option<u64>,
     #[serde(default)]
     pub docker: Option<bool>,
+    /// The sizes it takes jobs asking for a hosted label for, as it last
+    /// said ([`OfferedSize`]), with the sandbox each gets where that is more
+    /// than the size. Null for a runner from before runners said, which
+    /// takes those jobs by `cpus` and `memory_mib`.
+    #[serde(default)]
+    pub sizes: Option<Vec<OfferedSize>>,
 }
 
 /// Which of a workspace's repositories may use its runners.
@@ -567,6 +574,11 @@ pub struct RegisterArgs {
     pub memory_mib: Option<u64>,
     #[serde(default)]
     pub docker: Option<bool>,
+    /// The sizes it takes jobs asking for a hosted label for
+    /// (`Runner::sizes`); empty for none. Older runners leave it out, and
+    /// are matched by `cpus` and `memory_mib`.
+    #[serde(default)]
+    pub sizes: Option<Vec<OfferedSize>>,
 }
 
 /// The isolation levels a runner may say it has (`RegisterArgs::isolation`).
@@ -612,6 +624,10 @@ pub struct PollArgs {
     pub memory_mib: Option<u64>,
     #[serde(default)]
     pub docker: Option<bool>,
+    /// The sizes it takes now, as at registration: a change to them counts
+    /// from the poll that says it. Older runners leave it out.
+    #[serde(default)]
+    pub sizes: Option<Vec<OfferedSize>>,
 }
 
 /// Work for a runner.
@@ -636,6 +652,12 @@ pub struct Assignment {
     /// public repository's. Older g1t leaves it out.
     #[serde(default)]
     pub visibility: Option<String>,
+    /// For a job that asked for one of g1t's machines, taken for one of the
+    /// sizes the runner offers: that size, with the CPUs and memory its
+    /// sandbox gets ([`OfferedSize::assigned`]). None for any other job,
+    /// which keeps the runner's own limits, and from an older g1t.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<OfferedSize>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -905,26 +927,32 @@ pub struct Capacity {
 }
 
 /// Whether a runner may take, in place of `machine` (the machine g1t would
-/// give it), a job asking for a hosted label: at least the machine's CPUs
-/// and memory, Docker when the job has `services:` or `container:`, and,
-/// for a runner that runs jobs directly on its machine, only a repository
-/// known to be private. A runner that does not say what it has takes none:
-/// the job runs on g1t's machine instead, where it fits.
+/// give it), a job asking for a hosted label: a runner that says which
+/// sizes it takes ([`OfferedSize`]) takes it when the machine is one of
+/// them, and one that does not (older runners) when it has at least the
+/// machine's CPUs and memory. Either needs Docker when the job has
+/// `services:` or `container:`, and a runner that runs jobs directly on its
+/// machine takes only a repository known to be private. A runner that says
+/// neither what it takes nor what it has takes none: the job runs on g1t's
+/// machine instead, where it fits.
 pub fn stands_in_for(
     capacity: Capacity,
+    sizes: Option<&[OfferedSize]>,
     isolation: Option<&str>,
     visibility: Option<&str>,
     machine: &crate::actions::InstanceType,
     needs_docker: bool,
 ) -> bool {
-    let (Some(cpus), Some(memory_mib)) = (capacity.cpus, capacity.memory_mib) else {
-        return false;
-    };
     let isolated = isolation != Some("host") || visibility == Some("private");
-    f64::from(cpus) >= machine.vcpu
-        && memory_mib as f64 >= machine.memory_gib * 1024.0
-        && (!needs_docker || capacity.docker == Some(true))
-        && isolated
+    let docker = !needs_docker || capacity.docker == Some(true);
+    let takes = match sizes {
+        Some(sizes) => sizes.iter().any(|offered| offered.size == machine.machine),
+        None => match (capacity.cpus, capacity.memory_mib) {
+            (Some(cpus), Some(memory_mib)) => f64::from(cpus) >= machine.vcpu && memory_mib as f64 >= machine.memory_gib * 1024.0,
+            _ => false,
+        },
+    };
+    takes && docker && isolated
 }
 
 /// Why a job offered to the workspace's own runners runs on g1t's machines.
@@ -950,11 +978,22 @@ pub fn falls_back(runner_free: bool, queued_at: Option<&str>, now: u64) -> Optio
 }
 
 /// What a job that asked for a hosted label says in "Set up job" when the
-/// workspace's runner `runner` took it.
-pub fn on_own_runner_note(runner: &str) -> String {
-    format!(
-        "This job asked for one of g1t's machines and runs on the workspace's own runner {runner} instead: the workspace prefers its own runners when one that fits is free (Settings, Runners). Its time there is free."
-    )
+/// workspace's runner `runner` took it: the size it runs as and the sandbox
+/// it got there, when the runner says which sizes it takes (`size`, from
+/// [`OfferedSize::assigned`]), and how the runner keeps it (`isolation`).
+pub fn on_own_runner_note(runner: &str, size: Option<&OfferedSize>, isolation: Option<&str>) -> String {
+    let why = "This job asked for one of g1t's machines, and the workspace prefers its own runners when one that takes it is free (Settings, Runners). Its time there is free.";
+    let Some((size, sandbox)) = size.and_then(|offered| Some((size_named(&offered.size)?, offered.sandbox()?))) else {
+        return format!(
+            "This job asked for one of g1t's machines and runs on the workspace's own runner {runner} instead: the workspace prefers its own runners when one that fits is free (Settings, Runners). Its time there is free."
+        );
+    };
+    let runs = format!("Runs as {} ({}) on the workspace's runner {runner}", size.name, size.room().words());
+    match isolation {
+        Some("host") => format!("{runs}, directly on its machine: host mode sets no limits. {why}"),
+        _ if sandbox == size.room() => format!("{runs}, in a sandbox of exactly that size. {why}"),
+        _ => format!("{runs}, which gives {} jobs a sandbox of {}. {why}", size.name, sandbox.words()),
+    }
 }
 
 /// What a job that asked for a hosted label says in "Set up job" when it
@@ -962,10 +1001,288 @@ pub fn on_own_runner_note(runner: &str) -> String {
 pub fn fallback_note(why: Fallback) -> &'static str {
     match why {
         Fallback::NoneFree => {
-            "This job runs on g1t's machines: the workspace prefers its own runners, and none that fits this job (its OS and architecture, at least this machine's CPUs and memory, and Docker if it uses services or a container) was free."
+            "This job runs on g1t's machines: the workspace prefers its own runners, and none that fits this job (its OS and architecture, a runner that takes its size, and Docker if it uses services or a container) was free."
         }
         Fallback::NotTaken => "This job runs on g1t's machines: the workspace prefers its own runners, and none of them took it within 15 seconds.",
     }
+}
+
+// --- Sizes: which of g1t's machines a runner takes jobs for -------------------
+//
+// A job asking for a hosted label would get one of g1t's machines
+// (`actions::INSTANCE_TYPES`); a runner says which of those it takes in its
+// place, by machine key (`1-core`, `2-core`, `4-core`), and a job it takes
+// for one runs in a sandbox of exactly that size, or of more where the
+// runner says so (never less). A runner that was told nothing takes the one
+// size [`picked_size`] chooses for it, and keeps that choice.
+
+/// A size a runner takes jobs for, as it says it: one of g1t's machines by
+/// its key, and, where the runner gives a job taken for it more than the
+/// machine has, the CPUs and memory of that job's sandbox. Never less: an
+/// override below the size is raised to it ([`OfferedSize::sandbox`]).
+/// In a job's assignment, both are set, to the sandbox the job gets.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct OfferedSize {
+    /// `2-core`.
+    pub size: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpus: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_mib: Option<u64>,
+}
+
+/// CPUs and memory: a size's, a sandbox's, or what a machine has.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Room {
+    pub cpus: f64,
+    pub memory_mib: u64,
+}
+
+impl Room {
+    /// Whether `other` fits in it.
+    pub fn holds(&self, other: Room) -> bool {
+        other.cpus <= self.cpus && other.memory_mib <= self.memory_mib
+    }
+
+    /// `2 vCPU, 8 GB`.
+    pub fn words(&self) -> String {
+        format!("{} vCPU, {}", number(self.cpus), gb(self.memory_mib))
+    }
+
+    /// `2 vCPU · 8 GB`.
+    pub fn spec(&self) -> String {
+        format!("{} vCPU · {}", number(self.cpus), gb(self.memory_mib))
+    }
+}
+
+/// `2`, `1.5`.
+fn number(value: f64) -> String {
+    let rounded = (value * 100.0).round() / 100.0;
+    if rounded.fract() == 0.0 { format!("{}", rounded as i64) } else { format!("{rounded}") }
+}
+
+/// Memory for people: `8 GB`, `1.5 GB`, `512 MB`.
+pub fn gb(mib: u64) -> String {
+    if mib < 1024 {
+        return format!("{mib} MB");
+    }
+    format!("{} GB", number(mib as f64 / 1024.0))
+}
+
+/// One of g1t's machines as a size a runner takes jobs for.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Size {
+    /// The machine's key (`actions::InstanceType::machine`): `2-core`.
+    pub machine: &'static str,
+    /// For people: `Standard`.
+    pub name: &'static str,
+    pub vcpu: f64,
+    pub memory_gib: f64,
+}
+
+impl Size {
+    pub fn room(&self) -> Room {
+        Room { cpus: self.vcpu, memory_mib: (self.memory_gib * 1024.0) as u64 }
+    }
+
+    /// `Standard · 2 vCPU · 8 GB`.
+    pub fn title(&self) -> String {
+        format!("{} · {}", self.name, self.room().spec())
+    }
+}
+
+/// What people call each machine as a size, by its key. A machine not
+/// named here is called by its key.
+const SIZE_NAMES: [(&str, &str); 3] = [("1-core", "Small"), ("2-core", "Standard"), ("4-core", "Large")];
+
+/// The size a runner takes when nobody chose, if it fits: the standard
+/// machine, which most jobs get on g1t.
+pub const PICKED_FIRST: &str = "2-core";
+/// The size it takes instead when that does not fit.
+pub const PICKED_ELSE: &str = "1-core";
+
+/// Every size, smallest first: each of g1t's machines once.
+pub fn sizes() -> Vec<Size> {
+    let mut out: Vec<Size> = Vec::new();
+    for instance in crate::actions::INSTANCE_TYPES {
+        if out.iter().any(|size| size.machine == instance.machine) {
+            continue;
+        }
+        let name = SIZE_NAMES.iter().find(|(key, _)| *key == instance.machine).map_or(instance.machine, |(_, name)| *name);
+        out.push(Size { machine: instance.machine, name, vcpu: instance.vcpu, memory_gib: instance.memory_gib });
+    }
+    out.sort_by(|a, b| a.vcpu.total_cmp(&b.vcpu).then(a.memory_gib.total_cmp(&b.memory_gib)));
+    out
+}
+
+/// A size by its machine's key, if it is one.
+pub fn size_named(key: &str) -> Option<Size> {
+    let key = key.trim();
+    sizes().into_iter().find(|size| size.machine.eq_ignore_ascii_case(key))
+}
+
+impl OfferedSize {
+    /// A size at its own spec.
+    pub fn of(size: &str) -> OfferedSize {
+        OfferedSize { size: size.to_owned(), cpus: None, memory_mib: None }
+    }
+
+    /// The sandbox a job taken for it gets: the size's own CPUs and memory,
+    /// or more where the runner said so, never less. None for a size that
+    /// is not one of g1t's machines.
+    pub fn sandbox(&self) -> Option<Room> {
+        let spec = size_named(&self.size)?.room();
+        Some(Room {
+            cpus: self.cpus.filter(|c| c.is_finite()).map_or(spec.cpus, |c| c.max(spec.cpus)),
+            memory_mib: self.memory_mib.map_or(spec.memory_mib, |m| m.max(spec.memory_mib)),
+        })
+    }
+
+    /// What a job taken for it is handed: the size, with its sandbox's CPUs
+    /// and memory both set.
+    pub fn assigned(&self) -> Option<OfferedSize> {
+        let size = size_named(&self.size)?;
+        let sandbox = self.sandbox()?;
+        Some(OfferedSize { size: size.machine.to_owned(), cpus: Some(sandbox.cpus), memory_mib: Some(sandbox.memory_mib) })
+    }
+
+    /// Whether it can be offered: one of g1t's machines, and no less than
+    /// it where it says how much. A runner and the desktop app refuse an
+    /// override below the size this way; g1t raises one that reaches it
+    /// anyway ([`kept_sizes`]).
+    pub fn check(&self) -> std::result::Result<(), String> {
+        let Some(size) = size_named(&self.size) else {
+            let known: Vec<&str> = sizes().iter().map(|s| s.machine).collect();
+            return Err(format!("`{}` is not a size: the sizes are {}.", self.size, known.join(", ")));
+        };
+        let spec = size.room();
+        if let Some(cpus) = self.cpus
+            && !(cpus.is_finite() && cpus >= spec.cpus)
+        {
+            return Err(format!("{} jobs get at least {} vCPU, its own size, not {}.", size.name, number(spec.cpus), number(cpus)));
+        }
+        if let Some(memory) = self.memory_mib
+            && memory < spec.memory_mib
+        {
+            return Err(format!("{} jobs get at least {}, its own size, not {}.", size.name, gb(spec.memory_mib), gb(memory)));
+        }
+        Ok(())
+    }
+
+    /// For people: `Standard`, or `Standard → 4 vCPU · 16 GB` when its
+    /// jobs get more than the size.
+    pub fn said(&self) -> String {
+        let Some(size) = size_named(&self.size) else { return self.size.clone() };
+        match self.sandbox() {
+            Some(sandbox) if sandbox != size.room() => format!("{} → {}", size.name, sandbox.spec()),
+            _ => size.name.to_owned(),
+        }
+    }
+}
+
+/// What a runner says it takes, as g1t keeps it: sizes that are g1t's
+/// machines, each once, smallest first, with an override below its size
+/// raised to it. Others are dropped.
+pub fn kept_sizes(given: &[OfferedSize]) -> Vec<OfferedSize> {
+    let mut out: Vec<OfferedSize> = Vec::new();
+    for size in sizes() {
+        let Some(offered) = given.iter().find(|o| o.size.trim().eq_ignore_ascii_case(size.machine)) else { continue };
+        let sandbox = offered.sandbox().unwrap_or_else(|| size.room());
+        let spec = size.room();
+        out.push(OfferedSize {
+            size: size.machine.to_owned(),
+            cpus: (sandbox.cpus > spec.cpus).then_some(sandbox.cpus.min(4096.0)),
+            memory_mib: (sandbox.memory_mib > spec.memory_mib).then_some(sandbox.memory_mib.min(64 * 1024 * 1024)),
+        });
+    }
+    out
+}
+
+/// What a runner takes, for people: `Small, Standard → 4 vCPU · 16 GB`;
+/// `no sizes` when it takes none.
+pub fn sizes_said(offered: &[OfferedSize]) -> String {
+    if offered.is_empty() {
+        return "no sizes".to_owned();
+    }
+    offered.iter().map(OfferedSize::said).collect::<Vec<_>>().join(", ")
+}
+
+/// The machine a runner's jobs run on: what it has, and, for a runner in a
+/// sandbox of a set size on it (the desktop app's), that sandbox's share,
+/// which no job can have more of.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Machine {
+    pub cpus: u32,
+    pub memory_mib: u64,
+    pub share: Option<Room>,
+}
+
+impl Machine {
+    pub fn room(&self) -> Room {
+        Room { cpus: f64::from(self.cpus), memory_mib: self.memory_mib }
+    }
+
+    /// Half of it: what a size taken without asking may use, so the
+    /// person's own work keeps the rest.
+    pub fn half(&self) -> Room {
+        Room { cpus: f64::from(self.cpus) / 2.0, memory_mib: self.memory_mib / 2 }
+    }
+
+    /// Whether a job of `room` fits without asking: in half the machine,
+    /// and in the sandbox's share.
+    pub fn fits(&self, room: Room) -> bool {
+        self.half().holds(room) && self.share.is_none_or(|share| share.holds(room))
+    }
+
+    /// `8 CPUs and 16 GB`.
+    pub fn words(&self) -> String {
+        format!("{} CPU{} and {}", self.cpus, if self.cpus == 1 { "" } else { "s" }, gb(self.memory_mib))
+    }
+}
+
+/// The one size a runner takes when nobody chose: Standard if it fits in
+/// half the machine (and the sandbox's share), else Small if that does,
+/// else none. Never Large: most jobs then run at 2 vCPU on people's
+/// machines, as on g1t's. The runner keeps what this chose, and the person
+/// changes it from there.
+pub fn picked_size(machine: Machine) -> Option<Size> {
+    [PICKED_FIRST, PICKED_ELSE].iter().filter_map(|key| size_named(key)).find(|size| machine.fits(size.room()))
+}
+
+/// Why [`picked_size`] chose what it did, in a sentence for the settings:
+/// `Standard fits in half this machine's 8 CPUs and 16 GB.`
+pub fn pick_reason(machine: Machine) -> String {
+    let share = machine.share.map(|share| format!(" and in the sandbox's {}", share.words())).unwrap_or_default();
+    match picked_size(machine) {
+        Some(size) => format!("{} fits in half this machine's {}{share}.", size.name, machine.words()),
+        None => {
+            let small = size_named(PICKED_ELSE).map(|s| format!(": Small needs {}", s.room().words())).unwrap_or_default();
+            format!("No size fits in half this machine's {}{share}{small}. Offer one anyway to take jobs of it.", machine.words())
+        }
+    }
+}
+
+/// What offering a size whose jobs get `sandbox` costs a machine, when it
+/// may hurt: more than the sandbox's share or the machine has (jobs may run
+/// slower, or run out of memory), or more than half of it (the person's own
+/// work may slow down while one runs). None when it fits in half. Offering
+/// it is the person's call: this warns, and refuses nothing.
+pub fn size_warning(machine: Machine, sandbox: Room) -> Option<String> {
+    if let Some(share) = machine.share
+        && !share.holds(sandbox)
+    {
+        return Some(format!(
+            "More than the sandbox's {}: a job gets at most that, so it may run slower or run out of memory.",
+            share.words()
+        ));
+    }
+    if !machine.room().holds(sandbox) {
+        return Some(format!("More than this machine's {}: a job may run slower or run out of memory.", machine.words()));
+    }
+    if !machine.half().holds(sandbox) {
+        return Some(format!("More than half this machine's {}: your own work may slow down while a job runs.", machine.words()));
+    }
+    None
 }
 
 // --- Staff only (sudo.g1t.sh) ---
@@ -1114,39 +1431,39 @@ mod tests {
         let standard = crate::actions::STANDARD_INSTANCE;
         let large = crate::actions::instance_named("g1t-4core").unwrap();
         let laptop = Capacity { cpus: Some(8), memory_mib: Some(16 * 1024), docker: Some(true) };
-        assert!(stands_in_for(laptop, Some("nested-container"), Some("public"), &standard, false));
-        assert!(stands_in_for(laptop, Some("nested-container"), Some("public"), &large, true));
+        assert!(stands_in_for(laptop, None, Some("nested-container"), Some("public"), &standard, false));
+        assert!(stands_in_for(laptop, None, Some("nested-container"), Some("public"), &large, true));
         // Exactly the machine's size is enough; a CPU or a MiB less is not.
         let exact = Capacity { cpus: Some(2), memory_mib: Some(8 * 1024), docker: None };
-        assert!(stands_in_for(exact, Some("container"), None, &standard, false));
-        assert!(!stands_in_for(Capacity { cpus: Some(1), ..exact }, Some("container"), None, &standard, false));
-        assert!(!stands_in_for(Capacity { memory_mib: Some(8 * 1024 - 1), ..exact }, Some("container"), None, &standard, false));
-        assert!(!stands_in_for(exact, Some("container"), None, &large, false));
+        assert!(stands_in_for(exact, None, Some("container"), None, &standard, false));
+        assert!(!stands_in_for(Capacity { cpus: Some(1), ..exact }, None, Some("container"), None, &standard, false));
+        assert!(!stands_in_for(Capacity { memory_mib: Some(8 * 1024 - 1), ..exact }, None, Some("container"), None, &standard, false));
+        assert!(!stands_in_for(exact, None, Some("container"), None, &large, false));
         // A runner that does not say what it has takes none.
-        assert!(!stands_in_for(Capacity { cpus: None, ..laptop }, None, None, &standard, false));
-        assert!(!stands_in_for(Capacity { memory_mib: None, ..laptop }, None, None, &standard, false));
-        assert!(!stands_in_for(Capacity::default(), None, None, &standard, false));
+        assert!(!stands_in_for(Capacity { cpus: None, ..laptop }, None, None, None, &standard, false));
+        assert!(!stands_in_for(Capacity { memory_mib: None, ..laptop }, None, None, None, &standard, false));
+        assert!(!stands_in_for(Capacity::default(), None, None, None, &standard, false));
     }
 
     #[test]
     fn services_and_containers_need_a_runner_with_docker() {
         let standard = crate::actions::STANDARD_INSTANCE;
         let without = Capacity { cpus: Some(4), memory_mib: Some(16 * 1024), docker: Some(false) };
-        assert!(stands_in_for(without, None, None, &standard, false));
-        assert!(!stands_in_for(without, None, None, &standard, true));
-        assert!(!stands_in_for(Capacity { docker: None, ..without }, None, None, &standard, true));
-        assert!(stands_in_for(Capacity { docker: Some(true), ..without }, None, None, &standard, true));
+        assert!(stands_in_for(without, None, None, None, &standard, false));
+        assert!(!stands_in_for(without, None, None, None, &standard, true));
+        assert!(!stands_in_for(Capacity { docker: None, ..without }, None, None, None, &standard, true));
+        assert!(stands_in_for(Capacity { docker: Some(true), ..without }, None, None, None, &standard, true));
     }
 
     #[test]
     fn a_host_mode_runner_stands_in_only_for_a_private_repository() {
         let standard = crate::actions::STANDARD_INSTANCE;
         let big = Capacity { cpus: Some(16), memory_mib: Some(64 * 1024), docker: Some(true) };
-        assert!(stands_in_for(big, Some("host"), Some("private"), &standard, false));
-        assert!(!stands_in_for(big, Some("host"), Some("public"), &standard, false));
+        assert!(stands_in_for(big, None, Some("host"), Some("private"), &standard, false));
+        assert!(!stands_in_for(big, None, Some("host"), Some("public"), &standard, false));
         // Unknown: g1t's machine runs it, rather than the runner deciding.
-        assert!(!stands_in_for(big, Some("host"), None, &standard, false));
-        assert!(stands_in_for(big, Some("vm"), None, &standard, false));
+        assert!(!stands_in_for(big, None, Some("host"), None, &standard, false));
+        assert!(stands_in_for(big, None, Some("vm"), None, &standard, false));
     }
 
     #[test]
@@ -1160,7 +1477,7 @@ mod tests {
         assert_eq!(falls_back(true, None, at(0)), Some(Fallback::NotTaken));
         assert_eq!(falls_back(true, Some("not a time"), at(0)), Some(Fallback::NotTaken));
         // What the log says names the runner, or why none ran it.
-        assert!(on_own_runner_note("box-linux").contains("own runner box-linux"));
+        assert!(on_own_runner_note("box-linux", None, None).contains("own runner box-linux"));
         assert!(fallback_note(Fallback::NoneFree).contains("none that fits"));
         assert!(fallback_note(Fallback::NotTaken).contains("15 seconds"));
         assert!(OFFERED_TO_OWN.contains("15 seconds") && OFFER_TO_OWN_MS == 15_000);
@@ -1190,6 +1507,7 @@ mod tests {
             token: Some("t".into()),
             env: None,
             visibility: Some("private".into()),
+            size: None,
         })
         .unwrap();
         assert_eq!(assignment["timeout_minutes"], 60);
@@ -1203,5 +1521,106 @@ mod tests {
         }))
         .unwrap();
         assert_eq!((poll.cpus, poll.memory_mib, poll.docker), (Some(8), Some(16384), Some(true)));
+        assert_eq!(poll.sizes, None, "an older runner says nothing of its sizes");
+        let poll: PollArgs = serde_json::from_value(serde_json::json!({
+            "runner": "rnr_1", "credential": "c", "sizes": [{ "size": "1-core" }, { "size": "2-core", "cpus": 4, "memory_mib": 16384 }]
+        }))
+        .unwrap();
+        assert_eq!(poll.sizes, Some(vec![OfferedSize::of("1-core"), OfferedSize { size: "2-core".into(), cpus: Some(4.0), memory_mib: Some(16384) }]));
+        let assignment: Value = serde_json::to_value(OfferedSize::of("2-core").assigned()).unwrap();
+        assert_eq!(assignment, serde_json::json!({ "size": "2-core", "cpus": 2.0, "memory_mib": 8192 }));
+    }
+
+    fn machine(cpus: u32, gib: u64) -> Machine {
+        Machine { cpus, memory_mib: gib * 1024, share: None }
+    }
+
+    #[test]
+    fn the_sizes_are_g1ts_machines_by_name() {
+        let titles: Vec<String> = sizes().iter().map(Size::title).collect();
+        assert_eq!(titles, ["Small · 1 vCPU · 6 GB", "Standard · 2 vCPU · 8 GB", "Large · 4 vCPU · 12 GB"]);
+        assert_eq!(size_named(" 2-CORE ").map(|s| s.name), Some("Standard"));
+        assert_eq!(size_named("8-core"), None);
+        assert_eq!(gb(1536), "1.5 GB");
+        assert_eq!(gb(512), "512 MB");
+    }
+
+    #[test]
+    fn a_runner_told_nothing_takes_standard_or_else_small_in_half_its_machine() {
+        // Standard (2 vCPU, 8 GB) fits in half of 8 CPUs and 16 GiB.
+        assert_eq!(picked_size(machine(8, 16)).map(|s| s.machine), Some("2-core"));
+        assert!(pick_reason(machine(8, 16)).starts_with("Standard fits in half this machine's 8 CPUs and 16 GB"));
+        // Half of 4 CPUs and 8 GiB is 4 GB: not even Small's 6 GB.
+        assert_eq!(picked_size(machine(4, 8)), None);
+        assert!(pick_reason(machine(4, 8)).contains("Small needs 1 vCPU, 6 GB"));
+        assert_eq!(picked_size(machine(2, 4)), None);
+        // Small where Standard does not fit; never Large, however big.
+        assert_eq!(picked_size(machine(2, 12)).map(|s| s.machine), Some("1-core"));
+        assert_eq!(picked_size(machine(64, 256)).map(|s| s.machine), Some("2-core"));
+        // A sandbox of a set size holds the job too: half the computer is not enough.
+        let desktop = Machine { share: Some(Room { cpus: 4.0, memory_mib: 6 * 1024 }), ..machine(16, 32) };
+        assert_eq!(picked_size(desktop).map(|s| s.machine), Some("1-core"));
+        assert!(pick_reason(desktop).contains("in the sandbox's 4 vCPU, 6 GB"));
+    }
+
+    #[test]
+    fn a_size_offered_beyond_half_the_machine_warns_and_is_not_refused() {
+        let large = size_named("4-core").unwrap().room();
+        let standard = size_named("2-core").unwrap().room();
+        assert_eq!(size_warning(machine(8, 16), standard), None);
+        assert!(size_warning(machine(8, 16), large).unwrap().contains("More than half this machine's 8 CPUs and 16 GB"));
+        assert!(size_warning(machine(2, 4), standard).unwrap().contains("More than this machine's 2 CPUs and 4 GB"));
+        let desktop = Machine { share: Some(Room { cpus: 4.0, memory_mib: 8 * 1024 }), ..machine(16, 64) };
+        assert!(size_warning(desktop, large).unwrap().contains("More than the sandbox's 4 vCPU, 8 GB"));
+        // Offered anyway, it is matched: the warning refuses nothing.
+        let offered = [OfferedSize::of("4-core")];
+        let large_machine = crate::actions::instance_named("g1t-4core").unwrap();
+        assert!(stands_in_for(Capacity::default(), Some(&offered), Some("nested-container"), None, &large_machine, false));
+    }
+
+    #[test]
+    fn a_job_never_gets_less_than_its_size() {
+        let more = OfferedSize { size: "2-core".into(), cpus: Some(4.0), memory_mib: Some(16 * 1024) };
+        assert_eq!(more.check(), Ok(()));
+        assert_eq!(more.sandbox(), Some(Room { cpus: 4.0, memory_mib: 16 * 1024 }));
+        assert_eq!(more.said(), "Standard → 4 vCPU · 16 GB");
+        // Below the size: the runner and the app refuse it, and g1t raises it.
+        let less = OfferedSize { size: "2-core".into(), cpus: Some(1.0), memory_mib: Some(4096) };
+        assert!(less.check().unwrap_err().contains("at least 2 vCPU"));
+        assert!(OfferedSize { cpus: None, ..less.clone() }.check().unwrap_err().contains("at least 8 GB"));
+        assert_eq!(less.sandbox(), Some(Room { cpus: 2.0, memory_mib: 8192 }));
+        assert_eq!(kept_sizes(std::slice::from_ref(&less)), vec![OfferedSize::of("2-core")]);
+        assert!(OfferedSize::of("16-core").check().unwrap_err().contains("not a size"));
+        // Kept once each, smallest first, unknown ones dropped.
+        let given = [more.clone(), OfferedSize::of("1-core"), OfferedSize::of("2-core"), OfferedSize::of("gpu")];
+        assert_eq!(kept_sizes(&given), vec![OfferedSize::of("1-core"), more.clone()]);
+        assert_eq!(sizes_said(&kept_sizes(&given)), "Small, Standard → 4 vCPU · 16 GB");
+        assert_eq!(sizes_said(&[]), "no sizes");
+    }
+
+    #[test]
+    fn a_runner_that_says_its_sizes_takes_only_those() {
+        let standard = crate::actions::STANDARD_INSTANCE;
+        let slim = crate::actions::instance_named("ubuntu-slim").unwrap();
+        let small_box = Capacity { cpus: Some(1), memory_mib: Some(1024), docker: Some(true) };
+        let offered = [OfferedSize::of("2-core")];
+        // Its sizes, not its resources, decide.
+        assert!(stands_in_for(small_box, Some(&offered), None, None, &standard, false));
+        assert!(!stands_in_for(small_box, Some(&offered), None, None, &slim, false));
+        assert!(!stands_in_for(small_box, Some(&[]), None, None, &standard, false), "it takes none");
+        // Docker and host mode still count.
+        assert!(!stands_in_for(Capacity { docker: Some(false), ..small_box }, Some(&offered), None, None, &standard, true));
+        assert!(!stands_in_for(small_box, Some(&offered), Some("host"), Some("public"), &standard, false));
+    }
+
+    #[test]
+    fn set_up_job_says_the_size_and_the_sandbox() {
+        let standard = OfferedSize::of("2-core").assigned();
+        let exact = on_own_runner_note("box-linux", standard.as_ref(), Some("nested-container"));
+        assert!(exact.starts_with("Runs as Standard (2 vCPU, 8 GB) on the workspace's runner box-linux, in a sandbox of exactly that size."), "{exact}");
+        let more = OfferedSize { size: "2-core".into(), cpus: Some(4.0), memory_mib: Some(16 * 1024) }.assigned();
+        let given = on_own_runner_note("box-linux", more.as_ref(), Some("nested-container"));
+        assert!(given.contains("which gives Standard jobs a sandbox of 4 vCPU, 16 GB"), "{given}");
+        assert!(on_own_runner_note("box", standard.as_ref(), Some("host")).contains("host mode sets no limits"));
     }
 }

@@ -7,6 +7,8 @@ use anyhow::{Result, anyhow};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
+use g1t_contracts::runners::OfferedSize;
+
 use super::VERSION;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -25,6 +27,11 @@ pub struct Assignment {
     /// `public` or `private`; none from an older g1t.
     #[serde(default)]
     pub visibility: Option<String>,
+    /// The size a job that asked for one of g1t's machines was taken for,
+    /// with its sandbox's CPUs and memory; none for any other job, which
+    /// keeps this runner's limits, and from an older g1t.
+    #[serde(default)]
+    pub size: Option<g1t_contracts::runners::OfferedSize>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -135,13 +142,15 @@ impl Api {
     }
 
     /// Asks for work. `isolation` is how this runner keeps work from its
-    /// machine now, and `capacity` what a job on it gets, which g1t keeps
-    /// up to date from each poll (it gives a host-mode runner no public
-    /// repository's work, and a job asking for one of its machines only to
-    /// a runner as large); an older g1t ignores them.
-    pub fn poll(&self, running: &[String], wait_ms: u64, isolation: &str, capacity: &Capacity) -> std::result::Result<Poll, Failure> {
+    /// machine now, `capacity` what a job on it gets, and `sizes` which of
+    /// g1t's machines it takes jobs for, which g1t keeps up to date from each
+    /// poll (it gives a host-mode runner no public repository's work, and a
+    /// job asking for one of its machines only to a runner that takes its
+    /// size); an older g1t ignores them.
+    pub fn poll(&self, running: &[String], wait_ms: u64, isolation: &str, capacity: &Capacity, sizes: &[OfferedSize]) -> std::result::Result<Poll, Failure> {
         let mut body = poll_body(running, wait_ms, isolation);
         capacity.add_to(&mut body);
+        body["sizes"] = json!(sizes);
         let answer = post(&format!("{}/runners/{}/poll", self.base, self.runner), Some(&self.credential), &body)?;
         serde_json::from_value(answer).map_err(|e| Failure::Unreachable(e.to_string()))
     }

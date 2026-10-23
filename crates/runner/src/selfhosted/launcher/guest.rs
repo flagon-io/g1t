@@ -96,6 +96,16 @@ pub struct Settings {
     /// For a VM, how to stop when it is shut down: `drain` or `now`.
     #[serde(default)]
     pub stop: Option<String>,
+    /// The sizes of g1t's machines the runner takes jobs for (sizes.rs),
+    /// as the launcher keeps them: passed to it as `G1T_RUNNER_SIZES`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sizes: Option<Vec<crate::selfhosted::sizes::SizeChoice>>,
+    /// The computer the sandbox is a share of, which the runner can't see:
+    /// passed to it as `G1T_RUNNER_COMPUTER`. 0 when unknown.
+    #[serde(default)]
+    pub computer_cpus: u32,
+    #[serde(default)]
+    pub computer_memory_mib: u64,
 }
 
 /// What `guest status` says, and the launcher reports.
@@ -272,6 +282,12 @@ pub fn sysbox_run_args(settings: &Settings, name: &str, data: &str, env_file: Op
     }
     args.extend(["-v".into(), format!("{data}:/data")]);
     args.extend(["-e".into(), "G1T_RUNNER_NO_AUTO_UPDATE=1".into()]);
+    if let Some(sizes) = settings.sizes.as_ref().and_then(|s| serde_json::to_string(s).ok()) {
+        args.extend(["-e".into(), format!("{}={sizes}", crate::selfhosted::sizes::SIZES_ENV)]);
+    }
+    if settings.computer_cpus > 0 && settings.computer_memory_mib > 0 {
+        args.extend(["-e".into(), format!("{}={},{}", crate::selfhosted::sizes::COMPUTER_ENV, settings.computer_cpus, settings.computer_memory_mib)]);
+    }
     if let Some(file) = env_file {
         args.extend(["--env-file".into(), file.into()]);
     }
@@ -409,6 +425,12 @@ fn configure(bytes: &[u8]) -> Result<()> {
     }
     if !given.image_version.is_empty() {
         settings.image_version = given.image_version;
+    }
+    if given.sizes.is_some() {
+        settings.sizes = given.sizes;
+    }
+    if given.computer_cpus > 0 {
+        (settings.computer_cpus, settings.computer_memory_mib) = (given.computer_cpus, given.computer_memory_mib);
     }
     write_private(SETTINGS, &serde_json::to_vec_pretty(&settings)?)
 }
@@ -899,6 +921,17 @@ eth0\t00E01EAC\t00000000\t0001\t0\t0\t0\t00F0FFFF\t0\t0\t0\n";
         assert!(!text.contains(&"-d 1.1.1.1 -j DROP".to_owned()), "a public resolver is the internet");
         assert!(!text.iter().any(|r| r.contains("127.0.0.1")));
         assert_eq!(text.last().unwrap(), "-d 169.254.0.0/16 -j DROP");
+    }
+
+    #[test]
+    fn the_runner_is_told_its_sizes_and_the_computer_its_share_is_of() {
+        use crate::selfhosted::sizes::SizeChoice;
+        let plain = runner_run_args(&Settings::default(), false).join(" ");
+        assert!(!plain.contains("G1T_RUNNER_SIZES") && !plain.contains("G1T_RUNNER_COMPUTER"), "a launcher that says nothing");
+        let settings = Settings { sizes: Some(vec![SizeChoice::Key("2-core".into())]), computer_cpus: 16, computer_memory_mib: 32768, ..Settings::default() };
+        let args = runner_run_args(&settings, false);
+        assert!(args.contains(&r#"G1T_RUNNER_SIZES=["2-core"]"#.to_owned()), "{args:?}");
+        assert!(args.contains(&"G1T_RUNNER_COMPUTER=16,32768".to_owned()));
     }
 
     #[test]

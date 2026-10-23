@@ -7,6 +7,8 @@ description = "The program inside a g1t sandbox: runs a GitHub Actions job, a me
 
 [dependencies]
 g1t-actions = { path = "../actions" }
+# The sizes of g1t's machines a self-hosted runner takes jobs for (selfhosted/sizes.rs).
+g1t-contracts = { workspace = true }
 # Reading lockfiles again after a security update (bump.rs).
 g1t-scan = { workspace = true }
 sha2 = "0.10"

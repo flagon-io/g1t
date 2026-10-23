@@ -332,6 +332,10 @@ impl Backend for DiskVm {
             merged.image_version = given.image_version;
         }
         merged.stop = given.stop.or(merged.stop);
+        merged.sizes = given.sizes.or(merged.sizes);
+        if given.computer_cpus > 0 {
+            (merged.computer_cpus, merged.computer_memory_mib) = (given.computer_cpus, given.computer_memory_mib);
+        }
         super::write_private(&paths.seed, &guest::write_seed(&merged, SEED_BYTES)?)
     }
 

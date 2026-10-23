@@ -5,8 +5,8 @@
 //!
 //! | Route | Body |
 //! | --- | --- |
-//! | `POST /runners/register` | `token`, `name`, `labels`, `os`, `arch`, `version`, `ephemeral`, `group`, `replace`, `isolation`, `machine`, `cpus`, `memory_mib`, `docker` |
-//! | `POST /runners/{id}/poll` | `version`, `running`, `wait_ms`, `isolation`, `cpus`, `memory_mib`, `docker` |
+//! | `POST /runners/register` | `token`, `name`, `labels`, `os`, `arch`, `version`, `ephemeral`, `group`, `replace`, `isolation`, `machine`, `cpus`, `memory_mib`, `docker`, `sizes` |
+//! | `POST /runners/{id}/poll` | `version`, `running`, `wait_ms`, `isolation`, `cpus`, `memory_mib`, `docker`, `sizes` |
 //! | `POST /runners/{id}/finished` | `id`, `exit_code`, `reason` |
 //! | `POST /runners/{id}/remove` | nothing |
 //!
@@ -40,6 +40,22 @@ async fn answer(services: &Services, method: &str, args: &Value) -> Result<Respo
     }
 }
 
+/// The sizes a runner says it takes: each a machine's key, with the CPUs
+/// and MiB its jobs get where it gives more. Null when it says none (an
+/// older runner), and an entry that is not one is left out.
+fn sizes(given: &Value) -> Value {
+    let Some(given) = given.as_array() else { return Value::Null };
+    let kept: Vec<Value> = given
+        .iter()
+        .take(16)
+        .filter_map(|size| {
+            let key = size["size"].as_str()?;
+            Some(json!({ "size": key, "cpus": size["cpus"].as_f64(), "memory_mib": size["memory_mib"].as_u64() }))
+        })
+        .collect();
+    Value::Array(kept)
+}
+
 /// Serves `path` if it is one of the runner's routes.
 pub async fn handle(request: &mut Request, services: &Services, path: &str) -> Result<Option<Response>> {
     let Some(rest) = path.strip_prefix("/runners/") else { return Ok(None) };
@@ -61,6 +77,7 @@ pub async fn handle(request: &mut Request, services: &Services, path: &str) -> R
             "cpus": body["cpus"].as_u64(),
             "memory_mib": body["memory_mib"].as_u64(),
             "docker": body["docker"].as_bool(),
+            "sizes": sizes(&body["sizes"]),
         });
         return Ok(Some(answer(services, "runner_register", &args).await?));
     }
@@ -78,6 +95,7 @@ pub async fn handle(request: &mut Request, services: &Services, path: &str) -> R
             args["cpus"] = json!(body["cpus"].as_u64());
             args["memory_mib"] = json!(body["memory_mib"].as_u64());
             args["docker"] = json!(body["docker"].as_bool());
+            args["sizes"] = sizes(&body["sizes"]);
             "runner_poll"
         }
         "finished" => {
@@ -90,4 +108,19 @@ pub async fn handle(request: &mut Request, services: &Services, path: &str) -> R
         _ => return Ok(Some(fail(g1t_contracts::FailureCode::NotFound, "No such endpoint.")?)),
     };
     Ok(Some(answer(services, method, &args).await?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sizes_pass_through_as_a_runner_says_them() {
+        assert_eq!(sizes(&Value::Null), Value::Null, "an older runner");
+        let said = json!([{ "size": "2-core", "cpus": 4, "memory_mib": 16384 }, { "size": "1-core" }, { "cpus": 2 }, "4-core"]);
+        assert_eq!(
+            sizes(&said),
+            json!([{ "size": "2-core", "cpus": 4.0, "memory_mib": 16384 }, { "size": "1-core", "cpus": null, "memory_mib": null }])
+        );
+    }
 }
