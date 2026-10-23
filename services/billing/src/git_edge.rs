@@ -23,9 +23,11 @@ use crate::keeper::{GIB, Keeper, LIST_DISK_GB_SECOND, LIST_MEMORY_GIB_SECOND, LI
 
 /// The edge's Containers application: the runner Worker's `GitEdge` class.
 pub(crate) const APPLICATION: &str = "g1t-runner-gitedge";
-/// One edge's instance (standard-2 in services/runner/wrangler.jsonc).
-const EDGE_GIB: f64 = 6.0;
-const EDGE_DISK_GB: f64 = 12.0;
+/// One edge's instance (standard-1 in services/runner/wrangler.jsonc).
+/// Edge-hours before 2026-10-23 were on standard-2 (6 GiB), so they read
+/// half again as many as they were; their cost is what was billed.
+const EDGE_GIB: f64 = 4.0;
+const EDGE_DISK_GB: f64 = 8.0;
 /// `max_instances` in services/runner/wrangler.jsonc, for when Cloudflare
 /// does not say.
 const EDGE_MAX_INSTANCES: u32 = 10;
@@ -198,8 +200,8 @@ mod tests {
 
     #[test]
     fn an_edge_hour_is_its_memory_disk_and_cpu_at_list_price() {
-        // Two edges awake for an hour each (6 GiB each), using 1,800 CPU-seconds.
-        let gib_seconds = 2.0 * 6.0 * 3600.0;
+        // Two edges awake for an hour each (4 GiB each), using 1,800 CPU-seconds.
+        let gib_seconds = 2.0 * 4.0 * 3600.0;
         let body = json!({ "data": { "viewer": { "accounts": [{ "rows": [
             { "sum": { "allocatedMemory": gib_seconds * GIB / 2.0, "cpuTimeSec": 900.0 } },
             { "sum": { "allocatedMemory": gib_seconds * GIB / 2.0, "cpuTimeSec": 900.0 } },
@@ -207,11 +209,11 @@ mod tests {
         let used = usage(&body, "a", "b").unwrap();
         assert!((used.edge_hours - 2.0).abs() < 1e-9);
         assert_eq!(used.cpu_seconds, 1800.0);
-        // Memory 43,200 GiB-s at $0.0000025, CPU 1,800 s at $0.00002, disk
-        // 7,200 edge-seconds × 12 GB at $0.00000007.
-        let expected = 43_200.0 * 0.000_002_5 + 1_800.0 * 0.000_02 + 7_200.0 * 12.0 * 0.000_000_07;
+        // Memory 28,800 GiB-s at $0.0000025, CPU 1,800 s at $0.00002, disk
+        // 7,200 edge-seconds × 8 GB at $0.00000007.
+        let expected = 28_800.0 * 0.000_002_5 + 1_800.0 * 0.000_02 + 7_200.0 * 8.0 * 0.000_000_07;
         assert!((used.cost_dollars - expected).abs() < 1e-9, "{}", used.cost_dollars);
-        assert!((expected - 0.150_048).abs() < 1e-9);
+        assert!((expected - 0.112_032).abs() < 1e-9);
         let refused = usage(&json!({ "data": null, "errors": [{ "message": "unknown field applicationId" }] }), "a", "b");
         assert!(refused.unwrap_err().contains("unknown field applicationId"));
         // No rows: nothing used, not an error.

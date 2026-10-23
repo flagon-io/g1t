@@ -19,9 +19,10 @@
 # the npm workspaces it reaches and the checks whose files it changes.
 #
 # A push to main the merge queue landed is the very commit its merge_group
-# run passed on, so it is not tested again: `rust` only compiles its
-# tests and `typescript` only type checks, keeping main's caches current,
-# and `desktop` passes without running. A pull request's run restores
+# run passed on, so it is not tested again: `rust` only compiles the tests
+# of the crates the push changes and `typescript` only type checks the
+# workspaces it reaches, keeping main's caches current, and `desktop`
+# passes without running. A pull request's run restores
 # from main's cache, never from another pull request's, so without them
 # each pull request would start from nothing. Any other push to main (one
 # made directly, or one the API could not vouch for) runs `rust`,
@@ -69,8 +70,9 @@ jobs:
   # repository_workflows.rs checks every workspace crate is in exactly one.
   # On a pull request or a queue state a part tests only its crates the
   # change reaches (scripts/deploy/ci-affected.mjs), and a part it does not
-  # reach passes without compiling; on main every part compiles all of its
-  # crates' tests, and runs them unless the merge queue already did.
+  # reach passes without compiling. On a push to main the merge queue
+  # landed, a part compiles the tests of the crates the push changes and
+  # runs none; on any other push it compiles and runs all of its crates'.
   rust:
     name: Rust (${{ matrix.part }})
     runs-on: ubuntu-latest

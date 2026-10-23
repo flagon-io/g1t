@@ -185,6 +185,32 @@ fn matcher_path(given: &str, workspace: &std::path::Path) -> std::path::PathBuf 
     if path.is_absolute() { path.to_path_buf() } else { workspace.join(path) }
 }
 
+/// Whether a step's own process was stopped by a SIGTERM the runner did
+/// not send: no cancellation, no timeout. That is the machine being
+/// stopped under the job (flagon-io#426: Cloudflare sent one to a live
+/// job's container with nothing from g1t asking), and the job's end says
+/// so (`machine_stopped`), so g1t runs it again on another machine.
+static MACHINE_STOPPED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether [`MACHINE_STOPPED`] happened to any step of this job.
+pub(crate) fn machine_stopped() -> bool {
+    MACHINE_STOPPED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Whether a process was stopped by SIGTERM.
+fn terminated(status: &std::process::ExitStatus) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        status.signal() == Some(libc::SIGTERM)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = status;
+        false
+    }
+}
+
 /// How a process ended.
 pub(crate) enum Ended {
     Exited(i32),
@@ -429,6 +455,10 @@ fn run_until(
         if let Some(stopped) = oom.filter(|n| *n > 0) {
             log.line(&out_of_memory(stopped));
         }
+        // Neither cancelled nor timed out (both returned above).
+        if terminated(&status) {
+            MACHINE_STOPPED.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
     }
     Ok(Ended::Exited(code))
 }
@@ -629,6 +659,25 @@ mod tests {
         assert_eq!(commands.handle("main.go:3:1: undefined: x", &mut log).unwrap(), "main.go:3:1: undefined: x");
         assert!(commands.handle("::add-matcher::missing.json", &mut log).unwrap().contains("Unable to process command"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A step stopped by a SIGTERM the runner did not send (no cancel, no
+    /// timeout) marks the job's machine stopped (#426).
+    #[cfg(unix)]
+    #[test]
+    fn a_sigterm_the_runner_did_not_send_marks_the_machine_stopped() {
+        use super::{Commands, Ended, machine_stopped, run};
+        use crate::actions::report::{Api, Log};
+        use std::process::Command;
+        use std::time::Duration;
+
+        let mut log = Log::new(Api::offline(), Vec::new());
+        let mut command = Command::new("sh");
+        command.args(["-c", "echo compiling; kill -TERM $$"]);
+        let ended = run(command, Duration::from_secs(60), &mut log, &mut Commands::default()).unwrap();
+        assert!(matches!(ended, Ended::Exited(143)));
+        assert!(log.buffered().contains("##[error]The step's process was stopped by signal 15 (SIGTERM)."));
+        assert!(machine_stopped());
     }
 
     /// A step a signal stops says so, and exits as a shell says it did

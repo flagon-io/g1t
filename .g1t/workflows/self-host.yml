@@ -1,10 +1,16 @@
 # Self-hosting keeps working: the compose stack (deploy/self-host/) built
 # from this commit, and deploy/self-host/smoke.sh run against it from end to
-# end, every cron included. On a pull request that changes anything the
-# stack builds or deploys, nightly on main (what changed since, all at
-# once), and by hand. Not on each push to main: the pull request ran it,
-# and a merge's ten jobs here held the deploy's builds back from the
-# workspace's share of machines (#417).
+# end, every cron included. Nightly on main (what changed since, all at
+# once), by hand, and on a pull request that changes what the stack itself
+# is made of: its own files, the deploy's list and build of services, a
+# Worker's bindings (wrangler.jsonc), a migration, or the dependencies.
+# Not on every change to a service's code: a run is ten jobs on 4-vCPU
+# machines, and on every pull request it was the largest share of CI's
+# machine time (7 of 19 hours on 2026-10-23, flagon-io#437); what a code
+# change breaks here, the nightly run finds the next morning. Not on each
+# push to main either: the pull request ran it, and a merge's ten jobs
+# held the deploy's builds back from the workspace's share of machines
+# (#417).
 # A failure names the step that broke (smoke.sh prints each), and the
 # stack's logs are kept as an artifact. See CONTRIBUTING.md, "Self-hosting".
 name: Self-host
@@ -13,15 +19,14 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - apps/**
-      - crates/**
-      - services/**
-      - packages/**
-      - deploy/**
-      - scripts/deploy/**
+      - deploy/self-host/**
+      - deploy/stack.jsonc
+      - scripts/deploy/self-host-builds.mjs
+      - scripts/build-rust-worker.mjs
+      - "**/wrangler.jsonc"
+      - "**/migrations/**"
       - Cargo.toml
       - Cargo.lock
-      - package.json
       - package-lock.json
       - .g1t/workflows/self-host.yml
   schedule:

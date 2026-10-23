@@ -697,7 +697,13 @@ impl Log {
     ) {
         let outputs = self.withhold_secrets(outputs);
         self.flush();
-        self.send(Outgoing::Done(json!({ "kind": "done", "conclusion": conclusion, "outputs": outputs, "reason": reason })));
+        let mut done = json!({ "kind": "done", "conclusion": conclusion, "outputs": outputs, "reason": reason });
+        // A step's process was stopped by a SIGTERM the runner did not
+        // send: g1t may run the job again on another machine.
+        if conclusion == "failure" && super::process::machine_stopped() {
+            done["machine_stopped"] = json!(true);
+        }
+        self.send(Outgoing::Done(done));
         self.finish(within);
     }
 

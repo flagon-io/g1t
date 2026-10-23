@@ -148,21 +148,23 @@ pub fn runs_again_when_lost(machine_lost: u32, environment: Option<&str>, cancel
 }
 
 /// Why a job that lost its machine went back in the queue: the step it was
-/// on, from its `steps` as reported, and the container instance it ran on,
-/// from its log's "Set up job" (`Instance: …`), when they are known.
-pub fn lost_machine_reason(steps: &str, log_head: Option<&str>) -> String {
+/// on (the one running, else the one that failed, else the last done), from
+/// its `steps` as reported, and the container instance it ran on, from its
+/// log's "Set up job" (`Instance: …`), when they are known. `stopped`: its
+/// runner said a step was stopped by a SIGTERM it did not send, rather
+/// than going silent.
+pub fn lost_machine_reason(steps: &str, log_head: Option<&str>, stopped: bool) -> String {
     let steps: Vec<serde_json::Value> = serde_json::from_str(steps).unwrap_or_default();
-    let step = steps
-        .iter()
-        .rev()
-        .find(|step| step["status"] == "in_progress")
-        .or_else(|| steps.iter().rev().find(|step| step["status"] == "completed"))
+    let last = |pick: &dyn Fn(&serde_json::Value) -> bool| steps.iter().rev().find(|step| pick(step));
+    let step = last(&|step| step["status"] == "in_progress")
+        .or_else(|| last(&|step| step["conclusion"] == "failure"))
+        .or_else(|| last(&|step| step["status"] == "completed"))
         .and_then(|step| step["name"].as_str())
         .filter(|name| !name.is_empty());
     let instance = log_head.and_then(|text| {
         text.lines().find_map(|line| line.split_once("Instance: ").map(|(_, id)| id.trim())).filter(|id| !id.is_empty())
     });
-    let mut reason = "Its machine stopped answering".to_owned();
+    let mut reason = if stopped { "Its machine was stopped" } else { "Its machine stopped answering" }.to_owned();
     if let Some(step) = step {
         reason.push_str(&format!(" in \"{step}\""));
     }
@@ -606,11 +608,15 @@ mod room_tests {
     fn a_lost_machine_says_the_step_and_instance_it_stopped_on() {
         let steps = r#"[{"number":1,"name":"Run actions/checkout@v5","status":"completed"},{"number":2,"name":"Build work","status":"in_progress"},{"number":3,"name":"Keep what was built","status":"queued"}]"#;
         let head = "Current runner version: '0.3.6'\n##[group]Machine\nHosted by g1t\nInstance: 7f3a9c\nHost: node-12\n##[endgroup]\n";
-        assert_eq!(lost_machine_reason(steps, Some(head)), "Its machine stopped answering in \"Build work\" (instance 7f3a9c); it runs again on another machine.");
+        assert_eq!(lost_machine_reason(steps, Some(head), false), "Its machine stopped answering in \"Build work\" (instance 7f3a9c); it runs again on another machine.");
         // Between steps: the last one it finished.
         let between = r#"[{"number":1,"name":"Run actions/checkout@v5","status":"completed"},{"number":2,"name":"Build work","status":"queued"}]"#;
-        assert_eq!(lost_machine_reason(between, None), "Its machine stopped answering in \"Run actions/checkout@v5\"; it runs again on another machine.");
-        assert_eq!(lost_machine_reason("[]", Some("no header")), "Its machine stopped answering; it runs again on another machine.");
-        assert_eq!(lost_machine_reason("not json", None), "Its machine stopped answering; it runs again on another machine.");
+        assert_eq!(lost_machine_reason(between, None, false), "Its machine stopped answering in \"Run actions/checkout@v5\"; it runs again on another machine.");
+        assert_eq!(lost_machine_reason("[]", Some("no header"), false), "Its machine stopped answering; it runs again on another machine.");
+        assert_eq!(lost_machine_reason("not json", None, false), "Its machine stopped answering; it runs again on another machine.");
+        // A job that reported its end after a step was stopped: the step
+        // that failed, not the cleanup after it.
+        let ended = r#"[{"number":1,"name":"Run actions/checkout@v5","status":"completed","conclusion":"success"},{"number":2,"name":"Tests","status":"completed","conclusion":"failure"},{"number":3,"name":"Post Run actions/checkout@v5","status":"completed","conclusion":"success"}]"#;
+        assert_eq!(lost_machine_reason(ended, Some(head), true), "Its machine was stopped in \"Tests\" (instance 7f3a9c); it runs again on another machine.");
     }
 }

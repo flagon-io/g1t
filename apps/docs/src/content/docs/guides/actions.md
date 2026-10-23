@@ -633,7 +633,10 @@ answering after it started runs again from the start on another machine,
 once, after 10 minutes without a word: its steps, log, summary and
 artifacts from the lost machine are cleared, and the job says where it
 stopped (`Its machine stopped answering in "Build"; it runs again on
-another machine.`). A job that loses a second machine fails. A job that
+another machine.`). The same goes, at once, for a job whose step was
+stopped by a SIGTERM that neither a cancellation nor a timeout sent: its
+machine was stopped under it (`Its machine was stopped in "Build"; …`).
+A job that loses a second machine fails. A job that
 deploys to an [environment](#deployments) is never run again on its own:
 it fails, and you can [re-run](#re-running) it.
 

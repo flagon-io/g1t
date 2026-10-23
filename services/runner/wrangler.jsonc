@@ -12,8 +12,8 @@
   // in a private repository; standard-4 (4 vCPU, 12 GiB, 20 GB, the largest
   // Containers instance) for the 4-core one, which they get in a public
   // repository; and standard-2 (1 vCPU, 6 GiB, 12 GB) for ubuntu-slim. The
-  // git edge runs the same image on standard-2. At these max_instances, 90
-  // sandboxes and 10 edges at once hold 240 vCPU, 880 GiB and 1,640 GB,
+  // git edge runs the same image on standard-1. At these max_instances, 90
+  // sandboxes and 10 edges at once hold 235 vCPU, 860 GiB and 1,600 GB,
   // well inside the account's limits for live instances (1,500 vCPU, 6 TiB
   // of memory, 30 TB of disk). crates/contracts (INSTANCE_TYPES) and
   // services/billing (keeper.rs) say the same sizes.
@@ -61,18 +61,21 @@
       // it is in no machine catalogue. Every repository has one, started
       // when it is cloned twice within the hour (and asleep after 10
       // minutes without a request): the same image started as the edge's
-      // server (MODE=gitedge), on standard-2 (1 vCPU, 6 GiB, 12 GB; a
-      // repository is at most 950 MB) because repacking a mirror needs
-      // memory and CPU. max_instances bounds how many repositories have a
+      // server (MODE=gitedge), on standard-1 (1/2 vCPU, 4 GiB, 8 GB; a
+      // repository is at most 950 MB). It was on standard-2 (6 GiB) for
+      // repacking a mirror, but from 2026-10-21 to 23 an edge used at most
+      // 0.24 GiB, 2% of a vCPU on average and 4.3 GB of disk, while its
+      // allocated memory was ~$1.50 a day for g1t alone (flagon-io#437).
+      // max_instances bounds how many repositories have a
       // live edge at once, and so what they can cost: 10 awake all month is
-      // about $820 at list prices, the most the edge can cost, and a
+      // about $540 at list prices, the most the edge can cost, and a
       // repository cloned only now and then costs nothing. A clone of any
       // other repository is answered from Artifacts at once, as without the
       // edge, and its edge tries to start again two minutes later
       // (START_REST_MS).
       "class_name": "GitEdge",
       "image": "./Dockerfile",
-      "instance_type": "standard-2",
+      "instance_type": "standard-1",
       "max_instances": 10,
       // A clone under way when a deploy replaces its edge is given this
       // long, in seconds, to finish; the next one finds the edge cold.

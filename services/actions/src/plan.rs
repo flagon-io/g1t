@@ -2932,6 +2932,17 @@ impl Actions {
                         .filter(|c| matches!(*c, "success" | "failure" | "cancelled"))
                         .unwrap_or("failure")
                 };
+                // A step was stopped by a SIGTERM its runner did not send:
+                // the machine was stopped under the job (#426). On g1t's,
+                // it runs again once on another, as a silent one does.
+                if conclusion == "failure"
+                    && report["machine_stopped"] == true
+                    && job.runner_id.is_none()
+                    && crate::runs_again_when_lost(job.machine_lost, job.environment.as_deref(), job.cancel_requested_at.is_some())
+                    && self.retry_lost_machine(&job, now_ms(), true).await?
+                {
+                    return Ok(Outcome::Ok(json!({ "ok": true, "cancelled": false })));
+                }
                 let outputs = report["outputs"].as_object().cloned();
                 Box::pin(self.finish_job(&job.id, conclusion, report["reason"].as_str(), outputs.as_ref())).await?;
             }
@@ -2993,7 +3004,7 @@ impl Actions {
                 // once on another, at the next sweep as a lost start does.
                 if job.runner_id.is_none()
                     && crate::runs_again_when_lost(job.machine_lost, job.environment.as_deref(), job.cancel_requested_at.is_some())
-                    && self.retry_lost_machine(&job, now_ms).await?
+                    && self.retry_lost_machine(&job, now_ms, false).await?
                 {
                     lost.insert(job.id.clone());
                     continue;
@@ -3100,8 +3111,10 @@ impl Actions {
     /// start, as a lost start is. What it did is cleared (its steps, log,
     /// summaries, outputs and uploads), its token voided, its builds ended
     /// and its cache uploads released, and its reason says where it stopped.
-    /// Returns whether it went back in the queue.
-    async fn retry_lost_machine(&self, job: &JobRow, now_ms: u64) -> Result<bool> {
+    /// `stopped`: its runner reported a step stopped by a SIGTERM it did not
+    /// send, rather than going silent. Returns whether it went back in the
+    /// queue.
+    async fn retry_lost_machine(&self, job: &JobRow, now_ms: u64, stopped: bool) -> Result<bool> {
         #[derive(Deserialize)]
         struct Head {
             text: String,
@@ -3116,7 +3129,7 @@ impl Actions {
             .into_iter()
             .map(|chunk| chunk.text)
             .collect::<String>();
-        let reason = crate::lost_machine_reason(&job.steps, Some(&head));
+        let reason = crate::lost_machine_reason(&job.steps, Some(&head), stopped);
         // Not if it reported after all, since it was read.
         let requeued = self
             .db
