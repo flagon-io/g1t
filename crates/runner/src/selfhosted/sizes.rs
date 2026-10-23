@@ -98,6 +98,13 @@ pub fn offered(choices: &[SizeChoice]) -> Result<Vec<OfferedSize>> {
     Ok(model::kept_sizes(&said))
 }
 
+/// What the runner tells g1t it takes on `machine`: [`offered`], each with
+/// the memory its jobs get there where the sandbox has less than the size,
+/// down to its least ([`model::fitted`]).
+pub fn offered_on(choices: &[SizeChoice], machine: Machine) -> Result<Vec<OfferedSize>> {
+    Ok(offered(choices)?.iter().map(|offered| model::fitted(offered, machine)).collect())
+}
+
 /// The sizes the runner's configuration holds, or the desktop app's
 /// sandbox passed it.
 pub fn chosen(config: &Config) -> Option<Vec<SizeChoice>> {
@@ -115,6 +122,8 @@ fn from_env() -> Option<Vec<SizeChoice>> {
 pub fn machine(isolation: Isolation) -> Machine {
     let cpus = std::thread::available_parallelism().map_or(1, |n| n.get()) as u32;
     let memory_mib = super::launcher::total_memory_mib().unwrap_or(4096);
+    // A container's limit, where /proc/meminfo says the whole VM's.
+    let memory_mib = std::fs::read_to_string("/sys/fs/cgroup/memory.max").ok().and_then(|text| cgroup_limit_mib(&text)).map_or(memory_mib, |limit| limit.min(memory_mib));
     let here = Machine { cpus, memory_mib, share: None };
     match (isolation, computer()) {
         (Isolation::Host, _) | (_, None) => here,
@@ -122,6 +131,11 @@ pub fn machine(isolation: Isolation) -> Machine {
             Machine { cpus: cpus_there, memory_mib: memory_there, share: Some(Room { cpus: f64::from(cpus), memory_mib }) }
         }
     }
+}
+
+/// A cgroup's `memory.max` in MiB; none for `max`, no limit.
+fn cgroup_limit_mib(text: &str) -> Option<u64> {
+    text.trim().parse::<u64>().ok().map(|bytes| bytes >> 20).filter(|mib| *mib > 0)
 }
 
 /// [`COMPUTER_ENV`], when it is one.
@@ -168,6 +182,18 @@ pub struct SizesView {
     #[serde(default)]
     pub reason: Option<String>,
     pub choices: Vec<SizeView>,
+    /// The desktop app's sandbox: the most its share can be, the VM it runs
+    /// in where the launcher can tell (WSL's, on Windows).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<RoomView>,
+    /// What the share costs the computer, when it may hurt
+    /// (`share_warning`): shown, never a refusal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub share_warning: Option<String>,
+    /// The share can be changed (`g1t-runner sandbox resources`): launchers
+    /// before 0.3.7 leave it out, and the app then shows it only.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub share_settable: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -193,6 +219,9 @@ pub struct SizeView {
     pub spec: String,
     pub vcpu: f64,
     pub memory_mib: u64,
+    /// The least memory its jobs run with where the sandbox has less.
+    #[serde(default)]
+    pub least_memory_mib: u64,
     pub offered: bool,
     /// What its jobs get where that is more than the size.
     #[serde(default)]
@@ -202,30 +231,33 @@ pub struct SizeView {
     /// What a job taken for it gets: `4 vCPU · 16 GB`.
     pub sandbox: String,
     /// What offering it costs the machine, when it may hurt
-    /// (`size_warning`): shown, and never a refusal.
+    /// (`memory_warning`, `size_warning`): shown, and never a refusal.
     #[serde(default)]
     pub warning: Option<String>,
 }
 
 /// The sizes, as [`SizesView`] says them, for `taken` (what the runner
-/// takes now) on `machine`.
+/// takes now) on `machine`. Each says what its jobs would get there, a
+/// size not taken too, so a warning shows before it is ticked.
 pub fn view(machine: Machine, taken: &[OfferedSize], picked: bool, applies: &str) -> SizesView {
     let choices = model::sizes()
         .into_iter()
         .map(|size| {
             let offered = taken.iter().find(|o| o.size == size.machine);
-            let sandbox = offered.and_then(OfferedSize::sandbox).unwrap_or_else(|| size.room());
+            let fitted = model::fitted(&offered.cloned().unwrap_or_else(|| OfferedSize::of(size.machine)), machine);
+            let sandbox = fitted.sandbox().unwrap_or_else(|| size.room());
             SizeView {
                 size: size.machine.to_owned(),
                 name: size.name.to_owned(),
                 spec: size.room().spec(),
                 vcpu: size.vcpu,
                 memory_mib: size.room().memory_mib,
+                least_memory_mib: size.least().memory_mib,
                 offered: offered.is_some(),
                 given_cpus: offered.and_then(|o| o.cpus),
                 given_memory_mib: offered.and_then(|o| o.memory_mib),
                 sandbox: sandbox.spec(),
-                warning: model::size_warning(machine, sandbox),
+                warning: model::memory_warning(&fitted).or_else(|| model::size_warning(machine, sandbox)),
             }
         })
         .collect();
@@ -236,6 +268,7 @@ pub fn view(machine: Machine, taken: &[OfferedSize], picked: bool, applies: &str
         picked,
         reason: picked.then(|| model::pick_reason(machine)),
         choices,
+        ..SizesView::default()
     }
 }
 
@@ -283,7 +316,8 @@ mod tests {
     #[test]
     fn less_than_a_size_is_refused() {
         assert!(parse_list("2-core:1").unwrap_err().to_string().contains("at least 2 vCPU"));
-        assert!(parse_list("2-core::4g").unwrap_err().to_string().contains("at least 8 GB"));
+        assert!(parse_list("2-core::4g").unwrap_err().to_string().contains("at least 6 GB"));
+        assert_eq!(parse_list("2-core::7g").unwrap().len(), 1, "less than the size, down to its least");
         assert!(parse_list("16-core").unwrap_err().to_string().contains("not a size"));
         assert!(parse_list("2-core:x").is_err());
     }
@@ -302,8 +336,8 @@ mod tests {
         assert!(config.sizes_picked);
         // Kept: a later start on a smaller machine changes nothing.
         assert!(!settle(&mut config, Machine { cpus: 2, memory_mib: 4096, share: None }));
-        // A machine too small for Small takes none, and says why.
-        let small = Machine { cpus: 4, memory_mib: 8 * 1024, share: None };
+        // A machine too small for Small, even at its least, takes none, and says why.
+        let small = Machine { cpus: 2, memory_mib: 4 * 1024, share: None };
         assert_eq!(pick(small), vec![]);
         let said = view(small, &[], true, "poll");
         assert!(said.reason.unwrap().contains("Small needs"));
@@ -320,5 +354,28 @@ mod tests {
         assert_eq!(said.choices[2].sandbox, "8 vCPU · 16 GB");
         assert!(said.choices[2].warning.as_deref().unwrap().contains("More than half this machine's"));
         assert_eq!(said.reason, None);
+    }
+
+    #[test]
+    fn a_containers_memory_limit_is_read_from_its_cgroup() {
+        assert_eq!(cgroup_limit_mib("8589934592
+"), Some(8192));
+        assert_eq!(cgroup_limit_mib("max
+"), None);
+        assert_eq!(cgroup_limit_mib(""), None);
+    }
+
+    #[test]
+    fn a_size_the_sandbox_holds_only_at_its_least_runs_with_what_it_has_and_says_so() {
+        let sandbox = Machine { cpus: 32, memory_mib: 64 * 1024, share: Some(Room { cpus: 8.0, memory_mib: 8 * 1024 }) };
+        let chosen = parse_list("2-core,4-core").unwrap();
+        let told = offered_on(&chosen, sandbox).unwrap();
+        assert_eq!(told, vec![OfferedSize::of("2-core"), OfferedSize { size: "4-core".into(), cpus: None, memory_mib: Some(8 * 1024) }]);
+        let said = view(sandbox, &offered(&chosen).unwrap(), false, "restart");
+        assert_eq!(said.choices[1].warning, None, "Standard fits whole");
+        assert_eq!(said.choices[2].sandbox, "4 vCPU · 8 GB");
+        assert_eq!(said.choices[2].given_memory_mib, None, "the person gave it nothing");
+        assert!(said.choices[2].warning.as_deref().unwrap().starts_with("Runs with 8 GB instead of 12 GB"));
+        assert_eq!(said.choices[2].least_memory_mib, 8 * 1024);
     }
 }

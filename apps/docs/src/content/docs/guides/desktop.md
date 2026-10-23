@@ -228,7 +228,9 @@ start it again. Both are on until you stop one.
 
 Jobs that ask for `ubuntu-latest` or another Linux label of g1t's machines
 run on it too, while it is idle and takes their [size](#job-sizes), unless your workspace turned off **Prefer our runners for
-hosted labels**; otherwise they run on g1t's machines. Such a job gets its
+hosted labels**; otherwise they run on g1t's machines. They run in g1t's
+runner image, which has what g1t's machines have, so only g1t-runner 0.3.7
+and later, given that image, take them. Such a job gets its
 run's secrets on your computer, as any job here does. See [jobs that ask
 for g1t's machines](/guides/self-hosted-runners/#jobs-that-ask-for-g1ts-machines).
 
@@ -292,23 +294,43 @@ machines your Linux jobs take jobs that ask for one of them for
 - **Sandbox**: how a job is kept from your computer, in plain words: a
   nested container (each job in a fresh container inside the runner's own
   sandbox), a VM, or the host.
-- **This computer**: its CPUs and memory, and the Linux sandbox's share of
-  them.
+- **This computer**: its CPUs and memory.
+- **Linux sandbox**: its share of them, which no job gets more of, and on
+  Windows what WSL's VM has (its `processors` and `memory` in
+  `%USERPROFILE%\.wslconfig`, else every CPU and half the memory). **Sandbox
+  CPUs** and **Memory (GB)** change it with **Set share**, and a warning
+  says when it is more than half your computer or more than WSL's VM.
 - Each size, **Small** (1 vCPU, 6 GB), **Standard** (2 vCPU, 8 GB) and
   **Large** (4 vCPU, 12 GB), ticked when your runner takes it, with
   **CPUs** and **Memory (GB)** to give its jobs more than the size (never
-  less), and a warning under a size that is more than half your computer
-  or more than the sandbox has. A warning never stops you offering it.
+  fewer CPUs, and memory down to the size's least: 4, 6 and 8 GB), and a
+  warning under a size that is more than half your computer or more than
+  the sandbox has. A size the sandbox holds with all its CPUs but less of
+  its memory still runs, with the memory there is: _Runs with 8 GB instead
+  of 12 GB: jobs that need all of it may run out of memory_, and a job
+  that does runs again on g1t's machines. A warning never stops you
+  offering it.
 
 You choose nothing to start with: the first time the sandbox starts, one
 size is picked and ticked for you, with why: Standard if it fits in half
 your computer and in the sandbox's share, else Small, else none (_Chosen
 for you: Standard fits in half this machine's 16 CPUs and 32 GB and in the
-sandbox's 8 vCPU, 8 GB_). It is never Large. Tick more, untick it, or give
-it more, and **Save sizes**; **Choose for me** picks again. What you save
-is kept, and Linux jobs start again with it after the job they are
-running, if any, without registering again. The card shows with g1t-runner
-0.3.6 and the app 0.3.11 or later.
+sandbox's 8 vCPU, 8 GB_); else Standard, then Small, at its least memory.
+It is never Large. Tick more, untick it, or give it more, and **Save
+sizes**; **Choose for me** picks again. What you save is kept, and Linux
+jobs start again with it after the job they are running, if any, without
+registering again.
+
+Saving sizes grows the sandbox's share to hold the largest one you ticked:
+at least its CPUs, and its memory plus 1 GB for the runner itself. Large
+in a share of 8 CPUs and 8 GB makes it 8 CPUs and 13 GB. It never shrinks a
+share, so one you set stays at least that. A share left alone is half your
+computer's CPUs (at most 16) and a quarter of its memory (2 to 16 GB).
+Changing the share starts Linux jobs again after the job they are running,
+as changing sizes does.
+
+The card shows with g1t-runner 0.3.6 and the app 0.3.11 or later; the
+share's fields with g1t-runner 0.3.7 and the app 0.3.12.
 
 ### How jobs run
 
@@ -699,9 +721,6 @@ talk to the app, whichever it is, and updates still come from g1t.sh.
 
 - **Windows jobs on a Mac.** Sandboxed macOS jobs are designed, not
   released, so a Mac's sandbox runs Linux jobs only.
-- **Choosing the sandbox's share of the computer.** It takes half the
-  CPUs (at most 8) and a quarter of the memory (2 to 8 GB); the app has no
-  setting for it yet.
 - **Opening the conversation from a notification.** Clicking one brings
   the app forward; the page it is about is coming.
 - **A page of its own while offline.** If the network goes away while a

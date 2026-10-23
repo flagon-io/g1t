@@ -5,12 +5,13 @@
 //! ```text
 //! g1t-runner sandbox up [--url https://g1t.sh --token g1trt_…] [--name NAME]
 //!     [--labels a,b] [--group GROUP] [--cpus N] [--memory 8g] [--disk 64g]
-//!     [--only linux,windows] [--no-native | --native] [--state-dir DIR] [--json]
+//!     [--hosted-image REF] [--only linux,windows] [--no-native | --native] [--state-dir DIR] [--json]
 //!     [--image-file PATH] [--runner-image REF] [--runner-image-file TAR]
 //! g1t-runner sandbox down [--only linux,windows] [--drain] [--delete] [--json]
 //! g1t-runner sandbox status [--json]
 //! g1t-runner sandbox update [--image-file PATH] [--json]
 //! g1t-runner sandbox sizes [--set 1-core,2-core:4:16g | --pick] [--json]
+//! g1t-runner sandbox resources [--cpus N] [--memory 16g] [--json]
 //! ```
 //!
 //! It gives a computer up to two capabilities, each a runner of its own:
@@ -86,7 +87,9 @@
 //! empty when nothing does, and left out by launchers before it.
 //! `sizes` is the Linux runner's: which of g1t's machines it takes jobs
 //! for, and what each would cost this computer (`g1t-runner sizes --json`,
-//! sizes.rs); `sizes --set` changes them. Launchers before it leave it out.
+//! sizes.rs); `sizes --set` changes them, growing the sandbox's share
+//! (`resources`) to hold the largest, and `resources` sets the share
+//! itself. Launchers before it leave it out.
 //! `turned_off` is true for a capability someone stopped (`down --only`,
 //! `--no-native`), whose state is then `stopped`: stopped by a person, not
 //! failing. `needs` names what the computer still lacks for a capability,
@@ -155,6 +158,12 @@ pub trait Backend {
     fn exists(&self) -> bool;
     fn running(&self) -> bool;
     fn create(&self, local: &image::Local, resources: &Resources) -> Result<()>;
+    /// A new share for a sandbox that exists, from its next start: what a
+    /// VM is given when it boots. Elsewhere the runner's container is
+    /// given it (`configure`), and this does nothing.
+    fn resize(&self, _resources: &Resources) -> Result<()> {
+        Ok(())
+    }
     fn configure(&self, settings: &Settings) -> Result<()>;
     /// A runner image from a file, for a build that is not released.
     fn load_image(&self, tar: &Path) -> Result<()>;
@@ -216,6 +225,10 @@ pub struct Saved {
     pub sizes: Option<Vec<SizeChoice>>,
     #[serde(default)]
     pub sizes_picked: bool,
+    /// g1t's runner image, which jobs asking for one of g1t's machines run
+    /// in (`up --hosted-image`). None: the Linux runner takes none of them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hosted_image: Option<String>,
 }
 
 impl Saved {
@@ -430,13 +443,13 @@ pub fn total_memory_mib() -> Option<u64> {
     }
 }
 
-/// The sandbox's share when none is given: half the CPUs (at most 8) and
-/// a quarter of the memory (2 to 8 GiB, never more than half), and a disk
+/// The sandbox's share when none is given: half the CPUs (at most 16) and
+/// a quarter of the memory (2 to 16 GiB, never more than half), and a disk
 /// that may grow to 64 GiB.
 pub fn default_resources(cpus: usize, memory_mib: Option<u64>) -> Resources {
-    let cpus = (cpus / 2).clamp(1, 8) as u32;
+    let cpus = (cpus / 2).clamp(1, 16) as u32;
     let total = memory_mib.unwrap_or(8192);
-    let memory_mib = (total / 4).clamp(2048, 8192).min(total / 2).max(1024);
+    let memory_mib = (total / 4).clamp(2048, 16384).min(total / 2).max(1024);
     Resources { cpus, memory_mib, disk_gib: 64 }
 }
 
@@ -751,20 +764,93 @@ fn settle_sizes(saved: &mut Saved) -> Vec<SizeChoice> {
 /// the computer its share is of.
 fn sized(settings: Settings, saved: &mut Saved) -> Settings {
     let machine = linux_machine(&resources_of(saved));
-    Settings { sizes: Some(settle_sizes(saved)), computer_cpus: machine.cpus, computer_memory_mib: machine.memory_mib, ..settings }
+    Settings {
+        sizes: Some(settle_sizes(saved)),
+        computer_cpus: machine.cpus,
+        computer_memory_mib: machine.memory_mib,
+        hosted_image: saved.hosted_image.clone(),
+        ..settings
+    }
 }
 
 fn sizes_view(saved: &Saved) -> Option<SizesView> {
-    let machine = linux_machine(&resources_of(saved));
+    let resources = resources_of(saved);
+    let machine = linux_machine(&resources);
     let chosen = saved.sizes.clone().unwrap_or_else(|| sizes::pick(machine));
     let taken = sizes::offered(&chosen).unwrap_or_default();
-    Some(sizes::view(machine, &taken, saved.sizes.is_none() || saved.sizes_picked, "restart"))
+    let mut view = sizes::view(machine, &taken, saved.sizes.is_none() || saved.sizes_picked, "restart");
+    let limit = vm_limit(machine);
+    view.limit = limit.map(sizes::RoomView::from);
+    view.share_warning = g1t_contracts::runners::share_warning(machine, share_of(&resources), limit);
+    view.share_settable = true;
+    Some(view)
+}
+
+/// A share as CPUs and memory.
+fn share_of(resources: &Resources) -> g1t_contracts::runners::Room {
+    g1t_contracts::runners::Room { cpus: f64::from(resources.cpus), memory_mib: resources.memory_mib }
+}
+
+/// The most the sandbox's share can be, where the launcher can tell: on
+/// Windows, WSL's VM, which every distribution shares (`.wslconfig`).
+/// Elsewhere the sandbox's VM (or container) is made with the share, and
+/// the computer is the limit.
+fn vm_limit(machine: g1t_contracts::runners::Machine) -> Option<g1t_contracts::runners::Room> {
+    cfg!(windows).then(|| wsl::this_vm_limit(machine.cpus, machine.memory_mib))
+}
+
+/// Grows the sandbox's share to hold the largest size the Linux runner
+/// takes (`share_for`: its CPUs, and its memory and the runner's own
+/// room), saying so, and what it costs the computer. Never shrinks it:
+/// a share someone set stays at least that.
+fn grow_share(saved: &mut Saved) {
+    let resources = resources_of(saved);
+    let machine = linux_machine(&resources);
+    let offered = sizes::offered(saved.sizes.as_deref().unwrap_or_default()).unwrap_or_default();
+    let limit = vm_limit(machine);
+    let share = g1t_contracts::runners::share_for(share_of(&resources), &offered, limit.unwrap_or(machine.room()));
+    let grown = Resources { cpus: share.cpus as u32, memory_mib: share.memory_mib, ..resources };
+    if grown != resources {
+        log(&format!(
+            "The Linux sandbox's share grows from {} CPUs and {} to {} CPUs and {}, to hold its largest size.",
+            resources.cpus,
+            g1t_contracts::runners::gb(resources.memory_mib),
+            grown.cpus,
+            g1t_contracts::runners::gb(grown.memory_mib)
+        ));
+        if let Some(warning) = g1t_contracts::runners::share_warning(machine, share, limit) {
+            log(&warning);
+        }
+    }
+    saved.resources = grown;
+}
+
+/// Starts a running Linux runner again with what was just saved (its
+/// sizes, its share), after the job it is running: drained, given its
+/// settings and share, and started, keeping its registration. One that
+/// isn't running takes them when it next starts.
+fn restart_linux(dir: &Path, what: &str) -> Result<()> {
+    let backend = backend(dir);
+    if !(backend.exists() && backend.running()) {
+        log(&format!("Saved: the Linux runner takes {what} when it next starts."));
+        return Ok(());
+    }
+    in_phase(dir, "starting", |saved| {
+        log(&format!("Draining: the Linux runner finishes the job it is running, then starts again with {what}."));
+        backend.stop(StopMode::Drain)?;
+        let settings = Settings { cpus: saved.resources.cpus, memory_mib: saved.resources.memory_mib, ..Settings::default() };
+        backend.configure(&sized(settings, saved))?;
+        backend.resize(&saved.resources)?;
+        backend.start()?;
+        wait_running(backend.as_ref(), Duration::from_secs(180))
+    })
 }
 
 /// `sizes --set LIST` or `--pick`: which of g1t's machines the Linux
 /// runner takes jobs for. Kept here and handed to the runner as it starts,
 /// so a running one is drained (it finishes the job it is running) and
-/// started again with them, keeping its registration.
+/// started again with them, keeping its registration. The sandbox's share
+/// grows to hold the largest of them where it is smaller (`grow_share`).
 fn set_sizes(options: &Options, dir: &Path) -> Result<()> {
     let mut saved = Saved::load(dir);
     if let Some(list) = options.value("set") {
@@ -776,19 +862,44 @@ fn set_sizes(options: &Options, dir: &Path) -> Result<()> {
     } else {
         return Ok(());
     }
+    grow_share(&mut saved);
     saved.save(dir)?;
-    let backend = backend(dir);
-    if !(backend.exists() && backend.running()) {
-        log("Saved: the Linux runner takes these sizes when it next starts.");
+    restart_linux(dir, "these sizes")
+}
+
+/// `resources --cpus N --memory 16g`: the sandbox's share of the computer,
+/// as the person sets it, which no job in it has more of. More than half
+/// the computer, or than WSL's VM, warns rather than refuses; CPUs past
+/// the VM's are refused, since a container can't be given them. A running
+/// Linux runner is drained and started again with it, as for sizes.
+fn set_resources(options: &Options, dir: &Path) -> Result<()> {
+    let mut saved = Saved::load(dir);
+    let mut resources = resources_of(&saved);
+    let machine = linux_machine(&resources);
+    let limit = vm_limit(machine).unwrap_or(machine.room());
+    if let Some(cpus) = options.value("cpus") {
+        let cpus: u32 = cpus.trim().parse().ok().filter(|n| *n > 0).ok_or_else(|| anyhow!("--cpus takes a number of CPUs, not {cpus}"))?;
+        if f64::from(cpus) > limit.cpus {
+            bail!("the Linux sandbox can have at most {} CPUs here, not {cpus}", limit.cpus);
+        }
+        resources.cpus = cpus;
+    }
+    if let Some(memory) = options.value("memory") {
+        resources.memory_mib = super::exec::mib(memory).filter(|m| *m >= 1024).ok_or_else(|| anyhow!("--memory takes a size of 1g or more, such as 16g, not {memory}"))?;
+    }
+    if options.value("cpus").is_none() && options.value("memory").is_none() {
         return Ok(());
     }
-    in_phase(dir, "starting", |saved| {
-        log("Draining: the Linux runner finishes the job it is running, then starts again with these sizes.");
-        backend.stop(StopMode::Drain)?;
-        backend.configure(&sized(Settings::default(), saved))?;
-        backend.start()?;
-        wait_running(backend.as_ref(), Duration::from_secs(180))
-    })
+    if resources == saved.resources {
+        return Ok(());
+    }
+    saved.resources = resources;
+    saved.save(dir)?;
+    log(&format!("The Linux sandbox's share: {} CPUs and {}.", resources.cpus, g1t_contracts::runners::gb(resources.memory_mib)));
+    if let Some(warning) = g1t_contracts::runners::share_warning(machine, share_of(&resources), vm_limit(machine)) {
+        log(&warning);
+    }
+    restart_linux(dir, "this share")
 }
 
 // --- What weakens it ---------------------------------------------------------------
@@ -912,6 +1023,7 @@ const HELP: &str = "g1t-runner sandbox: self-hosted runners on your own computer
   g1t-runner sandbox status [--json]
   g1t-runner sandbox update [--json]
   g1t-runner sandbox sizes [--set 1-core,2-core:4:16g | --pick] [--json]
+  g1t-runner sandbox resources [--cpus N] [--memory 16g] [--json]
 
 Linux jobs run in a Linux VM of the runner's own (a WSL distribution on
 Windows, a vfkit VM on macOS; on Linux, Sysbox, or a QEMU VM), each in a
@@ -927,7 +1039,11 @@ running, until `up --only windows` turns them on again. `update` drains,
 swaps in the newest signed image, and starts
 again, keeping the registration. `sizes` says which of g1t's machines
 Linux jobs are taken for (`--set 2-core,4-core:8:16g`, or `--pick` to
-choose again); a running Linux runner drains and starts again with them. Every command takes --state-dir DIR
+choose again); a running Linux runner drains and starts again with them,
+and the sandbox's share grows to hold the largest. `resources` sets the
+share itself (CPUs and memory), and starts Linux jobs again the same way.
+`up --hosted-image REF` names g1t's runner image, which jobs asking for
+g1t's machines run in: without one, Linux jobs take none of them. Every command takes --state-dir DIR
 (default ~/.g1t-runner/sandbox).
 Docs: https://docs.g1t.sh/guides/self-hosted-runners/#sandbox-on-your-computer";
 
@@ -947,6 +1063,7 @@ const SANDBOX_VALUES: &[&str] = &[
     "wait",
     "only",
     "set",
+    "hosted-image",
 ];
 
 /// `g1t-runner sandbox <command>`: the process's exit code.
@@ -977,6 +1094,7 @@ pub fn main(args: &[String]) -> i32 {
         Some("down") => private().and_then(|()| down(&options, &dir)),
         Some("update") => private().and_then(|()| update_sandbox(&options, &dir)),
         Some("sizes") => private().and_then(|()| set_sizes(&options, &dir)),
+        Some("resources") => private().and_then(|()| set_resources(&options, &dir)),
         Some("status") => Ok(()),
         _ => {
             println!("{HELP}");
@@ -987,7 +1105,7 @@ pub fn main(args: &[String]) -> i32 {
     match outcome {
         Ok(()) => {
             print(&status, json);
-            if args.first().map(String::as_str) == Some("sizes")
+            if matches!(args.first().map(String::as_str), Some("sizes" | "resources"))
                 && !json
                 && let Some(view) = &status.sizes
             {
@@ -1037,6 +1155,9 @@ fn up(options: &Options, dir: &Path) -> Result<()> {
     }
     if let Some(group) = options.value("group") {
         saved.group = Some(group.to_owned());
+    }
+    if let Some(image) = options.value("hosted-image") {
+        saved.hosted_image = Some(image.trim().to_owned()).filter(|image| !image.is_empty());
     }
     let defaults = default_resources(std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2), total_memory_mib());
     let mut resources = if saved.resources == Resources::default() { defaults } else { saved.resources };
@@ -1127,6 +1248,7 @@ fn up(options: &Options, dir: &Path) -> Result<()> {
                 ..Settings::default()
             };
             backend.configure(&sized(settings, saved))?;
+            backend.resize(&saved.resources)?;
             backend.start()?;
             wait_running(backend.as_ref(), Duration::from_secs(if fresh { 600 } else { 180 }))
         }))
@@ -1336,7 +1458,10 @@ mod tests {
 
     #[test]
     fn the_default_share_leaves_the_computer_room() {
-        assert_eq!(default_resources(16, Some(65536)), Resources { cpus: 8, memory_mib: 8192, disk_gib: 64 });
+        assert_eq!(default_resources(16, Some(65536)), Resources { cpus: 8, memory_mib: 16384, disk_gib: 64 });
+        // 32 CPUs and 63.78 GB (flagon-io#458): Large fits, where 8 GB did not hold it.
+        assert_eq!(default_resources(32, Some(65310)), Resources { cpus: 16, memory_mib: 16327, disk_gib: 64 });
+        assert_eq!(default_resources(64, Some(256 * 1024)), Resources { cpus: 16, memory_mib: 16384, disk_gib: 64 });
         assert_eq!(default_resources(8, Some(16384)), Resources { cpus: 4, memory_mib: 4096, disk_gib: 64 });
         assert_eq!(default_resources(4, Some(8192)), Resources { cpus: 2, memory_mib: 2048, disk_gib: 64 });
         // Never more than half a small machine's memory.

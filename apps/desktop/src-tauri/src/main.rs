@@ -90,6 +90,7 @@ fn main() {
             bridge::runner_register,
             bridge::runner_control,
             bridge::runner_sizes,
+            bridge::runner_share,
             bridge::site_ready,
             bridge::open_devtools,
         ])

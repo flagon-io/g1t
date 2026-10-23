@@ -5,8 +5,8 @@
 //!
 //! | Route | Body |
 //! | --- | --- |
-//! | `POST /runners/register` | `token`, `name`, `labels`, `os`, `arch`, `version`, `ephemeral`, `group`, `replace`, `isolation`, `machine`, `cpus`, `memory_mib`, `docker`, `sizes` |
-//! | `POST /runners/{id}/poll` | `version`, `running`, `wait_ms`, `isolation`, `cpus`, `memory_mib`, `docker`, `sizes` |
+//! | `POST /runners/register` | `token`, `name`, `labels`, `os`, `arch`, `version`, `ephemeral`, `group`, `replace`, `isolation`, `machine`, `cpus`, `memory_mib`, `docker`, `sizes`, `hosted_image` |
+//! | `POST /runners/{id}/poll` | `version`, `running`, `wait_ms`, `isolation`, `cpus`, `memory_mib`, `docker`, `sizes`, `hosted_image` |
 //! | `POST /runners/{id}/finished` | `id`, `exit_code`, `reason` |
 //! | `POST /runners/{id}/remove` | nothing |
 //!
@@ -77,6 +77,7 @@ pub async fn handle(request: &mut Request, services: &Services, path: &str) -> R
             "cpus": body["cpus"].as_u64(),
             "memory_mib": body["memory_mib"].as_u64(),
             "docker": body["docker"].as_bool(),
+            "hosted_image": body["hosted_image"].as_bool(),
             "sizes": sizes(&body["sizes"]),
         });
         return Ok(Some(answer(services, "runner_register", &args).await?));
@@ -95,6 +96,7 @@ pub async fn handle(request: &mut Request, services: &Services, path: &str) -> R
             args["cpus"] = json!(body["cpus"].as_u64());
             args["memory_mib"] = json!(body["memory_mib"].as_u64());
             args["docker"] = json!(body["docker"].as_bool());
+            args["hosted_image"] = json!(body["hosted_image"].as_bool());
             args["sizes"] = sizes(&body["sizes"]);
             "runner_poll"
         }

@@ -16,6 +16,7 @@
     "allow-window-control",
     "allow-runner-status",
     "allow-runner-control",
-    "allow-runner-sizes"
+    "allow-runner-sizes",
+    "allow-runner-share"
   ]
 }

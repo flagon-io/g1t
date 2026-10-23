@@ -374,6 +374,18 @@ pub fn runner_sizes(app: AppHandle, webview: Webview, sizes: Option<String>) -> 
     runner::set_sizes(&app, sizes)
 }
 
+/// The Linux sandbox's share of this computer, from the site's settings:
+/// whole CPUs and MiB of memory. Kept by the launcher, which starts Linux
+/// jobs again with it after the job they are running.
+#[tauri::command]
+pub fn runner_share(app: AppHandle, webview: Webview, cpus: u32, memory_mib: u64) -> Result<(), String> {
+    from_site(&app, &webview).or_else(|_| from_settings_or_runner(&webview))?;
+    if !(1..=1024).contains(&cpus) || !(1024..=16 * 1024 * 1024).contains(&memory_mib) {
+        return Err("That isn't a share: at least 1 CPU and 1 GB.".into());
+    }
+    runner::set_share(&app, cpus, memory_mib)
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

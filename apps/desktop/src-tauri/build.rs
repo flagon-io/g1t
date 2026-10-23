@@ -29,6 +29,7 @@ fn main() {
         "runner_register",
         "runner_control",
         "runner_sizes",
+        "runner_share",
         "site_ready",
         "open_devtools",
     ])))

@@ -99,6 +99,11 @@ pub struct RunnerRow {
     /// [`kept_sizes`] keeps them; none for a runner that never said.
     #[serde(default)]
     pub sizes: Option<String>,
+    /// 1 when it runs jobs asking for a hosted label in g1t's runner image,
+    /// as it last said (migration 0032); none for a runner that never said,
+    /// which takes none of them.
+    #[serde(default)]
+    pub hosted_image: Option<u32>,
 }
 
 impl RunnerRow {
@@ -111,7 +116,12 @@ impl RunnerRow {
     }
 
     fn capacity(&self) -> model::Capacity {
-        model::Capacity { cpus: self.cpus, memory_mib: self.memory_mib, docker: self.docker.map(|docker| docker != 0) }
+        model::Capacity {
+            cpus: self.cpus,
+            memory_mib: self.memory_mib,
+            docker: self.docker.map(|docker| docker != 0),
+            hosted_image: self.hosted_image.map(|image| image != 0),
+        }
     }
 
     fn online(&self, now: u64) -> bool {
@@ -210,11 +220,12 @@ pub(crate) const RUNNER_CLAIM: &str = "UPDATE jobs SET status = 'in_progress', t
 
 /// What a runner says a job on it gets, as it is kept: a count of CPUs and
 /// MiB of memory that are some, and no more than any machine has.
-fn kept_capacity(cpus: Option<u32>, memory_mib: Option<u64>, docker: Option<bool>) -> model::Capacity {
+fn kept_capacity(cpus: Option<u32>, memory_mib: Option<u64>, docker: Option<bool>, hosted_image: Option<bool>) -> model::Capacity {
     model::Capacity {
         cpus: cpus.filter(|n| (1..=4096).contains(n)),
         memory_mib: memory_mib.filter(|n| (1..=64 * 1024 * 1024).contains(n)),
         docker,
+        hosted_image,
     }
 }
 
@@ -1110,7 +1121,7 @@ impl Actions {
         // How it keeps work from its machine, and what a job on it gets, if
         // it said (older runners do not).
         let isolation = a.isolation.as_deref().filter(|level| model::ISOLATIONS.contains(level));
-        let capacity = kept_capacity(a.cpus, a.memory_mib, a.docker);
+        let capacity = kept_capacity(a.cpus, a.memory_mib, a.docker, a.hosted_image);
         let sizes = a.sizes.as_deref().map(sized);
         let id = new_id("rnr", at);
         let credential = format!("{}{}", model::CREDENTIAL_PREFIX, random_hex(32));
@@ -1118,8 +1129,8 @@ impl Actions {
         self.db
             .prepare(
                 "INSERT INTO runners (id, workspace, repo_id, repo, group_id, name, labels, os, arch, version, ephemeral, credential_hash,
-                   rotated_at, last_seen_at, created_at, created_by, isolation, machine_hash, cpus, memory_mib, docker, sizes)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   rotated_at, last_seen_at, created_at, created_by, isolation, machine_hash, cpus, memory_mib, docker, sizes, hosted_image)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 id.as_str().into(),
@@ -1145,6 +1156,7 @@ impl Actions {
                 capacity.memory_mib.map_or(JsValue::NULL, |mib| JsValue::from(mib as f64)),
                 capacity.docker.map_or(JsValue::NULL, |docker| JsValue::from(u32::from(docker))),
                 optional(sizes.as_deref()),
+                capacity.hosted_image.map_or(JsValue::NULL, |image| JsValue::from(u32::from(image))),
             ])?
             .run()
             .await?;
@@ -1252,10 +1264,12 @@ impl Actions {
             .map(str::to_owned)
             .or_else(|| row.isolation.clone());
         // And what a job on it gets: a runner given more memory says so.
-        let said = kept_capacity(a.cpus, a.memory_mib, a.docker);
+        let said = kept_capacity(a.cpus, a.memory_mib, a.docker, a.hosted_image);
         let cpus = said.cpus.or(row.cpus);
         let memory_mib = said.memory_mib.or(row.memory_mib);
         let docker = said.docker.map(u32::from).or(row.docker);
+        // A runner that stops saying it (one downgraded) no longer has it.
+        let hosted_image = said.hosted_image.map(u32::from);
         // And the sizes it takes: changed in its settings, they count from now.
         let sizes = a.sizes.as_deref().map(sized).or_else(|| row.sizes.clone());
         let changed = version != row.version
@@ -1263,11 +1277,12 @@ impl Actions {
             || work_kind != row.work_kind.as_deref()
             || isolation != row.isolation
             || (cpus, memory_mib, docker) != (row.cpus, row.memory_mib, row.docker)
-            || sizes != row.sizes;
+            || sizes != row.sizes
+            || hosted_image != row.hosted_image;
         if changed || seen_is_stale(row.last_seen_at.as_deref(), at) {
             self.db
                 .prepare(
-                    "UPDATE runners SET last_seen_at = ?, version = ?, work_id = ?, work_kind = ?, isolation = ?, cpus = ?, memory_mib = ?, docker = ?, sizes = ? WHERE id = ?",
+                    "UPDATE runners SET last_seen_at = ?, version = ?, work_id = ?, work_kind = ?, isolation = ?, cpus = ?, memory_mib = ?, docker = ?, sizes = ?, hosted_image = ? WHERE id = ?",
                 )
                 .bind(&[
                     seen.as_str().into(),
@@ -1279,12 +1294,13 @@ impl Actions {
                     memory_mib.map_or(JsValue::NULL, |mib| JsValue::from(mib as f64)),
                     docker.map_or(JsValue::NULL, JsValue::from),
                     optional(sizes.as_deref()),
+                    hosted_image.map_or(JsValue::NULL, JsValue::from),
                     row.id.as_str().into(),
                 ])?
                 .run()
                 .await?;
         }
-        let row = RunnerRow { isolation, cpus, memory_mib, docker, sizes, ..row };
+        let row = RunnerRow { isolation, cpus, memory_mib, docker, sizes, hosted_image, ..row };
         let mut poll = Poll { assignment: None, cancel, credential, removed: false };
         // Busy, or an ephemeral runner that has had its one job.
         if active.is_some() || !a.running.is_empty() {
@@ -2193,6 +2209,7 @@ mod tests {
             memory_mib: None,
             docker: None,
             sizes: None,
+            hosted_image: None,
         };
         let wanted = Wanted::of(&["self-hosted".to_owned(), "linux".to_owned()], None);
         let takes = |row: &RunnerRow| takes_public_job(row, &[], "rep_1", "acme/web", &wanted, at);
@@ -2235,6 +2252,7 @@ mod tests {
             memory_mib: Some(16 * 1024),
             docker: Some(1),
             sizes: None,
+            hosted_image: Some(1),
         };
         let groups = [group(&["web"])];
         let wanted = model::hosted_wanted(&["ubuntu-latest".to_owned()]).unwrap();
@@ -2250,6 +2268,8 @@ mod tests {
         assert!(!takes(&RunnerRow { docker: Some(0), ..runner.clone() }, true), "services without Docker");
         assert!(!takes(&RunnerRow { isolation: Some("host".into()), ..runner.clone() }, false), "host mode, visibility unknown");
         assert!(!takes(&RunnerRow { repo_id: Some("rep_2".into()), ..runner.clone() }, false), "another repository's");
+        assert!(!takes(&RunnerRow { hosted_image: None, ..runner.clone() }, false), "a runner before g1t's runner image");
+        assert!(!takes(&RunnerRow { hosted_image: Some(0), ..runner.clone() }, false), "a runner with no image of g1t's machines");
         // A runner that says its sizes takes the machine's, whatever it has.
         let sized = |json: &str| RunnerRow { cpus: Some(1), memory_mib: Some(1024), sizes: Some(json.into()), ..runner.clone() };
         assert!(takes(&sized(r#"[{"size":"2-core"}]"#), false), "its sizes, not its resources");
@@ -2261,9 +2281,12 @@ mod tests {
 
     #[test]
     fn what_a_runner_says_it_has_is_kept_only_when_it_is_believable() {
-        assert_eq!(kept_capacity(Some(8), Some(16384), Some(true)), model::Capacity { cpus: Some(8), memory_mib: Some(16384), docker: Some(true) });
-        assert_eq!(kept_capacity(Some(0), Some(0), None), model::Capacity::default());
-        assert_eq!(kept_capacity(Some(1_000_000), None, None).cpus, None);
+        assert_eq!(
+            kept_capacity(Some(8), Some(16384), Some(true), Some(true)),
+            model::Capacity { cpus: Some(8), memory_mib: Some(16384), docker: Some(true), hosted_image: Some(true) }
+        );
+        assert_eq!(kept_capacity(Some(0), Some(0), None, None), model::Capacity::default());
+        assert_eq!(kept_capacity(Some(1_000_000), None, None, None).cpus, None);
         // Its sizes: g1t's machines, each once, never below the size.
         let said = [
             model::OfferedSize { size: "2-core".into(), cpus: Some(1.0), memory_mib: Some(16 * 1024) },
@@ -2303,6 +2326,7 @@ mod tests {
             memory_mib: None,
             docker: None,
             sizes: None,
+            hosted_image: None,
         };
         assert!(row.online(1_000_000_000 + 60_000));
         assert!(!row.online(1_000_000_000 + 120_000));
@@ -2351,6 +2375,7 @@ mod tests {
             memory_mib: None,
             docker: None,
             sizes: None,
+            hosted_image: None,
         };
         // The same computer, even while the old one still looks online.
         assert!(takes_over(&row(ours.clone(), Some("u1"), at), false, ours.as_deref(), Some("u1"), at));

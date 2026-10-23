@@ -72,6 +72,11 @@ pub struct Config {
     /// `sizes` were picked for the person, not chosen by them.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub sizes_picked: bool,
+    /// g1t's runner image, which jobs asking for one of g1t's machines run
+    /// in (`--hosted-image`; `G1T_HOSTED_IMAGE` over it). Without one the
+    /// runner takes none of those jobs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hosted_image: Option<String>,
 }
 
 fn yes() -> bool {
@@ -177,6 +182,7 @@ mod tests {
             native: false,
             sizes: Some(vec![super::super::sizes::SizeChoice::Key("1-core".into())]),
             sizes_picked: false,
+            hosted_image: None,
         };
         save(&dir, &config).unwrap();
         let back = load(&dir).unwrap();

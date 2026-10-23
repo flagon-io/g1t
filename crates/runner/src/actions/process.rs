@@ -197,6 +197,17 @@ pub(crate) fn machine_stopped() -> bool {
     MACHINE_STOPPED.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+/// Whether the kernel stopped a process for want of memory while any step
+/// of this job ran (`oom_kills`).
+static RAN_OUT_OF_MEMORY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether this job, given less memory than its size by a self-hosted
+/// runner ([`super::MEMORY_SHORT_ENV`]), ran out of it: its end says so
+/// (`out_of_memory`), and g1t runs it again on its own machines.
+pub(crate) fn short_of_memory() -> bool {
+    RAN_OUT_OF_MEMORY.load(std::sync::atomic::Ordering::Relaxed) && std::env::var(super::MEMORY_SHORT_ENV).is_ok_and(|short| short == "1")
+}
+
 /// Whether a process was stopped by SIGTERM.
 fn terminated(status: &std::process::ExitStatus) -> bool {
     #[cfg(unix)]
@@ -454,6 +465,7 @@ fn run_until(
         }
         if let Some(stopped) = oom.filter(|n| *n > 0) {
             log.line(&out_of_memory(stopped));
+            RAN_OUT_OF_MEMORY.store(true, std::sync::atomic::Ordering::Relaxed);
         }
         // Neither cancelled nor timed out (both returned above).
         if terminated(&status) {
@@ -659,6 +671,12 @@ mod tests {
         assert_eq!(commands.handle("main.go:3:1: undefined: x", &mut log).unwrap(), "main.go:3:1: undefined: x");
         assert!(commands.handle("::add-matcher::missing.json", &mut log).unwrap().contains("Unable to process command"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_job_says_it_ran_short_of_memory_only_when_it_was_given_less() {
+        // Without less than its size's memory (no G1T_MEMORY_SHORT), never.
+        assert!(!super::short_of_memory());
     }
 
     /// A step stopped by a SIGTERM the runner did not send (no cancel, no

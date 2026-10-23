@@ -653,7 +653,7 @@ const FEATURES: { icon: ReactNode; title: string; text: string }[] = [
   {
     icon: <Server size={18} />,
     title: "A runner built in",
-    text: "Your workspace's self-hosted jobs run on your computer while g1t is open, in a sandbox, at no cost.",
+    text: "Your workspace's self-hosted jobs run on your computer while g1t is open, in a sandbox, at no cost, and so do jobs that ask for g1t's machines when the workspace prefers its own runners and one of your computer's sizes fits them.",
   },
 ];
 

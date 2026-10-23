@@ -35,6 +35,9 @@ use super::{log, update};
 /// The image workflow jobs run in when they name none: Debian with Node,
 /// git and Python, as g1t's sandbox has.
 pub const DEFAULT_IMAGE: &str = "node:24-bookworm";
+/// g1t's runner image, for jobs asking for one of g1t's machines: what the
+/// desktop app's sandbox passes, over the configuration's `hosted_image`.
+pub const HOSTED_IMAGE_ENV: &str = "G1T_HOSTED_IMAGE";
 /// The most processes in a job's container, unless the runner says.
 pub const DEFAULT_PIDS_LIMIT: u32 = 4096;
 
@@ -362,12 +365,17 @@ pub fn limits(config: &Config) -> Limits {
 /// or the machine's for a job run on it directly; and whether the job can
 /// use Docker: its own engine inside the runner's sandbox, or the
 /// machine's in host mode. `memory` and `cpus` are the runner's options.
-pub fn capacity(memory: Option<&str>, cpus: Option<&str>, job_docker: bool, isolation: Isolation) -> Capacity {
+///
+/// `hosted_image` is g1t's runner image, if this runner has one: a job
+/// container runs jobs asking for g1t's machines in it, which is what g1t
+/// gives them only to a runner that says so. Host mode and a VM have no
+/// container to run it as.
+pub fn capacity(memory: Option<&str>, cpus: Option<&str>, job_docker: bool, isolation: Isolation, hosted_image: Option<&str>) -> Capacity {
     let machine_cpus = std::thread::available_parallelism().map_or(1, |n| n.get()) as u32;
     let given_cpus = cpus.and_then(|c| c.trim().parse::<f64>().ok()).map(|c| c.floor() as u32).filter(|c| *c > 0);
     match isolation {
-        Isolation::Host => Capacity { cpus: Some(machine_cpus), memory_mib: super::launcher::total_memory_mib(), docker: docker_ready() },
-        Isolation::Vm => Capacity { cpus: Some(machine_cpus), memory_mib: Some(memory.and_then(mib).unwrap_or(4096)), docker: false },
+        Isolation::Host => Capacity { cpus: Some(machine_cpus), memory_mib: super::launcher::total_memory_mib(), docker: docker_ready(), hosted_image: false },
+        Isolation::Vm => Capacity { cpus: Some(machine_cpus), memory_mib: Some(memory.and_then(mib).unwrap_or(4096)), docker: false, hosted_image: false },
         Isolation::NestedContainer | Isolation::Container => {
             let memory = memory
                 .map(str::to_owned)
@@ -377,6 +385,7 @@ pub fn capacity(memory: Option<&str>, cpus: Option<&str>, job_docker: bool, isol
                 cpus: Some(given_cpus.unwrap_or(machine_cpus)),
                 memory_mib: mib(&memory),
                 docker: isolation == Isolation::NestedContainer && job_docker && cfg!(unix),
+                hosted_image: hosted_image.is_some(),
             }
         }
     }
@@ -432,9 +441,34 @@ pub fn run_args(plan: &Plan) -> Vec<String> {
     args
 }
 
-fn in_docker(config: &Config, isolation: Isolation, folder: &Path, work: &Assignment, env: BTreeMap<String, String>) -> Result<Running> {
-    // g1t's own work needs only git, which the default image has.
-    let image = work.image.clone().or_else(|| config.image.clone()).unwrap_or_else(|| DEFAULT_IMAGE.to_owned());
+/// g1t's runner image, when this runner has one: `G1T_HOSTED_IMAGE`, else
+/// the configuration's.
+pub fn hosted_image(config: &Config) -> Option<String> {
+    let given = std::env::var(HOSTED_IMAGE_ENV).ok().or_else(|| config.hosted_image.clone());
+    given.map(|image| image.trim().to_owned()).filter(|image| !image.is_empty())
+}
+
+/// The image a job runs in, and how the log says it: the job's own
+/// `container:`; for a job that asked for one of g1t's machines, g1t's
+/// runner image, which has what those machines have (in the runner's own,
+/// such a job finds no Rust, Go or Python, flagon-io#458); else the
+/// runner's image. g1t's own work needs only git, which the default has.
+pub fn job_image(config: &Config, work: &Assignment, hosted: Option<String>) -> Result<(String, String)> {
+    if let Some(image) = &work.image {
+        return Ok((image.clone(), image.clone()));
+    }
+    if work.size.is_some() {
+        let Some(image) = hosted else {
+            bail!("this job asked for one of g1t's machines, and this runner has no g1t runner image to run it in: it should not have been given it");
+        };
+        return Ok((image.clone(), format!("g1t's runner image ({image})")));
+    }
+    let image = config.image.clone().unwrap_or_else(|| DEFAULT_IMAGE.to_owned());
+    Ok((image.clone(), image))
+}
+
+fn in_docker(config: &Config, isolation: Isolation, folder: &Path, work: &Assignment, mut env: BTreeMap<String, String>) -> Result<Running> {
+    let (image, image_said) = job_image(config, work, hosted_image(config))?;
     #[cfg(unix)]
     if super::engine::in_use() {
         super::engine::ensure_running()?;
@@ -460,6 +494,11 @@ fn in_docker(config: &Config, isolation: Isolation, folder: &Path, work: &Assign
     // shared engine it would be the machine's.
     let engine: Option<JobEngine> = job_engine(config, isolation, &name);
     let limits = job_limits(config, work);
+    // A job given less memory than its size: one that runs out of it says
+    // so as it ends, and g1t runs it again on its own machines.
+    if work.size.as_ref().is_some_and(g1t_contracts::runners::OfferedSize::short_of_memory) {
+        env.insert(crate::actions::MEMORY_SHORT_ENV.to_owned(), "1".to_owned());
+    }
     let plan = Plan {
         name: &name,
         runner: &config.runner,
@@ -475,7 +514,7 @@ fn in_docker(config: &Config, isolation: Isolation, folder: &Path, work: &Assign
     command.args(run_args(&plan));
     command.envs(&env);
     log(&format!(
-        "Running {} {}{} in {image}: its own container and network, capabilities dropped, {} memory, {} CPUs, {} processes{}",
+        "Running {} {}{} in {image_said}: its own container and network, capabilities dropped, {} memory, {} CPUs, {} processes{}",
         work.kind,
         work.name,
         sized_as(work),
@@ -641,6 +680,7 @@ mod tests {
             native: false,
             sizes: None,
             sizes_picked: false,
+            hosted_image: None,
         }
     }
 
@@ -782,15 +822,17 @@ mod tests {
     fn limits_default_sensibly() {
         assert_eq!(default_memory("MemTotal:       16384000 kB\nMemFree: 1 kB\n"), Some("12000m".into()));
         // What g1t is told a job gets: the limits a job container is given.
-        let given = capacity(Some("12g"), Some("6.5"), true, Isolation::NestedContainer);
+        let given = capacity(Some("12g"), Some("6.5"), true, Isolation::NestedContainer, None);
         assert_eq!((given.cpus, given.memory_mib), (Some(6), Some(12 * 1024)));
         assert_eq!(given.docker, cfg!(unix), "a job's own engine, inside the runner's sandbox");
-        let shared = capacity(Some("8192m"), None, true, Isolation::Container);
+        let shared = capacity(Some("8192m"), None, true, Isolation::Container, None);
         assert_eq!(shared.memory_mib, Some(8192));
         assert!(!shared.docker, "never the machine's engine");
         assert!(shared.cpus.is_some_and(|n| n >= 1));
-        let vm = capacity(None, None, true, Isolation::Vm);
-        assert_eq!((vm.memory_mib, vm.docker), (Some(4096), false));
+        let vm = capacity(None, None, true, Isolation::Vm, Some("img"));
+        assert_eq!((vm.memory_mib, vm.docker, vm.hosted_image), (Some(4096), false, false));
+        assert!(!given.hosted_image, "no image of g1t's machines, no jobs asking for them");
+        assert!(capacity(None, None, true, Isolation::NestedContainer, Some("img")).hosted_image);
         assert_eq!(default_memory(""), None);
         let mut config = config();
         config.memory = Some("2g".into());
@@ -814,6 +856,22 @@ mod tests {
         work.size = Some(g1t_contracts::runners::OfferedSize { size: "2-core".into(), cpus: Some(4.0), memory_mib: Some(16384) });
         let limits = job_limits(&config, &work);
         assert_eq!((limits.cpus.as_str(), limits.memory.as_str()), ("4", "16384m"));
+    }
+
+    #[test]
+    fn a_job_asking_for_g1ts_machines_runs_in_g1ts_runner_image() {
+        let mut config = config();
+        config.image = Some("node:24-bookworm-slim".into());
+        let mut work = assignment("workflow");
+        let hosted = Some("g1t.sh/flagon-io/g1t-runner-hosted@sha256:ab".to_owned());
+        assert_eq!(job_image(&config, &work, hosted.clone()).unwrap().0, "node:24-bookworm-slim", "a self-hosted job keeps the runner's image");
+        work.size = g1t_contracts::runners::OfferedSize::of("2-core").assigned();
+        let (image, said) = job_image(&config, &work, hosted.clone()).unwrap();
+        assert_eq!(image, "g1t.sh/flagon-io/g1t-runner-hosted@sha256:ab");
+        assert!(said.starts_with("g1t's runner image"));
+        assert!(job_image(&config, &work, None).unwrap_err().to_string().contains("no g1t runner image"));
+        work.image = Some("rust:1".into());
+        assert_eq!(job_image(&config, &work, hosted).unwrap().0, "rust:1", "its own container: first");
     }
 
     #[test]

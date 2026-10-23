@@ -140,6 +140,8 @@ export type DesktopRunnerBridge = {
    * picked again. Absent from an app older than sizes: see `canSetSizes`.
    */
   setSizes?: (sizes: string | null) => Promise<void>;
+  /** The Linux sandbox's share: whole CPUs and MiB of memory. Absent from an app older than it: see `canSetShare`. */
+  setShare?: (cpus: number, memoryMib: number) => Promise<void>;
 };
 
 /** The bridge's runner, inside the desktop app (lib/notify-client.ts describes the rest of `window.g1tDesktop`). */
@@ -364,6 +366,12 @@ export type DesktopRunnerSizes = {
   picked: boolean;
   reason: string | null;
   choices: DesktopRunnerSize[];
+  /** The most the share can be where the launcher can tell (the Linux VM's, on Windows). */
+  limit: { cpus: number; memory_mib: number } | null;
+  /** What the share costs this computer, when it may hurt. Never a refusal. */
+  shareWarning: string | null;
+  /** The launcher can change the share; one before it can't, and the share is only shown. */
+  shareSettable: boolean;
   /** A change is under way, or why the last one failed (the app's). */
   saving: boolean;
   error: string | null;
@@ -379,6 +387,8 @@ export type DesktopRunnerSize = {
   spec: string;
   vcpu: number;
   memory_mib: number;
+  /** The least memory its jobs run with where the sandbox has less than the size. */
+  least_memory_mib: number;
   offered: boolean;
   given_cpus: number | null;
   given_memory_mib: number | null;
@@ -410,6 +420,7 @@ function sizeOf(value: unknown): DesktopRunnerSize | null {
     spec,
     vcpu,
     memory_mib: memory,
+    least_memory_mib: num(given.least_memory_mib) ?? memory,
     offered: given.offered === true,
     given_cpus: num(given.given_cpus),
     given_memory_mib: num(given.given_memory_mib),
@@ -432,6 +443,9 @@ export function sizesOf(value: unknown): DesktopRunnerSizes | null {
     picked: given.picked === true,
     reason: text(given.reason),
     choices,
+    limit: roomOf(given.limit),
+    shareWarning: text(given.share_warning),
+    shareSettable: given.share_settable === true,
     saving: given.saving === true,
     error: text(given.error),
   };
@@ -440,6 +454,35 @@ export function sizesOf(value: unknown): DesktopRunnerSizes | null {
 /** Whether this app can change the sizes: one older than them has no `setSizes`, and shows none. */
 export function canSetSizes(bridge: DesktopRunnerBridge | null): bridge is DesktopRunnerBridge & { setSizes: (sizes: string | null) => Promise<void> } {
   return !!bridge && typeof bridge.setSizes === "function";
+}
+
+/** Whether this app can change the sandbox's share: one older than it has no `setShare`. */
+export function canSetShare(
+  bridge: DesktopRunnerBridge | null,
+): bridge is DesktopRunnerBridge & { setShare: (cpus: number, memoryMib: number) => Promise<void> } {
+  return !!bridge && typeof bridge.setShare === "function";
+}
+
+/** The share as it is being typed: CPUs and GB. */
+export type ShareDraft = { cpus: string; memoryGb: string };
+
+/** The draft the share starts from: what it is now. */
+export function shareDraftOf(share: { cpus: number; memory_mib: number }): ShareDraft {
+  return { cpus: String(share.cpus), memoryGb: String(Math.round((share.memory_mib / 1024) * 100) / 100) };
+}
+
+/**
+ * The share a draft sets, as the launcher takes it (whole CPUs, MiB), or why it can't: at least one
+ * CPU and 1 GB, and no more CPUs than the computer (or its Linux VM) has. More memory than that, or
+ * more than half the computer, only warns.
+ */
+export function shareOf(draft: ShareDraft, limit: { cpus: number }): { cpus: number; memoryMib: number } | string {
+  const cpus = Number(draft.cpus);
+  if (!Number.isInteger(cpus) || cpus < 1) return "CPUs are a whole number, 1 or more.";
+  if (cpus > limit.cpus) return `At most ${limit.cpus} CPUs here.`;
+  const gb = Number(draft.memoryGb);
+  if (!Number.isFinite(gb) || gb < 1) return "Memory is 1 GB or more.";
+  return { cpus, memoryMib: Math.round(gb * 1024) };
 }
 
 /** A size as it is being chosen: taken or not, and what its jobs get beyond it, as typed (empty for the size's own). */
@@ -467,7 +510,7 @@ export function draftProblem(draft: SizeDraft, choice: DesktopRunnerSize): strin
   }
   if (draft.memoryGb.trim()) {
     const gb = Number(draft.memoryGb);
-    if (!Number.isFinite(gb) || gb * 1024 < choice.memory_mib) return `${choice.name} jobs get at least ${choice.memory_mib / 1024} GB.`;
+    if (!Number.isFinite(gb) || gb * 1024 < choice.least_memory_mib) return `${choice.name} jobs get at least ${choice.least_memory_mib / 1024} GB.`;
   }
   return null;
 }

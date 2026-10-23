@@ -34,6 +34,7 @@ use anyhow::{Context, Result, bail};
 use super::guest::{GuestStatus, Settings};
 use super::image::{self, Local};
 use super::{Backend, Resources, StopMode, process_alive};
+use g1t_contracts::runners::Room;
 use crate::selfhosted::native::{Availability, hide_window};
 use crate::selfhosted::needs::{self, WindowsFacts, WslFacts};
 
@@ -72,9 +73,8 @@ pub fn has_wsl2(text: &str) -> bool {
     text.replace('\0', "").lines().skip(1).any(|line| line.trim().trim_start_matches('*').split_whitespace().nth(2) == Some("2"))
 }
 
-/// Whether `.wslconfig` puts WSL on mirrored networking, where Linux
-/// reaches Windows' own `localhost`.
-pub fn mirrored(wslconfig: &str) -> bool {
+/// A setting of `.wslconfig`'s `[wsl2]` section, without its comment.
+fn wsl2_setting(wslconfig: &str, name: &str) -> Option<String> {
     let mut section = String::new();
     for line in wslconfig.lines() {
         let line = line.trim();
@@ -82,12 +82,34 @@ pub fn mirrored(wslconfig: &str) -> bool {
             section = line.trim_matches(['[', ']']).trim().to_ascii_lowercase();
         } else if section == "wsl2"
             && let Some((key, value)) = line.split_once('=')
-            && key.trim().eq_ignore_ascii_case("networkingMode")
+            && key.trim().eq_ignore_ascii_case(name)
         {
-            return value.split('#').next().unwrap_or("").trim().eq_ignore_ascii_case("mirrored");
+            return Some(value.split('#').next().unwrap_or("").trim().to_owned());
         }
     }
-    false
+    None
+}
+
+/// Whether `.wslconfig` puts WSL on mirrored networking, where Linux
+/// reaches Windows' own `localhost`.
+pub fn mirrored(wslconfig: &str) -> bool {
+    wsl2_setting(wslconfig, "networkingMode").is_some_and(|mode| mode.eq_ignore_ascii_case("mirrored"))
+}
+
+/// The CPUs and memory of WSL's VM, which every distribution shares, the
+/// sandbox's included, and none can have more of: `.wslconfig`'s
+/// `processors` and `memory`, else WSL's own defaults, every CPU and half
+/// the computer's memory.
+pub fn vm_limit(wslconfig: &str, cpus: u32, memory_mib: u64) -> Room {
+    let processors = wsl2_setting(wslconfig, "processors").and_then(|n| n.parse::<u32>().ok()).filter(|n| *n > 0).map_or(cpus, |n| n.min(cpus));
+    let memory = wsl2_setting(wslconfig, "memory").and_then(|m| crate::selfhosted::exec::mib(&m)).filter(|m| *m > 0).unwrap_or(memory_mib / 2);
+    Room { cpus: f64::from(processors), memory_mib: memory.min(memory_mib) }
+}
+
+/// [`vm_limit`] on this computer, from `%USERPROFILE%\.wslconfig`.
+pub fn this_vm_limit(cpus: u32, memory_mib: u64) -> Room {
+    let config = std::env::var_os("USERPROFILE").and_then(|home| std::fs::read_to_string(PathBuf::from(home).join(".wslconfig")).ok());
+    vm_limit(config.as_deref().unwrap_or_default(), cpus, memory_mib)
 }
 
 impl Wsl {
@@ -291,6 +313,16 @@ mod tests {
         assert!(!mirrored("[wsl2]\nnetworkingMode=nat\n"));
         assert!(!mirrored("[experimental]\nnetworkingMode=mirrored\n"));
         assert!(!mirrored(""));
+    }
+
+    #[test]
+    fn the_vm_is_what_wslconfig_gives_it_else_what_wsl_does() {
+        let raised = "[wsl2]\nprocessors=16\nmemory=32GB # for builds\n";
+        assert_eq!(vm_limit(raised, 32, 65310), Room { cpus: 16.0, memory_mib: 32 * 1024 });
+        // WSL's defaults: every CPU, half the memory.
+        assert_eq!(vm_limit("", 32, 65536), Room { cpus: 32.0, memory_mib: 32 * 1024 });
+        assert_eq!(vm_limit("[wsl2]\nmemory=12.5GB\nprocessors=x\n", 8, 16384), Room { cpus: 8.0, memory_mib: 8192 }, "what it can't read");
+        assert_eq!(vm_limit("[wsl2]\nprocessors=64\n", 8, 16384).cpus, 8.0, "never more than there are");
     }
 
     #[test]

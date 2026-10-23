@@ -57,6 +57,10 @@ pub struct Capacity {
     pub memory_mib: Option<u64>,
     /// Whether a job can use Docker, for `services:` and `container:`.
     pub docker: bool,
+    /// Whether a job asking for one of g1t's machines runs in g1t's runner
+    /// image here (`exec::hosted_image`): g1t gives it none of those jobs
+    /// otherwise.
+    pub hosted_image: bool,
 }
 
 impl Capacity {
@@ -65,6 +69,7 @@ impl Capacity {
         body["cpus"] = json!(self.cpus);
         body["memory_mib"] = json!(self.memory_mib);
         body["docker"] = json!(self.docker);
+        body["hosted_image"] = json!(self.hosted_image);
     }
 }
 
@@ -206,8 +211,9 @@ mod tests {
     #[test]
     fn a_poll_says_what_a_job_gets() {
         let mut body = poll_body(&[], 0, "nested-container");
-        Capacity { cpus: Some(8), memory_mib: Some(12_000), docker: true }.add_to(&mut body);
+        Capacity { cpus: Some(8), memory_mib: Some(12_000), docker: true, hosted_image: true }.add_to(&mut body);
         assert_eq!((body["cpus"].clone(), body["memory_mib"].clone(), body["docker"].clone()), (json!(8), json!(12_000), json!(true)));
+        assert_eq!(body["hosted_image"], json!(true));
         let mut unknown = poll_body(&[], 0, "host");
         Capacity::default().add_to(&mut unknown);
         assert!(unknown["cpus"].is_null() && unknown["memory_mib"].is_null());

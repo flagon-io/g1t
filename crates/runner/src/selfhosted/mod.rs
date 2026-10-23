@@ -5,7 +5,7 @@
 //!     [--labels gpu,cuda] [--group Default] [--ephemeral] [--work-dir DIR]
 //!     [--no-docker] [--image IMAGE] [--replace]
 //!     [--memory 8g] [--cpus 4] [--pids-limit 4096] [--no-job-docker]
-//!     [--sizes 1-core,2-core:4:16g]
+//!     [--sizes 1-core,2-core:4:16g] [--hosted-image IMAGE]
 //! g1t-runner run [--once]
 //! g1t-runner sizes [set LIST | pick] [--json]
 //! g1t-runner service install|start|stop|status|uninstall
@@ -152,8 +152,9 @@ impl Options {
 }
 
 /// The options that take a value.
-const VALUE_OPTIONS: [&str; 15] =
-    ["url", "api", "token", "name", "labels", "group", "work-dir", "image", "harness", "memory", "cpus", "pids-limit", "job-docker-image", "machine", "sizes"];
+const VALUE_OPTIONS: [&str; 16] = [
+    "url", "api", "token", "name", "labels", "group", "work-dir", "image", "harness", "memory", "cpus", "pids-limit", "job-docker-image", "machine", "sizes", "hosted-image",
+];
 
 const HELP: &str = "g1t-runner: a self-hosted runner for g1t.
 
@@ -163,6 +164,7 @@ const HELP: &str = "g1t-runner: a self-hosted runner for g1t.
       [--api URL] [--harness PATH] [--replace] [--no-auto-update]
       [--memory 8g] [--cpus 4] [--pids-limit 4096] [--no-job-docker]
       [--job-docker-image IMAGE] [--native] [--sizes 1-core,2-core:4:16g]
+      [--hosted-image IMAGE]
   g1t-runner run [--once]          poll for work and run it
   g1t-runner sizes [set LIST | pick] [--json]
                                    which of g1t's machines this runner takes
@@ -355,7 +357,7 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
         Some(list) => (sizes::parse_list(list)?, false),
         None => (sizes::pick(sizes::machine(isolation)), true),
     };
-    let offered_sizes = sizes::offered(&chosen_sizes)?;
+    let offered_sizes = sizes::offered_on(&chosen_sizes, sizes::machine(isolation))?;
     let existing = config::load(folder).ok();
     if existing.is_some() && !options.flag("replace") {
         bail!("{} already holds a registered runner: run `g1t-runner remove` first, or register with --replace or another --dir", folder.display());
@@ -384,7 +386,8 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
         "isolation": isolation.as_str(),
         "machine": options.value("machine").map(str::to_owned).or_else(machine_fingerprint),
     });
-    exec::capacity(options.value("memory"), options.value("cpus"), !options.flag("no-job-docker"), isolation).add_to(&mut body);
+    let hosted_image = options.value("hosted-image").map(str::to_owned).or_else(|| std::env::var(exec::HOSTED_IMAGE_ENV).ok()).filter(|i| !i.trim().is_empty());
+    exec::capacity(options.value("memory"), options.value("cpus"), !options.flag("no-job-docker"), isolation, hosted_image.as_deref()).add_to(&mut body);
     body["sizes"] = json!(offered_sizes);
     let registered = Api::register(&api, &body)?;
     let work_dir = options.value("work-dir").map(PathBuf::from).unwrap_or_else(|| folder.join("work"));
@@ -412,6 +415,7 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
         native,
         sizes: Some(chosen_sizes),
         sizes_picked,
+        hosted_image: options.value("hosted-image").map(str::to_owned),
     };
     config::save(folder, &config)?;
     let place = match &config.repo {
@@ -590,14 +594,15 @@ fn run(folder: &Path, once: bool) -> Result<()> {
     }
     // What a job here gets, told to g1t with each poll: asked once, as
     // whether Docker answers takes a moment.
-    let capacity = exec::capacity(config.memory.as_deref(), config.cpus.as_deref(), config.job_docker, isolation);
+    let hosted_image = exec::hosted_image(&config);
+    let capacity = exec::capacity(config.memory.as_deref(), config.cpus.as_deref(), config.job_docker, isolation, hosted_image.as_deref());
     // Which of g1t's machines it takes jobs for: picked once for a runner
     // told nothing, and kept.
     let machine = sizes::machine(isolation);
     if sizes::settle(&mut config, machine) {
         config::save(folder, &config)?;
     }
-    let mut offered = sizes::offered(&sizes::chosen(&config).unwrap_or_default()).unwrap_or_default();
+    let mut offered = sizes::offered_on(&sizes::chosen(&config).unwrap_or_default(), machine).unwrap_or_default();
     let mut sizes_trouble: Option<String> = None;
     log(&format!(
         "It takes jobs asking for g1t's machines as {}{}.",
@@ -681,7 +686,7 @@ fn run(folder: &Path, once: bool) -> Result<()> {
         if let Ok(saved) = config::load(folder) {
             (config.sizes, config.sizes_picked) = (saved.sizes, saved.sizes_picked);
         }
-        match sizes::offered(&sizes::chosen(&config).unwrap_or_default()) {
+        match sizes::offered_on(&sizes::chosen(&config).unwrap_or_default(), machine) {
             Ok(now) => {
                 if now != offered {
                     log(&format!("It takes jobs asking for g1t's machines as {} now.", g1t_contracts::runners::sizes_said(&now)));

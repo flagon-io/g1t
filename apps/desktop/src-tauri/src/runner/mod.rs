@@ -280,7 +280,10 @@ enum Ask {
     /// The Linux jobs' sizes, to change (`sandbox sizes`): a list, or none
     /// to pick again.
     Sizes(Option<String>),
-    /// What `sandbox sizes` said once it was done.
+    /// The Linux sandbox's share, to change (`sandbox resources`): CPUs
+    /// and MiB of memory.
+    Share(u32, u64),
+    /// What `sandbox sizes` or `sandbox resources` said once it was done.
     SizesDone(Result<Box<Status>, String>),
     Quit(Quitting),
 }
@@ -566,6 +569,23 @@ pub fn set_sizes(app: &AppHandle, list: Option<String>) -> Result<(), String> {
     }
     *app.state::<Shared>().sizes.held() = SizesChange { saving: true, error: None };
     ask(app, Ask::Sizes(list));
+    publish(app);
+    Ok(())
+}
+
+/// The site's settings changed the Linux sandbox's share of this computer:
+/// whole CPUs and MiB of memory. Only for a launcher that says it can
+/// (`share_settable` in its sizes).
+pub fn set_share(app: &AppHandle, cpus: u32, memory_mib: u64) -> Result<(), String> {
+    if config::settings(app).runner_backend != Backend::Sandboxed {
+        return Err("The share is the sandbox's: choose Sandboxed to set it.".into());
+    }
+    let settable = app.state::<Shared>().now.held().sandbox.as_ref().and_then(|status| status.sizes.as_ref()).is_some_and(|sizes| sizes["share_settable"] == true);
+    if !settable {
+        return Err("This g1t-runner can't change the sandbox's share yet: it does once it updates.".into());
+    }
+    *app.state::<Shared>().sizes.held() = SizesChange { saving: true, error: None };
+    ask(app, Ask::Share(cpus, memory_mib));
     publish(app);
     Ok(())
 }
@@ -1321,6 +1341,20 @@ impl Keeper {
                     publish(&self.app);
                 }
             }
+            Ask::Share(cpus, memory_mib) => {
+                let tx = self.tx.clone();
+                let binary = native::binary(&folder(&self.app));
+                let dir = native_dir(&self.app, Backend::Sandboxed);
+                self.write_log(&format!("g1t: the Linux sandbox's share: {cpus} CPUs and {memory_mib} MiB."));
+                // As for sizes, it waits for a running job before starting Linux jobs again.
+                let spawned = std::thread::Builder::new().name("g1t-sandbox-share".into()).spawn(move || {
+                    let _ = tx.send(Ask::SizesDone(launcher::share(&binary, &dir, cpus, memory_mib).map(Box::new)));
+                });
+                if spawned.is_err() {
+                    *self.app.state::<Shared>().sizes.held() = SizesChange { saving: false, error: Some("g1t couldn't change the share: try again.".into()) };
+                    publish(&self.app);
+                }
+            }
             Ask::SizesDone(done) => {
                 let error = match done {
                     Ok(status) => {
@@ -1328,7 +1362,7 @@ impl Keeper {
                         None
                     }
                     Err(why) => {
-                        self.write_log(&format!("g1t: the sizes couldn't be changed: {why}"));
+                        self.write_log(&format!("g1t: the sizes or the share couldn't be changed: {why}"));
                         Some(why)
                     }
                 };
