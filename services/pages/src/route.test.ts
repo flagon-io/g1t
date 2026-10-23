@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { APP_LIMITS, overLimits, parseEntry, redirectTo, route, traceFor } from "./route.ts";
+import { APP_LIMITS, crawler, overLimits, parseEntry, redirectTo, route, traceFor } from "./route.ts";
 import worker from "./index.ts";
 
 test("hosts on g1t.page are the home page, the fallback origin, or an app", () => {
@@ -58,7 +58,9 @@ function env(scripts: Record<string, string>, domains: Record<string, unknown>) 
   };
 }
 
-const call = (url: string, e: any) => worker.fetch(new Request(url), e, {} as any);
+const BROWSER = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
+const call = (url: string, e: any, userAgent: string | null = BROWSER) =>
+  worker.fetch(new Request(url, { headers: userAgent ? { "user-agent": userAgent } : {} }), e, {} as any);
 
 test("a custom domain is served by its project's app, with the request's host kept", async () => {
   const { env: e, seen } = env({ "web-acme": "hello" }, { "app.example.com": { script: "web-acme", redirect: null } });
@@ -98,6 +100,45 @@ test("g1t.page addresses dispatch by label as before", async () => {
   assert.deepEqual(seen, ["web-acme web-acme.g1t.page", "web-git-x-acme web-git-x-acme.g1t.page"]);
   assert.equal((await call("https://gone-acme.g1t.page/", e)).status, 404);
   assert.equal((await call("https://domains.g1t.page/", e)).status, 200);
+});
+
+test("crawlers get a preview's robots.txt and nothing else, without running it; production is theirs to crawl", async () => {
+  const { env: e, seen } = env({ "web-acme": "prod", "web-git-x-acme": "preview" }, {});
+  const claude = "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; ClaudeBot/1.0; +claudebot@anthropic.com)";
+  const robots = await call("https://web-git-x-acme.g1t.page/robots.txt", e, claude);
+  assert.equal(robots.status, 200);
+  assert.equal(await robots.text(), "User-agent: *\nDisallow: /\n");
+  // Whoever asks: a person's browser gets the same robots.txt.
+  assert.equal(await (await call("https://web-git-x-acme.g1t.page/robots.txt", e)).text(), "User-agent: *\nDisallow: /\n");
+  for (const agent of [
+    claude,
+    "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+    "ZOLTRAAK/0.2.0 (security-research; x@example.com)",
+    null,
+  ]) {
+    const response = await call("https://web-git-x-acme.g1t.page/sitemap.xml", e, agent);
+    assert.equal(response.status, 403, String(agent));
+    assert.equal(response.headers.get("x-robots-tag"), "noindex");
+  }
+  assert.deepEqual(seen, []);
+  // Someone shared the link: its unfurl runs the preview, as a visit should.
+  assert.equal(await (await call("https://web-git-x-acme.g1t.page/", e, "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)")).text(), "preview");
+  assert.equal(await (await call("https://web-acme.g1t.page/robots.txt", e, claude)).text(), "prod");
+  assert.deepEqual(seen, ["web-git-x-acme web-git-x-acme.g1t.page", "web-acme web-acme.g1t.page"]);
+});
+
+test("crawler tells crawlers and scanners from people and link unfurlers", () => {
+  for (const agent of [
+    "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+    "Mozilla/5.0 (compatible; bingbot/2.0)",
+    "curl/8.4.0",
+    "python-requests/2.31",
+    "Scrapy/2.11",
+    null,
+  ])
+    assert.equal(crawler(agent), true, String(agent));
+  for (const agent of [BROWSER, "facebookexternalhit/1.1", "Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)", "WhatsApp/2.23"])
+    assert.equal(crawler(agent), false, agent);
 });
 
 test("an app's old address redirects to its new one, whatever the old script answers", async () => {

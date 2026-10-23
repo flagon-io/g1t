@@ -1363,7 +1363,7 @@ class Deployments {
         // down what was up then, so the preview this build just put up is
         // taken down here, or it would stay up for good. Asked after the app
         // is written, so a close that comes later finds it.
-        if (await this.pullGone(row)) {
+        if (row.kind === "preview" && row.number != null && (await this.pullClosed(row.workspace, { namespace, name }, row.number))) {
           await this.removeApp(row.script);
           await this.buildChanged(id);
           return Response.json(ok(true));
@@ -1828,13 +1828,14 @@ class Deployments {
     ]);
   }
 
-  /** Whether a pull request's preview build is for one now closed or merged. */
-  private async pullGone(row: DeploymentRow): Promise<boolean> {
-    if (row.kind !== "preview" || row.number == null) return false;
-    const actor = await this.workspaceActor(row.workspace);
+  /**
+   * Whether a pull request is closed or merged. A read that fails says
+   * nothing: its preview stays until one succeeds.
+   */
+  private async pullClosed(workspace: string, repo: RepoPath, number: number): Promise<boolean> {
+    const actor = await this.workspaceActor(workspace);
     if (!actor) return false;
-    const [namespace, name] = row.repo.split("/") as [string, string];
-    const detail = await workClient(this.env.WORK).getPull({ namespace, name }, row.number, actor);
+    const detail = await workClient(this.env.WORK).getPull(repo, number, actor);
     if (!detail.ok) return false;
     return detail.value.pull.status !== "open" && detail.value.pull.status !== "draft";
   }
@@ -2534,7 +2535,7 @@ class Deployments {
         .all<{ id: string }>();
       for (const { id } of stuck.results) await this.finishFailed(id, "The build did not finish in 45 minutes.", null, null);
     });
-    await step("taking down previews no pull request holds", () => this.takeDownUnheld());
+    await step("taking down previews nothing holds", () => this.takeDownUnheld());
     await step("taking down idle previews", () => this.takeDownIdle());
     await step("charging builds", () => this.chargeBuilds());
     await step("charging months", () => this.chargeMonths());
@@ -2754,25 +2755,29 @@ class Deployments {
   }
 
   /**
-   * Previews of a branch that is gone. A pull request's preview comes down
-   * when it closes or merges; a branch's preview (built by a project's
-   * deploy workflow) has no pull request, so it comes down once its branch
-   * is deleted, here for any whose deletion was missed. A deleted
+   * Previews nothing holds any more: a pull request's once it is closed or
+   * merged, a branch's (built by a project's deploy workflow, with no pull
+   * request) once its branch is gone. Both come down on their events; this
+   * takes down any whose event was missed or raced a build. A deleted
    * workspace's stay paused for a restore.
    */
   private async takeDownUnheld(): Promise<void> {
     const unheld = await this.db
       .prepare(
-        `SELECT apps.script, apps.project_id, apps.branch FROM apps JOIN settings ON settings.project_id = apps.project_id
-         WHERE apps.kind = 'preview' AND apps.number IS NULL AND settings.workspace_deleted_at IS NULL`,
+        `SELECT apps.script, apps.project_id, apps.branch, apps.number FROM apps JOIN settings ON settings.project_id = apps.project_id
+         WHERE apps.kind = 'preview' AND settings.workspace_deleted_at IS NULL`,
       )
-      .all<{ script: string; project_id: string; branch: string | null }>();
+      .all<{ script: string; project_id: string; branch: string | null; number: number | null }>();
     if (unheld.results.length === 0) return;
     const projects = await this.projectsById([...new Set(unheld.results.map((app) => app.project_id))]);
     const branchesOf = new Map<string, Set<string> | null>();
     for (const app of unheld.results) {
       const project = projects.get(app.project_id);
       if (!project || project.source.kind !== "hosted") continue;
+      if (app.number != null) {
+        if (await this.pullClosed(project.workspace, repoOf(project).path, app.number)) await this.removeApp(app.script);
+        continue;
+      }
       if (!branchesOf.has(project.id)) {
         const actor = await this.workspaceActor(project.workspace);
         const branches = actor ? await reposClient(this.env.REPOS).branches(repoOf(project).path, actor) : null;

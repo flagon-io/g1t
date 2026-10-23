@@ -23,8 +23,10 @@ import {
   APP_LIMITS,
   DOMAIN,
   FALLBACK,
+  PREVIEW_ROBOTS,
   REQUEST_ID_HEADER,
   REQUEST_MARK,
+  crawler,
   overLimits,
   parseEntry,
   redirectTo,
@@ -147,6 +149,17 @@ export default {
         return custom(request, env, where.hostname);
       case "app": {
         const label = where.label;
+        // Crawlers get a preview's robots.txt and nothing else, from here:
+        // the app never runs for them, so they never count as a visit.
+        if (isPreview(label)) {
+          const robots = new URL(request.url).pathname === "/robots.txt";
+          if (robots || crawler(request.headers.get("user-agent"))) {
+            return new Response(robots ? PREVIEW_ROBOTS : "Previews on g1t.page are for people reviewing a change.\n", {
+              status: robots ? 200 : 403,
+              headers: { "content-type": "text/plain; charset=utf-8", "x-robots-tag": "noindex", "cache-control": "public, max-age=86400" },
+            });
+          }
+        }
         // An address the app had before its project moved (its workspace or
         // repository was renamed or transferred) redirects to where it is
         // now, whatever the app it named answers, paused or not.

@@ -210,11 +210,13 @@ You need Admin on the repository and a confirmed email address.
 2. Under **Add people**, type a username or an email address.
 3. Pick their role and choose **Add**.
 
-Everyone with access is listed under **People with access**, with their
-role and where it comes from: owner, the base permission, a role given to
-them, or **Through team** and the team's slug. **Teams with access** lists the
-teams given a role on it, with how many people each has. People with Write
-or Maintain can see the lists; changing them needs Admin.
+**People with access** lists the people given a role on the repository
+itself, members and outside collaborators, as GitHub lists collaborators.
+Owners of the workspace, and members who have only what the base permission
+gives, are not listed one by one: **Base permission** says what they have.
+**Teams with access** lists the teams given a role on it, with how many
+people each has. People with Write or Maintain can see the lists; changing
+them needs Admin.
 
 Giving a role to someone outside the workspace takes an owner when the
 workspace's [member privileges](/guides/workspaces/#member-privileges) turn
@@ -319,7 +321,7 @@ people, its deploy keys and the base permission, `account` for invitations to yo
 
 | Route                                                           | MCP tool and action                       | What it does                                                                                                                                                                                             | Who                      |
 | --------------------------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| `GET /repos/{owner}/{name}/collaborators`                       | `access` `list_collaborators`             | Everyone with access to a repository, their role and where it comes from.                                                                                                                                | Write                    |
+| `GET /repos/{owner}/{name}/collaborators`                       | `access` `list_collaborators`             | The people given a role on a repository, their role and where it comes from. `affiliation`: `direct` (the default), `outside`, or `all` for everyone with access.                                        | Write                    |
 | `GET /repos/{owner}/{name}/collaborators/{username}/permission` | `access` `get_permission`                 | One person's role on a repository and what it lets them do.                                                                                                                                              | Write, or about yourself |
 | `POST /repos/{owner}/{name}/collaborators`                      | `access` `add_collaborator`               | Give someone a role. Body: `invitee` (a username or an email address) and `role`. Answers with `result`: `granted` or `invited`.                                                                         | Admin                    |
 | `PATCH /repos/{owner}/{name}/collaborators/{username}`          | `access` `update_collaborator`            | Change someone's role, or a pending invitation's. Body: `role`.                                                                                                                                          | Admin                    |
@@ -355,8 +357,10 @@ curl https://api.g1t.sh/repos/acme/rocket/collaborators/ada/permission \
 }
 ```
 
-`source` is `owner`, `base`, `direct` or `team`. In the list from
-`list_collaborators`, each person also has `direct`, the role given to them
+`source` is `owner`, `base`, `direct` or `team`. `list_collaborators` lists
+the people given a role on the repository; with `affiliation` `all`, owners
+and members through the base permission or a team too. Each person also
+has `direct`, the role given to them
 on the repository if any, and `team_role` and `team`: the highest role a
 team gives them there, and that team's slug. A team's own roles are managed
 through the [teams API](/guides/teams/#through-the-api).
