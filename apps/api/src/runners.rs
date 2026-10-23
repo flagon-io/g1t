@@ -5,8 +5,8 @@
 //!
 //! | Route | Body |
 //! | --- | --- |
-//! | `POST /runners/register` | `token`, `name`, `labels`, `os`, `arch`, `version`, `ephemeral`, `group`, `replace`, `isolation`, `machine` |
-//! | `POST /runners/{id}/poll` | `version`, `running`, `wait_ms` |
+//! | `POST /runners/register` | `token`, `name`, `labels`, `os`, `arch`, `version`, `ephemeral`, `group`, `replace`, `isolation`, `machine`, `cpus`, `memory_mib`, `docker` |
+//! | `POST /runners/{id}/poll` | `version`, `running`, `wait_ms`, `isolation`, `cpus`, `memory_mib`, `docker` |
 //! | `POST /runners/{id}/finished` | `id`, `exit_code`, `reason` |
 //! | `POST /runners/{id}/remove` | nothing |
 //!
@@ -58,6 +58,9 @@ pub async fn handle(request: &mut Request, services: &Services, path: &str) -> R
             "replace": body["replace"].as_bool().unwrap_or(false),
             "isolation": body["isolation"].as_str(),
             "machine": body["machine"].as_str(),
+            "cpus": body["cpus"].as_u64(),
+            "memory_mib": body["memory_mib"].as_u64(),
+            "docker": body["docker"].as_bool(),
         });
         return Ok(Some(answer(services, "runner_register", &args).await?));
     }
@@ -72,6 +75,9 @@ pub async fn handle(request: &mut Request, services: &Services, path: &str) -> R
             args["running"] = json!(body["running"].as_array().cloned().unwrap_or_default());
             args["wait_ms"] = json!(body["wait_ms"].as_u64().unwrap_or(0));
             args["isolation"] = json!(body["isolation"].as_str());
+            args["cpus"] = json!(body["cpus"].as_u64());
+            args["memory_mib"] = json!(body["memory_mib"].as_u64());
+            args["docker"] = json!(body["docker"].as_bool());
             "runner_poll"
         }
         "finished" => {

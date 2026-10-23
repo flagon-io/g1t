@@ -23,7 +23,7 @@ use crate::broker::{self, Broker};
 use crate::protection::Gate;
 use crate::sync::WorkflowRow;
 use crate::{Actions, Count, MAX_TIMEOUT_MINUTES, SELF_HOSTED_MAX_TIMEOUT_MINUTES, SILENT_MS, SITE, check, fail, has_room, optional, repo_path};
-use g1t_contracts::runners::{Wanted, waiting_reason};
+use g1t_contracts::runners::{OFFERED_TO_OWN, RunnerSettings, Wanted, falls_back, fallback_note, hosted_wanted, offered_to_own, waiting_reason};
 
 /// The most log one job keeps, in bytes; past it, the log says so and stops.
 const MAX_LOG_BYTES: usize = 4 * 1024 * 1024;
@@ -35,6 +35,14 @@ const MAX_ANNOTATIONS: usize = 50;
 /// the one it started with for `brokered_secrets` (migration 0020).
 const TOKEN_ROTATE: &str = "UPDATE jobs SET first_token_hash = COALESCE(first_token_hash, token_hash), token_hash = ?1
      WHERE id = ?2 AND status = 'in_progress' AND token_hash = ?3 RETURNING id";
+/// Takes a queued job for g1t's machines: `?1` its token's hash, `?2` now,
+/// `?3` its time limit there, `?4` the job. One offered to the workspace's
+/// runners leaves them (its labels and their reason cleared); a runner
+/// takes one with `RUNNER_CLAIM` (runners.rs), and only the first of the
+/// two finds it still queued.
+const HOSTED_CLAIM: &str = "UPDATE jobs SET status = 'in_progress', token_hash = ?1, first_token_hash = NULL, started_at = ?2, seen_at = ?2,
+       waiting_since = NULL, timeout_minutes = ?3, reason = CASE WHEN labels IS NULL THEN reason ELSE NULL END, labels = NULL, queued_at = NULL
+     WHERE id = ?4 AND status = 'queued' RETURNING id";
 
 /// Whether `token` is a running job's: its current one, or with `started`
 /// (`brokered_secrets` only) the one it started with before its harness
@@ -284,6 +292,15 @@ pub struct JobRow {
     /// in the queue (migration 0028).
     #[serde(default)]
     pub machine_lost: u32,
+    /// For a job asking for a hosted label that is offered to the
+    /// workspace's own runners first: the machine g1t would give it, which
+    /// it runs on if none takes it, and whether it needs a runner with
+    /// Docker (migration 0029). While it is offered, `labels` are its OS
+    /// and architecture.
+    #[serde(default)]
+    pub fallback_instance: Option<String>,
+    #[serde(default)]
+    pub needs_docker: u32,
 }
 
 /// How long a cancelled job has to run its `if: always()` and `cancelled()`
@@ -1067,9 +1084,10 @@ impl Actions {
         }
         let total = combinations.len();
         let raw = job.raw.as_object().cloned().unwrap_or_default();
-        // Whether pull requests from forks may use self-hosted runners here,
-        // asked once, and only for a run that is not trusted.
-        let mut forks_allowed: Option<bool> = None;
+        // The runner settings that apply here, asked once, and only for a
+        // job that runs on self-hosted runners in a run that is not
+        // trusted, or one that may be offered to them.
+        let mut settings: Option<RunnerSettings> = None;
         // Each concurrency group its jobs join, and whether it cancels.
         let mut groups: Vec<(String, bool)> = Vec::new();
         // The other combinations' rows, then the job's own row: one batch,
@@ -1114,21 +1132,32 @@ impl Actions {
             // A pull request from a fork runs code anyone could write: never
             // on the workspace's machines unless it said they may.
             if wanted.self_hosted && run.trusted == 0 {
-                let allowed = match forks_allowed {
-                    Some(allowed) => allowed,
-                    None => {
-                        let allowed = self.effective_runner_settings(&row.namespace, Some(&run.repo_id)).await?.fork_pull_requests;
-                        forks_allowed = Some(allowed);
-                        allowed
-                    }
-                };
-                if !allowed {
+                if settings.is_none() {
+                    settings = Some(self.effective_runner_settings(&row.namespace, Some(&run.repo_id)).await?);
+                }
+                if !settings.as_ref().is_some_and(|s| s.fork_pull_requests) {
                     reason = Some(
                         "Pull requests from forks do not run on self-hosted runners here. An admin can allow it under Settings, Runners.".to_owned(),
                     );
                 }
             }
-            let max_minutes = if wanted.self_hosted { SELF_HOSTED_MAX_TIMEOUT_MINUTES } else { MAX_TIMEOUT_MINUTES };
+            // A hosted Linux label (`ubuntu-latest`): offered to the
+            // workspace's own runners first where its settings prefer them,
+            // and where forks may use them for a pull request from a fork.
+            // It runs on g1t's machine when none that fits takes it.
+            let offered = match hosted_wanted(&labels).filter(|_| !wanted.self_hosted && reason.is_none()) {
+                Some(offer) => {
+                    if settings.is_none() {
+                        settings = Some(self.effective_runner_settings(&row.namespace, Some(&run.repo_id)).await?);
+                    }
+                    let settings = settings.as_ref().expect("read above");
+                    offered_to_own(settings.prefer_own_runners, run.trusted != 0, settings.fork_pull_requests).then_some(offer)
+                }
+                None => None,
+            };
+            // A runner's cap while it may run on one; g1t's machine's is
+            // applied if it runs there instead (`start_queued`).
+            let max_minutes = if wanted.self_hosted || offered.is_some() { SELF_HOSTED_MAX_TIMEOUT_MINUTES } else { MAX_TIMEOUT_MINUTES };
             let timeout = raw
                 .get("timeout-minutes")
                 .and_then(|value| expr::interpolate_value(value, &scope).ok())
@@ -1142,13 +1171,20 @@ impl Actions {
                 Some(_) => ("completed", Some("failure"), Some(now())),
                 None => ("queued", None, None),
             };
-            // A self-hosted job waits, saying for what, until a runner takes it.
+            // A self-hosted job waits, saying for what, until a runner takes
+            // it. One offered to the runners says so, and keeps the machine
+            // it runs on if none takes it, and whether it needs Docker.
             let (labels_json, queued_at) = if wanted.self_hosted && reason.is_none() {
                 reason = Some(waiting_reason(&wanted));
                 (Some(serde_json::to_string(&wanted.stored())?), Some(now()))
+            } else if let Some(offer) = &offered {
+                reason = Some(OFFERED_TO_OWN.to_owned());
+                (Some(serde_json::to_string(&offer.stored())?), Some(now()))
             } else {
                 (None, None)
             };
+            let fallback_instance = offered.as_ref().map(|_| g1t_contracts::actions::instance_for(&labels, run_is_public(run)).label);
+            let needs_docker = offered.is_some() && (raw.contains_key("services") || raw.contains_key("container"));
             // The environment it names, an expression read now, and what
             // that environment's protection rules say: it starts, waits as
             // `pending` (protection.rs), or may not deploy there.
@@ -1201,6 +1237,8 @@ impl Actions {
                 optional(environment.as_deref()),
                 optional(job_group.as_deref()),
                 u32::from(job_cancel).into(),
+                optional(fallback_instance),
+                u32::from(needs_docker).into(),
             ];
             if index == 0 {
                 let mut bound = values;
@@ -1210,7 +1248,7 @@ impl Actions {
                         .prepare(
                             "UPDATE jobs SET name = ?, matrix = ?, status = ?, conclusion = ?, reason = ?, timeout_minutes = ?,
                                continue_on_error = ?, max_parallel = ?, finished_at = ?, labels = ?, queued_at = ?, environment = ?,
-                               concurrency_group = ?, cancel_in_progress = ? WHERE id = ? AND status = 'waiting'",
+                               concurrency_group = ?, cancel_in_progress = ?, fallback_instance = ?, needs_docker = ? WHERE id = ? AND status = 'waiting'",
                         )
                         .bind(&bound)?,
                 );
@@ -1232,8 +1270,8 @@ impl Actions {
                         .prepare(
                             "INSERT INTO jobs (id, run_id, repo_id, namespace, key, ordinal, needs, call, name, matrix, status, conclusion, reason,
                                timeout_minutes, continue_on_error, max_parallel, finished_at, labels, queued_at, environment,
-                               concurrency_group, cancel_in_progress)
-                             SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                               concurrency_group, cancel_in_progress, fallback_instance, needs_docker)
+                             SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                              WHERE EXISTS (SELECT 1 FROM jobs WHERE id = ? AND status = 'waiting')",
                         )
                         .bind(&bound)?,
@@ -1643,7 +1681,9 @@ impl Actions {
 
     /// [`Self::start_queued`], and while the runner refuses jobs for want of
     /// a machine, again after each of MACHINE_RETRY_MS rather than at the
-    /// next sweep (#292). Only where nothing waits on it: after a request's
+    /// next sweep (#292); likewise while a job is offered to the workspace's
+    /// own runners, so it runs on g1t's machine within seconds of its offer
+    /// running out. Only where nothing waits on it: after a request's
     /// answer, and at the end of the sweep.
     pub async fn start_queued_retrying(&self, held: &std::collections::HashSet<String>) -> Result<()> {
         for pause in crate::MACHINE_RETRY_MS {
@@ -1656,15 +1696,19 @@ impl Actions {
     }
 
     /// [`Self::start_queued`], leaving `held` for a later sweep. Returns
-    /// whether the runner refused any job for want of a machine.
+    /// whether to look again soon: the runner refused a job for want of a
+    /// machine, or a job is still offered to the workspace's own runners.
     async fn start_queued_except(&self, held: &std::collections::HashSet<String>) -> Result<bool> {
         let queued = self
             .db
-            // Self-hosted jobs are taken by their runners (runners.rs).
-            .prepare("SELECT * FROM jobs WHERE status = 'queued' AND labels IS NULL ORDER BY rowid LIMIT 50")
+            // Self-hosted jobs are taken by their runners (runners.rs). One
+            // asking for a hosted label is offered to them first, and runs
+            // here when none that fits is free, or none took it in time.
+            .prepare("SELECT * FROM jobs WHERE status = 'queued' AND (labels IS NULL OR fallback_instance IS NOT NULL) ORDER BY rowid LIMIT 50")
             .all()
             .await?
             .results::<JobRow>()?;
+        let mut again = false;
         let mut running: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
         // Every workspace's jobs on g1t's own machines: past its share, a
         // workspace starts more only while the pool has room (has_room).
@@ -1683,6 +1727,23 @@ impl Actions {
         for job in queued {
             if held.contains(&job.id) {
                 continue;
+            }
+            // Still offered to the workspace's own runners: theirs while one
+            // that fits is free, until OFFER_TO_OWN_MS have passed.
+            let offered = job.labels.is_some();
+            let mut fell_back = None;
+            if offered {
+                let free = match self.run_row(&job.run_id).await? {
+                    Some(run) => self.own_runner_free(&job, &run.repo, now_ms()).await?,
+                    None => false,
+                };
+                match falls_back(free, job.queued_at.as_deref(), now_ms()) {
+                    Some(why) => fell_back = Some(why),
+                    None => {
+                        again = true;
+                        continue;
+                    }
+                }
             }
             let in_workspace = match running.get(&job.namespace) {
                 Some(n) => *n,
@@ -1729,16 +1790,22 @@ impl Actions {
             }
             let token = random_hex(24);
             let at = now();
+            // One offered to the runners leaves them here, with g1t's
+            // machine's time limit; a runner taking it at once claims it
+            // the same way, and only one of the two does.
+            let timeout = if offered { job.timeout_minutes.min(MAX_TIMEOUT_MINUTES) } else { job.timeout_minutes };
             let claimed = self
                 .db
-                .prepare(
-                    "UPDATE jobs SET status = 'in_progress', token_hash = ?, first_token_hash = NULL, started_at = ?, seen_at = ?, waiting_since = NULL WHERE id = ? AND status = 'queued' RETURNING id",
-                )
-                .bind(&[sha256_hex(&token).into(), at.as_str().into(), at.as_str().into(), job.id.as_str().into()])?
+                .prepare(HOSTED_CLAIM)
+                .bind(&[sha256_hex(&token).into(), at.as_str().into(), timeout.into(), job.id.as_str().into()])?
                 .first::<Value>(None)
                 .await?;
             if claimed.is_none() {
                 continue;
+            }
+            // It says in "Set up job" why it is on g1t's machine after all.
+            if let Some(why) = fell_back {
+                self.note_log(&job.id, 0, &format!("{}\n", fallback_note(why))).await?;
             }
             running.insert(job.namespace.clone(), in_workspace + 1);
             in_pool += 1;
@@ -1761,7 +1828,7 @@ impl Actions {
                 job: job.id.clone(),
                 token,
                 repo,
-                timeout_minutes: job.timeout_minutes,
+                timeout_minutes: timeout,
                 instance,
                 brokered,
                 // Its sandbox is this start's own, which a stop of an
@@ -1830,7 +1897,7 @@ impl Actions {
                 self.job_started(&job.id).await?;
             }
         }
-        Ok(no_machine)
+        Ok(no_machine || again)
     }
 
     /// Finishes a job and moves its run along.
@@ -2402,7 +2469,7 @@ impl Actions {
                     .prepare(
                         "UPDATE jobs SET status = 'waiting', conclusion = NULL, steps = '[]', annotations = '[]', outputs = '{}', reason = NULL,
                            matrix = NULL, call = NULL, token_hash = NULL, first_token_hash = NULL, seen_at = NULL, started_at = NULL, finished_at = NULL,
-                           labels = NULL, queued_at = NULL, runner_id = NULL, runner_name = NULL, environment = NULL,
+                           labels = NULL, queued_at = NULL, runner_id = NULL, runner_name = NULL, environment = NULL, fallback_instance = NULL, needs_docker = 0,
                            concurrency_group = NULL, cancel_in_progress = 0, cancel_requested_at = NULL, log_bytes = 0, machine_lost = 0 WHERE run_id = ? AND key = ?",
                     )
                     .bind(&[run.id.as_str().into(), key.as_str().into()])?,
@@ -3206,6 +3273,101 @@ mod log_chunks {
         assert_eq!(insert("job_1", 0, "again\n", Some(1)), 1);
         assert_eq!(log(&db, "job_1"), [(1, 0, "again\n".into())]);
         assert_eq!(log(&db, "job_1.1").len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod offered_jobs {
+    use rusqlite::{Connection, params};
+
+    use super::HOSTED_CLAIM;
+    use crate::runners::RUNNER_CLAIM;
+
+    /// Every migration, in order, as D1 applies them.
+    fn database() -> Connection {
+        let db = Connection::open_in_memory().unwrap();
+        let folder = format!("{}/migrations", env!("CARGO_MANIFEST_DIR"));
+        let mut names: Vec<String> = std::fs::read_dir(&folder)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .filter(|name| name.ends_with(".sql"))
+            .collect();
+        names.sort();
+        for name in names {
+            db.execute_batch(&std::fs::read_to_string(format!("{folder}/{name}")).unwrap())
+                .unwrap_or_else(|error| panic!("{name}: {error}"));
+        }
+        db
+    }
+
+    /// A job asking for `ubuntu-latest`, offered to the runners as `decide`
+    /// queues it: their time limit, its OS and architecture.
+    fn offer(db: &Connection, id: &str) {
+        db.execute(
+            "INSERT INTO jobs (id, run_id, repo_id, namespace, key, name, status, reason, timeout_minutes, labels, queued_at, fallback_instance)
+             VALUES (?1, 'run_1', 'repo_1', 'acme', ?1, ?1, 'queued', ?2, 360, '[\"linux\",\"x64\"]', '2026-10-23T12:00:00.000Z', 'standard')",
+            params![id, g1t_contracts::runners::OFFERED_TO_OWN],
+        )
+        .unwrap();
+    }
+
+    fn hosted(db: &Connection, id: &str) -> bool {
+        db.query_row(HOSTED_CLAIM, params!["hash", "2026-10-23T12:00:16.000Z", 60, id], |_| Ok(())).is_ok()
+    }
+
+    fn runner(db: &Connection, id: &str) -> bool {
+        db.query_row(RUNNER_CLAIM, params!["hash", "rnr_1", "box-linux", "2026-10-23T12:00:02.000Z", id], |_| Ok(()))
+            .is_ok()
+    }
+
+    #[test]
+    fn g1ts_machine_takes_an_offered_job_from_the_runners_with_its_own_time_limit() {
+        let db = database();
+        offer(&db, "job_1");
+        assert!(hosted(&db, "job_1"));
+        assert!(!runner(&db, "job_1"), "a runner finds it taken");
+        let (labels, queued_at, reason, timeout, runner_id): (Option<String>, Option<String>, Option<String>, i64, Option<String>) = db
+            .query_row("SELECT labels, queued_at, reason, timeout_minutes, runner_id FROM jobs WHERE id = 'job_1'", [], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?))
+            })
+            .unwrap();
+        assert_eq!((labels, queued_at, reason, timeout, runner_id), (None, None, None, 60, None));
+    }
+
+    #[test]
+    fn a_runner_that_takes_an_offered_job_first_keeps_it() {
+        let db = database();
+        offer(&db, "job_1");
+        assert!(runner(&db, "job_1"));
+        assert!(!hosted(&db, "job_1"), "g1t's machine finds it taken");
+        let (runner_id, timeout): (Option<String>, i64) =
+            db.query_row("SELECT runner_id, timeout_minutes FROM jobs WHERE id = 'job_1'", [], |row| Ok((row.get(0)?, row.get(1)?))).unwrap();
+        assert_eq!((runner_id.as_deref(), timeout), (Some("rnr_1"), 360));
+    }
+
+    #[test]
+    fn a_job_on_g1ts_machines_keeps_why_it_waited() {
+        let db = database();
+        db.execute(
+            "INSERT INTO jobs (id, run_id, repo_id, namespace, key, name, status, reason, timeout_minutes) VALUES ('job_1', 'run_1', 'repo_1', 'acme', 'k', 'k', 'queued', 'No machine was free.', 60)",
+            [],
+        )
+        .unwrap();
+        assert!(hosted(&db, "job_1"));
+        let reason: Option<String> = db.query_row("SELECT reason FROM jobs WHERE id = 'job_1'", [], |row| row.get(0)).unwrap();
+        assert_eq!(reason.as_deref(), Some("No machine was free."));
+    }
+
+    #[test]
+    fn hosted_labels_go_to_the_runners_first_unless_a_workspace_says_otherwise() {
+        let db = database();
+        db.execute(
+            "INSERT INTO runner_settings (owner, scope, updated_at) VALUES ('acme', 'workspace', '2026-10-23T12:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+        let on: i64 = db.query_row("SELECT prefer_own FROM runner_settings WHERE owner = 'acme'", [], |row| row.get(0)).unwrap();
+        assert_eq!(on, 1);
     }
 }
 

@@ -355,22 +355,21 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
         _ => "linux",
     };
     let arch = if std::env::consts::ARCH == "aarch64" { "arm64" } else { "x64" };
-    let registered = Api::register(
-        &api,
-        &json!({
-            "token": token,
-            "name": name,
-            "labels": labels,
-            "os": os,
-            "arch": arch,
-            "version": VERSION,
-            "ephemeral": options.flag("ephemeral"),
-            "group": options.value("group"),
-            "replace": options.flag("replace"),
-            "isolation": isolation.as_str(),
-            "machine": options.value("machine").map(str::to_owned).or_else(machine_fingerprint),
-        }),
-    )?;
+    let mut body = json!({
+        "token": token,
+        "name": name,
+        "labels": labels,
+        "os": os,
+        "arch": arch,
+        "version": VERSION,
+        "ephemeral": options.flag("ephemeral"),
+        "group": options.value("group"),
+        "replace": options.flag("replace"),
+        "isolation": isolation.as_str(),
+        "machine": options.value("machine").map(str::to_owned).or_else(machine_fingerprint),
+    });
+    exec::capacity(options.value("memory"), options.value("cpus"), !options.flag("no-job-docker"), isolation).add_to(&mut body);
+    let registered = Api::register(&api, &body)?;
     let work_dir = options.value("work-dir").map(PathBuf::from).unwrap_or_else(|| folder.join("work"));
     let config = Config {
         url,
@@ -524,6 +523,9 @@ fn run(folder: &Path, once: bool) -> Result<()> {
     if isolation == sandbox::Isolation::Host {
         log(sandbox::HOST_MODE_AT_START);
     }
+    // What a job here gets, told to g1t with each poll: asked once, as
+    // whether Docker answers takes a moment.
+    let capacity = exec::capacity(config.memory.as_deref(), config.cpus.as_deref(), config.job_docker, isolation);
     let mut current: Option<exec::Running> = None;
     let mut ran_one = false;
     let mut backoff = Duration::from_secs(2);
@@ -598,7 +600,7 @@ fn run(folder: &Path, once: bool) -> Result<()> {
         }
         let running: Vec<String> = current.iter().map(|r| r.id.clone()).collect();
         let wait = if current.is_some() { 0 } else { IDLE_WAIT_MS };
-        let poll = match api.poll(&running, wait, isolation.as_str()) {
+        let poll = match api.poll(&running, wait, isolation.as_str(), &capacity) {
             Ok(poll) => {
                 backoff = Duration::from_secs(2);
                 poll

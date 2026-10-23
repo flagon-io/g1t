@@ -121,7 +121,9 @@ fn job_view(row: JobRow) -> Job {
         started_at: row.started_at,
         finished_at: row.finished_at,
         environment: row.environment,
-        self_hosted: row.labels.is_some(),
+        // One offered to the workspace's runners in place of g1t's machine
+        // is self-hosted once one takes it.
+        self_hosted: row.runner_id.is_some() || (row.labels.is_some() && row.fallback_instance.is_none()),
         runner: row.runner_name,
     }
 }

@@ -87,11 +87,23 @@ pub struct RunnerRow {
     /// never said.
     #[serde(default)]
     pub machine_hash: Option<String>,
+    /// What a job on it gets, as it last said (migration 0030); none for a
+    /// runner that never said.
+    #[serde(default)]
+    pub cpus: Option<u32>,
+    #[serde(default)]
+    pub memory_mib: Option<u64>,
+    #[serde(default)]
+    pub docker: Option<u32>,
 }
 
 impl RunnerRow {
     fn labels(&self) -> Vec<String> {
         serde_json::from_str(&self.labels).unwrap_or_default()
+    }
+
+    fn capacity(&self) -> model::Capacity {
+        model::Capacity { cpus: self.cpus, memory_mib: self.memory_mib, docker: self.docker.map(|docker| docker != 0) }
     }
 
     fn online(&self, now: u64) -> bool {
@@ -138,6 +150,13 @@ struct SettingsRow {
     agents: u32,
     agent_labels: String,
     fork_pulls: u32,
+    /// Migration 0029: on unless turned off.
+    #[serde(default = "on")]
+    prefer_own: u32,
+}
+
+fn on() -> u32 {
+    1
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -171,6 +190,24 @@ struct Place {
 
 fn now() -> String {
     rfc3339(now_ms())
+}
+
+/// Takes a queued job for a runner: `?1` its token's hash, `?2` and `?3`
+/// the runner's id and name, `?4` now, `?5` the job. A job offered to the
+/// runners in place of g1t's machine may be taken by g1t's machine at
+/// once (plan.rs `HOSTED_CLAIM`): only the first finds it still queued.
+pub(crate) const RUNNER_CLAIM: &str = "UPDATE jobs SET status = 'in_progress', token_hash = ?1, first_token_hash = NULL, runner_id = ?2, runner_name = ?3,
+       reason = NULL, started_at = ?4, seen_at = ?4
+     WHERE id = ?5 AND status = 'queued' RETURNING id";
+
+/// What a runner says a job on it gets, as it is kept: a count of CPUs and
+/// MiB of memory that are some, and no more than any machine has.
+fn kept_capacity(cpus: Option<u32>, memory_mib: Option<u64>, docker: Option<bool>) -> model::Capacity {
+    model::Capacity {
+        cpus: cpus.filter(|n| (1..=4096).contains(n)),
+        memory_mib: memory_mib.filter(|n| (1..=64 * 1024 * 1024).contains(n)),
+        docker,
+    }
 }
 
 fn valid_name(name: &str) -> std::result::Result<String, String> {
@@ -413,6 +450,9 @@ impl Actions {
             created_at: row.created_at.clone(),
             created_by: row.created_by.clone(),
             isolation: row.isolation.clone(),
+            cpus: row.cpus,
+            memory_mib: row.memory_mib,
+            docker: row.docker.map(|docker| docker != 0),
         })
     }
 
@@ -756,10 +796,12 @@ impl Actions {
                 agents_on_self_hosted: row.agents != 0,
                 agent_labels: serde_json::from_str(&row.agent_labels).unwrap_or_else(|_| vec![model::SELF_HOSTED.to_owned()]),
                 fork_pull_requests: row.fork_pulls != 0,
+                prefer_own_runners: row.prefer_own != 0,
                 inherited,
             },
             None => RunnerSettings {
                 agent_labels: vec![model::SELF_HOSTED.to_owned()],
+                prefer_own_runners: true,
                 inherited,
                 ..RunnerSettings::default()
             },
@@ -929,11 +971,12 @@ impl Actions {
             };
             let agents = a.agents_on_self_hosted.unwrap_or(current.agents_on_self_hosted);
             let forks = a.fork_pull_requests.unwrap_or(current.fork_pull_requests);
+            let prefer_own = a.prefer_own_runners.unwrap_or(current.prefer_own_runners);
             self.db
                 .prepare(
-                    "INSERT INTO runner_settings (owner, scope, agents, agent_labels, fork_pulls, updated_at, updated_by)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-                     ON CONFLICT (owner) DO UPDATE SET agents = ?3, agent_labels = ?4, fork_pulls = ?5, updated_at = ?6, updated_by = ?7",
+                    "INSERT INTO runner_settings (owner, scope, agents, agent_labels, fork_pulls, updated_at, updated_by, prefer_own)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                     ON CONFLICT (owner) DO UPDATE SET agents = ?3, agent_labels = ?4, fork_pulls = ?5, updated_at = ?6, updated_by = ?7, prefer_own = ?8",
                 )
                 .bind(&[
                     owner.as_str().into(),
@@ -943,6 +986,7 @@ impl Actions {
                     u32::from(forks).into(),
                     now().into(),
                     a.actor.username.as_str().into(),
+                    u32::from(prefer_own).into(),
                 ])?
                 .run()
                 .await?;
@@ -955,10 +999,11 @@ impl Actions {
             place.repo.as_ref().map(|r| format!("{}/{}", r.namespace, r.name)),
             None,
             format!(
-                "g1t's work on self-hosted runners: {}; labels {}; pull requests from forks: {}.",
+                "g1t's work on self-hosted runners: {}; labels {}; pull requests from forks: {}; hosted labels on own runners first: {}.",
                 if settings.agents_on_self_hosted { "on" } else { "off" },
                 settings.agent_labels.join(", "),
-                if settings.fork_pull_requests { "allowed" } else { "not allowed" }
+                if settings.fork_pull_requests { "allowed" } else { "not allowed" },
+                if settings.prefer_own_runners { "on" } else { "off" }
             ),
         )])
         .await;
@@ -1047,16 +1092,18 @@ impl Actions {
         } else if total >= model::MAX_RUNNERS {
             return Ok(fail(FailureCode::Conflict, format!("A workspace has at most {} self-hosted runners.", model::MAX_RUNNERS)));
         }
-        // How it keeps work from its machine, if it said (older runners do not).
+        // How it keeps work from its machine, and what a job on it gets, if
+        // it said (older runners do not).
         let isolation = a.isolation.as_deref().filter(|level| model::ISOLATIONS.contains(level));
+        let capacity = kept_capacity(a.cpus, a.memory_mib, a.docker);
         let id = new_id("rnr", at);
         let credential = format!("{}{}", model::CREDENTIAL_PREFIX, random_hex(32));
         let created = rfc3339(at);
         self.db
             .prepare(
                 "INSERT INTO runners (id, workspace, repo_id, repo, group_id, name, labels, os, arch, version, ephemeral, credential_hash,
-                   rotated_at, last_seen_at, created_at, created_by, isolation, machine_hash)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   rotated_at, last_seen_at, created_at, created_by, isolation, machine_hash, cpus, memory_mib, docker)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 id.as_str().into(),
@@ -1078,6 +1125,9 @@ impl Actions {
                 optional(registration.created_by.as_deref()),
                 optional(isolation),
                 optional(machine_hash.as_deref()),
+                capacity.cpus.map_or(JsValue::NULL, JsValue::from),
+                capacity.memory_mib.map_or(JsValue::NULL, |mib| JsValue::from(mib as f64)),
+                capacity.docker.map_or(JsValue::NULL, |docker| JsValue::from(u32::from(docker))),
             ])?
             .run()
             .await?;
@@ -1184,25 +1234,36 @@ impl Actions {
             .filter(|level| model::ISOLATIONS.contains(level))
             .map(str::to_owned)
             .or_else(|| row.isolation.clone());
+        // And what a job on it gets: a runner given more memory says so.
+        let said = kept_capacity(a.cpus, a.memory_mib, a.docker);
+        let cpus = said.cpus.or(row.cpus);
+        let memory_mib = said.memory_mib.or(row.memory_mib);
+        let docker = said.docker.map(u32::from).or(row.docker);
         let changed = version != row.version
             || work_id != row.work_id.as_deref()
             || work_kind != row.work_kind.as_deref()
-            || isolation != row.isolation;
+            || isolation != row.isolation
+            || (cpus, memory_mib, docker) != (row.cpus, row.memory_mib, row.docker);
         if changed || seen_is_stale(row.last_seen_at.as_deref(), at) {
             self.db
-                .prepare("UPDATE runners SET last_seen_at = ?, version = ?, work_id = ?, work_kind = ?, isolation = ? WHERE id = ?")
+                .prepare(
+                    "UPDATE runners SET last_seen_at = ?, version = ?, work_id = ?, work_kind = ?, isolation = ?, cpus = ?, memory_mib = ?, docker = ? WHERE id = ?",
+                )
                 .bind(&[
                     seen.as_str().into(),
                     version.into(),
                     optional(work_id),
                     optional(work_kind),
                     optional(isolation.as_deref()),
+                    cpus.map_or(JsValue::NULL, JsValue::from),
+                    memory_mib.map_or(JsValue::NULL, |mib| JsValue::from(mib as f64)),
+                    docker.map_or(JsValue::NULL, JsValue::from),
                     row.id.as_str().into(),
                 ])?
                 .run()
                 .await?;
         }
-        let row = RunnerRow { isolation, ..row };
+        let row = RunnerRow { isolation, cpus, memory_mib, docker, ..row };
         let mut poll = Poll { assignment: None, cancel, credential, removed: false };
         // Busy, or an ephemeral runner that has had its one job.
         if active.is_some() || !a.running.is_empty() {
@@ -1283,9 +1344,23 @@ impl Actions {
             if runner.repo_id.is_none() && !group.is_none_or(|g| g.allows(&run_repo)) {
                 continue;
             }
-            // A host-mode runner takes no public repository's job: it waits
-            // for a sandboxed runner, and says so when none could take it.
-            if runner.isolation.as_deref() == Some("host") {
+            // A job that asked for one of g1t's machines, offered to the
+            // workspace's runners first: only one as large as that machine,
+            // with Docker if it uses it, takes it, and a host-mode runner
+            // only a repository known to be private. The rest run on g1t's.
+            let offered = job.fallback_instance.is_some();
+            if let Some(instance) = job.fallback_instance.as_deref() {
+                let machine = g1t_contracts::actions::instance_named(instance).unwrap_or(g1t_contracts::actions::STANDARD_INSTANCE);
+                let visibility = match runner.isolation.as_deref() {
+                    Some("host") => self.visibility_once(looked, &job.repo_id).await,
+                    _ => None,
+                };
+                if !model::stands_in_for(runner.capacity(), runner.isolation.as_deref(), visibility.as_deref(), &machine, job.needs_docker != 0) {
+                    continue;
+                }
+            } else if runner.isolation.as_deref() == Some("host") {
+                // A host-mode runner takes no public repository's job: it
+                // waits for a sandboxed runner, and says so when none could.
                 let visibility = self.visibility_once(looked, &job.repo_id).await;
                 if !model::isolation_allows(runner.isolation.as_deref(), visibility.as_deref()) {
                     if looked.noted.insert(job.id.clone()) {
@@ -1310,15 +1385,11 @@ impl Actions {
             let at = now();
             let claimed = self
                 .db
-                .prepare(
-                    "UPDATE jobs SET status = 'in_progress', token_hash = ?, first_token_hash = NULL, runner_id = ?, runner_name = ?, reason = NULL, started_at = ?, seen_at = ?
-                     WHERE id = ? AND status = 'queued' RETURNING id",
-                )
+                .prepare(RUNNER_CLAIM)
                 .bind(&[
                     sha256_hex(&token).into(),
                     runner.id.as_str().into(),
                     runner.name.as_str().into(),
-                    at.as_str().into(),
                     at.as_str().into(),
                     job.id.as_str().into(),
                 ])?
@@ -1346,6 +1417,10 @@ impl Actions {
                 format!("The self-hosted runner {} took the job {}.", runner.name, job.name),
             )])
             .await;
+            // It says in "Set up job" why it is here and not on g1t's machine.
+            if offered {
+                self.note_log(&job.id, 0, &format!("{}\n", model::on_own_runner_note(&runner.name))).await?;
+            }
             // A job that deploys: its run's deployment is under way.
             self.job_started(&job.id).await?;
             let image = self.job_image(&job).await?;
@@ -1458,6 +1533,48 @@ impl Actions {
         let found = self.visibility(repo_id).await;
         looked.visibilities.insert(repo_id.to_owned(), found.clone());
         found
+    }
+
+    /// Whether one of the workspace's runners could take `job`, offered to
+    /// them in place of one of g1t's machines, now: online and idle, its
+    /// repository or group lets the job's repository use it, it is of the
+    /// job's OS and architecture and as large as the machine, and the
+    /// workspace's plan lets its runners take one more job. Otherwise the
+    /// job runs on g1t's machine at once.
+    pub(crate) async fn own_runner_free(&self, job: &JobRow, run_repo: &str, at: u64) -> Result<bool> {
+        let Some(instance) = job.fallback_instance.as_deref() else { return Ok(false) };
+        let machine = g1t_contracts::actions::instance_named(instance).unwrap_or(g1t_contracts::actions::STANDARD_INSTANCE);
+        let stored: Vec<String> = job.labels.as_deref().and_then(|l| serde_json::from_str(l).ok()).unwrap_or_default();
+        let wanted = Wanted::from_stored(&stored);
+        let workspace = job.namespace.to_lowercase();
+        let groups = self.group_rows(&workspace).await?;
+        let runners = self.runner_rows(&workspace).await?;
+        // A repository's visibility is asked only for a host-mode runner,
+        // the one kind that may take a private repository's job alone.
+        let visibility = if runners.iter().any(|r| r.isolation.as_deref() == Some("host") && r.online(at)) {
+            self.visibility(&job.repo_id).await
+        } else {
+            None
+        };
+        let free = runners
+            .iter()
+            .any(|runner| takes_offered_job(runner, &groups, &job.repo_id, run_repo, &wanted, &machine, job.needs_docker != 0, visibility.as_deref(), at));
+        if !free || self.limits.free_self_hosted_jobs == 0 {
+            return Ok(free);
+        }
+        // Past the free plan's runners' share, the job runs on g1t's machine
+        // rather than wait for one of them (`claim` holds them back).
+        let running = self
+            .db
+            .prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'in_progress' AND runner_id IS NOT NULL AND lower(namespace) = ?")
+            .bind(&[workspace.as_str().into()])?
+            .first::<Count>(None)
+            .await?
+            .map_or(0, |c| c.n);
+        if crate::limits::self_hosted_room(running as u64, self.limits.free_self_hosted_jobs) {
+            return Ok(true);
+        }
+        Ok(self.standing(&workspace).await.is_some_and(|standing| standing.has_plan))
     }
 
     /// A public repository's job that a host-mode runner passed over: when
@@ -1774,12 +1891,14 @@ impl Actions {
     }
 
     /// The workspace's workflow jobs queued for its own runners
-    /// (`labelled`), or for g1t's sandboxes.
+    /// (`labelled`), or for g1t's sandboxes. A job offered to its runners
+    /// in place of g1t's machine runs on one or the other, at most seconds
+    /// later: it counts with g1t's.
     async fn queued_jobs(&self, workspace: &str, labelled: bool) -> Result<u32> {
         let sql = if labelled {
-            "SELECT COUNT(*) AS n FROM jobs WHERE lower(namespace) = ? AND status = 'queued' AND labels IS NOT NULL"
+            "SELECT COUNT(*) AS n FROM jobs WHERE lower(namespace) = ? AND status = 'queued' AND labels IS NOT NULL AND fallback_instance IS NULL"
         } else {
-            "SELECT COUNT(*) AS n FROM jobs WHERE lower(namespace) = ? AND status = 'queued' AND labels IS NULL"
+            "SELECT COUNT(*) AS n FROM jobs WHERE lower(namespace) = ? AND status = 'queued' AND (labels IS NULL OR fallback_instance IS NOT NULL)"
         };
         Ok(self.db.prepare(sql).bind(&[workspace.into()])?.first::<Count>(None).await?.map_or(0, |c| c.n))
     }
@@ -1807,7 +1926,7 @@ impl Actions {
                 .db
                 .prepare(
                     "SELECT jobs.id, jobs.name, jobs.run_id, jobs.labels, jobs.queued_at, runs.repo, jobs.repo_id FROM jobs JOIN runs ON runs.id = jobs.run_id
-                     WHERE jobs.status = 'queued' AND jobs.labels IS NOT NULL AND lower(jobs.namespace) = ? AND jobs.queued_at < ?
+                     WHERE jobs.status = 'queued' AND jobs.labels IS NOT NULL AND jobs.fallback_instance IS NULL AND lower(jobs.namespace) = ? AND jobs.queued_at < ?
                      ORDER BY jobs.rowid LIMIT 20",
                 )
                 .bind(&[workspace.as_str().into(), rfc3339(at.saturating_sub(10 * 60 * 1000)).into()])?
@@ -1853,9 +1972,11 @@ impl Actions {
     pub async fn sweep_runners(&self, at: u64) -> Result<()> {
         let before = |ms: u64| rfc3339(at.saturating_sub(ms));
         let waited = model::MAX_WAIT_HOURS * 60 * 60 * 1000;
+        // Not one offered to them in place of g1t's machine, which runs
+        // there instead (plan.rs `start_queued`).
         let stale = self
             .db
-            .prepare("SELECT * FROM jobs WHERE status = 'queued' AND labels IS NOT NULL AND queued_at < ? LIMIT 50")
+            .prepare("SELECT * FROM jobs WHERE status = 'queued' AND labels IS NOT NULL AND fallback_instance IS NULL AND queued_at < ? LIMIT 50")
             .bind(&[before(waited).into()])?
             .all()
             .await?
@@ -1930,6 +2051,32 @@ fn takes_public_job(runner: &RunnerRow, groups: &[GroupRow], repo_id: &str, run_
         && runner.repo_id.as_deref().is_none_or(|repo| repo == repo_id)
         && (runner.repo_id.is_some() || group.is_none_or(|g| g.allows(run_repo)))
         && wanted.matches(&runner.labels(), group.map(|g| g.name.as_str()))
+}
+
+/// Whether `runner` could take a job offered to the workspace's runners in
+/// place of `machine` now: online, idle, its repository or group lets the
+/// job's repository use it, its labels are the job's, and it stands in for
+/// the machine ([`model::stands_in_for`]).
+#[allow(clippy::too_many_arguments)]
+fn takes_offered_job(
+    runner: &RunnerRow,
+    groups: &[GroupRow],
+    repo_id: &str,
+    run_repo: &str,
+    wanted: &Wanted,
+    machine: &g1t_contracts::actions::InstanceType,
+    needs_docker: bool,
+    visibility: Option<&str>,
+    at: u64,
+) -> bool {
+    let group = runner.group_id.as_ref().and_then(|id| groups.iter().find(|g| &g.id == id));
+    runner.online(at)
+        && runner.work_id.is_none()
+        && !(runner.ephemeral != 0 && runner.spent != 0)
+        && runner.repo_id.as_deref().is_none_or(|repo| repo == repo_id)
+        && (runner.repo_id.is_some() || group.is_none_or(|g| g.allows(run_repo)))
+        && wanted.matches(&runner.labels(), group.map(|g| g.name.as_str()))
+        && model::stands_in_for(runner.capacity(), runner.isolation.as_deref(), visibility, machine, needs_docker)
 }
 
 fn group_view(group: &GroupRow, runners: &[RunnerRow]) -> RunnerGroup {
@@ -2013,6 +2160,9 @@ mod tests {
             created_by: None,
             isolation: isolation.map(str::to_owned),
             machine_hash: None,
+            cpus: None,
+            memory_mib: None,
+            docker: None,
         };
         let wanted = Wanted::of(&["self-hosted".to_owned(), "linux".to_owned()], None);
         let takes = |row: &RunnerRow| takes_public_job(row, &[], "rep_1", "acme/web", &wanted, at);
@@ -2023,6 +2173,61 @@ mod tests {
         assert!(!takes(&RunnerRow { repo_id: Some("rep_2".into()), ..runner(None) }), "another repository's");
         assert!(!takes(&RunnerRow { labels: r#"["self-hosted","macos"]"#.into(), ..runner(None) }));
         assert!(!takes(&RunnerRow { last_seen_at: None, ..runner(None) }), "offline");
+    }
+
+    #[test]
+    fn only_a_free_runner_as_large_as_the_machine_takes_a_job_that_asked_for_one() {
+        let at = 1_000_000_000;
+        let runner = RunnerRow {
+            id: "rnr_1".into(),
+            workspace: "acme".into(),
+            repo_id: None,
+            repo: None,
+            group_id: Some("rng_1".into()),
+            name: "box-linux".into(),
+            labels: r#"["self-hosted","linux","x64","desktop"]"#.into(),
+            os: "linux".into(),
+            arch: "x64".into(),
+            version: String::new(),
+            ephemeral: 0,
+            credential_hash: String::new(),
+            previous_hash: None,
+            rotated_at: String::new(),
+            work_id: None,
+            work_kind: None,
+            spent: 0,
+            last_seen_at: Some(rfc3339(at)),
+            created_at: String::new(),
+            created_by: None,
+            isolation: Some("nested-container".into()),
+            machine_hash: None,
+            cpus: Some(8),
+            memory_mib: Some(16 * 1024),
+            docker: Some(1),
+        };
+        let groups = [group(&["web"])];
+        let wanted = model::hosted_wanted(&["ubuntu-latest".to_owned()]).unwrap();
+        let standard = g1t_contracts::actions::STANDARD_INSTANCE;
+        let takes = |row: &RunnerRow, needs_docker: bool| takes_offered_job(row, &groups, "rep_1", "acme/web", &wanted, &standard, needs_docker, None, at);
+        assert!(takes(&runner, true));
+        assert!(!takes(&RunnerRow { work_id: Some("job_2".into()), ..runner.clone() }, false), "busy");
+        assert!(!takes(&RunnerRow { last_seen_at: Some(rfc3339(at - 120_000)), ..runner.clone() }, false), "offline");
+        assert!(!takes(&RunnerRow { ephemeral: 1, spent: 1, ..runner.clone() }, false), "an ephemeral runner that had its job");
+        assert!(!takes(&RunnerRow { arch: "arm64".into(), labels: r#"["self-hosted","linux","arm64"]"#.into(), ..runner.clone() }, false));
+        assert!(!takes(&RunnerRow { cpus: Some(1), ..runner.clone() }, false), "smaller than the machine");
+        assert!(!takes(&RunnerRow { cpus: None, ..runner.clone() }, false), "a runner that never said");
+        assert!(!takes(&RunnerRow { docker: Some(0), ..runner.clone() }, true), "services without Docker");
+        assert!(!takes(&RunnerRow { isolation: Some("host".into()), ..runner.clone() }, false), "host mode, visibility unknown");
+        assert!(!takes(&RunnerRow { repo_id: Some("rep_2".into()), ..runner.clone() }, false), "another repository's");
+        let elsewhere = [group(&["docs"])];
+        assert!(!takes_offered_job(&runner, &elsewhere, "rep_1", "acme/web", &wanted, &standard, false, None, at), "its group leaves the repository out");
+    }
+
+    #[test]
+    fn what_a_runner_says_it_has_is_kept_only_when_it_is_believable() {
+        assert_eq!(kept_capacity(Some(8), Some(16384), Some(true)), model::Capacity { cpus: Some(8), memory_mib: Some(16384), docker: Some(true) });
+        assert_eq!(kept_capacity(Some(0), Some(0), None), model::Capacity::default());
+        assert_eq!(kept_capacity(Some(1_000_000), None, None).cpus, None);
     }
 
     #[test]
@@ -2050,6 +2255,9 @@ mod tests {
             created_by: None,
             isolation: None,
             machine_hash: None,
+            cpus: None,
+            memory_mib: None,
+            docker: None,
         };
         assert!(row.online(1_000_000_000 + 60_000));
         assert!(!row.online(1_000_000_000 + 120_000));
@@ -2094,6 +2302,9 @@ mod tests {
             created_by: created_by.map(str::to_owned),
             isolation: None,
             machine_hash,
+            cpus: None,
+            memory_mib: None,
+            docker: None,
         };
         // The same computer, even while the old one still looks online.
         assert!(takes_over(&row(ours.clone(), Some("u1"), at), false, ours.as_deref(), Some("u1"), at));

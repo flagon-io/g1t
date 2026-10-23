@@ -5414,7 +5414,10 @@
         "last_seen_at": "2026-10-06T14:05:40.512Z",
         "created_at": "2026-10-02T09:30:00.000Z",
         "created_by": null,
-        "isolation": "nested-container"
+        "isolation": "nested-container",
+        "cpus": 8,
+        "memory_mib": 12288,
+        "docker": true
       },
       {
         "id": "rnr_01kq2m8v4c7f0h3k6n9q2t5w9a",
@@ -5432,10 +5435,13 @@
         "last_seen_at": "2026-10-06T14:05:40.512Z",
         "created_at": "2026-10-02T09:30:00.000Z",
         "created_by": null,
-        "isolation": "host"
+        "isolation": "host",
+        "cpus": 8,
+        "memory_mib": 16384,
+        "docker": false
       }
     ],
-    "notes": "A repository's list holds its own runners (`repo` set) and the workspace's that its runner group lets it use. A runner is `offline` when it has not polled for 90 seconds."
+    "notes": "A repository's list holds its own runners (`repo` set) and the workspace's that its runner group lets it use. A runner is `offline` when it has not polled for 90 seconds. `cpus`, `memory_mib` and `docker` are what a job on it gets, as it last said: g1t gives a job asking for `ubuntu-latest` to a runner only when it is at least that machine's size."
   },
   "list_runners_for_workspace": {
     "params": {
@@ -5465,7 +5471,10 @@
         "last_seen_at": "2026-10-06T14:05:40.512Z",
         "created_at": "2026-10-02T09:30:00.000Z",
         "created_by": null,
-        "isolation": "nested-container"
+        "isolation": "nested-container",
+        "cpus": 8,
+        "memory_mib": 12288,
+        "docker": true
       },
       {
         "id": "rnr_01kq2m8v4c7f0h3k6n9q2t5w9a",
@@ -5483,7 +5492,10 @@
         "last_seen_at": "2026-10-06T14:05:40.512Z",
         "created_at": "2026-10-02T09:30:00.000Z",
         "created_by": null,
-        "isolation": "host"
+        "isolation": "host",
+        "cpus": 8,
+        "memory_mib": 16384,
+        "docker": false
       }
     ]
   },
@@ -5532,6 +5544,7 @@
       "agents_on_self_hosted": false,
       "agent_labels": ["self-hosted", "linux"],
       "fork_pull_requests": false,
+      "prefer_own_runners": true,
       "inherited": true
     }
   },
@@ -5543,6 +5556,7 @@
       "agents_on_self_hosted": true,
       "agent_labels": ["self-hosted", "linux"],
       "fork_pull_requests": false,
+      "prefer_own_runners": true,
       "inherited": false
     }
   },
@@ -5554,6 +5568,7 @@
       "agents_on_self_hosted": false,
       "agent_labels": ["self-hosted", "linux"],
       "fork_pull_requests": false,
+      "prefer_own_runners": true,
       "inherited": true
     }
   },
@@ -5569,9 +5584,10 @@
       "agents_on_self_hosted": true,
       "agent_labels": ["self-hosted", "linux"],
       "fork_pull_requests": false,
+      "prefer_own_runners": true,
       "inherited": false
     },
-    "notes": "`agents_on_self_hosted` and `agent_labels` keep their names from before g1t ran agents of its own: they now send g1t's own work (pull request checks and merge checks) to your runners with those labels."
+    "notes": "`agents_on_self_hosted` and `agent_labels` keep their names from before g1t ran agents of its own: they now send g1t's own work (pull request checks and merge checks) to your runners with those labels. `prefer_own_runners`, on by default, runs a job asking for one of g1t's Linux labels (`ubuntu-latest`) on one of your runners when one that fits it is free, and on g1t's machines otherwise."
   },
   "list_runner_groups": {
     "params": {
