@@ -184,7 +184,12 @@ test("the TypeScript job type checks, tests and installs only what a change reac
   assert.deepEqual(billing.checks, ["conformance", "ops"]);
   assert.deepEqual(billing.typecheck, []);
   assert.equal(billing.install, "--include-workspace-root -w @g1t/artifacts -w @g1t/contracts");
-  // A push the merge queue tested only type checks, every workspace.
+  // A push the merge queue tested only type checks what it reaches...
+  const landedWeb = plan(["apps/web/app/root.tsx"], true);
+  assert.deepEqual([landedWeb.typecheck, landedWeb.test, landedWeb.checks], [["@g1t/web"], [], []]);
+  assert.equal(landedWeb.whole, false);
+  assert.deepEqual(plan(["crates/kit/src/lib.rs"], true).typecheck, []);
+  // ...and every workspace when what it changes is not known.
   const landed = npmPlan(NPM, { reached: null, checks: checks(null), tested: true });
   assert.deepEqual([landed.test, landed.checks, landed.install, landed.whole], [[], [], "all", true]);
   assert.equal(landed.typecheck.length, NPM.filter((w) => w.scripts.typecheck).length);

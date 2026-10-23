@@ -23,7 +23,8 @@
 //   crates  those of them to test, in the same order: all, some or none
 //   whole   true when that is all of them
 //   tested  true when the merge queue tested this commit (below): the part
-//           compiles its tests, for main's caches, and runs none
+//           compiles the tests of the crates the push changes, for main's
+//           caches, and runs none
 //
 // What a pull request changes is its test merge commit against its first
 // parent, the base branch's tip it was merged into (services/repos
@@ -40,6 +41,14 @@
 // a push is `tested` (--tested writes only that), asked of the API with
 // the job's token (GITHUB_TOKEN, which needs `actions: read`). Any other
 // push, or a question that fails, is not, and CI tests everything.
+//
+// What a tested push changes is its commit against the push's `before`,
+// main's tip until then, fetched when it is deeper than the checkout: only
+// those crates are compiled, which is what sccache and tsc's cache lack.
+// Compiling every crate's tests on every landing kept the caches no
+// warmer and cost about 10 machine-hours a day (flagon-io#437). A lockfile
+// or toolchain change reaches every crate, so the whole build that saves
+// a part's test build still happens when its key changes.
 //
 // A file outside every crate's folder tests the crates that read it
 // (READS), or every crate when the build itself reads it (EVERYTHING), and
@@ -317,7 +326,7 @@ export function npmClosure(graph, names) {
  * What the TypeScript job does for a change: `reached` the workspaces it
  * reaches (`null` for every one, see npmAffected), `checks` (CHECKS) to
  * run, and `tested`, a push the merge queue tested, which only type checks
- * every workspace (for tsc's cache) and runs nothing else. Returns:
+ * what it reaches (for tsc's cache) and runs nothing else. Returns:
  *
  *   typecheck  workspaces whose `typecheck` script runs
  *   test       workspaces whose `test` script runs
@@ -335,7 +344,7 @@ export function npmClosure(graph, names) {
 export const CONFORMANCE_WORKSPACES = ["@g1t/artifacts", "@g1t/chat", "@g1t/notify"];
 
 export function npmPlan(graph, { reached, checks: run, tested = false }) {
-  const all = reached === null || tested;
+  const all = reached === null;
   const names = all ? graph.map((w) => w.name) : reached;
   const has = (script) => graph.filter((w) => names.includes(w.name) && w.scripts?.[script]).map((w) => w.name);
   const typecheck = has("typecheck");
@@ -424,9 +433,17 @@ function eventPayload() {
   return path ? JSON.parse(readFileSync(path, "utf8")) : {};
 }
 
-/** The commit a run's changes are against: a pull request's base tip, or a queue state's. */
-function base() {
+/** The commit a run's changes are against: a pull request's base tip, a queue state's, or a tested push's `before`. */
+function base(tested = false) {
   const event = process.env.GITHUB_EVENT_NAME;
+  if (event === "push" && tested) {
+    const sha = eventPayload().before;
+    if (!sha || /^0+$/.test(sha)) return { why: "the push names no commit before it" };
+    if (spawnSync("git", ["cat-file", "-e", `${sha}^{commit}`], { cwd: ROOT }).status !== 0) {
+      git("fetch", "--no-tags", "--quiet", "--depth=1", "origin", sha);
+    }
+    return { base: sha };
+  }
   if (event === "pull_request") {
     const parents = git("rev-list", "--parents", "-n", "1", "HEAD").trim().split(" ").slice(1);
     return parents.length === 2 ? { base: parents[0] } : { why: "HEAD is not the pull request's test merge commit" };
@@ -443,9 +460,9 @@ function base() {
   return { why: `a ${event ?? "local"} run tests every crate` };
 }
 
-/** The files a pull request's test merge commit, or a merge queue state, changes, or why they are not known. */
-function changedFiles() {
-  const { base: from, why } = base();
+/** The files a pull request's test merge commit, a merge queue state or a tested push changes, or why they are not known. */
+function changedFiles(tested = false) {
+  const { base: from, why } = base(tested);
   if (!from) return { why };
   // Both sides of a rename: the crate it left changed too.
   const files = git("diff", "--name-only", "--no-renames", "-z", from, "HEAD").split("\0").filter(Boolean);
@@ -542,7 +559,7 @@ async function mainNpm() {
   let reached = null;
   let changed = [];
   try {
-    const { files, why } = changedFiles();
+    const { files, why } = changedFiles(queue.tested);
     if (files) {
       reached = npmAffected(graph, files);
       changed = files;
@@ -579,12 +596,13 @@ async function main(args) {
   if (args[0] === "--npm") return mainNpm();
   const part = partCrates(args);
   let test = part;
-  // A push: every crate, compiled, and tested unless the queue did.
+  // A push: every crate, compiled and tested; one the queue tested, the
+  // crates it changes, compiled only.
   const queue = await tested();
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `tested=${queue.tested}\n`);
   if (queue.tested) console.log(queue.why);
   try {
-    const { files, why } = changedFiles();
+    const { files, why } = changedFiles(queue.tested);
     if (files) {
       const meta = spawnSync("cargo", ["metadata", "--no-deps", "--format-version", "1"], { cwd: ROOT, encoding: "utf8", maxBuffer: 1 << 28 });
       if (meta.status !== 0) throw new Error(`cargo metadata: ${(meta.stderr || meta.error?.message || "").trim()}`);

@@ -181,8 +181,11 @@ setup.
 own machine (`deploy/self-host/`), so a change must not need g1t.sh's own
 Cloudflare resources: a new binding is optional in code, or the self-host
 stack provides it. `.g1t/workflows/self-host.yml` builds the stack from
-the commit and runs `deploy/self-host/smoke.sh` against it, on every pull
-request that changes what it builds and nightly on `main`; a failure names the step, and the
+the commit and runs `deploy/self-host/smoke.sh` against it nightly on
+`main`, and on a pull request that changes what the stack is made of (its
+own files, `deploy/stack.jsonc`, a `wrangler.jsonc`, a migration or the
+dependencies). A change to a service's code alone waits for the nightly
+run, so check it with **Run workflow** when you suspect it; a failure names the step, and the
 stack's logs are the run's artifact. CI builds the Rust services first, in
 parallel jobs with the deploy's caches (`scripts/deploy/self-host-builds.mjs`),
 and the image takes them as built (`docker-compose.prebuilt.yml`); on your
@@ -259,8 +262,11 @@ restored longest ago go. So:
   restore.
 - **A push the merge queue landed only warms the caches.** It is the very
   commit CI's `merge_group` run passed on, so it is not tested again: the
-  Rust parts compile their tests (`cargo test --no-run`) and save the test
-  build, TypeScript type checks and saves tsc's build info, and the
+  Rust parts run `cargo test --no-run` for the crates the push changes
+  (against the push's `before`), which keeps sccache current,
+  and a part saves its test build only when it built all of its crates
+  (a lockfile or toolchain change reaches every one); TypeScript type
+  checks the workspaces the push reaches and saves tsc's build info; the
   desktop job passes without building. `scripts/deploy/ci-affected.mjs`
   tells it from a push made directly, which asks the API for a passing
   `merge_group` run of `ci.yml` on that commit; a direct push, or one the
