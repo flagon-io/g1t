@@ -445,6 +445,15 @@ impl Store {
             .await
     }
 
+    /// The repository at an address, as last recorded.
+    pub async fn repo_at(&self, namespace: &str, name: &str) -> Result<Option<RepoRow>> {
+        self.db
+            .prepare("SELECT * FROM repos WHERE namespace = ? AND name = ?")
+            .bind(&[namespace.into(), name.into()])?
+            .first::<RepoRow>(None)
+            .await
+    }
+
     /// Records a repository the first time it is seen, and keeps its
     /// address current. Returns its row.
     pub async fn register(&self, repo_id: &str, namespace: &str, name: &str) -> Result<RepoRow> {
@@ -1069,6 +1078,17 @@ impl Store {
             .bind(&[repo_id.into(), branch.into()])?
             .first::<UpdateRow>(None)
             .await
+    }
+
+    /// Updates still waiting on the sandbox making `branch`: one package's,
+    /// or each of a grouped update's.
+    pub async fn requested_by_branch(&self, repo_id: &str, branch: &str) -> Result<Vec<UpdateRow>> {
+        self.db
+            .prepare("SELECT * FROM updates WHERE repo_id = ? AND branch = ? AND state = 'requested'")
+            .bind(&[repo_id.into(), branch.into()])?
+            .all()
+            .await?
+            .results::<UpdateRow>()
     }
 
     pub async fn update_by_pull(&self, repo_id: &str, pull: u32) -> Result<Option<UpdateRow>> {

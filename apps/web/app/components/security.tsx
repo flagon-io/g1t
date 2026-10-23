@@ -528,14 +528,16 @@ function UpdateStatus({ update, name, pulls, base }: { update: SecurityUpdate; n
         A sandbox is raising {name} to {update.target}.
       </>
     ),
+    // `error` here is what it left behind: a copy held back by what depends on it.
     open: (
       <>
         It raises {name} to {update.target} and lands through your branch's required checks.
+        {update.error && <> {update.error}</>}
       </>
     ),
     merged: (
       <>
-        {name} was raised to {update.target}.
+        {name} was raised to {update.target}.{update.error && <> {update.error}</>}
       </>
     ),
     closed: <>The pull request was closed without merging.</>,
@@ -703,6 +705,7 @@ function PackageItem({
               key={vuln.id}
               vuln={vuln}
               showManifest={manifests.length > 1}
+              showVersion={versions.length > 1}
               activity={activity}
               upkeep={upkeep}
               base={base}
@@ -720,6 +723,7 @@ function PackageItem({
 function AdvisoryItem({
   vuln,
   showManifest,
+  showVersion,
   activity,
   upkeep,
   base,
@@ -729,6 +733,8 @@ function AdvisoryItem({
 }: {
   vuln: Vulnerability;
   showManifest: boolean;
+  /** The package resolves at more than one version: each alert names its own. */
+  showVersion: boolean;
   activity: AlertActivity[];
   upkeep: boolean;
   base: string;
@@ -759,6 +765,7 @@ function AdvisoryItem({
               <ExternalLink size={10} />
             </a>
             <SeverityBadge severity={vuln.severity} />
+            {showVersion && <span className="font-mono text-muted">{vuln.version}</span>}
             {vuln.fixedVersion && <span className="text-faint">fixed in {vuln.fixedVersion}</span>}
             {showManifest && <span className="font-mono text-faint">{vuln.manifest}</span>}
             {vuln.state === "dismissed" && vuln.dismissedReason && <Badge>{dismissLabel(vuln.dismissedReason)}</Badge>}

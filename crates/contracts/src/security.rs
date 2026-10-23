@@ -457,6 +457,12 @@ pub struct SecurityUpdate {
     pub updated_at: String,
 }
 
+/// The exit code of an update's sandbox (crates/runner bump.rs) when the
+/// update needs code changes, not just a lockfile.
+pub const BUMP_NEEDS_CHANGES_EXIT: i32 = 3;
+/// The exit code for a lockfile or ecosystem the sandbox cannot update.
+pub const BUMP_UNSUPPORTED_EXIT: i32 = 4;
+
 /// The prefix every security update's branch starts with.
 pub const UPDATE_BRANCH_PREFIX: &str = "g1t/security/";
 

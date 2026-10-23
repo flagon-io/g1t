@@ -20,13 +20,15 @@
 use std::collections::BTreeMap;
 
 use g1t_contracts::repos::RepoPath;
-use g1t_contracts::security::{BumpArgs, UpdateState, update_branch};
+use g1t_contracts::security::{BUMP_NEEDS_CHANGES_EXIT, BUMP_UNSUPPORTED_EXIT, BumpArgs, UpdateState, update_branch};
+use g1t_contracts::repos::{BlobArgs, BlobView};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::{
     CloseReason, CloseWorkItemArgs, OpenPullArgs, Pull, PullActionArgs, PullDetail, PullStatus, Runtime, ViewArgs, WorkItemActionArgs,
 };
 use g1t_contracts::{Outcome, User};
 use g1t_kit::now_ms;
+use g1t_scan::lockfiles::Lockfile;
 use g1t_scan::osv::{self, Severity};
 use g1t_scan::version;
 use serde_json::Value;
@@ -83,6 +85,55 @@ pub fn cannot_raise(package: &str, target: &str) -> String {
     format!(
         "`{package}` could not be raised to {target} on its own: a package that depends on it may hold it back, or the upgrade needs code changes."
     )
+}
+
+/// Why an update failed when its sandbox stopped before it pushed: what g1t
+/// stopped it for, else what its exit code says. `package` is the one
+/// package of a security update and its target; a version or grouped
+/// update's pull request has none.
+pub fn stopped_why(exit_code: i32, reason: Option<&str>, package: Option<(&str, &str)>) -> String {
+    if let Some(reason) = reason.filter(|reason| !reason.is_empty()) {
+        return format!("The sandbox was stopped before it pushed: {reason}");
+    }
+    match (exit_code, package) {
+        (BUMP_NEEDS_CHANGES_EXIT, Some((package, target))) => cannot_raise(package, target),
+        (BUMP_NEEDS_CHANGES_EXIT, None) => {
+            "The packages could not be raised on their own: a package that depends on one may hold it back, or the upgrade needs code changes.".to_owned()
+        }
+        (BUMP_UNSUPPORTED_EXIT, _) => "g1t cannot update this lockfile or package manager yet.".to_owned(),
+        (code, _) => format!("The sandbox stopped (exit code {code}) before it pushed the update."),
+    }
+}
+
+/// The vulnerable copies a pushed branch still locks: `locked` is each
+/// lockfile's text on the branch, by path (None when it could not be read,
+/// which counts as moved).
+pub fn still_locked<'a>(vulns: &[&'a VulnRow], locked: &BTreeMap<String, Option<String>>) -> Vec<&'a VulnRow> {
+    vulns
+        .iter()
+        .filter(|vuln| {
+            let (Some(Some(text)), Some(lockfile)) = (locked.get(&vuln.manifest), Lockfile::for_path(&vuln.manifest)) else {
+                return false;
+            };
+            lockfile.parse(text).iter().any(|found| found.name == vuln.package && found.version == vuln.version)
+        })
+        .copied()
+        .collect()
+}
+
+/// What a security update that raised only some copies of its package
+/// says about the rest, on its pull request and its alerts.
+pub fn held_note(package: &str, target: &str, held: &[&VulnRow]) -> Option<String> {
+    if held.is_empty() {
+        return None;
+    }
+    let mut copies: Vec<String> = held.iter().map(|vuln| format!("{} in `{}`", vuln.version, vuln.manifest)).collect();
+    copies.sort();
+    copies.dedup();
+    Some(format!(
+        "`{package}` {} is still behind: a package that depends on it holds it below {target}. Its alert stays open until that package moves.",
+        copies.join(", ")
+    ))
 }
 
 /// The pull request's title.
@@ -551,6 +602,15 @@ impl Security {
         let manifests: Vec<&str> = vulns.iter().map(|vuln| vuln.manifest.as_str()).collect();
         let settings = security_settings(&state, &row.ecosystem, &manifests);
         let prefix = settings.map(|entry| pull_text::prefix(commit_message_of(entry).as_ref(), false)).unwrap_or_default();
+        // A copy held back by what depends on it stays where it was (bump.rs
+        // pushes what moved): the pull request says so, and fixes the rest.
+        let held = self.held_back(&repo, after, &vulns).await?;
+        let note = held_note(&row.package, &row.target, &held);
+        let fixing: Vec<&VulnRow> = vulns.iter().filter(|vuln| !held.iter().any(|kept| std::ptr::eq(*kept, **vuln))).copied().collect();
+        let mut body = pull_text(&row.ecosystem, &row.package, &row.target, if fixing.is_empty() { &vulns } else { &fixing });
+        if let Some(note) = &note {
+            body = format!("{note}\n\n{body}");
+        }
         let opened: Outcome<Pull> = g1t_kit::call(
             &self.work,
             "open_pull",
@@ -559,7 +619,7 @@ impl Security {
                 repo: Self::path_of(&repo),
                 item: None,
                 title: prefixed(&prefix, pull_title(&row.package, &row.target)),
-                body: pull_text(&row.ecosystem, &row.package, &row.target, &vulns),
+                body,
                 branch: Some(branch.to_owned()),
                 head_repo: None,
                 agent: String::new(),
@@ -588,7 +648,7 @@ impl Security {
         {
             self.delete_pull_branch(&repo, &Pull { status: PullStatus::Closed, ..found }).await;
         }
-        self.store.set_update(&row, UpdateState::Open, Some(pull.number), None, None).await?;
+        self.store.set_update(&row, UpdateState::Open, Some(pull.number), None, note.as_deref()).await?;
         // Labelled as the entry for its directory says, or `dependencies`
         // and its ecosystem's label; assigned and in a milestone as it says.
         let ecosystem = package_ecosystem(&row.ecosystem).unwrap_or(row.ecosystem.as_str());
@@ -638,6 +698,29 @@ impl Security {
         self.note(&row, "update_opened", Some(g1t_contracts::system::USERNAME), Some(pull.number), None).await
     }
 
+    /// The vulnerable copies the branch pushed at `after` still locks.
+    async fn held_back<'a>(&self, repo: &RepoRow, after: &str, vulns: &[&'a VulnRow]) -> Result<Vec<&'a VulnRow>> {
+        let mut locked = BTreeMap::new();
+        for vuln in vulns {
+            if locked.contains_key(&vuln.manifest) {
+                continue;
+            }
+            let read: Outcome<BlobView> = g1t_kit::call(
+                &self.repos,
+                "blob",
+                &BlobArgs {
+                    path: Self::path_of(repo),
+                    viewer: Some(User::system(&repo.namespace)),
+                    git_ref: after.to_owned(),
+                    file_path: vuln.manifest.clone(),
+                },
+            )
+            .await?;
+            locked.insert(vuln.manifest.clone(), read.into_result().ok().and_then(|blob| blob.text));
+        }
+        Ok(still_locked(vulns, &locked))
+    }
+
     /// A pull request merged or closed: if it is a security update's, where
     /// the update stands now. One whose checks fail stays open for a person
     /// to decide on.
@@ -650,7 +733,8 @@ impl Security {
         }
         match kind {
             "pull.merged" => {
-                self.store.set_update(&row, UpdateState::Merged, Some(number), None, None).await?;
+                // What it left behind, if anything, still says so.
+                self.store.set_update(&row, UpdateState::Merged, Some(number), None, row.error.as_deref()).await?;
                 self.note(&row, "update_merged", actor, Some(number), None).await
             }
             "pull.closed" => {
@@ -659,6 +743,27 @@ impl Security {
             }
             _ => Ok(()),
         }
+    }
+
+    /// `bump.stopped`: the sandbox making an update stopped before it pushed
+    /// its branch. The update fails now, with why, rather than when
+    /// `stalled_updates` finds it; one that moved on since is left alone.
+    pub async fn bump_stopped(&self, namespace: &str, name: &str, branch: &str, exit_code: i32, reason: Option<&str>) -> Result<()> {
+        let Some(repo) = self.store.repo_at(namespace, name).await? else {
+            return Ok(());
+        };
+        if let Some(row) = self.store.update_pull_by_branch(&repo.repo_id, branch).await?
+            && row.state() == UpdateState::Requested
+        {
+            let why = stopped_why(exit_code, reason, None);
+            self.store.set_update_pull(&row.id, UpdateState::Failed, row.pull(), None, Some(&why)).await?;
+        }
+        for row in self.store.requested_by_branch(&repo.repo_id, branch).await? {
+            let why = stopped_why(exit_code, reason, Some((&row.package, &row.target)));
+            self.store.set_update(&row, UpdateState::Failed, row.pull(), None, Some(&why)).await?;
+            self.note(&row, "update_failed", Some(g1t_contracts::system::USERNAME), None, Some(&why)).await?;
+        }
+        Ok(())
     }
 
     /// Updates whose sandbox never pushed: raising the version did not
@@ -711,6 +816,43 @@ mod tests {
         let found = crate::config::read(&source);
         assert!(found.problems.is_empty(), "{:?}", found.problems);
         found.config
+    }
+
+    #[test]
+    fn a_copy_held_back_is_named() {
+        let lock = |versions: &[&str]| {
+            let packages: Vec<String> = versions
+                .iter()
+                .enumerate()
+                .map(|(i, version)| format!("\"{}node_modules/lodash\": {{\"version\": \"{version}\"}}", if i == 0 { "" } else { "node_modules/x/" }))
+                .collect();
+            format!("{{\"lockfileVersion\": 3, \"packages\": {{\"\": {{}}, {}}}}}", packages.join(", "))
+        };
+        let (old, new) = (row("3.10.1", "4.17.21"), row("4.17.20", "4.17.21"));
+        let vulns = [&old, &new];
+        let mut locked = BTreeMap::new();
+        locked.insert("web/package-lock.json".to_owned(), Some(lock(&["4.17.21", "3.10.1"])));
+        let held = still_locked(&vulns, &locked);
+        assert_eq!(held.iter().map(|vuln| vuln.version.as_str()).collect::<Vec<_>>(), ["3.10.1"]);
+        let note = held_note("lodash", "4.17.21", &held).unwrap();
+        assert!(note.starts_with("`lodash` 3.10.1 in `web/package-lock.json` is still behind"), "{note}");
+        // Everything moved, or the lockfile could not be read: nothing held.
+        locked.insert("web/package-lock.json".to_owned(), Some(lock(&["4.17.21"])));
+        assert!(still_locked(&vulns, &locked).is_empty());
+        locked.insert("web/package-lock.json".to_owned(), None);
+        assert!(still_locked(&vulns, &locked).is_empty());
+        assert_eq!(held_note("lodash", "4.17.21", &[]), None);
+    }
+
+    #[test]
+    fn a_stopped_sandbox_says_why() {
+        assert_eq!(stopped_why(3, None, Some(("zod", "4.6.6"))), cannot_raise("zod", "4.6.6"));
+        assert!(stopped_why(3, None, None).starts_with("The packages could not be raised"));
+        assert!(stopped_why(4, None, Some(("zod", "4.6.6"))).contains("cannot update this lockfile"));
+        assert!(stopped_why(1, None, None).contains("exit code 1"));
+        // What g1t stopped it for wins over the exit code it passed on.
+        assert_eq!(stopped_why(137, Some("It ran past 15 minutes."), None), "The sandbox was stopped before it pushed: It ran past 15 minutes.");
+        assert!(stopped_why(3, Some(""), None).starts_with("The packages"));
     }
 
     #[test]

@@ -616,6 +616,14 @@ export type EventPayloads = {
     metrics: Record<string, unknown> | null;
   };
   /**
+   * A security or version update's sandbox stopped before it pushed its
+   * branch, so no pull request opens. The security service fails the
+   * update with why. Published with no `repoId`: g1t's own bookkeeping.
+   * `exitCode` is the bump's (crates/runner bump.rs: 3 needs code changes,
+   * 4 unsupported); `reason` is set when g1t stopped it (a time cap).
+   */
+  "bump.stopped": { namespace: string; name: string; branch: string; exitCode: number; reason: string | null };
+  /**
    * Docs (services/artifacts): a page was made. Published with no `repoId`, so
    * a page (which may be in a private space) never reaches a repository's
    * timeline or webhooks; `actor` is the user's or agent's id. Readers

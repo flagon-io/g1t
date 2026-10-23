@@ -150,7 +150,8 @@ pub const ROUTES: &[(&str, &[&str])] = &[
     ("SUBSCRIBER_BILLING", &[]),
     // Secret and dependency scans, and version update pull requests
     // (security/src/lib.rs on_event). `work.migrated` rewrites the work
-    // items kept by their old issue numbers.
+    // items kept by their old issue numbers; `bump.stopped` fails an update
+    // whose sandbox never pushed.
     (
         "SUBSCRIBER_SECURITY",
         &[
@@ -164,6 +165,7 @@ pub const ROUTES: &[(&str, &[&str])] = &[
             "repo.created",
             "repo.visibility_changed",
             "work.migrated",
+            "bump.stopped",
         ],
     ),
     // The site-wide search index (search/src/index.rs).
@@ -210,13 +212,14 @@ mod tests {
     use super::*;
 
     /// Types published on the bus that hooks are not offered.
-    const UNOFFERED: [&str; 29] = [
+    const UNOFFERED: [&str; 30] = [
         // The one-off move of issues into work items.
         "work.migrated",
         "pull.mergecheck",
         "pull.mergeability",
         "deployment.review_requested",
         "abuse.flagged",
+        "bump.stopped",
         "invite.created",
         "invite.redeemed",
         "user.updated",

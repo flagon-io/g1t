@@ -179,9 +179,9 @@ type Run =
   /** A build of one commit, deployed to g1t.page. */
   | { kind: "deploy"; deployId: string; token: string }
   /**
-   * A security update: one package raised in its lockfiles and pushed to
-   * its branch. The security service opens the pull request when it hears
-   * the push, so a failure has no one to tell.
+   * A security or version update: packages raised in their lockfiles and
+   * pushed to its branch. The security service opens the pull request when
+   * it hears the push, and fails the update when it hears `bump.stopped`.
    */
   | { kind: "bump"; repo: RepoPath; branch: string }
   /**
@@ -891,8 +891,22 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       await answered("job_report", response);
       return;
     }
-    // Nothing was pushed, so no pull request opens; why is in its log.
-    if (run.kind === "bump") return;
+    if (run.kind === "bump") {
+      // Nothing was pushed, so no pull request opens: the security service
+      // fails the update now rather than when its sweep finds it stalled.
+      if (!this.env.EVENTS) return;
+      await eventsClient(this.env.EVENTS).publish([
+        {
+          type: "bump.stopped",
+          source: "runner",
+          // g1t's own bookkeeping: never on a repository's timeline or webhooks.
+          repoId: null,
+          actor: null,
+          data: { namespace: run.repo.namespace, name: run.repo.name, branch: run.branch, exitCode, reason: why },
+        },
+      ]);
+      return;
+    }
     if (run.kind === "backup") {
       // Refused harmlessly if the sandbox reported before it stopped; the
       // job is otherwise tried again later tonight.
