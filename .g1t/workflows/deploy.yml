@@ -87,10 +87,11 @@ concurrency:
 env:
   CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
   CARGO_TERM_COLOR: never
-  # Every job runs on ubuntu-latest's 2 vCPU and 8 GiB; Cargo is held to
-  # two compilers at once even where the machine reports more cores, so a
-  # Worker's link (thin LTO) has the memory to itself.
-  CARGO_BUILD_JOBS: "2"
+  # One compiler per vCPU of ubuntu-latest, as g1t sizes it like GitHub:
+  # 4 vCPU in a public repository, 2 in a private one. Set, not left to
+  # Cargo, because a container may report the host's CPUs, not its share,
+  # and a Worker's link (thin LTO) needs the memory the rest leave it.
+  CARGO_BUILD_JOBS: ${{ github.event.repository.private && '2' || '4' }}
   WRANGLER_SEND_METRICS: "false"
 
 jobs:

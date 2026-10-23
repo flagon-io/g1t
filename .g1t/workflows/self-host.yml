@@ -1,27 +1,16 @@
 # Self-hosting keeps working: the compose stack (deploy/self-host/) built
 # from this commit, and deploy/self-host/smoke.sh run against it from end to
-# end, every cron included. On a change to anything the stack builds or
-# deploys, nightly on main (what changed since, all at once), and by hand.
+# end, every cron included. On a pull request that changes anything the
+# stack builds or deploys, nightly on main (what changed since, all at
+# once), and by hand. Not on each push to main: the pull request ran it,
+# and a merge's ten jobs here held the deploy's builds back from the
+# workspace's share of machines (#417).
 # A failure names the step that broke (smoke.sh prints each), and the
 # stack's logs are kept as an artifact. See CONTRIBUTING.md, "Self-hosting".
 name: Self-host
 
 on:
   pull_request:
-    branches: [main]
-    paths:
-      - apps/**
-      - crates/**
-      - services/**
-      - packages/**
-      - deploy/**
-      - scripts/deploy/**
-      - Cargo.toml
-      - Cargo.lock
-      - package.json
-      - package-lock.json
-      - .g1t/workflows/self-host.yml
-  push:
     branches: [main]
     paths:
       - apps/**
