@@ -8,6 +8,29 @@
  * never throws. Pure, so it is tested on its own.
  */
 
+/**
+ * The sandbox of one start of a workflow job. Each start gets its own: a
+ * job that never reported, or lost its machine, goes back in the queue and
+ * its sandbox is stopped, and that stop finishes later, in the sandbox's
+ * alarm. When every start shared `actions:<job>`, a job started again
+ * within those seconds (by another job's finish, not the sweep) was in the
+ * same sandbox, and the stop meant for the lost start killed it
+ * (flagon-io#426: rust-7 of Self-host, 2026-10-23 07:22:49 → 07:23:05).
+ * Without a start (an actions service from before), the job's one sandbox.
+ */
+export function actionsSandboxName(job: string, start?: string | null): string {
+  return start ? `actions:${job}@${start}` : `actions:${job}`;
+}
+
+/**
+ * The sandboxes a stop of a job's start reaches: that start's, and the
+ * job's one sandbox from before starts had their own, which a job started
+ * since never uses.
+ */
+export function actionsSandboxesToStop(job: string, start?: string | null): string[] {
+  return start ? [actionsSandboxName(job, start), actionsSandboxName(job)] : [actionsSandboxName(job)];
+}
+
 /** How long `tellStopped` waits before its second try. */
 export const RETRY_AFTER_MS = 500;
 

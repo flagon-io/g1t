@@ -1097,6 +1097,11 @@ pub struct StartJobArgs {
     /// its HTTP and HTTPS through the Worker, which fills them in.
     #[serde(default)]
     pub brokered: bool,
+    /// This start of the job (its `started_at`): each start gets a sandbox
+    /// of its own, so stopping one that was lost cannot reach the next
+    /// (flagon-io#426). `stop_actions_job` names the same start.
+    #[serde(default)]
+    pub start: Option<String>,
 }
 
 // ── The machine catalogue ─────────────────────────────────────────────────

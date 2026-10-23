@@ -38,6 +38,8 @@ import { BACKUP_MINUTES, backupEnv, backupPace, backupSandboxName } from "./back
 import { holdCredentials, revokeCredentials, runCredential } from "./credentials";
 import { cancelTask, enqueueTask, handedOverStep, selfHostedRoute, taskEnv, taskRepo } from "./self-hosted";
 import {
+  actionsSandboxesToStop,
+  actionsSandboxName,
   answered,
   capReached,
   describeError,
@@ -454,6 +456,9 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       await revokeCredentials(this.env.IDENTITY, this.ctx.storage);
       if (tracked) await this.closeRun("failed", `The sandbox could not start: ${String(error)}`);
       await this.settle(0);
+      // It never ran: nothing is metered, and a stop that follows (its
+      // sandbox destroyed) has nothing to report.
+      await this.ctx.storage.delete(["meter", "started", "run"]);
       throw error;
     }
   }
@@ -974,6 +979,8 @@ type ActionsJobArgs = {
   instance?: string | null;
   /** Whether it may be given brokered secrets, which its requests need filled in. */
   brokered?: boolean;
+  /** This start of the job: each start has its own sandbox (`actionsSandboxName`). */
+  start?: string | null;
 };
 
 export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
@@ -988,15 +995,18 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
       return Response.json(await this.startActionsJob((await request.json()) as ActionsJobArgs));
     }
     if (request.method === "POST" && pathname === "/rpc/stop_actions_job") {
-      const args = (await request.json()) as { job: string };
-      // Whichever machine it asked for: the job's object in every namespace.
+      const args = (await request.json()) as { job: string; start?: string | null };
+      // Whichever machine it asked for: the start's object in every
+      // namespace, never a later start's.
       await Promise.all(
-        Object.keys(SANDBOX_BINDINGS).map((className) => {
+        Object.keys(SANDBOX_BINDINGS).flatMap((className) => {
           const namespace = sandboxNamespace(this.env, className) as unknown as DurableObjectNamespace<AttemptSandbox>;
-          return namespace
-            .get(namespace.idFromName(`actions:${args.job}`))
-            .destroy()
-            .catch(() => undefined);
+          return actionsSandboxesToStop(args.job, args.start).map((name) =>
+            namespace
+              .get(namespace.idFromName(name))
+              .destroy()
+              .catch(() => undefined),
+          );
         }),
       );
       return Response.json(ok(true));
@@ -1129,7 +1139,7 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
       await this.release(admitted.held);
       return fail("invalid", `Not started: ${instance.label} machines are not available here.`);
     }
-    const sandbox = namespace.get(namespace.idFromName(`actions:${args.job}`));
+    const sandbox = namespace.get(namespace.idFromName(actionsSandboxName(args.job, args.start)));
     // The statement line says what it ran on; billing adds the minutes on
     // the machine it is charged as.
     const on = instance === STANDARD_INSTANCE ? "" : billed === instance ? ` on ${instance.label}` : ` on the ${instance.machine} machine`;
@@ -1161,6 +1171,12 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
         },
       });
     } catch (error) {
+      // This start's own sandbox is done with: left alone, the containers
+      // library goes on trying to start its container from its alarm, and
+      // could take a machine for a start nobody waits on (#426). Only a
+      // start of its own: the job's one sandbox is the one it starts in
+      // again.
+      if (args.start) await sandbox.destroy().catch(() => undefined);
       // No machine free: the actions service puts the job back in the
       // queue for its next sweep. What was reserved is given back already.
       if (noMachine(error)) {
