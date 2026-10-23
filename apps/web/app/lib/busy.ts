@@ -1,7 +1,7 @@
 /**
  * A button at work, for a button that asks the desktop app to do
  * something whose effect shows later, in a status the app sends: Retry,
- * Start, Stop, Check for runner updates, Restart now. From the click it is
+ * Start, Stop, Check for runner updates. From the click it is
  * busy (a spinner, pressed no more, `aria-busy`) until the status it waits
  * on changes, the app says it couldn't, or `BUSY_LIMIT` passes with no
  * change, so a press is never seen to do nothing and never leaves a

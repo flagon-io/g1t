@@ -17,6 +17,7 @@ import {
   hostOf,
   platformWords,
   saveSetting,
+  stayed,
   updateLine,
 } from "../lib/desktop-settings";
 import { cn } from "../lib/cn";
@@ -319,8 +320,7 @@ function Notifications({ view, change }: { view: DesktopSettingsView; change: Ch
 function WindowSection({ view, change, fail }: { view: DesktopSettingsView; change: Change; fail: Fail }) {
   const words = platformWords(view.platform);
   const zoomId = useId();
-  const restart = useBusy(String(view.titleBarChanged), fail);
-  const restartForTools = useBusy(String(view.developerToolsChanged), fail);
+  const restart = useRestart(fail);
   return (
     <>
       <SwitchCard title="Use the system's title bar" checked={view.systemTitleBar} onCheckedChange={(on) => change({ systemTitleBar: on })}>
@@ -330,12 +330,12 @@ function WindowSection({ view, change, fail }: { view: DesktopSettingsView; chan
         <SettingCard
           title="Restart to change the title bar"
           control={
-            <Button size="sm" variant="accent" busy={restart.busy} onClick={() => restart.run(() => desktopSettings()?.restart())}>
+            <Button size="sm" variant="accent" busy={restart.restarting} onClick={() => restart.run(() => desktopSettings()?.restart())}>
               Restart now
             </Button>
           }
         >
-          g1t opens again where you were.
+          {restart.restarting ? "Restarting…" : "g1t opens again where you were."}
         </SettingCard>
       )}
       <SettingCard
@@ -365,16 +365,44 @@ function WindowSection({ view, change, fail }: { view: DesktopSettingsView; chan
         <SettingCard
           title={view.developerTools ? "Restart to turn on developer tools" : "Restart to turn off developer tools"}
           control={
-            <Button size="sm" variant="accent" busy={restartForTools.busy} onClick={() => restartForTools.run(() => desktopSettings()?.restart())}>
+            <Button size="sm" variant="accent" busy={restart.restarting} onClick={() => restart.run(() => desktopSettings()?.restart())}>
               Restart now
             </Button>
           }
         >
-          g1t opens again where you were.
+          {restart.restarting ? "Restarting…" : "g1t opens again where you were."}
         </SettingCard>
       )}
     </>
   );
+}
+
+/**
+ * A Restart now: "Restarting…" from the press until g1t goes, which it
+ * does at once, its windows with it. If a job is running on this computer
+ * the app asks first, and the person may keep g1t open: then the button
+ * is given back.
+ */
+function useRestart(fail: Fail) {
+  const [restarting, setRestarting] = useState(false);
+  const run = useCallback(
+    (work: () => Promise<string | void> | undefined) => {
+      setRestarting(true);
+      Promise.resolve()
+        .then(work)
+        .then(
+          (answer) => {
+            if (stayed(answer)) setRestarting(false);
+          },
+          (error: unknown) => {
+            setRestarting(false);
+            fail(error);
+          },
+        );
+    },
+    [fail],
+  );
+  return { restarting, run };
 }
 
 /** Where a check for updates stands: under way, and what it last said that the view doesn't. */
@@ -420,7 +448,7 @@ function useChecking(
 }
 
 function Updates({ view, change, checking, fail }: { view: DesktopSettingsView; change: Change; checking: Checking; fail: Fail }) {
-  const restart = useBusy(view.updateReady ?? "", fail);
+  const restart = useRestart(fail);
   const { said, look } = checking;
   return (
     <>
@@ -432,7 +460,7 @@ function Updates({ view, change, checking, fail }: { view: DesktopSettingsView; 
         control={
           <>
             {view.updateReady && (
-              <Button size="sm" variant="accent" busy={restart.busy} onClick={() => restart.run(() => desktopSettings()?.restartToUpdate())}>
+              <Button size="sm" variant="accent" busy={restart.restarting} onClick={() => restart.run(() => desktopSettings()?.restartToUpdate())}>
                 Restart now
               </Button>
             )}
@@ -442,7 +470,7 @@ function Updates({ view, change, checking, fail }: { view: DesktopSettingsView; 
           </>
         }
       >
-        <span aria-live="polite">{restart.busy ? "Installing…" : (said ?? updateLine(view))}</span>
+        <span aria-live="polite">{restart.restarting ? "Restarting…" : (said ?? updateLine(view))}</span>
       </SettingCard>
     </>
   );
