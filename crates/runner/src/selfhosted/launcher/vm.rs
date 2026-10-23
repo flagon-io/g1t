@@ -342,7 +342,9 @@ impl Backend for DiskVm {
         }
         merged.stop = given.stop.or(merged.stop);
         merged.sizes = given.sizes.or(merged.sizes);
-        merged.hosted_image = given.hosted_image.or(merged.hosted_image);
+        if given.hosted_image.is_some() {
+            (merged.hosted_image, merged.hosted_image_size) = (given.hosted_image, given.hosted_image_size);
+        }
         if given.computer_cpus > 0 {
             (merged.computer_cpus, merged.computer_memory_mib) = (given.computer_cpus, given.computer_memory_mib);
         }

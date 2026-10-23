@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, anyhow, bail};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use super::api::download;
@@ -57,6 +57,21 @@ pub struct SandboxRelease {
     /// `vm-arm64-disk` (a VM's boot files and its system disk, `.gz`).
     #[serde(default)]
     pub files: std::collections::BTreeMap<String, SandboxFile>,
+    /// g1t's machine image, which jobs asking for one of g1t's machines run
+    /// in, by architecture (`x64` alone: it is built for amd64), by digest
+    /// (`g1t.sh/flagon-io/g1t-hosted@sha256:…`). Empty in releases from
+    /// before it.
+    #[serde(default)]
+    pub hosted_images: std::collections::BTreeMap<String, HostedImage>,
+}
+
+/// g1t's machine image in a release, and its size unpacked, for the
+/// runner's word on pulling it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostedImage {
+    pub image: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

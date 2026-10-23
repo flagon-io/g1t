@@ -19,7 +19,7 @@
     "test:ops": "node --test \"scripts/ops/*.test.mjs\"",
     "test:conformance": "node --test \"conformance/*.test.mjs\"",
     "test:agent-readiness": "npm run build -w @g1t/docs && node --test \"scripts/agent-resources.test.mjs\" \"scripts/mcp-readiness.test.mjs\"",
-    "test:release": "node --test \"scripts/cli-homebrew.test.mjs\" \"scripts/desktop-release.test.mjs\" \"scripts/mobile-release.test.mjs\" \"scripts/cli-release.test.mjs\" \"scripts/plugins-release.test.mjs\""
+    "test:release": "node --test \"scripts/cli-homebrew.test.mjs\" \"scripts/desktop-release.test.mjs\" \"scripts/mobile-release.test.mjs\" \"scripts/cli-release.test.mjs\" \"scripts/plugins-release.test.mjs\" \"scripts/runner-release.test.mjs\" \"scripts/hosted-image.test.mjs\""
   },
   "devDependencies": {
     "prettier": "3.6.2",

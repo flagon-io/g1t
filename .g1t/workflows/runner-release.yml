@@ -1,8 +1,9 @@
 # Releases the self-hosted runner, g1t-runner (crates/runner): builds it for
 # Linux, macOS and Windows on x64 and arm64, pushes its container image,
-# builds the images `g1t-runner sandbox` runs on people's own computers,
-# signs the release (binaries and sandbox images in one manifest), and
-# publishes it to g1t.sh/downloads/runner/ (the g1t-downloads R2 bucket).
+# copies g1t's machine image to g1t.sh for runners to run jobs asking for
+# g1t's machines in, builds the images `g1t-runner sandbox` runs on
+# people's own computers, signs the release (binaries and sandbox images
+# in one manifest), and publishes it to g1t.sh/downloads/runner/ (the g1t-downloads R2 bucket).
 # Runners already out there update themselves to it.
 #
 # A release is a tag `runner-v<version>`, where the version is the one in
@@ -180,9 +181,54 @@ jobs:
           digest="$(docker buildx imagetools inspect "$IMAGE:$version" --format '{{json .Manifest}}' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).digest))')"
           echo "runner_image=$IMAGE@$digest" >> "$GITHUB_OUTPUT"
 
+  hosted:
+    # g1t's machine image (services/runner/base.json, about 5.6 GB, amd64),
+    # which jobs asking for g1t's machines run in on a workspace's own
+    # runner, copied from Cloudflare's private registry to the public
+    # g1t.sh/flagon-io/g1t-hosted under the base's tag, unless g1t.sh has
+    # its digest already (scripts/hosted-image.mjs). Registry to registry:
+    # nothing is pulled here, so the machine's disk is no matter.
+    name: g1t's machine image
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      deployment: false
+    timeout-minutes: 45
+    # Its token pushes the image to g1t's registry.
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      # By digest, which the sandbox's manifest names.
+      hosted_image: ${{ steps.copy.outputs.hosted_image }}
+      hosted_image_size: ${{ steps.copy.outputs.hosted_image_size }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache npm's downloads
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.npm
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-full-${{ runner.os }}-
+      # Wrangler gives the short-lived credentials for Cloudflare's registry.
+      - name: Install Wrangler
+        run: node scripts/deploy/npm-ci.mjs --prefer-offline --workspaces=false --no-audit --no-fund
+      - name: Copy it to g1t.sh
+        id: copy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          G1T_TOKEN: ${{ secrets.G1T_TOKEN }}
+        run: |
+          node --test scripts/hosted-image.test.mjs
+          node scripts/hosted-image.mjs publish
+
   sandbox:
     name: Sandbox images
-    needs: [binaries, image]
+    needs: [binaries, image, hosted]
+    # Without g1t's machine image (its copy failed), the sandbox section
+    # names none, and sandboxes' runners take no jobs asking for g1t's
+    # machines until a release that does.
+    if: ${{ always() && needs.binaries.result == 'success' && needs.image.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -214,6 +260,8 @@ jobs:
       - name: The manifest's sandbox section
         env:
           RUNNER_SANDBOX_IMAGE: ${{ needs.image.outputs.runner_image }}
+          RUNNER_HOSTED_IMAGE: ${{ needs.hosted.outputs.hosted_image }}
+          RUNNER_HOSTED_IMAGE_SIZE: ${{ needs.hosted.outputs.hosted_image_size }}
         run: |
           version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/runner/Cargo.toml | head -1)"
           node scripts/sandbox-image.mjs section --dir "target/runner-release/$version/"

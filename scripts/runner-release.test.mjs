@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { createPrivateKey } from "node:crypto";
 
 import { TARGETS, keygen, manifest, sha256, signBytes, verifyBytes, version } from "./runner-release.mjs";
-import { sandboxFiles, section } from "./sandbox-image.mjs";
+import { hostedImages, sandboxFiles, section } from "./sandbox-image.mjs";
 
 test("a release is signed with the private key and checked with the raw public key", () => {
   const keys = keygen();
@@ -57,6 +57,22 @@ test("the sandbox's images join the signed manifest, and one that is missing is 
     assert.equal(m.sandbox.files["wsl-x64"].name, "g1t-sandbox-wsl-x64.tar.gz");
     writeFileSync(join(dir, "sandbox.json"), JSON.stringify({ runner_image: null, files: { "vm-x64-disk": { name: "gone.raw.gz", sha256: "00" } } }));
     assert.throws(() => manifest(dir, "0.3.0"), /gone\.raw\.gz/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the sandbox section names g1t's machine image by digest, for x64 alone", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "runner-release-hosted-"));
+  try {
+    const image = `g1t.sh/flagon-io/g1t-hosted@sha256:${"d5".repeat(32)}`;
+    const s = await section(dir, "g1t.sh/flagon-io/g1t-runner@sha256:ab", image, "5636544756");
+    assert.deepEqual(s.hosted_images, { x64: { image, size: 5636544756 } });
+    writeFileSync(join(dir, "sandbox.json"), JSON.stringify(s));
+    assert.deepEqual(manifest(dir, "0.3.0").sandbox.hosted_images.x64.image, image);
+    assert.deepEqual((await section(dir, null, null, null)).hosted_images, {}, "none published: none named");
+    assert.deepEqual(hostedImages(image, ""), { x64: { image, size: null } });
+    assert.throws(() => hostedImages("g1t.sh/flagon-io/g1t-hosted:base-1"), /by digest/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

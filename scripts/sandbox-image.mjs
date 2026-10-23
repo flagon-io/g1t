@@ -7,6 +7,7 @@
 //   node scripts/sandbox-image.mjs build --arch x64 --runner target/runner-release/0.3.0/g1t-runner-linux-x64 \
 //       [--kind wsl|vm|all] [--out DIR] [--version 0.3.0]
 //   node scripts/sandbox-image.mjs section --dir DIR [--runner-image g1t.sh/flagon-io/g1t-runner@sha256:…]
+//       [--hosted-image g1t.sh/flagon-io/g1t-hosted@sha256:… [--hosted-image-size BYTES]]
 //
 // What it makes, in --out (default target/runner-release/<version>/):
 //
@@ -17,7 +18,9 @@
 //
 // `section` prints the manifest's `sandbox` section for the files in a
 // folder; runner-release.mjs `build` and `sign` take it from sandbox.json
-// there. Building needs Docker with buildx (and QEMU's emulators for the
+// there. It names g1t's machine image too (scripts/hosted-image.mjs), by
+// architecture: amd64 alone, so `hosted_images` has only `x64`, and an
+// arm64 sandbox's runner takes no jobs asking for g1t's machines. Building needs Docker with buildx (and QEMU's emulators for the
 // other architecture); the VM's disk is made with mke2fs -d inside a
 // container, so nothing needs root on the machine.
 
@@ -51,8 +54,23 @@ const sha256File = async (path) => {
   return hash.digest("hex");
 };
 
+/**
+ * g1t's machine image by architecture, as the sandbox section names it: it
+ * is built for amd64 alone (services/runner/base/Dockerfile).
+ */
+export function hostedImages(image, size) {
+  if (!image) return {};
+  if (!/@sha256:[0-9a-f]{64}$/.test(image)) throw new Error(`g1t's machine image is named by digest, not ${image}`);
+  return { x64: { image, size: Number(size) || null } };
+}
+
 /** The manifest's `sandbox` section for the sandbox files in `dir`. */
-export async function section(dir, runnerImage = process.env.RUNNER_SANDBOX_IMAGE || null) {
+export async function section(
+  dir,
+  runnerImage = process.env.RUNNER_SANDBOX_IMAGE || null,
+  hostedImage = process.env.RUNNER_HOSTED_IMAGE || null,
+  hostedSize = process.env.RUNNER_HOSTED_IMAGE_SIZE || null,
+) {
   const files = {};
   for (const arch of ARCHES) {
     for (const [key, name] of Object.entries(sandboxFiles(arch))) {
@@ -60,7 +78,7 @@ export async function section(dir, runnerImage = process.env.RUNNER_SANDBOX_IMAG
       if (existsSync(path)) files[key] = { name, sha256: await sha256File(path), size: statSync(path).size };
     }
   }
-  return { runner_image: runnerImage, files };
+  return { runner_image: runnerImage, hosted_images: hostedImages(hostedImage, hostedSize), files };
 }
 
 function run(command, args, options = {}) {
@@ -172,7 +190,12 @@ if (process.argv[1]?.replaceAll("\\", "/").endsWith("scripts/sandbox-image.mjs")
       }
       case "section": {
         const dir = option("dir") ?? join(ROOT, "target", "runner-release", version());
-        const s = await section(dir, option("runner-image") ?? process.env.RUNNER_SANDBOX_IMAGE ?? null);
+        const s = await section(
+          dir,
+          option("runner-image") ?? process.env.RUNNER_SANDBOX_IMAGE ?? null,
+          option("hosted-image") ?? process.env.RUNNER_HOSTED_IMAGE ?? null,
+          option("hosted-image-size") ?? process.env.RUNNER_HOSTED_IMAGE_SIZE ?? null,
+        );
         writeFileSync(join(dir, "sandbox.json"), `${JSON.stringify(s, null, 2)}\n`);
         console.log(JSON.stringify(s, null, 2));
         break;

@@ -38,6 +38,9 @@ pub const DEFAULT_IMAGE: &str = "node:24-bookworm";
 /// g1t's runner image, for jobs asking for one of g1t's machines: what the
 /// desktop app's sandbox passes, over the configuration's `hosted_image`.
 pub const HOSTED_IMAGE_ENV: &str = "G1T_HOSTED_IMAGE";
+/// Its size unpacked, as the sandbox's release says, for the words on
+/// pulling it (hosted.rs).
+pub const HOSTED_IMAGE_SIZE_ENV: &str = "G1T_HOSTED_IMAGE_SIZE";
 /// The most processes in a job's container, unless the runner says.
 pub const DEFAULT_PIDS_LIMIT: u32 = 4096;
 
@@ -108,7 +111,7 @@ impl JobEngine {
 }
 
 /// `docker`, at the runner's own engine when it has one.
-fn docker() -> Command {
+pub(super) fn docker() -> Command {
     #[cfg(unix)]
     return super::engine::docker();
     #[cfg(not(unix))]
@@ -461,7 +464,7 @@ pub fn job_image(config: &Config, work: &Assignment, hosted: Option<String>) -> 
         let Some(image) = hosted else {
             bail!("this job asked for one of g1t's machines, and this runner has no g1t runner image to run it in: it should not have been given it");
         };
-        return Ok((image.clone(), format!("g1t's runner image ({image})")));
+        return Ok((image.clone(), format!("g1t's machine image ({image})")));
     }
     let image = config.image.clone().unwrap_or_else(|| DEFAULT_IMAGE.to_owned());
     Ok((image.clone(), image))
@@ -472,6 +475,14 @@ fn in_docker(config: &Config, isolation: Isolation, folder: &Path, work: &Assign
     #[cfg(unix)]
     if super::engine::in_use() {
         super::engine::ensure_running()?;
+    }
+    // g1t's machine image is pulled before the runner takes such jobs
+    // (hosted.rs); one removed since is pulled as the job starts, and "Set
+    // up job" says why it waited.
+    if work.image.is_none() && work.size.is_some() && !super::hosted::present(&image) {
+        let size = super::hosted::size_from_env();
+        log(&format!("{} for {}.", super::hosted::pulling_said(size), work.name));
+        env.insert(JOB_NOTICE.to_owned(), super::hosted::pulled_in_job(size));
     }
     let harness = update::linux_harness(config, folder)?;
     let name = container_name(&work.id);
@@ -868,7 +879,7 @@ mod tests {
         work.size = g1t_contracts::runners::OfferedSize::of("2-core").assigned();
         let (image, said) = job_image(&config, &work, hosted.clone()).unwrap();
         assert_eq!(image, "g1t.sh/flagon-io/g1t-runner-hosted@sha256:ab");
-        assert!(said.starts_with("g1t's runner image"));
+        assert!(said.starts_with("g1t's machine image"));
         assert!(job_image(&config, &work, None).unwrap_err().to_string().contains("no g1t runner image"));
         work.image = Some("rust:1".into());
         assert_eq!(job_image(&config, &work, hosted).unwrap().0, "rust:1", "its own container: first");
