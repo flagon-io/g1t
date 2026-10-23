@@ -187,9 +187,9 @@ jobs:
     # runner, copied from Cloudflare's private registry to the public
     # g1t.sh/flagon-io/g1t-hosted under the base's tag, unless g1t.sh has
     # its digest already (scripts/hosted-image.mjs). Registry to registry:
-    # slow (about 0.4 MB/s a layer into g1t.sh, several at once), but each
-    # layer that lands stays, so a re-run goes on from there.
-    # nothing is pulled here, so the machine's disk is no matter.
+    # nothing is pulled here, so the machine's disk is no matter. It is
+    # slow (about 0.4 MB/s a layer into g1t.sh, so several go at once), but
+    # each layer that lands stays, and a re-run goes on from there.
     name: g1t's machine image
     runs-on: ubuntu-latest
     environment:
