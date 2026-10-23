@@ -103,12 +103,13 @@ jobs:
       # pile up. Every cargo command below compiles with it, so the cache
       # entries it saves are built the same way.
       RUSTFLAGS: -D warnings
-      # Two of everything, the machine's vCPUs: rustc and the linker each
-      # take a gigabyte or more for a large crate, and a container may
+      # One of everything per vCPU of ubuntu-latest (4 in a public
+      # repository, 2 in a private one, as on GitHub): rustc and the linker
+      # each take a gigabyte or more for a large crate, and a container may
       # report the host's CPUs, not its share, so neither Cargo nor the
-      # tests take that many at once.
-      CARGO_BUILD_JOBS: 2
-      RUST_TEST_THREADS: 2
+      # tests take more at once.
+      CARGO_BUILD_JOBS: ${{ github.event.repository.private && '2' || '4' }}
+      RUST_TEST_THREADS: ${{ github.event.repository.private && '2' || '4' }}
     steps:
       # Two commits deep: a pull request's run builds its test merge commit,
       # and what it changes is that commit against its first parent, the
