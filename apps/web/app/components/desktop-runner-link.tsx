@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 
 import type { DesktopReport } from "@g1t/contracts";
 
-import { type DesktopRunnerOffer, desktopRunner, reportDue, reportKey, reportOf } from "../lib/desktop-runner";
+import { type DesktopRunnerOffer, desktopRunner, isRunnerView, reportDue, reportKey, reportOf } from "../lib/desktop-runner";
 
 /**
  * Inside the desktop app, on every page: the link between the app's runner
@@ -72,10 +72,14 @@ export function DesktopRunnerLink({ offer }: { offer: DesktopRunnerOffer }) {
     const look = () =>
       void runner
         .status()
-        .then((view) => send(reportOf(view)))
+        .then((view) => {
+          if (isRunnerView(view)) send(reportOf(view));
+        })
         .catch(() => {});
     look();
-    const stop = runner.onStatus((view) => send(reportOf(view)));
+    const stop = runner.onStatus((view) => {
+      if (isRunnerView(view)) send(reportOf(view));
+    });
     const beat = window.setInterval(look, 60_000);
     return () => {
       stop();

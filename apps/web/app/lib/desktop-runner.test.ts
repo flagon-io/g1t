@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { HEARTBEAT_MS, type DesktopRunnerView, backendOf, diagnosisOf, jobHref, reportDue, reportKey, reportOf } from "./desktop-runner.ts";
+import { HEARTBEAT_MS, type DesktopRunnerView, backendOf, diagnosisOf, isRunnerView, jobHref, reportDue, reportKey, reportOf } from "./desktop-runner.ts";
 
 function view(over: Partial<DesktopRunnerView> = {}): DesktopRunnerView {
   return {
@@ -28,6 +28,16 @@ function view(over: Partial<DesktopRunnerView> = {}): DesktopRunnerView {
     ...over,
   };
 }
+
+test("an answer from the app without a diagnosis is not a runner view (#447)", () => {
+  assert.equal(isRunnerView(view()), true);
+  // Mid-update, the app has answered without its diagnosis.
+  const { diagnosis: _gone, ...updating } = view();
+  assert.equal(isRunnerView(updating), false);
+  assert.equal(isRunnerView({ ...view(), log: undefined }), false);
+  assert.equal(isRunnerView(null), false);
+  assert.equal(isRunnerView("updating"), false);
+});
 
 test("a report carries the app's words, without its buttons or log", () => {
   const report = reportOf(view());
