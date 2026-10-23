@@ -15,6 +15,7 @@ import {
   RUNNER_ENTRYPOINT,
   appendRunnerImage,
   bearerChallenge,
+  copyImage,
   parseRef,
   repositoryClient,
   runnerConfig,
@@ -28,7 +29,7 @@ import { ROOT } from "./stack.mjs";
 /** A tar's entries: name, mode, size, owner, type and bytes, checksums checked. */
 function untar(tar) {
   const entries = [];
-  for (let at = 0; at + 512 <= tar.length; ) {
+  for (let at = 0; at + 512 <= tar.length;) {
     const header = tar.subarray(at, at + 512);
     if (header.every((b) => b === 0)) break;
     const field = (start, length) =>
@@ -351,4 +352,99 @@ test("a registry that asks for a bearer token is given the one its realm trades 
   assert.equal(asked.length, 1, "one token, kept");
   assert.equal(asked[0][0], "https://auth.example/token?service=r.example&scope=repository%3Aacct%2Fr%3Apull%2Cpush");
   assert.equal(asked[0][1], `Basic ${Buffer.from("u:p").toString("base64")}`);
+});
+
+/**
+ * Two registries in memory: `from` has an image, `to` refuses a request
+ * over `limit` bytes (413) as g1t.sh refuses one over 100 MB, and keeps
+ * what an upload's chunks add up to once it is finished by its digest.
+ */
+function twoRegistries({ limit }) {
+  const config = Buffer.from('{"architecture":"amd64"}');
+  const big = Buffer.alloc(250, 7);
+  const manifest = Buffer.from(
+    JSON.stringify({
+      schemaVersion: 2,
+      mediaType: OCI_MANIFEST,
+      config: { digest: sha256(config), size: config.length },
+      layers: [{ digest: sha256(big), size: big.length }],
+    }),
+  );
+  const source = new Map([
+    [sha256(config), config],
+    [sha256(big), big],
+  ]);
+  const kept = new Map();
+  const manifests = new Map();
+  const uploads = new Map();
+  const requests = [];
+  const fetchImpl = async (url, init) => {
+    const { host, pathname, searchParams } = new URL(url);
+    const body = init.body ? Buffer.from(init.body) : Buffer.alloc(0);
+    requests.push([host, init.method, pathname, body.length]);
+    const answer = (status, headers = {}, bytes) => new Response(bytes ?? null, { status, headers });
+    if (host === "from.test") {
+      if (pathname.endsWith(`/manifests/${sha256(manifest)}`)) return answer(200, { "content-type": OCI_MANIFEST }, manifest);
+      const blob = source.get(pathname.split("/blobs/")[1]);
+      return blob ? answer(200, {}, blob) : answer(404);
+    }
+    if (init.method === "PATCH" && body.length > limit) return answer(413);
+    if (init.method === "HEAD") return answer(kept.has(pathname.split("/blobs/")[1]) ? 200 : 404);
+    if (init.method === "POST") {
+      const id = `u${uploads.size}`;
+      uploads.set(id, []);
+      return answer(202, { location: `/v2/img/blobs/uploads/${id}` });
+    }
+    const id = pathname.split("/uploads/")[1];
+    if (init.method === "PATCH") {
+      const [start] = init.headers["content-range"].split("-").map(Number);
+      const parts = uploads.get(id);
+      assert.equal(
+        start,
+        parts.reduce((n, part) => n + part.length, 0),
+        "each chunk starts where the last ended",
+      );
+      parts.push(body);
+      return answer(202, { location: `/v2/img/blobs/uploads/${id}` });
+    }
+    if (init.method === "PUT" && id) {
+      kept.set(searchParams.get("digest"), Buffer.concat(uploads.get(id)));
+      return answer(201);
+    }
+    if (init.method === "PUT") {
+      manifests.set(pathname.split("/manifests/")[1], body);
+      return answer(201);
+    }
+    return answer(400);
+  };
+  const credentials = async () => null;
+  return {
+    from: repositoryClient("from.test", "img", { credentials, fetchImpl }),
+    to: repositoryClient("to.test", "img", { credentials, fetchImpl }),
+    digest: sha256(manifest),
+    manifest,
+    source,
+    kept,
+    manifests,
+    requests,
+  };
+}
+
+test("an image is copied registry to registry in chunks under the target's request limit, exactly", async () => {
+  const r = twoRegistries({ limit: 100 });
+  assert.equal(await copyImage({ from: r.from, to: r.to, digest: r.digest, tag: "base-1", chunkSize: 100 }), r.digest);
+  for (const [digest, bytes] of r.source) assert.deepEqual(r.kept.get(digest), bytes, `${digest} as it was`);
+  assert.deepEqual(r.manifests.get("base-1"), r.manifest, "the manifest's own bytes, so the same digest");
+  const patches = r.requests.filter(([host, method]) => host === "to.test" && method === "PATCH").map(([, , , n]) => n);
+  assert.deepEqual(patches, [24, 100, 100, 50], "the config whole, the layer in three chunks");
+  // A second copy finds every blob there and sends none.
+  r.requests.length = 0;
+  await copyImage({ from: r.from, to: r.to, digest: r.digest, tag: "base-1", chunkSize: 100 });
+  assert.ok(!r.requests.some(([, method]) => method === "PATCH"));
+});
+
+test("a copy whose chunks are over the target's limit fails, and finishes no blob", async () => {
+  const r = twoRegistries({ limit: 100 });
+  await assert.rejects(copyImage({ from: r.from, to: r.to, digest: r.digest, tag: "base-1", chunkSize: 200, attempts: 1 }), /413/);
+  assert.ok(!r.manifests.has("base-1"));
 });

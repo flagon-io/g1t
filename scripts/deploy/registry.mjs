@@ -38,6 +38,53 @@ const LAYER_TYPE = {
 
 export const sha256 = (bytes) => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 
+/** What one upload request carries at most: under g1t.sh's 100 MB, as `g1t push` sends. */
+export const CHUNK_BYTES = 90 * 1024 * 1024;
+
+const isIndex = (json) => [OCI_INDEX, DOCKER_LIST].includes(json.mediaType) || Array.isArray(json.manifests);
+
+/**
+ * Copies the image `digest` from one repository (`from`, a
+ * repositoryClient) to another (`to`) exactly: each blob the target lacks
+ * streams across in chunks (`putBlobChunked`), nothing is kept on the
+ * machine, and the manifest's own bytes are written, so the target has
+ * the same digest. An index's images go first, by digest. Writes the top
+ * manifest under `tag`. A blob that fails is tried again from its start.
+ */
+export async function copyImage({ from, to, digest, tag, onLine = () => {}, attempts = 3, chunkSize = CHUNK_BYTES }) {
+  const copyBlob = async (blob) => {
+    if (await to.hasBlob(blob.digest)) return;
+    const size = blob.size ? ` (${(blob.size / 1e6).toFixed(1)} MB)` : "";
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        const started = Date.now();
+        const response = await from.blobStream(blob.digest);
+        const sent = await to.putBlobChunked(response.body, blob.digest, { chunkSize });
+        onLine(`  ${blob.digest.slice(0, 19)}${size}: ${Math.ceil(sent / chunkSize) || 1} chunk(s) in ${Math.round((Date.now() - started) / 1000)}s`);
+        return;
+      } catch (error) {
+        if (attempt >= attempts) throw error;
+        onLine(`  ${blob.digest.slice(0, 19)}: ${error.message ?? error}; trying again`);
+      }
+    }
+  };
+  const copyManifest = async (reference, writeAs) => {
+    const manifest = await from.manifest(reference);
+    if (manifest.digest !== reference && reference.startsWith("sha256:")) {
+      throw new Error(`${from.name}@${reference} came back as ${manifest.digest}`);
+    }
+    if (isIndex(manifest.json)) {
+      for (const child of manifest.json.manifests) await copyManifest(child.digest, child.digest);
+    } else {
+      for (const blob of [manifest.json.config, ...manifest.json.layers]) await copyBlob(blob);
+    }
+    const type = manifest.json.mediaType ?? manifestType(manifest.json);
+    await to.putManifest(writeAs, manifest.bytes, type);
+    return manifest.digest;
+  };
+  return copyManifest(digest, tag);
+}
+
 /** A tar header field: octal, zero-padded, ending in NUL. */
 function octal(value, width) {
   return `${value.toString(8).padStart(width - 1, "0")}\0`;
@@ -220,6 +267,53 @@ export function repositoryClient(host, name, { credentials, fetchImpl = fetch, s
       const put = await send("PUT", done.toString());
       if (put.status !== 201) throw await fail(`finishing the upload of ${digest}`, put);
       return true;
+    },
+    /** A blob as it streams: the registry's response, whose `body` is its bytes. */
+    async blobStream(digest) {
+      const response = await send("GET", at(`blobs/${digest}`));
+      if (!response.ok || !response.body) throw await fail(`reading blob ${digest}`, response);
+      return response;
+    },
+    /**
+     * Uploads a blob from `body` (bytes as they stream) in chunks of
+     * `chunkSize`, each its own request, as `g1t push` does: g1t.sh takes
+     * at most 100 MB a request, and a layer is often more. The bytes are
+     * hashed as they go, and a blob that isn't `digest` is never finished.
+     */
+    async putBlobChunked(body, digest, { chunkSize = CHUNK_BYTES, onChunk = () => {} } = {}) {
+      const started = await send("POST", at("blobs/uploads/"));
+      if (started.status !== 202) throw await fail(`starting an upload of ${digest}`, started);
+      let location = started.headers.get("location");
+      if (!location) throw new Error(`the registry started an upload of ${digest} without saying where`);
+      const hash = createHash("sha256");
+      let offset = 0;
+      let held = Buffer.alloc(0);
+      const patch = async (chunk) => {
+        const patched = await send("PATCH", location, {
+          headers: { "content-type": "application/octet-stream", "content-range": `${offset}-${offset + chunk.length - 1}` },
+          body: chunk,
+        });
+        if (patched.status !== 202) throw await fail(`uploading ${digest} at byte ${offset}`, patched);
+        location = new URL(patched.headers.get("location") ?? location, root).toString();
+        offset += chunk.length;
+        onChunk(offset);
+      };
+      for await (const piece of body) {
+        hash.update(piece);
+        held = held.length ? Buffer.concat([held, piece]) : Buffer.from(piece);
+        while (held.length >= chunkSize) {
+          await patch(held.subarray(0, chunkSize));
+          held = held.subarray(chunkSize);
+        }
+      }
+      if (held.length) await patch(held);
+      const got = `sha256:${hash.digest("hex")}`;
+      if (got !== digest) throw new Error(`blob ${digest} came as ${got}: not finishing its upload`);
+      const done = new URL(location, root);
+      done.searchParams.set("digest", digest);
+      const put = await send("PUT", done.toString());
+      if (put.status !== 201) throw await fail(`finishing the upload of ${digest}`, put);
+      return offset;
     },
     async putManifest(tag, bytes, type) {
       const response = await send("PUT", at(`manifests/${tag}`), { headers: { "content-type": type }, body: bytes });
