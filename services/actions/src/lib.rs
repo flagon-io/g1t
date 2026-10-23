@@ -31,6 +31,7 @@ mod broker;
 mod cache;
 mod limits;
 mod managed;
+mod minute;
 mod payload;
 mod plan;
 mod protection;
@@ -566,18 +567,11 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
     Ok(())
 }
 
-/// Every minute: schedules that fire, jobs waiting for room, and jobs
-/// whose sandbox went quiet.
+/// Every minute: arms the alarm that sweeps (minute.rs): schedules that
+/// fire, jobs waiting for room, and jobs whose sandbox went quiet.
 #[event(scheduled)]
-async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
-    match Actions::new(&env) {
-        Ok(service) => {
-            if let Err(error) = service.on_minute(g1t_kit::now_ms()).await {
-                worker::console_error!("actions: the sweep failed: {error}");
-            }
-        }
-        Err(error) => worker::console_error!("actions: could not start: {error}"),
-    }
+async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
+    minute::on_cron(&env, event.schedule() as u64).await;
 }
 
 #[cfg(test)]

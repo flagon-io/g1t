@@ -52,7 +52,12 @@
     "FREE_ACTIONS_STORAGE_BYTES": "2147483648",
     "FREE_SELF_HOSTED_JOBS": "4"
   },
-  // Schedules, jobs waiting for room, and jobs whose runner went quiet.
+  // The minute's sweep (src/minute.rs): schedules, jobs waiting for room,
+  // and jobs whose runner went quiet. One object's alarm drives it, every
+  // minute; the cron only arms that alarm, since Cloudflare's cron skipped
+  // or delayed about one minute in six here (#466).
+  "durable_objects": { "bindings": [{ "name": "MINUTE", "class_name": "Minute" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Minute"] }],
   "triggers": { "crons": ["* * * * *"] },
   // Every log kept: few requests, and a failed job must be traceable.
   "observability": { "enabled": true, "head_sampling_rate": 1 }

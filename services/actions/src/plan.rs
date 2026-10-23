@@ -3100,23 +3100,41 @@ impl Actions {
 
     // --- Every minute ---------------------------------------------------------------
 
-    pub async fn on_minute(&self, now_ms: u64) -> Result<()> {
-        let minute = now_ms / 60_000 * 60_000;
+    /// The sweep (minute.rs): the schedules of `minutes`, jobs whose
+    /// sandbox went quiet or ran past their time, held runs, self-hosted
+    /// runners, environments' gates, queued jobs, and once an hour the
+    /// stores' housekeeping. Returns what it did, for its line in the log.
+    pub async fn on_minute(&self, now_ms: u64, minutes: &[u64]) -> Result<crate::minute::Report> {
+        let mut report = crate::minute::Report {
+            minutes: minutes.to_vec(),
+            ..Default::default()
+        };
+        let mut at = now_ms;
         // Repositories a workspace's managed workflows changed in, beyond
         // those synced at once (managed.rs): their schedules wait for it.
         if let Err(error) = self.catch_up_syncs().await {
             worker::console_error!("actions: catching up syncs failed: {error}");
         }
+        at = report.took("syncs", at);
         // Staff (or billing's usage watcher) paused scheduled runs across
-        // g1t: this minute's schedules are skipped, not queued for later.
+        // g1t: these minutes' schedules are skipped, not queued for later.
         // Kept 30 seconds in the isolate (g1t_kit::pause).
-        if g1t_kit::pause::paused(&self.billing, g1t_contracts::billing::PauseLevel::Schedules).await {
-            worker::console_log!("actions: schedules are paused across g1t; skipped this minute's");
-        } else if let Err(error) = self.run_schedules(minute).await {
-            worker::console_error!("actions: schedules failed: {error}");
+        if !minutes.is_empty() {
+            if g1t_kit::pause::paused(&self.billing, g1t_contracts::billing::PauseLevel::Schedules).await {
+                worker::console_log!("actions: schedules are paused across g1t; skipped this minute's");
+                report.minutes.clear();
+            } else {
+                for &minute in minutes {
+                    if let Err(error) = self.run_schedules(minute).await {
+                        worker::console_error!("actions: schedules failed: {error}");
+                    }
+                }
+            }
         }
+        at = report.took("schedules", at);
         // Jobs whose sandbox went quiet or ran past their time.
         let running = self.db.prepare("SELECT * FROM jobs WHERE status = 'in_progress'").all().await?.results::<JobRow>()?;
+        report.running = running.len();
         let mut lost = std::collections::HashSet::new();
         for job in running {
             // Times in g1t's format compare as text.
@@ -3129,6 +3147,7 @@ impl Actions {
                 // Cancelled, and still going after its grace period.
                 self.hard_stop(&job, "It was cancelled, and did not finish its cleanup steps within 5 minutes.").await?;
                 self.advance(&job.run_id).await?;
+                report.ended += 1;
             } else if over {
                 let reason = format!("It ran longer than its time limit of {} minutes.", job.timeout_minutes);
                 // A self-hosted runner is told to stop on its next poll.
@@ -3136,6 +3155,7 @@ impl Actions {
                     let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id, "start": job.started_at })).await;
                 }
                 self.finish_job(&job.id, "failure", Some(&reason), None).await?;
+                report.ended += 1;
             } else if job.runner_id.is_none() && crate::never_reported(job.started_at.as_deref(), job.seen_at.as_deref(), now_ms) {
                 // Its sandbox never ran it: nothing it did needs undoing.
                 // It starts again in a sandbox of its own (`start`), so the
@@ -3143,6 +3163,7 @@ impl Actions {
                 // sandbox's alarm, cannot reach it (#426).
                 if self.retry_lost_start(&job, now_ms).await? {
                     lost.insert(job.id.clone());
+                    report.requeued += 1;
                 }
             } else if silent {
                 // Its machine was lost under it: on g1t's, it runs again
@@ -3152,6 +3173,7 @@ impl Actions {
                     && self.retry_lost_machine(&job, now_ms, false).await?
                 {
                     lost.insert(job.id.clone());
+                    report.requeued += 1;
                     continue;
                 }
                 let reason = match (&job.runner_name, job.machine_lost) {
@@ -3160,8 +3182,10 @@ impl Actions {
                     (None, _) => "The runner stopped answering, on the second machine it was given too.".to_owned(),
                 };
                 self.finish_job(&job.id, "failure", Some(&reason), None).await?;
+                report.ended += 1;
             }
         }
+        at = report.took("running", at);
         // Calls of reusable workflows waiting in a concurrency group, in
         // case the job they waited for was cancelled in another run.
         #[derive(Deserialize)]
@@ -3174,16 +3198,24 @@ impl Actions {
             .all()
             .await?
             .results::<RunId>()?;
+        report.held = held.len();
         for run in held {
             self.advance(&run.run_id).await?;
         }
+        at = report.took("held", at);
         if let Err(error) = self.sweep_runners(now_ms).await {
             worker::console_error!("actions: the runners' sweep failed: {error}");
         }
+        at = report.took("runners", at);
         // Jobs held at an environment whose wait timer has run out.
         if let Err(error) = self.release_gates().await {
             worker::console_error!("actions: environments' gates failed: {error}");
         }
+        at = report.took("gates", at);
+        // Queued jobs, before the hourly housekeeping below, which can take
+        // a while: lost starts and waiting jobs are what cannot wait.
+        let started = self.start_queued_retrying(&lost).await;
+        at = report.took("starts", at);
         // Once an hour: the cache's expired entries, and its storage.
         if (now_ms / 60_000) % 60 == 7
             && let Err(error) = self.sweep_cache(now_ms).await
@@ -3211,7 +3243,8 @@ impl Actions {
         {
             worker::console_error!("actions: the logs' sweep failed: {error}");
         }
-        self.start_queued_retrying(&lost).await
+        report.took("housekeeping", at);
+        started.map(|()| report)
     }
 
     /// A job whose sandbox never reported (`never_reported`): back in the
