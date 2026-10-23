@@ -4,7 +4,7 @@ import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 
 import type { DesktopBackend } from "@g1t/contracts";
 
 import { useBusy } from "../lib/busy";
-import { type DesktopRunnerView, desktopRunner, runnerStatusKey } from "../lib/desktop-runner";
+import { type DesktopRunnerView, desktopRunner, runnerStatusKey, sizesOf } from "../lib/desktop-runner";
 import {
   BACKEND_NOTE,
   type DesktopSettings,
@@ -20,6 +20,7 @@ import {
   updateLine,
 } from "../lib/desktop-settings";
 import { cn } from "../lib/cn";
+import { JobSizes } from "./desktop-runner-sizes";
 import { ActButton, Actions, DOT, KindCard } from "./desktop-runners";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -208,6 +209,9 @@ function RunnerSection({ view, runner, change, fail }: { view: DesktopSettingsVi
   const kinds = diagnosis.capabilities ?? [];
   const cardsSayIt = !!diagnosis.in_capabilities && kinds.length > 0;
   const status = runnerStatusKey(runner);
+  // The Linux jobs' sizes, from an app and a g1t-runner that say them.
+  const sizes = backend === "sandboxed" ? sizesOf(runner.sizes) : null;
+  const linux = kinds.find((kind) => kind.id === "linux");
   return (
     <>
       {!cardsSayIt && (
@@ -232,6 +236,7 @@ function RunnerSection({ view, runner, change, fail }: { view: DesktopSettingsVi
           ))}
         </div>
       )}
+      {sizes && <JobSizes sizes={sizes} isolation={linux?.isolation ?? null} onError={fail} />}
       <SwitchCard title="Run jobs on this computer while g1t is open" checked={view.runner} onCheckedChange={(on) => change({ runner: on })}>
         Your workspace&apos;s <code>runs-on: self-hosted</code> jobs, at no cost. Off, nothing runs here until you turn it on again.
       </SwitchCard>

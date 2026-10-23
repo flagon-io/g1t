@@ -1,7 +1,23 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { HEARTBEAT_MS, type DesktopRunnerView, backendOf, diagnosisOf, isRunnerView, jobHref, reportDue, reportKey, reportOf } from "./desktop-runner.ts";
+import {
+  HEARTBEAT_MS,
+  type DesktopRunnerBridge,
+  type DesktopRunnerView,
+  backendOf,
+  canSetSizes,
+  diagnosisOf,
+  draftProblem,
+  draftsOf,
+  isRunnerView,
+  jobHref,
+  reportDue,
+  reportKey,
+  reportOf,
+  sizesList,
+  sizesOf,
+} from "./desktop-runner.ts";
 
 function view(over: Partial<DesktopRunnerView> = {}): DesktopRunnerView {
   return {
@@ -265,4 +281,85 @@ test("a report says how the runner's updates stand, without the app's own words 
   assert.equal(diagnosisOf({ ...report.diagnosis, update: { checked_at: 5 } })!.update, undefined);
   // An app from before updates were reported says nothing of them.
   assert.equal(reportOf(view())!.diagnosis.update, undefined);
+});
+
+const launcherSizes = {
+  applies: "restart",
+  machine: { cpus: 16, memory_mib: 32768 },
+  share: { cpus: 8, memory_mib: 8192 },
+  picked: true,
+  reason: "Standard fits in half this machine's 16 CPUs and 32 GB and in the sandbox's 8 vCPU, 8 GB.",
+  choices: [
+    {
+      size: "1-core",
+      name: "Small",
+      spec: "1 vCPU · 6 GB",
+      vcpu: 1,
+      memory_mib: 6144,
+      offered: false,
+      given_cpus: null,
+      given_memory_mib: null,
+      sandbox: "1 vCPU · 6 GB",
+      warning: null,
+    },
+    {
+      size: "2-core",
+      name: "Standard",
+      spec: "2 vCPU · 8 GB",
+      vcpu: 2,
+      memory_mib: 8192,
+      offered: true,
+      given_cpus: null,
+      given_memory_mib: null,
+      sandbox: "2 vCPU · 8 GB",
+      warning: null,
+    },
+    {
+      size: "4-core",
+      name: "Large",
+      spec: "4 vCPU · 12 GB",
+      vcpu: 4,
+      memory_mib: 12288,
+      offered: false,
+      given_cpus: null,
+      given_memory_mib: null,
+      sandbox: "4 vCPU · 12 GB",
+      warning: "More than the sandbox's 8 vCPU, 8 GB: a job gets at most that, so it may run slower or run out of memory.",
+    },
+  ],
+  saving: false,
+  error: null,
+};
+
+test("the sizes are read only when an app and a g1t-runner that say them sent them", () => {
+  assert.equal(sizesOf(undefined), null, "an app or a g1t-runner older than sizes");
+  assert.equal(sizesOf({ applies: "restart", choices: [] }), null);
+  const sizes = sizesOf(launcherSizes)!;
+  assert.deepEqual(
+    sizes.choices.map((c) => [c.name, c.offered, c.warning !== null]),
+    [
+      ["Small", false, false],
+      ["Standard", true, false],
+      ["Large", false, true],
+    ],
+  );
+  assert.equal(sizes.picked, true);
+  // An app without `setSizes` shows no choices.
+  assert.equal(canSetSizes({ status: async () => ({}) } as unknown as DesktopRunnerBridge), false);
+  assert.equal(canSetSizes({ setSizes: async () => {} } as unknown as DesktopRunnerBridge), true);
+});
+
+test("a size chosen with more says so to the launcher, and less is refused", () => {
+  const sizes = sizesOf(launcherSizes)!;
+  const drafts = draftsOf(sizes);
+  assert.equal(sizesList(drafts), "2-core");
+  drafts[0] = { ...drafts[0]!, offered: true };
+  drafts[1] = { ...drafts[1]!, cpus: "4", memoryGb: "16" };
+  assert.equal(sizesList(drafts), "1-core,2-core:4:16384m");
+  assert.equal(draftProblem(drafts[1]!, sizes.choices[1]!), null);
+  assert.equal(draftProblem({ ...drafts[1]!, cpus: "1" }, sizes.choices[1]!), "Standard jobs get at least 2 vCPU.");
+  assert.equal(draftProblem({ ...drafts[1]!, memoryGb: "4" }, sizes.choices[1]!), "Standard jobs get at least 8 GB.");
+  assert.equal(sizesList(drafts.map((d) => ({ ...d, offered: false }))), "", "none");
+  // A Large job is more than this sandbox holds: a warning, not a refusal.
+  assert.equal(draftProblem({ ...drafts[2]!, offered: true }, sizes.choices[2]!), null);
 });

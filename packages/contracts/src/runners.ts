@@ -314,4 +314,3 @@ export const RUNNER_FILES: Record<"linux-x64" | "linux-arm64" | "macos-arm64" | 
  * Snake case, as the runner says it. Mirrors `OfferedSize` in crates/contracts/src/runners.rs.
  */
 export type OfferedSize = { size: string; cpus?: number | null; memory_mib?: number | null };
-

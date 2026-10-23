@@ -90,6 +90,11 @@ export type DesktopRunnerView = {
   log: string[];
   /** Absent from an app older than the dot. */
   chip?: DesktopRunnerChip;
+  /**
+   * The sandbox's Linux jobs' sizes, as its launcher says them. Absent from an app or a
+   * g1t-runner older than sizes: read it with `sizesOf`, never as it is.
+   */
+  sizes?: unknown;
 };
 
 /**
@@ -130,6 +135,11 @@ export type DesktopRunnerBridge = {
   act(action: string, capability?: string): Promise<void>;
   onWanted(listener: (workspace: string) => void): () => void;
   onStatus(listener: (view: DesktopRunnerView) => void): () => void;
+  /**
+   * The sizes Linux jobs are taken for: `1-core,2-core:4:16384m` (empty for none), or null to have one
+   * picked again. Absent from an app older than sizes: see `canSetSizes`.
+   */
+  setSizes?: (sizes: string | null) => Promise<void>;
 };
 
 /** The bridge's runner, inside the desktop app (lib/notify-client.ts describes the rest of `window.g1tDesktop`). */
@@ -342,3 +352,150 @@ export const BACKEND_LABEL: Record<DesktopBackend, string> = {
   docker: "In Docker (not a sandbox)",
   host: "Directly on the computer (not a sandbox)",
 };
+
+/** What the sandbox's Linux jobs take, as its launcher says it (`sizes::SizesView` in g1t-runner). */
+export type DesktopRunnerSizes = {
+  /** When a change counts: `restart` (after the job Linux jobs are running) or `poll`. */
+  applies: string;
+  /** This computer's CPUs and memory, and the sandbox's share of them. */
+  machine: { cpus: number; memory_mib: number };
+  share: { cpus: number; memory_mib: number } | null;
+  /** Chosen for the person, not by them, and why. */
+  picked: boolean;
+  reason: string | null;
+  choices: DesktopRunnerSize[];
+  /** A change is under way, or why the last one failed (the app's). */
+  saving: boolean;
+  error: string | null;
+};
+
+/** One of g1t's machines as a size the sandbox's Linux jobs take, or could. */
+export type DesktopRunnerSize = {
+  /** `2-core`. */
+  size: string;
+  /** `Standard`. */
+  name: string;
+  /** `2 vCPU · 8 GB`: the size, and the least a job of it gets. */
+  spec: string;
+  vcpu: number;
+  memory_mib: number;
+  offered: boolean;
+  given_cpus: number | null;
+  given_memory_mib: number | null;
+  /** What a job taken for it gets: `4 vCPU · 16 GB`. */
+  sandbox: string;
+  /** What offering it costs this computer, when it may hurt. Never a refusal. */
+  warning: string | null;
+};
+
+const num = (value: unknown): number | null => (typeof value === "number" && Number.isFinite(value) ? value : null);
+
+function roomOf(value: unknown): { cpus: number; memory_mib: number } | null {
+  if (!value || typeof value !== "object") return null;
+  const given = value as Record<string, unknown>;
+  const cpus = num(given.cpus);
+  const memory = num(given.memory_mib);
+  return cpus !== null && memory !== null ? { cpus, memory_mib: memory } : null;
+}
+
+function sizeOf(value: unknown): DesktopRunnerSize | null {
+  if (!value || typeof value !== "object") return null;
+  const given = value as Record<string, unknown>;
+  const [size, name, spec, sandbox] = [text(given.size), text(given.name), text(given.spec), text(given.sandbox)];
+  const [vcpu, memory] = [num(given.vcpu), num(given.memory_mib)];
+  if (!size || !name || !spec || vcpu === null || memory === null) return null;
+  return {
+    size,
+    name,
+    spec,
+    vcpu,
+    memory_mib: memory,
+    offered: given.offered === true,
+    given_cpus: num(given.given_cpus),
+    given_memory_mib: num(given.given_memory_mib),
+    sandbox: sandbox ?? spec,
+    warning: text(given.warning),
+  };
+}
+
+/** The sizes in a runner view, or null when it has none it can say (an older app or g1t-runner) or they don't read. */
+export function sizesOf(value: unknown): DesktopRunnerSizes | null {
+  if (!value || typeof value !== "object") return null;
+  const given = value as Record<string, unknown>;
+  const machine = roomOf(given.machine);
+  const choices = Array.isArray(given.choices) ? given.choices.map(sizeOf).filter((c): c is DesktopRunnerSize => c !== null) : [];
+  if (!machine || choices.length === 0) return null;
+  return {
+    applies: text(given.applies) ?? "restart",
+    machine,
+    share: roomOf(given.share),
+    picked: given.picked === true,
+    reason: text(given.reason),
+    choices,
+    saving: given.saving === true,
+    error: text(given.error),
+  };
+}
+
+/** Whether this app can change the sizes: one older than them has no `setSizes`, and shows none. */
+export function canSetSizes(bridge: DesktopRunnerBridge | null): bridge is DesktopRunnerBridge & { setSizes: (sizes: string | null) => Promise<void> } {
+  return !!bridge && typeof bridge.setSizes === "function";
+}
+
+/** A size as it is being chosen: taken or not, and what its jobs get beyond it, as typed (empty for the size's own). */
+export type SizeDraft = { size: string; offered: boolean; cpus: string; memoryGb: string };
+
+/** The drafts the sizes start from: what is taken now. */
+export function draftsOf(sizes: DesktopRunnerSizes): SizeDraft[] {
+  return sizes.choices.map((choice) => ({
+    size: choice.size,
+    offered: choice.offered,
+    cpus: choice.given_cpus !== null ? String(choice.given_cpus) : "",
+    memoryGb: choice.given_memory_mib !== null ? String(Math.round((choice.given_memory_mib / 1024) * 100) / 100) : "",
+  }));
+}
+
+/**
+ * What a draft gives a job beyond its size, or why it can't: a job never gets less than it asked
+ * for, so CPUs and memory are at least the size's (the launcher refuses less too).
+ */
+export function draftProblem(draft: SizeDraft, choice: DesktopRunnerSize): string | null {
+  if (!draft.offered) return null;
+  if (draft.cpus.trim()) {
+    const cpus = Number(draft.cpus);
+    if (!Number.isFinite(cpus) || cpus < choice.vcpu) return `${choice.name} jobs get at least ${choice.vcpu} vCPU.`;
+  }
+  if (draft.memoryGb.trim()) {
+    const gb = Number(draft.memoryGb);
+    if (!Number.isFinite(gb) || gb * 1024 < choice.memory_mib) return `${choice.name} jobs get at least ${choice.memory_mib / 1024} GB.`;
+  }
+  return null;
+}
+
+/** The launcher's list for the taken drafts: `1-core,2-core:4:16384m`; empty for none. */
+export function sizesList(drafts: SizeDraft[]): string {
+  return drafts
+    .filter((draft) => draft.offered)
+    .map((draft) => {
+      const cpus = draft.cpus.trim() ? String(Number(draft.cpus)) : "";
+      const memory = draft.memoryGb.trim() ? `${Math.round(Number(draft.memoryGb) * 1024)}m` : "";
+      return cpus || memory ? `${draft.size}:${cpus}${memory ? `:${memory}` : ""}` : draft.size;
+    })
+    .join(",");
+}
+
+/** How the sandbox keeps a job from this computer, in plain words, by its isolation. */
+export function isolationWords(isolation: string | null | undefined): string | null {
+  switch (isolation) {
+    case "nested-container":
+      return "Nested container: each job in a fresh container inside the runner's own sandbox, removed after.";
+    case "vm":
+      return "VM: each job in a throwaway virtual machine of its own.";
+    case "container":
+      return "Container: each job in a container on a Docker it shares with this computer.";
+    case "host":
+      return "Host: jobs run directly on this computer, with no sandbox.";
+    default:
+      return null;
+  }
+}
