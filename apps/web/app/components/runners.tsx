@@ -154,9 +154,14 @@ export function RunnerRow({ runner, manage }: { runner: Runner; manage: boolean 
           {runner.version && <> · {runner.version}</>}
         </div>
         {resources && (
-          <div className="mt-0.5" title="What a job on it gets">
-            {resources}
-          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="mt-0.5" tabIndex={0}>
+                {resources}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>What a job on it gets</TooltipContent>
+          </Tooltip>
         )}
         <div className="mt-0.5">
           {runner.lastSeenAt ? (
