@@ -724,9 +724,30 @@ fn checks(ctx: &Ctx, args: PrChecksArgs) -> Result<()> {
     let n = number(ctx, &client, &repo, args.number)?;
     let started = Instant::now();
     let mut last_seen: std::collections::BTreeMap<String, String> = Default::default();
+    let (mut failures, tries) = (0, if args.watch { super::WATCH_TRIES } else { 1 });
     loop {
-        let pull = pull_of(&get(&client, &repo, n)?);
-        let Some(sha) = pull["head_commit"].as_str().map(str::to_owned) else {
+        let read = (|| -> Result<Option<(String, Vec<Value>)>> {
+            let pull = pull_of(&get(&client, &repo, n)?);
+            let Some(sha) = pull["head_commit"].as_str().map(str::to_owned) else {
+                return Ok(None);
+            };
+            let runs = client
+                .op("list_check_runs_for_ref")
+                .repo(&repo)
+                .arg("ref", &sha)
+                .send()?;
+            let statuses = client
+                .op("get_combined_status")
+                .repo(&repo)
+                .arg("ref", &sha)
+                .send()?;
+            Ok(Some((sha, check_rows(&runs, &statuses))))
+        })();
+        let Some(read) = super::polled(read, &mut failures, tries)? else {
+            std::thread::sleep(Duration::from_secs(args.interval));
+            continue;
+        };
+        let Some((sha, rows)) = read else {
             if !args.watch {
                 eprintln!("#{n} has no commits yet.");
                 return Ok(());
@@ -734,17 +755,6 @@ fn checks(ctx: &Ctx, args: PrChecksArgs) -> Result<()> {
             std::thread::sleep(Duration::from_secs(args.interval));
             continue;
         };
-        let runs = client
-            .op("list_check_runs_for_ref")
-            .repo(&repo)
-            .arg("ref", &sha)
-            .send()?;
-        let statuses = client
-            .op("get_combined_status")
-            .repo(&repo)
-            .arg("ref", &sha)
-            .send()?;
-        let rows = check_rows(&runs, &statuses);
         let failing = count(&rows, "fail");
         let pending = count(&rows, "pending");
         // Right after a push, runs take a moment to appear.

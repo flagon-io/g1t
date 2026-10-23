@@ -2607,7 +2607,7 @@ fn service(env: &Env) -> Result<Work> {
 }
 
 #[event(fetch)]
-async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response> {
+async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response> {
     let Some(method) = rpc_method(&request) else {
         return Response::error("Not found", 404);
     };
@@ -2617,6 +2617,24 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     let mut work = service(&env)?;
     work.db = db;
     work.repos_session = g1t_kit::d1::forwarded(&request, "repos")?;
+
+    // Opening a pull request writes it, then makes its refs and tells
+    // everyone (`pull.opened`, which starts its checks). A caller that gave
+    // up in between (an MCP client's timeout, on #454) cancelled the
+    // request there, leaving a pull request nothing had heard of. It runs
+    // where the caller leaving cannot stop it, for the 30 s `wait_until`
+    // has after.
+    if method == "open_pull" {
+        let (answer, answered) = futures_channel::oneshot::channel();
+        ctx.wait_until(async move {
+            let opened = async { reply(&work.open_pull(args(body)?).await?) }.await;
+            let _ = answer.send(served.finish_timed(opened, &work.timing));
+        });
+        return match answered.await {
+            Ok(answered) => answered,
+            Err(_) => Response::error("Opening the pull request stopped before it answered.", 500),
+        };
+    }
 
     let answered = match method.as_str() {
         // Work items (items/) and moving issues into them (items/migration.rs).

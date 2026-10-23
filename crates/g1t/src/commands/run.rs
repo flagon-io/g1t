@@ -296,8 +296,13 @@ fn watch(ctx: &Ctx, args: RunWatchArgs) -> Result<()> {
     let id = resolve(ctx, &client, &repo, args.run.as_deref())?;
     let url = run_url(&client.host.site, &repo, &id);
     let mut seen: std::collections::BTreeMap<String, String> = Default::default();
+    let mut failures = 0;
     loop {
-        let run = flatten(&get_run(&client, &repo, &id)?, &url);
+        let Some(run) = super::polled(get_run(&client, &repo, &id), &mut failures, super::WATCH_TRIES)? else {
+            std::thread::sleep(Duration::from_secs(args.interval.max(1)));
+            continue;
+        };
+        let run = flatten(&run, &url);
         let done = run["status"] == "completed";
         if !ctx.out.structured() {
             if ctx.out.tty {
