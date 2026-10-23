@@ -7278,7 +7278,7 @@
           "Access"
         ],
         "summary": "List who has access",
-        "description": "Who has access to a repository: the workspace's `base_permission`, and `people`, everyone with a role on it other than through it being public. Each person has their effective `role` (read, triage, write, maintain or admin), its `source` (`owner` of the workspace, the workspace's `base` permission, or a `direct` role on this repository), their `direct` role if they have one, and their `workspace_role` (`owner`, `member`, or null for an outside collaborator). Pending `invitations` are listed for those with the Admin role, and empty for anyone else. `viewer_role` is your own role, and `can_manage` whether you may change who has access. Needs the Write role or higher. People only.\n\nOwners are listed with `source` `owner`, members with the base permission with `base`, and anyone given a role on this repository with `direct`; `role` is the highest of these, and `direct` shows a direct role even when ownership or the base permission gives more. `workspace_role` null means an outside collaborator. Anyone can read a public repository, which is not listed. `invitations` is empty unless you have the Admin role (`can_manage`). Refused with `403` below the Write role, and `404` for a private repository you cannot see. See [Access and roles](/guides/access-and-roles/).",
+        "description": "Who has access to a repository: the workspace's `base_permission`, and `people`, by `affiliation`: those given a role on the repository itself unless you ask for `outside` or `all`, as GitHub lists collaborators. Owners and members through the base permission are in `all` only; the `teams` given a role are listed whatever you ask. Each person has their effective `role` (read, triage, write, maintain or admin), its `source` (`owner` of the workspace, the workspace's `base` permission, or a `direct` role on this repository), their `direct` role if they have one, and their `workspace_role` (`owner`, `member`, or null for an outside collaborator). Pending `invitations` are listed for those with the Admin role, and empty for anyone else. `viewer_role` is your own role, and `can_manage` whether you may change who has access. Needs the Write role or higher. People only.\n\nOwners are listed with `source` `owner`, members with the base permission with `base`, and anyone given a role on this repository with `direct`; `role` is the highest of these, and `direct` shows a direct role even when ownership or the base permission gives more. `workspace_role` null means an outside collaborator. Anyone can read a public repository, which is not listed. `invitations` is empty unless you have the Admin role (`can_manage`). Refused with `403` below the Write role, and `404` for a private repository you cannot see. See [Access and roles](/guides/access-and-roles/).",
         "x-operation": "list_collaborators",
         "x-mcp-tool": "access",
         "x-mcp-action": "list_collaborators",
@@ -7311,6 +7311,20 @@
               "type": "string"
             },
             "description": "The repository's name."
+          },
+          {
+            "name": "affiliation",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "direct",
+                "outside",
+                "all"
+              ]
+            },
+            "description": "Who to list: `direct` (the default), those given a role on the repository itself; `outside`, those of them who are not members of the workspace; `all`, everyone with access, owners and members through the base permission or a team too."
           },
           {
             "$ref": "#/components/parameters/ApiVersion"

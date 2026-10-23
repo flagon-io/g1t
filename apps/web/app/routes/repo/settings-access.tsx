@@ -36,6 +36,7 @@ import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { page } from "../../lib/meta";
 import { refusal, requireInsider } from "../../lib/access.server";
+import { givenHere } from "../../lib/collaborators";
 import { billing, identity } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, roleIn, unwrap } from "../../lib/session.server";
 import { UserCard } from "../../components/user-card";
@@ -152,10 +153,7 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
   const base = `/${params.owner}/${params.repo}`;
   const full = `${params.owner}/${params.repo}`;
   const pending = access.invitations.filter((invitation) => invitation.status === "pending");
-  // Only roles given here, as GitHub lists them: owners and what the base
-  // permission gives every member are said once, in Base permission, and
-  // a team's members are on the team.
-  const people = access.people.filter((person) => person.direct != null && person.source !== "owner").sort((a, b) => REPO_ROLES.indexOf(b.role) - REPO_ROLES.indexOf(a.role) || a.username.localeCompare(b.username));
+  const people = givenHere(access.people).sort((a, b) => REPO_ROLES.indexOf(b.role) - REPO_ROLES.indexOf(a.role) || a.username.localeCompare(b.username));
   const result = actionData?.intent === "add" ? actionData : undefined;
   const teamResult = actionData?.intent === "team-add" ? actionData : undefined;
   const repoTeams = [...(access.teams ?? [])].sort((a, b) => REPO_ROLES.indexOf(b.role) - REPO_ROLES.indexOf(a.role) || a.name.localeCompare(b.name));

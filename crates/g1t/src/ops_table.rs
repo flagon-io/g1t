@@ -213,6 +213,7 @@ pub static OPERATIONS: &[Operation] = &[
         params: &[
             Param { name: "owner", location: In::Path, kind: "string", required: true, values: &[] },
             Param { name: "name", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "affiliation", location: In::Query, kind: "string", required: false, values: &["direct", "outside", "all"] },
         ],
         body: &[],
     },

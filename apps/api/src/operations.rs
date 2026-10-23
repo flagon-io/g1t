@@ -5,7 +5,7 @@
 //! describing it or running it does not compile.
 
 use g1t_contracts::access::{
-    AddCollaboratorArgs, BasePermission, Capability, CollaboratorPermissionArgs, MyRepoInvitationsArgs,
+    AddCollaboratorArgs, Affiliation, BasePermission, Capability, CollaboratorPermissionArgs, MyRepoInvitationsArgs,
     OutsideCollaboratorsArgs, RemoveCollaboratorArgs, RepoAccess, RepoAccessArgs, RepoInvitation, RepoRole,
     RespondRepoInvitationArgs, RevokeRepoInvitationArgs, SetBasePermissionArgs, SetCollaboratorRoleArgs,
 };
@@ -2235,7 +2235,7 @@ impl Op {
                 "Open a work item in a workspace from a ticket in Jira or Linear, or from a Sentry issue, by its key or address. The work item is linked to it: agents read the original, and when the work lands the ticket is told. With repo (a repository of the workspace), the work item is filed from it, its origin. Importing the same ticket again returns the work item already made."
             }
             Op::ListCollaborators => {
-                "Who has access to a repository: the workspace's `base_permission`, and `people`, everyone with a role on it other than through it being public. Each person has their effective `role` (read, triage, write, maintain or admin), its `source` (`owner` of the workspace, the workspace's `base` permission, or a `direct` role on this repository), their `direct` role if they have one, and their `workspace_role` (`owner`, `member`, or null for an outside collaborator). Pending `invitations` are listed for those with the Admin role, and empty for anyone else. `viewer_role` is your own role, and `can_manage` whether you may change who has access. Needs the Write role or higher. People only."
+                "Who has access to a repository: the workspace's `base_permission`, and `people`, by `affiliation`: those given a role on the repository itself unless you ask for `outside` or `all`, as GitHub lists collaborators. Owners and members through the base permission are in `all` only; the `teams` given a role are listed whatever you ask. Each person has their effective `role` (read, triage, write, maintain or admin), its `source` (`owner` of the workspace, the workspace's `base` permission, or a `direct` role on this repository), their `direct` role if they have one, and their `workspace_role` (`owner`, `member`, or null for an outside collaborator). Pending `invitations` are listed for those with the Admin role, and empty for anyone else. `viewer_role` is your own role, and `can_manage` whether you may change who has access. Needs the Write role or higher. People only."
             }
             Op::AddCollaborator => {
                 "Give someone a role on a repository, by username or email address. A member of its workspace gets the role at once (`result` is `granted`, with the `collaborator`). Anyone else becomes an outside collaborator once they accept an invitation, which is emailed to them and waits 7 days (`result` is `invited`, with the `invitation`); an address with no g1t account is sent an invite that makes the account and accepts in one step. The role is read, triage, write, maintain or admin. Needs the Admin role on the repository, signed in as a person with a confirmed email address; agents' and workspaces' tokens are refused. A free workspace can give its members a role, but cannot invite anyone from outside it: that is refused with `payment_required` (402) until the workspace starts the g1t plan."
@@ -4042,7 +4042,18 @@ impl Op {
                 }),
                 &["reference"],
             ),
-            Op::ListCollaborators | Op::ListRepoInvitations => repo_only(),
+            Op::ListCollaborators => object(
+                json!({
+                    "repo": repo_schema(),
+                    "affiliation": {
+                        "type": "string",
+                        "enum": ["direct", "outside", "all"],
+                        "description": "Who to list: `direct` (the default), those given a role on the repository itself; `outside`, those of them who are not members of the workspace; `all`, everyone with access, owners and members through the base permission or a team too.",
+                    },
+                }),
+                &["repo"],
+            ),
+            Op::ListRepoInvitations => repo_only(),
             Op::AddCollaborator => object(
                 json!({
                     "repo": repo_schema(),
@@ -7154,7 +7165,19 @@ impl Op {
             // caller sees it, and refuses every token but a person's for
             // changes. See g1t_contracts::access.
             Op::ListCollaborators => {
-                pass(identity, "repo_access", &RepoAccessArgs { viewer: viewer.clone(), path: repo }).await
+                let affiliation = match optional_text(input, "affiliation") {
+                    None => Affiliation::Direct,
+                    Some(value) => match Affiliation::parse(&value) {
+                        Some(affiliation) => affiliation,
+                        None => return failed(FailureCode::Invalid, "affiliation is direct, outside or all."),
+                    },
+                };
+                let access: Outcome<RepoAccess> =
+                    call(identity, "repo_access", &RepoAccessArgs { viewer: viewer.clone(), path: repo }).await?;
+                match access {
+                    Outcome::Ok(access) => ok(&access.affiliated(affiliation)),
+                    Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
+                }
             }
             Op::ListRepoInvitations => {
                 let access: Outcome<RepoAccess> =

@@ -401,7 +401,7 @@ pub const TOOLS: &[Tool] = &[
         description: "Who has access to a repository and with which role (read, triage, write, maintain, admin), outside collaborators, a workspace's base permission, and a repository's deploy keys.",
         default_action: None,
         actions: &[
-            a("list_collaborators", Op::ListCollaborators, "Everyone with a role, and pending invitations"),
+            a("list_collaborators", Op::ListCollaborators, "People given a role here (affiliation all: everyone with access), and pending invitations"),
             a("get_permission", Op::GetCollaboratorPermission, "One person's role and capabilities"),
             a("add_collaborator", Op::AddCollaborator, "Give someone a role, by username or email"),
             a("update_collaborator", Op::UpdateCollaborator, "Change a direct role"),
