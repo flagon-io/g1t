@@ -1,10 +1,10 @@
 {
-  "image": "registry.cloudflare.com/1e6f2cffa3f445920836e8ebe446bb58/g1t-runner:base-20261021-ac4b2283607a",
-  "digest": "sha256:d53c41d2dc4022a0983126ca6f67c32570dd9078754655e927b207bf5179f416",
+  "image": "registry.cloudflare.com/1e6f2cffa3f445920836e8ebe446bb58/g1t-runner:base-20261024-ac4b2283607a",
+  "digest": "sha256:dc7e096509dce36f8e68c1f5c409a6284bfab2837f5c5575672bd07b1c8ac152",
   "pushed": true,
   "inputs": "ac4b2283607a410e0043328eee92f105c4b20ee594d51a711669e2332d4c9d2e",
-  "built_at": "2026-10-21T15:56:07.441Z",
-  "size_bytes": 5636544756,
+  "built_at": "2026-10-24T02:12:57.948Z",
+  "size_bytes": 4023022004,
   "versions": {
     "node": "v24.22.1",
     "npm": "11.19.1",
