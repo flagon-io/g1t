@@ -12,7 +12,8 @@
 # own machines have Docker now, but this build's own downloads (Docker's
 # apt repository over HTTPS) do not yet trust a guarded job's egress
 # certificate, so it stays where the network is open. The job runs in the
-# runner's default image, so it installs Docker's buildx plugin first.
+# runner's default image, so it installs Docker's buildx plugin and Cargo
+# first.
 # Without such a runner, run the same thing by hand on a machine with Docker:
 #
 #   node scripts/deploy.mjs build-base
@@ -79,6 +80,17 @@ jobs:
           curl -fsSL -o ~/.docker/cli-plugins/docker-buildx             "https://github.com/docker/buildx/releases/download/$BUILDX_VERSION/buildx-$BUILDX_VERSION.linux-amd64"
           chmod +x ~/.docker/cli-plugins/docker-buildx
           docker buildx version
+      # The deploy tool reads the workspace's crates with `cargo metadata`
+      # (scripts/deploy/stack.mjs); the runner's default image has no Rust.
+      - name: Cargo
+        run: |
+          if ! command -v cargo >/dev/null 2>&1; then
+            curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-path
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+            "$HOME/.cargo/bin/cargo" --version
+          else
+            cargo --version
+          fi
       - name: Install Wrangler
         run: node scripts/deploy/npm-ci.mjs --workspaces=false --no-audit --no-fund
       - name: Build and push
