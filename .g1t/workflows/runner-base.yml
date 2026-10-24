@@ -7,11 +7,13 @@
 # Weekly, for security updates and new stable toolchains; when the base's
 # folder changes on main (a change that forgot to rebuild it); and by hand.
 #
-# It runs on a self-hosted runner with the `docker` label. g1t's own
-# machines have Docker now, but this build's own downloads (Docker's apt
-# repository over HTTPS) do not yet trust a guarded job's egress
-# certificate, so it stays where the network is open. Until a runner is
-# registered, run the same thing by hand on a machine with Docker:
+# It runs on one of the workspace's own Linux runners (a desktop app's
+# sandboxed runner does: each job gets a Docker Engine of its own). g1t's
+# own machines have Docker now, but this build's own downloads (Docker's
+# apt repository over HTTPS) do not yet trust a guarded job's egress
+# certificate, so it stays where the network is open. The job runs in the
+# runner's default image, so it installs Docker's buildx plugin first.
+# Without such a runner, run the same thing by hand on a machine with Docker:
 #
 #   node scripts/deploy.mjs build-base
 #
@@ -53,7 +55,7 @@ env:
 jobs:
   build:
     name: Build and push the base
-    runs-on: [self-hosted, docker]
+    runs-on: [self-hosted, linux, x64]
     # Skipped until a runner with these labels is registered and the
     # repository variable RUNNER_BASE_SELF_HOSTED is "true": without one,
     # each run waited in the queue for a day and a half and then failed.
@@ -66,6 +68,17 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
+      # The base's Dockerfile needs BuildKit (`RUN --mount`), which the
+      # docker CLI a runner gives its jobs runs only with this plugin.
+      - name: Docker's buildx plugin
+        env:
+          BUILDX_VERSION: v0.29.1
+        run: |
+          if docker buildx version >/dev/null 2>&1; then docker buildx version; exit 0; fi
+          mkdir -p ~/.docker/cli-plugins
+          curl -fsSL -o ~/.docker/cli-plugins/docker-buildx             "https://github.com/docker/buildx/releases/download/$BUILDX_VERSION/buildx-$BUILDX_VERSION.linux-amd64"
+          chmod +x ~/.docker/cli-plugins/docker-buildx
+          docker buildx version
       - name: Install Wrangler
         run: node scripts/deploy/npm-ci.mjs --workspaces=false --no-audit --no-fund
       - name: Build and push
