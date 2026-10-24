@@ -134,6 +134,11 @@ pub struct Runner {
     /// takes those jobs by `cpus` and `memory_mib`.
     #[serde(default)]
     pub sizes: Option<Vec<OfferedSize>>,
+    /// Whether it runs jobs asking for a hosted label in g1t's machine
+    /// image, as it last said: true once the image is on it. Null for a
+    /// runner from before runners said (before 0.3.7), which takes none.
+    #[serde(default)]
+    pub hosted_image: Option<bool>,
 }
 
 /// Which of a workspace's repositories may use its runners.

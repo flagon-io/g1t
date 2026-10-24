@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { AgentRun, RunnerActivity, UsageReport } from "@g1t/contracts";
 
-import { cloudNow, cloudPrices, machineTime, ownWaiting, perMinute, runnerCost, sizesLine } from "./runners.ts";
+import { cloudNow, cloudPrices, hostedImageLine, machineTime, ownWaiting, perMinute, runnerCost, sizesLine } from "./runners.ts";
 
 function run(id: string, status: AgentRun["status"], over: Partial<AgentRun> = {}): AgentRun {
   return {
@@ -148,4 +148,12 @@ test("a runner's row says the sizes it takes, and what their jobs get beyond the
   assert.equal(sizesLine([]), "Takes none of g1t's sizes");
   assert.equal(sizesLine([{ size: "1-core" }, { size: "2-core" }]), "Takes Small, Standard");
   assert.equal(sizesLine([{ size: "2-core", cpus: 4, memory_mib: 16384 }]), "Takes Standard → 4 vCPU · 16 GB");
+});
+
+test("a runner's row says whether jobs asking for g1t's machines run in g1t's machine image", () => {
+  assert.equal(hostedImageLine({ sizes: undefined }), null, "a runner too old to say its sizes");
+  assert.equal(hostedImageLine({ sizes: [], hostedImage: true }), null, "one that takes none of them");
+  assert.equal(hostedImageLine({ sizes: [{ size: "4-core" }], hostedImage: true })?.text, "In g1t's machine image");
+  assert.equal(hostedImageLine({ sizes: [{ size: "4-core" }], hostedImage: false })?.ready, false);
+  assert.equal(hostedImageLine({ sizes: [{ size: "4-core" }] })?.text, "Without g1t's machine image", "a runner before 0.3.7");
 });
