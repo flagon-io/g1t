@@ -827,6 +827,15 @@ impl Identity {
             }
             None => user,
         };
+        // An account made with an address still waiting for access answers
+        // that request (waitlist.rs).
+        if let Some(email) = self.email_of(&user.id).await? {
+            let by = match &invite {
+                Some(row) => waitlist::invited_by(row.inviter.as_deref(), row.staff.as_deref()),
+                None => format!("@{} (signed up)", user.username),
+            };
+            self.settle_waitlist(&email, invite.as_ref().map(|row| row.id.as_str()), &by).await?;
+        }
         // Nobody is left without a workspace: one of its own, unless its
         // invite brings it into one (invitations.rs).
         self.give_own_workspace(&user, invite.as_ref()).await;
@@ -1076,6 +1085,12 @@ impl Identity {
             },
         )
         .await;
+        // An invite to make an account answers that address's request for
+        // access, if it is waiting (waitlist.rs): no approval needed.
+        if let (Some(email), "account") = (draft.email, draft.kind) {
+            let by = waitlist::invited_by(draft.inviter.map(|user| user.username.as_str()), draft.staff);
+            self.settle_waitlist(email, Some(&id), &by).await?;
+        }
         let Some(row) = self.invite_by_id(&id).await? else {
             return Ok(None);
         };

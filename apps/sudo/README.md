@@ -202,7 +202,12 @@ roadmap.
   **Dismiss** only marks the request and tells nobody
   (`admin_decide_waitlist`). Each decided row says who decided and when,
   the note sent, and **Joined as @them** once the invite made an account.
-  Staff hear about new requests by email at identity's
+  Any other way in answers a request by itself, so nothing waits that is
+  already in: an invite made for a waiting address (Invite a friend, a
+  workspace or repository invitation) marks it approved by whoever sent
+  it (`@friend`); so does an account made with the address; and someone
+  asking who already has an account or a pending invite is marked so at
+  once, with no confirmation email and no summary to staff. Staff hear about new requests by email at identity's
   `WAITLIST_NOTIFY_EMAIL`, at most one summary every 15 minutes, covering
   every request since the last. While sign-up is open, the waitlist
   stays as it is and nothing new waits here.

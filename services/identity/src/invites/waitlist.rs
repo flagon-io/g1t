@@ -16,6 +16,13 @@
 //! person asking gets one confirmation, ever; staff get a summary of new
 //! requests at `WAITLIST_NOTIFY_EMAIL`, at most once every 15 minutes, sent
 //! by the request that finds one due or else by the 15-minute sweep.
+//!
+//! Any other way in answers a request too, so the queue never holds
+//! someone who is already in: an invite made for a waiting address (Invite
+//! a friend, a workspace or repository invitation) marks it invited, by
+//! whoever sent it; so does an account made with that address; and someone
+//! asking who already has an account, or a pending invite, is marked so at
+//! once, with no confirmation and nothing told to staff.
 
 use g1t_contracts::identity::*;
 use g1t_contracts::time::{SQL_NOW, rfc3339};
@@ -44,6 +51,16 @@ const NOT_ON_IT: &str = "That request is not on the waitlist.";
 /// The row of `identity_settings` holding the mode staff set.
 const REGISTRATION_KEY: &str = "registration_mode";
 
+/// Who answered a request by inviting its address: `@username`, else the
+/// staff member, else g1t.
+pub fn invited_by(inviter: Option<&str>, staff: Option<&str>) -> String {
+    match (inviter, staff) {
+        (Some(inviter), _) => format!("@{inviter}"),
+        (None, Some(staff)) => staff.to_owned(),
+        (None, None) => "g1t".to_owned(),
+    }
+}
+
 /// Whether staff may be sent a summary of new requests: none was sent yet,
 /// or the last went before `since` (15 minutes ago). RFC 3339 times.
 pub fn summary_due(last: Option<&str>, since: &str) -> bool {
@@ -67,8 +84,11 @@ struct WaitlistRow {
     updated_at: String,
 }
 
+// Joined as: the account the request's own invite made, else whichever
+// account has the address (one that came in by another invite).
 const COLUMNS: &str = "wl.id, wl.email, wl.about, wl.status, wl.invite_id, wl.decided_by, wl.decided_at, wl.note,
-  ju.username AS joined_as, wl.created_at, wl.updated_at
+  COALESCE(ju.username, (SELECT eu.username FROM users eu WHERE eu.email = wl.email LIMIT 1)) AS joined_as,
+  wl.created_at, wl.updated_at
   FROM waitlist wl
   LEFT JOIN invites wi ON wi.id = wl.invite_id
   LEFT JOIN users ju ON ju.id = wi.redeemed_by";
@@ -197,12 +217,93 @@ impl Identity {
             .first::<Upserted>(None)
             .await?;
         // Only a first request is confirmed and told to staff; asking again
-        // updates what they said, which staff see in sudo.
+        // updates what they said, which staff see in sudo. Someone already
+        // in, or already invited, waits for nothing.
         if let Some(row) = row.filter(|row| row.created_at == now) {
+            if self.already_answered(&email).await? {
+                return Ok(Outcome::Ok(true));
+            }
             self.acknowledge_request(&row.id, &email).await?;
             self.notify_staff_of_requests().await?;
         }
         Ok(Outcome::Ok(true))
+    }
+
+    /// Marks a waiting request for `email` invited, by `by` (`@friend`, or
+    /// a staff member), with the invite that answered it if there is one.
+    /// Nothing for an address that is not waiting.
+    pub(crate) async fn settle_waitlist(&self, email: &str, invite_id: Option<&str>, by: &str) -> Result<()> {
+        self.db
+            .prepare(format!(
+                "UPDATE waitlist SET status = 'invited', invite_id = COALESCE(?, invite_id), decided_by = ?,
+                   decided_at = {SQL_NOW}, notified_at = COALESCE(notified_at, {SQL_NOW})
+                 WHERE email = ? AND status = 'waiting'"
+            ))
+            .bind(&[invite_id.map_or(JsValue::NULL, JsValue::from), by.into(), email.into()])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    /// Whether `email` needs nothing from the waitlist: it has an account,
+    /// or a pending invite to make one. If so, its request is marked so.
+    async fn already_answered(&self, email: &str) -> Result<bool> {
+        if let Some(username) = self.username_with_email(email).await? {
+            self.settle_waitlist(email, None, &format!("@{username} (has an account)")).await?;
+            return Ok(true);
+        }
+        #[derive(Deserialize)]
+        struct Pending {
+            id: String,
+            inviter: Option<String>,
+            staff: Option<String>,
+        }
+        let pending = self
+            .db
+            .prepare(format!(
+                "SELECT i.id, iu.username AS inviter, i.staff FROM invites i LEFT JOIN users iu ON iu.id = i.inviter_id
+                 WHERE i.email = ? AND i.kind = 'account' AND i.redeemed_at IS NULL AND i.revoked_at IS NULL
+                   AND i.expires_at > {SQL_NOW}
+                 ORDER BY i.created_at DESC LIMIT 1"
+            ))
+            .bind(&[email.into()])?
+            .first::<Pending>(None)
+            .await?;
+        let Some(pending) = pending else {
+            return Ok(false);
+        };
+        let by = invited_by(pending.inviter.as_deref(), pending.staff.as_deref());
+        self.settle_waitlist(email, Some(&pending.id), &by).await?;
+        Ok(true)
+    }
+
+    /// An account's address, as it signed up with it.
+    pub(crate) async fn email_of(&self, user_id: &str) -> Result<Option<String>> {
+        #[derive(Deserialize)]
+        struct Email {
+            email: String,
+        }
+        Ok(self
+            .db
+            .prepare("SELECT email FROM users WHERE id = ?")
+            .bind(&[user_id.into()])?
+            .first::<Email>(None)
+            .await?
+            .map(|row| row.email))
+    }
+
+    async fn username_with_email(&self, email: &str) -> Result<Option<String>> {
+        #[derive(Deserialize)]
+        struct Name {
+            username: String,
+        }
+        Ok(self
+            .db
+            .prepare("SELECT username FROM users WHERE email = ? LIMIT 1")
+            .bind(&[email.into()])?
+            .first::<Name>(None)
+            .await?
+            .map(|name| name.username))
     }
 
     /// The one confirmation an address gets for asking: claimed in the
@@ -453,6 +554,14 @@ mod tests {
         assert!(summary_due(Some("2026-10-24T11:30:00.000Z"), since));
         assert!(summary_due(Some(since), since));
         assert!(!summary_due(Some("2026-10-24T11:50:00.000Z"), since));
+    }
+
+    #[test]
+    fn a_request_answered_by_an_invite_names_who_sent_it() {
+        assert_eq!(invited_by(Some("ada"), None), "@ada");
+        assert_eq!(invited_by(Some("ada"), Some("staff@g1t.sh")), "@ada");
+        assert_eq!(invited_by(None, Some("staff@g1t.sh")), "staff@g1t.sh");
+        assert_eq!(invited_by(None, None), "g1t");
     }
 
     #[test]
