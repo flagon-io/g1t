@@ -1350,8 +1350,10 @@ fn the_runner_base_rebuilds_weekly_on_a_machine_with_docker() {
     assert!(base.trigger("schedule").is_some());
     assert!(base.trigger("workflow_dispatch").is_some());
     assert!(base.trigger("push").unwrap().branches.allows("main"));
+    // The workspace's own Linux runner, where each job has a Docker
+    // Engine of its own and the network is open.
     let job = base.jobs.iter().find(|j| j.id == "build").unwrap();
-    assert_eq!(job.runs_on, json!(["self-hosted", "docker"]));
+    assert_eq!(job.runs_on, json!(["self-hosted", "linux", "x64"]));
 }
 
 #[test]
