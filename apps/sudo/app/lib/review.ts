@@ -44,6 +44,10 @@ export const DONE: Record<string, string> = {
   payment: "Payment recorded. It is on the workspace's statement and counts toward its limit.",
   approved: "Approved. The owner is told in the app and by email.",
   declined: "Declined. The owner is told why, in the app and by email.",
+  "waitlist-approved": "Approved. They were emailed an invite to their address; the row says Joined once they sign up with it.",
+  "waitlist-dismissed": "Dismissed. Nobody was told.",
+  "registration-open": "Sign-up is open to everyone. The site follows within a minute.",
+  "registration-invite": "Sign-up now takes an invite: everyone else asks for access here. The site follows within a minute.",
   goodwill: "Goodwill credit given. It is on the statement and in the audit log.",
 };
 

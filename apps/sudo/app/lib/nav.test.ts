@@ -51,6 +51,7 @@ test("the built pages are not marked soon", () => {
     "/workspaces",
     "/privacy",
     "/enterprises",
+    "/waitlist",
     "/invites",
     "/aliases",
     "/requests",
@@ -106,11 +107,14 @@ test("isCurrent: an item stays lit on the pages beneath it; / only on itself", (
   assert.ok(isCurrent({ to: "/x", also: ["/y"] }, "/y/z"));
 });
 
-test("open incidents show beside Incidents, and nothing waits beside Invites", () => {
+test("open incidents show beside Incidents, waiting requests beside Access requests, and nothing beside Invites", () => {
   const incidents = navItems().find((item) => item.to === "/incidents")!;
   assert.equal(incidents.count, "incidents");
   assert.equal(countFor([incidents], { incidents: 2 }), 2);
   assert.equal(countFor([incidents], {}), 0);
   const invites = navItems().find((item) => item.to === "/invites")!;
   assert.equal(invites.count, undefined);
+  const waitlist = navItems().find((item) => item.to === "/waitlist")!;
+  assert.equal(waitlist.count, "waitlist");
+  assert.equal(countFor([waitlist], { waitlist: 3 }), 3);
 });

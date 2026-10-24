@@ -24,6 +24,7 @@ import { DeployArt, Live, QueueArt, WhyArt } from "./art";
 import { NeedsYouArt, WhatChangedArt } from "./landing-home";
 import { ProductTour } from "./product-tour";
 import { ButtonLink, CopyLine } from "./ui";
+import { useInviteOnly } from "../lib/registration";
 
 const DOCS = "https://docs.g1t.sh";
 
@@ -313,6 +314,7 @@ const PRICES: { name: string; price: string; unit?: string; about: string }[] = 
  * It lists no one's repositories; those are a click away under Explore.
  */
 export function Landing() {
+  const inviteOnly = useInviteOnly();
   return (
     <main className="overflow-x-clip">
       {/* The opening. */}
@@ -878,7 +880,8 @@ export function Landing() {
         <div className="dusk relative overflow-hidden rounded-3xl px-6 py-16 text-center ring-1 ring-line">
           <h2 className="mx-auto max-w-2xl text-3xl font-semibold tracking-tight text-balance sm:text-4xl">Bring your team. Bring your agents.</h2>
           <p className="mx-auto mt-4 max-w-xl text-fg-soft/80 text-balance">
-            Anyone can sign up. Create a workspace in a minute, push a repository and connect the coding agent you already use. Chat and the forge are free.
+            {inviteOnly ? "g1t is in private preview: request access and we will send you an invite." : "Anyone can sign up."} Create a workspace in a minute,
+            push a repository and connect the coding agent you already use. Chat and the forge are free.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <ButtonLink to="/register" size="lg" className="rounded-full">

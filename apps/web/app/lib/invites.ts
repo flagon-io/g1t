@@ -4,9 +4,13 @@
  * No Workers or React imports, so it can be tested under Node.
  */
 
-/** What the sign-up buttons say: Sign up. Anyone may register. */
-export function signUpCopy(): { primary: string; secondary: string | null } {
-  return { primary: "Sign up", secondary: null };
+/**
+ * What the sign-up buttons say: Sign up while anyone may register, and
+ * Request access while g1t is in private preview, where /register asks for
+ * access instead of making an account.
+ */
+export function signUpCopy(inviteOnly = false): { primary: string; secondary: string | null } {
+  return inviteOnly ? { primary: "Request access", secondary: "Have an invite? Use the link in your invite email." } : { primary: "Sign up", secondary: null };
 }
 
 /** The address an invite link has. */

@@ -88,6 +88,7 @@ test("only known reads are taken not to write", () => {
     "list_pulls",
     "counts",
     "user_for_session",
+    "registration",
     "explore",
     "usage",
     "get",

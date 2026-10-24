@@ -212,6 +212,13 @@ function selfHosted(service) {
   // How many friends each person may invite to g1t by email (20 unless
   // set; 0 turns Invite a friend off). Never needed to sign up.
   if (hosted.name === "g1t-identity" && process.env.INVITES_PER_USER) config.vars.INVITES_PER_USER = process.env.INVITES_PER_USER;
+  // Anyone may register on an installation of your own unless you set
+  // REGISTRATION_MODE=invite, as g1t.sh's private preview is; access
+  // requests are then summarised to your own address, never g1t.sh's.
+  if (hosted.name === "g1t-identity") {
+    config.vars.REGISTRATION_MODE = process.env.REGISTRATION_MODE || "open";
+    config.vars.WAITLIST_NOTIFY_EMAIL = process.env.WAITLIST_NOTIFY_EMAIL ?? "";
+  }
   // Packages' files go to the compose file's RustFS (or any S3-compatible
   // store) instead of R2, with no request size limit, and package
   // addresses start with this installation's host.

@@ -386,7 +386,50 @@ export type Suspension = { reason: string; at: string; by: string };
 /** An email domain no new account may sign up with; its subdomains too. */
 export type BlockedDomain = { domain: string; reason: string; blockedBy: string; createdAt: string };
 
-/** The most rows one staff listing of invites returns. */
+/**
+ * Whether anyone may make an account (`open`), or only someone with an
+ * invite (`invite`: g1t.sh's private preview, where people without one ask
+ * for access). Staff flip it in sudo; until they have, identity's
+ * `REGISTRATION_MODE` says, and unset means `open`.
+ */
+export type RegistrationMode = "open" | "invite";
+
+/** Registration as staff see it: the mode in force, the default, and who set it. */
+export type RegistrationSetting = {
+  mode: RegistrationMode;
+  /** Identity's `REGISTRATION_MODE`: the mode while nobody has set one. */
+  defaultMode: RegistrationMode;
+  setBy: string | null;
+  setAt: string | null;
+};
+
+/** The most characters a request for access keeps of what they will build. */
+export const MAX_WAITLIST_ABOUT = 1000;
+/** The most characters an approval's note keeps. */
+export const MAX_WAITLIST_NOTE = 500;
+
+export type WaitlistStatus = "waiting" | "invited" | "dismissed";
+
+/** Someone who asked for access while g1t is in private preview. */
+export type WaitlistEntry = {
+  id: string;
+  email: string;
+  about: string | null;
+  status: WaitlistStatus;
+  inviteId: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  /** What staff wrote when approving; it went in the invite email. */
+  note: string | null;
+  /** The account made with the invite, once it was used. */
+  joinedAs: string | null;
+  /** When they first asked. */
+  createdAt: string;
+  /** When they last asked. */
+  updatedAt: string;
+};
+
+/** The most rows one staff listing of invites or the waitlist returns. */
 export const ADMIN_INVITES_LIMIT = 500;
 
 /**
@@ -398,6 +441,19 @@ export const ADMIN_INVITES_LIMIT = 500;
 export interface IdentityAdminApi {
   /** How many people and workspaces there are, and how many are new. */
   growth(): Promise<AdminGrowth>;
+  /** The waitlist: waiting, oldest first; any other status, newest first. `query` matches the address or what they said. */
+  waitlist(query?: string | null, status?: WaitlistStatus | null): Promise<WaitlistEntry[]>;
+  /** How many requests are waiting, for the navigation's badge. */
+  waitlistPending(): Promise<number>;
+  /** Whether sign-up is open or invite-only, and who last flipped it. */
+  registration(): Promise<RegistrationSetting>;
+  /** Opens sign-up, or closes it to invites only, at once; recorded in the audit log. */
+  setRegistration(mode: RegistrationMode, staff: string): Promise<RegistrationSetting>;
+  /**
+   * Approving makes an invite to g1t bound to the address and emails it,
+   * with `note` (up to 500 characters) if given; dismissing only marks it.
+   */
+  decideWaitlist(id: string, approve: boolean, staff: string, note?: string | null): Promise<Result<WaitlistEntry>>;
   /** Every workspace, newest first, at most 500; `query` matches slug, name, or an owner's username or email. */
   workspaces(query?: string): Promise<AdminWorkspace[]>;
   /** One workspace with all its members, or null. */
@@ -698,10 +754,12 @@ export type DeletedWorkspace = {
 
 export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, DeployKeysClient {
   /**
-   * Creates an account and signs it in. Anyone may register; at most
-   * five accounts an hour per `client`. `inviteCode` is optional: one from an
-   * invitation sent to `email` applies that invitation once the address is
-   * confirmed, and any other code is ignored.
+   * Creates an account and signs it in; at most five accounts an hour per
+   * `client`. While registration is open, anyone may register, and
+   * `inviteCode` is optional: one from an invitation sent to `email` applies
+   * that invitation once the address is confirmed, and any other code is
+   * ignored. In private preview (`registration()` is `invite`), a new
+   * account needs such a code; without one it is refused (`forbidden`).
    */
   register(
     username: string,
@@ -918,6 +976,13 @@ export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, De
    * described, with its `status`. `viewer` sets `forViewer`; `emailProof`,
    * the `proof` from the invite email's link, sets `emailProven`.
    */
+  /** Whether anyone may sign up, or only someone with an invite. */
+  registration(): Promise<RegistrationMode>;
+  /**
+   * Someone without an invite asks for one while g1t is in private preview.
+   * Always the same answer for a valid address, on the waitlist or not.
+   */
+  requestAccess(email: string, about: string, client?: string | null): Promise<Result<boolean>>;
   checkInvite(
     code: string,
     client?: string | null,

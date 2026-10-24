@@ -14,6 +14,7 @@ import { Card } from "../components/ui/card";
 import { githubSignInEnabled } from "../lib/github.server";
 import { identity } from "../lib/services.server";
 import { cleanCode, cleanProof, invitePageCopy, inviteSignUpCopy, landingFor, looksAutomated, suggestUsername, welcomeCookie } from "../lib/invites";
+import { useSignUpCopy } from "../lib/registration";
 import { clientKey } from "../lib/registration.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, startSession } from "../lib/session.server";
 import { rememberWorkspace } from "../lib/workspace-choice";
@@ -374,6 +375,7 @@ function Next({ loaded, error }: { loaded: Loaded; error: string | null }) {
 
 /** A code that cannot be used: why, and whom to ask. */
 function Dead({ loaded }: { loaded: Loaded }) {
+  const signUp = useSignUpCopy();
   const invite = loaded.invite;
   const title = !invite
     ? "This invite link does not work"
@@ -412,7 +414,7 @@ function Dead({ loaded }: { loaded: Loaded }) {
         </Card>
       )}
       <div className="mt-8 flex flex-wrap gap-3">
-        <ButtonLink to="/register">Sign up</ButtonLink>
+        <ButtonLink to="/register">{signUp.primary}</ButtonLink>
         <ButtonLink to={loaded.viewer ? "/" : "/login"} variant="outline">
           {loaded.viewer ? "Go to g1t" : "Sign in"}
         </ButtonLink>

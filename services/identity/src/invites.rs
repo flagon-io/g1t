@@ -39,6 +39,9 @@ use crate::{Identity, crypto};
 
 mod friends;
 mod invitations;
+mod waitlist;
+
+pub use waitlist::PREVIEW_ONLY;
 
 /// Crockford base32, as ids use: no i, l, o or u.
 const ALPHABET: &[u8; 32] = b"0123456789abcdefghjkmnpqrstvwxyz";
@@ -698,8 +701,10 @@ impl Identity {
     }
 
     /// Makes an account: the only place one is made. `invite_code` is
-    /// optional; a good one admitting `email` is spent in the same
-    /// transaction as the account is made, and anything else is ignored.
+    /// optional while registration is open, and required in private
+    /// preview (waitlist.rs); a good one admitting `email` is spent in the
+    /// same transaction as the account is made, and anything else is
+    /// ignored.
     /// What the invite gives (a workspace invitation, repository
     /// invitations) is applied once the address is confirmed: at once for
     /// an address GitHub has confirmed or one proven by the invite email's
@@ -716,6 +721,11 @@ impl Identity {
             }
             None => None,
         };
+        // In private preview, only an invite for this address makes an
+        // account (waitlist.rs).
+        if invite.is_none() && self.invites_required().await? {
+            return Ok(Outcome::fail(FailureCode::Forbidden, PREVIEW_ONLY));
+        }
 
         // An address GitHub has confirmed starts confirmed, and so does the
         // address an invite was emailed to, when the link followed was the
@@ -773,8 +783,12 @@ impl Identity {
             .await?
             .is_some();
         if !exists {
-            // Another sign-up spent the code first: the account is made
-            // without it, and confirms its address like any other.
+            // Another sign-up spent the code first. In private preview that
+            // leaves no way in; otherwise the account is made without it,
+            // and confirms its address like any other.
+            if self.invites_required().await? {
+                return Ok(Outcome::fail(FailureCode::Forbidden, PREVIEW_ONLY));
+            }
             let user = User { verified: new.verified, ..user.clone() };
             let verified_at = if user.verified { SQL_NOW } else { "NULL" };
             let made = self

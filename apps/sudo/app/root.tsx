@@ -10,7 +10,7 @@ import { MobileBar, Sidebar } from "./components/shell";
 import { ButtonLink } from "./components/ui";
 import type { NavCounts } from "./lib/nav";
 import { pauseBanner, spendBanner } from "./lib/costs";
-import { admin, statusAdmin } from "./lib/services.server";
+import { admin, identity, statusAdmin } from "./lib/services.server";
 import { settle } from "./lib/settle";
 import { requireStaff, zoneContext } from "./lib/staff";
 import { THEME_COLOR, THEME_COOKIE, readTheme, themeAttribute, useThemeChoice } from "./lib/theme";
@@ -21,14 +21,19 @@ export const meta: Route.MetaFunction = () => [{ title: "sudo · g1t" }, { name:
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { email } = requireStaff(context);
   // The sidebar's counts: a service that does not answer shows none.
-  const [incidents, alerts, caps, guard, erasures] = await Promise.all([
+  const [incidents, alerts, caps, guard, erasures, waitlist] = await Promise.all([
     settle(statusAdmin.openCount()),
     settle(admin.costAlerts()),
     settle(admin.spendCaps()),
     settle(admin.platformGuard()),
     settle(privacy.requests()),
+    settle(identity.waitlistPending()),
   ]);
-  const counts: NavCounts = { incidents: incidents.ok ? incidents.value : 0, privacy: erasures.ok ? erasures.value.filter((r) => !r.closed_at).length : 0 };
+  const counts: NavCounts = {
+    incidents: incidents.ok ? incidents.value : 0,
+    privacy: erasures.ok ? erasures.value.filter((r) => !r.closed_at).length : 0,
+    waitlist: waitlist.ok ? waitlist.value : 0,
+  };
   // Every page says times in this zone (components/ui.tsx `When`).
   const { zone, chosen } = context.get(zoneContext);
   // Margin alerts (billing's margin guard): a red bar on every page until they clear.
