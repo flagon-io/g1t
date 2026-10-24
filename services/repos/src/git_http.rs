@@ -19,13 +19,7 @@ use crate::push_checks::{Checks, Verdict};
 use crate::resilience::{self, Busy, Failure};
 
 const ENDPOINTS: [&str; 3] = ["info/refs", "git-upload-pack", "git-receive-pack"];
-const FORWARDED_HEADERS: [&str; 5] = [
-    "accept",
-    "content-encoding",
-    "content-type",
-    "git-protocol",
-    "user-agent",
-];
+const FORWARDED_HEADERS: [&str; 5] = ["accept", "content-encoding", "content-type", "git-protocol", "user-agent"];
 
 /// A git request, parsed from its URL.
 pub struct GitRequest {
@@ -39,10 +33,7 @@ impl GitRequest {
     /// `namespace`: where a workspace alias leads.
     pub fn under(&self, namespace: &str) -> GitRequest {
         GitRequest {
-            path: RepoPath {
-                namespace: namespace.to_owned(),
-                name: self.path.name.clone(),
-            },
+            path: RepoPath { namespace: namespace.to_owned(), name: self.path.name.clone() },
             endpoint: self.endpoint,
             service: self.service,
         }
@@ -53,9 +44,7 @@ impl GitRequest {
 /// request is not git's.
 pub fn parse(url: &Url) -> Option<GitRequest> {
     let path = url.path().strip_prefix('/')?;
-    let endpoint = ENDPOINTS
-        .into_iter()
-        .find(|endpoint| path.ends_with(&format!("/{endpoint}")))?;
+    let endpoint = ENDPOINTS.into_iter().find(|endpoint| path.ends_with(&format!("/{endpoint}")))?;
     let repo = &path[..path.len() - endpoint.len() - 1];
     let (namespace, name) = repo.split_once('/')?;
     let name = name.strip_suffix(".git").unwrap_or(name);
@@ -63,9 +52,7 @@ pub fn parse(url: &Url) -> Option<GitRequest> {
         return None;
     }
     let service = if endpoint == "info/refs" {
-        url.query_pairs()
-            .find(|(key, _)| key == "service")
-            .map(|(_, value)| value.into_owned())?
+        url.query_pairs().find(|(key, _)| key == "service").map(|(_, value)| value.into_owned())?
     } else {
         endpoint.to_owned()
     };
@@ -74,14 +61,7 @@ pub fn parse(url: &Url) -> Option<GitRequest> {
         "git-receive-pack" => GitService::ReceivePack,
         _ => return None,
     };
-    Some(GitRequest {
-        path: RepoPath {
-            namespace: namespace.to_owned(),
-            name: name.to_owned(),
-        },
-        endpoint,
-        service,
-    })
+    Some(GitRequest { path: RepoPath { namespace: namespace.to_owned(), name: name.to_owned() }, endpoint, service })
 }
 
 /// How long each step of a git request took, sent back to git as a
@@ -103,13 +83,7 @@ pub struct Timing {
 impl Timing {
     pub fn start() -> Self {
         let now = g1t_kit::now_ms();
-        Self {
-            started: now,
-            last: now,
-            steps: Vec::new(),
-            parts: Vec::new(),
-            notes: Vec::new(),
-        }
+        Self { started: now, last: now, steps: Vec::new(), parts: Vec::new(), notes: Vec::new() }
     }
 
     /// Says how long `part` of the step under way took. Parts overlap, so
@@ -163,15 +137,8 @@ pub async fn viewer(request: &Request, identity: &Fetcher) -> Result<Viewer> {
     let Some((username, secret)) = credentials(&header) else {
         return Ok(None);
     };
-    g1t_kit::call(
-        identity,
-        "user_for_git_credentials",
-        &GitCredentialsArgs {
-            username: username.to_owned(),
-            secret: secret.to_owned(),
-        },
-    )
-    .await
+    g1t_kit::call(identity, "user_for_git_credentials", &GitCredentialsArgs { username: username.to_owned(), secret: secret.to_owned() })
+        .await
 }
 
 /// The username and secret an `Authorization` header gives: Basic's pair,
@@ -224,9 +191,7 @@ pub fn refuse<T>(outcome: Outcome<T>) -> Result<Response> {
     };
     let mut response = crate::git_ops::plain_refusal(failure.message, failure.code.http_status())?;
     if failure.code == FailureCode::Unauthenticated {
-        response
-            .headers_mut()
-            .set("www-authenticate", "Basic realm=\"g1t\"")?;
+        response.headers_mut().set("www-authenticate", "Basic realm=\"g1t\"")?;
     }
     Ok(response)
 }
@@ -245,14 +210,8 @@ pub async fn renamed(url: &Url, identity: &Fetcher) -> Result<Option<String>> {
     let Some(old) = url.path().strip_prefix('/').and_then(|path| path.split('/').next()) else {
         return Ok(None);
     };
-    let current: Option<String> = g1t_kit::call(
-        identity,
-        "resolve_slug",
-        &g1t_contracts::identity::SlugArgs {
-            slug: old.to_owned(),
-        },
-    )
-    .await?;
+    let current: Option<String> =
+        g1t_kit::call(identity, "resolve_slug", &g1t_contracts::identity::SlugArgs { slug: old.to_owned() }).await?;
     Ok(current.and_then(|slug| with_namespace(url, &slug)))
 }
 
@@ -260,14 +219,8 @@ pub async fn renamed(url: &Url, identity: &Fetcher) -> Result<Option<String>> {
 /// (identity's aliases.rs: `g1t` for `flagon-io`), if it is one. Answered
 /// in place rather than redirected: a push does not follow a redirect.
 pub async fn aliased(git: &GitRequest, identity: &Fetcher) -> Result<Option<GitRequest>> {
-    let slug: Option<String> = g1t_kit::call(
-        identity,
-        "resolve_alias",
-        &g1t_contracts::identity::SlugArgs {
-            slug: git.path.namespace.clone(),
-        },
-    )
-    .await?;
+    let slug: Option<String> =
+        g1t_kit::call(identity, "resolve_alias", &g1t_contracts::identity::SlugArgs { slug: git.path.namespace.clone() }).await?;
     Ok(slug.map(|slug| git.under(&slug)))
 }
 
@@ -311,10 +264,8 @@ fn commands(body: &[u8]) -> (Vec<Command>, String) {
     let mut capabilities = String::new();
     let mut position = 0;
     // Commands are pkt-lines; a flush packet ends them and the pack follows.
-    while let Some(length) = body
-        .get(position..position + 4)
-        .and_then(|hex| std::str::from_utf8(hex).ok())
-        .and_then(|hex| usize::from_str_radix(hex, 16).ok())
+    while let Some(length) =
+        body.get(position..position + 4).and_then(|hex| std::str::from_utf8(hex).ok()).and_then(|hex| usize::from_str_radix(hex, 16).ok())
     {
         if length < 4 || position + length > body.len() {
             break;
@@ -332,11 +283,7 @@ fn commands(body: &[u8]) -> (Vec<Command>, String) {
         };
         let mut parts = command.trim_end().splitn(3, ' ');
         if let (Some(old), Some(new), Some(name)) = (parts.next(), parts.next(), parts.next()) {
-            commands.push(Command {
-                old: old.to_owned(),
-                new: new.to_owned(),
-                name: name.to_owned(),
-            });
+            commands.push(Command { old: old.to_owned(), new: new.to_owned(), name: name.to_owned() });
         }
     }
     (commands, capabilities)
@@ -347,10 +294,8 @@ fn commands(body: &[u8]) -> (Vec<Command>, String) {
 /// deletes refs.
 pub(crate) fn pack_bytes(body: &[u8]) -> u64 {
     let mut position = 0;
-    while let Some(length) = body
-        .get(position..position + 4)
-        .and_then(|hex| std::str::from_utf8(hex).ok())
-        .and_then(|hex| usize::from_str_radix(hex, 16).ok())
+    while let Some(length) =
+        body.get(position..position + 4).and_then(|hex| std::str::from_utf8(hex).ok()).and_then(|hex| usize::from_str_radix(hex, 16).ok())
     {
         if length == 0 {
             return (body.len() - position - 4) as u64;
@@ -391,9 +336,7 @@ pub(crate) fn too_many_ref_updates(body: &[u8], limit: Option<u32>, repo: &str) 
     (count > limit as usize).then(|| {
         (
             "too many branches and tags in one push".to_owned(),
-            vec![format!(
-                "This push changes {count} branches and tags; {repo} takes at most {limit} at a time. Push fewer at once."
-            )],
+            vec![format!("This push changes {count} branches and tags; {repo} takes at most {limit} at a time. Push fewer at once.")],
         )
     })
 }
@@ -415,10 +358,7 @@ pub(crate) fn report_response(report: Vec<u8>) -> Result<Response> {
 pub(crate) fn refusal(body: &[u8], protected: &str) -> Option<Vec<u8>> {
     let (commands, capabilities) = commands(body);
     let reference = format!("{HEADS}{protected}");
-    if !commands
-        .iter()
-        .any(|command| command.name == reference && command.old != ZERO_ID)
-    {
+    if !commands.iter().any(|command| command.name == reference && command.old != ZERO_ID) {
         return None;
     }
     let mut report = pkt_line(b"unpack ok\n");
@@ -428,9 +368,7 @@ pub(crate) fn refusal(body: &[u8], protected: &str) -> Option<Vec<u8>> {
         } else {
             format!("not pushed, because the same push would change {protected}")
         };
-        report.extend(pkt_line(
-            format!("ng {} {reason}\n", command.name).as_bytes(),
-        ));
+        report.extend(pkt_line(format!("ng {} {reason}\n", command.name).as_bytes()));
     }
     report.extend_from_slice(b"0000");
     Some(framed(report, &capabilities, &[]))
@@ -440,9 +378,7 @@ pub(crate) fn refusal(body: &[u8], protected: &str) -> Option<Vec<u8>> {
 /// asked for side-band, after `messages` on channel 2, which git prints as
 /// `remote:` lines. Without side-band the messages cannot be shown.
 pub(crate) fn framed(report: Vec<u8>, capabilities: &str, messages: &[String]) -> Vec<u8> {
-    let sideband = capabilities
-        .split(' ')
-        .any(|capability| capability.starts_with("side-band"));
+    let sideband = capabilities.split(' ').any(|capability| capability.starts_with("side-band"));
     if !sideband {
         return report;
     }
@@ -515,7 +451,12 @@ fn peel_tags(body: &[u8], pushed: &mut [Pushed]) {
         for _ in 0..4 {
             let Some((g1t_scan::pack::ObjectKind::Tag, data)) = pack.get(&id) else { break };
             let header = |name: &str| {
-                std::str::from_utf8(&data).ok()?.lines().take_while(|line| !line.is_empty()).find_map(|line| line.strip_prefix(name)).map(str::to_owned)
+                std::str::from_utf8(&data)
+                    .ok()?
+                    .lines()
+                    .take_while(|line| !line.is_empty())
+                    .find_map(|line| line.strip_prefix(name))
+                    .map(str::to_owned)
             };
             let (Some(object), Some(kind)) = (header("object "), header("type ")) else { break };
             if kind == "commit" {
@@ -535,12 +476,7 @@ fn pushed_branches(body: &[u8]) -> Vec<Pushed> {
         .into_iter()
         .filter(|command| command.new != ZERO_ID)
         .filter(|command| command.name.starts_with(HEADS) || command.name.starts_with(TAGS))
-        .map(|Command { old, new, name }| Pushed {
-            git_ref: name,
-            before: (old != ZERO_ID).then_some(old),
-            after: new,
-            peeled: None,
-        })
+        .map(|Command { old, new, name }| Pushed { git_ref: name, before: (old != ZERO_ID).then_some(old), after: new, peeled: None })
         .collect()
 }
 
@@ -650,9 +586,18 @@ impl LargePushes {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SizeViolation {
     Malformed(String),
-    Object { size: u64 },
-    Repository { held: u64, incoming: u64, limit: u64 },
-    Unscannable { size: u64, cap: usize },
+    Object {
+        size: u64,
+    },
+    Repository {
+        held: u64,
+        incoming: u64,
+        limit: u64,
+    },
+    Unscannable {
+        size: u64,
+        cap: usize,
+    },
     /// Still streaming at its deadline ([`PushLimits::deadline_ms`]).
     Overdue,
 }
@@ -831,9 +776,7 @@ pub fn with_head(body: &[u8], branch: &str) -> Option<Vec<u8>> {
         for marker in ["symref=HEAD:", "symref-target:"] {
             if let Some(at) = line.find(marker) {
                 let start = at + marker.len();
-                let end = line[start..]
-                    .find([' ', '\n', '\0'])
-                    .map_or(line.len(), |offset| start + offset);
+                let end = line[start..].find([' ', '\n', '\0']).map_or(line.len(), |offset| start + offset);
                 line.replace_range(start..end, &target);
             }
         }
@@ -901,8 +844,7 @@ fn names_head(git: &GitRequest, body: Option<&[u8]>) -> bool {
     match body {
         None => git.endpoint == "info/refs",
         Some(body) => {
-            git.endpoint == "git-upload-pack"
-                && body.windows(b"command=ls-refs".len()).any(|window| window == b"command=ls-refs")
+            git.endpoint == "git-upload-pack" && body.windows(b"command=ls-refs".len()).any(|window| window == b"command=ls-refs")
         }
     }
 }
@@ -1104,11 +1046,7 @@ pub async fn forward(
         response = read_answer(response, git, lists_head, body.as_deref(), default_branch).await?;
     }
     // A push's ref advertisement asks for a pack without outside bases.
-    if method == Method::Get
-        && git.service == GitService::ReceivePack
-        && git.endpoint == "info/refs"
-        && response.status_code() == 200
-    {
+    if method == Method::Get && git.service == GitService::ReceivePack && git.endpoint == "info/refs" && response.status_code() == 200 {
         let headers = response.headers().clone();
         headers.delete("content-length")?;
         let body = response.bytes().await?;
@@ -1133,7 +1071,13 @@ pub async fn forward(
 /// (git_edge.rs): an advertisement or `ls-refs` with `HEAD` on the default
 /// branch g1t keeps, and a negotiating fetch's without the sections sent
 /// after acknowledgments without `ready`.
-async fn read_answer(mut response: Response, git: &GitRequest, lists_head: bool, body: Option<&[u8]>, default_branch: Option<&str>) -> Result<Response> {
+async fn read_answer(
+    mut response: Response,
+    git: &GitRequest,
+    lists_head: bool,
+    body: Option<&[u8]>,
+    default_branch: Option<&str>,
+) -> Result<Response> {
     if let (true, Some(branch)) = (lists_head, default_branch)
         && response.status_code() == 200
     {
@@ -1152,7 +1096,13 @@ async fn read_answer(mut response: Response, git: &GitRequest, lists_head: bool,
 /// The git edge's answer to a read (git_edge.rs), as [`forward`] gives the
 /// store's: the same `HEAD` and negotiation handling. Not the store's own,
 /// so never metered as one of its operations.
-pub async fn from_edge(response: Response, git: &GitRequest, get: bool, body: Option<&[u8]>, default_branch: Option<&str>) -> Result<Forwarded> {
+pub async fn from_edge(
+    response: Response,
+    git: &GitRequest,
+    get: bool,
+    body: Option<&[u8]>,
+    default_branch: Option<&str>,
+) -> Result<Forwarded> {
     let lists_head = names_head(git, if get { None } else { body });
     let response = read_answer(response, git, lists_head, body, default_branch).await?;
     Ok(Forwarded {
@@ -1371,21 +1321,16 @@ async fn push(
         let answer = hidden_refs::with_refused(&answer, &hidden, sideband).unwrap_or(answer);
         response = Response::from_bytes(answer)?.with_headers(headers);
     }
-    Ok(Push::Forwarded(Forwarded {
-        response,
-        pushed,
-        deleted,
-        pack_bytes,
-        sent,
-        from_store: true,
-        unscanned,
-        rate_limited,
-    }))
+    Ok(Push::Forwarded(Forwarded { response, pushed, deleted, pack_bytes, sent, from_store: true, unscanned, rate_limited }))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Acknowledged, GitService, Pushed, RepoPath, Url, ZERO_ID, acknowledged, credentials, deleted_refs, framed, negotiating, pack_bytes, parse, peel_tags, pushed_branches, refusal, server_timing, too_many_ref_updates, transferred, with_head, with_namespace, with_no_thin};
+    use super::{
+        Acknowledged, GitService, Pushed, RepoPath, Url, ZERO_ID, acknowledged, credentials, deleted_refs, framed, negotiating, pack_bytes,
+        parse, peel_tags, pushed_branches, refusal, server_timing, too_many_ref_updates, transferred, with_head, with_namespace,
+        with_no_thin,
+    };
 
     #[test]
     fn a_pushed_annotated_tag_is_peeled_from_its_pack() {
@@ -1398,7 +1343,12 @@ mod tests {
         let outer_id = object_id(ObjectKind::Tag, &outer);
         let body = [b"0000".as_slice(), &write_pack(&[(ObjectKind::Tag, tag), (ObjectKind::Tag, outer)])].concat();
         let pushed = |git_ref: &str, after: &str| Pushed { git_ref: git_ref.into(), before: None, after: after.into(), peeled: None };
-        let mut refs = [pushed("refs/tags/v1", &tag_id), pushed("refs/tags/v2", &outer_id), pushed("refs/tags/light", commit), pushed("refs/heads/main", commit)];
+        let mut refs = [
+            pushed("refs/tags/v1", &tag_id),
+            pushed("refs/tags/v2", &outer_id),
+            pushed("refs/tags/light", commit),
+            pushed("refs/heads/main", commit),
+        ];
         peel_tags(&body, &mut refs);
         let peeled: Vec<_> = refs.iter().map(|pushed| pushed.peeled.as_deref()).collect();
         assert_eq!(peeled, [Some(commit), Some(commit), None, None]);
@@ -1437,15 +1387,9 @@ mod tests {
     fn a_renamed_repository_redirects_to_its_new_name() {
         // A rename keeps the old path in the same table as a transfer, so
         // the old remote is sent to the new name the same way.
-        let to = RepoPath {
-            namespace: "acme".into(),
-            name: "booster".into(),
-        };
+        let to = RepoPath { namespace: "acme".into(), name: "booster".into() };
         let url = Url::parse("https://g1t.sh/acme/rocket.git/info/refs?service=git-upload-pack").unwrap();
-        assert_eq!(
-            transferred(&url, &to).as_deref(),
-            Some("https://g1t.sh/acme/booster.git/info/refs?service=git-upload-pack")
-        );
+        assert_eq!(transferred(&url, &to).as_deref(), Some("https://g1t.sh/acme/booster.git/info/refs?service=git-upload-pack"));
     }
 
     #[test]
@@ -1522,9 +1466,12 @@ mod tests {
         ]
         .concat();
         let changed = String::from_utf8(with_no_thin(&body).unwrap()).unwrap();
-        assert!(changed.contains(&String::from_utf8(pkt(&format!("{zero} capabilities^{{}}\0report-status delete-refs ofs-delta no-thin\n"))).unwrap()));
+        assert!(changed.contains(
+            &String::from_utf8(pkt(&format!("{zero} capabilities^{{}}\0report-status delete-refs ofs-delta no-thin\n"))).unwrap()
+        ));
         // No capabilities at all, and no newline: still one list.
-        let bare = [pkt("# service=git-receive-pack\n"), b"0000".to_vec(), pkt(&format!("{zero} capabilities^{{}}\0")), b"0000".to_vec()].concat();
+        let bare =
+            [pkt("# service=git-receive-pack\n"), b"0000".to_vec(), pkt(&format!("{zero} capabilities^{{}}\0")), b"0000".to_vec()].concat();
         let changed = String::from_utf8(with_no_thin(&bare).unwrap()).unwrap();
         assert!(changed.contains(&String::from_utf8(pkt(&format!("{zero} capabilities^{{}}\0no-thin"))).unwrap()));
     }
@@ -1538,12 +1485,20 @@ mod tests {
         assert!(with_no_thin(b"<html>503 Service Unavailable</html>").is_none());
         assert!(with_no_thin(b"").is_none());
         // A first ref line without capabilities, or without an object id.
-        let without = [pkt("# service=git-receive-pack\n"), b"0000".to_vec(), pkt(&format!("{main} refs/heads/main\n")), b"0000".to_vec()].concat();
+        let without =
+            [pkt("# service=git-receive-pack\n"), b"0000".to_vec(), pkt(&format!("{main} refs/heads/main\n")), b"0000".to_vec()].concat();
         assert!(with_no_thin(&without).is_none());
-        let unnamed = [pkt("# service=git-receive-pack\n"), b"0000".to_vec(), pkt("nothing here\0report-status\n"), b"0000".to_vec()].concat();
+        let unnamed =
+            [pkt("# service=git-receive-pack\n"), b"0000".to_vec(), pkt("nothing here\0report-status\n"), b"0000".to_vec()].concat();
         assert!(with_no_thin(&unnamed).is_none());
         // `no-thin` inside another capability's value is not `no-thin`.
-        let lookalike = [pkt("# service=git-receive-pack\n"), b"0000".to_vec(), pkt(&format!("{main} refs/heads/main\0agent=no-thin-ish\n")), b"0000".to_vec()].concat();
+        let lookalike = [
+            pkt("# service=git-receive-pack\n"),
+            b"0000".to_vec(),
+            pkt(&format!("{main} refs/heads/main\0agent=no-thin-ish\n")),
+            b"0000".to_vec(),
+        ]
+        .concat();
         assert!(String::from_utf8(with_no_thin(&lookalike).unwrap()).unwrap().contains("agent=no-thin-ish no-thin\n"));
     }
 
@@ -1572,12 +1527,7 @@ mod tests {
         let old = "c71546fcd893ef8b0f57388b65e620d759705dda";
         let new = "4807077b296e6edbf410d55e72749d3e1170c291";
         let pack = b"PACK\0\0\0\x02\0\0\0\0rest-of-pack";
-        let body = [
-            pkt(&format!("{old} {new} refs/heads/main\0 report-status\n")),
-            b"0000".to_vec(),
-            pack.to_vec(),
-        ]
-        .concat();
+        let body = [pkt(&format!("{old} {new} refs/heads/main\0 report-status\n")), b"0000".to_vec(), pack.to_vec()].concat();
         assert_eq!(pack_bytes(&body), pack.len() as u64);
         // Only deletions: no pack.
         let body = [pkt(&format!("{old} {ZERO_ID} refs/heads/gone\n")), b"0000".to_vec()].concat();
@@ -1587,20 +1537,11 @@ mod tests {
 
     #[test]
     fn a_transferred_repository_keeps_the_rest_of_the_address() {
-        let to = RepoPath {
-            namespace: "flagon-io".into(),
-            name: "g1t".into(),
-        };
+        let to = RepoPath { namespace: "flagon-io".into(), name: "g1t".into() };
         let url = Url::parse("https://g1t.sh/syntaqx/g1t.git/info/refs?service=git-receive-pack").unwrap();
-        assert_eq!(
-            transferred(&url, &to).as_deref(),
-            Some("https://g1t.sh/flagon-io/g1t.git/info/refs?service=git-receive-pack")
-        );
+        assert_eq!(transferred(&url, &to).as_deref(), Some("https://g1t.sh/flagon-io/g1t.git/info/refs?service=git-receive-pack"));
         let url = Url::parse("https://g1t.sh/syntaqx/g1t/git-upload-pack").unwrap();
-        assert_eq!(
-            transferred(&url, &to).as_deref(),
-            Some("https://g1t.sh/flagon-io/g1t/git-upload-pack")
-        );
+        assert_eq!(transferred(&url, &to).as_deref(), Some("https://g1t.sh/flagon-io/g1t/git-upload-pack"));
     }
 
     #[test]
@@ -1613,14 +1554,7 @@ mod tests {
             let git = parse(&Url::parse(address).unwrap()).unwrap();
             assert_eq!(git.path.namespace, "g1t", "{address}");
             let canonical = git.under("flagon-io");
-            assert_eq!(
-                canonical.path,
-                RepoPath {
-                    namespace: "flagon-io".into(),
-                    name: "g1t".into(),
-                },
-                "{address}"
-            );
+            assert_eq!(canonical.path, RepoPath { namespace: "flagon-io".into(), name: "g1t".into() }, "{address}");
             assert_eq!(canonical.service, service);
             assert_eq!(canonical.endpoint, git.endpoint);
         }
@@ -1628,10 +1562,7 @@ mod tests {
 
     #[test]
     fn a_renamed_workspace_keeps_the_rest_of_the_address() {
-        let url = worker::Url::parse(
-            "https://g1t.sh/acme/rocket.git/info/refs?service=git-upload-pack",
-        )
-        .unwrap();
+        let url = worker::Url::parse("https://g1t.sh/acme/rocket.git/info/refs?service=git-upload-pack").unwrap();
         assert_eq!(
             with_namespace(&url, "acme-inc").as_deref(),
             Some("https://g1t.sh/acme-inc/rocket.git/info/refs?service=git-upload-pack")
@@ -1713,9 +1644,7 @@ mod tests {
         let old = "c71546fcd893ef8b0f57388b65e620d759705dda";
         let new = "4807077b296e6edbf410d55e72749d3e1170c291";
         let body = [
-            pkt(&format!(
-                "{old} {new} refs/heads/main\0 report-status side-band-64k\n"
-            )),
+            pkt(&format!("{old} {new} refs/heads/main\0 report-status side-band-64k\n")),
             pkt(&format!("{ZERO_ID} {new} refs/heads/feature/x\n")),
             pkt(&format!("{old} {ZERO_ID} refs/heads/gone\n")),
             pkt(&format!("{ZERO_ID} {new} refs/tags/v1\n")),
@@ -1726,28 +1655,18 @@ mod tests {
         assert_eq!(
             pushed_branches(&body),
             [
-                Pushed {
-                    git_ref: "refs/heads/main".to_owned(),
-                    before: Some(old.to_owned()),
-                    after: new.to_owned(),
-                    peeled: None
-                },
-                Pushed {
-                    git_ref: "refs/heads/feature/x".to_owned(),
-                    before: None,
-                    after: new.to_owned(),
-                    peeled: None
-                },
-                Pushed {
-                    git_ref: "refs/tags/v1".to_owned(),
-                    before: None,
-                    after: new.to_owned(),
-                    peeled: None
-                },
+                Pushed { git_ref: "refs/heads/main".to_owned(), before: Some(old.to_owned()), after: new.to_owned(), peeled: None },
+                Pushed { git_ref: "refs/heads/feature/x".to_owned(), before: None, after: new.to_owned(), peeled: None },
+                Pushed { git_ref: "refs/tags/v1".to_owned(), before: None, after: new.to_owned(), peeled: None },
             ]
         );
         assert_eq!(deleted_refs(&body), [("refs/heads/gone".to_owned(), old.to_owned())]);
-        let tag = [pkt(&format!("{old} {ZERO_ID} refs/tags/v0\0 report-status\n")), pkt(&format!("{old} {ZERO_ID} refs/notes/x\n")), b"0000".to_vec()].concat();
+        let tag = [
+            pkt(&format!("{old} {ZERO_ID} refs/tags/v0\0 report-status\n")),
+            pkt(&format!("{old} {ZERO_ID} refs/notes/x\n")),
+            b"0000".to_vec(),
+        ]
+        .concat();
         assert_eq!(deleted_refs(&tag), [("refs/tags/v0".to_owned(), old.to_owned())]);
     }
 
@@ -1772,15 +1691,23 @@ mod tests {
     fn a_push_changing_more_refs_than_the_limit_is_refused_whole() {
         let new = "4807077b296e6edbf410d55e72749d3e1170c291";
         let body = [
-            pkt(&format!("{ZERO_ID} {new} refs/heads/a  report-status
-")),
-            pkt(&format!("{ZERO_ID} {new} refs/heads/b
-")),
-            pkt(&format!("{ZERO_ID} {new} refs/tags/v1
-")),
+            pkt(&format!(
+                "{ZERO_ID} {new} refs/heads/a  report-status
+"
+            )),
+            pkt(&format!(
+                "{ZERO_ID} {new} refs/heads/b
+"
+            )),
+            pkt(&format!(
+                "{ZERO_ID} {new} refs/tags/v1
+"
+            )),
             // Not a branch or tag: not counted.
-            pkt(&format!("{ZERO_ID} {new} refs/notes/commits
-")),
+            pkt(&format!(
+                "{ZERO_ID} {new} refs/notes/commits
+"
+            )),
             b"0000".to_vec(),
         ]
         .concat();
@@ -1796,13 +1723,7 @@ mod tests {
     #[test]
     fn the_report_is_framed_for_a_client_that_asked_for_side_band() {
         let old = "c71546fcd893ef8b0f57388b65e620d759705dda";
-        let body = [
-            pkt(&format!(
-                "{old} {ZERO_ID} refs/heads/main\0 report-status side-band-64k\n"
-            )),
-            b"0000".to_vec(),
-        ]
-        .concat();
+        let body = [pkt(&format!("{old} {ZERO_ID} refs/heads/main\0 report-status side-band-64k\n")), b"0000".to_vec()].concat();
         let report = refusal(&body, "main").unwrap();
         // A length, then channel 1, then the report itself.
         assert_eq!(report[4], 1);
@@ -1814,20 +1735,10 @@ mod tests {
     fn other_branches_and_a_first_push_are_let_through() {
         let old = "c71546fcd893ef8b0f57388b65e620d759705dda";
         let new = "4807077b296e6edbf410d55e72749d3e1170c291";
-        let feature = [
-            pkt(&format!("{old} {new} refs/heads/feature\0 report-status\n")),
-            b"0000".to_vec(),
-        ]
-        .concat();
+        let feature = [pkt(&format!("{old} {new} refs/heads/feature\0 report-status\n")), b"0000".to_vec()].concat();
         assert!(refusal(&feature, "main").is_none());
         // An empty repository has to be able to receive its first commits.
-        let first = [
-            pkt(&format!(
-                "{ZERO_ID} {new} refs/heads/main\0 report-status\n"
-            )),
-            b"0000".to_vec(),
-        ]
-        .concat();
+        let first = [pkt(&format!("{ZERO_ID} {new} refs/heads/main\0 report-status\n")), b"0000".to_vec()].concat();
         assert!(refusal(&first, "main").is_none());
     }
 
@@ -1848,8 +1759,6 @@ mod tests {
 
     #[test]
     fn a_fetch_request_names_no_branches() {
-        assert!(
-            pushed_branches(b"0032want c71546fcd893ef8b0f57388b65e620d759705dda\n0000").is_empty()
-        );
+        assert!(pushed_branches(b"0032want c71546fcd893ef8b0f57388b65e620d759705dda\n0000").is_empty());
     }
 }

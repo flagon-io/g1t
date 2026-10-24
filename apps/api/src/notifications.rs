@@ -73,13 +73,7 @@ async fn readable_repo(services: &Services, viewer: &Viewer, input: &Value) -> R
     let found: Outcome<Repo> = g1t_kit::call(
         &services.repos,
         "get",
-        &GetArgs {
-            path: RepoPath {
-                namespace: path.namespace,
-                name: path.name,
-            },
-            viewer: viewer.clone(),
-        },
+        &GetArgs { path: RepoPath { namespace: path.namespace, name: path.name }, viewer: viewer.clone() },
     )
     .await?;
     Ok(Some(found))
@@ -93,18 +87,16 @@ pub(crate) fn list_args(viewer: &Viewer, input: &Value) -> std::result::Result<L
     };
     let reason = match text(input, "reason") {
         None => None,
-        Some(reason) => Some(Reason::parse(&reason).ok_or_else(|| {
-            format!(
-                "{reason} is not a reason. Give one of {}.",
-                Reason::ALL.map(Reason::as_str).join(", ")
-            )
-        })?),
+        Some(reason) => Some(
+            Reason::parse(&reason)
+                .ok_or_else(|| format!("{reason} is not a reason. Give one of {}.", Reason::ALL.map(Reason::as_str).join(", ")))?,
+        ),
     };
     let severity = match text(input, "severity") {
         None => None,
-        Some(severity) => Some(
-            Severity::parse(&severity).ok_or_else(|| format!("severity is error, warning, success or info, not {severity}."))?,
-        ),
+        Some(severity) => {
+            Some(Severity::parse(&severity).ok_or_else(|| format!("severity is error, warning, success or info, not {severity}."))?)
+        }
     };
     // As it is elsewhere: what is unread, unless all is asked for. Saved
     // and done are lists of their own, read or not.
@@ -147,13 +139,10 @@ pub(crate) fn watch_level(input: &Value) -> std::result::Result<(WatchLevel, Vec
         .map(|events| events.iter().filter_map(|event| event.as_str().map(str::to_owned)).collect())
         .unwrap_or_default();
     if let Some(level) = text(input, "level") {
-        let level = WatchLevel::parse(&level)
-            .ok_or_else(|| format!("level is participating, all, ignore or custom, not {level}."))?;
+        let level = WatchLevel::parse(&level).ok_or_else(|| format!("level is participating, all, ignore or custom, not {level}."))?;
         if level == WatchLevel::Custom {
-            let unknown: Vec<&String> = events
-                .iter()
-                .filter(|event| !WATCH_EVENTS.contains(&event.trim().to_lowercase().as_str()))
-                .collect();
+            let unknown: Vec<&String> =
+                events.iter().filter(|event| !WATCH_EVENTS.contains(&event.trim().to_lowercase().as_str())).collect();
             if let Some(event) = unknown.first() {
                 return Err(format!("{event} is not something to watch. Give some of {}.", WATCH_EVENTS.join(", ")));
             }
@@ -176,11 +165,7 @@ pub(crate) fn watch_level(input: &Value) -> std::result::Result<(WatchLevel, Vec
 /// work item.
 async fn subscription_args(services: &Services, viewer: &Viewer, input: &Value) -> Result<Outcome<SubscriptionArgs>> {
     if let Some(id) = text(input, "id") {
-        return Ok(Outcome::Ok(SubscriptionArgs {
-            viewer: viewer.clone(),
-            id: Some(id),
-            ..SubscriptionArgs::default()
-        }));
+        return Ok(Outcome::Ok(SubscriptionArgs { viewer: viewer.clone(), id: Some(id), ..SubscriptionArgs::default() }));
     }
     if let (Some(workspace), None, Some(number)) = (text(input, "workspace"), text(input, "repo"), whole(input, "number")) {
         let asked = WorkItemViewArgs { workspace: workspace.to_lowercase(), number, viewer: viewer.clone() };
@@ -199,13 +184,9 @@ async fn subscription_args(services: &Services, viewer: &Viewer, input: &Value) 
         return Ok(Outcome::fail(FailureCode::Invalid, NO_SUBJECT));
     };
     Ok(match found {
-        Outcome::Ok(repo) => Outcome::Ok(SubscriptionArgs {
-            viewer: viewer.clone(),
-            id: None,
-            repo_id: Some(repo.id),
-            number: Some(number),
-            item_id: None,
-        }),
+        Outcome::Ok(repo) => {
+            Outcome::Ok(SubscriptionArgs { viewer: viewer.clone(), id: None, repo_id: Some(repo.id), number: Some(number), item_id: None })
+        }
         Outcome::Fail(failure) => Outcome::Fail(failure),
     })
 }
@@ -229,7 +210,14 @@ async fn thread_after(services: &Services, viewer: &Viewer, id: String) -> Resul
 }
 
 /// Marks one of the person's threads, then returns it as it is now.
-async fn mark_one(services: &Services, viewer: &Viewer, user: &User, input: &Value, mark: InboxMark, until: Option<String>) -> Result<Outcome<Value>> {
+async fn mark_one(
+    services: &Services,
+    viewer: &Viewer,
+    user: &User,
+    input: &Value,
+    mark: InboxMark,
+    until: Option<String>,
+) -> Result<Outcome<Value>> {
     let Some(id) = text(input, "id") else {
         return failed(FailureCode::Invalid, "Give the thread's id.");
     };
@@ -344,7 +332,9 @@ pub async fn run(op: Op, services: &Services, viewer: &Viewer, input: &Value) ->
                 Op::GetThreadSubscription => g1t_kit::call(&services.events, "inbox_subscription", &on).await?,
                 _ => {
                     let (subscribed, ignored) = match op {
-                        Op::SetThreadSubscription => (Some(flag(input, "subscribed").unwrap_or(true)), flag(input, "ignored").unwrap_or(false)),
+                        Op::SetThreadSubscription => {
+                            (Some(flag(input, "subscribed").unwrap_or(true)), flag(input, "ignored").unwrap_or(false))
+                        }
                         _ => (Some(false), false),
                     };
                     g1t_kit::call(&services.events, "inbox_subscribe", &SubscribeArgs { on, subscribed, ignored }).await?
@@ -377,13 +367,7 @@ pub async fn run(op: Op, services: &Services, viewer: &Viewer, input: &Value) ->
                     g1t_kit::call(
                         &services.events,
                         "inbox_watch",
-                        &WatchArgs {
-                            username,
-                            repo_id: repo.id,
-                            repo: Some(path.clone()),
-                            level,
-                            events,
-                        },
+                        &WatchArgs { username, repo_id: repo.id, repo: Some(path.clone()), level, events },
                     )
                     .await?
                 }
@@ -403,11 +387,7 @@ mod tests {
     use super::*;
 
     fn viewer() -> Viewer {
-        Some(User {
-            id: "usr_1".into(),
-            username: "ana".into(),
-            ..User::default()
-        })
+        Some(User { id: "usr_1".into(), username: "ana".into(), ..User::default() })
     }
 
     #[test]
@@ -454,13 +434,8 @@ mod tests {
 
     #[test]
     fn watching_says_plainly_whether_activity_comes() {
-        let custom = Watching {
-            repo_id: "rep_1".into(),
-            repo: None,
-            level: WatchLevel::Custom,
-            events: vec!["pulls".into()],
-            updated_at: None,
-        };
+        let custom =
+            Watching { repo_id: "rep_1".into(), repo: None, level: WatchLevel::Custom, events: vec!["pulls".into()], updated_at: None };
         let shown = watching_json(&custom, Some("acme/rocket"));
         assert_eq!(shown["repo"], "acme/rocket");
         assert_eq!(shown["level"], "custom");

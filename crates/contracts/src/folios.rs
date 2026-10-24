@@ -139,10 +139,7 @@ pub fn folio_id_from(segment: &str) -> Option<&str> {
     let start = segment.len().checked_sub(30)?;
     let id = segment.get(start..)?;
     let suffix = id.strip_prefix("fol_")?;
-    suffix
-        .bytes()
-        .all(|b| b"0123456789abcdefghjkmnpqrstvwxyz".contains(&b))
-        .then_some(id)
+    suffix.bytes().all(|b| b"0123456789abcdefghjkmnpqrstvwxyz".contains(&b)).then_some(id)
 }
 
 // --- Shapes -------------------------------------------------------------------
@@ -388,7 +385,9 @@ impl FolioAccessChange {
                 }
                 Ok(())
             }
-            FolioAccessChange::Revoke { principal } if !is_principal(principal) => Err(format!("{principal} is not user:, agent: or team: and an id.")),
+            FolioAccessChange::Revoke { principal } if !is_principal(principal) => {
+                Err(format!("{principal} is not user:, agent: or team: and an id."))
+            }
             FolioAccessChange::General { access: GeneralAccess::None, role } => match role {
                 None => Ok(()),
                 Some(_) => Err("Restricted takes no role.".to_owned()),
@@ -662,7 +661,8 @@ pub struct QueryDatasetArgs {
 /// The `folio.*` types the artifacts service publishes, with no `repoId` on
 /// the event: a folio may be private, so it never reaches a repository's
 /// timeline or webhooks. Nothing subscribes to them yet.
-pub const FOLIO_EVENTS: [&str; 7] = ["folio.created", "folio.updated", "folio.trashed", "folio.restored", "folio.deleted", "folio.shared", "folio.stale"];
+pub const FOLIO_EVENTS: [&str; 7] =
+    ["folio.created", "folio.updated", "folio.trashed", "folio.restored", "folio.deleted", "folio.shared", "folio.stale"];
 
 /// What every `folio.*` event carries (`FolioEventData` in events.ts).
 /// Event data is camelCase, as every event on the bus.
@@ -800,7 +800,14 @@ mod tests {
         assert_eq!(serde_json::to_value(&to).unwrap(), json!({ "space_id": null, "parent_id": null, "before_id": "fol_2" }));
         let list = FolioList { items: vec![], next_cursor: None };
         assert_eq!(serde_json::to_value(&list).unwrap(), json!({ "items": [], "next_cursor": null }));
-        let version = FolioVersion { id: "ver_1".to_owned(), folio_id: "fol_1".to_owned(), created_at: "t".to_owned(), authors: vec![], kind: "edit".to_owned(), note: None };
+        let version = FolioVersion {
+            id: "ver_1".to_owned(),
+            folio_id: "fol_1".to_owned(),
+            created_at: "t".to_owned(),
+            authors: vec![],
+            kind: "edit".to_owned(),
+            note: None,
+        };
         fields_match(&serde_json::to_value(&version).unwrap(), TS, &["FolioVersion"]);
         let template = FolioTemplate {
             id: "tpl_1".to_owned(),
@@ -818,7 +825,9 @@ mod tests {
         for body in [ts_type(TS, "FolioRef"), ts_type(TS, "Folio")] {
             for line in body.lines() {
                 let line = line.trim_start();
-                if let Some((key, _)) = line.split_once(':').filter(|(key, _)| !key.is_empty() && key.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')) {
+                if let Some((key, _)) =
+                    line.split_once(':').filter(|(key, _)| !key.is_empty() && key.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'))
+                {
                     assert!(rust.contains(&key.to_owned()), "Folio has no {key} in Rust");
                 }
             }
@@ -830,7 +839,8 @@ mod tests {
         let change = FolioAccessChange::General { access: GeneralAccess::Link, role: Some(FolioRole::Comment) };
         assert_eq!(serde_json::to_value(&change).unwrap(), json!({ "op": "general", "access": "link", "role": "comment" }));
         assert_eq!(change.method(), "set_folio_general_access");
-        let grant: FolioAccessChange = serde_json::from_value(json!({ "op": "grant", "principal": "team:design", "role": "edit" })).unwrap();
+        let grant: FolioAccessChange =
+            serde_json::from_value(json!({ "op": "grant", "principal": "team:design", "role": "edit" })).unwrap();
         assert_eq!(grant.method(), "set_folio_grant");
         let mode: FolioAccessChange = serde_json::from_value(json!({ "op": "agent_mode", "agent_mode": "edit" })).unwrap();
         assert_eq!(mode, FolioAccessChange::AgentMode { agent_mode: Some(AgentMode::Edit) });
@@ -846,11 +856,14 @@ mod tests {
             Some(error) => assert_eq!(outcome, Err(error.to_owned()), "{case}"),
         };
         for case in fixtures["new_folio"].as_array().unwrap() {
-            let outcome = serde_json::from_value::<NewFolio>(case["input"].clone()).map_err(|_| "*".to_owned()).and_then(|input| input.validate());
+            let outcome =
+                serde_json::from_value::<NewFolio>(case["input"].clone()).map_err(|_| "*".to_owned()).and_then(|input| input.validate());
             check(case, outcome);
         }
         for case in fixtures["access_change"].as_array().unwrap() {
-            let outcome = serde_json::from_value::<FolioAccessChange>(case["change"].clone()).map_err(|_| "*".to_owned()).and_then(|change| change.validate());
+            let outcome = serde_json::from_value::<FolioAccessChange>(case["change"].clone())
+                .map_err(|_| "*".to_owned())
+                .and_then(|change| change.validate());
             check(case, outcome);
         }
         for case in fixtures["agent_edit"].as_array().unwrap() {

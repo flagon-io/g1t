@@ -22,8 +22,12 @@ use worker::Result;
 use crate::broker::{self, Broker};
 use crate::protection::Gate;
 use crate::sync::WorkflowRow;
-use crate::{Actions, Count, MAX_TIMEOUT_MINUTES, SELF_HOSTED_MAX_TIMEOUT_MINUTES, SILENT_MS, SITE, check, fail, has_room, optional, repo_path};
-use g1t_contracts::runners::{OFFERED_TO_OWN, RunnerSettings, Wanted, falls_back, fallback_note, hosted_wanted, offered_to_own, waiting_reason};
+use crate::{
+    Actions, Count, MAX_TIMEOUT_MINUTES, SELF_HOSTED_MAX_TIMEOUT_MINUTES, SILENT_MS, SITE, check, fail, has_room, optional, repo_path,
+};
+use g1t_contracts::runners::{
+    OFFERED_TO_OWN, RunnerSettings, Wanted, fallback_note, falls_back, hosted_wanted, offered_to_own, waiting_reason,
+};
 
 /// The most log one job keeps, in bytes; past it, the log says so and stops.
 const MAX_LOG_BYTES: usize = 4 * 1024 * 1024;
@@ -42,7 +46,8 @@ const TOKEN_ROTATE: &str = "UPDATE jobs SET first_token_hash = COALESCE(first_to
 /// two finds it still queued. It keeps since when it has waited for a
 /// machine (`waiting_since`): its sandbox may say later that it found none
 /// (`job_unstarted`), and the wait goes on from then, not from this start.
-const HOSTED_CLAIM: &str = "UPDATE jobs SET status = 'in_progress', token_hash = ?1, first_token_hash = NULL, started_at = ?2, seen_at = ?2,
+const HOSTED_CLAIM: &str =
+    "UPDATE jobs SET status = 'in_progress', token_hash = ?1, first_token_hash = NULL, started_at = ?2, seen_at = ?2,
        timeout_minutes = ?3, reason = CASE WHEN labels IS NULL THEN reason ELSE NULL END, labels = NULL, queued_at = NULL
      WHERE id = ?4 AND status = 'queued' RETURNING id";
 /// Puts a job whose start found no machine back in the queue: `?1` since
@@ -50,7 +55,8 @@ const HOSTED_CLAIM: &str = "UPDATE jobs SET status = 'in_progress', token_hash =
 /// `started_at`). Only while that start is still the job's and it never
 /// reported: a sandbox telling of an earlier start, or of one that ran
 /// after all, changes nothing.
-const MACHINE_REQUEUE: &str = "UPDATE jobs SET status = 'queued', token_hash = NULL, started_at = NULL, seen_at = NULL, waiting_since = ?1, reason = ?2
+const MACHINE_REQUEUE: &str =
+    "UPDATE jobs SET status = 'queued', token_hash = NULL, started_at = NULL, seen_at = NULL, waiting_since = ?1, reason = ?2
      WHERE id = ?3 AND status = 'in_progress' AND started_at = ?4 AND seen_at = started_at RETURNING id";
 
 /// Whether `token` is a running job's: its current one, or with `started`
@@ -402,7 +408,10 @@ fn call_allowed(depth: u64, called: &[&str], file: &str) -> std::result::Result<
     unique.sort_unstable();
     unique.dedup();
     if unique.len() > MAX_CALLED_WORKFLOWS {
-        return Err(format!("Calling `{file}` would make {} reusable workflows in this run: a run calls at most {MAX_CALLED_WORKFLOWS} different ones.", unique.len()));
+        return Err(format!(
+            "Calling `{file}` would make {} reusable workflows in this run: a run calls at most {MAX_CALLED_WORKFLOWS} different ones.",
+            unique.len()
+        ));
     }
     Ok(())
 }
@@ -541,10 +550,7 @@ pub(crate) fn environment_of(raw: &Value, contexts: &Map<String, Value>) -> Opti
         name @ Value::String(_) => Some(JobEnvironment { name: plain(name)?, url: None, deploys: workflow::records_deployment(raw) }),
         Value::Object(env) => {
             let name = plain(env.get("name")?)?;
-            let url = env
-                .get("url")
-                .and_then(plain)
-                .filter(|url| url.starts_with("https://") || url.starts_with("http://"));
+            let url = env.get("url").and_then(plain).filter(|url| url.starts_with("https://") || url.starts_with("http://"));
             Some(JobEnvironment { name, url, deploys: workflow::records_deployment(raw) })
         }
         _ => None,
@@ -654,12 +660,7 @@ impl Actions {
     }
 
     pub async fn job_rows(&self, run_id: &str) -> Result<Vec<JobRow>> {
-        self.db
-            .prepare("SELECT * FROM jobs WHERE run_id = ? ORDER BY rowid")
-            .bind(&[run_id.into()])?
-            .all()
-            .await?
-            .results::<JobRow>()
+        self.db.prepare("SELECT * FROM jobs WHERE run_id = ? ORDER BY rowid").bind(&[run_id.into()])?.all().await?.results::<JobRow>()
     }
 
     pub async fn run_summary(&self, id: &str) -> Result<Outcome<WorkflowRun>> {
@@ -691,15 +692,13 @@ impl Actions {
         }
         let now = now_ms();
         let key = namespace.to_ascii_lowercase();
-        if let Some(personal) = PERSONAL.with(|kept| kept.borrow().get(&key).filter(|(_, at)| now.saturating_sub(*at) < KEEP_MS).map(|(personal, _)| *personal)) {
+        if let Some(personal) =
+            PERSONAL.with(|kept| kept.borrow().get(&key).filter(|(_, at)| now.saturating_sub(*at) < KEEP_MS).map(|(personal, _)| *personal))
+        {
             return Ok(personal);
         }
-        let found: g1t_contracts::Viewer = g1t_kit::call(
-            &self.identity,
-            "user_by_username",
-            &g1t_contracts::identity::UsernameArgs { username: key.clone() },
-        )
-        .await?;
+        let found: g1t_contracts::Viewer =
+            g1t_kit::call(&self.identity, "user_by_username", &g1t_contracts::identity::UsernameArgs { username: key.clone() }).await?;
         let personal = found.is_some_and(|user| user.username.eq_ignore_ascii_case(namespace));
         PERSONAL.with(|kept| {
             let mut kept = kept.borrow_mut();
@@ -755,20 +754,14 @@ impl Actions {
         info.workflow_path = new.path.clone();
         info.run_id = id.clone();
         info.run_number = u64::from(numbered);
-        let vars = self
-            .variables_for(&new.repo.id, &format!("{}/{}", new.repo.namespace, new.repo.name), None, new.trusted)
-            .await?;
+        let vars = self.variables_for(&new.repo.id, &format!("{}/{}", new.repo.namespace, new.repo.name), None, new.trusted).await?;
 
         // run-name and the concurrency group read github, inputs and vars.
         let mut contexts = Map::new();
         contexts.insert("github".into(), info.context("", "", new.action.as_deref()));
         contexts.insert("inputs".into(), Value::Object(new.inputs.clone()));
         contexts.insert("vars".into(), Value::Object(vars));
-        let scope = Scope {
-            contexts: &contexts,
-            status: Status::Success,
-            hash_files: None,
-        };
+        let scope = Scope { contexts: &contexts, status: Status::Success, hash_files: None };
         let title = new
             .workflow
             .run_name
@@ -784,7 +777,8 @@ impl Actions {
             .and_then(|c| expr::interpolate_value(&c.cancel_in_progress, &scope).ok())
             .is_some_and(|value| expr::truthy(&value));
 
-        let approval = new.approval.as_ref().map(|reason| RunApproval { state: "required".into(), reason: reason.clone(), approved_by: None });
+        let approval =
+            new.approval.as_ref().map(|reason| RunApproval { state: "required".into(), reason: reason.clone(), approved_by: None });
         let inserted = self
             .db
             .prepare(
@@ -817,7 +811,12 @@ impl Actions {
                 optional(group.as_deref()),
                 new.event_key.as_str().into(),
                 now().into(),
-                approval.as_ref().map(serde_json::to_string).transpose()?.as_deref().map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
+                approval
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?
+                    .as_deref()
+                    .map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
                 u32::from(cancel_in_progress).into(),
             ])?
             .first::<Value>(None)
@@ -895,11 +894,7 @@ impl Actions {
                 }
             }
             if !cancel_in_progress && others.iter().any(|other| other.status != "pending") {
-                self.db
-                    .prepare("UPDATE runs SET status = 'pending' WHERE id = ?")
-                    .bind(&[run.id.as_str().into()])?
-                    .run()
-                    .await?;
+                self.db.prepare("UPDATE runs SET status = 'pending' WHERE id = ?").bind(&[run.id.as_str().into()])?.run().await?;
                 return Ok(());
             }
         }
@@ -1020,7 +1015,9 @@ impl Actions {
                 let prefix = row.call_prefix().unwrap_or(row.key.clone());
                 let children: Vec<&JobRow> = jobs
                     .iter()
-                    .filter(|child| child.call().is_some_and(|call| call["role"] == "callee" && call["parent"].as_str() == Some(prefix.as_str())))
+                    .filter(|child| {
+                        child.call().is_some_and(|call| call["role"] == "callee" && call["parent"].as_str() == Some(prefix.as_str()))
+                    })
                     .collect();
                 if !children.is_empty() && children.iter().all(|child| child.status == "completed") {
                     self.finish_call(&run, row, &children).await?;
@@ -1054,15 +1051,23 @@ impl Actions {
     /// Decides on one job whose needs are done: skip it, fail it, or expand
     /// it into its matrix and queue it. `failed_before`: whether any job
     /// before it failed, however far back (`ancestor_failed`).
-    async fn decide(&self, run: &RunRow, job: &workflow::Job, row: &JobRow, needed: &[(&String, Vec<&JobRow>)], failed_before: bool) -> Result<()> {
+    async fn decide(
+        &self,
+        run: &RunRow,
+        job: &workflow::Job,
+        row: &JobRow,
+        needed: &[(&String, Vec<&JobRow>)],
+        failed_before: bool,
+    ) -> Result<()> {
         let vars = self.variables_for(&run.repo_id, &run.repo, None, run.trusted != 0).await?;
         let mut contexts = Self::base_contexts(run, &vars, &job.id);
         // A called workflow's jobs read the inputs they were called with.
         let call = row.call();
         // Shown under the job whose call made it, by that job's name.
-        let caller = call.as_ref().filter(|c| c["role"] == "callee").and_then(|c| {
-            c["title"].as_str().map(str::to_owned).or_else(|| c["parent"].as_str().map(|parent| parent.replace('/', " / ")))
-        });
+        let caller = call
+            .as_ref()
+            .filter(|c| c["role"] == "callee")
+            .and_then(|c| c["title"].as_str().map(str::to_owned).or_else(|| c["parent"].as_str().map(|parent| parent.replace('/', " / "))));
         if let Some(call) = call.as_ref().filter(|c| c["role"] == "callee") {
             contexts.insert("inputs".into(), call["inputs"].clone());
         }
@@ -1083,11 +1088,7 @@ impl Actions {
         // not failure(); failure() is a failure anywhere before the job.
         let status = expr::job_status(results, failed_before, run.conclusion.as_deref() == Some("cancelled"));
         contexts.insert("needs".into(), Value::Object(needs));
-        let scope = Scope {
-            contexts: &contexts,
-            status,
-            hash_files: None,
-        };
+        let scope = Scope { contexts: &contexts, status, hash_files: None };
         let condition = job.condition.as_deref().unwrap_or_default();
         match expr::condition(condition, &scope) {
             Ok(true) => {}
@@ -1136,20 +1137,19 @@ impl Actions {
                 "strategy".into(),
                 json!({ "fail-fast": job.fail_fast, "job-index": index, "job-total": total, "max-parallel": job.max_parallel.unwrap_or(total as u32) }),
             );
-            let scope = Scope {
-                contexts: &contexts,
-                status: Status::Success,
-                hash_files: None,
-            };
+            let scope = Scope { contexts: &contexts, status: Status::Success, hash_files: None };
             let name = shown_name(job, caller.as_deref(), combination, &scope);
             let runs_on = expr::interpolate_value(&job.runs_on, &scope).unwrap_or(Value::Null);
             let labels = match &runs_on {
                 Value::String(label) => vec![label.clone()],
                 Value::Array(labels) => labels.iter().map(expr::to_text).collect(),
-                Value::Object(spec) => spec.get("labels").map(|l| match l {
-                    Value::Array(labels) => labels.iter().map(expr::to_text).collect(),
-                    other => vec![expr::to_text(other)],
-                }).unwrap_or_default(),
+                Value::Object(spec) => spec
+                    .get("labels")
+                    .map(|l| match l {
+                        Value::Array(labels) => labels.iter().map(expr::to_text).collect(),
+                        other => vec![expr::to_text(other)],
+                    })
+                    .unwrap_or_default(),
                 _ => Vec::new(),
             };
             // `runs-on: self-hosted` (or a group): the workspace's own
@@ -1168,7 +1168,8 @@ impl Actions {
                 }
                 if !settings.as_ref().is_some_and(|s| s.fork_pull_requests) {
                     reason = Some(
-                        "Pull requests from forks do not run on self-hosted runners here. An admin can allow it under Settings, Runners.".to_owned(),
+                        "Pull requests from forks do not run on self-hosted runners here. An admin can allow it under Settings, Runners."
+                            .to_owned(),
                     );
                 }
             }
@@ -1193,7 +1194,9 @@ impl Actions {
                 .get("timeout-minutes")
                 .and_then(|value| expr::interpolate_value(value, &scope).ok())
                 .and_then(|value| value.as_f64().or_else(|| expr::to_text(&value).parse().ok()))
-                .map_or(g1t_actions::workflow::DEFAULT_TIMEOUT_MINUTES.min(max_minutes), |minutes| (minutes.ceil() as u32).clamp(1, max_minutes));
+                .map_or(g1t_actions::workflow::DEFAULT_TIMEOUT_MINUTES.min(max_minutes), |minutes| {
+                    (minutes.ceil() as u32).clamp(1, max_minutes)
+                });
             let continue_on_error = raw
                 .get("continue-on-error")
                 .and_then(|value| expr::interpolate_value(value, &scope).ok())
@@ -1735,7 +1738,9 @@ impl Actions {
             // Self-hosted jobs are taken by their runners (runners.rs). One
             // asking for a hosted label is offered to them first, and runs
             // here when none that fits is free, or none took it in time.
-            .prepare("SELECT * FROM jobs WHERE status = 'queued' AND (labels IS NULL OR fallback_instance IS NOT NULL) ORDER BY rowid LIMIT 50")
+            .prepare(
+                "SELECT * FROM jobs WHERE status = 'queued' AND (labels IS NULL OR fallback_instance IS NOT NULL) ORDER BY rowid LIMIT 50",
+            )
             .all()
             .await?
             .results::<JobRow>()?;
@@ -1846,10 +1851,8 @@ impl Actions {
                 .run()
                 .await?;
             let run = self.run_row(&job.run_id).await?;
-            let repo: RepoPath = run.as_ref().map(|run| repo_path(&run.repo)).unwrap_or(RepoPath {
-                namespace: job.namespace.clone(),
-                name: String::new(),
-            });
+            let repo: RepoPath =
+                run.as_ref().map(|run| repo_path(&run.repo)).unwrap_or(RepoPath { namespace: job.namespace.clone(), name: String::new() });
             // The machine it asked for, for the runner.
             let instance = run.as_ref().and_then(|run| start_instance(run, &job));
             let trusted = run.as_ref().is_some_and(|run| run.trusted != 0);
@@ -1962,7 +1965,13 @@ impl Actions {
     }
 
     /// Finishes a job and moves its run along.
-    pub async fn finish_job(&self, job_id: &str, conclusion: &str, reason: Option<&str>, outputs: Option<&Map<String, Value>>) -> Result<()> {
+    pub async fn finish_job(
+        &self,
+        job_id: &str,
+        conclusion: &str,
+        reason: Option<&str>,
+        outputs: Option<&Map<String, Value>>,
+    ) -> Result<()> {
         let finished = self
             .db
             .prepare(
@@ -1972,7 +1981,10 @@ impl Actions {
             .bind(&[
                 conclusion.into(),
                 optional(reason),
-                outputs.map(|o| serde_json::to_string(o).unwrap_or_default()).as_deref().map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
+                outputs
+                    .map(|o| serde_json::to_string(o).unwrap_or_default())
+                    .as_deref()
+                    .map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
                 now().into(),
                 job_id.into(),
             ])?
@@ -1993,7 +2005,9 @@ impl Actions {
             self.end_job_builds(&job.id, conclusion).await;
         }
         // A job that deploys failed: so did its run's deployment, now.
-        if conclusion == "failure" && job.continue_on_error == 0 && job.started_at.is_some()
+        if conclusion == "failure"
+            && job.continue_on_error == 0
+            && job.started_at.is_some()
             && let Some(run) = self.run_row(&job.run_id).await?
             && let Some(env) = deploys_to(&run, &job)
         {
@@ -2057,7 +2071,9 @@ impl Actions {
             && let Some(prefix) = job.call_prefix()
         {
             let under = format!("{prefix}/");
-            for child in self.job_rows(&job.run_id).await?.iter().filter(|child| child.key.starts_with(&under) && child.status != "completed") {
+            for child in
+                self.job_rows(&job.run_id).await?.iter().filter(|child| child.key.starts_with(&under) && child.status != "completed")
+            {
                 Box::pin(self.stop_job(child, reason)).await?;
             }
         }
@@ -2076,7 +2092,8 @@ impl Actions {
     async fn hard_stop(&self, job: &JobRow, reason: &str) -> Result<()> {
         // A self-hosted runner hears it was cancelled on its next poll.
         if job.status == "in_progress" && job.runner_id.is_none() {
-            let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id, "start": job.started_at })).await;
+            let _: Result<Value> =
+                g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id, "start": job.started_at })).await;
         }
         let stopped = self
             .db
@@ -2480,7 +2497,8 @@ impl Actions {
             return Ok(fail(FailureCode::Conflict, "Every job succeeded: there is nothing to run again."));
         }
         // The jobs that run again, a called workflow's with the job calling it.
-        let rerun_ids: Vec<&str> = jobs.iter().filter(|job| again.iter().any(|key| key == top_key(&job.key))).map(|job| job.id.as_str()).collect();
+        let rerun_ids: Vec<&str> =
+            jobs.iter().filter(|job| again.iter().any(|key| key == top_key(&job.key))).map(|job| job.id.as_str()).collect();
         let ids = serde_json::to_string(&rerun_ids)?;
         let ended = run.attempt.to_string();
         let ended = ended.as_str();
@@ -2517,14 +2535,18 @@ impl Actions {
                 .bind(&[ended.into(), ids.as_str().into()])?,
         ];
         for key in &again {
-            statements.push(self.db.prepare("DELETE FROM jobs WHERE run_id = ? AND key = ? AND ordinal > 0").bind(&[run.id.as_str().into(), key.as_str().into()])?);
-            // The jobs of a workflow it called (each matrix combination's
-            // under `key[i]/`) are made again when it calls it again.
             statements.push(
                 self.db
-                    .prepare("DELETE FROM jobs WHERE run_id = ? AND (key LIKE ? OR key LIKE ?)")
-                    .bind(&[run.id.as_str().into(), format!("{key}/%").into(), format!("{key}[%").into()])?,
+                    .prepare("DELETE FROM jobs WHERE run_id = ? AND key = ? AND ordinal > 0")
+                    .bind(&[run.id.as_str().into(), key.as_str().into()])?,
             );
+            // The jobs of a workflow it called (each matrix combination's
+            // under `key[i]/`) are made again when it calls it again.
+            statements.push(self.db.prepare("DELETE FROM jobs WHERE run_id = ? AND (key LIKE ? OR key LIKE ?)").bind(&[
+                run.id.as_str().into(),
+                format!("{key}/%").into(),
+                format!("{key}[%").into(),
+            ])?);
             statements.push(
                 self.db
                     .prepare(
@@ -2585,7 +2607,12 @@ impl Actions {
     async fn job_for(&self, a: &JobCallArgs, started: bool) -> Result<Outcome<JobRow>> {
         let job = self.db.prepare("SELECT * FROM jobs WHERE id = ?").bind(&[a.job.as_str().into()])?.first::<JobRow>(None).await?;
         Ok(match job {
-            Some(job) if job.status == "in_progress" && token_opens(job.token_hash.as_deref(), job.first_token_hash.as_deref(), &a.token, started) => Outcome::Ok(job),
+            Some(job)
+                if job.status == "in_progress"
+                    && token_opens(job.token_hash.as_deref(), job.first_token_hash.as_deref(), &a.token, started) =>
+            {
+                Outcome::Ok(job)
+            }
             _ => fail(FailureCode::Unauthenticated, "That job is not running, or the token is not its."),
         })
     }
@@ -2726,7 +2753,11 @@ impl Actions {
                 let notes: String = made
                     .iter()
                     .map(|made| {
-                        let note = if relayed { broker::brokered_note(&made.broker.name, &made.broker.hosts) } else { broker::self_hosted_note(&made.broker.name) };
+                        let note = if relayed {
+                            broker::brokered_note(&made.broker.name, &made.broker.hosts)
+                        } else {
+                            broker::self_hosted_note(&made.broker.name)
+                        };
                         note + "\n"
                     })
                     .collect();
@@ -2741,13 +2772,8 @@ impl Actions {
         // The toolkit's runtime token (runtime.rs), for as long as the job
         // may run; the API puts it and the toolkit's addresses in the
         // job's variables.
-        let runtime_token = crate::runtime::runtime_token(
-            &job.id,
-            &job.run_id,
-            &token_hash,
-            now_ms() / 1000,
-            u64::from(job.timeout_minutes) * 60 + 600,
-        );
+        let runtime_token =
+            crate::runtime::runtime_token(&job.id, &job.run_id, &token_hash, now_ms() / 1000, u64::from(job.timeout_minutes) * 60 + 600);
         masks.push(runtime_token.clone());
         let retention_days = self.retention_setting(&run.repo_id).await?;
 
@@ -2941,7 +2967,8 @@ impl Actions {
             "note" => {
                 let text = report["text"].as_str().unwrap_or_default().chars().take(1000).collect::<String>();
                 let steps: Vec<Value> = serde_json::from_str(&job.steps).unwrap_or_default();
-                let step = steps.iter().rev().find(|step| step["status"] == "in_progress").and_then(|step| step["number"].as_u64()).unwrap_or(0);
+                let step =
+                    steps.iter().rev().find(|step| step["status"] == "in_progress").and_then(|step| step["number"].as_u64()).unwrap_or(0);
                 if !text.trim().is_empty() {
                     self.note_log(&job.id, step as u32, &text).await?;
                 }
@@ -2970,9 +2997,7 @@ impl Actions {
                 // always the log's own size. Two reports at once may both
                 // find room, as before, and take the log one batch past.
                 if log_room(job.log_bytes as usize, &mut text) {
-                    let chunk = report["chunk"]
-                        .as_u64()
-                        .map_or(worker::wasm_bindgen::JsValue::NULL, |n| (n as f64).into());
+                    let chunk = report["chunk"].as_u64().map_or(worker::wasm_bindgen::JsValue::NULL, |n| (n as f64).into());
                     // The next `seq` is taken in the insert itself, so two
                     // batches at once (a report sent again while the first
                     // was still being written) never reach for the same one
@@ -2994,11 +3019,7 @@ impl Actions {
                         ])
                         .await?;
                 } else {
-                    self.db
-                        .prepare("UPDATE jobs SET seen_at = ? WHERE id = ?")
-                        .bind(&[at.into(), job.id.as_str().into()])?
-                        .run()
-                        .await?;
+                    self.db.prepare("UPDATE jobs SET seen_at = ? WHERE id = ?").bind(&[at.into(), job.id.as_str().into()])?.run().await?;
                 }
             }
             "summary" => {
@@ -3056,10 +3077,7 @@ impl Actions {
                 let conclusion = if job.cancel_requested_at.is_some() {
                     "cancelled"
                 } else {
-                    report["conclusion"]
-                        .as_str()
-                        .filter(|c| matches!(*c, "success" | "failure" | "cancelled"))
-                        .unwrap_or("failure")
+                    report["conclusion"].as_str().filter(|c| matches!(*c, "success" | "failure" | "cancelled")).unwrap_or("failure")
                 };
                 // A step was stopped by a SIGTERM its runner did not send:
                 // the machine was stopped under the job (#426). On g1t's,
@@ -3105,10 +3123,7 @@ impl Actions {
     /// runners, environments' gates, queued jobs, and once an hour the
     /// stores' housekeeping. Returns what it did, for its line in the log.
     pub async fn on_minute(&self, now_ms: u64, minutes: &[u64]) -> Result<crate::minute::Report> {
-        let mut report = crate::minute::Report {
-            minutes: minutes.to_vec(),
-            ..Default::default()
-        };
+        let mut report = crate::minute::Report { minutes: minutes.to_vec(), ..Default::default() };
         let mut at = now_ms;
         // Repositories a workspace's managed workflows changed in, beyond
         // those synced at once (managed.rs): their schedules wait for it.
@@ -3152,7 +3167,8 @@ impl Actions {
                 let reason = format!("It ran longer than its time limit of {} minutes.", job.timeout_minutes);
                 // A self-hosted runner is told to stop on its next poll.
                 if job.runner_id.is_none() {
-                    let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id, "start": job.started_at })).await;
+                    let _: Result<Value> =
+                        g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id, "start": job.started_at })).await;
                 }
                 self.finish_job(&job.id, "failure", Some(&reason), None).await?;
                 report.ended += 1;
@@ -3255,7 +3271,8 @@ impl Actions {
     async fn retry_lost_start(&self, job: &JobRow, now_ms: u64) -> Result<bool> {
         let since = job.waiting_since.clone().or_else(|| job.started_at.clone()).unwrap_or_else(|| rfc3339(now_ms));
         if crate::waited_for_a_machine(Some(&since), now_ms) {
-            let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id, "start": job.started_at })).await;
+            let _: Result<Value> =
+                g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id, "start": job.started_at })).await;
             let minutes = crate::WAIT_FOR_MACHINE_MS / 60_000;
             let reason = format!("No machine ran the job in {minutes} minutes: each one it was given stopped answering before it started.");
             self.finish_job(&job.id, "failure", Some(&reason), None).await?;
@@ -3322,8 +3339,15 @@ impl Actions {
         self.end_job_builds(&job.id, "failure").await;
         self.release_cache(&job.id).await;
         // Its new log starts with why it is on g1t's machines.
-        self.note_log(&job.id, 0, &format!("{reason}
-")).await?;
+        self.note_log(
+            &job.id,
+            0,
+            &format!(
+                "{reason}
+"
+            ),
+        )
+        .await?;
         Ok(true)
     }
 
@@ -3383,7 +3407,6 @@ impl Actions {
     }
 }
 
-
 #[cfg(test)]
 mod log_chunks {
     use rusqlite::{Connection, params};
@@ -3408,7 +3431,8 @@ mod log_chunks {
     #[test]
     fn a_batch_sent_again_is_kept_once() {
         let db = database();
-        let insert = |job: &str, step: i64, text: &str, chunk: Option<i64>| db.execute(LOG_INSERT, params![job, step, text, chunk]).unwrap();
+        let insert =
+            |job: &str, step: i64, text: &str, chunk: Option<i64>| db.execute(LOG_INSERT, params![job, step, text, chunk]).unwrap();
         assert_eq!(insert("job_1", 0, "one\n", Some(1)), 1);
         // The runner did not hear the answer and sent the batch again.
         assert_eq!(insert("job_1", 0, "one\n", Some(1)), 0);
@@ -3470,8 +3494,7 @@ mod offered_jobs {
     }
 
     fn runner(db: &Connection, id: &str) -> bool {
-        db.query_row(RUNNER_CLAIM, params!["hash", "rnr_1", "box-linux", "2026-10-23T12:00:02.000Z", id], |_| Ok(()))
-            .is_ok()
+        db.query_row(RUNNER_CLAIM, params!["hash", "rnr_1", "box-linux", "2026-10-23T12:00:02.000Z", id], |_| Ok(())).is_ok()
     }
 
     #[test]
@@ -3494,8 +3517,9 @@ mod offered_jobs {
         offer(&db, "job_1");
         assert!(runner(&db, "job_1"));
         assert!(!hosted(&db, "job_1"), "g1t's machine finds it taken");
-        let (runner_id, timeout): (Option<String>, i64) =
-            db.query_row("SELECT runner_id, timeout_minutes FROM jobs WHERE id = 'job_1'", [], |row| Ok((row.get(0)?, row.get(1)?))).unwrap();
+        let (runner_id, timeout): (Option<String>, i64) = db
+            .query_row("SELECT runner_id, timeout_minutes FROM jobs WHERE id = 'job_1'", [], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap();
         assert_eq!((runner_id.as_deref(), timeout), (Some("rnr_1"), 360));
     }
 
@@ -3515,11 +3539,8 @@ mod offered_jobs {
     #[test]
     fn hosted_labels_go_to_the_runners_first_unless_a_workspace_says_otherwise() {
         let db = database();
-        db.execute(
-            "INSERT INTO runner_settings (owner, scope, updated_at) VALUES ('acme', 'workspace', '2026-10-23T12:00:00.000Z')",
-            [],
-        )
-        .unwrap();
+        db.execute("INSERT INTO runner_settings (owner, scope, updated_at) VALUES ('acme', 'workspace', '2026-10-23T12:00:00.000Z')", [])
+            .unwrap();
         let on: i64 = db.query_row("SELECT prefer_own FROM runner_settings WHERE owner = 'acme'", [], |row| row.get(0)).unwrap();
         assert_eq!(on, 1);
     }
@@ -3570,8 +3591,10 @@ mod unstarted {
     }
 
     fn state(db: &Connection) -> (String, Option<String>, Option<String>) {
-        db.query_row("SELECT status, started_at, waiting_since FROM jobs WHERE id = 'job_1'", [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
-            .unwrap()
+        db.query_row("SELECT status, started_at, waiting_since FROM jobs WHERE id = 'job_1'", [], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
+        .unwrap()
     }
 
     #[test]
@@ -3657,19 +3680,14 @@ mod log_bytes {
     }
 
     fn bytes(db: &Connection, job: &str) -> i64 {
-        db.query_row("SELECT log_bytes FROM jobs WHERE id = ?", [job], |row| {
-            row.get(0)
-        })
-        .unwrap()
+        db.query_row("SELECT log_bytes FROM jobs WHERE id = ?", [job], |row| row.get(0)).unwrap()
     }
 
     /// A report's batch as `job_report` writes it: counted, then kept.
     fn report(db: &Connection, job: &str, text: &str, chunk: Option<i64>, at: Option<&str>) {
         let tx = db.unchecked_transaction().unwrap();
-        tx.execute(LOG_COUNTED, params![job, text.len() as i64, at, chunk])
-            .unwrap();
-        tx.execute(LOG_INSERT, params![job, 0, text, chunk])
-            .unwrap();
+        tx.execute(LOG_COUNTED, params![job, text.len() as i64, at, chunk]).unwrap();
+        tx.execute(LOG_INSERT, params![job, 0, text, chunk]).unwrap();
         tx.commit().unwrap();
     }
 
@@ -3680,20 +3698,12 @@ mod log_bytes {
         add_job(&db, "running", None);
         add_job(&db, "quiet", None);
         add_job(&db, "done", Some("2026-01-01T00:00:00Z"));
-        for (job, text) in [
-            ("running", "héllo\n"),
-            ("running", "two\n"),
-            ("done", "old\n"),
-        ] {
-            db.execute(LOG_INSERT, params![job, 0, text, None::<i64>])
-                .unwrap();
+        for (job, text) in [("running", "héllo\n"), ("running", "two\n"), ("done", "old\n")] {
+            db.execute(LOG_INSERT, params![job, 0, text, None::<i64>]).unwrap();
         }
         migrate(&db, &["0027_log_bytes.sql"]);
         // Bytes, as the limit is: é is two.
-        assert_eq!(
-            bytes(&db, "running"),
-            ("héllo\n".len() + "two\n".len()) as i64
-        );
+        assert_eq!(bytes(&db, "running"), ("héllo\n".len() + "two\n".len()) as i64);
         assert_eq!(bytes(&db, "quiet"), 0);
         // A finished job is sent no more log, so is not counted.
         assert_eq!(bytes(&db, "done"), 0);
@@ -3702,10 +3712,7 @@ mod log_bytes {
     #[test]
     fn each_batch_kept_adds_to_the_count_once() {
         let db = Connection::open_in_memory().unwrap();
-        migrate(
-            &db,
-            &["0001_init.sql", "0016_log_chunks.sql", "0027_log_bytes.sql"],
-        );
+        migrate(&db, &["0001_init.sql", "0016_log_chunks.sql", "0027_log_bytes.sql"]);
         add_job(&db, "job_1", None);
         report(&db, "job_1", "one\n", Some(1), Some("2026-01-01T00:00:01Z"));
         assert_eq!(bytes(&db, "job_1"), 4);
@@ -3713,31 +3720,15 @@ mod log_bytes {
         // nor counted twice, though the job was still heard from.
         report(&db, "job_1", "one\n", Some(1), Some("2026-01-01T00:00:02Z"));
         assert_eq!(bytes(&db, "job_1"), 4);
-        report(
-            &db,
-            "job_1",
-            "three\n",
-            Some(2),
-            Some("2026-01-01T00:00:03Z"),
-        );
+        report(&db, "job_1", "three\n", Some(2), Some("2026-01-01T00:00:03Z"));
         // g1t's own notes number nothing, are always kept, and leave when
         // it was last heard from alone.
         report(&db, "job_1", "note\n", None, None);
         report(&db, "job_1", "note\n", None, None);
-        let (counted, seen): (i64, String) = db
-            .query_row(
-                "SELECT log_bytes, seen_at FROM jobs WHERE id = 'job_1'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .unwrap();
-        let kept: i64 = db
-            .query_row(
-                "SELECT SUM(LENGTH(CAST(text AS BLOB))) FROM logs WHERE job_id = 'job_1'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
+        let (counted, seen): (i64, String) =
+            db.query_row("SELECT log_bytes, seen_at FROM jobs WHERE id = 'job_1'", [], |row| Ok((row.get(0)?, row.get(1)?))).unwrap();
+        let kept: i64 =
+            db.query_row("SELECT SUM(LENGTH(CAST(text AS BLOB))) FROM logs WHERE job_id = 'job_1'", [], |row| row.get(0)).unwrap();
         assert_eq!(counted, kept);
         assert_eq!(counted, 4 + 6 + 5 + 5);
         assert_eq!(seen, "2026-01-01T00:00:03Z");
@@ -3750,10 +3741,7 @@ mod log_bytes {
         assert_eq!(text, "a".repeat(10));
         let mut text = "a".repeat(10);
         assert!(log_room(MAX_LOG_BYTES - 10, &mut text));
-        assert!(
-            text.starts_with(&"a".repeat(10)) && text.contains("limit of 4 MB"),
-            "{text}"
-        );
+        assert!(text.starts_with(&"a".repeat(10)) && text.contains("limit of 4 MB"), "{text}");
         let mut text = "a".repeat(10);
         assert!(!log_room(MAX_LOG_BYTES, &mut text));
         assert!(!log_room(MAX_LOG_BYTES + 100, &mut text));
@@ -3962,7 +3950,10 @@ mod deployments {
 mod reruns {
     use serde_json::{Map, Value, json};
 
-    use super::{MAX_SUMMARIES, MAX_SUMMARY_BYTES, Rerun, Scope, Status, call_allowed, call_prefix, debug_logging, rerun_keys, shown_name, summary_fits, top_key};
+    use super::{
+        MAX_SUMMARIES, MAX_SUMMARY_BYTES, Rerun, Scope, Status, call_allowed, call_prefix, debug_logging, rerun_keys, shown_name,
+        summary_fits, top_key,
+    };
 
     /// build ← test ← deploy, and lint on its own.
     fn keys(which: Rerun, failed: &[&str]) -> Vec<String> {
@@ -4089,7 +4080,9 @@ mod machines {
     fn a_windows_or_macos_job_is_refused_with_how_to_run_it() {
         assert_eq!(
             not_hosted_reason(&labels(&["windows-latest"])).as_deref(),
-            Some("`runs-on: windows-latest`: g1t's hosted runners are Linux only. A self-hosted runner can run it: `runs-on: [self-hosted, windows]`.")
+            Some(
+                "`runs-on: windows-latest`: g1t's hosted runners are Linux only. A self-hosted runner can run it: `runs-on: [self-hosted, windows]`."
+            )
         );
         assert!(not_hosted_reason(&labels(&["xcode-27"])).unwrap().ends_with("`runs-on: [self-hosted, macos]`."));
         assert!(not_hosted_reason(&labels(&["macos-12"])).is_some());

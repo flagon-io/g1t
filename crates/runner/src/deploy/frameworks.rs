@@ -15,7 +15,8 @@ use serde_json::{Map, Value};
 /// Hugo, from the `hugo` on `PATH`, else Hugo's own release by npm.
 const HUGO: &str = "if command -v hugo >/dev/null 2>&1; then hugo --minify; else npx --yes hugo-extended@0.166.0 --minify; fi";
 /// mdBook, from the `mdbook` on `PATH`, else built by cargo.
-const MDBOOK: &str = "if ! command -v mdbook >/dev/null 2>&1; then cargo install mdbook --version 0.5.4 --locked --quiet; fi && mdbook build";
+const MDBOOK: &str =
+    "if ! command -v mdbook >/dev/null 2>&1; then cargo install mdbook --version 0.5.4 --locked --quiet; fi && mdbook build";
 /// Jekyll's gems, kept in the project rather than the system's Ruby.
 const BUNDLE_INSTALL: &str = "bundle config set --local path vendor/bundle && bundle install";
 
@@ -118,14 +119,15 @@ fn config(dir: &Path, names: &[&str]) -> String {
 fn values_of(text: &str, key: &str) -> Vec<String> {
     let pattern = format!(r#"(?:^|[^\w$.])["']?{}["']?\s*:\s*(?:"([^"]*)"|'([^']*)'|`([^`]*)`)"#, regex::escape(key));
     let Ok(pattern) = Regex::new(&pattern) else { return Vec::new() };
-    pattern
-        .captures_iter(text)
-        .filter_map(|found| found.get(1).or(found.get(2)).or(found.get(3)).map(|m| m.as_str().to_owned()))
-        .collect()
+    pattern.captures_iter(text).filter_map(|found| found.get(1).or(found.get(2)).or(found.get(3)).map(|m| m.as_str().to_owned())).collect()
 }
 
 fn value_of(text: &str, key: &str) -> Option<String> {
-    values_of(text, key).into_iter().next().map(|v| v.trim().trim_start_matches("./").trim_matches('/').to_owned()).filter(|v| !v.is_empty())
+    values_of(text, key)
+        .into_iter()
+        .next()
+        .map(|v| v.trim().trim_start_matches("./").trim_matches('/').to_owned())
+        .filter(|v| !v.is_empty())
 }
 
 /// Whether the config sets `key` to `value`, quoted or not (`ssr: false`).
@@ -146,8 +148,10 @@ fn setting(text: &str, key: &str) -> Option<String> {
 const NEXT_CONFIGS: [&str; 4] = ["next.config.js", "next.config.mjs", "next.config.ts", "next.config.cjs"];
 const ASTRO_CONFIGS: [&str; 5] = ["astro.config.mjs", "astro.config.js", "astro.config.ts", "astro.config.mts", "astro.config.cjs"];
 const SVELTE_CONFIGS: [&str; 3] = ["svelte.config.js", "svelte.config.mjs", "svelte.config.ts"];
-const VITE_CONFIGS: [&str; 6] = ["vite.config.ts", "vite.config.js", "vite.config.mjs", "vite.config.mts", "vite.config.cjs", "vite.config.cts"];
-const REACT_ROUTER_CONFIGS: [&str; 4] = ["react-router.config.ts", "react-router.config.js", "react-router.config.mjs", "react-router.config.mts"];
+const VITE_CONFIGS: [&str; 6] =
+    ["vite.config.ts", "vite.config.js", "vite.config.mjs", "vite.config.mts", "vite.config.cjs", "vite.config.cts"];
+const REACT_ROUTER_CONFIGS: [&str; 4] =
+    ["react-router.config.ts", "react-router.config.js", "react-router.config.mjs", "react-router.config.mts"];
 const ELEVENTY_CONFIGS: [&str; 6] =
     ["eleventy.config.js", "eleventy.config.mjs", "eleventy.config.cjs", ".eleventy.js", ".eleventy.mjs", ".eleventy.cjs"];
 
@@ -243,10 +247,8 @@ fn node(dir: &Path, package: &Package, wrangler: bool) -> Option<Framework> {
         // SvelteKit 3 takes its options in `vite.config`, 2 in `svelte.config`.
         let text = format!("{}\n{}", config(dir, &SVELTE_CONFIGS), config(dir, &VITE_CONFIGS));
         let adapters = ["@sveltejs/adapter-static", "@sveltejs/adapter-cloudflare-workers", "@sveltejs/adapter-cloudflare"];
-        let adapter = adapters
-            .iter()
-            .find(|adapter| text.contains(*adapter))
-            .or_else(|| adapters.iter().find(|adapter| package.has(adapter)));
+        let adapter =
+            adapters.iter().find(|adapter| text.contains(*adapter)).or_else(|| adapters.iter().find(|adapter| package.has(adapter)));
         let build = package.build_or("npx vite build");
         let mut kit = Framework::new("sveltekit", "SvelteKit");
         match adapter.copied() {

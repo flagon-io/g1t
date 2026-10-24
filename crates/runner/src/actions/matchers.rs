@@ -127,7 +127,8 @@ pub(crate) fn parse(text: &str) -> Result<Vec<Matcher>, String> {
 }
 
 fn parse_matcher(config: &Value) -> Result<Matcher, String> {
-    let owner = config.get("owner").and_then(Value::as_str).filter(|o| !o.trim().is_empty()).ok_or("A problem matcher needs an `owner`.")?;
+    let owner =
+        config.get("owner").and_then(Value::as_str).filter(|o| !o.trim().is_empty()).ok_or("A problem matcher needs an `owner`.")?;
     let severity = config.get("severity").and_then(Value::as_str).map(str::to_owned);
     let patterns: Vec<&Value> = match config.get("pattern") {
         Some(Value::Array(items)) => items.iter().collect(),
@@ -140,12 +141,18 @@ fn parse_matcher(config: &Value) -> Result<Matcher, String> {
     let count = patterns.len();
     let mut read = Vec::new();
     for (index, pattern) in patterns.into_iter().enumerate() {
-        let regexp = pattern.get("regexp").and_then(Value::as_str).filter(|r| !r.is_empty()).ok_or(format!("A pattern of `{owner}` needs a `regexp`."))?;
+        let regexp = pattern
+            .get("regexp")
+            .and_then(Value::as_str)
+            .filter(|r| !r.is_empty())
+            .ok_or(format!("A pattern of `{owner}` needs a `regexp`."))?;
         let regex = Regex::new(regexp).map_err(|e| format!("A pattern of `{owner}` does not read: {e}"))?;
         let group = |key: &str| -> Result<Option<usize>, String> {
             match pattern.get(key) {
                 None | Some(Value::Null) => Ok(None),
-                Some(value) => value.as_u64().map(|n| Some(n as usize)).ok_or(format!("`{key}` in a pattern of `{owner}` must be a group's number.")),
+                Some(value) => {
+                    value.as_u64().map(|n| Some(n as usize)).ok_or(format!("`{key}` in a pattern of `{owner}` must be a group's number."))
+                }
             }
         };
         let looping = pattern.get("loop").and_then(Value::as_bool).unwrap_or(false);
@@ -378,7 +385,11 @@ mod tests {
         assert!(parse("not json").is_err());
         assert!(parse(r#"{"problemMatcher": [{"pattern": [{"regexp": "x", "message": 0}]}]}"#).unwrap_err().contains("owner"));
         assert!(parse(r#"{"problemMatcher": [{"owner": "a", "pattern": [{"regexp": "x"}]}]}"#).unwrap_err().contains("message"));
-        assert!(parse(r#"{"problemMatcher": [{"owner": "a", "pattern": [{"regexp": "x", "message": 0, "loop": true}]}]}"#).unwrap_err().contains("loop"));
+        assert!(
+            parse(r#"{"problemMatcher": [{"owner": "a", "pattern": [{"regexp": "x", "message": 0, "loop": true}]}]}"#)
+                .unwrap_err()
+                .contains("loop")
+        );
         assert!(parse(r#"{"problemMatcher": [{"owner": "a", "pattern": [{"regexp": "(", "message": 1}]}]}"#).is_err());
     }
 

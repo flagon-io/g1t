@@ -52,9 +52,7 @@ fn snake_key(key: &str) -> String {
 /// names.
 pub(crate) fn snake(value: &Value) -> Value {
     match value {
-        Value::Object(fields) => {
-            Value::Object(fields.iter().map(|(key, value)| (snake_key(key), snake(value))).collect())
-        }
+        Value::Object(fields) => Value::Object(fields.iter().map(|(key, value)| (snake_key(key), snake(value))).collect()),
         Value::Array(items) => Value::Array(items.iter().map(snake).collect()),
         other => other.clone(),
     }
@@ -78,8 +76,7 @@ fn workspace(input: &Value) -> Option<String> {
 /// `YYYY-MM-DD`.
 fn is_day(text: &str) -> bool {
     let bytes = text.as_bytes();
-    bytes.len() == 10
-        && bytes.iter().enumerate().all(|(at, byte)| if at == 4 || at == 7 { *byte == b'-' } else { byte.is_ascii_digit() })
+    bytes.len() == 10 && bytes.iter().enumerate().all(|(at, byte)| if at == 4 || at == 7 { *byte == b'-' } else { byte.is_ascii_digit() })
 }
 
 /// The UTC day `days` after 1970-01-01, as `(year, month, day)`.
@@ -108,10 +105,9 @@ pub(crate) fn this_month(now_ms: f64) -> (String, String) {
 pub(crate) fn person(viewer: &Viewer, agent_scoped: bool) -> std::result::Result<&User, (FailureCode, &'static str)> {
     match viewer {
         None => Err((FailureCode::Unauthenticated, "This needs a g1t access token.")),
-        Some(user) if agent_scoped || user.kind == PrincipalKind::Agent => Err((
-            FailureCode::Forbidden,
-            "A run's token never changes billing: a workspace's budget is for its owners.",
-        )),
+        Some(user) if agent_scoped || user.kind == PrincipalKind::Agent => {
+            Err((FailureCode::Forbidden, "A run's token never changes billing: a workspace's budget is for its owners."))
+        }
         Some(user) if user.kind != PrincipalKind::User => Err((
             FailureCode::Forbidden,
             "Changing billing needs a person: sign in, or use a personal access token. A workspace's own token can read billing, not change it.",
@@ -314,10 +310,7 @@ pub async fn run(op: Op, services: &Services, viewer: &Viewer, input: &Value) ->
             }
             let products = list(input, "products");
             if let Some(unknown) = products.iter().find(|product| !PRODUCTS.contains(&product.as_str())) {
-                return failed(
-                    FailureCode::Invalid,
-                    &format!("{unknown} is not a product. Give some of {}.", PRODUCTS.join(", ")),
-                );
+                return failed(FailureCode::Invalid, &format!("{unknown} is not a product. Give some of {}.", PRODUCTS.join(", ")));
             }
             let (month_start, today) = this_month(worker::Date::now().as_millis() as f64);
             let day = |key: &str, default: String| -> std::result::Result<String, String> {
@@ -437,10 +430,7 @@ mod tests {
 
         let by_project = usage_json(&report, Some("project"));
         assert_eq!(by_project["group_by"], "project");
-        assert_eq!(
-            by_project["groups"],
-            json!([{ "key": "acme/web", "micros": 9_500_000 }, { "key": null, "micros": 3_000_000 }])
-        );
+        assert_eq!(by_project["groups"], json!([{ "key": "acme/web", "micros": 9_500_000 }, { "key": null, "micros": 3_000_000 }]));
         let by_day = usage_json(&report, Some("day"));
         assert_eq!(by_day["groups"], json!([{ "key": "2026-10-01", "micros": 8_000_000 }, { "key": "2026-10-02", "micros": 4_500_000 }]));
         let by_product = usage_json(&report, Some("product"));
@@ -474,11 +464,28 @@ mod tests {
         let kept = budget_change(&json!({}), &current).unwrap();
         assert_eq!(
             kept,
-            BudgetChange { keep_limit: true, amount_micros: Some(300_000_000), alerts: vec![100, 75, 50], pause_at_limit: true, webhook: Some("https://acme.dev/hooks/budget".into()) }
+            BudgetChange {
+                keep_limit: true,
+                amount_micros: Some(300_000_000),
+                alerts: vec![100, 75, 50],
+                pause_at_limit: true,
+                webhook: Some("https://acme.dev/hooks/budget".into())
+            }
         );
-        let changed = budget_change(&json!({ "amount_micros": null, "alerts": [90, 50, 90], "pause_at_limit": false, "webhook": null }), &current).unwrap();
-        assert_eq!(changed, BudgetChange { keep_limit: false, amount_micros: None, alerts: vec![50, 90], pause_at_limit: false, webhook: None });
-        for bad in [json!({ "alerts": [60] }), json!({ "alerts": "50" }), json!({ "amount_micros": -1 }), json!({ "webhook": "http://x" }), json!({ "pause_at_limit": "yes" })] {
+        let changed =
+            budget_change(&json!({ "amount_micros": null, "alerts": [90, 50, 90], "pause_at_limit": false, "webhook": null }), &current)
+                .unwrap();
+        assert_eq!(
+            changed,
+            BudgetChange { keep_limit: false, amount_micros: None, alerts: vec![50, 90], pause_at_limit: false, webhook: None }
+        );
+        for bad in [
+            json!({ "alerts": [60] }),
+            json!({ "alerts": "50" }),
+            json!({ "amount_micros": -1 }),
+            json!({ "webhook": "http://x" }),
+            json!({ "pause_at_limit": "yes" }),
+        ] {
             assert!(budget_change(&bad, &current).is_err(), "{bad}");
         }
         // The automatic limit stays automatic when no amount is given.
@@ -514,13 +521,7 @@ mod tests {
         assert!(shown.get("invoices").is_none() && shown.get("upcoming").is_none());
     }
 
-    const OPS: [Op; 5] = [
-        Op::GetUsage,
-        Op::GetBudget,
-        Op::SetBudget,
-        Op::ListInvoices,
-        Op::GetBillingDetails,
-    ];
+    const OPS: [Op; 5] = [Op::GetUsage, Op::GetBudget, Op::SetBudget, Op::ListInvoices, Op::GetBillingDetails];
 
     /// Billing belongs to a workspace, needs someone signed in, and is one
     /// MCP tool whose writes no preset but full access reaches.

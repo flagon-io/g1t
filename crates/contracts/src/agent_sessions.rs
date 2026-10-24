@@ -471,7 +471,13 @@ mod tests {
         );
         assert_eq!(approval_notice("acme/web", None, "bash", "x").0, "Your hosted session in acme/web waits for your approval to use bash");
         assert!(approval_notice("acme/web", None, "g1t:work_item", "x").0.ends_with("to use work_item (g1t)"));
-        let data = serde_json::to_value(ApprovalSettled { workspace: "acme".into(), session_id: "ses_1".into(), tool_use_id: None, why: "Ended".into() }).unwrap();
+        let data = serde_json::to_value(ApprovalSettled {
+            workspace: "acme".into(),
+            session_id: "ses_1".into(),
+            tool_use_id: None,
+            why: "Ended".into(),
+        })
+        .unwrap();
         assert_eq!(data["sessionId"], "ses_1");
     }
 
@@ -495,7 +501,9 @@ mod tests {
 
     #[test]
     fn approval_states_are_named_one_way() {
-        for status in [ApprovalStatus::Waiting, ApprovalStatus::Allowed, ApprovalStatus::Denied, ApprovalStatus::Expired, ApprovalStatus::Ended] {
+        for status in
+            [ApprovalStatus::Waiting, ApprovalStatus::Allowed, ApprovalStatus::Denied, ApprovalStatus::Expired, ApprovalStatus::Ended]
+        {
             assert_eq!(ApprovalStatus::parse(status.as_str()), status);
             assert_eq!(serde_json::to_value(status).unwrap(), status.as_str());
         }

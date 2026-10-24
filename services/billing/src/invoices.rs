@@ -346,19 +346,31 @@ impl Billing {
             }
             Err(error) => return Err(error),
         }
-        let attempt = self.begin_invoice_attempt(workspace, account.balance_micros, crate::invoice_attempt::Request {
-            customer, workspace: workspace.to_owned(), reason: reason.to_owned(), period: period.to_owned(),
-            through_at: now, lines,
-        }).await?;
+        let attempt = self
+            .begin_invoice_attempt(
+                workspace,
+                account.balance_micros,
+                crate::invoice_attempt::Request {
+                    customer,
+                    workspace: workspace.to_owned(),
+                    reason: reason.to_owned(),
+                    period: period.to_owned(),
+                    through_at: now,
+                    lines,
+                },
+            )
+            .await?;
         self.finish_invoice_attempt(workspace, attempt).await
     }
 
     async fn finish_invoice_attempt(
-        &self, workspace: &str, attempt: crate::invoice_attempt::Attempt,
+        &self,
+        workspace: &str,
+        attempt: crate::invoice_attempt::Attempt,
     ) -> Result<std::result::Result<WorkspaceInvoice, String>> {
         let Some(stripe) = &self.stripe else { return Ok(Err("Payments are not set up.".into())) };
-        let request: crate::invoice_attempt::Request = serde_json::from_str(&attempt.payload)
-            .map_err(|e| worker::Error::RustError(e.to_string()))?;
+        let request: crate::invoice_attempt::Request =
+            serde_json::from_str(&attempt.payload).map_err(|e| worker::Error::RustError(e.to_string()))?;
         let customer = request.customer;
         let reason = request.reason.as_str();
         let period = request.period.as_str();
@@ -380,18 +392,26 @@ impl Billing {
             stripe.get(&format!("/invoices/{id}")).await?
         } else {
             if too_old {
-                return Err(worker::Error::RustError(format!("{workspace}: invoice attempt {key} needs reconciliation before retrying an expired Stripe idempotency key")));
+                return Err(worker::Error::RustError(format!(
+                    "{workspace}: invoice attempt {key} needs reconciliation before retrying an expired Stripe idempotency key"
+                )));
             }
-            let draft: StripeInvoice = stripe.post_idempotent(
-                "/invoices", &draft_fields(&customer, &request.workspace, reason, period, description), &key,
-            ).await?;
-            self.db.prepare("UPDATE invoice_attempts SET invoice_id = ? WHERE id = ?")
-                .bind(&[draft.id.as_str().into(), key.as_str().into()])?.run().await?;
+            let draft: StripeInvoice = stripe
+                .post_idempotent("/invoices", &draft_fields(&customer, &request.workspace, reason, period, description), &key)
+                .await?;
+            self.db
+                .prepare("UPDATE invoice_attempts SET invoice_id = ? WHERE id = ?")
+                .bind(&[draft.id.as_str().into(), key.as_str().into()])?
+                .run()
+                .await?;
             draft
         };
         if draft.status.as_deref() == Some("draft") {
             if too_old {
-                return Err(worker::Error::RustError(format!("{workspace}: draft {} needs reconciliation before retrying expired invoice-item keys", draft.id)));
+                return Err(worker::Error::RustError(format!(
+                    "{workspace}: draft {} needs reconciliation before retrying expired invoice-item keys",
+                    draft.id
+                )));
             }
             for (position, (line, cents)) in lines.iter().zip(&cents).enumerate() {
                 let fields = item_fields(&customer, &draft.id, &request.workspace, &line.description, *cents);
@@ -421,30 +441,31 @@ impl Billing {
         let invoice: StripeInvoice = stripe.get(&format!("/invoices/{}", draft.id)).await?;
         let total = lines.iter().map(|l| l.amount_micros).sum::<i64>();
         let tax_micros = invoice.tax_cents() * 10_000;
-        let mut writes = vec![self
-            .db
-            .prepare(
-                "INSERT OR IGNORE INTO workspace_invoices
+        let mut writes = vec![
+            self.db
+                .prepare(
+                    "INSERT OR IGNORE INTO workspace_invoices
                    (invoice_id, workspace, reason, period, amount_micros, status, hosted_url, pdf_url, through_at, created_at, paid_at,
                     fee_micros, tax_micros)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            )
-            .bind(&[
-                invoice.id.as_str().into(),
-                workspace.into(),
-                reason.into(),
-                period.into(),
-                (total as f64).into(),
-                "open".into(),
-                crate::optional(invoice.hosted_invoice_url.as_deref()),
-                crate::optional(invoice.invoice_pdf.as_deref()),
-                now.as_str().into(),
-                now.as_str().into(),
-                JsValue::NULL,
-                // No card fee on new invoices; the column keeps old ones'.
-                0.into(),
-                (tax_micros as f64).into(),
-            ])?];
+                )
+                .bind(&[
+                    invoice.id.as_str().into(),
+                    workspace.into(),
+                    reason.into(),
+                    period.into(),
+                    (total as f64).into(),
+                    "open".into(),
+                    crate::optional(invoice.hosted_invoice_url.as_deref()),
+                    crate::optional(invoice.invoice_pdf.as_deref()),
+                    now.as_str().into(),
+                    now.as_str().into(),
+                    JsValue::NULL,
+                    // No card fee on new invoices; the column keeps old ones'.
+                    0.into(),
+                    (tax_micros as f64).into(),
+                ])?,
+        ];
         for (position, line) in lines.iter().enumerate() {
             writes.push(
                 self.db
@@ -464,7 +485,12 @@ impl Billing {
     /// Stripe failing to answer, or answering busy, is g1t's problem and
     /// never stops a payer: the invoice stays open, an `Err` says so, and
     /// the next attempt pays this same invoice.
-    async fn pay_invoice(&self, workspace: &str, invoice_id: &str, fee_cents: i64) -> Result<std::result::Result<WorkspaceInvoice, String>> {
+    async fn pay_invoice(
+        &self,
+        workspace: &str,
+        invoice_id: &str,
+        fee_cents: i64,
+    ) -> Result<std::result::Result<WorkspaceInvoice, String>> {
         let Some(stripe) = &self.stripe else { return Ok(Err("Payments are not set up.".into())) };
         let paid = stripe.post::<StripeInvoice>(&format!("/invoices/{invoice_id}/pay"), &[("off_session", "true".to_owned())]).await;
         let invoice: StripeInvoice = stripe.get(&format!("/invoices/{invoice_id}")).await?;
@@ -606,12 +632,8 @@ impl Billing {
     /// what it paid for usage, never its tax or card fee, which are kept
     /// apart (`tax_and_fees`).
     async fn credit_invoice(&self, workspace: &str, invoice: &StripeInvoice, fee_cents: i64) -> Result<bool> {
-        let seen = self
-            .db
-            .prepare("SELECT id FROM ledger WHERE reference = ?")
-            .bind(&[invoice.id.as_str().into()])?
-            .first::<Value>(None)
-            .await?;
+        let seen =
+            self.db.prepare("SELECT id FROM ledger WHERE reference = ?").bind(&[invoice.id.as_str().into()])?.first::<Value>(None).await?;
         if seen.is_some() {
             return Ok(false);
         }
@@ -633,13 +655,14 @@ impl Billing {
         // Prepaid cards pay, but never raise the limit.
         if let (Some(stripe), Some(charge)) = (&self.stripe, &invoice.charge)
             && let Ok(charge) = stripe.get::<Value>(&format!("/charges/{charge}")).await
-                && let Some(funding) = charge["payment_method_details"]["card"]["funding"].as_str() {
-                    self.db
-                        .prepare("UPDATE ledger SET funding = ? WHERE reference = ?")
-                        .bind(&[funding.into(), invoice.id.as_str().into()])?
-                        .run()
-                        .await?;
-                }
+            && let Some(funding) = charge["payment_method_details"]["card"]["funding"].as_str()
+        {
+            self.db
+                .prepare("UPDATE ledger SET funding = ? WHERE reference = ?")
+                .bind(&[funding.into(), invoice.id.as_str().into()])?
+                .run()
+                .await?;
+        }
         Ok(true)
     }
 
@@ -697,7 +720,8 @@ impl Billing {
         let row = match kept {
             Some(row) => row,
             None => {
-                let Some(tagged) = found["metadata"]["g1t_workspace"].as_str().filter(|_| crate::webhooks::invoice_subscription(&found).is_none())
+                let Some(tagged) =
+                    found["metadata"]["g1t_workspace"].as_str().filter(|_| crate::webhooks::invoice_subscription(&found).is_none())
                 else {
                     return Ok(None);
                 };
@@ -743,11 +767,7 @@ impl Billing {
             .bind(&[rfc3339(now_ms()).into(), ((invoice.tax_cents() * 10_000) as f64).into(), invoice_id.into()])?
             .run()
             .await?;
-        Ok(Some(format!(
-            "invoice {invoice_id} for {} paid{}",
-            row.workspace,
-            if credited { "" } else { " (already credited)" }
-        )))
+        Ok(Some(format!("invoice {invoice_id} for {} paid{}", row.workspace, if credited { "" } else { " (already credited)" })))
     }
 
     pub(crate) async fn workspace_invoices(&self, workspace: &str) -> Result<Vec<WorkspaceInvoice>> {
@@ -938,7 +958,9 @@ mod tests {
         let cents = line_cents(&items(&[4_000, 4_000, 4_000]));
         assert_eq!(cents.iter().sum::<i64>(), 2);
         // Every invoice the close makes: never less than owed, never a cent more.
-        for (used, owed) in [(vec![("a".to_owned(), 7_777_777), ("b".to_owned(), 3)], 6_000_001), (vec![("a".to_owned(), 5_000_001)], 5_000_001)] {
+        for (used, owed) in
+            [(vec![("a".to_owned(), 7_777_777), ("b".to_owned(), 3)], 6_000_001), (vec![("a".to_owned(), 5_000_001)], 5_000_001)]
+        {
             let lines = invoice_lines(&used, owed);
             let charged = line_cents(&lines).iter().sum::<i64>() * 10_000;
             assert!(charged >= owed && charged - owed < 10_000, "{charged} for {owed}");

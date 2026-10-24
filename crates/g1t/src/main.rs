@@ -46,11 +46,7 @@ fn run(args: Vec<String>) -> error::Result<()> {
     let args = match commands::alias::expand(args)? {
         commands::alias::Expanded::Args(args) => args,
         commands::alias::Expanded::Ran(code) => {
-            return if code == 0 {
-                Ok(())
-            } else {
-                Err(error::Error::exit(error::Kind::Failed))
-            };
+            return if code == 0 { Ok(()) } else { Err(error::Error::exit(error::Kind::Failed)) };
         }
     };
     let matches = match cli::Cli::command().try_get_matches_from(&args) {
@@ -83,12 +79,7 @@ fn clap_error(e: clap::Error) -> error::Result<()> {
         }
         _ => {
             let text = e.render().to_string();
-            let line = text
-                .lines()
-                .find(|l| !l.trim().is_empty())
-                .unwrap_or("")
-                .trim_start_matches("error: ")
-                .trim();
+            let line = text.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim_start_matches("error: ").trim();
             let tip = text
                 .lines()
                 .find(|l| l.trim_start().starts_with("tip:"))

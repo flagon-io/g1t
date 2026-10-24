@@ -32,9 +32,7 @@ use crate::features::cents;
 /// `repo.transferred` (see `g1t_kit::transfer`): `?1` the repository's
 /// path now, `?2` a path it had. Ledger rows, runs and holds keep the path
 /// they were charged under.
-pub(crate) const TRANSFERRED: &[&str] = &[
-    "UPDATE OR IGNORE allowance_use SET scope = ?1 WHERE kind = 'oss_repo' AND scope = ?2",
-];
+pub(crate) const TRANSFERRED: &[&str] = &["UPDATE OR IGNORE allowance_use SET scope = ?1 WHERE kind = 'oss_repo' AND scope = ?2"];
 
 /// Everything that decides whether a workspace's billing can be closed.
 #[derive(Debug, Default)]
@@ -65,17 +63,13 @@ pub(crate) enum Settle {
 pub(crate) fn decide(facts: &Facts) -> std::result::Result<Settle, String> {
     let ws = &facts.workspace;
     if let Some(enterprise) = &facts.enterprise {
-        return Err(format!(
-            "{ws} is billed through {enterprise}. Write to support@g1t.sh to have it moved off that account first."
-        ));
+        return Err(format!("{ws} is billed through {enterprise}. Write to support@g1t.sh to have it moved off that account first."));
     }
     if facts.comped {
         return Ok(Settle::Nothing);
     }
     if facts.unpaid_invoices > 0 {
-        return Err(format!(
-            "{ws} has an unpaid invoice. Pay it from the workspace's Billing page first."
-        ));
+        return Err(format!("{ws} has an unpaid invoice. Pay it from the workspace's Billing page first."));
     }
     if facts.balance_micros > 0 {
         return Err(format!(
@@ -93,10 +87,7 @@ pub(crate) fn decide(facts: &Facts) -> std::result::Result<Settle, String> {
     let owed = -facts.balance_micros;
     if owed > 0 {
         if !facts.has_card {
-            return Err(format!(
-                "{ws} owes {}. Add a card or pay it from the workspace's Billing page first.",
-                cents(owed)
-            ));
+            return Err(format!("{ws} owes {}. Add a card or pay it from the workspace's Billing page first.", cents(owed)));
         }
         return Ok(Settle::Charge(owed));
     }
@@ -126,14 +117,9 @@ impl Billing {
     async fn closing_facts(&self, workspace: &str) -> Result<Facts> {
         let account = self.account_of(workspace).await?;
         let row = self.row(workspace).await?;
-        let failed = self
-            .db
-            .prepare(UNPAID_INVOICES_SQL)
-            .bind(&[workspace.into()])?
-            .first::<Count>(None)
-            .await?
-            .and_then(|c| c.n)
-            .unwrap_or(0.0) as u32;
+        let failed =
+            self.db.prepare(UNPAID_INVOICES_SQL).bind(&[workspace.into()])?.first::<Count>(None).await?.and_then(|c| c.n).unwrap_or(0.0)
+                as u32;
         let now = rfc3339(now_ms());
         let month = crate::credits::month_of(&now);
         let metering = self
@@ -164,10 +150,7 @@ impl Billing {
     pub(crate) async fn close_workspace(&self, a: CloseWorkspaceArgs) -> Result<Outcome<bool>> {
         let workspace = a.workspace.trim().to_lowercase();
         if a.actor.role_in(&workspace) != Some(Role::Owner) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only an owner can close a workspace's billing.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can close a workspace's billing."));
         }
         let facts = self.closing_facts(&workspace).await?;
         let settle = match decide(&facts) {
@@ -230,13 +213,7 @@ impl Billing {
                     .bind(&[now.as_str().into(), account.as_str().into()])?,
             ])
             .await?;
-        self.audit(
-            &account,
-            "close",
-            &format!("Closed: {workspace} was deleted by {}", a.actor.username),
-            &a.actor.username,
-        )
-        .await?;
+        self.audit(&account, "close", &format!("Closed: {workspace} was deleted by {}", a.actor.username), &a.actor.username).await?;
         Ok(Outcome::Ok(true))
     }
 
@@ -279,12 +256,7 @@ mod tests {
     use super::*;
 
     fn facts() -> Facts {
-        Facts {
-            workspace: "acme".into(),
-            has_card: true,
-            next_month: "2026-11-01".into(),
-            ..Facts::default()
-        }
+        Facts { workspace: "acme".into(), has_card: true, next_month: "2026-11-01".into(), ..Facts::default() }
     }
 
     #[test]
@@ -318,10 +290,7 @@ mod tests {
 
     #[test]
     fn comped_owes_nothing_and_enterprises_go_through_staff() {
-        assert_eq!(
-            decide(&Facts { comped: true, balance_micros: -9_000_000, metering_micros: 1, ..facts() }),
-            Ok(Settle::Nothing)
-        );
+        assert_eq!(decide(&Facts { comped: true, balance_micros: -9_000_000, metering_micros: 1, ..facts() }), Ok(Settle::Nothing));
         assert!(decide(&Facts { enterprise: Some("Initech".into()), ..facts() }).unwrap_err().contains("Initech"));
     }
 }

@@ -222,15 +222,10 @@ fn latest_by_name(runs: Vec<CommitCheckRun>) -> Vec<CommitCheckRun> {
 /// with `all`, every run's; otherwise the latest of each workflow and
 /// event.
 fn job_runs(repo: &Repo, details: &[RunDetail], all: bool) -> Vec<CommitCheckRun> {
-    let pairs: Vec<(g1t_contracts::actions::WorkflowRun, &RunDetail)> =
-        details.iter().map(|detail| (detail.run.clone(), detail)).collect();
-    let chosen: Vec<&(g1t_contracts::actions::WorkflowRun, &RunDetail)> =
-        if all { pairs.iter().collect() } else { latest_runs(&pairs) };
+    let pairs: Vec<(g1t_contracts::actions::WorkflowRun, &RunDetail)> = details.iter().map(|detail| (detail.run.clone(), detail)).collect();
+    let chosen: Vec<&(g1t_contracts::actions::WorkflowRun, &RunDetail)> = if all { pairs.iter().collect() } else { latest_runs(&pairs) };
     let name = full_name(repo);
-    chosen
-        .into_iter()
-        .flat_map(|(run, detail)| detail.jobs.iter().map(|job| job_check_run(&name, run, job)).collect::<Vec<_>>())
-        .collect()
+    chosen.into_iter().flat_map(|(run, detail)| detail.jobs.iter().map(|job| job_check_run(&name, run, job)).collect::<Vec<_>>()).collect()
 }
 
 impl Work {
@@ -292,7 +287,9 @@ impl Work {
     /// A check run by id: one reported here, or a g1t Actions job.
     async fn any_run(&self, repo: &Repo, id: &str) -> Result<Option<(CommitCheckRun, Option<RunDetail>)>> {
         if id.starts_with("job_") {
-            let details = self.actions_runs(ActionsChecksArgs { repo_id: repo.id.clone(), job_id: Some(id.to_owned()), ..Default::default() }).await?;
+            let details = self
+                .actions_runs(ActionsChecksArgs { repo_id: repo.id.clone(), job_id: Some(id.to_owned()), ..Default::default() })
+                .await?;
             let found = details.into_iter().find_map(|detail| {
                 let job = detail.jobs.iter().find(|job| job.id == id)?.clone();
                 Some((job_check_run(&full_name(repo), &detail.run, &job), detail))
@@ -366,10 +363,12 @@ impl Work {
             .bind(&[status.into(), optional(conclusion), rfc3339(now_ms()).into(), suite_id.into(), status.into(), optional(conclusion)])?
             .first::<crate::rows::ValueRow>(None)
             .await?;
-        if changed.is_some() && status == "completed"
+        if changed.is_some()
+            && status == "completed"
             && let Some(suite) = self.stored_suite(repo, suite_id).await?
         {
-            self.publish_as("check_suite.completed", &repo.id, None, CheckSuiteEvent { repo_id: repo.id.clone(), check_suite: suite }).await?;
+            self.publish_as("check_suite.completed", &repo.id, None, CheckSuiteEvent { repo_id: repo.id.clone(), check_suite: suite })
+                .await?;
         }
         Ok(())
     }
@@ -448,7 +447,14 @@ impl Work {
             "status.created",
             &repo.id,
             &a.actor,
-            StatusEvent { repo_id: repo.id.clone(), sha: sha.clone(), context: context.clone(), state: a.state.clone(), description: description.clone(), target_url: target_url.clone() },
+            StatusEvent {
+                repo_id: repo.id.clone(),
+                sha: sha.clone(),
+                context: context.clone(),
+                state: a.state.clone(),
+                description: description.clone(),
+                target_url: target_url.clone(),
+            },
         )
         .await?;
         Ok(Outcome::Ok(CommitStatus {
@@ -629,11 +635,8 @@ impl Work {
         if status == "completed" && conclusion.is_none() {
             return Ok(invalid("A completed check run needs a `conclusion`."));
         }
-        let started_at = input
-            .started_at
-            .clone()
-            .or_else(|| before.started_at.clone())
-            .or_else(|| (status != "queued").then(|| now.clone()));
+        let started_at =
+            input.started_at.clone().or_else(|| before.started_at.clone()).or_else(|| (status != "queued").then(|| now.clone()));
         let completed_at = (status == "completed")
             .then(|| input.completed_at.clone().or_else(|| before.completed_at.clone()).unwrap_or_else(|| now.clone()));
         let output = input.output.clone().unwrap_or_default();
@@ -792,7 +795,9 @@ impl Work {
         let sha = check!(self.commit_of(&a.repo, &a.viewer, &a.git_ref).await?);
         let stored = self
             .db
-            .prepare(format!("SELECT {SUITE_COLUMNS} FROM commit_check_suites s WHERE s.repo_id = ? AND s.head_sha = ? ORDER BY s.created_at DESC"))
+            .prepare(format!(
+                "SELECT {SUITE_COLUMNS} FROM commit_check_suites s WHERE s.repo_id = ? AND s.head_sha = ? ORDER BY s.created_at DESC"
+            ))
             .bind(&[repo.id.as_str().into(), sha.as_str().into()])?
             .all()
             .await?
@@ -827,7 +832,8 @@ impl Work {
     pub(crate) async fn get_check_suite(&self, a: CheckIdArgs) -> Result<Outcome<CommitCheckSuite>> {
         let repo = check!(self.readable(&a.repo, &a.viewer).await?);
         if a.id.starts_with("run_") {
-            let details = self.actions_runs(ActionsChecksArgs { repo_id: repo.id.clone(), run_id: Some(a.id.clone()), ..Default::default() }).await?;
+            let details =
+                self.actions_runs(ActionsChecksArgs { repo_id: repo.id.clone(), run_id: Some(a.id.clone()), ..Default::default() }).await?;
             return Ok(match details.first() {
                 Some(detail) => Outcome::Ok(run_check_suite(&detail.run, &detail.jobs)),
                 None => no_suite(),
@@ -844,7 +850,15 @@ impl Work {
         let rerun: Outcome<Value> = g1t_kit::call(
             &self.actions,
             "rerun",
-            &RunActionArgs { actor: actor.clone(), repo: repo.clone(), id: run_id.to_owned(), failed_only: false, job: None, debug: false, force: false },
+            &RunActionArgs {
+                actor: actor.clone(),
+                repo: repo.clone(),
+                id: run_id.to_owned(),
+                failed_only: false,
+                job: None,
+                debug: false,
+                force: false,
+            },
         )
         .await?;
         Ok(match rerun {
@@ -876,7 +890,8 @@ impl Work {
         let Some(suite) = self.stored_suite(&repo, &a.id).await? else {
             return Ok(no_suite());
         };
-        self.publish("check_suite.rerequested", &repo.id, &a.actor, CheckSuiteEvent { repo_id: repo.id.clone(), check_suite: suite }).await?;
+        self.publish("check_suite.rerequested", &repo.id, &a.actor, CheckSuiteEvent { repo_id: repo.id.clone(), check_suite: suite })
+            .await?;
         Ok(Outcome::Ok(true))
     }
 
@@ -930,8 +945,7 @@ impl Work {
                 }
                 runs.extend(detail.jobs.iter().map(|job| job_check_run(&full_name(&repo), run, job)));
             }
-            let mine: Vec<CommitStatus> =
-                statuses.iter().filter(|(of, _)| *of == sha).map(|(_, status)| status.clone()).collect();
+            let mine: Vec<CommitStatus> = statuses.iter().filter(|(of, _)| *of == sha).map(|(_, status)| status.clone()).collect();
             let summary = summarize(&runs, &mine, &job_contexts);
             if summary.total > 0 {
                 out.insert(sha, summary);

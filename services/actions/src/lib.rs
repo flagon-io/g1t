@@ -26,7 +26,6 @@
 //! workspace's that reaches the job's repository only, with the scopes its
 //! `permissions:` give it, revoked when the job ends.
 
-mod run_artifacts;
 mod broker;
 mod cache;
 mod limits;
@@ -39,8 +38,9 @@ mod reach;
 mod registry;
 mod rename;
 mod retention;
-pub mod runtime;
+mod run_artifacts;
 mod runners;
+pub mod runtime;
 mod settings;
 mod sync;
 mod trigger;
@@ -82,8 +82,7 @@ pub const POOL_HEADROOM: u32 = 8;
 /// its share, and past it, up to the burst, while the pool keeps its
 /// headroom.
 pub fn has_room(in_workspace: u32, in_pool: u32) -> bool {
-    in_workspace < RUNNING_PER_WORKSPACE
-        || (in_workspace < BURST_PER_WORKSPACE && in_pool + POOL_HEADROOM < HOSTED_POOL)
+    in_workspace < RUNNING_PER_WORKSPACE || (in_workspace < BURST_PER_WORKSPACE && in_pool + POOL_HEADROOM < HOSTED_POOL)
 }
 
 /// How long a job waits for a machine when the runner has none for it
@@ -135,9 +134,7 @@ pub fn never_reported(started: Option<&str>, seen: Option<&str>, now: u64) -> bo
 /// should stop waiting at `now`. One whose start cannot be read waits from
 /// now on.
 pub fn waited_for_a_machine(since: Option<&str>, now: u64) -> bool {
-    since
-        .and_then(g1t_contracts::time::parse_rfc3339)
-        .is_some_and(|since| now.saturating_sub(since) >= WAIT_FOR_MACHINE_MS)
+    since.and_then(g1t_contracts::time::parse_rfc3339).is_some_and(|since| now.saturating_sub(since) >= WAIT_FOR_MACHINE_MS)
 }
 /// The longest a job on g1t's own machines may run, whatever its
 /// `timeout-minutes`.
@@ -164,13 +161,22 @@ pub fn runs_again_when_lost(machine_lost: u32, environment: Option<&str>, cancel
 /// (`out_of_memory` in its end, flagon-io#458): as a lost machine's job
 /// does ([`runs_again_when_lost`]), once, never one that deploys or is
 /// being cancelled.
-pub fn runs_again_out_of_memory(out_of_memory: bool, offered: bool, runner: Option<&str>, machine_lost: u32, environment: Option<&str>, cancelling: bool) -> bool {
+pub fn runs_again_out_of_memory(
+    out_of_memory: bool,
+    offered: bool,
+    runner: Option<&str>,
+    machine_lost: u32,
+    environment: Option<&str>,
+    cancelling: bool,
+) -> bool {
     out_of_memory && offered && runner.is_some() && runs_again_when_lost(machine_lost, environment, cancelling)
 }
 
 /// Why such a job went back in the queue, for its log and its reason.
 pub fn out_of_memory_reason(runner: &str) -> String {
-    format!("It ran out of memory on the workspace's runner {runner}, which gave it less than its size has; it runs again on g1t's machines.")
+    format!(
+        "It ran out of memory on the workspace's runner {runner}, which gave it less than its size has; it runs again on g1t's machines."
+    )
 }
 
 /// Why a job that lost its machine went back in the queue: the step it was
@@ -187,9 +193,8 @@ pub fn lost_machine_reason(steps: &str, log_head: Option<&str>, stopped: bool) -
         .or_else(|| last(&|step| step["status"] == "completed"))
         .and_then(|step| step["name"].as_str())
         .filter(|name| !name.is_empty());
-    let instance = log_head.and_then(|text| {
-        text.lines().find_map(|line| line.split_once("Instance: ").map(|(_, id)| id.trim())).filter(|id| !id.is_empty())
-    });
+    let instance = log_head
+        .and_then(|text| text.lines().find_map(|line| line.split_once("Instance: ").map(|(_, id)| id.trim())).filter(|id| !id.is_empty()));
     let mut reason = if stopped { "Its machine was stopped" } else { "Its machine stopped answering" }.to_owned();
     if let Some(step) = step {
         reason.push_str(&format!(" in \"{step}\""));
@@ -225,10 +230,7 @@ pub fn fail<T>(code: FailureCode, message: impl Into<String>) -> Outcome<T> {
 /// `owner/name` as a path.
 pub fn repo_path(full_name: &str) -> RepoPath {
     let (namespace, name) = full_name.split_once('/').unwrap_or((full_name, ""));
-    RepoPath {
-        namespace: namespace.to_owned(),
-        name: name.to_owned(),
-    }
+    RepoPath { namespace: namespace.to_owned(), name: name.to_owned() }
 }
 
 pub struct Actions {
@@ -311,34 +313,20 @@ impl Actions {
     /// The repository, if the viewer may see it and it is not a pull
     /// request's working copy.
     async fn visible_repo(&self, path: &RepoPath, viewer: &Viewer) -> Result<Option<Repo>> {
-        let found: Outcome<Repo> = g1t_kit::call(
-            &self.repos,
-            "get",
-            &GetArgs {
-                path: path.clone(),
-                viewer: viewer.clone(),
-            },
-        )
-        .await?;
+        let found: Outcome<Repo> = g1t_kit::call(&self.repos, "get", &GetArgs { path: path.clone(), viewer: viewer.clone() }).await?;
         Ok(found.into_result().ok().filter(|repo| repo.fork_of.is_none()))
     }
 
     /// A repository by id, as its workspace sees it.
     async fn repo_by_id(&self, id: &str) -> Result<Option<(Repo, User)>> {
-        let path: Option<RepoPath> = g1t_kit::call(&self.repos, "path_by_id", &g1t_contracts::repos::PathByIdArgs { id: id.to_owned() }).await?;
+        let path: Option<RepoPath> =
+            g1t_kit::call(&self.repos, "path_by_id", &g1t_contracts::repos::PathByIdArgs { id: id.to_owned() }).await?;
         let Some(path) = path else { return Ok(None) };
         let Some(actor) = self.workspace_actor(&path.namespace).await? else {
             return Ok(None);
         };
-        let found: Outcome<Repo> = g1t_kit::call(
-            &self.repos,
-            "get_by_id",
-            &GetByIdArgs {
-                id: id.to_owned(),
-                viewer: Some(actor.clone()),
-            },
-        )
-        .await?;
+        let found: Outcome<Repo> =
+            g1t_kit::call(&self.repos, "get_by_id", &GetByIdArgs { id: id.to_owned(), viewer: Some(actor.clone()) }).await?;
         Ok(found.into_result().ok().filter(|repo| repo.fork_of.is_none()).map(|repo| (repo, actor)))
     }
 
@@ -350,10 +338,7 @@ impl Actions {
             return Ok(fail(FailureCode::NotFound, "There is no such repository."));
         };
         if !access::can(Some(actor), &repo, capability) {
-            return Ok(fail(
-                FailureCode::Forbidden,
-                access::needs(capability, &format!("{}/{}", repo.namespace, repo.name)),
-            ));
+            return Ok(fail(FailureCode::Forbidden, access::needs(capability, &format!("{}/{}", repo.namespace, repo.name))));
         }
         Ok(Outcome::Ok(repo))
     }
@@ -644,15 +629,25 @@ mod room_tests {
     fn a_lost_machine_says_the_step_and_instance_it_stopped_on() {
         let steps = r#"[{"number":1,"name":"Run actions/checkout@v5","status":"completed"},{"number":2,"name":"Build work","status":"in_progress"},{"number":3,"name":"Keep what was built","status":"queued"}]"#;
         let head = "Current runner version: '0.3.6'\n##[group]Machine\nHosted by g1t\nInstance: 7f3a9c\nHost: node-12\n##[endgroup]\n";
-        assert_eq!(lost_machine_reason(steps, Some(head), false), "Its machine stopped answering in \"Build work\" (instance 7f3a9c); it runs again on another machine.");
+        assert_eq!(
+            lost_machine_reason(steps, Some(head), false),
+            "Its machine stopped answering in \"Build work\" (instance 7f3a9c); it runs again on another machine."
+        );
         // Between steps: the last one it finished.
-        let between = r#"[{"number":1,"name":"Run actions/checkout@v5","status":"completed"},{"number":2,"name":"Build work","status":"queued"}]"#;
-        assert_eq!(lost_machine_reason(between, None, false), "Its machine stopped answering in \"Run actions/checkout@v5\"; it runs again on another machine.");
+        let between =
+            r#"[{"number":1,"name":"Run actions/checkout@v5","status":"completed"},{"number":2,"name":"Build work","status":"queued"}]"#;
+        assert_eq!(
+            lost_machine_reason(between, None, false),
+            "Its machine stopped answering in \"Run actions/checkout@v5\"; it runs again on another machine."
+        );
         assert_eq!(lost_machine_reason("[]", Some("no header"), false), "Its machine stopped answering; it runs again on another machine.");
         assert_eq!(lost_machine_reason("not json", None, false), "Its machine stopped answering; it runs again on another machine.");
         // A job that reported its end after a step was stopped: the step
         // that failed, not the cleanup after it.
         let ended = r#"[{"number":1,"name":"Run actions/checkout@v5","status":"completed","conclusion":"success"},{"number":2,"name":"Tests","status":"completed","conclusion":"failure"},{"number":3,"name":"Post Run actions/checkout@v5","status":"completed","conclusion":"success"}]"#;
-        assert_eq!(lost_machine_reason(ended, Some(head), true), "Its machine was stopped in \"Tests\" (instance 7f3a9c); it runs again on another machine.");
+        assert_eq!(
+            lost_machine_reason(ended, Some(head), true),
+            "Its machine was stopped in \"Tests\" (instance 7f3a9c); it runs again on another machine."
+        );
     }
 }

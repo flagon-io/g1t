@@ -294,7 +294,9 @@ impl Identity {
                     .bind(&[workspace_id.into(), user_id.into()])?,
                 // They lead no team here any more.
                 self.db
-                    .prepare("UPDATE teams SET lead_kind = NULL, lead_id = NULL WHERE workspace_id = ? AND lead_kind = 'user' AND lead_id = ?")
+                    .prepare(
+                        "UPDATE teams SET lead_kind = NULL, lead_id = NULL WHERE workspace_id = ? AND lead_kind = 'user' AND lead_id = ?",
+                    )
                     .bind(&[workspace_id.into(), user_id.into()])?,
             ])
             .await?;
@@ -427,23 +429,16 @@ impl Identity {
             cursor: Option<String>,
             done_at: Option<String>,
         }
-        let Some(job) = self
-            .db
-            .prepare("SELECT cursor, done_at FROM identity_jobs WHERE name = 'creator_grants'")
-            .first::<Job>(None)
-            .await?
+        let Some(job) =
+            self.db.prepare("SELECT cursor, done_at FROM identity_jobs WHERE name = 'creator_grants'").first::<Job>(None).await?
         else {
             return Ok(());
         };
         if job.done_at.is_some() {
             return Ok(());
         }
-        let page: CreatorPage = g1t_kit::call(
-            &self.env.service("REPOS")?,
-            "repo_creators",
-            &AllIdsArgs { after: job.cursor.clone(), limit: 200 },
-        )
-        .await?;
+        let page: CreatorPage =
+            g1t_kit::call(&self.env.service("REPOS")?, "repo_creators", &AllIdsArgs { after: job.cursor.clone(), limit: 200 }).await?;
         #[derive(Deserialize)]
         struct Standing {
             workspace_id: String,

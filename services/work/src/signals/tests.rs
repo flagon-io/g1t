@@ -51,15 +51,7 @@ fn pull(db: &Connection, number: u32, status: &str, created: &str, merged: Optio
     db.execute(
         "INSERT INTO pulls (id, repo_id, number, status, created_at, merged_at, updated_at, source_branch)
          VALUES (?1, 'a', ?2, ?3, ?4, ?5, ?6, ?7)",
-        params![
-            format!("pr_{number}"),
-            number,
-            status,
-            created,
-            merged,
-            updated,
-            format!("branch-{number}")
-        ],
+        params![format!("pr_{number}"), number, status, created, merged, updated, format!("branch-{number}")],
     )
     .unwrap();
 }
@@ -126,17 +118,11 @@ fn in_week(found: &[SignalWeek], start: &str) -> SignalWeek {
 }
 
 fn pulls(db: &Connection) -> Vec<SignalPull> {
-    rows::<PullRow>(db, PULLS, &[&IDS, &"acme", &"2026-01-01T00:00:00"])
-        .into_iter()
-        .map(Into::into)
-        .collect()
+    rows::<PullRow>(db, PULLS, &[&IDS, &"acme", &"2026-01-01T00:00:00"]).into_iter().map(Into::into).collect()
 }
 
 fn waiting(db: &Connection) -> Vec<WaitingPull> {
-    rows::<WaitingRow>(db, WAITING, &[&IDS, &"acme"])
-        .into_iter()
-        .map(Into::into)
-        .collect()
+    rows::<WaitingRow>(db, WAITING, &[&IDS, &"acme"]).into_iter().map(Into::into).collect()
 }
 
 #[test]
@@ -162,23 +148,10 @@ fn checks_the_arguments() {
     assert_eq!(weeks[0]["start"], "2026-09-28");
     assert_eq!(weeks[1]["start"], "2026-10-05");
     assert_eq!(weeks[1]["to"], "2026-10-12T00:00:00.000Z");
+    assert_eq!(weeks[1]["cut"], "2026-10-12T00:00:00.000Z", "a week already over ends at its end");
     assert_eq!(
-        weeks[1]["cut"], "2026-10-12T00:00:00.000Z",
-        "a week already over ends at its end"
-    );
-    assert_eq!(
-        (
-            window.days_from.as_str(),
-            window.end.as_str(),
-            window.since.as_str(),
-            window.recent_from.as_str()
-        ),
-        (
-            "2026-10-09T00:00:00",
-            "2026-10-12T00:00:00",
-            "2026-09-01T00:00:00",
-            "2026-07-14T00:00:00"
-        )
+        (window.days_from.as_str(), window.end.as_str(), window.since.as_str(), window.recent_from.as_str()),
+        ("2026-10-09T00:00:00", "2026-10-12T00:00:00", "2026-09-01T00:00:00", "2026-07-14T00:00:00")
     );
 }
 
@@ -186,14 +159,7 @@ fn checks_the_arguments() {
 fn an_agents_pull_request_is_one_a_session_is_tied_to() {
     let db = schema();
     for number in 1..=6 {
-        pull(
-            &db,
-            number,
-            "open",
-            "2026-10-06T12:00:00Z",
-            None,
-            "2026-10-06T12:00:00Z",
-        );
+        pull(&db, number, "open", "2026-10-06T12:00:00Z", None, "2026-10-06T12:00:00Z");
     }
     db.execute_batch(
         "UPDATE pulls SET agent = 'agent' WHERE number = 1;
@@ -217,23 +183,8 @@ fn an_agents_pull_request_is_one_a_session_is_tied_to() {
     pull(&db, 7, "open", "2026-10-06T12:00:00Z", None, "2026-10-06T12:00:00Z");
     let mut agents: Vec<(u32, bool)> = pulls(&db).iter().map(|p| (p.number, p.agent)).collect();
     agents.sort();
-    assert_eq!(
-        agents,
-        [
-            (1, true),
-            (2, true),
-            (3, true),
-            (4, true),
-            (5, true),
-            (6, false),
-            (7, false)
-        ]
-    );
-    assert_eq!(
-        pulls(&db).iter().find(|p| p.number == 2).unwrap().owner_id,
-        "usr_ana",
-        "whose g1t's is"
-    );
+    assert_eq!(agents, [(1, true), (2, true), (3, true), (4, true), (5, true), (6, false), (7, false)]);
+    assert_eq!(pulls(&db).iter().find(|p| p.number == 2).unwrap().owner_id, "usr_ana", "whose g1t's is");
 
     let mut drafts: Vec<(u32, Option<f64>)> = waiting(&db).iter().map(|p| (p.number, p.draft_seconds)).collect();
     drafts.sort_by_key(|(number, _)| *number);
@@ -252,54 +203,22 @@ fn an_agents_pull_request_is_one_a_session_is_tied_to() {
 #[test]
 fn rework_is_a_persons_request_for_changes_before_it_merged() {
     let db = schema();
-    pull(
-        &db,
-        1,
-        "merged",
-        "2026-10-05T00:00:00Z",
-        Some("2026-10-07T00:00:00Z"),
-        "2026-10-07T00:00:00Z",
-    );
-    pull(
-        &db,
-        2,
-        "merged",
-        "2026-10-05T00:00:00Z",
-        Some("2026-10-07T00:00:00Z"),
-        "2026-10-07T00:00:00Z",
-    );
+    pull(&db, 1, "merged", "2026-10-05T00:00:00Z", Some("2026-10-07T00:00:00Z"), "2026-10-07T00:00:00Z");
+    pull(&db, 2, "merged", "2026-10-05T00:00:00Z", Some("2026-10-07T00:00:00Z"), "2026-10-07T00:00:00Z");
     db.execute_batch("UPDATE pulls SET agent = 'agent'").unwrap();
     // None of these is a person's, before it merged, on 1.
     comment(&db, 1, "usr_ana", None, Some("request_changes"), "2026-10-06T00:00:00Z");
-    comment(
-        &db,
-        1,
-        "usr_g1t_agent",
-        None,
-        Some("request_changes"),
-        "2026-10-06T00:00:00Z",
-    );
-    comment(
-        &db,
-        1,
-        "agt_margo",
-        Some("agt_margo"),
-        Some("request_changes"),
-        "2026-10-06T00:00:00Z",
-    );
+    comment(&db, 1, "usr_g1t_agent", None, Some("request_changes"), "2026-10-06T00:00:00Z");
+    comment(&db, 1, "agt_margo", Some("agt_margo"), Some("request_changes"), "2026-10-06T00:00:00Z");
     comment(&db, 1, "usr_bo", None, Some("approve"), "2026-10-06T00:00:00Z");
     comment(&db, 1, "usr_bo", None, Some("request_changes"), "2026-10-08T00:00:00Z");
     comment(&db, 2, "usr_bo", None, Some("request_changes"), "2026-10-06T00:00:00Z");
     let found = weeks(&db, "2026-10-18T00:00:00Z");
     assert_eq!(found.len(), 1);
     let week = &found[0];
-    assert_eq!(
-        (week.start.as_str(), week.merged, week.agent_merged, week.agent_reworked),
-        ("2026-10-05", 2, 2, 1)
-    );
+    assert_eq!((week.start.as_str(), week.merged, week.agent_merged, week.agent_reworked), ("2026-10-05", 2, 2, 1));
     // A person's pull request asked for changes is not an agent's rework.
-    db.execute("UPDATE pulls SET agent = 'person' WHERE number = 2", [])
-        .unwrap();
+    db.execute("UPDATE pulls SET agent = 'person' WHERE number = 2", []).unwrap();
     let week = in_week(&weeks(&db, "2026-10-18T00:00:00Z"), "2026-10-05");
     assert_eq!((week.merged, week.agent_merged, week.agent_reworked), (2, 1, 0));
 }
@@ -308,27 +227,13 @@ fn rework_is_a_persons_request_for_changes_before_it_merged() {
 fn a_first_review_is_a_persons_other_than_the_owner() {
     let db = schema();
     pull(&db, 1, "open", "2026-10-06T00:00:00Z", None, "2026-10-06T00:00:00Z");
-    db.execute_batch(
-        "UPDATE pulls SET author_id = 'usr_g1t_agent', requested_by_id = 'owner', requested_by_name = 'owner'",
-    )
-    .unwrap();
+    db.execute_batch("UPDATE pulls SET author_id = 'usr_g1t_agent', requested_by_id = 'owner', requested_by_name = 'owner'").unwrap();
     comment(&db, 1, "usr_g1t_agent", None, Some("approve"), "2026-10-06T01:00:00Z");
     comment(&db, 1, "owner", None, Some("approve"), "2026-10-06T02:00:00Z");
-    comment(
-        &db,
-        1,
-        "agt_margo",
-        Some("agt_margo"),
-        Some("approve"),
-        "2026-10-06T03:00:00Z",
-    );
+    comment(&db, 1, "agt_margo", Some("agt_margo"), Some("approve"), "2026-10-06T03:00:00Z");
     comment(&db, 1, "usr_bo", None, None, "2026-10-06T03:30:00Z");
     assert!(weeks(&db, "2026-10-18T00:00:00Z").iter().all(|w| w.reviewed == 0));
-    assert_eq!(
-        waiting(&db).len(),
-        1,
-        "g1t, an agent, the owner and a plain comment are no review"
-    );
+    assert_eq!(waiting(&db).len(), 1, "g1t, an agent, the owner and a plain comment are no review");
     comment(&db, 1, "usr_bo", None, Some("request_changes"), "2026-10-06T04:00:00Z");
     comment(&db, 1, "usr_cy", None, Some("approve"), "2026-10-06T05:00:00Z");
     let week = in_week(&weeks(&db, "2026-10-18T00:00:00Z"), "2026-10-05");
@@ -355,11 +260,7 @@ fn waiting_pull_requests_name_the_work_they_block() {
     .unwrap();
     let found = waiting(&db);
     let shown: Vec<(u32, Option<u32>, Vec<u32>)> = found.iter().map(|p| (p.number, p.item, p.blocks.clone())).collect();
-    assert_eq!(
-        shown,
-        [(11, None, vec![]), (10, Some(1), vec![2, 4])],
-        "oldest first; drafts wait on no one"
-    );
+    assert_eq!(shown, [(11, None, vec![]), (10, Some(1), vec![2, 4])], "oldest first; drafts wait on no one");
     // Its milestone is its work item's.
     let pull = pulls(&db).into_iter().find(|p| p.number == 10).unwrap();
     assert_eq!((pull.item, pull.milestone), (Some(1), Some(3)));
@@ -370,14 +271,7 @@ fn a_pull_requests_own_milestone_counts_only_when_it_is_the_workspaces() {
     let db = schema();
     pull(&db, 1, "open", "2026-10-02T00:00:00Z", None, "2026-10-02T00:00:00Z");
     pull(&db, 2, "open", "2026-10-02T00:00:00Z", None, "2026-10-02T00:00:00Z");
-    pull(
-        &db,
-        3,
-        "merged",
-        "2025-01-01T00:00:00Z",
-        Some("2026-10-03T00:00:00Z"),
-        "2026-10-03T00:00:00Z",
-    );
+    pull(&db, 3, "merged", "2025-01-01T00:00:00Z", Some("2026-10-03T00:00:00Z"), "2026-10-03T00:00:00Z");
     pull(&db, 4, "closed", "2025-01-01T00:00:00Z", None, "2026-10-03T00:00:00Z");
     db.execute_batch(
         "UPDATE pulls SET milestone = 1 WHERE number = 1;
@@ -388,81 +282,33 @@ fn a_pull_requests_own_milestone_counts_only_when_it_is_the_workspaces() {
     .unwrap();
     let mut found: Vec<(u32, Option<u32>)> = pulls(&db).iter().map(|p| (p.number, p.milestone)).collect();
     found.sort();
-    assert_eq!(
-        found,
-        [(1, Some(1)), (2, None), (3, None)],
-        "merged since counts; closed long-opened does not"
-    );
+    assert_eq!(found, [(1, Some(1)), (2, None), (3, None)], "merged since counts; closed long-opened does not");
 }
 
 #[test]
 fn authors_are_people_with_merged_work() {
     let db = schema();
-    pull(
-        &db,
-        1,
-        "merged",
-        "2025-01-01T00:00:00Z",
-        Some("2025-01-02T00:00:00Z"),
-        "2025-01-02T00:00:00Z",
-    );
-    pull(
-        &db,
-        2,
-        "merged",
-        "2026-10-01T00:00:00Z",
-        Some("2026-10-02T00:00:00Z"),
-        "2026-10-02T00:00:00Z",
-    );
+    pull(&db, 1, "merged", "2025-01-01T00:00:00Z", Some("2025-01-02T00:00:00Z"), "2025-01-02T00:00:00Z");
+    pull(&db, 2, "merged", "2026-10-01T00:00:00Z", Some("2026-10-02T00:00:00Z"), "2026-10-02T00:00:00Z");
     pull(&db, 3, "open", "2026-10-01T00:00:00Z", None, "2026-10-01T00:00:00Z");
-    for (number, author) in [
-        (4, "usr_g1t_agent"),
-        (5, "agt_margo"),
-        (6, "wsp_acme"),
-        (7, "g1t"),
-        (8, "svc_runner"),
-    ] {
-        pull(
-            &db,
-            number,
-            "merged",
-            "2026-10-01T00:00:00Z",
-            Some("2026-10-02T00:00:00Z"),
-            "2026-10-02T00:00:00Z",
-        );
-        db.execute(
-            "UPDATE pulls SET author_id = ?1 WHERE number = ?2",
-            params![author, number],
-        )
-        .unwrap();
+    for (number, author) in [(4, "usr_g1t_agent"), (5, "agt_margo"), (6, "wsp_acme"), (7, "g1t"), (8, "svc_runner")] {
+        pull(&db, number, "merged", "2026-10-01T00:00:00Z", Some("2026-10-02T00:00:00Z"), "2026-10-02T00:00:00Z");
+        db.execute("UPDATE pulls SET author_id = ?1 WHERE number = ?2", params![author, number]).unwrap();
     }
     // g1t's agent's work for a person is theirs, under their name now.
-    pull(
-        &db,
-        9,
-        "merged",
-        "2026-10-01T00:00:00Z",
-        Some("2026-10-03T00:00:00Z"),
-        "2026-10-03T00:00:00Z",
-    );
+    pull(&db, 9, "merged", "2026-10-01T00:00:00Z", Some("2026-10-03T00:00:00Z"), "2026-10-03T00:00:00Z");
     db.execute_batch(
         "UPDATE pulls SET author_id = 'usr_g1t_agent', requested_by_id = 'usr_ana', requested_by_name = 'ana-renamed' WHERE number = 9",
     )
     .unwrap();
-    let found: Vec<SignalAuthor> =
-        rows::<SignalAuthor>(&db, AUTHORS, &[&IDS, &"2026-07-14T00:00:00", &"2026-10-12T00:00:00"])
-            .into_iter()
-            .filter(|author| is_person(&author.owner_id))
-            .collect();
+    let found: Vec<SignalAuthor> = rows::<SignalAuthor>(&db, AUTHORS, &[&IDS, &"2026-07-14T00:00:00", &"2026-10-12T00:00:00"])
+        .into_iter()
+        .filter(|author| is_person(&author.owner_id))
+        .collect();
     assert_eq!(found.len(), 1);
     let ana = &found[0];
     assert_eq!(
-        (
-            ana.owner_id.as_str(),
-            ana.owner_name.as_str(),
-            ana.first_merged_at.as_str(),
-            ana.last_merged_at.as_str()
-        ),
+        (ana.owner_id.as_str(), ana.owner_name.as_str(), ana.first_merged_at.as_str(), ana.last_merged_at.as_str()),
         ("usr_ana", "ana-renamed", "2025-01-02T00:00:00Z", "2026-10-03T00:00:00Z")
     );
     assert_eq!((ana.merged, ana.recent), (3, 2));
@@ -471,14 +317,7 @@ fn authors_are_people_with_merged_work() {
 #[test]
 fn days_count_what_happened_on_each() {
     let db = schema();
-    pull(
-        &db,
-        1,
-        "merged",
-        "2026-10-09T10:00:00Z",
-        Some("2026-10-10T10:00:00Z"),
-        "2026-10-10T10:00:00Z",
-    );
+    pull(&db, 1, "merged", "2026-10-09T10:00:00Z", Some("2026-10-10T10:00:00Z"), "2026-10-10T10:00:00Z");
     pull(&db, 2, "open", "2026-10-08T10:00:00Z", None, "2026-10-08T10:00:00Z");
     db.execute_batch(
         "UPDATE pulls SET agent = 'agent' WHERE number = 1;
@@ -493,27 +332,11 @@ fn days_count_what_happened_on_each() {
     comment(&db, 1, "agt_margo", Some("agt_margo"), None, "2026-10-10T03:00:00Z");
     let window = window("2026-10-18T00:00:00Z");
     let days: Vec<SignalDay> = rows(&db, DAYS, &[&IDS, &window.days_from, &window.end]);
-    let shown: Vec<(&str, u32, u32, u32, u32, u32, u32)> = days
-        .iter()
-        .map(|d| {
-            (
-                d.day.as_str(),
-                d.opened,
-                d.merged,
-                d.agent_merged,
-                d.reworked,
-                d.reviews,
-                d.sessions,
-            )
-        })
-        .collect();
+    let shown: Vec<(&str, u32, u32, u32, u32, u32, u32)> =
+        days.iter().map(|d| (d.day.as_str(), d.opened, d.merged, d.agent_merged, d.reworked, d.reviews, d.sessions)).collect();
     assert_eq!(
         shown,
-        [
-            ("2026-10-08", 1, 0, 0, 0, 0, 0),
-            ("2026-10-09", 1, 0, 0, 0, 0, 0),
-            ("2026-10-10", 0, 1, 1, 1, 2, 1)
-        ],
+        [("2026-10-08", 1, 0, 0, 0, 0, 0), ("2026-10-09", 1, 0, 0, 0, 0, 0), ("2026-10-10", 0, 1, 1, 1, 2, 1)],
         "the owner, g1t and an agent are not reviewers; another repository's session is not counted"
     );
 }
@@ -537,10 +360,7 @@ fn stalled_after(now: &str, setup: &str) -> u32 {
     db.execute_batch("UPDATE pulls SET head_commit = 'abc'").unwrap();
     db.execute_batch(setup).unwrap();
     // A week with nothing in it is left out.
-    weeks(&db, now)
-        .iter()
-        .find(|week| week.start == "2026-10-05")
-        .map_or(0, |week| week.stalled)
+    weeks(&db, now).iter().find(|week| week.start == "2026-10-05").map_or(0, |week| week.stalled)
 }
 
 #[test]
@@ -550,59 +370,27 @@ fn stalled_is_open_with_nothing_in_the_three_days_before_the_cut() {
     let at = |setup: &str| stalled_after("2026-10-18T00:00:00Z", setup);
     assert_eq!(at(""), 1, "nothing at all");
     let comment = |kind: &str, when: &str| {
-        format!(
-            "INSERT INTO comments (repo_id, number, author_id, kind, created_at) VALUES ('a', 1, 'usr_bo', '{kind}', '{when}')"
-        )
+        format!("INSERT INTO comments (repo_id, number, author_id, kind, created_at) VALUES ('a', 1, 'usr_bo', '{kind}', '{when}')")
     };
     assert_eq!(at(&comment("comment", "2026-10-10T00:00:00Z")), 0, "a comment");
-    assert_eq!(
-        at(&comment("event", "2026-10-09T00:00:00Z")),
-        0,
-        "an event exactly three days before"
-    );
-    assert_eq!(
-        at(&comment("comment", "2026-10-08T23:59:59Z")),
-        1,
-        "only before the three days"
-    );
+    assert_eq!(at(&comment("event", "2026-10-09T00:00:00Z")), 0, "an event exactly three days before");
+    assert_eq!(at(&comment("comment", "2026-10-08T23:59:59Z")), 1, "only before the three days");
     assert_eq!(at(&comment("comment", "2026-10-12T00:00:00Z")), 1, "only at the cut");
     assert_eq!(
-        at(
-            "INSERT INTO comments (repo_id, number, author_id, created_at) VALUES ('a', 2, 'usr_bo', '2026-10-10T00:00:00Z')"
-        ),
+        at("INSERT INTO comments (repo_id, number, author_id, created_at) VALUES ('a', 2, 'usr_bo', '2026-10-10T00:00:00Z')"),
         1,
         "another pull request's comment"
     );
-    assert_eq!(
-        at("UPDATE pulls SET head_pushed_at = '2026-10-11T00:00:00Z'"),
-        0,
-        "a push"
-    );
-    assert_eq!(
-        at("UPDATE pulls SET head_pushed_at = '2026-10-01T00:00:00Z'"),
-        1,
-        "an old push"
-    );
-    assert_eq!(
-        at("INSERT INTO session_entries VALUES ('pr_1', 1, '2026-10-10T00:00:00Z')"),
-        0,
-        "a session entry"
-    );
+    assert_eq!(at("UPDATE pulls SET head_pushed_at = '2026-10-11T00:00:00Z'"), 0, "a push");
+    assert_eq!(at("UPDATE pulls SET head_pushed_at = '2026-10-01T00:00:00Z'"), 1, "an old push");
+    assert_eq!(at("INSERT INTO session_entries VALUES ('pr_1', 1, '2026-10-10T00:00:00Z')"), 0, "a session entry");
     assert_eq!(
         at("INSERT INTO check_runs VALUES ('chk', 'pr_1', 'abc', '2026-10-05T00:00:00Z', '2026-10-10T00:00:00Z')"),
         0,
         "acceptance checks running then"
     );
-    assert_eq!(
-        at("INSERT INTO commit_statuses VALUES ('a', 'abc', 'CI', '2026-10-10T00:00:00Z')"),
-        0,
-        "a status on its head"
-    );
-    assert_eq!(
-        at("INSERT INTO commit_statuses VALUES ('a', 'old', 'CI', '2026-10-10T00:00:00Z')"),
-        1,
-        "a status on another commit"
-    );
+    assert_eq!(at("INSERT INTO commit_statuses VALUES ('a', 'abc', 'CI', '2026-10-10T00:00:00Z')"), 0, "a status on its head");
+    assert_eq!(at("INSERT INTO commit_statuses VALUES ('a', 'old', 'CI', '2026-10-10T00:00:00Z')"), 1, "a status on another commit");
     assert_eq!(
         at("INSERT INTO commit_check_runs VALUES ('ck', 'a', 'abc', '2026-10-08T00:00:00Z', '2026-10-09T06:00:00Z')"),
         0,
@@ -610,16 +398,8 @@ fn stalled_is_open_with_nothing_in_the_three_days_before_the_cut() {
     );
     let session = "INSERT INTO sessions (id, repo_id, pull, started_at, last_seen_at)
                    VALUES ('ses_1', 'a', 1, '2026-10-01T00:00:00Z',";
-    assert_eq!(
-        at(&format!("{session} '2026-10-09T12:00:00Z')")),
-        0,
-        "a session running then"
-    );
-    assert_eq!(
-        at(&format!("{session} '2026-10-08T00:00:00Z')")),
-        1,
-        "a session over before"
-    );
+    assert_eq!(at(&format!("{session} '2026-10-09T12:00:00Z')")), 0, "a session running then");
+    assert_eq!(at(&format!("{session} '2026-10-08T00:00:00Z')")), 1, "a session over before");
     assert_eq!(
         at(&format!(
             "{session} '2026-10-01T00:00:00Z');
@@ -631,38 +411,14 @@ fn stalled_is_open_with_nothing_in_the_three_days_before_the_cut() {
     );
 
     // Opened at least three days before the cut.
-    assert_eq!(
-        at("UPDATE pulls SET created_at = '2026-10-09T00:00:00Z'"),
-        1,
-        "exactly three days"
-    );
-    assert_eq!(
-        at("UPDATE pulls SET created_at = '2026-10-09T00:00:01Z'"),
-        0,
-        "a second less"
-    );
+    assert_eq!(at("UPDATE pulls SET created_at = '2026-10-09T00:00:00Z'"), 1, "exactly three days");
+    assert_eq!(at("UPDATE pulls SET created_at = '2026-10-09T00:00:01Z'"), 0, "a second less");
     // Open at the cut; drafts count.
     assert_eq!(at("UPDATE pulls SET status = 'draft'"), 1, "a draft");
-    assert_eq!(
-        at("UPDATE pulls SET status = 'merged', merged_at = '2026-10-11T00:00:00Z'"),
-        0,
-        "merged before the cut"
-    );
-    assert_eq!(
-        at("UPDATE pulls SET status = 'merged', merged_at = '2026-10-12T00:00:00Z'"),
-        1,
-        "merged at the cut"
-    );
-    assert_eq!(
-        at("UPDATE pulls SET status = 'closed', updated_at = '2026-10-11T00:00:00Z'"),
-        0,
-        "closed before"
-    );
-    assert_eq!(
-        at("UPDATE pulls SET status = 'closed', updated_at = '2026-10-13T00:00:00Z'"),
-        1,
-        "closed after"
-    );
+    assert_eq!(at("UPDATE pulls SET status = 'merged', merged_at = '2026-10-11T00:00:00Z'"), 0, "merged before the cut");
+    assert_eq!(at("UPDATE pulls SET status = 'merged', merged_at = '2026-10-12T00:00:00Z'"), 1, "merged at the cut");
+    assert_eq!(at("UPDATE pulls SET status = 'closed', updated_at = '2026-10-11T00:00:00Z'"), 0, "closed before");
+    assert_eq!(at("UPDATE pulls SET status = 'closed', updated_at = '2026-10-13T00:00:00Z'"), 1, "closed after");
 
     // Read mid-week, the cut is now, 10-08T12:00: the three days before it
     // start 10-05T12:00.
@@ -701,36 +457,22 @@ fn a_weeks_session_cost_is_what_its_sessions_cost() {
     )
     .unwrap();
     let found = weeks(&db, "2026-10-18T00:00:00Z");
-    let costs: Vec<(&str, f64, u32)> = found
-        .iter()
-        .map(|w| (w.start.as_str(), w.session_cost_usd, w.merged))
-        .collect();
+    let costs: Vec<(&str, f64, u32)> = found.iter().map(|w| (w.start.as_str(), w.session_cost_usd, w.merged)).collect();
     // No pull requests at all: the weeks show for their cost alone. A
     // subagent's counts; one of no known cost counts as nothing.
     assert_eq!(costs, [("2026-09-28", 2.0, 0), ("2026-10-05", 2.25, 0)]);
 
     // A week whose sessions cost nothing known is left out.
-    db.execute_batch("UPDATE sessions SET cost_usd = NULL WHERE id = 'ses_4'")
-        .unwrap();
+    db.execute_batch("UPDATE sessions SET cost_usd = NULL WHERE id = 'ses_4'").unwrap();
     let found = weeks(&db, "2026-10-18T00:00:00Z");
-    assert_eq!(
-        found.iter().map(|w| w.start.as_str()).collect::<Vec<_>>(),
-        ["2026-10-05"]
-    );
+    assert_eq!(found.iter().map(|w| w.start.as_str()).collect::<Vec<_>>(), ["2026-10-05"]);
 }
 
 #[test]
 fn a_pull_requests_session_cost_is_its_share() {
     let db = schema();
     for number in 1..=4 {
-        pull(
-            &db,
-            number,
-            "open",
-            "2026-10-06T00:00:00Z",
-            None,
-            "2026-10-06T00:00:00Z",
-        );
+        pull(&db, number, "open", "2026-10-06T00:00:00Z", None, "2026-10-06T00:00:00Z");
     }
     db.execute_batch(
         "-- A root session tied to 1 by saying so and to 2 by a link.
@@ -757,11 +499,10 @@ fn a_pull_requests_session_cost_is_its_share() {
 }
 
 fn session_spend(db: &Connection) -> Vec<(Option<u32>, String, f64)> {
-    let mut found: Vec<(Option<u32>, String, f64)> =
-        rows::<SignalSessionSpend>(db, SESSIONS, &[&IDS, &"acme", &"2026-10-01T00:00:00"])
-            .into_iter()
-            .map(|row| (row.item, row.day, row.session_cost_usd))
-            .collect();
+    let mut found: Vec<(Option<u32>, String, f64)> = rows::<SignalSessionSpend>(db, SESSIONS, &[&IDS, &"acme", &"2026-10-01T00:00:00"])
+        .into_iter()
+        .map(|row| (row.item, row.day, row.session_cost_usd))
+        .collect();
     found.sort_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)));
     found
 }
@@ -828,22 +569,11 @@ fn harnesses_are_peoples_root_sessions() {
          INSERT INTO sessions (id, repo_id, started_at) VALUES ('s8', 'b', '2025-01-01T00:00:00Z');",
     )
     .unwrap();
-    let found: Vec<SignalHarness> = rows::<SignalHarness>(&db, HARNESSES, &[&IDS])
-        .into_iter()
-        .filter(|harness| is_person(&harness.owner_id))
-        .collect();
+    let found: Vec<SignalHarness> =
+        rows::<SignalHarness>(&db, HARNESSES, &[&IDS]).into_iter().filter(|harness| is_person(&harness.owner_id)).collect();
     let shown: Vec<(&str, &str, &str, &str, &str, u32)> = found
         .iter()
-        .map(|h| {
-            (
-                h.repo_id.as_str(),
-                h.owner_id.as_str(),
-                h.owner_name.as_str(),
-                h.harness.as_str(),
-                h.first_at.as_str(),
-                h.sessions,
-            )
-        })
+        .map(|h| (h.repo_id.as_str(), h.owner_id.as_str(), h.owner_name.as_str(), h.harness.as_str(), h.first_at.as_str(), h.sessions))
         .collect();
     assert_eq!(
         shown,
@@ -876,30 +606,15 @@ fn agent_commits_are_a_sessions_own_outside_any_pull_request() {
     assert_eq!(in_week(&found, "2026-09-28").agent_commits, 1);
     let window = window("2026-10-18T00:00:00Z");
     let days: Vec<SignalDay> = rows(&db, DAYS, &[&IDS, &window.days_from, &window.end]);
-    let commits: Vec<(&str, u32)> = days
-        .iter()
-        .filter(|d| d.agent_commits > 0)
-        .map(|d| (d.day.as_str(), d.agent_commits))
-        .collect();
-    assert_eq!(
-        commits,
-        [("2026-10-06", 1)],
-        "the days read are the last two weeks; c2 is before them"
-    );
+    let commits: Vec<(&str, u32)> = days.iter().filter(|d| d.agent_commits > 0).map(|d| (d.day.as_str(), d.agent_commits)).collect();
+    assert_eq!(commits, [("2026-10-06", 1)], "the days read are the last two weeks; c2 is before them");
 }
 
 #[test]
 fn a_cloud_agents_pull_request_is_an_agents_for_whoever_started_it() {
     let db = schema();
     for number in 1..=4 {
-        pull(
-            &db,
-            number,
-            "merged",
-            "2026-10-06T12:00:00Z",
-            Some("2026-10-07T12:00:00Z"),
-            "2026-10-07T12:00:00Z",
-        );
+        pull(&db, number, "merged", "2026-10-06T12:00:00Z", Some("2026-10-07T12:00:00Z"), "2026-10-07T12:00:00Z");
     }
     db.execute_batch(
         "-- 1: Copilot's commits, for bo, opened by a token of the workspace.
@@ -915,18 +630,9 @@ fn a_cloud_agents_pull_request_is_an_agents_for_whoever_started_it() {
            requested_by_id = 'usr_cy', requested_by_name = 'cy' WHERE number = 4;",
     )
     .unwrap();
-    pull(
-        &db,
-        5,
-        "merged",
-        "2026-10-06T12:00:00Z",
-        Some("2026-10-07T12:00:00Z"),
-        "2026-10-07T12:00:00Z",
-    );
-    let mut found: Vec<(u32, bool, Option<String>, String)> = pulls(&db)
-        .into_iter()
-        .map(|p| (p.number, p.agent, p.agent_rule, p.owner_name))
-        .collect();
+    pull(&db, 5, "merged", "2026-10-06T12:00:00Z", Some("2026-10-07T12:00:00Z"), "2026-10-07T12:00:00Z");
+    let mut found: Vec<(u32, bool, Option<String>, String)> =
+        pulls(&db).into_iter().map(|p| (p.number, p.agent, p.agent_rule, p.owner_name)).collect();
     found.sort();
     let rule = |r: &str| Some(r.to_owned());
     assert_eq!(
@@ -939,29 +645,12 @@ fn a_cloud_agents_pull_request_is_an_agents_for_whoever_started_it() {
             (5, false, None, "ana".to_owned()),
         ]
     );
-    assert_eq!(
-        in_week(&weeks(&db, "2026-10-18T00:00:00Z"), "2026-10-05").agent_merged,
-        4
-    );
+    assert_eq!(in_week(&weeks(&db, "2026-10-18T00:00:00Z"), "2026-10-05").agent_merged, 4);
     // Merged work counts for the person who started the agent.
-    let authors: Vec<SignalAuthor> = rows::<SignalAuthor>(
-        &db,
-        AUTHORS,
-        &[&IDS, &"2026-07-14T00:00:00", &"2026-10-12T00:00:00"],
-    );
-    let mut owners: Vec<(String, u32)> = authors
-        .into_iter()
-        .map(|a| (a.owner_name, a.merged))
-        .collect();
+    let authors: Vec<SignalAuthor> = rows::<SignalAuthor>(&db, AUTHORS, &[&IDS, &"2026-07-14T00:00:00", &"2026-10-12T00:00:00"]);
+    let mut owners: Vec<(String, u32)> = authors.into_iter().map(|a| (a.owner_name, a.merged)).collect();
     owners.sort();
-    assert_eq!(
-        owners,
-        [
-            ("ana".to_owned(), 3),
-            ("bo".to_owned(), 1),
-            ("cy".to_owned(), 1)
-        ]
-    );
+    assert_eq!(owners, [("ana".to_owned(), 3), ("bo".to_owned(), 1), ("cy".to_owned(), 1)]);
 }
 
 #[test]
@@ -983,10 +672,6 @@ fn a_cloud_agents_direct_commits_count_once_beside_sessions() {
     assert_eq!(in_week(&found, "2026-09-28").agent_commits, 1);
     let window = window("2026-10-18T00:00:00Z");
     let days: Vec<SignalDay> = rows(&db, DAYS, &[&IDS, &window.days_from, &window.end]);
-    let commits: Vec<(&str, u32)> = days
-        .iter()
-        .filter(|d| d.agent_commits > 0)
-        .map(|d| (d.day.as_str(), d.agent_commits))
-        .collect();
+    let commits: Vec<(&str, u32)> = days.iter().filter(|d| d.agent_commits > 0).map(|d| (d.day.as_str(), d.agent_commits)).collect();
     assert_eq!(commits, [("2026-10-06", 2), ("2026-10-07", 1)]);
 }

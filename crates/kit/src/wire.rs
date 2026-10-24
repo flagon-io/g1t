@@ -69,10 +69,7 @@ pub fn snake_case_key(key: &str) -> String {
             let next_is_lower = chars.get(i + 1).is_some_and(char::is_ascii_lowercase);
             // A new word: after a lowercase letter or a digit, or the last
             // capital of an acronym that starts the next word (`HTTPServer`).
-            if previous.is_ascii_lowercase()
-                || previous.is_ascii_digit()
-                || previous.is_ascii_uppercase() && next_is_lower
-            {
+            if previous.is_ascii_lowercase() || previous.is_ascii_digit() || previous.is_ascii_uppercase() && next_is_lower {
                 out.push('_');
             }
             out.push(c.to_ascii_lowercase());
@@ -100,11 +97,7 @@ pub fn snake_case_keeping(value: Value, extra: &[&str]) -> Value {
             let mut out = Map::with_capacity(fields.len());
             for (given, value) in fields {
                 let key = snake_case_key(&given);
-                let value = if value.is_object() && user_keyed(&key, extra) {
-                    value
-                } else {
-                    snake_case_keeping(value, extra)
-                };
+                let value = if value.is_object() && user_keyed(&key, extra) { value } else { snake_case_keeping(value, extra) };
                 // A key sent in both spellings keeps the one given in
                 // `snake_case`.
                 if given != key && out.contains_key(&key) {
@@ -114,12 +107,7 @@ pub fn snake_case_keeping(value: Value, extra: &[&str]) -> Value {
             }
             Value::Object(out)
         }
-        Value::Array(items) => Value::Array(
-            items
-                .into_iter()
-                .map(|item| snake_case_keeping(item, extra))
-                .collect(),
-        ),
+        Value::Array(items) => Value::Array(items.into_iter().map(|item| snake_case_keeping(item, extra)).collect()),
         other => other,
     }
 }
@@ -214,10 +202,7 @@ mod tests {
 
     #[test]
     fn the_snake_case_spelling_wins_when_both_are_given() {
-        assert_eq!(
-            snake_case(json!({ "keep_open": true, "keepOpen": false })),
-            json!({ "keep_open": true })
-        );
+        assert_eq!(snake_case(json!({ "keep_open": true, "keepOpen": false })), json!({ "keep_open": true }));
     }
 
     #[test]
@@ -270,18 +255,12 @@ mod tests {
 
     #[test]
     fn a_surface_can_name_more_maps() {
-        let sent = snake_case_keeping(
-            json!({ "timeoutMinutes": 5, "github": { "eventName": "push" } }),
-            &["github"],
-        );
+        let sent = snake_case_keeping(json!({ "timeoutMinutes": 5, "github": { "eventName": "push" } }), &["github"]);
         assert_eq!(sent, json!({ "timeout_minutes": 5, "github": { "eventName": "push" } }));
     }
 
     #[test]
     fn surviving_camel_case_is_found() {
-        assert_eq!(
-            camel_case_keys(&json!({ "a": [{ "bC": 1 }], "inputs": { "dE": 1 } })),
-            vec![".a[].bC".to_owned()]
-        );
+        assert_eq!(camel_case_keys(&json!({ "a": [{ "bC": 1 }], "inputs": { "dE": 1 } })), vec![".a[].bC".to_owned()]);
     }
 }

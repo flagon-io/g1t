@@ -324,7 +324,13 @@ mod tests {
 
     #[test]
     fn events_leave_out_what_is_empty() {
-        let event = AdvisoryEvent { repo_id: "rep_1".into(), id: "vrp_1".into(), title: "XSS in the search box".into(), state: "new".into(), ..Default::default() };
+        let event = AdvisoryEvent {
+            repo_id: "rep_1".into(),
+            id: "vrp_1".into(),
+            title: "XSS in the search box".into(),
+            state: "new".into(),
+            ..Default::default()
+        };
         let json = serde_json::to_value(&event).unwrap();
         assert!(json.get("g1tsaId").is_none() && json.get("notify").is_none());
         assert_eq!(json["repoId"], "rep_1");

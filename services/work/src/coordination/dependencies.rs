@@ -7,8 +7,8 @@
 
 use std::collections::HashSet;
 
-use g1t_contracts::work::*;
 use g1t_contracts::User;
+use g1t_contracts::work::*;
 use serde::Deserialize;
 use worker::Result;
 

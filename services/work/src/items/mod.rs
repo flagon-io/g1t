@@ -61,16 +61,16 @@ mod projects;
 mod reading;
 mod refs;
 mod rows;
+pub(crate) mod sql;
 mod sub_items;
 mod tasks;
-pub(crate) mod sql;
 #[cfg(test)]
 mod tests;
 
 pub(crate) use cycles::{DELETED as CYCLES_DELETED, RENAMED as CYCLES_RENAMED, user_deleted as cycles_user_deleted};
 pub(crate) use labels::Labeled;
-pub(crate) use links::MARK_DELETED;
 pub(crate) use landing::{Landing, PastLanding};
+pub(crate) use links::MARK_DELETED;
 pub(crate) use migration::{DELETED, RENAMED, TRANSFERRED};
 pub(crate) use projects::{
     DELETED as PROJECTS_DELETED, RENAMED as PROJECTS_RENAMED, REPO_PURGED as PROJECTS_REPO_PURGED, user_deleted as projects_user_deleted,
@@ -104,7 +104,13 @@ pub(crate) async fn by_ids(work: &Work, ids: &[String]) -> Result<Vec<Held>> {
 
 /// A work item, if `viewer` may do `capability` on it; not found when they
 /// may not see it.
-pub(crate) async fn for_viewer(work: &Work, viewer: &Viewer, workspace: &str, number: u32, capability: Capability) -> Result<Outcome<Held>> {
+pub(crate) async fn for_viewer(
+    work: &Work,
+    viewer: &Viewer,
+    workspace: &str,
+    number: u32,
+    capability: Capability,
+) -> Result<Outcome<Held>> {
     work.item_for(viewer, workspace, number, capability).await
 }
 

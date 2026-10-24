@@ -98,13 +98,7 @@ impl Work {
     /// handles the push of each that moved without its event arriving.
     pub(crate) async fn sweep_heads(&self) -> Result<()> {
         let now = now_ms();
-        let due = self
-            .db
-            .prepare(DUE)
-            .bind(&[rfc3339(now).into(), SWEEP.into()])?
-            .all()
-            .await?
-            .results::<DueRow>()?;
+        let due = self.db.prepare(DUE).bind(&[rfc3339(now).into(), SWEEP.into()])?.all().await?.results::<DueRow>()?;
         for pull in due {
             if let Err(error) = self.sweep_head(&pull, now).await {
                 worker::console_error!("work: comparing pull request {} with its branch: {error}", pull.id);
@@ -124,12 +118,7 @@ impl Work {
         let pushes: Vec<Event> = g1t_kit::call(
             &self.events,
             "list",
-            &ListArgs {
-                repo_id: Some(source.to_owned()),
-                types: vec!["git.push".to_owned()],
-                limit: Some(PUSHES),
-                ..ListArgs::default()
-            },
+            &ListArgs { repo_id: Some(source.to_owned()), types: vec!["git.push".to_owned()], limit: Some(PUSHES), ..ListArgs::default() },
         )
         .await?;
         let Some(push) = pushes.into_iter().find(|event| pushed_to(event, branch, &head)) else {

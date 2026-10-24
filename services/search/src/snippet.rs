@@ -41,10 +41,7 @@ fn segments_of(text: &[char], marked: &[bool]) -> Vec<Segment> {
     for (c, highlight) in text.iter().zip(marked) {
         match out.last_mut() {
             Some(last) if last.highlight == *highlight => last.text.push(*c),
-            _ => out.push(Segment {
-                text: c.to_string(),
-                highlight: *highlight,
-            }),
+            _ => out.push(Segment { text: c.to_string(), highlight: *highlight }),
         }
     }
     out
@@ -82,9 +79,10 @@ pub fn prose(text: &str, terms: &[String]) -> Vec<Segment> {
     }
     // Start and end on a word boundary where there is one nearby.
     if start > 0
-        && let Some(space) = flat[start..first.max(start)].iter().position(|c| *c == ' ') {
-            start += space + 1;
-        }
+        && let Some(space) = flat[start..first.max(start)].iter().position(|c| *c == ' ')
+    {
+        start += space + 1;
+    }
     let mut end = end;
     if end < flat.len()
         && let Some(space) = flat[start..end].iter().rposition(|c| *c == ' ')
@@ -132,12 +130,7 @@ pub fn code(pieces: &[(u32, &str)], terms: &[String]) -> Vec<CodeLine> {
     }
     lines.sort_by_key(|(number, _, _)| *number);
     lines.dedup_by_key(|(number, _, _)| *number);
-    let hits: Vec<usize> = lines
-        .iter()
-        .enumerate()
-        .filter(|(_, (_, _, marked))| marked.contains(&true))
-        .map(|(index, _)| index)
-        .collect();
+    let hits: Vec<usize> = lines.iter().enumerate().filter(|(_, (_, _, marked))| marked.contains(&true)).map(|(index, _)| index).collect();
     let mut wanted: Vec<usize> = Vec::new();
     if hits.is_empty() {
         wanted.extend(0..lines.len().min(3));
@@ -158,20 +151,14 @@ pub fn code(pieces: &[(u32, &str)], terms: &[String]) -> Vec<CodeLine> {
         .into_iter()
         .map(|index| {
             let (number, chars, marked) = &lines[index];
-            CodeLine {
-                number: *number,
-                parts: segments_of(chars, marked),
-            }
+            CodeLine { number: *number, parts: segments_of(chars, marked) }
         })
         .collect()
 }
 
 /// The first line number that matched, for a link straight to it.
 pub fn first_match(lines: &[CodeLine]) -> Option<u32> {
-    lines
-        .iter()
-        .find(|line| line.parts.iter().any(|part| part.highlight))
-        .map(|line| line.number)
+    lines.iter().find(|line| line.parts.iter().any(|part| part.highlight)).map(|line| line.number)
 }
 
 #[cfg(test)]
@@ -179,10 +166,7 @@ mod tests {
     use super::*;
 
     fn shown(segments: &[Segment]) -> String {
-        segments
-            .iter()
-            .map(|s| if s.highlight { format!("[{}]", s.text) } else { s.text.clone() })
-            .collect()
+        segments.iter().map(|s| if s.highlight { format!("[{}]", s.text) } else { s.text.clone() }).collect()
     }
 
     fn terms(list: &[&str]) -> Vec<String> {

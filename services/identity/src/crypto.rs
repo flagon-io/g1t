@@ -77,11 +77,7 @@ pub fn hash_password(password: &str) -> String {
     let mut salt = [0u8; 16];
     getrandom::getrandom(&mut salt).expect("no source of randomness");
     let hash = derive(password, &salt, PBKDF2_ITERATIONS);
-    format!(
-        "pbkdf2${PBKDF2_ITERATIONS}${}${}",
-        STANDARD.encode(salt),
-        STANDARD.encode(hash)
-    )
+    format!("pbkdf2${PBKDF2_ITERATIONS}${}${}", STANDARD.encode(salt), STANDARD.encode(hash))
 }
 
 pub fn verify_password(password: &str, stored: &str) -> bool {
@@ -89,11 +85,7 @@ pub fn verify_password(password: &str, stored: &str) -> bool {
     let [scheme, iterations, salt, hash] = parts[..] else {
         return false;
     };
-    let (Ok(iterations), Ok(salt), Ok(expected)) = (
-        iterations.parse::<u32>(),
-        STANDARD.decode(salt),
-        STANDARD.decode(hash),
-    ) else {
+    let (Ok(iterations), Ok(salt), Ok(expected)) = (iterations.parse::<u32>(), STANDARD.decode(salt), STANDARD.decode(hash)) else {
         return false;
     };
     if scheme != "pbkdf2" || expected.len() != 32 {
@@ -101,11 +93,7 @@ pub fn verify_password(password: &str, stored: &str) -> bool {
     }
     let given = derive(password, &salt, iterations);
     // Constant-time comparison.
-    given
-        .iter()
-        .zip(&expected)
-        .fold(0u8, |diff, (a, b)| diff | (a ^ b))
-        == 0
+    given.iter().zip(&expected).fold(0u8, |diff, (a, b)| diff | (a ^ b)) == 0
 }
 
 pub struct ParsedKey {
@@ -121,14 +109,7 @@ pub fn parse_ssh_key(line: &str) -> Option<ParsedKey> {
     let mut parts = line.split_whitespace();
     let kind = parts.next()?;
     let blob = parts.next()?;
-    let supported = matches!(
-        kind,
-        "ssh-ed25519"
-            | "ssh-rsa"
-            | "ecdsa-sha2-nistp256"
-            | "ecdsa-sha2-nistp384"
-            | "ecdsa-sha2-nistp521"
-    );
+    let supported = matches!(kind, "ssh-ed25519" | "ssh-rsa" | "ecdsa-sha2-nistp256" | "ecdsa-sha2-nistp384" | "ecdsa-sha2-nistp521");
     if !supported {
         return None;
     }

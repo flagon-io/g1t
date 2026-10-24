@@ -43,10 +43,8 @@ pub(crate) struct Candidate {
 /// Who to ask from a team: see the module's notes.
 pub(crate) fn pick(candidates: &[Candidate], settings: &ReviewAssignment, author: &str, already: &[String]) -> Vec<String> {
     let author = author.to_lowercase();
-    let in_team_already = candidates
-        .iter()
-        .filter(|candidate| already.iter().any(|name| name.eq_ignore_ascii_case(&candidate.username)))
-        .count() as u32;
+    let in_team_already =
+        candidates.iter().filter(|candidate| already.iter().any(|name| name.eq_ignore_ascii_case(&candidate.username))).count() as u32;
     let wanted = settings.count.saturating_sub(in_team_already) as usize;
     let mut eligible: Vec<&Candidate> = candidates
         .iter()
@@ -125,8 +123,7 @@ pub(crate) fn may_ask(team: &ResolvedTeam, actor: &User, namespace: &str) -> Res
 pub(crate) fn team_name(text: &str) -> Option<String> {
     let text = text.trim().trim_start_matches('@').to_lowercase();
     let (workspace, slug) = text.split_once('/')?;
-    (g1t_contracts::is_valid_namespace(workspace) && g1t_contracts::teams::is_valid_slug(slug))
-        .then(|| format!("{workspace}/{slug}"))
+    (g1t_contracts::is_valid_namespace(workspace) && g1t_contracts::teams::is_valid_slug(slug)).then(|| format!("{workspace}/{slug}"))
 }
 
 #[derive(Deserialize)]
@@ -158,10 +155,7 @@ impl Work {
             }
         }
         if wanted.len() > MAX_TEAMS {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                format!("A pull request can ask at most {MAX_TEAMS} teams to review it."),
-            ));
+            return Ok(Outcome::fail(FailureCode::Invalid, format!("A pull request can ask at most {MAX_TEAMS} teams to review it.")));
         }
         let found = self.resolve_teams(&wanted, &pull.repo_id).await?;
         for name in &wanted {
@@ -237,32 +231,20 @@ impl Work {
         let who = actor.unwrap_or(&g1t);
         let handles = |names: &[String]| names.iter().map(|name| format!("@{name}")).collect::<Vec<_>>();
         let verbs = ("requested a review from", "withdrew the request for a review from");
-        self.note_changes(crate::On::Pull(&pull.repo_id, pull.number), who, &pull.reviewers, &people, verbs)
-            .await?;
+        self.note_changes(crate::On::Pull(&pull.repo_id, pull.number), who, &pull.reviewers, &people, verbs).await?;
         self.note_changes(crate::On::Pull(&pull.repo_id, pull.number), who, &handles(&pull.team_reviewers), &handles(&teams), verbs)
             .await?;
-        let newly = |after: &[String], before: &[String]| -> Vec<String> {
-            after.iter().filter(|name| !before.contains(name)).cloned().collect()
-        };
+        let newly =
+            |after: &[String], before: &[String]| -> Vec<String> { after.iter().filter(|name| !before.contains(name)).cloned().collect() };
         let added = newly(&people, &pull.reviewers);
         let removed = newly(&pull.reviewers, &people);
-        let teams_removed: Vec<TeamRequested> = newly(&pull.team_reviewers, &teams)
-            .into_iter()
-            .map(|team| TeamRequested {
-                team,
-                ..TeamRequested::default()
-            })
-            .collect();
+        let teams_removed: Vec<TeamRequested> =
+            newly(&pull.team_reviewers, &teams).into_iter().map(|team| TeamRequested { team, ..TeamRequested::default() }).collect();
         let mut events: Vec<(&'static str, PullEvent)> = Vec::new();
         if !added.is_empty() || !asked.is_empty() {
             events.push((
                 "pull.review_requested",
-                PullEvent {
-                    reviewers: Some(added),
-                    teams: (!asked.is_empty()).then_some(asked),
-                    code_owners,
-                    ..Self::pull_event(pull)
-                },
+                PullEvent { reviewers: Some(added), teams: (!asked.is_empty()).then_some(asked), code_owners, ..Self::pull_event(pull) },
             ));
         }
         if !removed.is_empty() || !teams_removed.is_empty() {
@@ -276,8 +258,7 @@ impl Work {
             ));
         }
         for (kind, data) in events {
-            self.publish_as(kind, &pull.repo_id, actor.map(|actor| actor.id.clone()), g1t_contracts::events::marked(data, actor))
-                .await?;
+            self.publish_as(kind, &pull.repo_id, actor.map(|actor| actor.id.clone()), g1t_contracts::events::marked(data, actor)).await?;
         }
         Ok(())
     }
@@ -291,11 +272,7 @@ impl Work {
         g1t_kit::call(
             &self.identity,
             "resolve_teams",
-            &ResolveTeamsArgs {
-                teams: names.to_vec(),
-                repo_id: Some(repo_id.to_owned()),
-                asker: None,
-            },
+            &ResolveTeamsArgs { teams: names.to_vec(), repo_id: Some(repo_id.to_owned()), asker: None },
         )
         .await
     }
@@ -395,20 +372,11 @@ mod tests {
     use g1t_contracts::teams::TeamPerson;
 
     fn candidate(name: &str, last: Option<&str>, waiting: u32) -> Candidate {
-        Candidate {
-            username: name.to_owned(),
-            last_asked: last.map(str::to_owned),
-            waiting,
-        }
+        Candidate { username: name.to_owned(), last_asked: last.map(str::to_owned), waiting }
     }
 
     fn assigning(algorithm: ReviewAlgorithm, count: u32) -> ReviewAssignment {
-        ReviewAssignment {
-            enabled: true,
-            algorithm,
-            count,
-            ..ReviewAssignment::default()
-        }
+        ReviewAssignment { enabled: true, algorithm, count, ..ReviewAssignment::default() }
     }
 
     fn team() -> Vec<Candidate> {
@@ -463,21 +431,14 @@ mod tests {
     fn the_author_g1t_and_those_left_out_are_never_asked() {
         let mut people = team();
         people.push(candidate("g1t", None, 0));
-        let settings = ReviewAssignment {
-            excluded: vec!["eve".into()],
-            ..assigning(ReviewAlgorithm::RoundRobin, 10)
-        };
+        let settings = ReviewAssignment { excluded: vec!["eve".into()], ..assigning(ReviewAlgorithm::RoundRobin, 10) };
         let picked = pick(&people, &settings, "BO", &[]);
         assert_eq!(picked, vec!["cy", "ana", "dee"]);
     }
 
     #[test]
     fn busy_people_are_skipped_when_the_team_says_so() {
-        let settings = ReviewAssignment {
-            skip_busy: true,
-            busy_at: 2,
-            ..assigning(ReviewAlgorithm::RoundRobin, 10)
-        };
+        let settings = ReviewAssignment { skip_busy: true, busy_at: 2, ..assigning(ReviewAlgorithm::RoundRobin, 10) };
         // bo (4) and eve (2) are busy.
         assert_eq!(pick(&team(), &settings, "zed", &[]), vec!["cy", "ana", "dee"]);
     }
@@ -492,21 +453,14 @@ mod tests {
     }
 
     fn resolved(enabled: bool, notify_team: bool) -> ResolvedTeam {
-        let person = |name: &str| TeamPerson {
-            id: format!("usr_{name}"),
-            username: name.to_owned(),
-        };
+        let person = |name: &str| TeamPerson { id: format!("usr_{name}"), username: name.to_owned() };
         ResolvedTeam {
             id: "team_1".into(),
             workspace: "acme".into(),
             slug: "backend".into(),
             members: vec![person("ana"), person("bo"), person("cy")],
             child_members: vec![person("dee")],
-            review_assignment: ReviewAssignment {
-                enabled,
-                notify_team,
-                ..ReviewAssignment::default()
-            },
+            review_assignment: ReviewAssignment { enabled, notify_team, ..ReviewAssignment::default() },
             ..ResolvedTeam::default()
         }
     }
@@ -533,10 +487,7 @@ mod tests {
             id: id.to_owned(),
             username: id.to_owned(),
             workspaces: role
-                .map(|role| g1t_contracts::Membership {
-                    role,
-                    ..g1t_contracts::Membership::member("acme")
-                })
+                .map(|role| g1t_contracts::Membership { role, ..g1t_contracts::Membership::member("acme") })
                 .into_iter()
                 .collect(),
             ..User::default()

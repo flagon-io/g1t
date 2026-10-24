@@ -262,13 +262,15 @@ impl Work {
         if workspace.is_empty() {
             return Ok(Outcome::fail(FailureCode::Invalid, "Name the workspace by its slug."));
         }
-        let only = a.repo.as_deref().map(str::trim).filter(|name| !name.is_empty()).map(|name| name.rsplit('/').next().unwrap_or(name).to_owned());
+        let only =
+            a.repo.as_deref().map(str::trim).filter(|name| !name.is_empty()).map(|name| name.rsplit('/').next().unwrap_or(name).to_owned());
         let repos = self.readable_in(&workspace, &a.viewer, only.as_deref()).await?;
         if repos.is_empty() && only.is_some() {
             return Ok(Outcome::fail(FailureCode::NotFound, "Repository not found."));
         }
         let ids: Vec<String> = repos.iter().map(|repo| repo.id.clone()).collect();
-        let path_of: HashMap<&str, String> = repos.iter().map(|repo| (repo.id.as_str(), format!("{}/{}", repo.namespace, repo.name))).collect();
+        let path_of: HashMap<&str, String> =
+            repos.iter().map(|repo| (repo.id.as_str(), format!("{}/{}", repo.namespace, repo.name))).collect();
         let member = a.viewer.as_ref().is_some_and(|viewer| viewer.is_member(&workspace));
         let limit = a.limit.unwrap_or(DEFAULT_WORKSPACE_SESSIONS).clamp(1, MAX_WORKSPACE_SESSIONS);
         let now = now_ms();
@@ -361,7 +363,11 @@ impl Work {
             self.fill_item_titles(&workspace, &mut listed).await?;
         }
 
-        let (queue, landed) = if a.sessions_only { (Vec::new(), Vec::new()) } else { (self.queues_in(&repos, &a.viewer).await?, self.landed_in(&repos).await?) };
+        let (queue, landed) = if a.sessions_only {
+            (Vec::new(), Vec::new())
+        } else {
+            (self.queues_in(&repos, &a.viewer).await?, self.landed_in(&repos).await?)
+        };
         Ok(Outcome::Ok(WorkspaceSessions { sessions: listed, queue, landed, repos: sessions_repos(&repos) }))
     }
 
@@ -378,7 +384,9 @@ impl Work {
         }
         let facts = self.db.prepare(PULL_FACTS).bind(&[serde_json::to_string(&pairs)?.into()])?.all().await?.results::<PullFact>()?;
         for session in sessions.iter_mut() {
-            let Some(fact) = session.pull.and_then(|number| facts.iter().find(|fact| fact.repo_id == session.repo_id && fact.number == number)) else {
+            let Some(fact) =
+                session.pull.and_then(|number| facts.iter().find(|fact| fact.repo_id == session.repo_id && fact.number == number))
+            else {
                 continue;
             };
             session.pull_title.get_or_insert_with(|| fact.title.clone());
@@ -435,7 +443,11 @@ impl Work {
             let Some(repo) = repos.iter().find(|repo| repo.id == id.value) else { continue };
             let path = RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() };
             if let Outcome::Ok(queue) = self.queue(QueueArgs { repo: path, viewer: viewer.clone() }).await? {
-                queues.push(RepoQueue { repo: format!("{}/{}", repo.namespace, repo.name), default_branch: repo.default_branch.clone(), queue });
+                queues.push(RepoQueue {
+                    repo: format!("{}/{}", repo.namespace, repo.name),
+                    default_branch: repo.default_branch.clone(),
+                    queue,
+                });
             }
         }
         Ok(queues)
@@ -499,7 +511,11 @@ impl Work {
 fn sessions_repos(repos: &[Repo]) -> Vec<SessionsRepo> {
     repos
         .iter()
-        .map(|repo| SessionsRepo { id: repo.id.clone(), path: format!("{}/{}", repo.namespace, repo.name), default_branch: repo.default_branch.clone() })
+        .map(|repo| SessionsRepo {
+            id: repo.id.clone(),
+            path: format!("{}/{}", repo.namespace, repo.name),
+            default_branch: repo.default_branch.clone(),
+        })
         .collect()
 }
 
@@ -536,7 +552,18 @@ mod tests {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn session(db: &Connection, id: &str, repo: &str, item: Option<&str>, pull: Option<u32>, actor: &str, harness: &str, state: &str, last: u64, parent: Option<&str>) {
+    fn session(
+        db: &Connection,
+        id: &str,
+        repo: &str,
+        item: Option<&str>,
+        pull: Option<u32>,
+        actor: &str,
+        harness: &str,
+        state: &str,
+        last: u64,
+        parent: Option<&str>,
+    ) {
         db.execute(
             "INSERT INTO sessions (id, repo_id, item_id, pull, branch, actor_id, actor_name, harness, harness_session_id,
                title, state, head_commit, started_at, last_seen_at, parent_id)
@@ -547,7 +574,15 @@ mod tests {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn listed(db: &Connection, shown: SessionsShown, repos: &[&str], harness: Option<&str>, person: Option<&str>, item: Option<&str>, kind: Option<&str>) -> Vec<String> {
+    fn listed(
+        db: &Connection,
+        shown: SessionsShown,
+        repos: &[&str],
+        harness: Option<&str>,
+        person: Option<&str>,
+        item: Option<&str>,
+        kind: Option<&str>,
+    ) -> Vec<String> {
         let sql = workspace_sessions_sql(shown);
         let mut statement = db.prepare(&sql).unwrap();
         statement
@@ -599,7 +634,10 @@ mod tests {
         assert_eq!(listed(&db, SessionsShown::Recent, &repos, Some("codex"), None, None, None), ["ses_codex"]);
         assert_eq!(listed(&db, SessionsShown::Recent, &repos, None, Some("BO"), None, None), ["ses_codex", "ses_cursor"]);
         assert_eq!(listed(&db, SessionsShown::Recent, &repos, None, None, None, Some("hosted")), ["ses_hosted"]);
-        assert_eq!(listed(&db, SessionsShown::Recent, &repos, None, None, None, Some("harness")), ["ses_cc", "ses_codex", "ses_cursor", "ses_done"]);
+        assert_eq!(
+            listed(&db, SessionsShown::Recent, &repos, None, None, None, Some("harness")),
+            ["ses_cc", "ses_codex", "ses_cursor", "ses_done"]
+        );
         assert_eq!(listed(&db, SessionsShown::Recent, &repos, None, None, Some("wki_4"), None), ["ses_cc"]);
         // Tied to the work item another way: a link.
         db.execute(super::super::links::INSERT_LINK, params!["ses_codex", "rep_api", "item", 0, "ref", at(1), "wki_4"]).unwrap();
@@ -674,7 +712,8 @@ mod tests {
         assert_eq!(all[0].actor.as_deref(), Some("g1t"));
         assert_eq!(all[0].state, SessionState::Active);
         assert_eq!(all[1].state, SessionState::Active);
-        let live_by_bo = Wanted { shown: SessionsShown::Live, kind: Some(SessionKind::Recorded), harness: None, person: Some("bo"), item: None };
+        let live_by_bo =
+            Wanted { shown: SessionsShown::Live, kind: Some(SessionKind::Recorded), harness: None, person: Some("bo"), item: None };
         assert_eq!(merged(Vec::new(), Vec::new(), vec![(all[1].clone(), false)], &live_by_bo, 10).len(), 1);
         let by_harness = Wanted { shown: SessionsShown::Recent, kind: None, harness: Some(Harness::Codex), person: None, item: None };
         assert!(merged(Vec::new(), Vec::new(), vec![(all[1].clone(), false)], &by_harness, 10).is_empty());
@@ -750,8 +789,11 @@ mod tests {
         )
         .unwrap();
         let mut statement = db.prepare(QUEUED_REPOS).unwrap();
-        let busy: Vec<String> =
-            statement.query_map(params![r#"["rep_web","rep_api"]"#, 12], |row| row.get::<_, String>("value")).unwrap().map(Result::unwrap).collect();
+        let busy: Vec<String> = statement
+            .query_map(params![r#"["rep_web","rep_api"]"#, 12], |row| row.get::<_, String>("value"))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
         assert_eq!(busy, ["rep_api"]);
     }
 }

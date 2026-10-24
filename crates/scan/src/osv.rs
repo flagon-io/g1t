@@ -45,10 +45,7 @@ pub fn read_batch(answer: &Value, sent: usize) -> (Vec<Vec<String>>, Vec<(usize,
     let mut more = Vec::new();
     for (index, result) in results.into_iter().enumerate().take(sent) {
         if let Some(vulns) = result.get("vulns").and_then(Value::as_array) {
-            ids[index] = vulns
-                .iter()
-                .filter_map(|vuln| vuln.get("id").and_then(Value::as_str).map(str::to_owned))
-                .collect();
+            ids[index] = vulns.iter().filter_map(|vuln| vuln.get("id").and_then(Value::as_str).map(str::to_owned)).collect();
         }
         if let Some(token) = result.get("next_page_token").and_then(Value::as_str) {
             more.push((index, token.to_owned()));
@@ -107,14 +104,20 @@ pub fn cvss3_score(vector: &str) -> Option<f64> {
     if !vector.starts_with("CVSS:3") {
         return None;
     }
-    let metric = |name: &str| {
-        vector
-            .split('/')
-            .find_map(|part| part.strip_prefix(name).and_then(|rest| rest.strip_prefix(':')))
-    };
+    let metric = |name: &str| vector.split('/').find_map(|part| part.strip_prefix(name).and_then(|rest| rest.strip_prefix(':')));
     let changed = metric("S")? == "C";
-    let av = match metric("AV")? { "N" => 0.85, "A" => 0.62, "L" => 0.55, "P" => 0.2, _ => return None };
-    let ac = match metric("AC")? { "L" => 0.77, "H" => 0.44, _ => return None };
+    let av = match metric("AV")? {
+        "N" => 0.85,
+        "A" => 0.62,
+        "L" => 0.55,
+        "P" => 0.2,
+        _ => return None,
+    };
+    let ac = match metric("AC")? {
+        "L" => 0.77,
+        "H" => 0.44,
+        _ => return None,
+    };
     let pr = match (metric("PR")?, changed) {
         ("N", _) => 0.85,
         ("L", false) => 0.62,
@@ -123,8 +126,17 @@ pub fn cvss3_score(vector: &str) -> Option<f64> {
         ("H", true) => 0.5,
         _ => return None,
     };
-    let ui = match metric("UI")? { "N" => 0.85, "R" => 0.62, _ => return None };
-    let cia = |name: &str| match metric(name) { Some("H") => Some(0.56), Some("L") => Some(0.22), Some("N") => Some(0.0), _ => None };
+    let ui = match metric("UI")? {
+        "N" => 0.85,
+        "R" => 0.62,
+        _ => return None,
+    };
+    let cia = |name: &str| match metric(name) {
+        Some("H") => Some(0.56),
+        Some("L") => Some(0.22),
+        Some("N") => Some(0.0),
+        _ => None,
+    };
     let (c, i, a) = (cia("C")?, cia("I")?, cia("A")?);
     let iss: f64 = 1.0 - (1.0 - c) * (1.0 - i) * (1.0 - a);
     let impact = if changed { 7.52 * (iss - 0.029) - 3.25 * (iss - 0.02).powi(15) } else { 6.42 * iss };
@@ -208,13 +220,8 @@ fn fixed_for(vuln: &Value, package: &Package) -> Option<String> {
 /// concerns `package`.
 pub fn read_vuln(vuln: &Value, package: &Package) -> Option<Advisory> {
     let id = vuln.get("id").and_then(Value::as_str)?.to_owned();
-    let aliases: Vec<String> = vuln
-        .get("aliases")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|alias| alias.as_str().map(str::to_owned))
-        .collect();
+    let aliases: Vec<String> =
+        vuln.get("aliases").and_then(Value::as_array).into_iter().flatten().filter_map(|alias| alias.as_str().map(str::to_owned)).collect();
     let display_id = if id.starts_with("GHSA-") {
         id.clone()
     } else {
@@ -233,14 +240,7 @@ pub fn read_vuln(vuln: &Value, package: &Package) -> Option<Advisory> {
         .chars()
         .take(300)
         .collect();
-    Some(Advisory {
-        severity: severity_of(vuln),
-        fixed: fixed_for(vuln, package),
-        id,
-        display_id,
-        aliases,
-        summary,
-    })
+    Some(Advisory { severity: severity_of(vuln), fixed: fixed_for(vuln, package), id, display_id, aliases, summary })
 }
 
 /// The version to move a package to so that every advisory with a fix is

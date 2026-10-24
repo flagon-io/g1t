@@ -144,7 +144,8 @@ pub fn host_mounts(mountinfo: &str) -> Vec<String> {
         }
         let point = fields[4];
         let fstype = line.split(" - ").nth(1).and_then(|rest| rest.split_whitespace().next()).unwrap_or("");
-        let shared_fs = matches!(fstype, "9p" | "drvfs" | "virtiofs" | "vboxsf" | "prl_fs" | "vmhgfs" | "fuse.vmhgfs-fuse" | "smb3" | "cifs");
+        let shared_fs =
+            matches!(fstype, "9p" | "drvfs" | "virtiofs" | "vboxsf" | "prl_fs" | "vmhgfs" | "fuse.vmhgfs-fuse" | "smb3" | "cifs");
         let channel = WSL_CHANNELS.iter().any(|c| point == *c || point.starts_with(&format!("{c}/")));
         if shared_fs || channel || point.starts_with("/mnt/") {
             found.push(format!("{point} ({fstype})"));
@@ -156,7 +157,8 @@ pub fn host_mounts(mountinfo: &str) -> Vec<String> {
 /// What keeps the VM from being a sandbox: mounts of the computer's, an
 /// engine socket that is not this VM's own, WSL's interop with Windows.
 pub fn problems(mountinfo: &str, sockets: &[String], interop: bool, wsl_conf: Option<&str>) -> Vec<String> {
-    let mut problems: Vec<String> = host_mounts(mountinfo).into_iter().map(|m| format!("{m} is mounted from the computer, or is WSL's way to it")).collect();
+    let mut problems: Vec<String> =
+        host_mounts(mountinfo).into_iter().map(|m| format!("{m} is mounted from the computer, or is WSL's way to it")).collect();
     for socket in sockets {
         problems.push(format!("{socket} is a container engine's socket that is not this sandbox's own"));
     }
@@ -195,11 +197,7 @@ pub fn resolv_conf(offered: &str, gateway: Option<Ipv4Addr>) -> String {
 }
 
 pub fn nameservers(resolv: &str) -> Vec<Ipv4Addr> {
-    resolv
-        .lines()
-        .filter_map(|l| l.trim().strip_prefix("nameserver"))
-        .filter_map(|a| a.trim().parse().ok())
-        .collect()
+    resolv.lines().filter_map(|l| l.trim().strip_prefix("nameserver")).filter_map(|a| a.trim().parse().ok()).collect()
 }
 
 /// `iptables` arguments, in order, for the `DOCKER-USER` chain, which
@@ -250,7 +248,9 @@ pub fn daemon_json() -> Value {
 /// The registration's variables, for `register-and-run` in the runner's
 /// image: a file, so the token is on no command line.
 pub fn register_env(settings: &Settings) -> Result<String> {
-    let (Some(url), Some(token)) = (&settings.url, &settings.token) else { bail!("the sandbox's runner is not registered, and no --url and --token were given") };
+    let (Some(url), Some(token)) = (&settings.url, &settings.token) else {
+        bail!("the sandbox's runner is not registered, and no --url and --token were given")
+    };
     let mut lines = vec![format!("G1T_RUNNER_URL={url}"), format!("G1T_RUNNER_TOKEN={token}")];
     if let Some(name) = &settings.name {
         lines.push(format!("G1T_RUNNER_NAME={name}"));
@@ -279,10 +279,8 @@ pub fn runner_run_args(settings: &Settings, register: bool) -> Vec<String> {
 /// or a volume) as `/data`, no socket, no host network, its share of the
 /// machine, and no self-update (the launcher updates the whole sandbox).
 pub fn sysbox_run_args(settings: &Settings, name: &str, data: &str, env_file: Option<&str>) -> Vec<String> {
-    let mut args: Vec<String> = ["run", "-d", "--name", name, "--runtime=sysbox-runc", "--restart", "on-failure:5"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    let mut args: Vec<String> =
+        ["run", "-d", "--name", name, "--runtime=sysbox-runc", "--restart", "on-failure:5"].iter().map(|s| s.to_string()).collect();
     if settings.cpus > 0 {
         args.extend(["--cpus".into(), settings.cpus.to_string()]);
     }
@@ -296,7 +294,10 @@ pub fn sysbox_run_args(settings: &Settings, name: &str, data: &str, env_file: Op
         args.extend(["-e".into(), format!("{}={sizes}", crate::selfhosted::sizes::SIZES_ENV)]);
     }
     if settings.computer_cpus > 0 && settings.computer_memory_mib > 0 {
-        args.extend(["-e".into(), format!("{}={},{}", crate::selfhosted::sizes::COMPUTER_ENV, settings.computer_cpus, settings.computer_memory_mib)]);
+        args.extend([
+            "-e".into(),
+            format!("{}={},{}", crate::selfhosted::sizes::COMPUTER_ENV, settings.computer_cpus, settings.computer_memory_mib),
+        ]);
     }
     if let Some(image) = settings.hosted_image.as_deref().filter(|image| !image.trim().is_empty()) {
         args.extend(["-e".into(), format!("{}={image}", crate::selfhosted::exec::HOSTED_IMAGE_ENV)]);
@@ -506,7 +507,8 @@ fn find_sockets(dir: &Path, depth: u32, found: &mut Vec<String>) {
             use std::os::unix::fs::FileTypeExt;
             if kind.is_socket() {
                 let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if ["docker.sock", "containerd.sock", "podman.sock", "docker.proxy.sock", "backend.sock", "filesystem.sock"].contains(&name) {
+                if ["docker.sock", "containerd.sock", "podman.sock", "docker.proxy.sock", "backend.sock", "filesystem.sock"].contains(&name)
+                {
                     found.push(path.display().to_string());
                 }
                 continue;
@@ -519,7 +521,9 @@ fn find_sockets(dir: &Path, depth: u32, found: &mut Vec<String>) {
 }
 
 fn on_wsl() -> bool {
-    std::env::var_os("WSL_DISTRO_NAME").is_some() || Path::new("/proc/sys/fs/binfmt_misc/WSLInterop").exists() || Path::new("/run/WSL").exists()
+    std::env::var_os("WSL_DISTRO_NAME").is_some()
+        || Path::new("/proc/sys/fs/binfmt_misc/WSLInterop").exists()
+        || Path::new("/run/WSL").exists()
 }
 
 /// Asks the supervisor to stop (`drain`: once the runner's job is done),
@@ -596,10 +600,9 @@ mod supervisor {
             let Ok(bytes) = serde_json::to_vec(&status) else { return };
             let _ = write_private(STATUS, &bytes);
             if let Some(console) = &self.console {
-                let _ = std::fs::OpenOptions::new()
-                    .append(true)
-                    .open(console)
-                    .and_then(|mut c| std::io::Write::write_all(&mut c, format!("{STATUS_PREFIX}{}\n", String::from_utf8_lossy(&bytes)).as_bytes()));
+                let _ = std::fs::OpenOptions::new().append(true).open(console).and_then(|mut c| {
+                    std::io::Write::write_all(&mut c, format!("{STATUS_PREFIX}{}\n", String::from_utf8_lossy(&bytes)).as_bytes())
+                });
             }
         }
     }
@@ -782,7 +785,9 @@ mod supervisor {
                     bail!("could not load the runner image the launcher gave");
                 }
             }
-            if !ok(docker().args(["image", "inspect", &settings.runner_image])) && !ok(docker().args(["pull", "-q", &settings.runner_image])) {
+            if !ok(docker().args(["image", "inspect", &settings.runner_image]))
+                && !ok(docker().args(["pull", "-q", &settings.runner_image]))
+            {
                 bail!("could not fetch the runner's image {}", settings.runner_image);
             }
             start_runner(&settings)?;
@@ -816,7 +821,10 @@ mod supervisor {
         loop {
             if asked.is_none() {
                 let mode = std::fs::read_to_string(STOP_FILE).ok().map(|m| m.trim().to_owned());
-                asked = mode.or_else(|| STOP.load(Ordering::SeqCst).then(|| read_json::<Settings>(SETTINGS).and_then(|s| s.stop).unwrap_or_else(|| "now".into())));
+                asked = mode.or_else(|| {
+                    STOP.load(Ordering::SeqCst)
+                        .then(|| read_json::<Settings>(SETTINGS).and_then(|s| s.stop).unwrap_or_else(|| "now".into()))
+                });
                 if let Some(mode) = &asked {
                     // The runner reads these in its folder (selfhosted/mod.rs).
                     std::fs::write(data.join(if mode == "drain" { "drain" } else { "stop" }), "")?;
@@ -894,7 +902,12 @@ mod tests {
     fn the_sandbox_refuses_what_reaches_the_computer() {
         assert!(problems(CLEAN, &[], false, Some(WSL_CONF)).is_empty());
         assert!(problems(CLEAN, &[], false, None).is_empty());
-        let all = problems(WSL_MOUNTINFO, &["/mnt/wsl/docker-desktop/shared-sockets/host-services/docker.proxy.sock".into()], true, Some("[automount]\nenabled=true\n"));
+        let all = problems(
+            WSL_MOUNTINFO,
+            &["/mnt/wsl/docker-desktop/shared-sockets/host-services/docker.proxy.sock".into()],
+            true,
+            Some("[automount]\nenabled=true\n"),
+        );
         assert!(all.iter().any(|p| p.contains("docker.proxy.sock")));
         assert!(all.iter().any(|p| p.contains("interop is on")));
         assert!(all.iter().any(|p| p.contains("/etc/wsl.conf")));
@@ -903,7 +916,13 @@ mod tests {
     #[test]
     fn the_image_turns_off_every_way_to_windows() {
         let conf = WSL_CONF.replace(' ', "");
-        for setting in ["[automount]\nenabled=false", "mountFsTab=false", "[interop]\nenabled=false", "appendWindowsPath=false", "[user]\ndefault=sandbox"] {
+        for setting in [
+            "[automount]\nenabled=false",
+            "mountFsTab=false",
+            "[interop]\nenabled=false",
+            "appendWindowsPath=false",
+            "[user]\ndefault=sandbox",
+        ] {
             assert!(conf.contains(setting), "{setting}");
         }
         // What opens the distribution without naming a user is not root;
@@ -947,7 +966,12 @@ eth0\t00E01EAC\t00000000\t0001\t0\t0\t0\t00F0FFFF\t0\t0\t0\n";
         use crate::selfhosted::sizes::SizeChoice;
         let plain = runner_run_args(&Settings::default(), false).join(" ");
         assert!(!plain.contains("G1T_RUNNER_SIZES") && !plain.contains("G1T_RUNNER_COMPUTER"), "a launcher that says nothing");
-        let settings = Settings { sizes: Some(vec![SizeChoice::Key("2-core".into())]), computer_cpus: 16, computer_memory_mib: 32768, ..Settings::default() };
+        let settings = Settings {
+            sizes: Some(vec![SizeChoice::Key("2-core".into())]),
+            computer_cpus: 16,
+            computer_memory_mib: 32768,
+            ..Settings::default()
+        };
         let args = runner_run_args(&settings, false);
         assert!(args.contains(&r#"G1T_RUNNER_SIZES=["2-core"]"#.to_owned()), "{args:?}");
         assert!(args.contains(&"G1T_RUNNER_COMPUTER=16,32768".to_owned()));
@@ -963,7 +987,8 @@ eth0\t00E01EAC\t00000000\t0001\t0\t0\t0\t00F0FFFF\t0\t0\t0\n";
 
     #[test]
     fn the_runner_runs_under_sysbox_with_no_socket_and_no_self_update() {
-        let settings = Settings { cpus: 4, memory_mib: 8192, runner_image: "g1t.sh/flagon-io/g1t-runner@sha256:ab".into(), ..Settings::default() };
+        let settings =
+            Settings { cpus: 4, memory_mib: 8192, runner_image: "g1t.sh/flagon-io/g1t-runner@sha256:ab".into(), ..Settings::default() };
         let args = runner_run_args(&settings, false).join(" ");
         assert!(args.starts_with("run -d --name g1t-runner --runtime=sysbox-runc"));
         assert!(args.contains("--cpus 4 --memory 8192m --memory-swap 8192m"));
@@ -1001,7 +1026,9 @@ eth0\t00E01EAC\t00000000\t0001\t0\t0\t0\t00F0FFFF\t0\t0\t0\n";
         assert_eq!(bytes.len(), 4096);
         assert_eq!(read_seed(&bytes).unwrap(), settings);
         assert!(write_seed(&settings, 8).is_err());
-        let log = format!("[    1.0] booting\n{STATUS_PREFIX}{{\"state\":\"starting\"}}\nnoise\n{STATUS_PREFIX}{{\"state\":\"running\",\"updated_at\":\"t\"}}\n");
+        let log = format!(
+            "[    1.0] booting\n{STATUS_PREFIX}{{\"state\":\"starting\"}}\nnoise\n{STATUS_PREFIX}{{\"state\":\"running\",\"updated_at\":\"t\"}}\n"
+        );
         assert_eq!(status_from_console(&log).unwrap().state, "running");
         assert!(status_from_console("nothing").is_none());
     }

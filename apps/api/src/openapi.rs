@@ -8,24 +8,24 @@ use g1t_contracts::scopes::scope_for;
 use serde_json::{Map, Value, json};
 
 use crate::about::AboutOp;
-use crate::run_artifacts::ArtifactsOp;
-use crate::caches::CachesOp;
 use crate::archives::ArchiveOp;
+use crate::caches::CachesOp;
+use crate::checks::ChecksOp;
+use crate::coordination::CoordinationOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::deployments::DeploymentsOp;
-use crate::telemetry::TelemetryOp;
-use crate::packages::PackagesOp;
 use crate::folios::FoliosOp;
-use crate::coordination::CoordinationOp;
-use crate::protection::ProtectionOp;
-use crate::token_policy::TokenOp;
-use crate::sso::SsoOp;
 use crate::onboarding::OnboardingOp;
 use crate::operations::Op;
-use crate::checks::ChecksOp;
-use crate::rules::RulesOp;
-use crate::security::SecurityOp;
+use crate::packages::PackagesOp;
+use crate::protection::ProtectionOp;
 use crate::rest::{ROUTES, Route};
+use crate::rules::RulesOp;
+use crate::run_artifacts::ArtifactsOp;
+use crate::security::SecurityOp;
+use crate::sso::SsoOp;
+use crate::telemetry::TelemetryOp;
+use crate::token_policy::TokenOp;
 
 /// The sections of the API reference: a name, what it covers, and its
 /// operations in the order a reader meets them.
@@ -125,13 +125,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     (
         "Billing",
         "A workspace's usage, its budget and its invoices. Members read them; owners change the budget, as people. A run's token never changes billing.",
-        &[
-            Op::GetUsage,
-            Op::GetBudget,
-            Op::SetBudget,
-            Op::ListInvoices,
-            Op::GetBillingDetails,
-        ],
+        &[Op::GetUsage, Op::GetBudget, Op::SetBudget, Op::ListInvoices, Op::GetBillingDetails],
     ),
     (
         "Repositories",
@@ -171,13 +165,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     (
         "Commit comments",
         "Comments on a commit, as a whole or on one line of a file it changed. Anyone who can read a repository reads them, and may comment unless the repository turned commit comments off.",
-        &[
-            Op::ListRepoCommitComments,
-            Op::ListCommitComments,
-            Op::CreateCommitComment,
-            Op::UpdateCommitComment,
-            Op::DeleteCommitComment,
-        ],
+        &[Op::ListRepoCommitComments, Op::ListCommitComments, Op::CreateCommitComment, Op::UpdateCommitComment, Op::DeleteCommitComment],
     ),
     (
         "Repository insights",
@@ -708,10 +696,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
 
 /// The section of the API reference an operation is listed under.
 fn tag(op: Op) -> &'static str {
-    SECTIONS
-        .iter()
-        .find(|(_, _, ops)| ops.contains(&op))
-        .map_or("Repositories", |(name, _, _)| name)
+    SECTIONS.iter().find(|(_, _, ops)| ops.contains(&op)).map_or("Repositories", |(name, _, _)| name)
 }
 
 /// What an operation's page is called, as a short sentence.
@@ -986,9 +971,9 @@ fn title(op: Op) -> &'static str {
 /// free workspace's private storage has no room for it.
 fn may_need_payment(op: Op) -> Option<&'static str> {
     match op {
-        Op::UpdateRepo | Op::SetRepoVisibility | Op::TransferRepo | Op::ForkRepo => Some(
-            "A free workspace's private storage has no room for this private repository.",
-        ),
+        Op::UpdateRepo | Op::SetRepoVisibility | Op::TransferRepo | Op::ForkRepo => {
+            Some("A free workspace's private storage has no room for this private repository.")
+        }
         _ => None,
     }
 }
@@ -1123,11 +1108,7 @@ fn summary(route: &Route, id: &str) -> String {
         "claim_new_work_item" => "Open a work item and claim it",
         _ => title(route.op),
     };
-    if id.ends_with("_for_workspace") {
-        format!("{base} for a workspace")
-    } else {
-        base.to_owned()
-    }
+    if id.ends_with("_for_workspace") { format!("{base} for a workspace") } else { base.to_owned() }
 }
 
 fn operation(route: &Route) -> Value {
@@ -1135,8 +1116,7 @@ fn operation(route: &Route) -> Value {
     let path_params: Vec<&str> = route.params().collect();
     // `owner` and `name` in the path stand for the operation's `repo` input,
     // so a `name` in the body, such as a check run's, is the body's own.
-    let stands_for_repo =
-        |name: &str| matches!(name, "owner" | "name") && path_params.contains(&"owner") && path_params.contains(&"name");
+    let stands_for_repo = |name: &str| matches!(name, "owner" | "name") && path_params.contains(&"owner") && path_params.contains(&"name");
     // `repo` is the path's `owner` and `name`; at a workspace's address, a
     // work item operation takes it in the body or query (a repository of
     // the workspace: an origin, a filter or one to link), and others not.
@@ -1146,11 +1126,7 @@ fn operation(route: &Route) -> Value {
     let all_properties = op.properties();
     let mut properties = all_properties.clone();
     properties.retain(|name, _| !covered(name));
-    let required: Vec<String> = op
-        .required()
-        .into_iter()
-        .filter(|name| !covered(name))
-        .collect();
+    let required: Vec<String> = op.required().into_iter().filter(|name| !covered(name)).collect();
 
     let mut parameters: Vec<Value> = path_params
         .iter()
@@ -1159,12 +1135,7 @@ fn operation(route: &Route) -> Value {
     let mut body = Value::Null;
     if route.method == "GET" {
         for (name, key) in route.query {
-            parameters.push(parameter(
-                name,
-                "query",
-                required.iter().any(|required| required == key),
-                properties.get(*key),
-            ));
+            parameters.push(parameter(name, "query", required.iter().any(|required| required == key), properties.get(*key)));
         }
     } else if !properties.is_empty() {
         let mut schema = json!({ "type": "object", "properties": properties });
@@ -1190,10 +1161,7 @@ fn operation(route: &Route) -> Value {
             }),
         );
     }
-    responses.insert(
-        "401".into(),
-        error_response("A token is required, or the one sent is not valid."),
-    );
+    responses.insert("401".into(), error_response("A token is required, or the one sent is not valid."));
     if let Some(reason) = may_need_payment(op) {
         responses.insert("402".into(), error_response(reason));
     }
@@ -1205,33 +1173,27 @@ fn operation(route: &Route) -> Value {
         responses.insert("404".into(), error_response("It does not exist, or you cannot see it."));
     }
     if route.method != "GET" {
-        responses.insert(
-            "409".into(),
-            error_response("The request conflicts with the current state."),
-        );
+        responses.insert("409".into(), error_response("The request conflicts with the current state."));
     }
     if op != Op::Whoami {
         responses.insert("422".into(), error_response("The input is not valid."));
     }
     if op == Op::UploadAttachment || op == Op::UploadWorkItemAttachment {
         responses.insert("413".into(), error_response("The file is over 10 MB (`too_large`)."));
-        responses.insert("415".into(), error_response("The file is not a PNG, JPEG, GIF or WebP image by its bytes, or not the content_type given (`unsupported_type`)."));
+        responses.insert(
+            "415".into(),
+            error_response(
+                "The file is not a PNG, JPEG, GIF or WebP image by its bytes, or not the content_type given (`unsupported_type`).",
+            ),
+        );
     }
     // Public data can be read without a token; everything else needs one.
     let scope: Vec<&str> = scope_for(op.name()).map(|scope| scope.as_str()).into_iter().collect();
-    let security = if op.needs_user() {
-        json!([{ "token": [] }, { "oauth": scope }])
-    } else {
-        json!([{ "token": [] }, { "oauth": scope }, {}])
-    };
+    let security =
+        if op.needs_user() { json!([{ "token": [] }, { "oauth": scope }]) } else { json!([{ "token": [] }, { "oauth": scope }, {}]) };
     let (tool, action) = crate::tools::TOOLS
         .iter()
-        .find_map(|tool| {
-            tool.actions
-                .iter()
-                .find(|action| action.op == op)
-                .map(|action| (tool.name, action.name))
-        })
+        .find_map(|tool| tool.actions.iter().find(|action| action.op == op).map(|action| (tool.name, action.name)))
         .unwrap_or_default();
     let mut described = json!({
         "operationId": id,
@@ -1333,7 +1295,6 @@ fn onboarding() -> Map<String, Value> {
     }
 }
 
-
 /// Puts each operation's examples, where it has them, into its request
 /// and response. Path and query values go under `x-example-params` and
 /// `x-example-query`, which tools that build a request can use.
@@ -1375,9 +1336,7 @@ fn attach_examples(paths: &mut Map<String, Value>) {
 pub fn document() -> Value {
     let mut paths = onboarding();
     for route in ROUTES {
-        let entry = paths
-            .entry(openapi_path(route))
-            .or_insert_with(|| json!({}));
+        let entry = paths.entry(openapi_path(route)).or_insert_with(|| json!({}));
         entry[route.method.to_lowercase()] = operation(route);
     }
     attach_examples(&mut paths);
@@ -1396,8 +1355,8 @@ pub fn document() -> Value {
             responses.insert("429".into(), json!({ "$ref": "#/components/responses/RateLimited" }));
         }
     }
-    let scopes: Map<String, Value> = g1t_contracts::scopes::offered_scopes().iter()
-        .map(|scope| (scope.as_str().to_owned(), json!(scope.describe()))).collect();
+    let scopes: Map<String, Value> =
+        g1t_contracts::scopes::offered_scopes().iter().map(|scope| (scope.as_str().to_owned(), json!(scope.describe()))).collect();
     let tags: Vec<Value> = SECTIONS
         .iter()
         .map(|(name, description, ops)| {
@@ -1409,7 +1368,17 @@ pub fn document() -> Value {
             })
         })
         .collect();
-    let codes = ["unauthenticated", "payment_required", "forbidden", "not_found", "conflict", "invalid", "too_large", "unsupported_type", "rate_limited"];
+    let codes = [
+        "unauthenticated",
+        "payment_required",
+        "forbidden",
+        "not_found",
+        "conflict",
+        "invalid",
+        "too_large",
+        "unsupported_type",
+        "rate_limited",
+    ];
     json!({
         "openapi": "3.1.0",
         "info": {
@@ -1495,16 +1464,22 @@ mod tests {
         let doc = document();
         let offered = &doc["components"]["securitySchemes"]["oauth"]["flows"]["authorizationCode"]["scopes"];
         assert_eq!(offered.as_object().unwrap().len(), g1t_contracts::scopes::offered_scopes().len());
-        for scope in g1t_contracts::scopes::offered_scopes() { assert_eq!(offered[scope.as_str()], scope.describe()); }
+        for scope in g1t_contracts::scopes::offered_scopes() {
+            assert_eq!(offered[scope.as_str()], scope.describe());
+        }
         assert_eq!(doc["servers"][0]["url"], "https://api.g1t.sh");
         for methods in doc["paths"].as_object().unwrap().values() {
             for operation in methods.as_object().unwrap().values() {
                 assert!(operation["parameters"].as_array().unwrap().iter().any(|p| p["$ref"] == "#/components/parameters/ApiVersion"));
                 assert_eq!(operation["responses"]["429"]["$ref"], "#/components/responses/RateLimited");
                 for requirement in operation["security"].as_array().unwrap() {
-                    if let Some(scopes) = requirement.get("token") { assert_eq!(scopes, &json!([]), "HTTP bearer schemes cannot declare OAuth scopes"); }
+                    if let Some(scopes) = requirement.get("token") {
+                        assert_eq!(scopes, &json!([]), "HTTP bearer schemes cannot declare OAuth scopes");
+                    }
                     if let Some(scopes) = requirement.get("oauth") {
-                        for scope in scopes.as_array().unwrap() { assert!(offered.get(scope.as_str().unwrap()).is_some(), "undeclared OAuth scope {scope}"); }
+                        for scope in scopes.as_array().unwrap() {
+                            assert!(offered.get(scope.as_str().unwrap()).is_some(), "undeclared OAuth scope {scope}");
+                        }
                     }
                 }
             }
@@ -1521,12 +1496,7 @@ mod tests {
             }
         }
         for op in Op::ALL {
-            assert_eq!(
-                ids.iter().filter(|id| *id == op.name()).count(),
-                1,
-                "{}",
-                op.name()
-            );
+            assert_eq!(ids.iter().filter(|id| *id == op.name()).count(), 1, "{}", op.name());
         }
         let mut unique = ids.clone();
         unique.sort();
@@ -1549,10 +1519,7 @@ mod tests {
     #[test]
     fn every_operation_is_in_one_section() {
         for op in Op::ALL {
-            let sections = SECTIONS
-                .iter()
-                .filter(|(_, _, ops)| ops.contains(&op))
-                .count();
+            let sections = SECTIONS.iter().filter(|(_, _, ops)| ops.contains(&op)).count();
             assert_eq!(sections, 1, "{}", op.name());
         }
     }
@@ -1611,10 +1578,7 @@ mod tests {
             return;
         }
         let copy = std::fs::read_to_string(path).unwrap_or_default().replace("\r\n", "\n");
-        assert!(
-            copy == current,
-            "apps/docs/src/data/openapi.json is out of date: run G1T_WRITE_OPENAPI=1 cargo test -p g1t-api openapi"
-        );
+        assert!(copy == current, "apps/docs/src/data/openapi.json is out of date: run G1T_WRITE_OPENAPI=1 cargo test -p g1t-api openapi");
     }
 
     /// The reference shows responses as they are sent: `snake_case`.

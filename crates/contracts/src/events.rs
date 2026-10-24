@@ -1572,11 +1572,7 @@ mod tests {
     }
 
     fn renamed(from: &str, to: &str) -> WorkspaceRenamed {
-        WorkspaceRenamed {
-            workspace_id: "wsp_1".into(),
-            from: from.into(),
-            to: to.into(),
-        }
+        WorkspaceRenamed { workspace_id: "wsp_1".into(), from: from.into(), to: to.into() }
     }
 
     #[test]
@@ -1589,22 +1585,14 @@ mod tests {
     }
 
     fn transferred(from: &str, to: &str) -> RepoTransferred {
-        RepoTransferred {
-            repo_id: "rep_1".into(),
-            name: "rocket".into(),
-            from: from.into(),
-            to: to.into(),
-        }
+        RepoTransferred { repo_id: "rep_1".into(), name: "rocket".into(), from: from.into(), to: to.into() }
     }
 
     #[test]
     fn stale_paths_leave_out_the_current_one() {
         assert_eq!(transferred("a", "b").stale_paths("b/rocket"), vec!["a/rocket"]);
         // Delivered after a second transfer, b → c: both move to c.
-        assert_eq!(
-            transferred("a", "b").stale_paths("c/rocket"),
-            vec!["a/rocket", "b/rocket"]
-        );
+        assert_eq!(transferred("a", "b").stale_paths("c/rocket"), vec!["a/rocket", "b/rocket"]);
         // Transferred back: a → b → a.
         assert_eq!(transferred("a", "b").stale_paths("a/rocket"), vec!["b/rocket"]);
     }
@@ -1618,12 +1606,7 @@ mod tests {
 
     #[test]
     fn a_rename_names_both_paths_in_its_workspace() {
-        let renamed = RepoRenamed {
-            repo_id: "rep_1".into(),
-            namespace: "acme".into(),
-            from: "old".into(),
-            to: "new".into(),
-        };
+        let renamed = RepoRenamed { repo_id: "rep_1".into(), namespace: "acme".into(), from: "old".into(), to: "new".into() };
         assert_eq!(renamed.stale_paths("acme/new"), vec!["acme/old"]);
         // Delivered after a transfer: both names in acme move.
         assert_eq!(renamed.stale_paths("flagon/new"), vec!["acme/old", "acme/new"]);

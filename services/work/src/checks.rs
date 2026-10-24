@@ -84,17 +84,10 @@ impl Work {
     /// printed: enough to see how the checks went over time.
     pub(crate) async fn earlier_checks(&self, pull_id: &str) -> Result<Vec<CheckRun>> {
         let rows = match self.prefetched_pull(pull_id) {
-            Some(found) => found
-                .rows::<RunRow>(Slot::Runs)?
-                .into_iter()
-                .skip(1)
-                .take(EARLIER_RUNS as usize)
-                .collect(),
+            Some(found) => found.rows::<RunRow>(Slot::Runs)?.into_iter().skip(1).take(EARLIER_RUNS as usize).collect(),
             None => self
                 .db
-                .prepare(
-                    "SELECT * FROM check_runs WHERE pull_id = ? ORDER BY id DESC LIMIT ? OFFSET 1",
-                )
+                .prepare("SELECT * FROM check_runs WHERE pull_id = ? ORDER BY id DESC LIMIT ? OFFSET 1")
                 .bind(&[pull_id.into(), EARLIER_RUNS.into()])?
                 .all()
                 .await?
@@ -117,12 +110,7 @@ impl Work {
     /// The run's token is the only credential, and a finished run accepts
     /// nothing more.
     pub(crate) async fn report_checks(&self, a: ReportChecksArgs) -> Result<Outcome<CheckRun>> {
-        let run = self
-            .db
-            .prepare("SELECT * FROM check_runs WHERE id = ?")
-            .bind(&[a.run_id.as_str().into()])?
-            .first::<RunRow>(None)
-            .await?;
+        let run = self.db.prepare("SELECT * FROM check_runs WHERE id = ?").bind(&[a.run_id.as_str().into()])?.first::<RunRow>(None).await?;
         let Some(run) = run.filter(|run| run.token_hash == hash(&a.token)) else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Check run not found."));
         };
@@ -130,19 +118,14 @@ impl Work {
             return Ok(refused("This check run has already finished."));
         }
         let latest = "id = ? AND check_run_id = ?";
-        let pull_keys =
-            || -> [JsValue; 2] { [run.pull_id.as_str().into(), run.id.as_str().into()] };
+        let pull_keys = || -> [JsValue; 2] { [run.pull_id.as_str().into(), run.id.as_str().into()] };
 
         if a.skip {
             self.db
                 .batch(vec![
+                    self.db.prepare("DELETE FROM check_runs WHERE id = ?").bind(&[run.id.as_str().into()])?,
                     self.db
-                        .prepare("DELETE FROM check_runs WHERE id = ?")
-                        .bind(&[run.id.as_str().into()])?,
-                    self.db
-                        .prepare(format!(
-                            "UPDATE pulls SET check_status = NULL, check_run_id = NULL WHERE {latest}"
-                        ))
+                        .prepare(format!("UPDATE pulls SET check_status = NULL, check_run_id = NULL WHERE {latest}"))
                         .bind(&pull_keys())?,
                 ])
                 .await?;
@@ -157,11 +140,7 @@ impl Work {
                 // Keep the end of long output: that is where failures are.
                 let length = result.output.chars().count();
                 if length > MAX_OUTPUT_CHARS {
-                    result.output = result
-                        .output
-                        .chars()
-                        .skip(length - MAX_OUTPUT_CHARS)
-                        .collect();
+                    result.output = result.output.chars().skip(length - MAX_OUTPUT_CHARS).collect();
                 }
                 result
             })
@@ -190,13 +169,11 @@ impl Work {
                         optional(&finished),
                         run.id.as_str().into(),
                     ])?,
-                self.db
-                    .prepare(format!("UPDATE pulls SET check_status = ? WHERE {latest}"))
-                    .bind(&[
-                        status.as_str().into(),
-                        run.pull_id.as_str().into(),
-                        run.id.as_str().into(),
-                    ])?,
+                self.db.prepare(format!("UPDATE pulls SET check_status = ? WHERE {latest}")).bind(&[
+                    status.as_str().into(),
+                    run.pull_id.as_str().into(),
+                    run.id.as_str().into(),
+                ])?,
             ])
             .await?;
 
@@ -224,12 +201,6 @@ impl Work {
                 .await?;
             }
         }
-        Ok(Outcome::Ok(CheckRun {
-            status,
-            results,
-            error: a.error,
-            finished_at: finished,
-            ..run.into()
-        }))
+        Ok(Outcome::Ok(CheckRun { status, results, error: a.error, finished_at: finished, ..run.into() }))
     }
 }

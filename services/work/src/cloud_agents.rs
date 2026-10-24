@@ -49,14 +49,12 @@ use crate::Work;
 const PULL_COMMITS: u32 = 250;
 
 /// Records a pull request's agent's mark, unless it has one.
-const MARK_PULL: &str =
-    "UPDATE pulls SET agent_rule = ?2, agent_name = ?3, agent_by_id = ?4, agent_by_name = ?5
+const MARK_PULL: &str = "UPDATE pulls SET agent_rule = ?2, agent_name = ?3, agent_by_id = ?4, agent_by_name = ?5
      WHERE id = ?1 AND agent_rule IS NULL";
 
 /// Records a coding agent's commit pushed straight to a default branch,
 /// once.
-const RECORD_COMMIT: &str =
-    "INSERT INTO agent_commits (repo_id, sha, agent, rule, person_id, person_name, at)
+const RECORD_COMMIT: &str = "INSERT INTO agent_commits (repo_id, sha, agent, rule, person_id, person_name, at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT (repo_id, sha) DO NOTHING";
 
 /// How strong a rule is: lower is stronger. A cloud agent's own trailer
@@ -75,18 +73,13 @@ fn strength(rule: &str) -> u8 {
 /// The mark a pull request's commits (oldest first, merge commits left
 /// out by the caller), as `(message, author address)`, leave: the
 /// strongest rule any of them matched, the oldest commit of those.
-pub(crate) fn pull_mark<'a>(
-    commits: impl IntoIterator<Item = (&'a str, Option<&'a str>)>,
-) -> Option<AgentMark> {
+pub(crate) fn pull_mark<'a>(commits: impl IntoIterator<Item = (&'a str, Option<&'a str>)>) -> Option<AgentMark> {
     let mut best: Option<AgentMark> = None;
     for (message, author) in commits {
         let Some(mark) = agent_mark(message, author) else {
             continue;
         };
-        if best
-            .as_ref()
-            .is_none_or(|best| strength(&mark.rule) < strength(&best.rule))
-        {
+        if best.as_ref().is_none_or(|best| strength(&mark.rule) < strength(&best.rule)) {
             best = Some(mark);
         }
     }
@@ -100,12 +93,7 @@ pub(crate) fn pushed_marks(commits: &[PushedCommit]) -> Vec<(&str, AgentMark)> {
     commits
         .iter()
         .filter(|commit| session_trailers(&commit.message).is_empty())
-        .filter_map(|commit| {
-            Some((
-                commit.hash.as_str(),
-                agent_mark(&commit.message, commit.author_email.as_deref())?,
-            ))
-        })
+        .filter_map(|commit| Some((commit.hash.as_str(), agent_mark(&commit.message, commit.author_email.as_deref())?)))
         .collect()
 }
 
@@ -150,13 +138,8 @@ impl Work {
             ) else {
                 return Ok(());
             };
-            let people = self
-                .starters(&pull.repo_id, mark.starter.iter().cloned().collect())
-                .await?;
-            let person = mark
-                .starter
-                .as_ref()
-                .and_then(|address| people.get(address));
+            let people = self.starters(&pull.repo_id, mark.starter.iter().cloned().collect()).await?;
+            let person = mark.starter.as_ref().and_then(|address| people.get(address));
             self.db
                 .prepare(MARK_PULL)
                 .bind(&[
@@ -177,12 +160,7 @@ impl Work {
 
     /// Records the commits a push brought straight to a default branch,
     /// outside any pull request, that a coding agent made, at `at`.
-    pub(crate) async fn record_agent_commits(
-        &self,
-        repo_id: &str,
-        commits: &[PushedCommit],
-        at: &str,
-    ) -> Result<()> {
+    pub(crate) async fn record_agent_commits(&self, repo_id: &str, commits: &[PushedCommit], at: &str) -> Result<()> {
         let marks = pushed_marks(commits);
         if marks.is_empty() {
             return Ok(());
@@ -198,10 +176,7 @@ impl Work {
         let people = self.starters(repo_id, addresses).await?;
         let mut statements = Vec::new();
         for (sha, mark) in &marks {
-            let person = mark
-                .starter
-                .as_ref()
-                .and_then(|address| people.get(address));
+            let person = mark.starter.as_ref().and_then(|address| people.get(address));
             statements.push(self.db.prepare(RECORD_COMMIT).bind(&[
                 repo_id.into(),
                 (*sha).into(),
@@ -218,27 +193,16 @@ impl Work {
 
     /// The members of a repository's workspace behind these addresses, by
     /// address: only an address a member verified is anyone's.
-    async fn starters(
-        &self,
-        repo_id: &str,
-        emails: Vec<String>,
-    ) -> Result<HashMap<String, MemberEmail>> {
+    async fn starters(&self, repo_id: &str, emails: Vec<String>) -> Result<HashMap<String, MemberEmail>> {
         if emails.is_empty() {
             return Ok(HashMap::new());
         }
         let Some(workspace) = crate::items::repo_workspace(self, repo_id).await? else {
             return Ok(HashMap::new());
         };
-        let members: Vec<MemberEmail> = g1t_kit::call(
-            &self.identity,
-            "members_by_email",
-            &MembersByEmailArgs { workspace, emails },
-        )
-        .await?;
-        Ok(members
-            .into_iter()
-            .map(|member| (member.email.clone(), member))
-            .collect())
+        let members: Vec<MemberEmail> =
+            g1t_kit::call(&self.identity, "members_by_email", &MembersByEmailArgs { workspace, emails }).await?;
+        Ok(members.into_iter().map(|member| (member.email.clone(), member)).collect())
     }
 }
 
@@ -249,11 +213,7 @@ mod tests {
     use super::*;
 
     fn commit(hash: &str, message: &str, author: &str) -> PushedCommit {
-        PushedCommit {
-            hash: hash.into(),
-            message: message.into(),
-            author_email: Some(author.into()),
-        }
+        PushedCommit { hash: hash.into(), message: message.into(), author_email: Some(author.into()) }
     }
 
     const COPILOT: &str = "198982749+Copilot@users.noreply.github.com";
@@ -261,19 +221,10 @@ mod tests {
     #[test]
     fn a_pull_request_takes_the_strongest_mark_of_its_commits() {
         let commits = [
-            (
-                "Start\n\nCo-authored-by: Cursor <cursoragent@cursor.com>",
-                Some("bo@example.com"),
-            ),
+            ("Start\n\nCo-authored-by: Cursor <cursoragent@cursor.com>", Some("bo@example.com")),
             ("Plain", Some("ada@example.com")),
-            (
-                "Retry\n\nCo-authored-by: Ada <ada@example.com>\nAgent-Logs-Url: https://github.com/a/b/sessions/1",
-                Some(COPILOT),
-            ),
-            (
-                "Again\n\nCo-authored-by: Cy <cy@example.com>\nAgent-Logs-Url: https://github.com/a/b/sessions/2",
-                Some(COPILOT),
-            ),
+            ("Retry\n\nCo-authored-by: Ada <ada@example.com>\nAgent-Logs-Url: https://github.com/a/b/sessions/1", Some(COPILOT)),
+            ("Again\n\nCo-authored-by: Cy <cy@example.com>\nAgent-Logs-Url: https://github.com/a/b/sessions/2", Some(COPILOT)),
         ];
         let mark = pull_mark(commits).unwrap();
         // Copilot's trailer says more than Cursor as co-author; of its two
@@ -285,38 +236,21 @@ mod tests {
         assert_eq!(pull_mark([("Plain", Some("ada@example.com"))]), None);
         let typed = pull_mark([
             ("A\n\nMade with Cursor", Some("ada@example.com")),
-            (
-                "B\n\nCo-Authored-By: Claude <noreply@anthropic.com>",
-                Some("bo@example.com"),
-            ),
+            ("B\n\nCo-Authored-By: Claude <noreply@anthropic.com>", Some("bo@example.com")),
         ]);
-        assert_eq!(
-            typed.map(|mark| mark.rule),
-            Some("coauthor:claude".to_owned())
-        );
+        assert_eq!(typed.map(|mark| mark.rule), Some("coauthor:claude".to_owned()));
     }
 
     #[test]
     fn a_session_s_commits_are_left_to_the_session() {
         let commits = [
-            commit(
-                "a",
-                "Fix\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nG1t-Session: ses_01abc",
-                "ada@example.com",
-            ),
-            commit(
-                "b",
-                "Fix more\n\nCo-Authored-By: Claude <noreply@anthropic.com>",
-                "ada@example.com",
-            ),
+            commit("a", "Fix\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nG1t-Session: ses_01abc", "ada@example.com"),
+            commit("b", "Fix more\n\nCo-Authored-By: Claude <noreply@anthropic.com>", "ada@example.com"),
             commit("c", "By hand", "ada@example.com"),
         ];
         let marks = pushed_marks(&commits);
         assert_eq!(marks.len(), 1);
-        assert_eq!(
-            (marks[0].0, marks[0].1.rule.as_str()),
-            ("b", "coauthor:claude")
-        );
+        assert_eq!((marks[0].0, marks[0].1.rule.as_str()), ("b", "coauthor:claude"));
     }
 
     #[test]
@@ -328,75 +262,21 @@ mod tests {
             [],
         )
         .unwrap();
-        db.execute(
-            MARK_PULL,
-            params![
-                "pr_1",
-                "trailer:agent-logs-url",
-                "copilot",
-                "usr_ada",
-                "ada"
-            ],
-        )
-        .unwrap();
-        db.execute(
-            MARK_PULL,
-            params!["pr_1", "coauthor:cursor", "cursor", "usr_bo", "bo"],
-        )
-        .unwrap();
+        db.execute(MARK_PULL, params!["pr_1", "trailer:agent-logs-url", "copilot", "usr_ada", "ada"]).unwrap();
+        db.execute(MARK_PULL, params!["pr_1", "coauthor:cursor", "cursor", "usr_bo", "bo"]).unwrap();
         let kept: (String, String, String) = db
-            .query_row(
-                "SELECT agent_rule, agent_name, agent_by_name FROM pulls WHERE id = 'pr_1'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
+            .query_row("SELECT agent_rule, agent_name, agent_by_name FROM pulls WHERE id = 'pr_1'", [], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
             .unwrap();
-        assert_eq!(
-            kept,
-            (
-                "trailer:agent-logs-url".into(),
-                "copilot".into(),
-                "ada".into()
-            )
-        );
+        assert_eq!(kept, ("trailer:agent-logs-url".into(), "copilot".into(), "ada".into()));
 
-        db.execute(
-            RECORD_COMMIT,
-            params![
-                "repo",
-                "c1",
-                "cursor",
-                "author:cursor",
-                "usr_ada",
-                "ada",
-                "2026-10-20T10:00:00Z"
-            ],
-        )
-        .unwrap();
-        db.execute(
-            RECORD_COMMIT,
-            params![
-                "repo",
-                "c1",
-                "claude",
-                "coauthor:claude",
-                None::<String>,
-                None::<String>,
-                "later"
-            ],
-        )
-        .unwrap();
+        db.execute(RECORD_COMMIT, params!["repo", "c1", "cursor", "author:cursor", "usr_ada", "ada", "2026-10-20T10:00:00Z"]).unwrap();
+        db.execute(RECORD_COMMIT, params!["repo", "c1", "claude", "coauthor:claude", None::<String>, None::<String>, "later"]).unwrap();
         let recorded: Option<(String, String)> = db
-            .query_row(
-                "SELECT rule, at FROM agent_commits WHERE repo_id = 'repo' AND sha = 'c1'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
+            .query_row("SELECT rule, at FROM agent_commits WHERE repo_id = 'repo' AND sha = 'c1'", [], |row| Ok((row.get(0)?, row.get(1)?)))
             .optional()
             .unwrap();
-        assert_eq!(
-            recorded,
-            Some(("author:cursor".into(), "2026-10-20T10:00:00Z".into()))
-        );
+        assert_eq!(recorded, Some(("author:cursor".into(), "2026-10-20T10:00:00Z".into())));
     }
 }

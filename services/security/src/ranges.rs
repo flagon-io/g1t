@@ -68,10 +68,7 @@ fn wildcard(text: &str) -> Option<Vec<u64>> {
 fn comparator(text: &str, bare: Bare) -> Option<Vec<Bound>> {
     let text = text.trim();
     let operators = ["===", "==", ">=", "<=", "!=", "~>", "~=", "^", "~", ">", "<", "="];
-    let (operator, rest) = operators
-        .iter()
-        .find_map(|op| text.strip_prefix(op).map(|rest| (*op, rest.trim())))
-        .unwrap_or(("", text));
+    let (operator, rest) = operators.iter().find_map(|op| text.strip_prefix(op).map(|rest| (*op, rest.trim()))).unwrap_or(("", text));
     if rest.is_empty() {
         return None;
     }
@@ -175,9 +172,12 @@ fn conjunction(text: &str, bare: Bare) -> Option<Vec<Bound>> {
 }
 
 fn holds(bound: &Bound, candidate: &str) -> bool {
-    let order = version::compare(candidate, match bound {
-        Bound::Min(v, _) | Bound::Max(v, _) | Bound::Not(v) | Bound::Exact(v) => v,
-    });
+    let order = version::compare(
+        candidate,
+        match bound {
+            Bound::Min(v, _) | Bound::Max(v, _) | Bound::Not(v) | Bound::Exact(v) => v,
+        },
+    );
     match bound {
         Bound::Min(_, inclusive) => order == Ordering::Greater || (*inclusive && order == Ordering::Equal),
         Bound::Max(_, inclusive) => order == Ordering::Less || (*inclusive && order == Ordering::Equal),

@@ -1,7 +1,7 @@
+use crate::Billing;
 use g1t_contracts::billing::InvoiceLine;
 use serde::{Deserialize, Serialize};
 use worker::Result;
-use crate::Billing;
 
 pub(crate) const RETIRE: &str = "DELETE FROM enterprise_invoice_attempts WHERE account_id=?1 AND completed=1";
 // The snapshots used to calculate the invoice must still match at acquisition.
@@ -42,8 +42,11 @@ pub(crate) struct Attempt {
 
 impl Billing {
     pub(crate) async fn enterprise_attempt(&self, account: &str) -> Result<Option<Attempt>> {
-        self.db.prepare("SELECT id,payload,created_ms,invoice_id FROM enterprise_invoice_attempts WHERE account_id=?")
-            .bind(&[account.into()])?.first::<Attempt>(None).await
+        self.db
+            .prepare("SELECT id,payload,created_ms,invoice_id FROM enterprise_invoice_attempts WHERE account_id=?")
+            .bind(&[account.into()])?
+            .first::<Attempt>(None)
+            .await
     }
 
     pub(crate) async fn begin_enterprise_attempt(&self, account: &str, request: Request, snapshots: Vec<Snapshot>) -> Result<Attempt> {
@@ -51,9 +54,11 @@ impl Billing {
         let json = |value| serde_json::to_string(value).map_err(|e| worker::Error::RustError(e.to_string()));
         let payload = json(&request)?;
         let snapshots = serde_json::to_string(&snapshots).map_err(|e| worker::Error::RustError(e.to_string()))?;
-        self.db.prepare(INSERT).bind(&[
-            account.into(), g1t_contracts::new_id("einv", now).into(), payload.into(), (now as f64).into(), snapshots.into(),
-        ])?.run().await?;
+        self.db
+            .prepare(INSERT)
+            .bind(&[account.into(), g1t_contracts::new_id("einv", now).into(), payload.into(), (now as f64).into(), snapshots.into()])?
+            .run()
+            .await?;
         self.enterprise_attempt(account).await?.ok_or_else(|| worker::Error::RustError("Enterprise invoice balances changed; retry".into()))
     }
 }

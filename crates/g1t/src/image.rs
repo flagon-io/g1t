@@ -90,9 +90,7 @@ impl TarIndex {
         let mut archive = tar::Archive::new(&mut *file);
         let mut files = HashMap::new();
         let mut links = HashMap::new();
-        let entries = archive
-            .entries_with_seek()
-            .map_err(|e| format!("The saved image is not a tar: {e}"))?;
+        let entries = archive.entries_with_seek().map_err(|e| format!("The saved image is not a tar: {e}"))?;
         for entry in entries {
             let entry = entry.map_err(|e| format!("The saved image is not a readable tar: {e}"))?;
             let path = normalize(&entry.path().map_err(|e| e.to_string())?.to_string_lossy());
@@ -134,20 +132,14 @@ impl TarIndex {
 pub fn load(tar: &Path, work: &Path) -> Result<Image> {
     let mut file = File::open(tar).map_err(|e| format!("Could not open {}: {e}", tar.display()))?;
     let index = TarIndex::read(&mut file)?;
-    let mut saved = Saved {
-        file,
-        index,
-        work: work.to_owned(),
-    };
+    let mut saved = Saved { file, index, work: work.to_owned() };
     let has_oci = saved.index.find("index.json").is_some();
     let has_classic = saved.index.find("manifest.json").is_some();
     match (has_oci, has_classic) {
         (true, false) => saved.oci(),
         (true, true) => saved.oci().or_else(|oci| saved.classic().map_err(|_| oci)),
         (false, true) => saved.classic(),
-        (false, false) => {
-            Err("The saved image has neither index.json nor manifest.json.".to_owned())
-        }
+        (false, false) => Err("The saved image has neither index.json nor manifest.json.".to_owned()),
     }
 }
 
@@ -167,34 +159,24 @@ enum Compressed {
 
 impl Saved {
     fn read_path(&mut self, path: &str) -> Result<Vec<u8>> {
-        let (offset, size) = self
-            .index
-            .find(path)
-            .ok_or_else(|| format!("The saved image has no {path}."))?;
+        let (offset, size) = self.index.find(path).ok_or_else(|| format!("The saved image has no {path}."))?;
         if size > 64 * 1024 * 1024 {
             return Err(format!("{path} is too large to be a manifest or config."));
         }
         let mut bytes = vec![0; size as usize];
-        self.file
-            .seek(SeekFrom::Start(offset))
-            .map_err(|e| e.to_string())?;
-        self.file
-            .read_exact(&mut bytes)
-            .map_err(|e| format!("Could not read {path}: {e}"))?;
+        self.file.seek(SeekFrom::Start(offset)).map_err(|e| e.to_string())?;
+        self.file.read_exact(&mut bytes).map_err(|e| format!("Could not read {path}: {e}"))?;
         Ok(bytes)
     }
 
     fn read_json(&mut self, path: &str) -> Result<(Vec<u8>, Value)> {
         let bytes = self.read_path(path)?;
-        let value =
-            serde_json::from_slice(&bytes).map_err(|e| format!("{path} is not JSON: {e}"))?;
+        let value = serde_json::from_slice(&bytes).map_err(|e| format!("{path} is not JSON: {e}"))?;
         Ok((bytes, value))
     }
 
     fn blob_path(digest: &str) -> Result<String> {
-        let (algorithm, hex) = digest
-            .split_once(':')
-            .ok_or_else(|| format!("`{digest}` is not a digest."))?;
+        let (algorithm, hex) = digest.split_once(':').ok_or_else(|| format!("`{digest}` is not a digest."))?;
         Ok(format!("blobs/{algorithm}/{hex}"))
     }
 
@@ -205,12 +187,8 @@ impl Saved {
     fn sniff(&mut self, offset: u64, size: u64) -> Result<Compressed> {
         let mut magic = [0u8; 4];
         let n = size.min(4) as usize;
-        self.file
-            .seek(SeekFrom::Start(offset))
-            .map_err(|e| e.to_string())?;
-        self.file
-            .read_exact(&mut magic[..n])
-            .map_err(|e| e.to_string())?;
+        self.file.seek(SeekFrom::Start(offset)).map_err(|e| e.to_string())?;
+        self.file.read_exact(&mut magic[..n]).map_err(|e| e.to_string())?;
         Ok(match magic {
             [0x1f, 0x8b, ..] => Compressed::Gzip,
             [0x28, 0xb5, 0x2f, 0xfd] => Compressed::Zstd,
@@ -220,15 +198,9 @@ impl Saved {
 
     /// Hashes `size` bytes at `offset`.
     fn hash_range(&mut self, offset: u64, size: u64) -> Result<String> {
-        self.file
-            .seek(SeekFrom::Start(offset))
-            .map_err(|e| e.to_string())?;
+        self.file.seek(SeekFrom::Start(offset)).map_err(|e| e.to_string())?;
         let mut hasher = Sha256::new();
-        io::copy(
-            &mut (&mut self.file).take(size),
-            &mut HashWriter(&mut hasher),
-        )
-        .map_err(|e| e.to_string())?;
+        io::copy(&mut (&mut self.file).take(size), &mut HashWriter(&mut hasher)).map_err(|e| e.to_string())?;
         Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
     }
 
@@ -236,20 +208,13 @@ impl Saved {
     /// gzipped blob and the digest of the bytes before compression.
     fn gzip(&mut self, offset: u64, size: u64, n: usize) -> Result<(Blob, String)> {
         let path = self.work.join(format!("layer-{n}.tar.gz"));
-        let out =
-            File::create(&path).map_err(|e| format!("Could not write {}: {e}", path.display()))?;
+        let out = File::create(&path).map_err(|e| format!("Could not write {}: {e}", path.display()))?;
         let mut compressed_hash = Sha256::new();
-        let mut counted = Counted {
-            inner: BufWriter::with_capacity(1 << 20, out),
-            hasher: &mut compressed_hash,
-            bytes: 0,
-        };
+        let mut counted = Counted { inner: BufWriter::with_capacity(1 << 20, out), hasher: &mut compressed_hash, bytes: 0 };
         let mut plain_hash = Sha256::new();
         {
             let mut encoder = GzEncoder::new(&mut counted, Compression::default());
-            self.file
-                .seek(SeekFrom::Start(offset))
-                .map_err(|e| e.to_string())?;
+            self.file.seek(SeekFrom::Start(offset)).map_err(|e| e.to_string())?;
             let mut reader = (&mut self.file).take(size);
             let mut buffer = vec![0u8; 1 << 20];
             loop {
@@ -258,44 +223,29 @@ impl Saved {
                     break;
                 }
                 plain_hash.update(&buffer[..read]);
-                encoder
-                    .write_all(&buffer[..read])
-                    .map_err(|e| format!("Could not compress a layer: {e}"))?;
+                encoder.write_all(&buffer[..read]).map_err(|e| format!("Could not compress a layer: {e}"))?;
             }
-            encoder
-                .finish()
-                .map_err(|e| format!("Could not compress a layer: {e}"))?;
+            encoder.finish().map_err(|e| format!("Could not compress a layer: {e}"))?;
         }
         counted.inner.flush().map_err(|e| e.to_string())?;
         let written = counted.bytes;
         drop(counted);
-        let blob = Blob {
-            digest: format!("sha256:{}", hex::encode(compressed_hash.finalize())),
-            size: written,
-            source: Source::File(path),
-        };
-        Ok((
-            blob,
-            format!("sha256:{}", hex::encode(plain_hash.finalize())),
-        ))
+        let blob =
+            Blob { digest: format!("sha256:{}", hex::encode(compressed_hash.finalize())), size: written, source: Source::File(path) };
+        Ok((blob, format!("sha256:{}", hex::encode(plain_hash.finalize()))))
     }
 
     /// A layer as the registry takes it: as it is when compressed, gzipped
     /// when not. `diff_id` is checked against what gets compressed.
     fn layer(&mut self, path: &str, n: usize, diff_id: Option<&str>) -> Result<(Blob, Compressed)> {
-        let (offset, size) = self
-            .index
-            .find(path)
-            .ok_or_else(|| format!("The saved image has no layer {path}."))?;
+        let (offset, size) = self.index.find(path).ok_or_else(|| format!("The saved image has no layer {path}."))?;
         match self.sniff(offset, size)? {
             Compressed::No => {
                 let (blob, plain) = self.gzip(offset, size, n)?;
                 if let Some(diff_id) = diff_id
                     && diff_id != plain
                 {
-                    return Err(format!(
-                        "Layer {n} is {plain}, but the image's config says {diff_id}."
-                    ));
+                    return Err(format!("Layer {n} is {plain}, but the image's config says {diff_id}."));
                 }
                 Ok((blob, Compressed::No))
             }
@@ -304,32 +254,15 @@ impl Saved {
                     Some(hex) if hex.len() == 64 => format!("sha256:{hex}"),
                     _ => self.hash_range(offset, size)?,
                 };
-                Ok((
-                    Blob {
-                        digest,
-                        size,
-                        source: Source::Tar { offset },
-                    },
-                    compressed,
-                ))
+                Ok((Blob { digest, size, source: Source::Tar { offset } }, compressed))
             }
         }
     }
 
     fn config_blob(&mut self, path: &str) -> Result<(Blob, Value)> {
-        let (offset, size) = self
-            .index
-            .find(path)
-            .ok_or_else(|| format!("The saved image has no config {path}."))?;
+        let (offset, size) = self.index.find(path).ok_or_else(|| format!("The saved image has no config {path}."))?;
         let (bytes, config) = self.read_json(path)?;
-        Ok((
-            Blob {
-                digest: sha256_of(&bytes),
-                size,
-                source: Source::Tar { offset },
-            },
-            config,
-        ))
+        Ok((Blob { digest: sha256_of(&bytes), size, source: Source::Tar { offset } }, config))
     }
 
     /// The OCI layout: index.json, down through any image index, to one
@@ -338,11 +271,7 @@ impl Saved {
         let (_, index) = self.read_json("index.json")?;
         let mut descriptor = first_manifest(&index).ok_or("index.json lists no image.")?;
         let (bytes, manifest, media_type) = loop {
-            let digest = descriptor
-                .get("digest")
-                .and_then(Value::as_str)
-                .ok_or("A descriptor has no digest.")?
-                .to_owned();
+            let digest = descriptor.get("digest").and_then(Value::as_str).ok_or("A descriptor has no digest.")?.to_owned();
             let (bytes, value) = self.read_json(&Self::blob_path(&digest)?)?;
             let media_type = value
                 .get("mediaType")
@@ -350,51 +279,26 @@ impl Saved {
                 .or_else(|| descriptor.get("mediaType").and_then(Value::as_str))
                 .unwrap_or(OCI_MANIFEST)
                 .to_owned();
-            if media_type == OCI_INDEX
-                || media_type == DOCKER_LIST
-                || value.get("manifests").is_some()
-            {
-                descriptor = self
-                    .pick_platform(&value)
-                    .ok_or("No image in the saved index has all its layers saved.")?;
+            if media_type == OCI_INDEX || media_type == DOCKER_LIST || value.get("manifests").is_some() {
+                descriptor = self.pick_platform(&value).ok_or("No image in the saved index has all its layers saved.")?;
                 continue;
             }
             break (bytes, value, media_type);
         };
-        let config_digest = manifest
-            .pointer("/config/digest")
-            .and_then(Value::as_str)
-            .ok_or("The manifest has no config.")?;
+        let config_digest = manifest.pointer("/config/digest").and_then(Value::as_str).ok_or("The manifest has no config.")?;
         let (config, config_json) = self.config_blob(&Self::blob_path(config_digest)?)?;
         if config.digest != config_digest {
-            return Err(format!(
-                "The saved config is {}, not {config_digest}.",
-                config.digest
-            ));
+            return Err(format!("The saved config is {}, not {config_digest}.", config.digest));
         }
         let diff_ids = diff_ids(&config_json);
-        let descriptors = manifest
-            .get("layers")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+        let descriptors = manifest.get("layers").and_then(Value::as_array).cloned().unwrap_or_default();
         let mut new_manifest = manifest.clone();
         let mut layers = Vec::new();
         let mut converted = false;
         for (n, descriptor) in descriptors.iter().enumerate() {
-            let digest = descriptor
-                .get("digest")
-                .and_then(Value::as_str)
-                .ok_or("A layer has no digest.")?;
-            let declared = descriptor
-                .get("mediaType")
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let (blob, compressed) = self.layer(
-                &Self::blob_path(digest)?,
-                n,
-                diff_ids.get(n).map(String::as_str),
-            )?;
+            let digest = descriptor.get("digest").and_then(Value::as_str).ok_or("A layer has no digest.")?;
+            let declared = descriptor.get("mediaType").and_then(Value::as_str).unwrap_or("");
+            let (blob, compressed) = self.layer(&Self::blob_path(digest)?, n, diff_ids.get(n).map(String::as_str))?;
             let media_type = layer_media_type(declared, compressed, &media_type);
             if blob.digest != digest || media_type != declared {
                 converted = true;
@@ -405,18 +309,8 @@ impl Saved {
             }
             layers.push(blob);
         }
-        let manifest = if converted {
-            serde_json::to_vec(&new_manifest).map_err(|e| e.to_string())?
-        } else {
-            bytes
-        };
-        Ok(Image {
-            config,
-            layers,
-            manifest,
-            media_type,
-            converted,
-        })
+        let manifest = if converted { serde_json::to_vec(&new_manifest).map_err(|e| e.to_string())? } else { bytes };
+        Ok(Image { config, layers, manifest, media_type, converted })
     }
 
     /// Of an index's images, the one for this machine whose blobs were all
@@ -432,15 +326,8 @@ impl Saved {
             .as_array()?
             .iter()
             .filter(|d| d.pointer("/platform/os").and_then(Value::as_str) != Some("unknown"))
-            .filter(|d| {
-                d.pointer("/annotations/vnd.docker.reference.type")
-                    .is_none()
-            })
-            .filter(|d| {
-                d.get("digest")
-                    .and_then(Value::as_str)
-                    .is_some_and(|digest| self.complete(digest))
-            })
+            .filter(|d| d.pointer("/annotations/vnd.docker.reference.type").is_none())
+            .filter(|d| d.get("digest").and_then(Value::as_str).is_some_and(|digest| self.complete(digest)))
             .collect();
         let native = candidates.iter().find(|d| {
             d.pointer("/platform/os").and_then(Value::as_str) == Some("linux")
@@ -468,67 +355,38 @@ impl Saved {
             return false;
         };
         if let Some(children) = value.get("manifests").and_then(Value::as_array) {
-            return children.iter().any(|c| {
-                c.get("digest")
-                    .and_then(Value::as_str)
-                    .is_some_and(|d| self.complete(d))
-            });
+            return children.iter().any(|c| c.get("digest").and_then(Value::as_str).is_some_and(|d| self.complete(d)));
         }
         let config = value.pointer("/config/digest").and_then(Value::as_str);
         let layers = value.get("layers").and_then(Value::as_array);
         config.is_some_and(|c| self.has_blob(c))
-            && layers.is_some_and(|l| {
-                l.iter().all(|d| {
-                    d.get("digest")
-                        .and_then(Value::as_str)
-                        .is_some_and(|d| self.has_blob(d))
-                })
-            })
+            && layers.is_some_and(|l| l.iter().all(|d| d.get("digest").and_then(Value::as_str).is_some_and(|d| self.has_blob(d))))
     }
 
     /// The classic layout: manifest.json names the config and the layer
     /// tars, and the push gets a new Docker manifest.
     fn classic(&mut self) -> Result<Image> {
         let (_, saved) = self.read_json("manifest.json")?;
-        let entry = saved
-            .as_array()
-            .and_then(|images| images.first())
-            .ok_or("manifest.json lists no image.")?
-            .clone();
-        let config_path = entry
-            .get("Config")
-            .and_then(Value::as_str)
-            .ok_or("manifest.json names no config.")?;
+        let entry = saved.as_array().and_then(|images| images.first()).ok_or("manifest.json lists no image.")?.clone();
+        let config_path = entry.get("Config").and_then(Value::as_str).ok_or("manifest.json names no config.")?;
         let (config, config_json) = self.config_blob(config_path)?;
         let diff_ids = diff_ids(&config_json);
         let paths: Vec<String> = entry
             .get("Layers")
             .and_then(Value::as_array)
-            .map(|l| {
-                l.iter()
-                    .filter_map(|p| p.as_str().map(str::to_owned))
-                    .collect()
-            })
+            .map(|l| l.iter().filter_map(|p| p.as_str().map(str::to_owned)).collect())
             .unwrap_or_default();
         if !diff_ids.is_empty() && diff_ids.len() != paths.len() {
-            return Err(format!(
-                "The image has {} layers, but its config lists {}.",
-                paths.len(),
-                diff_ids.len()
-            ));
+            return Err(format!("The image has {} layers, but its config lists {}.", paths.len(), diff_ids.len()));
         }
         let mut layers = Vec::new();
         let mut descriptors = Vec::new();
         for (n, path) in paths.iter().enumerate() {
             let (blob, compressed) = self.layer(path, n, diff_ids.get(n).map(String::as_str))?;
             if compressed == Compressed::Zstd {
-                return Err(format!(
-                    "Layer {n} is zstd, which a Docker manifest cannot name."
-                ));
+                return Err(format!("Layer {n} is zstd, which a Docker manifest cannot name."));
             }
-            descriptors.push(
-                json!({ "mediaType": DOCKER_LAYER_GZIP, "size": blob.size, "digest": blob.digest }),
-            );
+            descriptors.push(json!({ "mediaType": DOCKER_LAYER_GZIP, "size": blob.size, "digest": blob.digest }));
             layers.push(blob);
         }
         let manifest = json!({
@@ -538,13 +396,7 @@ impl Saved {
             "layers": descriptors,
         });
         let manifest = serde_json::to_vec(&manifest).map_err(|e| e.to_string())?;
-        Ok(Image {
-            config,
-            layers,
-            manifest,
-            media_type: DOCKER_MANIFEST.to_owned(),
-            converted: true,
-        })
+        Ok(Image { config, layers, manifest, media_type: DOCKER_MANIFEST.to_owned(), converted: true })
     }
 }
 
@@ -556,11 +408,7 @@ fn diff_ids(config: &Value) -> Vec<String> {
     config
         .pointer("/rootfs/diff_ids")
         .and_then(Value::as_array)
-        .map(|ids| {
-            ids.iter()
-                .filter_map(|d| d.as_str().map(str::to_owned))
-                .collect()
-        })
+        .map(|ids| ids.iter().filter_map(|d| d.as_str().map(str::to_owned)).collect())
         .unwrap_or_default()
 }
 
@@ -575,9 +423,7 @@ fn layer_media_type(declared: &str, compressed: Compressed, manifest_type: &str)
         Compressed::Zstd if says_zstd => declared.to_owned(),
         Compressed::Zstd => "application/vnd.oci.image.layer.v1.tar+zstd".to_owned(),
         // Gzipped by the push, or gzip that said otherwise.
-        _ if docker || declared.starts_with("application/vnd.docker.") => {
-            DOCKER_LAYER_GZIP.to_owned()
-        }
+        _ if docker || declared.starts_with("application/vnd.docker.") => DOCKER_LAYER_GZIP.to_owned(),
         _ => OCI_LAYER_GZIP.to_owned(),
     }
 }
@@ -623,12 +469,8 @@ mod tests {
 
     impl Scratch {
         fn new(name: &str) -> Scratch {
-            let nanos = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos();
-            let dir = std::env::temp_dir()
-                .join(format!("g1t-test-{name}-{}-{nanos}", std::process::id()));
+            let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+            let dir = std::env::temp_dir().join(format!("g1t-test-{name}-{}-{nanos}", std::process::id()));
             std::fs::create_dir_all(&dir).unwrap();
             Scratch(dir)
         }
@@ -675,9 +517,7 @@ mod tests {
                 Entry::File(name, bytes) => {
                     header.set_size(bytes.len() as u64);
                     header.set_cksum();
-                    builder
-                        .append_data(&mut header, name, bytes.as_slice())
-                        .unwrap();
+                    builder.append_data(&mut header, name, bytes.as_slice()).unwrap();
                 }
                 Entry::Symlink(name, target) => {
                     header.set_entry_type(tar::EntryType::Symlink);
@@ -690,10 +530,7 @@ mod tests {
     }
 
     fn config_for(layers: &[&[u8]]) -> Vec<u8> {
-        let ids: Vec<String> = layers
-            .iter()
-            .map(|l| format!("sha256:{}", hex_of(l)))
-            .collect();
+        let ids: Vec<String> = layers.iter().map(|l| format!("sha256:{}", hex_of(l))).collect();
         serde_json::to_vec(&json!({
             "architecture": "amd64", "os": "linux",
             "config": { "Cmd": ["sh"] },
@@ -787,14 +624,8 @@ mod tests {
             vec![
                 Entry::File(&format!("blobs/sha256/{config_hex}"), config.clone()),
                 Entry::File(&format!("blobs/sha256/{layer_hex}"), one.clone()),
-                Entry::Symlink(
-                    &format!("{config_hex}.json"),
-                    &format!("blobs/sha256/{config_hex}"),
-                ),
-                Entry::Symlink(
-                    &format!("{layer_hex}/layer.tar"),
-                    &format!("../blobs/sha256/{layer_hex}"),
-                ),
+                Entry::Symlink(&format!("{config_hex}.json"), &format!("blobs/sha256/{config_hex}")),
+                Entry::Symlink(&format!("{layer_hex}/layer.tar"), &format!("../blobs/sha256/{layer_hex}")),
                 Entry::File("manifest.json", serde_json::to_vec(&saved).unwrap()),
             ],
         );
@@ -842,10 +673,7 @@ mod tests {
             vec![
                 Entry::File(&format!("blobs/sha256/{}", hex_of(&config)), config.clone()),
                 Entry::File(&format!("blobs/sha256/{}", hex_of(&one)), one.clone()),
-                Entry::File(
-                    &format!("blobs/sha256/{}", hex_of(&manifest)),
-                    manifest.clone(),
-                ),
+                Entry::File(&format!("blobs/sha256/{}", hex_of(&manifest)), manifest.clone()),
                 Entry::File("index.json", serde_json::to_vec(&index).unwrap()),
                 Entry::File("oci-layout", br#"{"imageLayoutVersion":"1.0.0"}"#.to_vec()),
                 Entry::File("manifest.json", b"[]".to_vec()),
@@ -858,10 +686,7 @@ mod tests {
         let pushed: Value = serde_json::from_slice(&image.manifest).unwrap();
         assert_eq!(pushed["layers"][0]["mediaType"], OCI_LAYER_GZIP);
         // Everything else in the manifest stays.
-        assert_eq!(
-            pushed["annotations"]["org.opencontainers.image.created"],
-            "2026-10-06T00:00:00Z"
-        );
+        assert_eq!(pushed["annotations"]["org.opencontainers.image.created"], "2026-10-06T00:00:00Z");
     }
 
     /// The containerd image store: an index of indexes, gzipped layers, and
@@ -899,30 +724,16 @@ mod tests {
             vec![
                 Entry::File(&format!("blobs/sha256/{}", hex_of(&config)), config.clone()),
                 Entry::File(&format!("blobs/sha256/{}", hex_of(&one)), one.clone()),
-                Entry::File(
-                    &format!("blobs/sha256/{}", hex_of(&manifest)),
-                    manifest.clone(),
-                ),
-                Entry::File(
-                    &format!("blobs/sha256/{}", hex_of(&platforms)),
-                    platforms.clone(),
-                ),
+                Entry::File(&format!("blobs/sha256/{}", hex_of(&manifest)), manifest.clone()),
+                Entry::File(&format!("blobs/sha256/{}", hex_of(&platforms)), platforms.clone()),
                 Entry::File("index.json", serde_json::to_vec(&index).unwrap()),
             ],
         );
         let image = load(&tar, &scratch.0).unwrap();
         assert!(!image.converted);
         assert_eq!(image.manifest, manifest);
-        assert_eq!(
-            image.manifest_digest(),
-            format!("sha256:{}", hex_of(&manifest))
-        );
-        assert_eq!(
-            image.layers[0].source,
-            Source::Tar {
-                offset: image.layers[0].source_offset()
-            }
-        );
+        assert_eq!(image.manifest_digest(), format!("sha256:{}", hex_of(&manifest)));
+        assert_eq!(image.layers[0].source, Source::Tar { offset: image.layers[0].source_offset() });
         assert_consistent(&image, &tar);
     }
 

@@ -27,8 +27,8 @@ use serde::Deserialize;
 use serde_json::Value;
 use worker::wasm_bindgen::JsValue;
 use worker::{
-    Context, D1Database, Delay, Env, Fetch, Fetcher, Headers, MessageBatch, MessageExt, Method, Request, RequestInit, Response,
-    Result, ScheduleContext, ScheduledEvent, event,
+    Context, D1Database, Delay, Env, Fetch, Fetcher, Headers, MessageBatch, MessageExt, Method, Request, RequestInit, Response, Result,
+    ScheduleContext, ScheduledEvent, event,
 };
 
 /// How long a receiver has to answer.
@@ -195,19 +195,8 @@ impl Webhooks {
         let Some(path) = &owner.repo else {
             return Ok(None);
         };
-        let found: Outcome<Repo> = g1t_kit::call(
-            &self.repos,
-            "get",
-            &GetArgs {
-                path: path.clone(),
-                viewer: viewer.clone(),
-            },
-        )
-        .await?;
-        Ok(found
-            .into_result()
-            .ok()
-            .filter(|repo| repo.namespace == owner.workspace && repo.fork_of.is_none()))
+        let found: Outcome<Repo> = g1t_kit::call(&self.repos, "get", &GetArgs { path: path.clone(), viewer: viewer.clone() }).await?;
+        Ok(found.into_result().ok().filter(|repo| repo.namespace == owner.workspace && repo.fork_of.is_none()))
     }
 
     /// Whether `viewer` may see (or, `managing`, change) `owner`'s webhooks,
@@ -334,10 +323,7 @@ impl Webhooks {
         // Tells the receiver it is wired up, and shows whether it answers.
         self.send_ping(&row).await?;
         let row = self.hook_of(&owner, &id).await?.unwrap_or(row);
-        Ok(Outcome::Ok(CreatedHook {
-            hook: row.to_hook(),
-            secret: made.then_some(secret),
-        }))
+        Ok(Outcome::Ok(CreatedHook { hook: row.to_hook(), secret: made.then_some(secret) }))
     }
 
     async fn update(&self, a: UpdateArgs) -> Result<Outcome<Hook>> {
@@ -521,9 +507,11 @@ impl Webhooks {
                         optional(next.as_deref()),
                         delivery_id.into(),
                     ])?,
-                self.db
-                    .prepare("UPDATE hooks SET last_status = ?, last_delivered_at = ? WHERE id = ?")
-                    .bind(&[status.into(), rfc3339(now).into(), hook.id.as_str().into()])?,
+                self.db.prepare("UPDATE hooks SET last_status = ?, last_delivered_at = ? WHERE id = ?").bind(&[
+                    status.into(),
+                    rfc3339(now).into(),
+                    hook.id.as_str().into(),
+                ])?,
             ])
             .await?;
         Ok(())
@@ -543,23 +531,14 @@ impl Webhooks {
         // Asked as each workspace with webhooks in turn: each sees only its
         // own private repositories.
         for workspace in workspaces {
-            let found: Outcome<Repo> = g1t_kit::call(
-                &self.repos,
-                "get_by_id",
-                &GetByIdArgs {
-                    id: repo_id.to_owned(),
-                    viewer: workspace_viewer(workspace),
-                },
-            )
-            .await?;
+            let found: Outcome<Repo> =
+                g1t_kit::call(&self.repos, "get_by_id", &GetByIdArgs { id: repo_id.to_owned(), viewer: workspace_viewer(workspace) })
+                    .await?;
             if let Outcome::Ok(repo) = found
                 && repo.fork_of.is_none()
             {
                 self.remember(repo_id, &repo.namespace, &repo.name).await?;
-                return Ok(Some(NameRow {
-                    namespace: repo.namespace,
-                    name: repo.name,
-                }));
+                return Ok(Some(NameRow { namespace: repo.namespace, name: repo.name }));
             }
         }
         Ok(None)
@@ -698,10 +677,7 @@ impl Webhooks {
             let own = hook.repo_id.as_deref().filter(|_| hook.scope == "repo").map(|id| (id, None));
             let repo = own.or(repo);
             let full_name = repo.map(|(_, name)| {
-                hook.repo
-                    .clone()
-                    .or_else(|| name.map(|name| format!("{}/{}", name.namespace, name.name)))
-                    .unwrap_or_default()
+                hook.repo.clone().or_else(|| name.map(|name| format!("{}/{}", name.namespace, name.name))).unwrap_or_default()
             });
             let named = repo.zip(full_name.as_deref()).map(|((id, _), full)| (id, full));
             let payload = deliver::payload(event, &hook.workspace, named, actor_name.as_deref()).to_string();
@@ -751,12 +727,7 @@ impl Webhooks {
         let before = rfc3339(now_ms().saturating_sub(KEPT_DAYS * 24 * 60 * 60 * 1000));
         let mut deleted = 0;
         for _ in 0..PURGE_BATCHES {
-            let result = self
-                .db
-                .prepare(PURGE_SQL)
-                .bind(&[before.as_str().into(), PURGE_BATCH.into()])?
-                .run()
-                .await?;
+            let result = self.db.prepare(PURGE_SQL).bind(&[before.as_str().into(), PURGE_BATCH.into()])?.run().await?;
             let changed = result.meta()?.and_then(|meta| meta.changes).unwrap_or(0) as u32;
             deleted += changed;
             if changed < PURGE_BATCH {
@@ -786,12 +757,7 @@ async fn send(url: &str, hook_id: &str, delivery: &HookDelivery, secret: &str) -
     let request = match request {
         Ok(request) => request,
         Err(error) => {
-            return Attempt {
-                status: None,
-                body: None,
-                error: Some(format!("The request could not be made: {error}")),
-                duration_ms: 0,
-            };
+            return Attempt { status: None, body: None, error: Some(format!("The request could not be made: {error}")), duration_ms: 0 };
         }
     };
     let fetcher = Fetch::Request(request);
@@ -801,19 +767,11 @@ async fn send(url: &str, hook_id: &str, delivery: &HookDelivery, secret: &str) -
         Either::Left((Ok(mut response), _)) => {
             let status = response.status_code();
             let body: String = response.text().await.unwrap_or_default().chars().take(RESPONSE_KEPT).collect();
-            Attempt {
-                status: Some(status),
-                body: Some(body),
-                error: None,
-                duration_ms: elapsed(),
-            }
+            Attempt { status: Some(status), body: Some(body), error: None, duration_ms: elapsed() }
         }
-        Either::Left((Err(error), _)) => Attempt {
-            status: None,
-            body: None,
-            error: Some(format!("The receiver could not be reached: {error}")),
-            duration_ms: elapsed(),
-        },
+        Either::Left((Err(error), _)) => {
+            Attempt { status: None, body: None, error: Some(format!("The receiver could not be reached: {error}")), duration_ms: elapsed() }
+        }
         Either::Right(_) => Attempt {
             status: None,
             body: None,
@@ -879,7 +837,8 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
 }
 
 /// One batch of old deliveries, by time.
-const PURGE_SQL: &str = "DELETE FROM deliveries WHERE rowid IN (SELECT rowid FROM deliveries WHERE created_at < ? ORDER BY created_at LIMIT ?)";
+const PURGE_SQL: &str =
+    "DELETE FROM deliveries WHERE rowid IN (SELECT rowid FROM deliveries WHERE created_at < ? ORDER BY created_at LIMIT ?)";
 
 /// Every minute: retries that are due. Once an hour, at [`PURGE_CRON`]:
 /// deliveries old enough to forget.
@@ -922,4 +881,3 @@ mod tests {
         assert!(PURGE_BATCH * PURGE_BATCHES >= 10_000);
     }
 }
-

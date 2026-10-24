@@ -73,7 +73,6 @@ impl RunKind {
     pub fn parse(value: &str) -> Option<RunKind> {
         RunKind::ALL.into_iter().find(|kind| kind.as_str() == value)
     }
-
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -100,15 +99,9 @@ impl RunStatus {
     }
 
     pub fn parse(value: &str) -> Option<RunStatus> {
-        [
-            RunStatus::Queued,
-            RunStatus::Running,
-            RunStatus::Succeeded,
-            RunStatus::Failed,
-            RunStatus::Stopped,
-        ]
-        .into_iter()
-        .find(|status| status.as_str() == value)
+        [RunStatus::Queued, RunStatus::Running, RunStatus::Succeeded, RunStatus::Failed, RunStatus::Stopped]
+            .into_iter()
+            .find(|status| status.as_str() == value)
     }
 
     pub fn is_active(self) -> bool {

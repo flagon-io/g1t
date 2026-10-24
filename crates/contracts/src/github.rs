@@ -115,12 +115,7 @@ pub enum GithubFinished {
     /// in to it, and `github_claim` then links it.
     NeedsLink { pending: String, login: String, next: String },
     /// A new account, but the GitHub login cannot be its username.
-    NeedsUsername {
-        pending: String,
-        login: String,
-        suggestion: String,
-        next: String,
-    },
+    NeedsUsername { pending: String, login: String, suggestion: String, next: String },
 }
 
 #[derive(Debug, Serialize, Deserialize)]

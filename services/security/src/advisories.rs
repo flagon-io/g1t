@@ -55,7 +55,9 @@ pub fn looks_like_email(text: &str) -> bool {
     let text = text.trim();
     text.len() <= 254
         && !text.contains(char::is_whitespace)
-        && text.split_once('@').is_some_and(|(user, host)| !user.is_empty() && host.contains('.') && !host.starts_with('.') && !host.ends_with('.'))
+        && text
+            .split_once('@')
+            .is_some_and(|(user, host)| !user.is_empty() && host.contains('.') && !host.starts_with('.') && !host.ends_with('.'))
 }
 
 /// An advisory's input, checked and cleaned, or what is wrong with it.
@@ -72,12 +74,7 @@ pub fn validate(input: &AdvisoryInput) -> std::result::Result<AdvisoryInput, Str
     if input.cvss_score.is_some_and(|score| !(0.0..=10.0).contains(&score)) {
         return Err("cvss_score is 0 to 10.".to_owned());
     }
-    let credits: Vec<String> = input
-        .credits
-        .iter()
-        .filter_map(|credit| clean(Some(credit), 100))
-        .take(MAX_CREDITS)
-        .collect();
+    let credits: Vec<String> = input.credits.iter().filter_map(|credit| clean(Some(credit), 100)).take(MAX_CREDITS).collect();
     Ok(AdvisoryInput {
         title,
         description: input.description.trim().chars().take(MAX_DESCRIPTION_CHARS).collect(),
@@ -218,8 +215,7 @@ struct CountRow {
 
 const ADVISORY_COLUMNS: &str = "id, g1tsa_id, repo_id, title, description, severity, cvss_vector, cvss_score, cve_id, ecosystem, package,
     affected_versions, patched_versions, state, credits, report_id, created_by, created_at, updated_at, published_at, withdrawn_at";
-const REPORT_COLUMNS: &str =
-    "id, repo_id, reporter, reporter_email, title, description, severity, state, advisory_id, created_at, reviewed_by, reviewed_at, review_note";
+const REPORT_COLUMNS: &str = "id, repo_id, reporter, reporter_email, title, description, severity, state, advisory_id, created_at, reviewed_by, reviewed_at, review_note";
 
 impl Store {
     /// A repository's advisories in `states`, newest first.
@@ -337,13 +333,12 @@ impl Store {
 
     pub async fn reports(&self, repo: &RepoRow, state: Option<&str>) -> Result<Vec<VulnerabilityReport>> {
         let rows = match state {
-            Some(state) => {
-                self.db
-                    .prepare(format!(
-                        "SELECT {REPORT_COLUMNS} FROM vulnerability_reports WHERE repo_id = ? AND state = ? ORDER BY created_at DESC LIMIT ?"
-                    ))
-                    .bind(&[repo.repo_id.as_str().into(), state.into(), LISTED.into()])?
-            }
+            Some(state) => self
+                .db
+                .prepare(format!(
+                    "SELECT {REPORT_COLUMNS} FROM vulnerability_reports WHERE repo_id = ? AND state = ? ORDER BY created_at DESC LIMIT ?"
+                ))
+                .bind(&[repo.repo_id.as_str().into(), state.into(), LISTED.into()])?,
             None => self
                 .db
                 .prepare(format!(
@@ -382,7 +377,13 @@ impl Store {
                     .bind(&[repo.repo_id.as_str().into()])?,
             ])
             .await?;
-        let count = |at: usize| results.get(at).and_then(|result| result.results::<CountRow>().ok()).and_then(|rows| rows.first().map(|row| row.n as u32)).unwrap_or(0);
+        let count = |at: usize| {
+            results
+                .get(at)
+                .and_then(|result| result.results::<CountRow>().ok())
+                .and_then(|rows| rows.first().map(|row| row.n as u32))
+                .unwrap_or(0)
+        };
         Ok((count(0), count(1)))
     }
 
@@ -420,7 +421,15 @@ impl Store {
     }
 
     /// Settles a new report. Returns whether it was still new.
-    pub async fn review_report(&self, repo: &RepoRow, id: &str, state: &str, by: &str, note: Option<&str>, advisory_id: Option<&str>) -> Result<bool> {
+    pub async fn review_report(
+        &self,
+        repo: &RepoRow,
+        id: &str,
+        state: &str,
+        by: &str,
+        note: Option<&str>,
+        advisory_id: Option<&str>,
+    ) -> Result<bool> {
         #[derive(Deserialize)]
         struct Changed {
             #[allow(dead_code)]
@@ -528,8 +537,15 @@ impl Security {
         let Some(advisory) = self.store.security_advisory(&repo, &id).await? else {
             return Ok(fail(FailureCode::NotFound, "No such advisory."));
         };
-        self.audit(&a.actor, "security_advisory.created", Some(&repo), &repo.namespace, None, &format!("Drafted advisory {}: {}", advisory.g1tsa_id, advisory.title))
-            .await;
+        self.audit(
+            &a.actor,
+            "security_advisory.created",
+            Some(&repo),
+            &repo.namespace,
+            None,
+            &format!("Drafted advisory {}: {}", advisory.g1tsa_id, advisory.title),
+        )
+        .await;
         Ok(Outcome::Ok(advisory))
     }
 
@@ -549,7 +565,15 @@ impl Security {
         let Some(advisory) = self.store.security_advisory(&repo, &advisory.id).await? else {
             return Ok(fail(FailureCode::NotFound, "No such advisory."));
         };
-        self.audit(&a.actor, "security_advisory.updated", Some(&repo), &repo.namespace, None, &format!("Changed advisory {}", advisory.g1tsa_id)).await;
+        self.audit(
+            &a.actor,
+            "security_advisory.updated",
+            Some(&repo),
+            &repo.namespace,
+            None,
+            &format!("Changed advisory {}", advisory.g1tsa_id),
+        )
+        .await;
         Ok(Outcome::Ok(advisory))
     }
 
@@ -625,10 +649,16 @@ impl Security {
         let since = rfc3339(now_ms().saturating_sub(DAY_MS));
         let (by_reporter, waiting) = self.store.report_counts(&repo, &key, &since).await?;
         if by_reporter >= REPORTS_PER_DAY {
-            return Ok(fail(FailureCode::Limit, format!("You have sent {REPORTS_PER_DAY} reports to this repository today. Try again tomorrow.")));
+            return Ok(fail(
+                FailureCode::Limit,
+                format!("You have sent {REPORTS_PER_DAY} reports to this repository today. Try again tomorrow."),
+            ));
         }
         if waiting >= MAX_NEW_REPORTS {
-            return Ok(fail(FailureCode::Conflict, "This repository has as many reports waiting as it takes. Try again once its maintainers have reviewed them."));
+            return Ok(fail(
+                FailureCode::Conflict,
+                "This repository has as many reports waiting as it takes. Try again once its maintainers have reviewed them.",
+            ));
         }
         let id = self.store.add_report(&repo, reporter.as_deref(), email.as_deref(), &key, &title, &description, severity).await?;
         let Some(report) = self.store.report(&repo, &id).await? else {
@@ -707,7 +737,11 @@ impl Security {
             Some(&repo),
             &repo.namespace,
             None,
-            &format!("Report {} {state}{}", report.id, advisory.as_ref().map(|advisory| format!(", drafted as {}", advisory.g1tsa_id)).unwrap_or_default()),
+            &format!(
+                "Report {} {state}{}",
+                report.id,
+                advisory.as_ref().map(|advisory| format!(", drafted as {}", advisory.g1tsa_id)).unwrap_or_default()
+            ),
         )
         .await;
         Ok(Outcome::Ok(ReviewedReport { report, advisory }))
@@ -735,8 +769,19 @@ mod tests {
         assert_eq!(clean.credits, vec!["ana", "bo"]);
         assert!(validate(&AdvisoryInput { title: " ".into(), severity: "high".into(), ..AdvisoryInput::default() }).is_err());
         assert!(validate(&AdvisoryInput { title: "x".into(), severity: "severe".into(), ..AdvisoryInput::default() }).is_err());
-        assert!(validate(&AdvisoryInput { title: "x".into(), severity: "low".into(), cve_id: Some("CVE-1".into()), ..AdvisoryInput::default() }).is_err());
-        assert!(validate(&AdvisoryInput { title: "x".into(), severity: "low".into(), cvss_score: Some(11.0), ..AdvisoryInput::default() }).is_err());
+        assert!(
+            validate(&AdvisoryInput {
+                title: "x".into(),
+                severity: "low".into(),
+                cve_id: Some("CVE-1".into()),
+                ..AdvisoryInput::default()
+            })
+            .is_err()
+        );
+        assert!(
+            validate(&AdvisoryInput { title: "x".into(), severity: "low".into(), cvss_score: Some(11.0), ..AdvisoryInput::default() })
+                .is_err()
+        );
     }
 
     #[test]

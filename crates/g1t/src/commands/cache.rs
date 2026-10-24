@@ -42,14 +42,7 @@ fn list(ctx: &Ctx, args: CacheListArgs) -> Result<()> {
             .query_opt("key", args.key.clone())
             .query_opt("ref", args.git_ref.clone())
             .query("sort", sort_name(args.sort))
-            .query(
-                "direction",
-                if args.order == SortOrder::Asc {
-                    "asc"
-                } else {
-                    "desc"
-                },
-            )
+            .query("direction", if args.order == SortOrder::Asc { "asc" } else { "desc" })
             .query("per_page", limit.min(100))
             .query("page", page)
             .send()?;
@@ -80,10 +73,7 @@ fn list(ctx: &Ctx, args: CacheListArgs) -> Result<()> {
                 Cell::styled(s(c, "ref"), out.cyan(s(c, "ref"))),
                 Cell::new(human(bytes(c, "size_in_bytes"))),
                 Cell::styled(ago(s(c, "created_at")), out.dim(&ago(s(c, "created_at")))),
-                Cell::styled(
-                    ago(s(c, "last_accessed_at")),
-                    out.dim(&ago(s(c, "last_accessed_at"))),
-                ),
+                Cell::styled(ago(s(c, "last_accessed_at")), out.dim(&ago(s(c, "last_accessed_at")))),
             ]
         })
         .collect();
@@ -103,17 +93,8 @@ fn usage(ctx: &Ctx) -> Result<()> {
     let held = bytes(&found, "active_caches_size_in_bytes");
     let quota = bytes(&found, "quota_bytes");
     let count = bytes(&found, "active_caches_count");
-    let share = if quota > 0 {
-        format!(" ({:.0}%)", held as f64 * 100.0 / quota as f64)
-    } else {
-        String::new()
-    };
-    println!(
-        "{repo}: {count} {} holding {} of {}{share}",
-        if count == 1 { "entry" } else { "entries" },
-        human(held),
-        human(quota),
-    );
+    let share = if quota > 0 { format!(" ({:.0}%)", held as f64 * 100.0 / quota as f64) } else { String::new() };
+    println!("{repo}: {count} {} holding {} of {}{share}", if count == 1 { "entry" } else { "entries" }, human(held), human(quota),);
     Ok(())
 }
 
@@ -125,19 +106,11 @@ fn is_id(entry: &str) -> bool {
 fn delete(ctx: &Ctx, args: CacheDeleteArgs) -> Result<()> {
     let (repo, client) = ctx.repo_client()?;
     let deleted = if is_id(&args.entry) {
-        client
-            .op("delete_cache")
-            .repo(&repo)
-            .arg("id", &args.entry)
-            .send()?;
+        client.op("delete_cache").repo(&repo).arg("id", &args.entry).send()?;
         vec![json!({ "id": args.entry.parse::<u64>().unwrap_or_default() })]
     } else {
-        let found = client
-            .op("delete_caches_by_key")
-            .repo(&repo)
-            .query("key", &args.entry)
-            .query_opt("ref", args.git_ref.clone())
-            .send()?;
+        let found =
+            client.op("delete_caches_by_key").repo(&repo).query("key", &args.entry).query_opt("ref", args.git_ref.clone()).send()?;
         super::items(found, "actions_caches")
     };
     if ctx.out.structured() {
@@ -147,11 +120,7 @@ fn delete(ctx: &Ctx, args: CacheDeleteArgs) -> Result<()> {
         format!("cache entry {}", args.entry)
     } else {
         let n = deleted.len();
-        format!(
-            "{n} cache {} with the key {}",
-            if n == 1 { "entry" } else { "entries" },
-            args.entry
-        )
+        format!("{n} cache {} with the key {}", if n == 1 { "entry" } else { "entries" }, args.entry)
     };
     eprintln!("{} Deleted {what} from {repo}.", ctx.out.green("✓"));
     Ok(())

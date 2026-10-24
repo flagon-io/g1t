@@ -114,9 +114,17 @@ fn view(ctx: &Ctx, workspace: Option<&str>, args: CycleViewArgs) -> Result<()> {
     let closed = s(cycle, "state") == "closed";
     type Wanted<'a> = Box<dyn Fn(&Value) -> bool + 'a>;
     let sections: [(&str, Wanted); 3] = [
-        ("Open", Box::new(|item: &Value| s(item, "state") == "open" && !member(item["number"].as_u64().unwrap_or_default()).is_some_and(|m| m["carried_out"] == true))),
+        (
+            "Open",
+            Box::new(|item: &Value| {
+                s(item, "state") == "open" && !member(item["number"].as_u64().unwrap_or_default()).is_some_and(|m| m["carried_out"] == true)
+            }),
+        ),
         ("Done", Box::new(|item: &Value| s(item, "state") == "closed" && item["cycle"] == cycle["number"])),
-        ("Carried out", Box::new(|item: &Value| member(item["number"].as_u64().unwrap_or_default()).is_some_and(|m| m["carried_out"] == true))),
+        (
+            "Carried out",
+            Box::new(|item: &Value| member(item["number"].as_u64().unwrap_or_default()).is_some_and(|m| m["carried_out"] == true)),
+        ),
     ];
     for (title, wanted) in &sections {
         let shown: Vec<&Value> = items.iter().filter(|item| wanted(item)).collect();
@@ -139,7 +147,8 @@ fn view(ctx: &Ctx, workspace: Option<&str>, args: CycleViewArgs) -> Result<()> {
                     notes.push("added mid-cycle");
                 }
             }
-            let assignees: Vec<&str> = item["assignees"].as_array().map(|a| a.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
+            let assignees: Vec<&str> =
+                item["assignees"].as_array().map(|a| a.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
             let who = if assignees.is_empty() { String::new() } else { format!(" {}", out.dim(&assignees.join(", "))) };
             let notes = if notes.is_empty() { String::new() } else { format!("  {}", out.dim(&notes.join(" · "))) };
             println!("  {} {}{who}{notes}", out.green(&format!("#{number}")), s(item, "title"));
@@ -212,13 +221,7 @@ fn list(ctx: &Ctx, workspace: Option<&str>, args: CycleListArgs) -> Result<()> {
 /// Moves work item `number` into `cycle` (current, next or none).
 fn move_to(ctx: &Ctx, workspace: Option<&str>, number: u32, cycle: &str, said: &str) -> Result<()> {
     let place = place(ctx, workspace)?;
-    let moved = place
-        .client
-        .op("cycle_work_item")
-        .arg("workspace", &place.workspace)
-        .arg("number", number)
-        .field("cycle", cycle)
-        .send()?;
+    let moved = place.client.op("cycle_work_item").arg("workspace", &place.workspace).arg("number", number).field("cycle", cycle).send()?;
     let at = moved["cycle"].as_u64().map(|n| format!("Cycle {n}")).unwrap_or_else(|| "no cycle".to_owned());
     super::done(ctx, &moved, &format!("{said} #{number}: {at}, {}", s(&moved, "horizon")), &place.url(u64::from(number)))
 }

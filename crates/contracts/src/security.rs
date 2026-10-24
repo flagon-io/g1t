@@ -119,10 +119,7 @@ impl DismissReason {
 
     /// Whether it closes a secret alert (the rest close dependency alerts).
     pub fn for_secrets(self) -> bool {
-        matches!(
-            self,
-            DismissReason::FalsePositive | DismissReason::UsedInTests | DismissReason::Revoked | DismissReason::WontFix
-        )
+        matches!(self, DismissReason::FalsePositive | DismissReason::UsedInTests | DismissReason::Revoked | DismissReason::WontFix)
     }
 
     /// The status a secret takes: revoked means fixed (`resolved`); the
@@ -589,9 +586,7 @@ pub struct AlertActivity {
 
 /// Version updates, and what the dependency update file asks of security
 /// updates: see [`crate::updates`].
-pub use crate::updates::{
-    UpdateAllow, UpdateGroup, UpdateIgnore, VersionUpdateEntry, VersionUpdatesState,
-};
+pub use crate::updates::{UpdateAllow, UpdateGroup, UpdateIgnore, VersionUpdateEntry, VersionUpdatesState};
 
 /// Everything the Security page shows for one repository.
 #[derive(Clone, Debug, Serialize, Deserialize)]

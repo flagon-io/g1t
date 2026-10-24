@@ -84,10 +84,8 @@ mod tests {
 
     #[test]
     fn g1t_comes_before_github() {
-        let found = vec![
-            (".github/dependabot.yml".to_owned(), Some("a".to_owned())),
-            (".g1t/dependabot.yaml".to_owned(), Some("b".to_owned())),
-        ];
+        let found =
+            vec![(".github/dependabot.yml".to_owned(), Some("a".to_owned())), (".g1t/dependabot.yaml".to_owned(), Some("b".to_owned()))];
         let ((path, text), ignored) = choose(found).unwrap();
         assert_eq!((path.as_str(), text.as_deref()), (".g1t/dependabot.yaml", Some("b")));
         assert_eq!(ignored, [".github/dependabot.yml"]);
@@ -104,9 +102,13 @@ mod tests {
         assert!(found.updates[0].supported && !found.updates[1].supported);
         assert_eq!(found.updates[0].id, "npm:/");
 
-        let (broken, config) = state(".github/dependabot.yml", Some("version: 2\nupdates:\n  - package-ecosystem: npm\n"), Vec::new(), "rep_1", None);
+        let (broken, config) =
+            state(".github/dependabot.yml", Some("version: 2\nupdates:\n  - package-ecosystem: npm\n"), Vec::new(), "rep_1", None);
         assert!(config.is_none());
-        assert_eq!(broken.error.as_deref(), Some("line 3, updates[0]: `directory` (or `directories`) is required: where the manifest is, such as \"/\"."));
+        assert_eq!(
+            broken.error.as_deref(),
+            Some("line 3, updates[0]: `directory` (or `directories`) is required: where the manifest is, such as \"/\".")
+        );
         let (binary, _) = state(".g1t/dependabot.yml", None, Vec::new(), "rep_1", None);
         assert!(binary.error.unwrap().contains("too large"));
     }

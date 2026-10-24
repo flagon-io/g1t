@@ -217,7 +217,10 @@ pub async fn receive(mut request: Request, services: &Services, viewer: &Viewer,
     let content_type = request.headers().get("content-type")?.unwrap_or_default().to_ascii_lowercase();
     let encoding = if content_type.starts_with("application/json") {
         Encoding::Json
-    } else if content_type.is_empty() || content_type.starts_with("application/x-protobuf") || content_type.starts_with("application/protobuf") {
+    } else if content_type.is_empty()
+        || content_type.starts_with("application/x-protobuf")
+        || content_type.starts_with("application/protobuf")
+    {
         Encoding::Protobuf
     } else {
         return refuse(Encoding::Json, 415, "Send OTLP as application/x-protobuf or application/json.");
@@ -351,10 +354,7 @@ mod tests {
         assert_eq!(refusal(&Some(writer)), None);
         let workspace = User { username: "acme".into(), kind: PrincipalKind::Workspace, ..User::default() };
         assert_eq!(refusal(&Some(workspace.clone())), None);
-        let job = User {
-            token: Some(Box::new(TokenAccess { job: Some(Default::default()), ..TokenAccess::default() })),
-            ..workspace
-        };
+        let job = User { token: Some(Box::new(TokenAccess { job: Some(Default::default()), ..TokenAccess::default() })), ..workspace };
         assert_eq!(refusal(&Some(job)).map(|(status, _)| status), Some(403));
         let agent = User { kind: PrincipalKind::Agent, ..User::default() };
         assert_eq!(refusal(&Some(agent)).map(|(status, _)| status), Some(403));
@@ -377,7 +377,11 @@ mod tests {
     fn a_workspace_token_records_members_by_the_addresses_they_verified() {
         let members = vec![MemberEmail { email: "ana@example.com".into(), user_id: "usr_ana".into(), username: "ana".into() }];
         let (sessions, rejected) = for_members(
-            &[found(Harness::Cursor, Some("Ana@Example.com")), found(Harness::ClaudeCode, Some("eve@example.com")), found(Harness::Copilot, None)],
+            &[
+                found(Harness::Cursor, Some("Ana@Example.com")),
+                found(Harness::ClaudeCode, Some("eve@example.com")),
+                found(Harness::Copilot, None),
+            ],
             &members,
             1_792_692_100_000,
         );

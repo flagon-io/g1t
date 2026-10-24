@@ -354,9 +354,7 @@ fn build(app: &AppHandle, window: &Window) {
     let custom = crate::frame::started(app);
     // Never an inspector: the devtools feature gives every web view one
     // unless it is told otherwise (src/devtools.rs).
-    let builder = WebviewWindowBuilder::new(app, window.label, WebviewUrl::App(window.page.into()))
-        .title(window.title)
-        .devtools(false);
+    let builder = WebviewWindowBuilder::new(app, window.label, WebviewUrl::App(window.page.into())).title(window.title).devtools(false);
     let built = crate::frame::dialog(builder, custom)
         .inner_size(window.size.0, window.size.1)
         .min_inner_size(440.0, 420.0)

@@ -18,10 +18,7 @@ pub fn ng_reason(judged: &[Judged]) -> String {
 /// the branch's rules are shown.
 pub fn remote_lines(git_ref: &str, judged: &[Judged], rules_url: &str) -> Vec<String> {
     let violations = blocking(judged);
-    let mut lines = vec![
-        String::new(),
-        format!("error: rules for {git_ref} declined this push:"),
-    ];
+    let mut lines = vec![String::new(), format!("error: rules for {git_ref} declined this push:")];
     let mut last_remedy = String::new();
     for violation in &violations {
         lines.push(format!("- {} [ruleset \"{}\", {}]", violation.message, violation.ruleset_name, violation.rule));
@@ -100,8 +97,12 @@ mod tests {
 
     #[test]
     fn a_merge_refusal_is_one_sentence() {
-        let refused = judged(&[("pull_request", "It needs 2 approving reviews; it has 0.", ""), ("merge_window", "Merging is frozen.", "")]);
-        assert_eq!(summary(&blocking(&[refused]).to_vec()).as_deref(), Some("It needs 2 approving reviews; it has 0. One more rule is not met."));
+        let refused =
+            judged(&[("pull_request", "It needs 2 approving reviews; it has 0.", ""), ("merge_window", "Merging is frozen.", "")]);
+        assert_eq!(
+            summary(&blocking(&[refused]).to_vec()).as_deref(),
+            Some("It needs 2 approving reviews; it has 0. One more rule is not met.")
+        );
         assert_eq!(summary(&[]), None);
     }
 }

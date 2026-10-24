@@ -210,7 +210,7 @@ test("errors, fallbacks, failed watcher queries and an all-empty account fail th
 test("the watcher queries are billing's, field for field, over the last full hour", async () => {
   const { readFile } = await import("node:fs/promises");
   const rust = await readFile(new URL("../../services/billing/src/platform.rs", import.meta.url), "utf8");
-  const theirs = [...rust.matchAll(/Query \{ key: "([^"]+)", dataset: "([^"]+)", select: "([^"]+)", dimensions: "([^"]+)", hour_filter: "([^"]+)" \}/g)].map(
+  const theirs = [...rust.matchAll(/Query \{\s*key: "([^"]+)",\s*dataset: "([^"]+)",\s*select: "([^"]+)",\s*dimensions: "([^"]+)",\s*hour_filter: "([^"]+)",?\s*\}/g)].map(
     ([, key, dataset, select, dimensions, hourFilter]) => ({ key, dataset, select, dimensions, hourFilter }),
   );
   assert.deepEqual(WATCHER_QUERIES, theirs);

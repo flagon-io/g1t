@@ -67,10 +67,8 @@ pub struct Scope<'a> {
 }
 
 /// The contexts a workflow may name, whether or not the caller supplied them.
-const NAMED_VALUES: &[&str] = &[
-    "github", "env", "vars", "secrets", "inputs", "matrix", "strategy", "needs", "steps", "job",
-    "jobs", "runner",
-];
+const NAMED_VALUES: &[&str] =
+    &["github", "env", "vars", "secrets", "inputs", "matrix", "strategy", "needs", "steps", "job", "jobs", "runner"];
 
 /// Evaluates one expression (the text between `${{` and `}}`, or a bare `if:`).
 /// The status functions exist only in `if:`; anywhere else they are unrecognized, as on GitHub.
@@ -97,11 +95,7 @@ pub fn condition(text: &str, scope: &Scope) -> Result<bool, String> {
         return Ok(success);
     }
     let ast = parse(source, scope.contexts, true)?;
-    if uses_status(&ast) {
-        Ok(eval(&ast, scope)?.truthy())
-    } else {
-        Ok(success && eval(&ast, scope)?.truthy())
-    }
+    if uses_status(&ast) { Ok(eval(&ast, scope)?.truthy()) } else { Ok(success && eval(&ast, scope)?.truthy()) }
 }
 
 /// Replaces each `${{ expr }}` in text with the value converted to a string. Text without `${{` is returned unchanged.
@@ -141,12 +135,7 @@ pub fn interpolate_value(value: &Value, scope: &Scope) -> Result<Value, String> 
             Some(inner) => evaluate(inner, scope)?,
             None => Value::String(interpolate(text, scope)?),
         },
-        Value::Array(items) => Value::Array(
-            items
-                .iter()
-                .map(|item| interpolate_value(item, scope))
-                .collect::<Result<_, _>>()?,
-        ),
+        Value::Array(items) => Value::Array(items.iter().map(|item| interpolate_value(item, scope)).collect::<Result<_, _>>()?),
         Value::Object(map) => {
             let mut out = Map::new();
             for (key, item) in map {
@@ -275,15 +264,7 @@ fn lex(src: &str) -> Result<Vec<Token>, String> {
         let value_may_start = out.last().is_none_or(|t| {
             !matches!(
                 t.tok,
-                Tok::Ident(_)
-                    | Tok::Number(_)
-                    | Tok::Str(_)
-                    | Tok::Null
-                    | Tok::True
-                    | Tok::False
-                    | Tok::RParen
-                    | Tok::RBracket
-                    | Tok::Star
+                Tok::Ident(_) | Tok::Number(_) | Tok::Str(_) | Tok::Null | Tok::True | Tok::False | Tok::RParen | Tok::RBracket | Tok::Star
             )
         });
         let starts_number = c.is_ascii_digit()
@@ -294,12 +275,8 @@ fn lex(src: &str) -> Result<Vec<Token>, String> {
             while i < chars.len() {
                 let d = chars[i];
                 let so_far: String = chars[start..i].iter().collect();
-                let hex = so_far
-                    .trim_start_matches(['-', '+'])
-                    .to_ascii_lowercase()
-                    .starts_with("0x");
-                let exponent_sign =
-                    (d == '+' || d == '-') && matches!(chars[i - 1], 'e' | 'E') && !hex;
+                let hex = so_far.trim_start_matches(['-', '+']).to_ascii_lowercase().starts_with("0x");
+                let exponent_sign = (d == '+' || d == '-') && matches!(chars[i - 1], 'e' | 'E') && !hex;
                 if d.is_ascii_alphanumeric() || d == '.' || d == '_' || exponent_sign {
                     i += 1;
                 } else {
@@ -310,18 +287,12 @@ fn lex(src: &str) -> Result<Vec<Token>, String> {
             match parse_number(&text, false) {
                 Some(n) => Tok::Number(n),
                 None => {
-                    return Err(located(
-                        &format!("Unexpected symbol: '{text}'"),
-                        start + 1,
-                        src,
-                    ));
+                    return Err(located(&format!("Unexpected symbol: '{text}'"), start + 1, src));
                 }
             }
         } else if c.is_alphabetic() || c == '_' {
             i += 1;
-            while i < chars.len()
-                && (chars[i].is_alphanumeric() || chars[i] == '_' || chars[i] == '-')
-            {
+            while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_' || chars[i] == '-') {
                 i += 1;
             }
             let word: String = chars[start..i].iter().collect();
@@ -338,11 +309,7 @@ fn lex(src: &str) -> Result<Vec<Token>, String> {
                 match chars.get(i) {
                     None => {
                         let text: String = chars[start..].iter().collect();
-                        return Err(located(
-                            &format!("Unexpected symbol: '{text}'"),
-                            start + 1,
-                            src,
-                        ));
+                        return Err(located(&format!("Unexpected symbol: '{text}'"), start + 1, src));
                     }
                     Some('\'') if chars.get(i + 1) == Some(&'\'') => {
                         s.push('\'');
@@ -386,11 +353,7 @@ fn lex(src: &str) -> Result<Vec<Token>, String> {
                     '<' => Tok::Lt,
                     '>' => Tok::Gt,
                     _ => {
-                        return Err(located(
-                            &format!("Unexpected symbol: '{c}'"),
-                            start + 1,
-                            src,
-                        ));
+                        return Err(located(&format!("Unexpected symbol: '{c}'"), start + 1, src));
                     }
                 };
                 (tok, 1)
@@ -398,11 +361,7 @@ fn lex(src: &str) -> Result<Vec<Token>, String> {
             i += len;
             tok
         };
-        out.push(Token {
-            tok,
-            pos: start + 1,
-            text: chars[start..i].iter().collect(),
-        });
+        out.push(Token { tok, pos: start + 1, text: chars[start..i].iter().collect() });
     }
     Ok(out)
 }
@@ -465,11 +424,7 @@ fn parse_number(text: &str, lenient: bool) -> Option<f64> {
     if i != bytes.len() {
         return None;
     }
-    let normalized = if body.starts_with('.') {
-        format!("0{body}")
-    } else {
-        body.to_string()
-    };
+    let normalized = if body.starts_with('.') { format!("0{body}") } else { body.to_string() };
     normalized.parse::<f64>().ok().map(|n| sign * n)
 }
 
@@ -538,13 +493,7 @@ fn parse(src: &str, contexts: &Map<String, Value>, status: bool) -> Result<Expr,
     if toks.is_empty() {
         return Err(format!("An expression was expected: '{src}'"));
     }
-    let mut parser = Parser {
-        toks,
-        i: 0,
-        src,
-        contexts,
-        status,
-    };
+    let mut parser = Parser { toks, i: 0, src, contexts, status };
     let expr = parser.or()?;
     if parser.i < parser.toks.len() {
         return Err(parser.unexpected());
@@ -578,11 +527,7 @@ impl Parser<'_> {
         match self.toks.get(self.i) {
             Some(t) => located(&format!("Unexpected symbol: '{}'", t.text), t.pos, self.src),
             None => match self.toks.last() {
-                Some(t) => located(
-                    &format!("Unexpected end of expression: '{}'", t.text),
-                    t.pos,
-                    self.src,
-                ),
+                Some(t) => located(&format!("Unexpected end of expression: '{}'", t.text), t.pos, self.src),
                 None => format!("An expression was expected: '{}'", self.src),
             },
         }
@@ -651,16 +596,12 @@ impl Parser<'_> {
                 expr = match token.map(|t| (t.tok, t.text)) {
                     Some((Tok::Star, _)) => Expr::Wildcard(Box::new(expr)),
                     Some((Tok::Ident(name), _)) => Expr::Property(Box::new(expr), name),
-                    Some((Tok::True | Tok::False | Tok::Null, text)) => {
-                        Expr::Property(Box::new(expr), text)
-                    }
+                    Some((Tok::True | Tok::False | Tok::Null, text)) => Expr::Property(Box::new(expr), text),
                     _ => return Err(self.unexpected()),
                 };
                 self.i += 1;
             } else if self.eat(&Tok::LBracket) {
-                if self.peek() == Some(&Tok::Star)
-                    && self.toks.get(self.i + 1).map(|t| &t.tok) == Some(&Tok::RBracket)
-                {
+                if self.peek() == Some(&Tok::Star) && self.toks.get(self.i + 1).map(|t| &t.tok) == Some(&Tok::RBracket) {
                     self.i += 2;
                     expr = Expr::Wildcard(Box::new(expr));
                 } else {
@@ -702,11 +643,7 @@ impl Parser<'_> {
                 let known = NAMED_VALUES.iter().any(|n| n.eq_ignore_ascii_case(&name))
                     || self.contexts.keys().any(|k| k.eq_ignore_ascii_case(&name));
                 if !known {
-                    return Err(located(
-                        &format!("Unrecognized named-value: '{name}'"),
-                        token.pos,
-                        self.src,
-                    ));
+                    return Err(located(&format!("Unrecognized named-value: '{name}'"), token.pos, self.src));
                 }
                 Ok(Expr::Named(name))
             }
@@ -718,16 +655,10 @@ impl Parser<'_> {
     }
 
     fn call(&mut self, name: &str, pos: usize) -> Result<Expr, String> {
-        let Some(&(canonical, func, min, max)) = FUNCTIONS
-            .iter()
-            .find(|(n, ..)| n.eq_ignore_ascii_case(name))
-            .filter(|(_, func, ..)| self.status || !is_status(*func))
+        let Some(&(canonical, func, min, max)) =
+            FUNCTIONS.iter().find(|(n, ..)| n.eq_ignore_ascii_case(name)).filter(|(_, func, ..)| self.status || !is_status(*func))
         else {
-            return Err(located(
-                &format!("Unrecognized function: '{name}'"),
-                pos,
-                self.src,
-            ));
+            return Err(located(&format!("Unrecognized function: '{name}'"), pos, self.src));
         };
         let mut args = Vec::new();
         if !self.eat(&Tok::RParen) {
@@ -743,28 +674,17 @@ impl Parser<'_> {
             }
         }
         if args.len() < min {
-            return Err(located(
-                &format!("Too few parameters supplied: '{canonical}'"),
-                pos,
-                self.src,
-            ));
+            return Err(located(&format!("Too few parameters supplied: '{canonical}'"), pos, self.src));
         }
         if args.len() > max {
-            return Err(located(
-                &format!("Too many parameters supplied: '{canonical}'"),
-                pos,
-                self.src,
-            ));
+            return Err(located(&format!("Too many parameters supplied: '{canonical}'"), pos, self.src));
         }
         Ok(Expr::Call(func, args))
     }
 }
 
 fn is_status(func: Func) -> bool {
-    matches!(
-        func,
-        Func::Success | Func::Failure | Func::Cancelled | Func::Always
-    )
+    matches!(func, Func::Success | Func::Failure | Func::Cancelled | Func::Always)
 }
 
 /// Whether the expression calls success(), failure(), cancelled() or always().
@@ -772,9 +692,7 @@ fn uses_status(expr: &Expr) -> bool {
     match expr {
         Expr::Literal(_) | Expr::Named(_) => false,
         Expr::Property(base, _) | Expr::Wildcard(base) | Expr::Not(base) => uses_status(base),
-        Expr::Index(a, b) | Expr::Compare(_, a, b) | Expr::And(a, b) | Expr::Or(a, b) => {
-            uses_status(a) || uses_status(b)
-        }
+        Expr::Index(a, b) | Expr::Compare(_, a, b) | Expr::And(a, b) | Expr::Or(a, b) => uses_status(a) || uses_status(b),
         Expr::Call(func, args) => is_status(*func) || args.iter().any(uses_status),
     }
 }
@@ -825,17 +743,13 @@ enum Key {
 
 fn child<'c>(value: Cow<'c, Value>, key: &Key) -> Option<Cow<'c, Value>> {
     match (value, key) {
-        (Cow::Borrowed(Value::Object(map)), Key::Name(name)) => find_key(map, name)
-            .and_then(|k| map.get(k))
-            .map(Cow::Borrowed),
+        (Cow::Borrowed(Value::Object(map)), Key::Name(name)) => find_key(map, name).and_then(|k| map.get(k)).map(Cow::Borrowed),
         (Cow::Owned(Value::Object(mut map)), Key::Name(name)) => {
             let k = find_key(&map, name)?.clone();
             map.remove(&k).map(Cow::Owned)
         }
         (Cow::Borrowed(Value::Array(items)), Key::Index(i)) => items.get(*i).map(Cow::Borrowed),
-        (Cow::Owned(Value::Array(items)), Key::Index(i)) => {
-            items.into_iter().nth(*i).map(Cow::Owned)
-        }
+        (Cow::Owned(Value::Array(items)), Key::Index(i)) => items.into_iter().nth(*i).map(Cow::Owned),
         _ => None,
     }
 }
@@ -876,9 +790,7 @@ fn eval<'c>(expr: &Expr, scope: &Scope<'c>) -> Result<Ev<'c>, String> {
             let key = Key::Name(name.clone());
             match eval(base, scope)? {
                 Ev::One(v) => Ev::One(child(v, &key).unwrap_or(Cow::Owned(Value::Null))),
-                Ev::Filtered(items) => {
-                    Ev::Filtered(items.into_iter().filter_map(|it| child(it, &key)).collect())
-                }
+                Ev::Filtered(items) => Ev::Filtered(items.into_iter().filter_map(|it| child(it, &key)).collect()),
             }
         }
         Expr::Index(base, index) => {
@@ -889,12 +801,9 @@ fn eval<'c>(expr: &Expr, scope: &Scope<'c>) -> Result<Ev<'c>, String> {
                     let found = key_for(&v, &index).and_then(|key| child(v, &key));
                     Ev::One(found.unwrap_or(Cow::Owned(Value::Null)))
                 }
-                Ev::Filtered(items) => Ev::Filtered(
-                    items
-                        .into_iter()
-                        .filter_map(|it| key_for(&it, &index).and_then(|key| child(it, &key)))
-                        .collect(),
-                ),
+                Ev::Filtered(items) => {
+                    Ev::Filtered(items.into_iter().filter_map(|it| key_for(&it, &index).and_then(|key| child(it, &key))).collect())
+                }
             }
         }
         Expr::Wildcard(base) => match eval(base, scope)? {
@@ -923,16 +832,10 @@ fn eval<'c>(expr: &Expr, scope: &Scope<'c>) -> Result<Ev<'c>, String> {
                 CmpOp::Eq => loose_eq(&left, &right),
                 CmpOp::Ne => !loose_eq(&left, &right),
                 CmpOp::Lt => compare(&left, &right) == Some(Ordering::Less),
-                CmpOp::Le => matches!(
-                    compare(&left, &right),
-                    Some(Ordering::Less | Ordering::Equal)
-                ),
+                CmpOp::Le => matches!(compare(&left, &right), Some(Ordering::Less | Ordering::Equal)),
                 CmpOp::Gt => compare(&left, &right) == Some(Ordering::Greater),
                 CmpOp::Ge => {
-                    matches!(
-                        compare(&left, &right),
-                        Some(Ordering::Greater | Ordering::Equal)
-                    )
+                    matches!(compare(&left, &right), Some(Ordering::Greater | Ordering::Equal))
                 }
             };
             owned(Value::Bool(result))
@@ -950,38 +853,26 @@ fn call(func: Func, args: &[Expr], scope: &Scope) -> Result<Value, String> {
         Func::Always => return Ok(Value::Bool(true)),
         _ => {}
     }
-    let values: Vec<Value> = args
-        .iter()
-        .map(|a| eval(a, scope).map(Ev::into_value))
-        .collect::<Result<_, _>>()?;
+    let values: Vec<Value> = args.iter().map(|a| eval(a, scope).map(Ev::into_value)).collect::<Result<_, _>>()?;
     Ok(match func {
         Func::Contains => Value::Bool(match &values[0] {
             Value::Array(items) => items.iter().any(|item| loose_eq(item, &values[1])),
             search => upper(&to_text(search)).contains(&upper(&to_text(&values[1]))),
         }),
-        Func::StartsWith => {
-            Value::Bool(upper(&to_text(&values[0])).starts_with(&upper(&to_text(&values[1]))))
-        }
-        Func::EndsWith => {
-            Value::Bool(upper(&to_text(&values[0])).ends_with(&upper(&to_text(&values[1]))))
-        }
+        Func::StartsWith => Value::Bool(upper(&to_text(&values[0])).starts_with(&upper(&to_text(&values[1])))),
+        Func::EndsWith => Value::Bool(upper(&to_text(&values[0])).ends_with(&upper(&to_text(&values[1])))),
         Func::Format => Value::String(format_string(&values)?),
         Func::Join => {
             let separator = values.get(1).map_or_else(|| ",".to_string(), to_text);
             Value::String(match &values[0] {
-                Value::Array(items) => items
-                    .iter()
-                    .map(to_text)
-                    .collect::<Vec<_>>()
-                    .join(&separator),
+                Value::Array(items) => items.iter().map(to_text).collect::<Vec<_>>().join(&separator),
                 other => to_text(other),
             })
         }
         Func::ToJson => Value::String(to_json(&values[0])),
         Func::FromJson => {
             let text = to_text(&values[0]);
-            let parsed: Value = serde_json::from_str(&text)
-                .map_err(|e| format!("Error from function 'fromJSON': {e}. Input: '{text}'"))?;
+            let parsed: Value = serde_json::from_str(&text).map_err(|e| format!("Error from function 'fromJSON': {e}. Input: '{text}'"))?;
             normalize(parsed)
         }
         Func::HashFiles => {
@@ -1022,11 +913,9 @@ fn format_string(values: &[Value]) -> Result<String, String> {
                 }
                 let digits: String = chars[start..end].iter().collect();
                 let index: usize = digits.parse().map_err(|_| invalid())?;
-                let arg = args.get(index).ok_or_else(|| {
-                    format!(
-                        "The following format string references more arguments than were supplied: '{template}'"
-                    )
-                })?;
+                let arg = args
+                    .get(index)
+                    .ok_or_else(|| format!("The following format string references more arguments than were supplied: '{template}'"))?;
                 out.push_str(arg);
                 i = end + 1;
             }
@@ -1094,9 +983,7 @@ fn normalize(value: Value) -> Value {
     match value {
         Value::Number(n) if n.is_f64() => number(n.as_f64().unwrap_or(f64::NAN)),
         Value::Array(items) => Value::Array(items.into_iter().map(normalize).collect()),
-        Value::Object(map) => {
-            Value::Object(map.into_iter().map(|(k, v)| (k, normalize(v))).collect())
-        }
+        Value::Object(map) => Value::Object(map.into_iter().map(|(k, v)| (k, normalize(v))).collect()),
         other => other,
     }
 }
@@ -1215,17 +1102,12 @@ mod tests {
     fn with<T>(status: Status, f: impl FnOnce(&Scope) -> T) -> T {
         let contexts = contexts();
         let hash = |patterns: &[String]| format!("hash({})", patterns.join("|"));
-        let scope = Scope {
-            contexts: &contexts,
-            status,
-            hash_files: Some(&hash),
-        };
+        let scope = Scope { contexts: &contexts, status, hash_files: Some(&hash) };
         f(&scope)
     }
 
     fn ev(expression: &str) -> Value {
-        with(Status::Success, |s| evaluate(expression, s))
-            .unwrap_or_else(|e| panic!("{expression}: {e}"))
+        with(Status::Success, |s| evaluate(expression, s)).unwrap_or_else(|e| panic!("{expression}: {e}"))
     }
 
     fn err(expression: &str) -> String {
@@ -1253,10 +1135,7 @@ mod tests {
     #[test]
     fn double_quotes_are_an_error() {
         let e = err("github.ref == \"main\"");
-        assert!(
-            e.starts_with("Unexpected symbol: '\"'. Located at position 15 within expression:"),
-            "{e}"
-        );
+        assert!(e.starts_with("Unexpected symbol: '\"'. Located at position 15 within expression:"), "{e}");
     }
 
     #[test]
@@ -1274,88 +1153,48 @@ mod tests {
 
     #[test]
     fn contains_labels_filter() {
-        assert_eq!(
-            ev("contains(github.event.pull_request.labels.*.name, 'bug')"),
-            json!(true)
-        );
-        assert_eq!(
-            ev("contains(github.event.pull_request.labels.*.name, 'enhancement')"),
-            json!(true)
-        );
-        assert_eq!(
-            ev("contains(github.event.pull_request.labels.*.name, 'docs')"),
-            json!(false)
-        );
+        assert_eq!(ev("contains(github.event.pull_request.labels.*.name, 'bug')"), json!(true));
+        assert_eq!(ev("contains(github.event.pull_request.labels.*.name, 'enhancement')"), json!(true));
+        assert_eq!(ev("contains(github.event.pull_request.labels.*.name, 'docs')"), json!(false));
     }
 
     #[test]
     fn nested_object_filters_flatten() {
-        assert_eq!(
-            ev("github.event.items.*.labels.*.name"),
-            json!(["a", "b", "c"])
-        );
-        assert_eq!(
-            ev("github.event.pull_request.labels[*].name"),
-            json!(["bug", "Enhancement"])
-        );
-        assert_eq!(
-            ev("github.event.pull_request.*"),
-            ev("github.event.pull_request.*")
-        );
+        assert_eq!(ev("github.event.items.*.labels.*.name"), json!(["a", "b", "c"]));
+        assert_eq!(ev("github.event.pull_request.labels[*].name"), json!(["bug", "Enhancement"]));
+        assert_eq!(ev("github.event.pull_request.*"), ev("github.event.pull_request.*"));
         assert_eq!(ev("matrix.nothing.*"), json!([]));
     }
 
     #[test]
     fn matrix_and() {
-        assert_eq!(
-            ev("matrix.os == 'ubuntu-latest' && matrix.node >= 18"),
-            json!(true)
-        );
-        assert_eq!(
-            ev("matrix.os == 'windows-latest' && matrix.node >= 18"),
-            json!(false)
-        );
+        assert_eq!(ev("matrix.os == 'ubuntu-latest' && matrix.node >= 18"), json!(true));
+        assert_eq!(ev("matrix.os == 'windows-latest' && matrix.node >= 18"), json!(false));
     }
 
     #[test]
     fn step_outputs() {
         assert_eq!(ev("steps.build.outputs.version"), json!("1.2.3"));
-        assert_eq!(
-            ev("steps.my-step.outputs.cache-hit != 'true'"),
-            json!(false)
-        );
+        assert_eq!(ev("steps.my-step.outputs.cache-hit != 'true'"), json!(false));
         assert_eq!(ev("steps.missing.outputs.version"), Value::Null);
     }
 
     #[test]
     fn format_with_hash_files() {
-        assert_eq!(
-            ev("format('{0}-{1}', runner.os, hashFiles('**/package-lock.json'))"),
-            json!("Linux-hash(**/package-lock.json)")
-        );
+        assert_eq!(ev("format('{0}-{1}', runner.os, hashFiles('**/package-lock.json'))"), json!("Linux-hash(**/package-lock.json)"));
         assert_eq!(ev("hashFiles('a', 'b')"), json!("hash(a|b)"));
     }
 
     #[test]
     fn hash_files_without_sandbox_is_empty() {
         let contexts = contexts();
-        let scope = Scope {
-            contexts: &contexts,
-            status: Status::Success,
-            hash_files: None,
-        };
-        assert_eq!(
-            evaluate("hashFiles('**/*.lock')", &scope).unwrap(),
-            json!("")
-        );
+        let scope = Scope { contexts: &contexts, status: Status::Success, hash_files: None };
+        assert_eq!(evaluate("hashFiles('**/*.lock')", &scope).unwrap(), json!(""));
     }
 
     #[test]
     fn format_escapes_and_errors() {
-        assert_eq!(
-            ev("format('{{Hello {0} {1} {2}!}}', 'Mona', 'the', 'Octocat')"),
-            json!("{Hello Mona the Octocat!}")
-        );
+        assert_eq!(ev("format('{{Hello {0} {1} {2}!}}', 'Mona', 'the', 'Octocat')"), json!("{Hello Mona the Octocat!}"));
         assert_eq!(ev("format('{0}{0}', 1)"), json!("11"));
         assert!(err("format('{1}', 'a')").contains("more arguments than were supplied"));
         assert!(err("format('{0', 'a')").contains("invalid"));
@@ -1363,14 +1202,8 @@ mod tests {
 
     #[test]
     fn from_json_matrix() {
-        assert_eq!(
-            ev("fromJSON(needs.setup.outputs.matrix)"),
-            json!({ "os": ["ubuntu-latest", "windows-latest"], "node": [18, 20] })
-        );
-        assert_eq!(
-            ev("fromJSON(needs.setup.outputs.matrix).node[1]"),
-            json!(20)
-        );
+        assert_eq!(ev("fromJSON(needs.setup.outputs.matrix)"), json!({ "os": ["ubuntu-latest", "windows-latest"], "node": [18, 20] }));
+        assert_eq!(ev("fromJSON(needs.setup.outputs.matrix).node[1]"), json!(20));
         assert_eq!(ev("fromJSON('true')"), json!(true));
         assert_eq!(ev("fromJSON('3.0')"), json!(3));
         assert!(err("fromJSON('{nope')").contains("fromJSON"));
@@ -1378,10 +1211,7 @@ mod tests {
 
     #[test]
     fn event_name_or() {
-        assert_eq!(
-            ev("github.event_name == 'push' || github.event_name == 'workflow_dispatch'"),
-            json!(true)
-        );
+        assert_eq!(ev("github.event_name == 'push' || github.event_name == 'workflow_dispatch'"), json!(true));
     }
 
     #[test]
@@ -1408,18 +1238,9 @@ mod tests {
 
     #[test]
     fn failure_and_outcome() {
-        assert!(cond(
-            Status::Failure,
-            "failure() && steps.test.outcome == 'failure'"
-        ));
-        assert!(!cond(
-            Status::Success,
-            "failure() && steps.test.outcome == 'failure'"
-        ));
-        assert!(!cond(
-            Status::Failure,
-            "failure() && steps.build.outcome == 'failure'"
-        ));
+        assert!(cond(Status::Failure, "failure() && steps.test.outcome == 'failure'"));
+        assert!(!cond(Status::Success, "failure() && steps.test.outcome == 'failure'"));
+        assert!(!cond(Status::Failure, "failure() && steps.build.outcome == 'failure'"));
     }
 
     #[test]
@@ -1521,10 +1342,7 @@ mod tests {
     #[test]
     fn unrecognized_named_value() {
         let e = err("foo.bar == 1");
-        assert_eq!(
-            e,
-            "Unrecognized named-value: 'foo'. Located at position 1 within expression: foo.bar == 1"
-        );
+        assert_eq!(e, "Unrecognized named-value: 'foo'. Located at position 1 within expression: foo.bar == 1");
         // Found at parse time, even in a branch that never runs.
         assert!(err("false && bogus").contains("Unrecognized named-value: 'bogus'"));
     }
@@ -1542,19 +1360,11 @@ mod tests {
     #[test]
     fn status_functions_only_in_conditions() {
         // GitHub: "Unrecognized function: 'success'" in env, with, run and the rest.
-        for f in [
-            "success()",
-            "failure()",
-            "cancelled()",
-            "always()",
-            "!SUCCESS()",
-        ] {
+        for f in ["success()", "failure()", "cancelled()", "always()", "!SUCCESS()"] {
             assert!(err(f).contains("Unrecognized function:"), "{f}");
         }
         let interpolated = with(Status::Success, |s| interpolate("x ${{ always() }}", s));
-        assert!(interpolated
-            .unwrap_err()
-            .starts_with("Unrecognized function: 'always'"));
+        assert!(interpolated.unwrap_err().starts_with("Unrecognized function: 'always'"));
         assert!(cond(Status::Success, "${{ success() }} and text"));
         assert!(err("toJSON()").starts_with("Too few parameters supplied: 'toJSON'"));
     }
@@ -1573,40 +1383,22 @@ mod tests {
     #[test]
     fn contains_array_uses_loose_equality() {
         assert_eq!(ev("contains(fromJSON('[1, 2, 3]'), '2')"), json!(true));
-        assert_eq!(
-            ev("contains(fromJSON('[\"push\", \"pull_request\"]'), github.event_name)"),
-            json!(true)
-        );
-        assert_eq!(
-            ev("contains(github.event.head_commit.message, '[skip ci]')"),
-            json!(true)
-        );
+        assert_eq!(ev("contains(fromJSON('[\"push\", \"pull_request\"]'), github.event_name)"), json!(true));
+        assert_eq!(ev("contains(github.event.head_commit.message, '[skip ci]')"), json!(true));
         assert_eq!(ev("contains(github.actor, '[bot]')"), json!(true));
     }
 
     #[test]
     fn join() {
-        assert_eq!(
-            ev("join(github.event.pull_request.labels.*.name)"),
-            json!("bug,Enhancement")
-        );
-        assert_eq!(
-            ev("join(github.event.pull_request.labels.*.name, ', ')"),
-            json!("bug, Enhancement")
-        );
+        assert_eq!(ev("join(github.event.pull_request.labels.*.name)"), json!("bug,Enhancement"));
+        assert_eq!(ev("join(github.event.pull_request.labels.*.name, ', ')"), json!("bug, Enhancement"));
         assert_eq!(ev("join('abc', '-')"), json!("abc"));
-        assert_eq!(
-            ev("join(fromJSON('[1, true, null]'), ' ')"),
-            json!("1 true ")
-        );
+        assert_eq!(ev("join(fromJSON('[1, true, null]'), ' ')"), json!("1 true "));
     }
 
     #[test]
     fn to_json_pretty() {
-        assert_eq!(
-            ev("toJSON(steps.build.outputs)"),
-            json!("{\n  \"version\": \"1.2.3\"\n}")
-        );
+        assert_eq!(ev("toJSON(steps.build.outputs)"), json!("{\n  \"version\": \"1.2.3\"\n}"));
         assert_eq!(ev("toJSON('a')"), json!("\"a\""));
         assert_eq!(ev("toJSON(null)"), json!("null"));
         assert_eq!(ev("toJSON(0x10)"), json!("16"));
@@ -1646,10 +1438,7 @@ mod tests {
         assert!(cond(Status::Success, "github.event_name == 'push'"));
         assert!(!cond(Status::Failure, "github.event_name == 'push'"));
         assert!(!cond(Status::Cancelled, "github.event_name == 'push'"));
-        assert!(!cond(
-            Status::Success,
-            "github.event_name == 'pull_request'"
-        ));
+        assert!(!cond(Status::Success, "github.event_name == 'pull_request'"));
     }
 
     #[test]
@@ -1660,10 +1449,7 @@ mod tests {
         assert!(!cond(Status::Success, "failure()"));
         assert!(cond(Status::Cancelled, "cancelled()"));
         assert!(cond(Status::Success, "success()"));
-        assert!(cond(
-            Status::Failure,
-            "${{ always() && github.ref == 'refs/heads/main' }}"
-        ));
+        assert!(cond(Status::Failure, "${{ always() && github.ref == 'refs/heads/main' }}"));
         // Nested inside another call still counts.
         assert!(cond(Status::Failure, "contains(toJSON(always()), 'true')"));
     }
@@ -1727,23 +1513,14 @@ mod tests {
 
     #[test]
     fn condition_wrapped_and_empty() {
-        assert!(cond(
-            Status::Success,
-            "${{ github.ref == 'refs/heads/main' }}"
-        ));
-        assert!(!cond(
-            Status::Success,
-            "  ${{ github.ref == 'refs/heads/dev' }}  "
-        ));
+        assert!(cond(Status::Success, "${{ github.ref == 'refs/heads/main' }}"));
+        assert!(!cond(Status::Success, "  ${{ github.ref == 'refs/heads/dev' }}  "));
         assert!(cond(Status::Success, ""));
         assert!(!cond(Status::Failure, ""));
         assert!(cond(Status::Success, "${{ }}"));
         assert!(cond(Status::Success, "${{ matrix.os }}"));
         assert!(!cond(Status::Success, "${{ env.EMPTY }}"));
-        assert!(cond(
-            Status::Success,
-            "vars.DEPLOY == 'yes' && !github.event.pull_request.draft"
-        ));
+        assert!(cond(Status::Success, "vars.DEPLOY == 'yes' && !github.event.pull_request.draft"));
     }
 
     #[test]
@@ -1754,13 +1531,8 @@ mod tests {
 
     #[test]
     fn interpolate_mixed_text() {
-        let out = with(Status::Success, |s| {
-            interpolate(
-                "node-${{ matrix.node }}-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}",
-                s,
-            )
-        })
-        .unwrap();
+        let out =
+            with(Status::Success, |s| interpolate("node-${{ matrix.node }}-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}", s)).unwrap();
         assert_eq!(out, "node-18-Linux-hash(**/yarn.lock)");
         let out = with(Status::Success, |s| {
             interpolate("echo \"PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}\"", s)
@@ -1771,27 +1543,11 @@ mod tests {
 
     #[test]
     fn interpolate_edge_cases() {
-        assert_eq!(
-            with(Status::Success, |s| interpolate("plain $text {{ x }}", s)).unwrap(),
-            "plain $text {{ x }}"
-        );
-        assert_eq!(
-            with(Status::Success, |s| interpolate("${{ '}}' }}!", s)).unwrap(),
-            "}}!"
-        );
-        assert_eq!(
-            with(Status::Success, |s| interpolate("[${{ env.MISSING }}]", s)).unwrap(),
-            "[]"
-        );
-        assert_eq!(
-            with(Status::Success, |s| interpolate("${{ 1.50 }}", s)).unwrap(),
-            "1.5"
-        );
-        assert!(
-            with(Status::Success, |s| interpolate("oops ${{ github.ref", s))
-                .unwrap_err()
-                .contains("not closed")
-        );
+        assert_eq!(with(Status::Success, |s| interpolate("plain $text {{ x }}", s)).unwrap(), "plain $text {{ x }}");
+        assert_eq!(with(Status::Success, |s| interpolate("${{ '}}' }}!", s)).unwrap(), "}}!");
+        assert_eq!(with(Status::Success, |s| interpolate("[${{ env.MISSING }}]", s)).unwrap(), "[]");
+        assert_eq!(with(Status::Success, |s| interpolate("${{ 1.50 }}", s)).unwrap(), "1.5");
+        assert!(with(Status::Success, |s| interpolate("oops ${{ github.ref", s)).unwrap_err().contains("not closed"));
         assert!(with(Status::Success, |s| interpolate("${{ \"x\" }}", s)).is_err());
     }
 
@@ -1831,14 +1587,8 @@ mod tests {
     #[test]
     fn dependabot_and_draft_guards() {
         assert!(!cond(Status::Success, "github.actor != 'dependabot[bot]'"));
-        assert!(cond(
-            Status::Success,
-            "github.event.pull_request.draft == false"
-        ));
-        assert!(cond(
-            Status::Success,
-            "!contains(github.event.head_commit.message, '[skip deploy]')"
-        ));
+        assert!(cond(Status::Success, "github.event.pull_request.draft == false"));
+        assert!(cond(Status::Success, "!contains(github.event.head_commit.message, '[skip deploy]')"));
     }
 
     #[test]
@@ -1849,22 +1599,9 @@ mod tests {
             c["github"]["event_name"] = json!("push");
             c
         };
-        let scope = Scope {
-            contexts: &contexts,
-            status: Status::Success,
-            hash_files: None,
-        };
-        assert!(
-            condition(
-                "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')",
-                &scope
-            )
-            .unwrap()
-        );
-        assert_eq!(
-            interpolate("${{ format('release-{0}', github.ref_name) }}", &scope).unwrap(),
-            "release-main"
-        );
+        let scope = Scope { contexts: &contexts, status: Status::Success, hash_files: None };
+        assert!(condition("github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')", &scope).unwrap());
+        assert_eq!(interpolate("${{ format('release-{0}', github.ref_name) }}", &scope).unwrap(), "release-main");
     }
 
     #[test]

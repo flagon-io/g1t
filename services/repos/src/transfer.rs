@@ -13,9 +13,7 @@
 //! with identity, before the event goes out, so a run under way keeps
 //! working.
 
-use g1t_contracts::audit::{
-    AuditActor, AuditOutcome, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface,
-};
+use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface};
 use g1t_contracts::events::{NewEvent, RepoTransferred};
 use g1t_contracts::identity::TransferRepoScopesArgs;
 use g1t_contracts::repos::{Repo, RepoPath, TransferArgs};
@@ -65,20 +63,13 @@ pub struct Facts {
 pub fn check(facts: &Facts) -> std::result::Result<(), (FailureCode, String)> {
     let refuse = |code, message: String| Err((code, message));
     if !facts.person {
-        return refuse(
-            FailureCode::Forbidden,
-            "Only a person can transfer a repository. Sign in, or use a personal access token.".into(),
-        );
+        return refuse(FailureCode::Forbidden, "Only a person can transfer a repository. Sign in, or use a personal access token.".into());
     }
-    let source_ok = facts.role_in_source == Some(Role::Owner)
-        || (facts.role_in_source == Some(Role::Member) && facts.admin_may_transfer);
+    let source_ok = facts.role_in_source == Some(Role::Owner) || (facts.role_in_source == Some(Role::Member) && facts.admin_may_transfer);
     if !source_ok {
         return refuse(
             FailureCode::Forbidden,
-            format!(
-                "Only an owner of {} can transfer its repositories, unless its member privileges let repository admins.",
-                facts.source
-            ),
+            format!("Only an owner of {} can transfer its repositories, unless its member privileges let repository admins.", facts.source),
         );
     }
     if !facts.verified {
@@ -88,29 +79,20 @@ pub fn check(facts: &Facts) -> std::result::Result<(), (FailureCode, String)> {
         return refuse(FailureCode::Invalid, "Say which workspace to transfer it to.".into());
     }
     if facts.destination == facts.source {
-        return refuse(
-            FailureCode::Invalid,
-            format!("{}/{} is already in {}.", facts.source, facts.name, facts.destination),
-        );
+        return refuse(FailureCode::Invalid, format!("{}/{} is already in {}.", facts.source, facts.name, facts.destination));
     }
     let destination_ok = facts.role_in_destination == Some(Role::Owner)
         || (facts.role_in_destination == Some(Role::Member) && facts.may_create_in_destination);
     if !destination_ok {
         return refuse(
             FailureCode::Forbidden,
-            format!(
-                "You can transfer a repository only to a workspace where you can create one, and you cannot in {}.",
-                facts.destination
-            ),
+            format!("You can transfer a repository only to a workspace where you can create one, and you cannot in {}.", facts.destination),
         );
     }
     if facts.name_taken {
         return refuse(
             FailureCode::Conflict,
-            format!(
-                "{} already has a repository named {}. Rename or remove that one first.",
-                facts.destination, facts.name
-            ),
+            format!("{} already has a repository named {}. Rename or remove that one first.", facts.destination, facts.name),
         );
     }
     if facts.is_private
@@ -167,7 +149,10 @@ impl Registry {
             ])
             .await?;
         #[derive(Deserialize)]
-        struct Moved { #[serde(rename = "id")] _id: String }
+        struct Moved {
+            #[serde(rename = "id")]
+            _id: String,
+        }
         Ok(!results[0].results::<Moved>()?.is_empty())
     }
 
@@ -182,16 +167,10 @@ impl Registry {
                  WHERE repo_redirects.namespace = ?1 AND repo_redirects.name = ?2
                    AND NOT EXISTS (SELECT 1 FROM repos AS here WHERE here.namespace = ?1 AND here.name = ?2)",
             )
-            .bind(&[
-                path.namespace.to_lowercase().into(),
-                path.name.to_lowercase().into(),
-            ])?
+            .bind(&[path.namespace.to_lowercase().into(), path.name.to_lowercase().into()])?
             .first::<Moved>(None)
             .await?
-            .map(|moved| RepoPath {
-                namespace: moved.namespace,
-                name: moved.name,
-            }))
+            .map(|moved| RepoPath { namespace: moved.namespace, name: moved.name }))
     }
 
     /// A repository made at `path` ends any redirect there.
@@ -250,32 +229,19 @@ impl<S: GitStore> Repos<S> {
         let source = repo.namespace.clone();
         // A repository deleted there but not yet purged holds the name too.
         let taken = !destination.is_empty()
-            && self
-                .registry
-                .by_path_any(&RepoPath {
-                    namespace: destination.clone(),
-                    name: repo.name.clone(),
-                })
-                .await?
-                .is_some();
+            && self.registry.by_path_any(&RepoPath { namespace: destination.clone(), name: repo.name.clone() }).await?.is_some();
         let private_checks = repo.is_private && !destination.is_empty() && destination != source;
         let (bytes, held, free) = if private_checks {
             let free = git_ops::is_free(self.billing.as_ref(), &destination).await;
-            (
-                self.registry.stored_bytes(&repo.id).await?,
-                self.registry.private_bytes(&destination).await.unwrap_or(0),
-                free,
-            )
+            (self.registry.stored_bytes(&repo.id).await?, self.registry.private_bytes(&destination).await.unwrap_or(0), free)
         } else {
             (0, 0, false)
         };
         let viewer = Some(a.actor.clone());
         let admin_may_transfer = crate::registry::role(&repo, &viewer) == Some(g1t_contracts::access::RepoRole::Admin)
             && a.actor.privileges_in(&source).members_can_delete_repositories;
-        let may_create_in_destination = a
-            .actor
-            .role_in(&destination)
-            .is_some_and(|role| a.actor.privileges_in(&destination).may_create(role, repo.is_private));
+        let may_create_in_destination =
+            a.actor.role_in(&destination).is_some_and(|role| a.actor.privileges_in(&destination).may_create(role, repo.is_private));
         let facts = Facts {
             person: a.actor.kind == PrincipalKind::User,
             verified: a.actor.verified,
@@ -298,31 +264,18 @@ impl<S: GitStore> Repos<S> {
         }
 
         if !self.registry.transfer(&repo, &destination, self.free_public_bytes).await? {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "This transfer would exceed the destination workspace's public storage limit."));
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                "This transfer would exceed the destination workspace's public storage limit.",
+            ));
         }
-        let moved = Repo {
-            namespace: destination.clone(),
-            ..repo.clone()
-        };
-        let from = RepoPath {
-            namespace: source.clone(),
-            name: repo.name.clone(),
-        };
-        let to = RepoPath {
-            namespace: destination.clone(),
-            name: repo.name.clone(),
-        };
+        let moved = Repo { namespace: destination.clone(), ..repo.clone() };
+        let from = RepoPath { namespace: source.clone(), name: repo.name.clone() };
+        let to = RepoPath { namespace: destination.clone(), name: repo.name.clone() };
         // Agents at work on it keep their scope, which names it by path.
         if let Some(identity) = &self.identity {
-            let moved_scopes: Result<bool> = g1t_kit::call(
-                identity,
-                "transfer_repo_scopes",
-                &TransferRepoScopesArgs {
-                    from: from.clone(),
-                    to: to.clone(),
-                },
-            )
-            .await;
+            let moved_scopes: Result<bool> =
+                g1t_kit::call(identity, "transfer_repo_scopes", &TransferRepoScopesArgs { from: from.clone(), to: to.clone() }).await;
             if let Err(error) = moved_scopes {
                 worker::console_error!("agent scopes for {} not moved: {error}", repo.id);
             }
@@ -332,12 +285,7 @@ impl<S: GitStore> Repos<S> {
             source: SOURCE,
             repo_id: Some(repo.id.clone()),
             actor: Some(a.actor.id.clone()),
-            data: RepoTransferred {
-                repo_id: repo.id.clone(),
-                name: repo.name.clone(),
-                from: source.clone(),
-                to: destination.clone(),
-            },
+            data: RepoTransferred { repo_id: repo.id.clone(), name: repo.name.clone(), from: source.clone(), to: destination.clone() },
         })
         .await?;
         self.record_transfer(&a, &from, &to).await;
@@ -364,19 +312,10 @@ impl<S: GitStore> Repos<S> {
             request_id: request_id.clone(),
         };
         let entries = vec![
-            entry(
-                &from.namespace,
-                from,
-                format!("Transferred to {}/{}", to.namespace, to.name),
-            ),
-            entry(
-                &to.namespace,
-                to,
-                format!("Transferred from {}/{}", from.namespace, from.name),
-            ),
+            entry(&from.namespace, from, format!("Transferred to {}/{}", to.namespace, to.name)),
+            entry(&to.namespace, to, format!("Transferred from {}/{}", from.namespace, from.name)),
         ];
-        let recorded: Result<u32> =
-            g1t_kit::call(&self.events, "audit_record", &RecordAuditArgs { entries }).await;
+        let recorded: Result<u32> = g1t_kit::call(&self.events, "audit_record", &RecordAuditArgs { entries }).await;
         if let Err(error) = recorded {
             worker::console_error!("transfer audit entries not recorded: {error}");
         }
@@ -417,7 +356,13 @@ mod tests {
         let allowed = Facts { admin_may_transfer: true, may_create_in_destination: true, ..member };
         assert!(check(&allowed).is_ok());
         assert_eq!(
-            refused(&Facts { may_create_in_destination: false, admin_may_transfer: true, role_in_source: Some(Role::Member), role_in_destination: Some(Role::Member), ..facts() }),
+            refused(&Facts {
+                may_create_in_destination: false,
+                admin_may_transfer: true,
+                role_in_source: Some(Role::Member),
+                role_in_destination: Some(Role::Member),
+                ..facts()
+            }),
             FailureCode::Forbidden
         );
     }
@@ -426,14 +371,8 @@ mod tests {
     fn needs_a_verified_person_who_owns_both() {
         assert_eq!(refused(&Facts { person: false, ..facts() }), FailureCode::Forbidden);
         assert_eq!(refused(&Facts { verified: false, ..facts() }), FailureCode::Forbidden);
-        assert_eq!(
-            refused(&Facts { role_in_source: Some(Role::Member), ..facts() }),
-            FailureCode::Forbidden
-        );
-        assert_eq!(
-            refused(&Facts { role_in_destination: Some(Role::Member), ..facts() }),
-            FailureCode::Forbidden
-        );
+        assert_eq!(refused(&Facts { role_in_source: Some(Role::Member), ..facts() }), FailureCode::Forbidden);
+        assert_eq!(refused(&Facts { role_in_destination: Some(Role::Member), ..facts() }), FailureCode::Forbidden);
         assert_eq!(refused(&Facts { role_in_destination: None, ..facts() }), FailureCode::Forbidden);
     }
 
@@ -451,30 +390,15 @@ mod tests {
 
     #[test]
     fn a_free_destination_takes_private_repositories_within_its_storage() {
-        let heavy = Facts {
-            is_private: true,
-            destination_free: true,
-            destination_private_bytes: 900_000_000,
-            bytes: 200_000_000,
-            ..facts()
-        };
+        let heavy =
+            Facts { is_private: true, destination_free: true, destination_private_bytes: 900_000_000, bytes: 200_000_000, ..facts() };
         assert_eq!(refused(&heavy), FailureCode::PaymentRequired);
         // Public, or a destination on the plan: no cap.
         assert!(check(&Facts { is_private: false, ..heavy }).is_ok());
-        let heavy = Facts {
-            is_private: true,
-            destination_free: true,
-            destination_private_bytes: 900_000_000,
-            bytes: 200_000_000,
-            ..facts()
-        };
+        let heavy =
+            Facts { is_private: true, destination_free: true, destination_private_bytes: 900_000_000, bytes: 200_000_000, ..facts() };
         assert!(check(&Facts { destination_free: false, ..heavy }).is_ok());
-        let light = Facts {
-            is_private: true,
-            destination_free: true,
-            bytes: 10_000,
-            ..facts()
-        };
+        let light = Facts { is_private: true, destination_free: true, bytes: 10_000, ..facts() };
         assert!(check(&light).is_ok());
     }
 }

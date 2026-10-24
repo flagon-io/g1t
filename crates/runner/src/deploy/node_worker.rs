@@ -222,11 +222,22 @@ fn app_entry(dir: &Path, package: &Value) -> Result<String, String> {
     if let Some(main) = package["main"].as_str().map(|m| m.trim_start_matches("./")).filter(|m| !m.is_empty()) {
         return found(main.to_owned());
     }
-    ["server.js", "index.js", "app.js", "server.mjs", "index.mjs", "src/server.js", "src/index.js", "server.ts", "src/index.ts", "src/server.ts"]
-        .iter()
-        .find(|file| dir.join(file).is_file())
-        .map(|file| (*file).to_owned())
-        .ok_or_else(|| "g1t cannot tell which file starts it: it has no `start` script or `main`".to_owned())
+    [
+        "server.js",
+        "index.js",
+        "app.js",
+        "server.mjs",
+        "index.mjs",
+        "src/server.js",
+        "src/index.js",
+        "server.ts",
+        "src/index.ts",
+        "src/server.ts",
+    ]
+    .iter()
+    .find(|file| dir.join(file).is_file())
+    .map(|file| (*file).to_owned())
+    .ok_or_else(|| "g1t cannot tell which file starts it: it has no `start` script or `main`".to_owned())
 }
 
 /// The app's own source files: JavaScript and TypeScript outside the
@@ -248,7 +259,8 @@ fn sources(dir: &Path) -> Vec<PathBuf> {
                 continue;
             }
             let code = ["js", "mjs", "cjs", "ts", "mts", "cts", "jsx", "tsx"].iter().any(|e| name.ends_with(&format!(".{e}")));
-            let tooling = [".test.", ".spec.", ".config.", ".d.ts"].iter().any(|part| name.contains(part)) || (top && name.starts_with("eslint"));
+            let tooling =
+                [".test.", ".spec.", ".config.", ".d.ts"].iter().any(|part| name.contains(part)) || (top && name.starts_with("eslint"));
             if kind.is_file() && code && !tooling && entry.metadata().is_ok_and(|m| m.len() <= MAX_SOURCE_BYTES) {
                 out.push(path);
             }
@@ -280,7 +292,8 @@ fn static_pattern() -> Regex {
 /// What to make of the project at `dir`, a Node.js server (container.rs's
 /// `node_server` found it): how it runs as a Worker, or why it cannot.
 pub(crate) fn plan(dir: &Path) -> Plan {
-    let Some(package) = std::fs::read_to_string(dir.join("package.json")).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok()) else {
+    let Some(package) = std::fs::read_to_string(dir.join("package.json")).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok())
+    else {
         return Plan::Blocked("its package.json could not be read".to_owned());
     };
     if let Some(addon) = NATIVE_ADDONS.iter().find(|name| has_dependency(&package, name)) {
@@ -293,7 +306,8 @@ pub(crate) fn plan(dir: &Path) -> Plan {
         Ok(entry) => entry,
         Err(why) => return Plan::Blocked(why),
     };
-    let blocking: Vec<(Regex, &str)> = BLOCKING_CODE.iter().map(|(pattern, why)| (Regex::new(pattern).expect("a valid pattern"), *why)).collect();
+    let blocking: Vec<(Regex, &str)> =
+        BLOCKING_CODE.iter().map(|(pattern, why)| (Regex::new(pattern).expect("a valid pattern"), *why)).collect();
     let served = static_pattern();
     let mut assets: Option<String> = None;
     for file in sources(dir) {
@@ -438,7 +452,10 @@ mod tests {
             "express",
             &[
                 ("package.json", r#"{ "scripts": { "start": "node server" }, "dependencies": { "express": "5" } }"#),
-                ("server.js", "const app = require('express')();\napp.get('/', (req, res) => res.send('hi'));\napp.listen(process.env.PORT || 3000);\n"),
+                (
+                    "server.js",
+                    "const app = require('express')();\napp.get('/', (req, res) => res.send('hi'));\napp.listen(process.env.PORT || 3000);\n",
+                ),
             ],
         );
         assert_eq!(plan(&dir), Plan::Worker(NodeWorker { name: "Express", entry: "server.js".into(), build: None, assets: None }));
@@ -484,12 +501,42 @@ mod tests {
         /// A project, and a phrase why it cannot run as a Worker says.
         type Case = (&'static str, &'static [(&'static str, &'static str)], &'static str);
         let cases: [Case; 6] = [
-            ("addon", &[("package.json", r#"{ "main": "a.js", "dependencies": { "express": "5", "better-sqlite3": "12" } }"#), ("a.js", "")], "`better-sqlite3`"),
+            (
+                "addon",
+                &[("package.json", r#"{ "main": "a.js", "dependencies": { "express": "5", "better-sqlite3": "12" } }"#), ("a.js", "")],
+                "`better-sqlite3`",
+            ),
             ("fastify", &[("package.json", r#"{ "main": "a.js", "dependencies": { "fastify": "5" } }"#), ("a.js", "")], "Fastify"),
-            ("spawn", &[("package.json", r#"{ "main": "a.js", "dependencies": { "koa": "3" } }"#), ("a.js", "const { spawn } = require('node:child_process');")], "child_process"),
-            ("ws", &[("package.json", r#"{ "main": "a.js", "dependencies": { "express": "5", "ws": "8" } }"#), ("a.js", "new WebSocketServer({ server })")], "`upgrade`"),
-            ("views", &[("package.json", r#"{ "main": "a.js", "dependencies": { "express": "5" } }"#), ("a.js", ""), ("lib/routes.js", "res.render('home')")], "lib/routes.js"),
-            ("start", &[("package.json", r#"{ "scripts": { "start": "nest start" }, "dependencies": { "express": "5" } }"#)], "`nest start`"),
+            (
+                "spawn",
+                &[
+                    ("package.json", r#"{ "main": "a.js", "dependencies": { "koa": "3" } }"#),
+                    ("a.js", "const { spawn } = require('node:child_process');"),
+                ],
+                "child_process",
+            ),
+            (
+                "ws",
+                &[
+                    ("package.json", r#"{ "main": "a.js", "dependencies": { "express": "5", "ws": "8" } }"#),
+                    ("a.js", "new WebSocketServer({ server })"),
+                ],
+                "`upgrade`",
+            ),
+            (
+                "views",
+                &[
+                    ("package.json", r#"{ "main": "a.js", "dependencies": { "express": "5" } }"#),
+                    ("a.js", ""),
+                    ("lib/routes.js", "res.render('home')"),
+                ],
+                "lib/routes.js",
+            ),
+            (
+                "start",
+                &[("package.json", r#"{ "scripts": { "start": "nest start" }, "dependencies": { "express": "5" } }"#)],
+                "`nest start`",
+            ),
         ];
         for (name, files, phrase) in cases {
             let dir = project(name, files);
@@ -501,7 +548,12 @@ mod tests {
         // Tests and scripts are not the server's code.
         let tests = project(
             "tests-only",
-            &[("package.json", r#"{ "main": "a.js", "dependencies": { "express": "5" } }"#), ("a.js", ""), ("test/a.test.js", "readFileSync('x')"), ("scripts/seed.js", "writeFileSync('x')")],
+            &[
+                ("package.json", r#"{ "main": "a.js", "dependencies": { "express": "5" } }"#),
+                ("a.js", ""),
+                ("test/a.test.js", "readFileSync('x')"),
+                ("scripts/seed.js", "writeFileSync('x')"),
+            ],
         );
         assert!(matches!(plan(&tests), Plan::Worker(_)));
     }

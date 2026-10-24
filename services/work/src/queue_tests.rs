@@ -2,19 +2,21 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::{
-    ABANDON_LANDING, ACCEPT_BUILD, BEGIN_LANDING, CLAIM_BUILD, ENQUEUE, FINISH_CHECKS,
-    FINISH_LANDED, FINISH_LANDING, LANDING_INTERRUPTED, LANDING_STOPPED, LANDING_WAITS, LEAVE,
-    MERGED_OUTSIDE, PUBLISHING, REPORT_BUILD, RETEST, RETESTED, STILL_LANDING, WAIT_UNAVAILABLE,
+    ABANDON_LANDING, ACCEPT_BUILD, BEGIN_LANDING, CLAIM_BUILD, ENQUEUE, FINISH_CHECKS, FINISH_LANDED, FINISH_LANDING, LANDING_INTERRUPTED,
+    LANDING_STOPPED, LANDING_WAITS, LEAVE, MERGED_OUTSIDE, PUBLISHING, REPORT_BUILD, RETEST, RETESTED, STILL_LANDING, WAIT_UNAVAILABLE,
     WAITING_QUEUES, attempt_branch, removed_by, tell_waiting,
 };
 use crate::integration::{FINISH_PROBE, REPORT_PROBE, RESOLVE_HELD};
 
 fn database() -> Connection {
     let db = crate::migrated::database();
-    db.execute_batch("INSERT INTO pulls (id, repo_id, number, title, agent, runtime, author_id, author_name, status, created_at, updated_at)
+    db.execute_batch(
+        "INSERT INTO pulls (id, repo_id, number, title, agent, runtime, author_id, author_name, status, created_at, updated_at)
         VALUES ('pull', 'repo', 1, 'Change', 'codex', 'external', 'user', 'user', 'open', 'now', 'now');
         INSERT INTO queue_entries (id, state, repo_id, pull_id, number, enqueued_by, created_at)
-        VALUES ('entry', 'waiting', 'repo', 'pull', 1, '{}', 'now');").unwrap();
+        VALUES ('entry', 'waiting', 'repo', 'pull', 1, '{}', 'now');",
+    )
+    .unwrap();
     db
 }
 
@@ -23,22 +25,14 @@ fn repeated_admission_is_atomic() {
     let db = database();
     db.execute("DELETE FROM queue_entries", []).unwrap();
     let enqueue = |id: &str| {
-        db.query_row(
-            ENQUEUE,
-            params![id, "repo", "pull", 1, "{}", 0, "later", 0, "merge", None::<String>, None::<String>],
-            |_| Ok(()),
-        )
-        .optional()
-        .unwrap()
-        .is_some()
+        db.query_row(ENQUEUE, params![id, "repo", "pull", 1, "{}", 0, "later", 0, "merge", None::<String>, None::<String>], |_| Ok(()))
+            .optional()
+            .unwrap()
+            .is_some()
     };
     assert!(enqueue("first"));
     assert!(!enqueue("second"));
-    db.execute(
-        "UPDATE queue_entries SET state = 'removed' WHERE id = 'first'",
-        [],
-    )
-    .unwrap();
+    db.execute("UPDATE queue_entries SET state = 'removed' WHERE id = 'first'", []).unwrap();
     assert!(enqueue("third"));
 }
 
@@ -47,46 +41,15 @@ fn stale_reset_and_held_failure_cannot_touch_a_replacement_attempt() {
     let db = database();
     assert!(claim(&db, "old"));
     assert!(report(&db, "old", "old-commit"));
-    db.execute("UPDATE queue_entries SET held = 'failure'", [])
-        .unwrap();
-    assert_eq!(
-        db.execute(RETEST, params!["entry", "old"])
-            .unwrap(),
-        1
-    );
+    db.execute("UPDATE queue_entries SET held = 'failure'", []).unwrap();
+    assert_eq!(db.execute(RETEST, params!["entry", "old"]).unwrap(), 1);
     assert!(claim(&db, "new"));
     assert!(report(&db, "new", "new-commit"));
-    db.execute("UPDATE queue_entries SET held = 'failure'", [])
-        .unwrap();
-    assert_eq!(
-        db.execute(RETEST, params!["entry", "old"])
-            .unwrap(),
-        0
-    );
-    assert!(
-        db.query_row(
-            RESOLVE_HELD,
-            params!["now", "entry", "failure", "old"],
-            |_| Ok(())
-        )
-        .optional()
-        .unwrap()
-        .is_none()
-    );
-    assert!(
-        db.query_row(
-            RESOLVE_HELD,
-            params!["now", "entry", "failure", "new"],
-            |_| Ok(())
-        )
-        .optional()
-        .unwrap()
-        .is_some()
-    );
-    assert_ne!(
-        attempt_branch("entry", Some("old")),
-        attempt_branch("entry", Some("new"))
-    );
+    db.execute("UPDATE queue_entries SET held = 'failure'", []).unwrap();
+    assert_eq!(db.execute(RETEST, params!["entry", "old"]).unwrap(), 0);
+    assert!(db.query_row(RESOLVE_HELD, params!["now", "entry", "failure", "old"], |_| Ok(())).optional().unwrap().is_none());
+    assert!(db.query_row(RESOLVE_HELD, params!["now", "entry", "failure", "new"], |_| Ok(())).optional().unwrap().is_some());
+    assert_ne!(attempt_branch("entry", Some("old")), attempt_branch("entry", Some("new")));
 }
 
 #[test]
@@ -95,53 +58,14 @@ fn removal_and_publication_have_one_winner_and_recovery_keeps_the_commit() {
     assert!(claim(&db, "attempt"));
     assert!(report(&db, "attempt", "tested"));
     assert!(finish(&db, "tested"));
-    let publish = || {
-        db.query_row(BEGIN_LANDING, params!["entry", "tested", "attempt"], |_| {
-            Ok(())
-        })
-        .optional()
-        .unwrap()
-        .is_some()
-    };
+    let publish = || db.query_row(BEGIN_LANDING, params!["entry", "tested", "attempt"], |_| Ok(())).optional().unwrap().is_some();
     assert!(publish());
     assert!(publish(), "a crash resumes the same immutable publication");
-    assert!(
-        db.query_row(
-            LEAVE,
-            params!["removed", None::<String>, "now", "entry"],
-            |_| Ok(())
-        )
-        .optional()
-        .unwrap()
-        .is_none()
-    );
-    assert_eq!(
-        db.execute(RETEST, params!["entry", "attempt"])
-            .unwrap(),
-        0
-    );
-    assert!(
-        db.query_row(
-            BEGIN_LANDING,
-            params!["entry", "different", "attempt"],
-            |_| Ok(())
-        )
-        .optional()
-        .unwrap()
-        .is_none()
-    );
-    db.execute("UPDATE queue_entries SET landing_commit = NULL", [])
-        .unwrap();
-    assert!(
-        db.query_row(
-            LEAVE,
-            params!["removed", None::<String>, "now", "entry"],
-            |_| Ok(())
-        )
-        .optional()
-        .unwrap()
-        .is_some()
-    );
+    assert!(db.query_row(LEAVE, params!["removed", None::<String>, "now", "entry"], |_| Ok(())).optional().unwrap().is_none());
+    assert_eq!(db.execute(RETEST, params!["entry", "attempt"]).unwrap(), 0);
+    assert!(db.query_row(BEGIN_LANDING, params!["entry", "different", "attempt"], |_| Ok(())).optional().unwrap().is_none());
+    db.execute("UPDATE queue_entries SET landing_commit = NULL", []).unwrap();
+    assert!(db.query_row(LEAVE, params!["removed", None::<String>, "now", "entry"], |_| Ok(())).optional().unwrap().is_some());
     assert!(!publish());
 }
 
@@ -167,122 +91,45 @@ fn a_passing_entry_cannot_publish_ahead_of_an_unfinished_predecessor() {
     assert!(finish(&db, "tested"));
     db.execute("INSERT INTO queue_entries (id, repo_id, pull_id, number, enqueued_by, state, created_at) VALUES ('earlier', 'repo', 'other', 2, '{}', 'testing', 'before')", []).unwrap();
     db.execute("UPDATE queue_entries SET ahead = '[2]' WHERE id = 'entry'", []).unwrap();
-    assert!(
-        db.query_row(
-            BEGIN_LANDING,
-            params!["entry", "tested", "attempt"],
-            |_| Ok(())
-        )
-        .optional()
-        .unwrap()
-        .is_none()
-    );
+    assert!(db.query_row(BEGIN_LANDING, params!["entry", "tested", "attempt"], |_| Ok(())).optional().unwrap().is_none());
     db.execute("UPDATE queue_entries SET state = 'removed' WHERE id = 'earlier'", []).unwrap();
-    assert!(db.query_row(BEGIN_LANDING, params!["entry", "tested", "attempt"], |_| Ok(())).optional().unwrap().is_none(),
-        "removing the predecessor cannot publish a combination that still contains it");
-    db.execute(
-        "UPDATE queue_entries SET state = 'landed' WHERE id = 'earlier'",
-        [],
-    )
-    .unwrap();
     assert!(
-        db.query_row(
-            BEGIN_LANDING,
-            params!["entry", "tested", "attempt"],
-            |_| Ok(())
-        )
-        .optional()
-        .unwrap()
-        .is_some()
+        db.query_row(BEGIN_LANDING, params!["entry", "tested", "attempt"], |_| Ok(())).optional().unwrap().is_none(),
+        "removing the predecessor cannot publish a combination that still contains it"
     );
+    db.execute("UPDATE queue_entries SET state = 'landed' WHERE id = 'earlier'", []).unwrap();
+    assert!(db.query_row(BEGIN_LANDING, params!["entry", "tested", "attempt"], |_| Ok(())).optional().unwrap().is_some());
 }
 
 #[test]
 fn delayed_probe_reports_and_timeouts_cannot_replace_accepted_results() {
     let db = database();
     db.execute("INSERT INTO queue_probes (id, repo_id, entry_id, number, subset, state, token_hash, created_at) VALUES ('probe', 'repo', 'entry', 1, '[]', 'testing', 'token', 'now')", []).unwrap();
-    assert!(
-        db.query_row(
-            REPORT_PROBE,
-            params!["tested", "probe", "token"],
-            |_| Ok(())
-        )
-        .optional()
-        .unwrap()
-        .is_some()
-    );
-    assert!(
-        db.query_row(
-            REPORT_PROBE,
-            params!["different", "probe", "token"],
-            |_| Ok(())
-        )
-        .optional()
-        .unwrap()
-        .is_none()
-    );
+    assert!(db.query_row(REPORT_PROBE, params!["tested", "probe", "token"], |_| Ok(())).optional().unwrap().is_some());
+    assert!(db.query_row(REPORT_PROBE, params!["different", "probe", "token"], |_| Ok(())).optional().unwrap().is_none());
     let finish = |token: Option<&str>, commit: Option<&str>| {
-        db.query_row(
-            FINISH_PROBE,
-            params![
-                "passed",
-                None::<String>,
-                "now",
-                "probe",
-                "testing",
-                token,
-                commit
-            ],
-            |_| Ok(()),
-        )
-        .optional()
-        .unwrap()
-        .is_some()
+        db.query_row(FINISH_PROBE, params!["passed", None::<String>, "now", "probe", "testing", token, commit], |_| Ok(()))
+            .optional()
+            .unwrap()
+            .is_some()
     };
-    assert!(
-        !finish(Some("token"), None),
-        "timeout from before report acceptance"
-    );
+    assert!(!finish(Some("token"), None), "timeout from before report acceptance");
     assert!(!finish(None, Some("different")));
     assert!(finish(None, Some("tested")));
     assert!(!finish(None, Some("tested")));
 }
 
 fn claim(db: &Connection, token: &str) -> bool {
-    db.query_row(
-        CLAIM_BUILD,
-        params![token, "head", "base", "[]", "now", "entry", "[]"],
-        |_| Ok(()),
-    )
-    .optional()
-    .unwrap()
-    .is_some()
+    db.query_row(CLAIM_BUILD, params![token, "head", "base", "[]", "now", "entry", "[]"], |_| Ok(())).optional().unwrap().is_some()
 }
 
 fn report(db: &Connection, token: &str, commit: &str) -> bool {
-    if db
-        .query_row(ACCEPT_BUILD, params![commit, "entry", token], |_| Ok(()))
-        .optional()
-        .unwrap()
-        .is_none()
-    {
+    if db.query_row(ACCEPT_BUILD, params![commit, "entry", token], |_| Ok(())).optional().unwrap().is_none() {
         return false;
     }
     db.query_row(
         REPORT_BUILD,
-        params![
-            "testing",
-            commit,
-            "[]",
-            None::<String>,
-            None::<String>,
-            0,
-            "testing",
-            "now",
-            "entry",
-            token,
-            commit
-        ],
+        params!["testing", commit, "[]", None::<String>, None::<String>, 0, "testing", "now", "entry", token, commit],
         |_| Ok(()),
     )
     .optional()
@@ -294,34 +141,12 @@ fn report(db: &Connection, token: &str, commit: &str) -> bool {
 fn a_workflow_finishing_during_dispatch_finds_the_accepted_commit() {
     let db = database();
     assert!(claim(&db, "attempt"));
-    assert!(
-        db.query_row(ACCEPT_BUILD, params!["tested", "entry", "attempt"], |_| Ok(
-            ()
-        ))
-        .optional()
-        .unwrap()
-        .is_some()
-    );
-    assert!(
-        !finish(&db, "tested"),
-        "callbacks wait until every workflow is registered"
-    );
+    assert!(db.query_row(ACCEPT_BUILD, params!["tested", "entry", "attempt"], |_| Ok(())).optional().unwrap().is_some());
+    assert!(!finish(&db, "tested"), "callbacks wait until every workflow is registered");
     assert!(
         db.query_row(
             REPORT_BUILD,
-            params![
-                "testing",
-                "tested",
-                "[]",
-                None::<String>,
-                None::<String>,
-                0,
-                "testing",
-                "now",
-                "entry",
-                "attempt",
-                "tested"
-            ],
+            params!["testing", "tested", "[]", None::<String>, None::<String>, 0, "testing", "now", "entry", "attempt", "tested"],
             |_| Ok(())
         )
         .optional()
@@ -333,19 +158,7 @@ fn a_workflow_finishing_during_dispatch_finds_the_accepted_commit() {
     assert!(
         db.query_row(
             REPORT_BUILD,
-            params![
-                "testing",
-                "tested",
-                "[]",
-                None::<String>,
-                None::<String>,
-                0,
-                "testing",
-                "now",
-                "entry",
-                "attempt",
-                "tested"
-            ],
+            params!["testing", "tested", "[]", None::<String>, None::<String>, 0, "testing", "now", "entry", "attempt", "tested"],
             |_| Ok(())
         )
         .optional()
@@ -383,26 +196,16 @@ fn a_result_read_before_removal_cannot_resurrect_the_entry() {
     let db = database();
     assert!(claim(&db, "first"));
     // report_queue has read the token, then the user removes the entry.
-    db.execute("UPDATE queue_entries SET state = 'removed'", [])
-        .unwrap();
+    db.execute("UPDATE queue_entries SET state = 'removed'", []).unwrap();
     assert!(!report(&db, "first", "combined"));
-    assert_eq!(
-        db.query_row("SELECT state FROM queue_entries", [], |row| row
-            .get::<_, String>(0))
-            .unwrap(),
-        "removed"
-    );
+    assert_eq!(db.query_row("SELECT state FROM queue_entries", [], |row| row.get::<_, String>(0)).unwrap(), "removed");
 }
 
 #[test]
 fn an_old_build_cannot_overwrite_a_retry() {
     let db = database();
     assert!(claim(&db, "old"));
-    db.execute(
-        "UPDATE queue_entries SET state = 'waiting', token_hash = NULL",
-        [],
-    )
-    .unwrap();
+    db.execute("UPDATE queue_entries SET state = 'waiting', token_hash = NULL", []).unwrap();
     assert!(!report(&db, "old", "old-commit"));
     assert!(claim(&db, "new"));
     assert!(!report(&db, "old", "old-commit"));
@@ -416,11 +219,7 @@ fn old_workflow_callbacks_cannot_pass_a_new_attempt() {
     assert!(claim(&db, "old"));
     assert!(report(&db, "old", "old-commit"));
     // The callback read this row before a retry reset it.
-    db.execute(
-        "UPDATE queue_entries SET state = 'waiting', combined_commit = NULL",
-        [],
-    )
-    .unwrap();
+    db.execute("UPDATE queue_entries SET state = 'waiting', combined_commit = NULL", []).unwrap();
     assert!(claim(&db, "new"));
     assert!(!finish(&db, "old-commit"));
     assert!(report(&db, "new", "new-commit"));
@@ -454,10 +253,7 @@ fn a_publisher_that_lost_the_race_cannot_undo_the_winners_landing() {
         "only a holder of the intent may give it up, so nothing is retested"
     );
     assert_eq!(db.execute(RETEST, params!["entry", "attempt"]).unwrap(), 0);
-    assert_eq!(
-        db.query_row("SELECT state FROM queue_entries", [], |row| row.get::<_, String>(0)).unwrap(),
-        "landed"
-    );
+    assert_eq!(db.query_row("SELECT state FROM queue_entries", [], |row| row.get::<_, String>(0)).unwrap(), "landed");
 }
 
 #[test]
@@ -497,10 +293,7 @@ fn a_bypass_asked_for_at_admission_is_kept_for_landing() {
     let db = database();
     db.execute("DELETE FROM queue_entries", []).unwrap();
     assert!(exists(&db, ENQUEUE, params!["first", "repo", "pull", 1, "{}", 0, "later", 1, "merge", None::<String>, None::<String>]));
-    assert_eq!(
-        db.query_row("SELECT bypass_rules FROM queue_entries", [], |row| row.get::<_, u32>(0)).unwrap(),
-        1
-    );
+    assert_eq!(db.query_row("SELECT bypass_rules FROM queue_entries", [], |row| row.get::<_, u32>(0)).unwrap(), 1);
     let person = g1t_contracts::User { id: "u".into(), username: "u".into(), ..Default::default() };
     assert!(crate::rulesets::landing_honors_bypass(&person, true));
     assert!(!crate::rulesets::landing_honors_bypass(&person, false));
@@ -519,9 +312,8 @@ fn a_callback_read_for_an_earlier_attempt_cannot_finish_a_retry_on_the_same_comm
     assert_eq!(db.execute(RETEST, params!["entry", "old"]).unwrap(), 1);
     assert!(claim(&db, "new"));
     assert!(report(&db, "new", "same"));
-    let finish_as = |attempt: &str| {
-        exists(&db, FINISH_CHECKS, params!["failed", None::<String>, "failed", "now", "entry", "same", attempt])
-    };
+    let finish_as =
+        |attempt: &str| exists(&db, FINISH_CHECKS, params!["failed", None::<String>, "failed", "now", "entry", "same", attempt]);
     assert!(!finish_as("old"), "the row it read belonged to the earlier attempt");
     assert!(finish_as("new"));
 }
@@ -534,9 +326,7 @@ fn each_attempt_records_exactly_the_stack_it_built() {
             "branch": "feature", "commit": commit }])
         .to_string()
     };
-    let claim_with = |token: &str, built: &str| {
-        exists(&db, CLAIM_BUILD, params![token, built, "base", "[]", "now", "entry", stack(built)])
-    };
+    let claim_with = |token: &str, built: &str| exists(&db, CLAIM_BUILD, params![token, built, "base", "[]", "now", "entry", stack(built)]);
     assert!(claim_with("first", "c1"));
     assert_eq!(db.execute(RETEST, params!["entry", "first"]).unwrap(), 1);
     assert!(claim_with("second", "c2"));
@@ -548,13 +338,16 @@ fn each_attempt_records_exactly_the_stack_it_built() {
                 let mut object = serde_json::Map::new();
                 for (index, name) in names.iter().enumerate() {
                     let value: rusqlite::types::Value = row.get(index)?;
-                    object.insert(name.clone(), match value {
-                        rusqlite::types::Value::Null => serde_json::Value::Null,
-                        rusqlite::types::Value::Integer(n) => n.into(),
-                        rusqlite::types::Value::Real(n) => n.into(),
-                        rusqlite::types::Value::Text(text) => text.into(),
-                        rusqlite::types::Value::Blob(_) => serde_json::Value::Null,
-                    });
+                    object.insert(
+                        name.clone(),
+                        match value {
+                            rusqlite::types::Value::Null => serde_json::Value::Null,
+                            rusqlite::types::Value::Integer(n) => n.into(),
+                            rusqlite::types::Value::Real(n) => n.into(),
+                            rusqlite::types::Value::Text(text) => text.into(),
+                            rusqlite::types::Value::Blob(_) => serde_json::Value::Null,
+                        },
+                    );
                 }
                 Ok(serde_json::from_value(serde_json::Value::Object(object)).unwrap())
             })
@@ -569,10 +362,18 @@ fn each_attempt_records_exactly_the_stack_it_built() {
 #[test]
 fn an_entry_whose_branch_is_gone_leaves_instead_of_blocking_those_behind() {
     let db = database();
-    db.execute("INSERT INTO pulls (id, repo_id, number, title, agent, runtime, author_id, author_name, status, created_at, updated_at)
-        VALUES ('later-pull', 'repo', 2, 'Next', 'codex', 'external', 'user', 'user', 'open', 'now', 'now')", []).unwrap();
-    db.execute("INSERT INTO queue_entries (id, state, repo_id, pull_id, number, enqueued_by, created_at, attempt_id, combined_commit)
-        VALUES ('later', 'passed', 'repo', 'later-pull', 2, '{}', 'then', 'a2', 'tested2')", []).unwrap();
+    db.execute(
+        "INSERT INTO pulls (id, repo_id, number, title, agent, runtime, author_id, author_name, status, created_at, updated_at)
+        VALUES ('later-pull', 'repo', 2, 'Next', 'codex', 'external', 'user', 'user', 'open', 'now', 'now')",
+        [],
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO queue_entries (id, state, repo_id, pull_id, number, enqueued_by, created_at, attempt_id, combined_commit)
+        VALUES ('later', 'passed', 'repo', 'later-pull', 2, '{}', 'then', 'a2', 'tested2')",
+        [],
+    )
+    .unwrap();
     // 'entry' is waiting at the front and can never be built.
     assert!(!exists(&db, BEGIN_LANDING, params!["later", "tested2", "a2"]));
     assert!(exists(&db, LEAVE, params!["removed", super::BRANCH_GONE, "now", "entry"]));
@@ -626,11 +427,8 @@ fn a_clash_names_the_nearest_entry_ahead_that_changed_the_same_file() {
         message: None,
         author: None,
     };
-    let ahead = vec![
-        (item(1), vec!["a.rs".to_owned(), "b.rs".to_owned()]),
-        (item(2), vec!["b.rs".to_owned()]),
-        (item(3), vec!["c.rs".to_owned()]),
-    ];
+    let ahead =
+        vec![(item(1), vec!["a.rs".to_owned(), "b.rs".to_owned()]), (item(2), vec!["b.rs".to_owned()]), (item(3), vec!["c.rs".to_owned()])];
     assert_eq!(super::clashed_with(&ahead, &["b.rs".to_owned()]), Some(2));
     assert_eq!(super::clashed_with(&ahead, &["a.rs".to_owned()]), Some(1));
     // With the default branch itself.
@@ -817,11 +615,7 @@ fn landing(db: &Connection) {
     assert!(claim(db, "attempt"));
     assert!(report(db, "attempt", "tested"));
     assert!(finish(db, "tested"));
-    assert!(exists(
-        db,
-        BEGIN_LANDING,
-        params!["entry", "tested", "attempt"]
-    ));
+    assert!(exists(db, BEGIN_LANDING, params!["entry", "tested", "attempt"]));
 }
 
 #[test]
@@ -829,21 +623,10 @@ fn a_landing_that_stopped_with_an_error_keeps_its_intent_says_why_and_is_swept()
     let db = database();
     landing(&db);
     // repos failed, or the call was cut off: whether main moved is unknown.
-    assert!(!exists(
-        &db,
-        LANDING_STOPPED,
-        params!["entry", "other", LANDING_INTERRUPTED]
-    ));
-    assert!(exists(
-        &db,
-        LANDING_STOPPED,
-        params!["entry", "tested", LANDING_INTERRUPTED]
-    ));
+    assert!(!exists(&db, LANDING_STOPPED, params!["entry", "other", LANDING_INTERRUPTED]));
+    assert!(exists(&db, LANDING_STOPPED, params!["entry", "tested", LANDING_INTERRUPTED]));
     let (state, error, _, landing) = entry(&db);
-    assert_eq!(
-        (state.as_str(), error.as_deref(), landing.as_deref()),
-        ("passed", Some(LANDING_INTERRUPTED), Some("tested"))
-    );
+    assert_eq!((state.as_str(), error.as_deref(), landing.as_deref()), ("passed", Some(LANDING_INTERRUPTED), Some("tested")));
     assert_eq!(waiting_queues(&db), vec!["repo".to_owned()]);
     // Still being published: nothing takes it out or tests it again.
     assert!(exists(&db, PUBLISHING, params!["pull"]));
@@ -851,43 +634,21 @@ fn a_landing_that_stopped_with_an_error_keeps_its_intent_says_why_and_is_swept()
     // A later pass resumes the same publication. Its push had gone through
     // and the merge was recorded at the tested commit: it finishes, and the
     // reason goes with it.
-    assert!(exists(
-        &db,
-        BEGIN_LANDING,
-        params!["entry", "tested", "attempt"]
-    ));
+    assert!(exists(&db, BEGIN_LANDING, params!["entry", "tested", "attempt"]));
     assert!(exists(&db, STILL_LANDING, params!["entry", "tested"]));
-    db.execute(
-        "UPDATE pulls SET status = 'merged', merge_commit = 'tested' WHERE id = 'pull'",
-        [],
-    )
-    .unwrap();
-    assert!(
-        exists(&db, BEGIN_LANDING, params!["entry", "tested", "attempt"]),
-        "resumable once merged at it"
-    );
-    assert_eq!(
-        db.execute(FINISH_LANDING, params!["now", "entry"]).unwrap(),
-        1
-    );
+    db.execute("UPDATE pulls SET status = 'merged', merge_commit = 'tested' WHERE id = 'pull'", []).unwrap();
+    assert!(exists(&db, BEGIN_LANDING, params!["entry", "tested", "attempt"]), "resumable once merged at it");
+    assert_eq!(db.execute(FINISH_LANDING, params!["now", "entry"]).unwrap(), 1);
     let (state, error, _, _) = entry(&db);
     assert_eq!((state.as_str(), error), ("landed", None));
     assert!(waiting_queues(&db).is_empty());
     // settle catches an error from land and from the bookkeeping after it,
     // rather than let it leave the intent with no reason.
     let settle = body_of("settle");
-    assert_eq!(
-        settle
-            .matches("Err(error) => return self.landing_stopped(&row, &error).await,")
-            .count(),
-        2
-    );
+    assert_eq!(settle.matches("Err(error) => return self.landing_stopped(&row, &error).await,").count(), 2);
     let stopped = body_of("landing_stopped");
     assert!(stopped.contains(".prepare(LANDING_STOPPED)"));
-    assert!(
-        stopped
-            .contains("waits.is_some() && tell_waiting(row.error.as_deref(), LANDING_INTERRUPTED)")
-    );
+    assert!(stopped.contains("waits.is_some() && tell_waiting(row.error.as_deref(), LANDING_INTERRUPTED)"));
     assert!(!stopped.contains("retest") && !stopped.contains("ABANDON_LANDING"));
 }
 
@@ -898,17 +659,10 @@ fn a_landing_cut_off_without_a_word_is_found_by_the_sweep() {
     // The request publishing it was cancelled mid-push: the intent is held,
     // with no reason, and nothing else passes over the queue.
     let (state, error, _, landing) = entry(&db);
-    assert_eq!(
-        (state.as_str(), error, landing.as_deref()),
-        ("passed", None, Some("tested"))
-    );
+    assert_eq!((state.as_str(), error, landing.as_deref()), ("passed", None, Some("tested")));
     assert_eq!(waiting_queues(&db), vec!["repo".to_owned()]);
     // The sweep's pass resumes it.
-    assert!(exists(
-        &db,
-        BEGIN_LANDING,
-        params!["entry", "tested", "attempt"]
-    ));
+    assert!(exists(&db, BEGIN_LANDING, params!["entry", "tested", "attempt"]));
     // Passed and not landing yet, or landed: nothing to sweep.
     assert!(exists(&db, ABANDON_LANDING, params!["entry", "tested"]));
     assert!(waiting_queues(&db).is_empty());
@@ -924,75 +678,35 @@ fn a_pull_request_merged_outside_the_queue_leaves_it_without_landing_a_stale_sta
     let db = database();
     landing(&db);
     // The queue was stuck; the rule was turned off and it merged by hand.
-    db.execute(
-        "UPDATE pulls SET status = 'merged', merge_commit = 'by-hand' WHERE id = 'pull'",
-        [],
-    )
-    .unwrap();
-    assert!(
-        !exists(&db, BEGIN_LANDING, params!["entry", "tested", "attempt"]),
-        "never lands the tested state"
-    );
-    assert!(exists(
-        &db,
-        LEAVE,
-        params!["removed", MERGED_OUTSIDE, "now", "entry"]
-    ));
+    db.execute("UPDATE pulls SET status = 'merged', merge_commit = 'by-hand' WHERE id = 'pull'", []).unwrap();
+    assert!(!exists(&db, BEGIN_LANDING, params!["entry", "tested", "attempt"]), "never lands the tested state");
+    assert!(exists(&db, LEAVE, params!["removed", MERGED_OUTSIDE, "now", "entry"]));
     let (state, error, _, _) = entry(&db);
-    assert_eq!(
-        (state.as_str(), error.as_deref()),
-        ("removed", Some("It merged outside the queue."))
-    );
+    assert_eq!((state.as_str(), error.as_deref()), ("removed", Some("It merged outside the queue.")));
     assert!(waiting_queues(&db).is_empty());
 
     // Merged at exactly the tested commit, it landed, and does not leave.
     let db = database();
     landing(&db);
-    db.execute(
-        "UPDATE pulls SET status = 'merged', merge_commit = 'tested' WHERE id = 'pull'",
-        [],
-    )
-    .unwrap();
-    assert!(!exists(
-        &db,
-        LEAVE,
-        params!["removed", MERGED_OUTSIDE, "now", "entry"]
-    ));
-    assert_eq!(
-        db.execute(FINISH_LANDING, params!["now", "entry"]).unwrap(),
-        1
-    );
+    db.execute("UPDATE pulls SET status = 'merged', merge_commit = 'tested' WHERE id = 'pull'", []).unwrap();
+    assert!(!exists(&db, LEAVE, params!["removed", MERGED_OUTSIDE, "now", "entry"]));
+    assert_eq!(db.execute(FINISH_LANDING, params!["now", "entry"]).unwrap(), 1);
 
     // Closed with an intent held: it leaves too, never lands.
     let db = database();
     landing(&db);
-    db.execute("UPDATE pulls SET status = 'closed' WHERE id = 'pull'", [])
-        .unwrap();
-    assert!(!exists(
-        &db,
-        BEGIN_LANDING,
-        params!["entry", "tested", "attempt"]
-    ));
-    assert!(exists(
-        &db,
-        LEAVE,
-        params!["removed", "It was closed.", "now", "entry"]
-    ));
+    db.execute("UPDATE pulls SET status = 'closed' WHERE id = 'pull'", []).unwrap();
+    assert!(!exists(&db, BEGIN_LANDING, params!["entry", "tested", "attempt"]));
+    assert!(exists(&db, LEAVE, params!["removed", "It was closed.", "now", "entry"]));
 
     // Open, the intent still holds it in the queue.
     let db = database();
     landing(&db);
-    assert!(!exists(
-        &db,
-        LEAVE,
-        params!["removed", MERGED_OUTSIDE, "now", "entry"]
-    ));
+    assert!(!exists(&db, LEAVE, params!["removed", MERGED_OUTSIDE, "now", "entry"]));
 
     // settle asks before anything lands, whatever intent the entry holds.
     let settle = body_of("settle");
-    let leaves = settle
-        .find("let why = if pull.status == PullStatus::Merged {")
-        .unwrap();
+    let leaves = settle.find("let why = if pull.status == PullStatus::Merged {").unwrap();
     assert!(settle.find("self.finish_landing(&row).await?;").unwrap() < leaves);
     assert!(leaves < settle.find("if row.landing_commit.is_none() {\n").unwrap());
     assert!(leaves < settle.find(".prepare(BEGIN_LANDING)").unwrap());

@@ -55,8 +55,7 @@ impl DecisionKind {
 
     /// The kinds `record_decision` takes. The others are what g1t saw
     /// happen, and only g1t records them.
-    pub const RECORDABLE: [DecisionKind; 4] =
-        [DecisionKind::Proposal, DecisionKind::Claim, DecisionKind::Fix, DecisionKind::Note];
+    pub const RECORDABLE: [DecisionKind; 4] = [DecisionKind::Proposal, DecisionKind::Claim, DecisionKind::Fix, DecisionKind::Note];
 }
 
 /// How sure the record is.
@@ -309,7 +308,6 @@ mod tests {
         assert_eq!(unknown["author"], serde_json::json!({ "name": "Chase Pierce" }));
         assert!(!known.to_string().contains("gmail") && !unknown.to_string().contains("gmail"));
     }
-
 
     #[test]
     fn kinds_read_and_write_as_their_names() {

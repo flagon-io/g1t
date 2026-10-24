@@ -24,30 +24,14 @@ fn every_workflow_asks_for_only_what_its_token_does() {
     use g1t_actions::permissions::{Access, TokenDefault};
     let job = |name: &str, id: &str| {
         let workflow = read(name);
-        let job = workflow
-            .jobs
-            .iter()
-            .find(|job| job.id == id)
-            .unwrap()
-            .clone();
+        let job = workflow.jobs.iter().find(|job| job.id == id).unwrap().clone();
         job.permissions(&workflow, TokenDefault::Restricted)
     };
     // CI and Deploy only read: nothing they do writes with the token.
     // The actions release pushes with its own secret, never the job's token.
-    for (name, id) in [
-        ("ci.yml", "rust"),
-        ("deploy.yml", "core"),
-        ("runner-release.yml", "binaries"),
-        ("actions-release.yml", "publish"),
-    ] {
+    for (name, id) in [("ci.yml", "rust"), ("deploy.yml", "core"), ("runner-release.yml", "binaries"), ("actions-release.yml", "publish")] {
         let permissions = job(name, id);
-        assert!(
-            permissions
-                .listed()
-                .iter()
-                .all(|(_, access)| *access <= Access::Read),
-            "{name} {id}"
-        );
+        assert!(permissions.listed().iter().all(|(_, access)| *access <= Access::Read), "{name} {id}");
     }
     // The runner base pushes a branch and opens a pull request.
     let base = job("runner-base.yml", "build");
@@ -75,11 +59,7 @@ fn every_workflow_reads_and_runs_on_g1t() {
         }
         let name = path.file_name().unwrap().to_string_lossy().to_string();
         let workflow = read(&name);
-        let unsupported: Vec<_> = workflow
-            .notes
-            .iter()
-            .filter(|n| n.severity != Severity::Info)
-            .collect();
+        let unsupported: Vec<_> = workflow.notes.iter().filter(|n| n.severity != Severity::Info).collect();
         assert!(unsupported.is_empty(), "{name}: {unsupported:?}");
         count += 1;
     }
@@ -87,12 +67,7 @@ fn every_workflow_reads_and_runs_on_g1t() {
 }
 
 /// The plan job's outputs for a deploy of `stages` (each with its jobs).
-fn plan_outputs(
-    migrate: bool,
-    core: &[(&str, &str, bool)],
-    edge: &[(&str, &str, bool)],
-    front: &[(&str, &str, bool)],
-) -> Value {
+fn plan_outputs(migrate: bool, core: &[(&str, &str, bool)], edge: &[(&str, &str, bool)], front: &[(&str, &str, bool)]) -> Value {
     // As scripts/deploy.mjs writes them: a Rust group or a site is built
     // ahead (`prebuilt`), and every stage's builds are one matrix.
     let entries = |stage: &str, jobs: &[(&str, &str, bool)]| -> Vec<Value> {
@@ -104,11 +79,7 @@ fn plan_outputs(
             .collect()
     };
     let matrix = |include: Vec<Value>| {
-        let include = if include.is_empty() {
-            vec![json!({ "group": "none", "units": "" })]
-        } else {
-            include
-        };
+        let include = if include.is_empty() { vec![json!({ "group": "none", "units": "" })] } else { include };
         json!({ "include": include }).to_string()
     };
     let builds: Vec<Value> = [("core", core), ("edge", edge), ("front", front)]
@@ -139,14 +110,7 @@ fn plan_outputs(
 /// decides it (services/actions/src/plan.rs `decide`, with
 /// `expr::job_status`): a need that was skipped is not a failure, and a
 /// failure anywhere before the job is.
-fn starts(
-    workflow: &Workflow,
-    job: &str,
-    needs: &[(&str, &str)],
-    outputs: &Value,
-    inputs: Value,
-    cancelled: bool,
-) -> bool {
+fn starts(workflow: &Workflow, job: &str, needs: &[(&str, &str)], outputs: &Value, inputs: Value, cancelled: bool) -> bool {
     starts_after(workflow, job, needs, outputs, inputs, cancelled, false)
 }
 
@@ -165,35 +129,17 @@ fn starts_after(
     let mut needs_ctx = Map::new();
     let mut results = Vec::new();
     for need in &job.needs {
-        let result = needs
-            .iter()
-            .find(|(name, _)| name == need)
-            .map(|(_, r)| *r)
-            .unwrap_or("success");
+        let result = needs.iter().find(|(name, _)| name == need).map(|(_, r)| *r).unwrap_or("success");
         results.push(result);
-        let outputs = if need == "plan" {
-            outputs.clone()
-        } else {
-            json!({})
-        };
-        needs_ctx.insert(
-            need.clone(),
-            json!({ "result": result, "outputs": outputs }),
-        );
+        let outputs = if need == "plan" { outputs.clone() } else { json!({}) };
+        needs_ctx.insert(need.clone(), json!({ "result": result, "outputs": outputs }));
     }
     let status = expr::job_status(results, failed_before, cancelled);
     let mut contexts = Map::new();
     contexts.insert("needs".into(), Value::Object(needs_ctx));
     contexts.insert("inputs".into(), inputs);
-    contexts.insert(
-        "github".into(),
-        json!({ "event_name": "push", "ref": "refs/heads/main" }),
-    );
-    let scope = Scope {
-        contexts: &contexts,
-        status,
-        hash_files: None,
-    };
+    contexts.insert("github".into(), json!({ "event_name": "push", "ref": "refs/heads/main" }));
+    let scope = Scope { contexts: &contexts, status, hash_files: None };
     expr::condition(job.condition.as_deref().unwrap_or_default(), &scope).unwrap()
 }
 
@@ -210,21 +156,7 @@ fn deploy_runs_on_main_and_by_hand_one_at_a_time() {
     let concurrency = deploy.concurrency.as_ref().unwrap();
     assert_eq!(concurrency.group, "deploy-production");
     assert_eq!(concurrency.cancel_in_progress, json!(false));
-    assert_eq!(
-        deploy.job_order(),
-        [
-            "check",
-            "plan",
-            "build",
-            "migrate",
-            "core",
-            "core_rest",
-            "edge",
-            "edge_rest",
-            "front",
-            "smoke"
-        ]
-    );
+    assert_eq!(deploy.job_order(), ["check", "plan", "build", "migrate", "core", "core_rest", "edge", "edge_rest", "front", "smoke"]);
     // The stages share their steps (a YAML alias), and read the token only
     // where they deploy.
     let steps = |id: &str| deploy.jobs.iter().find(|j| j.id == id).unwrap().steps.len();
@@ -261,34 +193,21 @@ fn npm_downloads_are_cached_whole_and_only_whole_installs_save_them() {
         }
         let name = path.file_name().unwrap().to_string_lossy().to_string();
         for job in read(&name).jobs {
-            let whole = job
-                .steps
-                .iter()
-                .any(|s| s.run.as_deref().is_some_and(installs_everything));
+            let whole = job.steps.iter().any(|s| s.run.as_deref().is_some_and(installs_everything));
             for step in &job.steps {
                 let Some(uses) = step.uses.as_deref() else {
                     continue;
                 };
-                if !uses.starts_with("actions/cache") || step.raw["with"]["path"] != json!("~/.npm")
-                {
+                if !uses.starts_with("actions/cache") || step.raw["with"]["path"] != json!("~/.npm") {
                     continue;
                 }
                 let key = step.raw["with"]["key"].as_str().unwrap_or_default();
-                assert_eq!(
-                    key, "npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}",
-                    "{name} {}",
-                    job.id
-                );
+                assert_eq!(key, "npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}", "{name} {}", job.id);
                 if let Some(prefix) = step.raw["with"]["restore-keys"].as_str() {
                     assert_eq!(prefix, "npm-full-${{ runner.os }}-", "{name} {}", job.id);
                 }
-                let saves =
-                    uses.starts_with("actions/cache@") || uses.starts_with("actions/cache/save@");
-                assert!(
-                    !saves || whole,
-                    "{name} {}: saves npm's cache but installs only part of the lockfile",
-                    job.id
-                );
+                let saves = uses.starts_with("actions/cache@") || uses.starts_with("actions/cache/save@");
+                assert!(!saves || whole, "{name} {}: saves npm's cache but installs only part of the lockfile", job.id);
                 if saves {
                     saving.push(format!("{name} {}", job.id));
                 }
@@ -311,11 +230,7 @@ fn cache_steps() -> Vec<(String, workflow::Job, workflow::Step)> {
     for name in names {
         for job in read(&name).jobs {
             for step in &job.steps {
-                if step
-                    .uses
-                    .as_deref()
-                    .is_some_and(|u| u.starts_with("actions/cache"))
-                {
+                if step.uses.as_deref().is_some_and(|u| u.starts_with("actions/cache")) {
                     out.push((name.clone(), job.clone(), step.clone()));
                 }
             }
@@ -332,17 +247,12 @@ fn family(key: &str) -> String {
 
 fn saves(step: &workflow::Step) -> bool {
     let uses = step.uses.as_deref().unwrap_or_default();
-    (uses.starts_with("actions/cache@") || uses.starts_with("actions/cache/save@"))
-        && step.raw["with"]["lookup-only"] != json!(true)
+    (uses.starts_with("actions/cache@") || uses.starts_with("actions/cache/save@")) && step.raw["with"]["lookup-only"] != json!(true)
 }
 
 fn paths(step: &workflow::Step) -> Vec<String> {
     let text = step.raw["with"]["path"].as_str().unwrap_or_default();
-    text.lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .map(str::to_owned)
-        .collect()
+    text.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_owned).collect()
 }
 
 #[test]
@@ -357,11 +267,7 @@ fn each_cache_has_one_set_of_paths_wherever_it_is_used() {
         assert!(!family.is_empty(), "{file} {}: a key starts with its name", job.id);
         let here = format!("{file} {}", job.id);
         match seen.get(&family) {
-            Some((first, at)) => assert_eq!(
-                &paths(&step),
-                first,
-                "{here} names other paths for {family} than {at}"
-            ),
+            Some((first, at)) => assert_eq!(&paths(&step), first, "{here} names other paths for {family} than {at}"),
             None => {
                 seen.insert(family, (paths(&step), here));
             }
@@ -398,13 +304,7 @@ fn main_saves_every_cache_that_pull_requests_and_releases_restore() {
         let push = read(file).trigger("push").cloned().unwrap();
         assert!(push.branches.allows("main"), "{file}");
     }
-    let releases = [
-        "cli-release.yml",
-        "desktop-release.yml",
-        "mobile-build.yml",
-        "mobile-release.yml",
-        "runner-release.yml",
-    ];
+    let releases = ["cli-release.yml", "desktop-release.yml", "mobile-build.yml", "mobile-release.yml", "runner-release.yml"];
     let steps = cache_steps();
     let saved_on_main: std::collections::BTreeSet<String> = steps
         .iter()
@@ -417,11 +317,7 @@ fn main_saves_every_cache_that_pull_requests_and_releases_restore() {
         if family == "conformance-" {
             continue;
         }
-        assert!(
-            saved_on_main.contains(&family),
-            "{file} {}: nothing on main saves {family}",
-            job.id
-        );
+        assert!(saved_on_main.contains(&family), "{file} {}: nothing on main saves {family}", job.id);
         if releases.contains(&file.as_str()) {
             assert!(!saves(step), "{file} {}: a release saves {family}, which only its own tag would read", job.id);
         }
@@ -434,11 +330,7 @@ fn rust_caches_are_keyed_by_the_toolchain_and_the_dependencies() {
     // release's version bump, and each saved every Rust cache again.
     for (file, job, step) in cache_steps() {
         let key = step.raw["with"]["key"].as_str().unwrap_or_default();
-        assert!(
-            !key.contains("Cargo.lock") && !key.contains("base.json"),
-            "{file} {}: {key}",
-            job.id
-        );
+        assert!(!key.contains("Cargo.lock") && !key.contains("base.json"), "{file} {}: {key}", job.id);
         let target = paths(&step).iter().any(|p| p.contains("target"));
         if target {
             // The toolchain that built it: this machine's rustc, or for
@@ -450,27 +342,16 @@ fn rust_caches_are_keyed_by_the_toolchain_and_the_dependencies() {
             };
             assert!(key.contains(toolchain), "{file} {}: {key}", job.id);
             // A restore key never reaches another toolchain's entries.
-            for prefix in step.raw["with"]["restore-keys"]
-                .as_str()
-                .unwrap_or_default()
-                .lines()
-                .filter(|l| !l.trim().is_empty())
-            {
+            for prefix in step.raw["with"]["restore-keys"].as_str().unwrap_or_default().lines().filter(|l| !l.trim().is_empty()) {
                 assert!(prefix.contains(toolchain), "{file} {}: {prefix}", job.id);
             }
         }
         if key.contains("steps.keys.outputs.") {
             let at = job.steps.iter().position(|s| s == &step).unwrap();
-            let keys = job
-                .steps
-                .iter()
-                .position(|s| s.id.as_deref() == Some("keys"))
-                .unwrap_or_else(|| panic!("{file} {}: no keys step", job.id));
+            let keys =
+                job.steps.iter().position(|s| s.id.as_deref() == Some("keys")).unwrap_or_else(|| panic!("{file} {}: no keys step", job.id));
             assert!(keys < at, "{file} {}", job.id);
-            assert_eq!(
-                job.steps[keys].run.as_deref(),
-                Some("node scripts/deploy/ci-cache.mjs keys")
-            );
+            assert_eq!(job.steps[keys].run.as_deref(), Some("node scripts/deploy/ci-cache.mjs keys"));
         }
     }
 }
@@ -479,26 +360,16 @@ fn rust_caches_are_keyed_by_the_toolchain_and_the_dependencies() {
 fn a_cargo_target_restored_from_an_older_entry_is_pruned_before_it_is_saved() {
     // Otherwise the old versions of what changed ride along forever: CI's
     // test build grew from 671 MB to 1,687 MB in a day.
-    for (file, id, cache) in [
-        ("ci.yml", "rust", "test-build"),
-        ("ci.yml", "desktop", "desktop-build"),
-        ("caches.yml", "runner", "runner-build"),
-    ] {
+    for (file, id, cache) in
+        [("ci.yml", "rust", "test-build"), ("ci.yml", "desktop", "desktop-build"), ("caches.yml", "runner", "runner-build")]
+    {
         let workflow = read(file);
         let job = workflow.jobs.iter().find(|j| j.id == id).unwrap();
-        let at = job
-            .steps
-            .iter()
-            .position(|s| s.id.as_deref() == Some(cache))
-            .unwrap();
+        let at = job.steps.iter().position(|s| s.id.as_deref() == Some(cache)).unwrap();
         let prune = job
             .steps
             .iter()
-            .position(|s| {
-                s.run
-                    .as_deref()
-                    .is_some_and(|r| r.starts_with("node scripts/deploy/ci-cache.mjs prune "))
-            })
+            .position(|s| s.run.as_deref().is_some_and(|r| r.starts_with("node scripts/deploy/ci-cache.mjs prune ")))
             .unwrap_or_else(|| panic!("{file} {id}: no prune"));
         assert!(at < prune, "{file} {id}");
         let condition = job.steps[prune].condition.as_deref().map(str::trim).unwrap_or_default();
@@ -510,11 +381,7 @@ fn a_cargo_target_restored_from_an_older_entry_is_pruned_before_it_is_saved() {
             // --job) asks that too: skipped, the cache step says no hit.
             let hit = format!("steps.{cache}.outputs.cache-hit != 'true' }}}}");
             assert!(
-                [
-                    format!("${{{{ {hit}"),
-                    format!("${{{{ steps.affected.outputs.run == 'true' && {hit}"),
-                ]
-                .contains(&condition.to_string()),
+                [format!("${{{{ {hit}"), format!("${{{{ steps.affected.outputs.run == 'true' && {hit}"),].contains(&condition.to_string()),
                 "{file} {id}: {condition}"
             );
         } else {
@@ -526,10 +393,7 @@ fn a_cargo_target_restored_from_an_older_entry_is_pruned_before_it_is_saved() {
                 .unwrap_or_else(|| panic!("{file} {id}: nothing saves {key}"));
             assert!(prune < save, "{file} {id}");
             assert_eq!(paths(&job.steps[save]), paths(&job.steps[at]), "{file} {id}");
-            assert!(
-                condition.starts_with(&format!("${{{{ steps.{cache}.outputs.cache-hit != 'true' ")),
-                "{file} {id}: {condition}"
-            );
+            assert!(condition.starts_with(&format!("${{{{ steps.{cache}.outputs.cache-hit != 'true' ")), "{file} {id}: {condition}");
             assert_eq!(job.steps[save].condition.as_deref().map(str::trim), Some(condition), "{file} {id}");
         }
     }
@@ -538,19 +402,12 @@ fn a_cargo_target_restored_from_an_older_entry_is_pruned_before_it_is_saved() {
     // and has nothing old to prune.
     let caches = read("caches.yml");
     let cli = caches.jobs.iter().find(|j| j.id == "cli").unwrap();
-    let build = cli
-        .steps
-        .iter()
-        .find(|s| s.raw["with"]["key"].as_str().is_some_and(|k| k.starts_with("cli-release-")))
-        .unwrap();
+    let build = cli.steps.iter().find(|s| s.raw["with"]["key"].as_str().is_some_and(|k| k.starts_with("cli-release-"))).unwrap();
     assert!(saves(build));
     assert!(build.raw["with"].get("restore-keys").is_none());
     let ci = read("ci.yml");
     let rust = ci.jobs.iter().find(|j| j.id == "rust").unwrap();
-    assert_eq!(
-        rust.raw["env"]["CARGO_PROFILE_DEV_DEBUG"],
-        json!("line-tables-only")
-    );
+    assert_eq!(rust.raw["env"]["CARGO_PROFILE_DEV_DEBUG"], json!("line-tables-only"));
 }
 
 #[test]
@@ -560,10 +417,7 @@ fn the_caches_workflow_builds_only_what_is_missing() {
     assert!(push.branches.allows("main"));
     assert!(!push.branches.allows("feature"));
     // Never cut off halfway: a build half done saves nothing.
-    assert_eq!(
-        caches.concurrency.as_ref().unwrap().cancel_in_progress,
-        json!(false)
-    );
+    assert_eq!(caches.concurrency.as_ref().unwrap().cancel_in_progress, json!(false));
     let look = caches.jobs.iter().find(|j| j.id == "look").unwrap();
     // Looked up, not downloaded.
     for step in &look.steps {
@@ -575,13 +429,7 @@ fn the_caches_workflow_builds_only_what_is_missing() {
     for job in &caches.jobs {
         if job.id != "look" {
             assert_eq!(job.needs, ["look"], "{}", job.id);
-            assert!(
-                job.condition
-                    .as_deref()
-                    .is_some_and(|c| c.contains("needs.look.outputs.")),
-                "{}",
-                job.id
-            );
+            assert!(job.condition.as_deref().is_some_and(|c| c.contains("needs.look.outputs.")), "{}", job.id);
         }
     }
 }
@@ -599,266 +447,65 @@ fn deploy_stages_follow_one_another() {
 
     // Everything succeeds: each stage runs after the last.
     assert!(starts(&deploy, "migrate", &[], &all, push.clone(), false));
-    assert!(starts(
-        &deploy,
-        "core",
-        &[("migrate", "success")],
-        &all,
-        push.clone(),
-        false
-    ));
-    assert!(starts(
-        &deploy,
-        "edge",
-        &[("migrate", "success"), ("core", "success")],
-        &all,
-        push.clone(),
-        false
-    ));
-    assert!(starts(
-        &deploy,
-        "front",
-        &[
-            ("migrate", "success"),
-            ("core", "success"),
-            ("edge", "success")
-        ],
-        &all,
-        push.clone(),
-        false
-    ));
+    assert!(starts(&deploy, "core", &[("migrate", "success")], &all, push.clone(), false));
+    assert!(starts(&deploy, "edge", &[("migrate", "success"), ("core", "success")], &all, push.clone(), false));
+    assert!(starts(&deploy, "front", &[("migrate", "success"), ("core", "success"), ("edge", "success")], &all, push.clone(), false));
 
     // No migrations: the migrate job is skipped, and core still runs.
-    let none = plan_outputs(
-        false,
-        &[("ts", "projects", false)],
-        &[],
-        &[("web", "web", false)],
-    );
+    let none = plan_outputs(false, &[("ts", "projects", false)], &[], &[("web", "web", false)]);
     assert!(!starts(&deploy, "migrate", &[], &none, push.clone(), false));
-    assert!(starts(
-        &deploy,
-        "core",
-        &[("migrate", "skipped")],
-        &none,
-        push.clone(),
-        false
-    ));
+    assert!(starts(&deploy, "core", &[("migrate", "skipped")], &none, push.clone(), false));
     // An empty stage is skipped, and the next one still runs.
-    assert!(!starts(
-        &deploy,
-        "edge",
-        &[("migrate", "skipped"), ("core", "success")],
-        &none,
-        push.clone(),
-        false
-    ));
-    assert!(starts(
-        &deploy,
-        "front",
-        &[
-            ("migrate", "skipped"),
-            ("core", "success"),
-            ("edge", "skipped")
-        ],
-        &none,
-        push.clone(),
-        false
-    ));
+    assert!(!starts(&deploy, "edge", &[("migrate", "skipped"), ("core", "success")], &none, push.clone(), false));
+    assert!(starts(&deploy, "front", &[("migrate", "skipped"), ("core", "success"), ("edge", "skipped")], &none, push.clone(), false));
 
     // A failure stops every later stage.
-    assert!(!starts(
-        &deploy,
-        "core",
-        &[("migrate", "failure")],
-        &all,
-        push.clone(),
-        false
-    ));
-    assert!(!starts(
-        &deploy,
-        "edge",
-        &[("migrate", "success"), ("core", "failure")],
-        &all,
-        push.clone(),
-        false
-    ));
-    assert!(!starts(
-        &deploy,
-        "front",
-        &[
-            ("migrate", "success"),
-            ("core", "success"),
-            ("edge", "failure")
-        ],
-        &all,
-        push.clone(),
-        false
-    ));
-    assert!(!starts(
-        &deploy,
-        "front",
-        &[
-            ("migrate", "success"),
-            ("core", "failure"),
-            ("edge", "skipped")
-        ],
-        &all,
-        push.clone(),
-        false
-    ));
+    assert!(!starts(&deploy, "core", &[("migrate", "failure")], &all, push.clone(), false));
+    assert!(!starts(&deploy, "edge", &[("migrate", "success"), ("core", "failure")], &all, push.clone(), false));
+    assert!(!starts(&deploy, "front", &[("migrate", "success"), ("core", "success"), ("edge", "failure")], &all, push.clone(), false));
+    assert!(!starts(&deploy, "front", &[("migrate", "success"), ("core", "failure"), ("edge", "skipped")], &all, push.clone(), false));
     // A cancelled run starts nothing more.
-    assert!(!starts(
-        &deploy,
-        "edge",
-        &[("migrate", "success"), ("core", "success")],
-        &all,
-        push.clone(),
-        true
-    ));
+    assert!(!starts(&deploy, "edge", &[("migrate", "success"), ("core", "success")], &all, push.clone(), true));
     // Check and plan run side by side: plan waits for nothing.
     let plan = deploy.jobs.iter().find(|j| j.id == "plan").unwrap();
     assert!(plan.needs.is_empty(), "{:?}", plan.needs);
     for id in ["migrate", "core", "core_rest", "edge", "edge_rest", "front", "smoke"] {
         let job = deploy.jobs.iter().find(|j| j.id == id).unwrap();
-        assert!(
-            job.needs.iter().any(|n| n == "check") && job.needs.iter().any(|n| n == "plan"),
-            "{id}: {:?}",
-            job.needs
-        );
+        assert!(job.needs.iter().any(|n| n == "check") && job.needs.iter().any(|n| n == "plan"), "{id}: {:?}", job.needs);
     }
     // A failed check, though plan succeeded: nothing migrates or deploys,
     // and failure() still sees the check's failure through skipped jobs.
-    assert!(!starts(
-        &deploy,
-        "migrate",
-        &[("check", "failure"), ("plan", "success")],
-        &all,
-        push.clone(),
-        false
-    ));
-    assert!(!starts(
-        &deploy,
-        "core",
-        &[
-            ("check", "failure"),
-            ("plan", "success"),
-            ("migrate", "skipped")
-        ],
-        &all,
-        push.clone(),
-        false
-    ));
+    assert!(!starts(&deploy, "migrate", &[("check", "failure"), ("plan", "success")], &all, push.clone(), false));
+    assert!(!starts(&deploy, "core", &[("check", "failure"), ("plan", "success"), ("migrate", "skipped")], &all, push.clone(), false));
     assert!(!starts(
         &deploy,
         "front",
-        &[
-            ("check", "failure"),
-            ("plan", "success"),
-            ("migrate", "skipped"),
-            ("core", "skipped"),
-            ("edge", "skipped")
-        ],
+        &[("check", "failure"), ("plan", "success"), ("migrate", "skipped"), ("core", "skipped"), ("edge", "skipped")],
         &all,
         push.clone(),
         false
     ));
-    let skipped = [
-        ("migrate", "skipped"),
-        ("core", "skipped"),
-        ("edge", "skipped"),
-    ];
-    assert!(!starts_after(
-        &deploy,
-        "front",
-        &skipped,
-        &all,
-        push.clone(),
-        false,
-        true
-    ));
+    let skipped = [("migrate", "skipped"), ("core", "skipped"), ("edge", "skipped")];
+    assert!(!starts_after(&deploy, "front", &skipped, &all, push.clone(), false, true));
     assert!(!starts(
         &deploy,
         "smoke",
-        &[
-            ("check", "failure"),
-            ("core", "skipped"),
-            ("edge", "skipped"),
-            ("front", "skipped")
-        ],
+        &[("check", "failure"), ("core", "skipped"), ("edge", "skipped"), ("front", "skipped")],
         &all,
         push.clone(),
         false
     ));
     // A failed plan stops everything too.
-    assert!(!starts(
-        &deploy,
-        "migrate",
-        &[("plan", "failure")],
-        &all,
-        push.clone(),
-        false
-    ));
-    assert!(!starts(
-        &deploy,
-        "core",
-        &[("plan", "failure"), ("migrate", "skipped")],
-        &all,
-        push.clone(),
-        false
-    ));
+    assert!(!starts(&deploy, "migrate", &[("plan", "failure")], &all, push.clone(), false));
+    assert!(!starts(&deploy, "core", &[("plan", "failure"), ("migrate", "skipped")], &all, push.clone(), false));
 
     // Smoke follows the last stage that ran, and not a failed one.
-    assert!(starts(
-        &deploy,
-        "smoke",
-        &[
-            ("core", "success"),
-            ("edge", "success"),
-            ("front", "success")
-        ],
-        &all,
-        push.clone(),
-        false
-    ));
-    assert!(starts(
-        &deploy,
-        "smoke",
-        &[
-            ("core", "success"),
-            ("edge", "skipped"),
-            ("front", "success")
-        ],
-        &none,
-        push.clone(),
-        false
-    ));
-    assert!(!starts(
-        &deploy,
-        "smoke",
-        &[
-            ("core", "success"),
-            ("edge", "failure"),
-            ("front", "skipped")
-        ],
-        &all,
-        push.clone(),
-        false
-    ));
+    assert!(starts(&deploy, "smoke", &[("core", "success"), ("edge", "success"), ("front", "success")], &all, push.clone(), false));
+    assert!(starts(&deploy, "smoke", &[("core", "success"), ("edge", "skipped"), ("front", "success")], &none, push.clone(), false));
+    assert!(!starts(&deploy, "smoke", &[("core", "success"), ("edge", "failure"), ("front", "skipped")], &all, push.clone(), false));
     // Nothing deployed: nothing to smoke-test.
     let nothing = plan_outputs(false, &[], &[], &[]);
-    assert!(!starts(
-        &deploy,
-        "smoke",
-        &[
-            ("core", "skipped"),
-            ("edge", "skipped"),
-            ("front", "skipped")
-        ],
-        &nothing,
-        push.clone(),
-        false
-    ));
+    assert!(!starts(&deploy, "smoke", &[("core", "skipped"), ("edge", "skipped"), ("front", "skipped")], &nothing, push.clone(), false));
 
     // Every stage builds at once, as soon as the plan is known: the build
     // waits for nothing else, and every stage waits for it.
@@ -870,57 +517,18 @@ fn deploy_stages_follow_one_another() {
         assert!(job.needs.iter().any(|n| n == "build"), "{id}: {:?}", job.needs);
     }
     // A failed build deploys nothing.
-    assert!(!starts(
-        &deploy,
-        "core",
-        &[("build", "failure"), ("migrate", "success")],
-        &all,
-        push.clone(),
-        false
-    ));
+    assert!(!starts(&deploy, "core", &[("build", "failure"), ("migrate", "success")], &all, push.clone(), false));
     // TypeScript Workers alone: nothing to build, and core still runs.
     let bundled = plan_outputs(false, &[("ts", "projects", false)], &[], &[]);
     assert!(!starts(&deploy, "build", &[], &bundled, push.clone(), false));
-    assert!(starts(
-        &deploy,
-        "core",
-        &[("build", "skipped"), ("migrate", "skipped")],
-        &bundled,
-        push.clone(),
-        false
-    ));
-    assert!(!starts(
-        &deploy,
-        "build",
-        &[],
-        &all,
-        json!({ "dry_run": true, "units": "", "all": false }),
-        false
-    ));
+    assert!(starts(&deploy, "core", &[("build", "skipped"), ("migrate", "skipped")], &bundled, push.clone(), false));
+    assert!(!starts(&deploy, "build", &[], &all, json!({ "dry_run": true, "units": "", "all": false }), false));
 
     // A dry run plans and stops.
     let dry = json!({ "dry_run": true, "units": "", "all": false });
     assert!(!starts(&deploy, "migrate", &[], &all, dry.clone(), false));
-    assert!(!starts(
-        &deploy,
-        "core",
-        &[("migrate", "skipped")],
-        &all,
-        dry.clone(),
-        false
-    ));
-    assert!(!starts(
-        &deploy,
-        "smoke",
-        &[
-            ("core", "skipped"),
-            ("edge", "skipped"),
-            ("front", "skipped")
-        ],
-        &all,
-        dry,
-        false
-    ));
+    assert!(!starts(&deploy, "core", &[("migrate", "skipped")], &all, dry.clone(), false));
+    assert!(!starts(&deploy, "smoke", &[("core", "skipped"), ("edge", "skipped"), ("front", "skipped")], &all, dry, false));
 }
 
 #[test]
@@ -929,12 +537,7 @@ fn deploy_stages_skip_what_nothing_later_calls() {
     // (scripts/deploy/plan.mjs workflowOutputs): the runner's image when
     // the API is not deploying, the API (the site does not bind it).
     let deploy = read("deploy.yml");
-    let mut outputs = plan_outputs(
-        false,
-        &[("ts", "projects", false)],
-        &[("ts", "status", false)],
-        &[("web", "web", false)],
-    );
+    let mut outputs = plan_outputs(false, &[("ts", "projects", false)], &[("ts", "status", false)], &[("web", "web", false)]);
     let rest = |stage: &str, group: &str, units: &str| {
         json!({ "include": [{ "group": group, "units": units, "rust": false, "prebuilt": false, "stage": stage }] }).to_string()
     };
@@ -956,46 +559,15 @@ fn deploy_stages_skip_what_nothing_later_calls() {
     assert_eq!(needs("edge_rest"), needs("edge"));
     assert!(needs("front").iter().any(|n| n == "edge"));
     assert!(!needs("front").iter().any(|n| n == "edge_rest"));
-    assert!(starts(
-        &deploy,
-        "edge_rest",
-        &[("migrate", "skipped"), ("core", "success")],
-        &outputs,
-        push.clone(),
-        false
-    ));
+    assert!(starts(&deploy, "edge_rest", &[("migrate", "skipped"), ("core", "success")], &outputs, push.clone(), false));
     // A failed core stops both; a failed runner's image stops neither edge
     // nor front, only smoke.
-    assert!(!starts(
-        &deploy,
-        "edge_rest",
-        &[("migrate", "skipped"), ("core", "failure")],
-        &outputs,
-        push.clone(),
-        false
-    ));
-    assert!(starts(
-        &deploy,
-        "front",
-        &[
-            ("migrate", "skipped"),
-            ("core", "success"),
-            ("edge", "success")
-        ],
-        &outputs,
-        push.clone(),
-        false
-    ));
+    assert!(!starts(&deploy, "edge_rest", &[("migrate", "skipped"), ("core", "failure")], &outputs, push.clone(), false));
+    assert!(starts(&deploy, "front", &[("migrate", "skipped"), ("core", "success"), ("edge", "success")], &outputs, push.clone(), false));
     assert!(!starts(
         &deploy,
         "smoke",
-        &[
-            ("core", "success"),
-            ("core_rest", "failure"),
-            ("edge", "success"),
-            ("edge_rest", "success"),
-            ("front", "success")
-        ],
+        &[("core", "success"), ("core_rest", "failure"), ("edge", "success"), ("edge_rest", "success"), ("front", "success")],
         &outputs,
         push.clone(),
         false
@@ -1011,13 +583,7 @@ fn deploy_stages_skip_what_nothing_later_calls() {
     assert!(starts(
         &deploy,
         "smoke",
-        &[
-            ("core", "skipped"),
-            ("core_rest", "success"),
-            ("edge", "skipped"),
-            ("edge_rest", "skipped"),
-            ("front", "skipped")
-        ],
+        &[("core", "skipped"), ("core_rest", "success"), ("edge", "skipped"), ("edge_rest", "skipped"), ("front", "skipped")],
         &alone,
         push.clone(),
         false
@@ -1032,87 +598,37 @@ fn deploy_stages_skip_what_nothing_later_calls() {
 #[test]
 fn deploy_stage_matrices_come_from_the_plan() {
     let deploy = read("deploy.yml");
-    let outputs = plan_outputs(
-        false,
-        &[
-            ("rust-1", "events,work", true),
-            ("rust-2", "repos", true),
-            ("ts", "projects,og", false),
-        ],
-        &[],
-        &[],
-    );
+    let outputs =
+        plan_outputs(false, &[("rust-1", "events,work", true), ("rust-2", "repos", true), ("ts", "projects,og", false)], &[], &[]);
     let core = deploy.jobs.iter().find(|j| j.id == "core").unwrap();
     assert!(!core.fail_fast);
     assert_eq!(core.max_parallel, Some(12));
     let mut contexts = Map::new();
-    contexts.insert(
-        "needs".into(),
-        json!({ "plan": { "result": "success", "outputs": outputs } }),
-    );
-    let scope = Scope {
-        contexts: &contexts,
-        status: Status::Success,
-        hash_files: None,
-    };
+    contexts.insert("needs".into(), json!({ "plan": { "result": "success", "outputs": outputs } }));
+    let scope = Scope { contexts: &contexts, status: Status::Success, hash_files: None };
     let value = expr::interpolate_value(core.matrix.as_ref().unwrap(), &scope).unwrap();
     let jobs = matrix::expand(&value).unwrap();
-    let groups: Vec<(&str, &str, bool)> = jobs
-        .iter()
-        .map(|c| {
-            (
-                c["group"].as_str().unwrap(),
-                c["units"].as_str().unwrap(),
-                c["rust"].as_bool().unwrap(),
-            )
-        })
-        .collect();
-    assert_eq!(
-        groups,
-        [
-            ("rust-1", "events,work", true),
-            ("rust-2", "repos", true),
-            ("ts", "projects,og", false)
-        ]
-    );
+    let groups: Vec<(&str, &str, bool)> =
+        jobs.iter().map(|c| (c["group"].as_str().unwrap(), c["units"].as_str().unwrap(), c["rust"].as_bool().unwrap())).collect();
+    assert_eq!(groups, [("rust-1", "events,work", true), ("rust-2", "repos", true), ("ts", "projects,og", false)]);
 
     // The builds: every stage's Rust groups and sites in one matrix, each
     // naming its stage, since two stages may each have a group `rust`.
-    let outputs = plan_outputs(
-        false,
-        &[("rust", "events", true), ("ts", "projects", false)],
-        &[("rust", "api", true)],
-        &[("web", "web", false)],
-    );
+    let outputs =
+        plan_outputs(false, &[("rust", "events", true), ("ts", "projects", false)], &[("rust", "api", true)], &[("web", "web", false)]);
     let build = deploy.jobs.iter().find(|j| j.id == "build").unwrap();
     let mut contexts = Map::new();
-    contexts.insert(
-        "needs".into(),
-        json!({ "plan": { "result": "success", "outputs": outputs } }),
-    );
-    let scope = Scope {
-        contexts: &contexts,
-        status: Status::Success,
-        hash_files: None,
-    };
+    contexts.insert("needs".into(), json!({ "plan": { "result": "success", "outputs": outputs } }));
+    let scope = Scope { contexts: &contexts, status: Status::Success, hash_files: None };
     let value = expr::interpolate_value(build.matrix.as_ref().unwrap(), &scope).unwrap();
     let builds: Vec<(String, String)> = matrix::expand(&value)
         .unwrap()
         .iter()
-        .map(|c| {
-            (
-                c["stage"].as_str().unwrap().to_owned(),
-                c["group"].as_str().unwrap().to_owned(),
-            )
-        })
+        .map(|c| (c["stage"].as_str().unwrap().to_owned(), c["group"].as_str().unwrap().to_owned()))
         .collect();
     assert_eq!(
         builds,
-        [
-            ("core".to_owned(), "rust".to_owned()),
-            ("edge".to_owned(), "rust".to_owned()),
-            ("front".to_owned(), "web".to_owned())
-        ]
+        [("core".to_owned(), "rust".to_owned()), ("edge".to_owned(), "rust".to_owned()), ("front".to_owned(), "web".to_owned())]
     );
     // A build's artifact is the one its stage's job fetches.
     let artifact = |job: &workflow::Job, action: &str| {
@@ -1141,15 +657,8 @@ fn deploy_builds_on_ubuntu_latest_with_its_target_cached() {
         let job = deploy.jobs.iter().find(|j| j.id == stage).unwrap();
         let on = |rust: bool, image: bool| {
             let mut contexts = Map::new();
-            contexts.insert(
-                "matrix".into(),
-                json!({ "group": "g", "units": "u", "rust": rust, "image": image }),
-            );
-            let scope = Scope {
-                contexts: &contexts,
-                status: Status::Success,
-                hash_files: None,
-            };
+            contexts.insert("matrix".into(), json!({ "group": "g", "units": "u", "rust": rust, "image": image }));
+            let scope = Scope { contexts: &contexts, status: Status::Success, hash_files: None };
             expr::interpolate_value(&job.runs_on, &scope).unwrap()
         };
         // Every job on ubuntu-latest, as on GitHub: 4 vCPU in this public
@@ -1170,11 +679,7 @@ fn deploy_builds_on_ubuntu_latest_with_its_target_cached() {
 fn step_runs(step: &workflow::Step, matrix: Value, status: Status) -> bool {
     let mut contexts = Map::new();
     contexts.insert("matrix".into(), matrix);
-    let scope = Scope {
-        contexts: &contexts,
-        status,
-        hash_files: None,
-    };
+    let scope = Scope { contexts: &contexts, status, hash_files: None };
     expr::condition(step.condition.as_deref().unwrap_or_default(), &scope).unwrap()
 }
 
@@ -1182,22 +687,14 @@ fn step_runs(step: &workflow::Step, matrix: Value, status: Status) -> bool {
 /// object of them, such as `steps`).
 fn runs_with(step: &workflow::Step, contexts: &Value, status: Status) -> bool {
     let contexts = contexts.as_object().unwrap().clone();
-    let scope = Scope {
-        contexts: &contexts,
-        status,
-        hash_files: None,
-    };
+    let scope = Scope { contexts: &contexts, status, hash_files: None };
     expr::condition(step.condition.as_deref().unwrap_or_default(), &scope).unwrap()
 }
 
 #[test]
 fn rust_builds_go_through_sccache_before_cargo_and_report_after() {
     let step = |job: &workflow::Job, run: &str| -> (usize, workflow::Step) {
-        let at = job
-            .steps
-            .iter()
-            .position(|s| s.run.as_deref() == Some(run))
-            .unwrap_or_else(|| panic!("{}: no step runs {run}", job.id));
+        let at = job.steps.iter().position(|s| s.run.as_deref() == Some(run)).unwrap_or_else(|| panic!("{}: no step runs {run}", job.id));
         (at, job.steps[at].clone())
     };
     let deploy = read("deploy.yml");
@@ -1217,29 +714,13 @@ fn rust_builds_go_through_sccache_before_cargo_and_report_after() {
         let (stats_at, stats) = step(job, "bash scripts/sccache.sh stats");
         // Before anything runs Cargo (worker-build's install, the build),
         // and the statistics last.
-        let install_step = job
-            .steps
-            .iter()
-            .position(|s| s.name.as_deref() == Some("Install"))
-            .unwrap();
+        let install_step = job.steps.iter().position(|s| s.name.as_deref() == Some("Install")).unwrap();
         assert!(install_at < install_step, "{stage}");
         assert_eq!(stats_at, job.steps.len() - 1, "{stage}");
-        for (rust, image, uses) in [
-            (true, false, through[0]),
-            (false, true, through[1]),
-            (false, false, through[2]),
-        ] {
+        for (rust, image, uses) in [(true, false, through[0]), (false, true, through[1]), (false, false, through[2])] {
             let matrix = json!({ "group": "g", "units": "u", "rust": rust, "image": image });
-            assert_eq!(
-                step_runs(&install, matrix.clone(), Status::Success),
-                uses,
-                "{stage} rust={rust} image={image}"
-            );
-            assert_eq!(
-                step_runs(&stats, matrix.clone(), Status::Success),
-                uses,
-                "{stage}"
-            );
+            assert_eq!(step_runs(&install, matrix.clone(), Status::Success), uses, "{stage} rust={rust} image={image}");
+            assert_eq!(step_runs(&stats, matrix.clone(), Status::Success), uses, "{stage}");
             // A failed build still says what was cached.
             assert_eq!(step_runs(&stats, matrix, Status::Failure), uses, "{stage}");
         }
@@ -1259,35 +740,17 @@ fn rust_builds_go_through_sccache_before_cargo_and_report_after() {
     assert!(ci.trigger("merge_group").is_some());
     for (id, on_push) in [("rust", true), ("typescript", true), ("build", false)] {
         let job = ci.jobs.iter().find(|j| j.id == id).unwrap();
-        for (event, expected) in [
-            ("push", on_push),
-            ("pull_request", true),
-            ("merge_group", true),
-        ] {
+        for (event, expected) in [("push", on_push), ("pull_request", true), ("merge_group", true)] {
             let mut contexts = Map::new();
-            contexts.insert(
-                "github".into(),
-                json!({ "event_name": event, "ref": "refs/heads/main" }),
-            );
-            let scope = Scope {
-                contexts: &contexts,
-                status: Status::Success,
-                hash_files: None,
-            };
-            assert_eq!(
-                expr::condition(job.condition.as_deref().unwrap_or_default(), &scope).unwrap(),
-                expected,
-                "{id} on {event}"
-            );
+            contexts.insert("github".into(), json!({ "event_name": event, "ref": "refs/heads/main" }));
+            let scope = Scope { contexts: &contexts, status: Status::Success, hash_files: None };
+            assert_eq!(expr::condition(job.condition.as_deref().unwrap_or_default(), &scope).unwrap(), expected, "{id} on {event}");
         }
     }
     // The download is pinned by version and checksum.
     let script = std::fs::read_to_string(workflows_dir().join("../../scripts/sccache.sh")).unwrap();
     assert!(script.contains("VERSION=0.18.0"));
-    assert!(script.lines().any(|line| {
-        line.strip_prefix("SHA256=")
-            .is_some_and(|sum| sum.len() == 64)
-    }));
+    assert!(script.lines().any(|line| { line.strip_prefix("SHA256=").is_some_and(|sum| sum.len() == 64) }));
     assert!(script.contains("sha256sum -c"));
     assert!(script.contains("RUSTC_WRAPPER="));
     assert!(script.contains("GITHUB_STEP_SUMMARY"));
@@ -1315,30 +778,16 @@ fn g1ts_own_actions_are_published_when_they_change() {
     let mut finders = Vec::new();
     for entry in std::fs::read_dir(&actions).unwrap() {
         let dir = entry.unwrap().path();
-        let manifest = std::fs::read_to_string(dir.join("action.yml"))
-            .unwrap_or_else(|_| panic!("{} has no action.yml", dir.display()));
+        let manifest = std::fs::read_to_string(dir.join("action.yml")).unwrap_or_else(|_| panic!("{} has no action.yml", dir.display()));
         let manifest: serde_yaml::Value = serde_yaml::from_str(&manifest).unwrap();
-        assert_eq!(
-            manifest["runs"]["using"].as_str(),
-            Some("composite"),
-            "{}",
-            dir.display()
-        );
+        assert_eq!(manifest["runs"]["using"].as_str(), Some("composite"), "{}", dir.display());
         assert!(dir.join("README.md").exists(), "{}", dir.display());
         finders.push(std::fs::read_to_string(dir.join("runner.sh")).unwrap());
     }
     assert!(finders.len() >= 2);
-    assert!(
-        finders.windows(2).all(|pair| pair[0] == pair[1]),
-        "actions/*/runner.sh differ"
-    );
-    let deploy: serde_yaml::Value =
-        serde_yaml::from_str(&std::fs::read_to_string(actions.join("deploy/action.yml")).unwrap())
-            .unwrap();
-    assert_eq!(
-        deploy["inputs"]["token"]["default"].as_str(),
-        Some("${{ github.token }}")
-    );
+    assert!(finders.windows(2).all(|pair| pair[0] == pair[1]), "actions/*/runner.sh differ");
+    let deploy: serde_yaml::Value = serde_yaml::from_str(&std::fs::read_to_string(actions.join("deploy/action.yml")).unwrap()).unwrap();
+    assert_eq!(deploy["inputs"]["token"]["default"].as_str(), Some("${{ github.token }}"));
     for output in ["url", "deployment-id"] {
         assert!(deploy["outputs"][output]["value"].is_string(), "{output}");
     }
@@ -1358,28 +807,13 @@ fn the_runner_base_rebuilds_weekly_on_a_machine_with_docker() {
 
 #[test]
 fn the_conformance_workflow_is_the_same_on_github_and_on_g1t() {
-    let root = workflows_dir()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf();
+    let root = workflows_dir().parent().unwrap().parent().unwrap().to_path_buf();
     let ours = std::fs::read_to_string(root.join(".g1t/workflows/conformance.yml")).unwrap();
     let theirs = std::fs::read_to_string(root.join(".github/workflows/conformance.yml")).unwrap();
-    assert_eq!(
-        ours, theirs,
-        "copy .g1t/workflows/conformance.yml over .github/workflows/conformance.yml"
-    );
+    assert_eq!(ours, theirs, "copy .g1t/workflows/conformance.yml over .github/workflows/conformance.yml");
     // It runs only by hand, and reads nothing it could change.
     let workflow = read("conformance.yml");
-    assert_eq!(
-        workflow
-            .triggers
-            .iter()
-            .map(|t| t.event.as_str())
-            .collect::<Vec<_>>(),
-        ["workflow_dispatch"]
-    );
+    assert_eq!(workflow.triggers.iter().map(|t| t.event.as_str()).collect::<Vec<_>>(), ["workflow_dispatch"]);
     assert!(!ours.contains("secrets."));
 }
 
@@ -1397,10 +831,7 @@ fn workflows_read_only_secrets_that_can_be_set() {
         }
         let source = std::fs::read_to_string(&path).unwrap();
         for (at, _) in source.match_indices("secrets.") {
-            let name: String = source[at + "secrets.".len()..]
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                .collect();
+            let name: String = source[at + "secrets.".len()..].chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
             let reserved = name.starts_with("G1T_") || name.starts_with("GITHUB_");
             assert!(
                 !reserved || name == "G1T_TOKEN" || name == "GITHUB_TOKEN",
@@ -1443,10 +874,7 @@ fn every_install_runs_again_when_a_connection_drops() {
 fn workspace_crates() -> Vec<String> {
     let root = workflows_dir().join("../..");
     let manifest = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
-    let members = manifest
-        .lines()
-        .find(|line| line.trim_start().starts_with("members"))
-        .unwrap();
+    let members = manifest.lines().find(|line| line.trim_start().starts_with("members")).unwrap();
     let mut dirs = Vec::new();
     for member in members.split('"').skip(1).step_by(2) {
         match member.strip_suffix("/*") {
@@ -1477,8 +905,7 @@ fn workspace_crates() -> Vec<String> {
 }
 
 /// The TypeScript job's type checks, of the workspaces ci-affected.mjs names.
-const TYPE_CHECKS: &str =
-    "node scripts/deploy/ci-workspaces.mjs typecheck ${{ steps.affected.outputs.typecheck }}";
+const TYPE_CHECKS: &str = "node scripts/deploy/ci-workspaces.mjs typecheck ${{ steps.affected.outputs.typecheck }}";
 
 /// What `ci-affected.mjs --npm` writes for a run on `event`: every
 /// workspace and check when `reached`, none otherwise; a push the merge
@@ -1518,11 +945,7 @@ fn ci_checks_only_the_npm_workspaces_a_pull_request_reaches() {
     for step in &typescript.steps[2..] {
         let name = step.name.clone().unwrap_or_default();
         let always = step.run.as_deref() == Some("node --test scripts/deploy/ci-affected.test.mjs");
-        assert_eq!(
-            runs_with(step, &npm_outputs("pull_request", false, false), Status::Success),
-            always,
-            "{name}"
-        );
+        assert_eq!(runs_with(step, &npm_outputs("pull_request", false, false), Status::Success), always, "{name}");
         // One that reaches them runs every step but the save, main's alone.
         assert_eq!(
             runs_with(step, &npm_outputs("pull_request", false, true), Status::Success),
@@ -1539,11 +962,7 @@ fn ci_checks_only_the_npm_workspaces_a_pull_request_reaches() {
     ] {
         assert!(typescript.steps.iter().any(|s| s.run.as_deref() == Some(run)), "{run}");
     }
-    let save = typescript
-        .steps
-        .iter()
-        .find(|s| s.uses.as_deref().is_some_and(|u| u.starts_with("actions/cache/save@")))
-        .unwrap();
+    let save = typescript.steps.iter().find(|s| s.uses.as_deref().is_some_and(|u| u.starts_with("actions/cache/save@"))).unwrap();
     let mut part = npm_outputs("push", false, true);
     part["steps"]["affected"]["outputs"]["whole"] = json!("false");
     assert!(!runs_with(save, &part, Status::Success));
@@ -1557,18 +976,10 @@ fn ci_keeps_only_tsc_build_info_between_type_checks() {
     // another commit could, so each run writes those again.
     let ci = read("ci.yml");
     let typescript = ci.jobs.iter().find(|j| j.id == "typescript").unwrap();
-    let at = typescript
-        .steps
-        .iter()
-        .position(|s| s.raw["with"]["key"].as_str().is_some_and(|k| k.starts_with("tsc-")))
-        .unwrap();
+    let at = typescript.steps.iter().position(|s| s.raw["with"]["key"].as_str().is_some_and(|k| k.starts_with("tsc-"))).unwrap();
     let kept = paths(&typescript.steps[at]);
     assert!(!kept.is_empty() && kept.iter().all(|p| p.ends_with("/*.tsbuildinfo")), "{kept:?}");
-    let check = typescript
-        .steps
-        .iter()
-        .position(|s| s.run.as_deref() == Some(TYPE_CHECKS))
-        .unwrap();
+    let check = typescript.steps.iter().position(|s| s.run.as_deref() == Some(TYPE_CHECKS)).unwrap();
     assert!(at < check);
 }
 
@@ -1594,19 +1005,14 @@ fn ci_tests_every_crate_once_across_its_rust_parts() {
     assert_eq!(tested, once, "a crate is in more than one part");
     assert_eq!(tested, workspace_crates(), "the parts and the workspace's crates differ");
     // Each part keeps a test build of its own, and builds and prunes the same crates.
-    let key = rust
-        .steps
-        .iter()
-        .find(|s| s.id.as_deref() == Some("test-build"))
-        .unwrap()
-        .raw["with"]["key"]
-        .as_str()
-        .unwrap()
-        .to_owned();
+    let key = rust.steps.iter().find(|s| s.id.as_deref() == Some("test-build")).unwrap().raw["with"]["key"].as_str().unwrap().to_owned();
     assert!(key.contains("${{ matrix.part }}"), "{key}");
     // It tests the crates of the part a pull request reaches, and prunes
     // and saves only a build of all of them.
-    for run in ["cargo test ${{ steps.affected.outputs.crates }} --locked --quiet", "node scripts/deploy/ci-cache.mjs prune target/debug -- test ${{ matrix.crates }} --locked --no-run"] {
+    for run in [
+        "cargo test ${{ steps.affected.outputs.crates }} --locked --quiet",
+        "node scripts/deploy/ci-cache.mjs prune target/debug -- test ${{ matrix.crates }} --locked --no-run",
+    ] {
         assert!(rust.steps.iter().any(|s| s.run.as_deref() == Some(run)), "{run}");
     }
 }
@@ -1623,10 +1029,7 @@ fn ci_tests_only_the_crates_a_pull_request_reaches() {
     assert_eq!(checkout.raw["with"]["fetch-depth"], json!(2));
     let affected = &rust.steps[1];
     assert_eq!(affected.id.as_deref(), Some("affected"));
-    assert_eq!(
-        affected.run.as_deref(),
-        Some("node scripts/deploy/ci-affected.mjs ${{ matrix.crates }}")
-    );
+    assert_eq!(affected.run.as_deref(), Some("node scripts/deploy/ci-affected.mjs ${{ matrix.crates }}"));
     assert!(affected.condition.is_none());
     let outputs = |crates: &str, whole: bool| {
         json!({ "steps": {
@@ -1646,7 +1049,10 @@ fn ci_tests_only_the_crates_a_pull_request_reaches() {
         }
         assert!(runs_with(step, &all, Status::Success), "{name}");
         // Only a build of every crate of the part is pruned and saved.
-        let keeps = name == "Only this build's files are saved" || saves(step) && step.id.as_deref() != Some("test-build") && step.raw["with"]["key"].as_str().is_some_and(|k| k.starts_with("cargo-test-"));
+        let keeps = name == "Only this build's files are saved"
+            || saves(step)
+                && step.id.as_deref() != Some("test-build")
+                && step.raw["with"]["key"].as_str().is_some_and(|k| k.starts_with("cargo-test-"));
         assert_eq!(runs_with(step, &some, Status::Success), !keeps, "{name}");
     }
     // The script is the build's: a change to it, as to this workflow,
@@ -1668,112 +1074,46 @@ fn a_push_the_merge_queue_tested_keeps_mains_caches_and_runs_no_tests_again() {
     // commit passed a merge_group run of CI.
     assert_eq!(ci.raw["permissions"]["actions"], json!("read"));
     let rust = ci.jobs.iter().find(|j| j.id == "rust").unwrap();
-    let affected = rust
-        .steps
-        .iter()
-        .find(|s| s.id.as_deref() == Some("affected"))
-        .unwrap();
-    assert_eq!(
-        affected.raw["env"]["GITHUB_TOKEN"],
-        json!("${{ github.token }}")
-    );
+    let affected = rust.steps.iter().find(|s| s.id.as_deref() == Some("affected")).unwrap();
+    assert_eq!(affected.raw["env"]["GITHUB_TOKEN"], json!("${{ github.token }}"));
     let outputs = |tested: bool| {
         json!({ "steps": {
             "affected": { "outputs": { "crates": "-p g1t-kit -p g1t", "whole": "true", "tested": tested.to_string() } },
             "test-build": { "outputs": { "cache-hit": "false" } },
         } })
     };
-    let named = |name: &str| {
-        rust.steps
-            .iter()
-            .find(|s| s.name.as_deref() == Some(name))
-            .unwrap_or_else(|| panic!("no step {name}"))
-    };
+    let named = |name: &str| rust.steps.iter().find(|s| s.name.as_deref() == Some(name)).unwrap_or_else(|| panic!("no step {name}"));
     let (tests, compiled) = (named("Tests"), named("Tests, compiled only"));
-    assert_eq!(
-        tests.run.as_deref(),
-        Some("cargo test ${{ steps.affected.outputs.crates }} --locked --quiet")
-    );
-    assert_eq!(
-        compiled.run.as_deref(),
-        Some("cargo test ${{ steps.affected.outputs.crates }} --locked --quiet --no-run")
-    );
+    assert_eq!(tests.run.as_deref(), Some("cargo test ${{ steps.affected.outputs.crates }} --locked --quiet"));
+    assert_eq!(compiled.run.as_deref(), Some("cargo test ${{ steps.affected.outputs.crates }} --locked --quiet --no-run"));
     for (tested, test, compile) in [(false, true, false), (true, false, true)] {
-        assert_eq!(
-            runs_with(tests, &outputs(tested), Status::Success),
-            test,
-            "tested={tested}"
-        );
-        assert_eq!(
-            runs_with(compiled, &outputs(tested), Status::Success),
-            compile,
-            "tested={tested}"
-        );
+        assert_eq!(runs_with(tests, &outputs(tested), Status::Success), test, "tested={tested}");
+        assert_eq!(runs_with(compiled, &outputs(tested), Status::Success), compile, "tested={tested}");
         // Either way the whole build is pruned and saved for pull requests.
-        assert!(runs_with(
-            named("Only this build's files are saved"),
-            &outputs(tested),
-            Status::Success
-        ));
-        assert!(runs_with(
-            named("Save the test build"),
-            &outputs(tested),
-            Status::Success
-        ));
+        assert!(runs_with(named("Only this build's files are saved"), &outputs(tested), Status::Success));
+        assert!(runs_with(named("Save the test build"), &outputs(tested), Status::Success));
     }
     // A queue state's branch is gone once it lands: it saves no test build.
     let mut queued = outputs(false).as_object().unwrap().clone();
     queued.insert("github".into(), json!({ "event_name": "merge_group" }));
-    assert!(!runs_with(
-        named("Save the test build"),
-        &Value::Object(queued),
-        Status::Success
-    ));
+    assert!(!runs_with(named("Save the test build"), &Value::Object(queued), Status::Success));
     // TypeScript type checks every workspace, saving tsc's build info, and
     // runs no tests: ci-affected.mjs --npm says which (npmPlan).
     let typescript = ci.jobs.iter().find(|j| j.id == "typescript").unwrap();
-    let queue = typescript
-        .steps
-        .iter()
-        .position(|s| s.id.as_deref() == Some("affected"))
-        .unwrap();
-    assert_eq!(
-        typescript.steps[queue].run.as_deref(),
-        Some("node scripts/deploy/ci-affected.mjs --npm")
-    );
-    assert_eq!(
-        typescript.steps[queue].raw["env"]["GITHUB_TOKEN"],
-        json!("${{ github.token }}")
-    );
-    let check = typescript
-        .steps
-        .iter()
-        .position(|s| s.run.as_deref() == Some(TYPE_CHECKS))
-        .unwrap();
+    let queue = typescript.steps.iter().position(|s| s.id.as_deref() == Some("affected")).unwrap();
+    assert_eq!(typescript.steps[queue].run.as_deref(), Some("node scripts/deploy/ci-affected.mjs --npm"));
+    assert_eq!(typescript.steps[queue].raw["env"]["GITHUB_TOKEN"], json!("${{ github.token }}"));
+    let check = typescript.steps.iter().position(|s| s.run.as_deref() == Some(TYPE_CHECKS)).unwrap();
     assert!(queue < check);
     for step in &typescript.steps[check..] {
         let name = step.name.clone().unwrap_or_default();
         assert!(runs_with(step, &npm_outputs("push", false, true), Status::Success), "{name}");
         let kept = step.run.as_deref() == Some(TYPE_CHECKS) || saves(step);
-        assert_eq!(
-            runs_with(step, &npm_outputs("push", true, true), Status::Success),
-            kept,
-            "{name}"
-        );
+        assert_eq!(runs_with(step, &npm_outputs("push", true, true), Status::Success), kept, "{name}");
     }
     // The desktop job asks too, and passes without running (ci-affected.mjs).
     let desktop = ci.jobs.iter().find(|j| j.id == "desktop").unwrap();
-    let asks = desktop
-        .steps
-        .iter()
-        .find(|s| s.id.as_deref() == Some("affected"))
-        .unwrap();
-    assert_eq!(
-        asks.run.as_deref(),
-        Some("node scripts/deploy/ci-affected.mjs --job desktop")
-    );
-    assert_eq!(
-        asks.raw["env"]["GITHUB_TOKEN"],
-        json!("${{ github.token }}")
-    );
+    let asks = desktop.steps.iter().find(|s| s.id.as_deref() == Some("affected")).unwrap();
+    assert_eq!(asks.run.as_deref(), Some("node scripts/deploy/ci-affected.mjs --job desktop"));
+    assert_eq!(asks.raw["env"]["GITHUB_TOKEN"], json!("${{ github.token }}"));
 }

@@ -6,34 +6,19 @@ use crate::error::{Error, Result};
 
 /// Runs git and returns its output, trimmed.
 pub fn run(args: &[&str]) -> Result<String> {
-    let output = Command::new("git")
-        .args(args)
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|e| Error::failed(format!("Could not run git: {e}")))?;
+    let output =
+        Command::new("git").args(args).stdin(Stdio::null()).output().map_err(|e| Error::failed(format!("Could not run git: {e}")))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let line = stderr
-            .lines()
-            .find(|l| !l.trim().is_empty())
-            .unwrap_or("")
-            .trim();
-        return Err(Error::failed(format!(
-            "git {} failed: {line}",
-            args.join(" ")
-        )));
+        let line = stderr.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
+        return Err(Error::failed(format!("git {} failed: {line}", args.join(" "))));
     }
-    Ok(String::from_utf8_lossy(&output.stdout)
-        .trim_end()
-        .to_owned())
+    Ok(String::from_utf8_lossy(&output.stdout).trim_end().to_owned())
 }
 
 /// Runs git with its output on the terminal, as for a clone or a push.
 pub fn run_visible(args: &[&str]) -> Result<()> {
-    let status = Command::new("git")
-        .args(args)
-        .status()
-        .map_err(|e| Error::failed(format!("Could not run git: {e}")))?;
+    let status = Command::new("git").args(args).status().map_err(|e| Error::failed(format!("Could not run git: {e}")))?;
     if !status.success() {
         return Err(Error::exit(crate::error::Kind::Failed));
     }
@@ -41,13 +26,7 @@ pub fn run_visible(args: &[&str]) -> Result<()> {
 }
 
 pub fn ok(args: &[&str]) -> bool {
-    Command::new("git")
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
+    Command::new("git").args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success())
 }
 
 /// The remotes, in the order git lists them, with their fetch URLs.
@@ -69,9 +48,7 @@ pub fn remotes() -> Vec<(String, String)> {
 }
 
 pub fn current_branch() -> Option<String> {
-    run(&["symbolic-ref", "--quiet", "--short", "HEAD"])
-        .ok()
-        .filter(|b| !b.is_empty())
+    run(&["symbolic-ref", "--quiet", "--short", "HEAD"]).ok().filter(|b| !b.is_empty())
 }
 
 /// The commits on `head` that `base` lacks, oldest first: (subject, body).

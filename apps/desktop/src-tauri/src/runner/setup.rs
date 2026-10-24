@@ -96,7 +96,9 @@ pub fn plan_of(needs: &[String]) -> Plan {
     for need in needs {
         match need.as_str() {
             "vm_platform" if !plan.features.contains(&"VirtualMachinePlatform") => plan.features.push("VirtualMachinePlatform"),
-            "windows_sandbox" if !plan.features.contains(&"Containers-DisposableClientVM") => plan.features.push("Containers-DisposableClientVM"),
+            "windows_sandbox" if !plan.features.contains(&"Containers-DisposableClientVM") => {
+                plan.features.push("Containers-DisposableClientVM")
+            }
             "wsl" => plan.wsl = Some(Wsl::Install),
             "wsl_update" if plan.wsl.is_none() => plan.wsl = Some(Wsl::Update),
             _ => {}
@@ -265,7 +267,11 @@ pub fn run_elevated(script: &str, window: isize) -> Outcome {
     // SAFETY: `info` and the strings it points to live until the call returns.
     if unsafe { ShellExecuteExW(&mut info) } == 0 {
         let error = unsafe { GetLastError() };
-        return if error == CANCELLED { Outcome::Declined } else { Outcome::Failed(format!("Windows couldn't start Set up (error {error}).")) };
+        return if error == CANCELLED {
+            Outcome::Declined
+        } else {
+            Outcome::Failed(format!("Windows couldn't start Set up (error {error})."))
+        };
     }
     if info.process == 0 {
         return Outcome::Failed("Windows started Set up without a process to wait for.".into());
@@ -325,7 +331,9 @@ fn asked_yes(question: &str) -> bool {
     let (text, caption) = (wide(question), wide("g1t"));
     // SAFETY: both strings live until the call returns. No owner window: this
     // isn't the window's thread, and the dialog stays on top by itself.
-    unsafe { MessageBoxW(0, text.as_ptr(), caption.as_ptr(), MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2 | MB_SETFOREGROUND | MB_TOPMOST) == IDYES }
+    unsafe {
+        MessageBoxW(0, text.as_ptr(), caption.as_ptr(), MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2 | MB_SETFOREGROUND | MB_TOPMOST) == IDYES
+    }
 }
 
 #[cfg(not(windows))]
@@ -350,7 +358,17 @@ fn restart_windows(app_exe: &Path) -> Result<(), String> {
 pub fn open_after_restart(app_exe: &Path) {
     if cfg!(windows) {
         let _ = super::backend::quiet("reg")
-            .args(["add", r"HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce", "/v", "g1t", "/t", "REG_SZ", "/d", &format!("\"{}\"", app_exe.display()), "/f"])
+            .args([
+                "add",
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce",
+                "/v",
+                "g1t",
+                "/t",
+                "REG_SZ",
+                "/d",
+                &format!("\"{}\"", app_exe.display()),
+                "/f",
+            ])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status();
@@ -383,7 +401,9 @@ mod tests {
         let update = status(r#"{"schema":1,"state":"error","capabilities":[{"id":"linux","available":false,"needs":["wsl_update"]}]}"#);
         assert_eq!(plan(&update, |_| true).said(), "updates WSL");
         // Home: nothing Set up can do for Windows jobs.
-        let home = status(r#"{"schema":1,"state":"running","capabilities":[{"id":"linux","available":true,"state":"running"},{"id":"windows","available":false,"needs":["windows_edition"]}]}"#);
+        let home = status(
+            r#"{"schema":1,"state":"running","capabilities":[{"id":"linux","available":true,"state":"running"},{"id":"windows","available":false,"needs":["windows_edition"]}]}"#,
+        );
         assert!(plan(&home, |_| true).is_empty());
         assert!(fixable(&["vm_platform".into(), "wsl".into()]));
         assert!(!fixable(&["virtualization".into(), "vm_platform".into()]));
@@ -434,7 +454,8 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("g1t-setup-wsl-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let (log, marker) = (dir.join("setup.log"), dir.join(RESTART_FILE));
-        let script = script(&Plan { features: vec![], wsl: Some(Wsl::Update) }, &log, &marker).replace("Install-Wsl '--update'", "Install-Wsl '--version'");
+        let script = script(&Plan { features: vec![], wsl: Some(Wsl::Update) }, &log, &marker)
+            .replace("Install-Wsl '--update'", "Install-Wsl '--version'");
         let code = super::super::backend::quiet("powershell.exe")
             .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", &encoded(&script)])
             .status()
@@ -460,7 +481,14 @@ mod tests {
         let (log, marker) = (dir.join("setup.log"), dir.join(RESTART_FILE));
         let plan = Plan { features: vec!["VirtualMachinePlatform"], wsl: Some(Wsl::Update) };
         let code = super::super::backend::quiet("powershell.exe")
-            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", &encoded(&script(&plan, &log, &marker))])
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-EncodedCommand",
+                &encoded(&script(&plan, &log, &marker)),
+            ])
             .status()
             .unwrap()
             .code()

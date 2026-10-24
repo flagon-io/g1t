@@ -199,10 +199,7 @@ pub(crate) fn may_create_labels(actor: &User, workspace: &str) -> bool {
 /// Refused while issues are still being moved into work items: what is
 /// numbered or kept by workspace is not all there yet.
 pub(crate) fn still_moving<T>() -> Outcome<T> {
-    Outcome::fail(
-        FailureCode::Conflict,
-        "Work items are still being moved into this workspace; try again in a few minutes.",
-    )
+    Outcome::fail(FailureCode::Conflict, "Work items are still being moved into this workspace; try again in a few minutes.")
 }
 
 impl Work {
@@ -237,19 +234,9 @@ impl Work {
 
     async fn labels_in(&self, workspace: &str, only: Option<&str>) -> Result<Vec<Label>> {
         let rows = match only {
-            Some(name) => {
-                self.db
-                    .prepare(format!("{LABELS} AND name = ?2"))
-                    .bind(&[workspace.into(), name.into()])?
-                    .all()
-                    .await?
-            }
+            Some(name) => self.db.prepare(format!("{LABELS} AND name = ?2")).bind(&[workspace.into(), name.into()])?.all().await?,
             None => {
-                self.db
-                    .prepare(format!("{LABELS} ORDER BY name LIMIT {MAX_WORKSPACE_LABELS}"))
-                    .bind(&[workspace.into()])?
-                    .all()
-                    .await?
+                self.db.prepare(format!("{LABELS} ORDER BY name LIMIT {MAX_WORKSPACE_LABELS}")).bind(&[workspace.into()])?.all().await?
             }
         };
         Ok(rows.results::<LabelRow>()?.into_iter().map(Label::from).collect())
@@ -352,19 +339,20 @@ impl Work {
             return Ok(Outcome::fail(FailureCode::Conflict, format!("A label named {new_name} already exists.")));
         }
         let to = renamed.clone().unwrap_or_else(|| name.clone());
-        let mut statements = vec![self
-            .db
-            .prepare(
-                "UPDATE labels SET name = ?3, color = COALESCE(?4, color), description = COALESCE(?5, description)
+        let mut statements = vec![
+            self.db
+                .prepare(
+                    "UPDATE labels SET name = ?3, color = COALESCE(?4, color), description = COALESCE(?5, description)
                  WHERE workspace = ?1 AND name = ?2",
-            )
-            .bind(&[
-                workspace.as_str().into(),
-                name.as_str().into(),
-                to.as_str().into(),
-                crate::optional(&color),
-                crate::optional(&description),
-            ])?];
+                )
+                .bind(&[
+                    workspace.as_str().into(),
+                    name.as_str().into(),
+                    to.as_str().into(),
+                    crate::optional(&color),
+                    crate::optional(&description),
+                ])?,
+        ];
         if renamed.is_some() {
             for (table, scope) in WHERE_IN_WORKSPACE {
                 statements.push(
@@ -398,10 +386,11 @@ impl Work {
         if self.labels_in(&workspace, Some(&name)).await?.is_empty() {
             return Ok(Outcome::fail(FailureCode::NotFound, format!("There is no label named {name}.")));
         }
-        let mut statements = vec![self
-            .db
-            .prepare("DELETE FROM labels WHERE workspace = ?1 AND name = ?2")
-            .bind(&[workspace.as_str().into(), name.as_str().into()])?];
+        let mut statements = vec![
+            self.db
+                .prepare("DELETE FROM labels WHERE workspace = ?1 AND name = ?2")
+                .bind(&[workspace.as_str().into(), name.as_str().into()])?,
+        ];
         for (table, scope) in WHERE_IN_WORKSPACE {
             statements.push(
                 self.db
@@ -517,12 +506,10 @@ impl Work {
                 let label = Some(EventLabel { name: name.clone(), color: color_of(name) });
                 match labeled {
                     Labeled::Item(held) => {
-                        self.publish_item(labeled.kind(what), held, Some(actor), WorkItemEvent { label, ..Self::item_event(held) })
-                            .await?;
+                        self.publish_item(labeled.kind(what), held, Some(actor), WorkItemEvent { label, ..Self::item_event(held) }).await?;
                     }
                     Labeled::Pull(_, pull) => {
-                        self.publish(labeled.kind(what), &pull.repo_id, actor, PullEvent { label, ..Self::pull_event(pull) })
-                            .await?;
+                        self.publish(labeled.kind(what), &pull.repo_id, actor, PullEvent { label, ..Self::pull_event(pull) }).await?;
                     }
                 }
             }
@@ -547,7 +534,13 @@ impl Work {
 
     /// The thread `actor` changes the labels or milestone of: theirs, or
     /// one they may triage.
-    pub(crate) async fn labeled(&self, actor: &User, repo: Option<&g1t_contracts::repos::RepoPath>, workspace: &str, number: u32) -> Result<Outcome<Labeled>> {
+    pub(crate) async fn labeled(
+        &self,
+        actor: &User,
+        repo: Option<&g1t_contracts::repos::RepoPath>,
+        workspace: &str,
+        number: u32,
+    ) -> Result<Outcome<Labeled>> {
         let labeled = match check!(self.thread(&Some(actor.clone()), repo, workspace, number).await?) {
             crate::Thread::Pull(repo, pull) => {
                 check!(writable(&repo));
@@ -564,10 +557,8 @@ impl Work {
 
 /// The rows of a workspace (`?1`) that carry labels: its work items, and
 /// its repositories' pull requests.
-const WHERE_IN_WORKSPACE: [(&str, &str); 2] = [
-    ("work_items", "workspace = ?1"),
-    ("pulls", "repo_id IN (SELECT repo_id FROM repo_workspaces WHERE workspace = ?1)"),
-];
+const WHERE_IN_WORKSPACE: [(&str, &str); 2] =
+    [("work_items", "workspace = ?1"), ("pulls", "repo_id IN (SELECT repo_id FROM repo_workspaces WHERE workspace = ?1)")];
 
 #[cfg(test)]
 mod tests {
@@ -607,10 +598,7 @@ mod tests {
         assert_eq!(removed, names(&["bug"]));
         assert_eq!(label_note("added", &added), "added the `security` and `wontfix` labels");
         assert_eq!(label_note("removed", &removed), "removed the `bug` label");
-        assert_eq!(
-            label_note("added", &names(&["a", "b", "c"])),
-            "added the `a`, `b` and `c` labels"
-        );
+        assert_eq!(label_note("added", &names(&["a", "b", "c"])), "added the `a`, `b` and `c` labels");
     }
 
     #[test]

@@ -157,9 +157,7 @@ pub fn pack_start(body: &[u8]) -> Option<usize> {
         if body.get(at..at + 4) == Some(b"PACK") {
             return Some(at);
         }
-        let length = std::str::from_utf8(body.get(at..at + 4)?)
-            .ok()
-            .and_then(|hex| usize::from_str_radix(hex, 16).ok())?;
+        let length = std::str::from_utf8(body.get(at..at + 4)?).ok().and_then(|hex| usize::from_str_radix(hex, 16).ok())?;
         // A flush packet is four bytes; any other line counts its own length.
         at += if length == 0 { 4 } else { length.max(4) };
     }
@@ -557,7 +555,8 @@ impl Pack {
     /// left out). How a missing base can be asked for as what it is.
     pub fn named_kinds(&self) -> HashMap<String, ObjectKind> {
         let mut kinds = HashMap::new();
-        let read = self.ids.values().filter(|entry| matches!(self.entries[**entry].state, State::Known(ObjectKind::Commit | ObjectKind::Tree)));
+        let read =
+            self.ids.values().filter(|entry| matches!(self.entries[**entry].state, State::Known(ObjectKind::Commit | ObjectKind::Tree)));
         let objects = read.filter_map(|entry| self.object_at(*entry)).chain(self.supplied.values().cloned());
         for (kind, data) in objects {
             let data = &data[..];
@@ -853,17 +852,32 @@ author <no@x.io>
     #[test]
     fn written_packs_are_sealed_and_extend() {
         let blob = b"hello
-".to_vec();
+"
+        .to_vec();
         let pack = write_pack(&[(ObjectKind::Blob, blob.clone())]);
         let (body, trailer) = pack.split_at(pack.len() - 20);
         assert_eq!(Sha1::digest(body).as_slice(), trailer);
-        let more = extend_pack(&pack, &[(ObjectKind::Blob, b"more
-".to_vec())]).unwrap();
+        let more = extend_pack(
+            &pack,
+            &[(
+                ObjectKind::Blob,
+                b"more
+"
+                .to_vec(),
+            )],
+        )
+        .unwrap();
         assert_eq!(&more[8..12], &2u32.to_be_bytes());
         let read = Pack::parse(&more).unwrap();
         assert!(read.blob("ce013625030ba8dba906f756967f9e9ca394464a").is_some());
-        assert!(read.blob(&object_id(ObjectKind::Blob, b"more
-")).is_some());
+        assert!(
+            read.blob(&object_id(
+                ObjectKind::Blob,
+                b"more
+"
+            ))
+            .is_some()
+        );
         let mut broken = pack.clone();
         broken[12] ^= 1;
         assert!(extend_pack(&broken, &[]).is_err());

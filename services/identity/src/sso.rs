@@ -27,16 +27,16 @@
 //! cannot sign in through it until the plan starts again or an owner turns
 //! the requirement off.
 
+#[path = "sso/jwt.rs"]
+mod jwt;
 #[path = "sso/oauth.rs"]
 mod oauth;
+#[path = "sso/provisioning.rs"]
+mod provisioning;
 #[path = "sso/saml.rs"]
 mod saml;
 #[path = "sso/scim.rs"]
 mod scim;
-#[path = "sso/jwt.rs"]
-mod jwt;
-#[path = "sso/provisioning.rs"]
-mod provisioning;
 
 use std::collections::HashSet;
 
@@ -44,10 +44,10 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use g1t_contracts::audit::Surface;
 use g1t_contracts::events::JoinedHow;
+use g1t_contracts::identity::SlugArgs;
 use g1t_contracts::members::PolicyHold;
 use g1t_contracts::sso::*;
 use g1t_contracts::time::{SQL_NOW, rfc3339, sql_after};
-use g1t_contracts::identity::SlugArgs;
 use g1t_contracts::{FailureCode, Membership, Outcome, PrincipalKind, Role, User, new_id};
 use g1t_kit::now_ms;
 use g1t_secrets::Sealer;
@@ -159,7 +159,12 @@ pub(crate) struct Said {
 impl Said {
     fn new(subject: String, email: Option<String>, email_verified: bool) -> Said {
         let subject = if subject.contains('@') { subject.trim().to_lowercase() } else { subject.trim().to_owned() };
-        Said { ids: vec![subject.clone()], subject, email: email.map(|e| e.trim().to_lowercase()).filter(|e| e.contains('@')), email_verified }
+        Said {
+            ids: vec![subject.clone()],
+            subject,
+            email: email.map(|e| e.trim().to_lowercase()).filter(|e| e.contains('@')),
+            email_verified,
+        }
     }
 
     fn trusted_email(&self) -> Option<&str> {
@@ -175,7 +180,8 @@ impl Said {
 fn said_by_oidc(claims: &Value, issuer: &str) -> Option<Said> {
     let subject = oauth::claim(claims, "sub")?;
     // Some providers send the flag as a string.
-    let verified = claims["email_verified"].as_bool().or_else(|| claims["email_verified"].as_str().map(|v| v.eq_ignore_ascii_case("true"))) == Some(true);
+    let verified = claims["email_verified"].as_bool().or_else(|| claims["email_verified"].as_str().map(|v| v.eq_ignore_ascii_case("true")))
+        == Some(true);
     let mut said = Said::new(subject, oauth::claim(claims, "email"), verified);
     if issuer.starts_with("https://login.microsoftonline.com/") {
         said.ids.extend(oauth::claim(claims, "oid").filter(|oid| !said.ids.contains(oid)));
@@ -276,7 +282,9 @@ fn checked_config(protocol: SsoProtocol, given: &SsoConfig, certificates: Vec<St
                 return Err("Paste the identity provider's signing certificate.".to_owned());
             }
             SsoConfig {
-                idp_entity_id: Some(field(&given.idp_entity_id, "entity id")?.ok_or("Enter the identity provider's entity id (its issuer).")?),
+                idp_entity_id: Some(
+                    field(&given.idp_entity_id, "entity id")?.ok_or("Enter the identity provider's entity id (its issuer).")?,
+                ),
                 idp_sso_url: Some(https_field(&given.idp_sso_url, "single sign-on URL")?),
                 certificates,
                 ..SsoConfig::default()
@@ -300,11 +308,7 @@ pub enum Via<'a> {
 /// Which of a person's memberships a workspace's single sign-on holds out:
 /// those that require it and they have not met, never as an owner.
 pub fn held_by_sso(required: &[(String, Role)], met: &HashSet<String>) -> Vec<String> {
-    required
-        .iter()
-        .filter(|(slug, role)| *role != Role::Owner && !met.contains(slug))
-        .map(|(slug, _)| slug.clone())
-        .collect()
+    required.iter().filter(|(slug, role)| *role != Role::Owner && !met.contains(slug)).map(|(slug, _)| slug.clone()).collect()
 }
 
 /// Leaves out the memberships and grants of the workspaces in `held`, and
@@ -539,7 +543,8 @@ impl Identity {
                 None => return Ok(Outcome::fail(FailureCode::Invalid, "Enter the client secret.")),
             },
         };
-        let changed_provider = before.as_ref().is_some_and(|row| provider_of(row.protocol(), &row.config()) != provider_of(a.protocol, &config));
+        let changed_provider =
+            before.as_ref().is_some_and(|row| provider_of(row.protocol(), &row.config()) != provider_of(a.protocol, &config));
         let now = rfc3339(now_ms());
         let stored = serde_json::to_string(&config).unwrap_or_default();
         let secret_value = secret.as_deref().map_or(JsValue::NULL, Into::into);
@@ -578,7 +583,9 @@ impl Identity {
         let surface = a.surface.unwrap_or(Surface::Web);
         let message = match (&before, changed_provider) {
             (None, _) => format!("Set up single sign-on over {}", protocol_name(a.protocol)),
-            (Some(_), true) => format!("Moved single sign-on to another identity provider ({}), unlinking everyone", protocol_name(a.protocol)),
+            (Some(_), true) => {
+                format!("Moved single sign-on to another identity provider ({}), unlinking everyone", protocol_name(a.protocol))
+            }
             (Some(before), false) => {
                 let was = before.config();
                 let mut changes: Vec<String> = Vec::new();
@@ -592,12 +599,23 @@ impl Identity {
                     changes.push("its client secret".to_owned());
                 }
                 if (before.allow_join != 0) != a.allow_join {
-                    changes.push(if a.allow_join { "letting its people join".to_owned() } else { "no longer letting its people join".to_owned() });
+                    changes.push(if a.allow_join {
+                        "letting its people join".to_owned()
+                    } else {
+                        "no longer letting its people join".to_owned()
+                    });
                 }
                 if was.join_domains != config.join_domains {
-                    changes.push(format!("who may join ({})", if config.join_domains.is_empty() { "anyone".to_owned() } else { config.join_domains.join(", ") }));
+                    changes.push(format!(
+                        "who may join ({})",
+                        if config.join_domains.is_empty() { "anyone".to_owned() } else { config.join_domains.join(", ") }
+                    ));
                 }
-                if changes.is_empty() { "Changed single sign-on's settings".to_owned() } else { format!("Changed single sign-on: {}", changes.join(", ")) }
+                if changes.is_empty() {
+                    "Changed single sign-on's settings".to_owned()
+                } else {
+                    format!("Changed single sign-on: {}", changes.join(", "))
+                }
             }
         };
         self.audit_workspace(&a.actor, if before.is_none() { "sso.created" } else { "sso.updated" }, &slug, surface, message).await;
@@ -670,8 +688,7 @@ impl Identity {
                 self.db.prepare("DELETE FROM scim_users WHERE workspace_id = ?").bind(&[workspace_id.as_str().into()])?,
             ])
             .await?;
-        self.audit_workspace(&a.actor, "sso.deleted", &slug, a.surface.unwrap_or(Surface::Web), "Removed single sign-on".to_owned())
-            .await;
+        self.audit_workspace(&a.actor, "sso.deleted", &slug, a.surface.unwrap_or(Surface::Web), "Removed single sign-on".to_owned()).await;
         self.announce_workspace(&workspace_id, &slug, Some(&a.actor.id)).await;
         Ok(Outcome::Ok(true))
     }
@@ -705,10 +722,14 @@ impl Identity {
             self.db
                 .batch(vec![
                     self.db
-                        .prepare("DELETE FROM sso_sessions WHERE workspace_id = ? AND session_id IN (SELECT id FROM sessions WHERE user_id = ?)")
+                        .prepare(
+                            "DELETE FROM sso_sessions WHERE workspace_id = ? AND session_id IN (SELECT id FROM sessions WHERE user_id = ?)",
+                        )
                         .bind(&[workspace_id.as_str().into(), user_id.into()])?,
                     self.db
-                        .prepare(format!("UPDATE scim_users SET user_id = NULL, updated_at = {SQL_NOW} WHERE workspace_id = ? AND user_id = ?"))
+                        .prepare(format!(
+                            "UPDATE scim_users SET user_id = NULL, updated_at = {SQL_NOW} WHERE workspace_id = ? AND user_id = ?"
+                        ))
                         .bind(&[workspace_id.as_str().into(), user_id.into()])?,
                 ])
                 .await?;
@@ -878,12 +899,12 @@ impl Identity {
         }
         let protocol = row.protocol();
         let config = row.config();
-        let secret = row
-            .client_secret
-            .as_deref()
-            .and_then(|sealed| self.sso_sealer()?.open(sealed, &format!("sso:{}", row.id)));
+        let secret = row.client_secret.as_deref().and_then(|sealed| self.sso_sealer()?.open(sealed, &format!("sso:{}", row.id)));
         let Some(secret) = secret else {
-            return Ok(Outcome::fail(FailureCode::Conflict, "The client secret could not be read. An owner can enter it again in the single sign-on settings."));
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "The client secret could not be read. An owner can enter it again in the single sign-on settings.",
+            ));
         };
         let said = async {
             let endpoints = self.endpoints_of(protocol, &config).await?;
@@ -1006,7 +1027,9 @@ impl Identity {
             if !same_person(&stored, &said.ids) {
                 return Ok(Outcome::fail(
                     FailureCode::Conflict,
-                    format!("Your g1t account is linked to another account at {slug}'s identity provider. Sign in with that one, or ask an owner of {slug} to unlink it."),
+                    format!(
+                        "Your g1t account is linked to another account at {slug}'s identity provider. Sign in with that one, or ask an owner of {slug} to unlink it."
+                    ),
                 ));
             }
         }
@@ -1018,20 +1041,26 @@ impl Identity {
                 provisioning::Match::One(_, Some(other)) if other != user_id => {
                     return Ok(Outcome::fail(
                         FailureCode::Conflict,
-                        format!("That account at {slug}'s identity provider is linked to another g1t account. An owner of {slug} can unlink it."),
+                        format!(
+                            "That account at {slug}'s identity provider is linked to another g1t account. An owner of {slug} can unlink it."
+                        ),
                     ));
                 }
                 provisioning::Match::One(id, _) => Some(id),
                 provisioning::Match::Many => {
                     return Ok(Outcome::fail(
                         FailureCode::Conflict,
-                        format!("More than one person assigned to g1t in {slug}'s identity provider matches your account there. Ask whoever runs it to fix the assignments."),
+                        format!(
+                            "More than one person assigned to g1t in {slug}'s identity provider matches your account there. Ask whoever runs it to fix the assignments."
+                        ),
                     ));
                 }
                 provisioning::Match::None => {
                     return Ok(Outcome::fail(
                         FailureCode::Forbidden,
-                        format!("Your account at {slug}'s identity provider is not assigned to g1t. Ask whoever runs it for {slug} to assign you."),
+                        format!(
+                            "Your account at {slug}'s identity provider is not assigned to g1t. Ask whoever runs it for {slug} to assign you."
+                        ),
                     ));
                 }
             },
@@ -1041,7 +1070,10 @@ impl Identity {
         let member = self.is_member_of(&row.workspace_id, user_id).await?;
         if !member {
             if row.allow_join == 0 {
-                return Ok(Outcome::fail(FailureCode::Forbidden, format!("Only members of {slug} sign in through its identity provider. Ask an owner to invite you.")));
+                return Ok(Outcome::fail(
+                    FailureCode::Forbidden,
+                    format!("Only members of {slug} sign in through its identity provider. Ask an owner to invite you."),
+                ));
             }
             if let Some(why) = join_domain_refusal(&row.config().join_domains, said, &slug) {
                 return Ok(Outcome::fail(FailureCode::Forbidden, why));
@@ -1079,15 +1111,29 @@ impl Identity {
                 ])?
                 .run()
                 .await?;
-            self.audit_workspace(&person, "sso.identity_linked", &slug, Surface::Web, format!("Linked to {subject} at the single sign-on provider"))
-                .await;
+            self.audit_workspace(
+                &person,
+                "sso.identity_linked",
+                &slug,
+                Surface::Web,
+                format!("Linked to {subject} at the single sign-on provider"),
+            )
+            .await;
         } else {
             self.db
                 .prepare(
                     "UPDATE sso_identities SET subject = ?, ids = ?, trusted_email = ?, last_used_at = ?, email = COALESCE(?, email)
                      WHERE connection_id = ? AND user_id = ?",
                 )
-                .bind(&[subject.into(), ids.as_str().into(), trusted, now.as_str().into(), email_value, row.id.as_str().into(), user_id.into()])?
+                .bind(&[
+                    subject.into(),
+                    ids.as_str().into(),
+                    trusted,
+                    now.as_str().into(),
+                    email_value,
+                    row.id.as_str().into(),
+                    user_id.into(),
+                ])?
                 .run()
                 .await?;
         }
@@ -1115,7 +1161,8 @@ impl Identity {
                 .await?
                 .is_some();
             if joined {
-                self.audit_workspace(&person, "member.joined_by_sso", &slug, Surface::Web, "Joined through single sign-on".to_owned()).await;
+                self.audit_workspace(&person, "member.joined_by_sso", &slug, Surface::Web, "Joined through single sign-on".to_owned())
+                    .await;
                 self.announce_member_joined(&row.workspace_id, &slug, &person, Role::Member, JoinedHow::Joined).await;
             }
         }
@@ -1137,7 +1184,9 @@ impl Identity {
             return Ok(match provisioned {
                 Some(_) => Outcome::fail(
                     FailureCode::Forbidden,
-                    format!("Your account at {slug}'s identity provider is not assigned to g1t. Ask whoever runs it for {slug} to assign you."),
+                    format!(
+                        "Your account at {slug}'s identity provider is not assigned to g1t. Ask whoever runs it for {slug} to assign you."
+                    ),
                 ),
                 None => Outcome::fail(FailureCode::Unauthenticated, "Sign in to g1t again."),
             });
@@ -1281,7 +1330,11 @@ mod tests {
         assert!(checked_config(SsoProtocol::Oauth2, &given, vec![]).unwrap_err().contains("token URL"));
         let plain = SsoConfig { issuer: Some("http://acme.test".into()), client_id: Some("c".into()), ..SsoConfig::default() };
         assert!(checked_config(SsoProtocol::Oidc, &plain, vec![]).unwrap_err().contains("https"));
-        let saml = SsoConfig { idp_entity_id: Some("http://idp/entity".into()), idp_sso_url: Some("https://idp/sso".into()), ..SsoConfig::default() };
+        let saml = SsoConfig {
+            idp_entity_id: Some("http://idp/entity".into()),
+            idp_sso_url: Some("https://idp/sso".into()),
+            ..SsoConfig::default()
+        };
         assert!(checked_config(SsoProtocol::Saml, &saml, vec![]).unwrap_err().contains("certificate"));
         assert_eq!(checked_config(SsoProtocol::Saml, &saml, vec!["AAAA".into()]).unwrap().certificates, vec!["AAAA".to_owned()]);
     }

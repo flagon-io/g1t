@@ -315,11 +315,18 @@ impl Work {
 
     /// Makes `user_id` its lead (`Some`), or leaves it without one, in
     /// statements for a batch: the lead before stays a member.
-    fn lead_statements(&self, project_id: &str, lead: Option<(&str, &str)>, at: &str, by: &str) -> Result<Vec<worker::D1PreparedStatement>> {
-        let mut statements = vec![self
-            .db
-            .prepare("UPDATE project_members SET role = 'member' WHERE project_id = ?1 AND role = 'lead'")
-            .bind(&[project_id.into()])?];
+    fn lead_statements(
+        &self,
+        project_id: &str,
+        lead: Option<(&str, &str)>,
+        at: &str,
+        by: &str,
+    ) -> Result<Vec<worker::D1PreparedStatement>> {
+        let mut statements = vec![
+            self.db
+                .prepare("UPDATE project_members SET role = 'member' WHERE project_id = ?1 AND role = 'lead'")
+                .bind(&[project_id.into()])?,
+        ];
         match lead {
             Some((id, username)) => {
                 statements.push(
@@ -331,15 +338,14 @@ impl Work {
                         )
                         .bind(&[project_id.into(), id.into(), username.into(), at.into(), by.into()])?,
                 );
-                statements.push(
-                    self.db
-                        .prepare("UPDATE projects SET lead_id = ?2, lead_name = ?3 WHERE id = ?1")
-                        .bind(&[project_id.into(), id.into(), username.into()])?,
-                );
+                statements.push(self.db.prepare("UPDATE projects SET lead_id = ?2, lead_name = ?3 WHERE id = ?1").bind(&[
+                    project_id.into(),
+                    id.into(),
+                    username.into(),
+                ])?);
             }
-            None => statements.push(
-                self.db.prepare("UPDATE projects SET lead_id = NULL, lead_name = NULL WHERE id = ?1").bind(&[project_id.into()])?,
-            ),
+            None => statements
+                .push(self.db.prepare("UPDATE projects SET lead_id = NULL, lead_name = NULL WHERE id = ?1").bind(&[project_id.into()])?),
         }
         Ok(statements)
     }
@@ -653,22 +659,23 @@ impl Work {
             self.lead_statements(&project.id, Some((&id, &username)), &at, &a.actor.id)?
         } else {
             // Made a member: the lead taken down to one leaves it without.
-            let mut statements = vec![self
-                .db
-                .prepare(
-                    "INSERT INTO project_members (project_id, user_id, username, role, added_at, added_by)
+            let mut statements = vec![
+                self.db
+                    .prepare(
+                        "INSERT INTO project_members (project_id, user_id, username, role, added_at, added_by)
                      VALUES (?1, ?2, ?3, 'member', ?4, ?5)
                      ON CONFLICT (project_id, user_id) DO UPDATE SET username = excluded.username,
                        role = CASE WHEN ?6 THEN 'member' ELSE project_members.role END",
-                )
-                .bind(&[
-                    project.id.as_str().into(),
-                    id.as_str().into(),
-                    username.as_str().into(),
-                    at.as_str().into(),
-                    a.actor.id.as_str().into(),
-                    a.role.is_some().into(),
-                ])?];
+                    )
+                    .bind(&[
+                        project.id.as_str().into(),
+                        id.as_str().into(),
+                        username.as_str().into(),
+                        at.as_str().into(),
+                        a.actor.id.as_str().into(),
+                        a.role.is_some().into(),
+                    ])?,
+            ];
             if a.role == Some(ProjectRole::Member) {
                 statements.push(
                     self.db
@@ -801,11 +808,7 @@ impl Work {
         }
         self.db
             .prepare("UPDATE work_items SET project_id = ?, updated_at = ? WHERE id = ?")
-            .bind(&[
-                optional(&after.as_ref().map(|project| project.id.clone())),
-                rfc3339(now_ms()).into(),
-                held.item.id.as_str().into(),
-            ])?
+            .bind(&[optional(&after.as_ref().map(|project| project.id.clone())), rfc3339(now_ms()).into(), held.item.id.as_str().into()])?
             .run()
             .await?;
         if let Some(text) = project_note(before.as_ref(), after.as_ref()) {
@@ -892,7 +895,8 @@ mod tests {
         assert_eq!((open, closed, people), (2, 1, 2));
         // Its lead first.
         let mut statement = db.prepare(MEMBERS).unwrap();
-        let names: Vec<String> = statement.query_map(["prj_1"], |row| row.get::<_, String>("username")).unwrap().map(Result::unwrap).collect();
+        let names: Vec<String> =
+            statement.query_map(["prj_1"], |row| row.get::<_, String>("username")).unwrap().map(Result::unwrap).collect();
         assert_eq!(names, ["ana", "bo"]);
     }
 
@@ -905,7 +909,9 @@ mod tests {
         assert_eq!(numbers, [3, 2]);
         // Each names its project.
         let named: String = db
-            .query_row(&format!("SELECT project_json FROM (SELECT {ITEM_COLUMNS} FROM work_items WHERE id = 'wki_3')"), [], |row| row.get(0))
+            .query_row(&format!("SELECT project_json FROM (SELECT {ITEM_COLUMNS} FROM work_items WHERE id = 'wki_3')"), [], |row| {
+                row.get(0)
+            })
             .unwrap();
         let project: ProjectRef = serde_json::from_str(&named).unwrap();
         assert_eq!((project.slug.as_str(), project.icon), ("launch", None));

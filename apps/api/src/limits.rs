@@ -22,10 +22,15 @@ pub const ANONYMOUS: &str = "API_ANONYMOUS_LIMIT";
 pub const TOKEN: &str = "API_TOKEN_LIMIT";
 
 #[derive(Clone, Copy)]
-pub struct Policy { signed_in: bool, limited: bool }
+pub struct Policy {
+    signed_in: bool,
+    limited: bool,
+}
 
 impl Policy {
-    fn name(self) -> &'static str { if self.signed_in { "token" } else { "anonymous" } }
+    fn name(self) -> &'static str {
+        if self.signed_in { "token" } else { "anonymous" }
+    }
     fn header(self) -> String {
         format!("\"{}\";q={};w={PERIOD_SECONDS}", self.name(), if self.signed_in { 1000 } else { 60 })
     }
@@ -52,18 +57,8 @@ fn policy(verdict: limits::Verdict, signed_in: bool) -> Option<Policy> {
 
 /// Paths a sandbox or runner reports to with its own token in the body:
 /// many sandboxes share an address, and none of them is a person.
-const REPORTS: &[&str] = &[
-    "/mergechecks/",
-    "/backups/",
-    "/queue/",
-    "/actions/jobs/",
-    "/agent-runs/",
-    "/checks/",
-    "/runs/",
-    "/plans/",
-    "/reviews/",
-    "/runners/",
-];
+const REPORTS: &[&str] =
+    &["/mergechecks/", "/backups/", "/queue/", "/actions/jobs/", "/agent-runs/", "/checks/", "/runs/", "/plans/", "/reviews/", "/runners/"];
 
 /// Whether a request counts against a limit at all.
 pub fn counts(method: &str, path: &str, has_token: bool) -> bool {
@@ -110,7 +105,14 @@ pub fn too_many(signed_in: bool) -> Result<Response> {
 }
 
 /// The 429 for a request past its limit, or `None` to go on.
-pub async fn limited(request: &Request, env: &Env, method: &str, path: &str, on_mcp: bool, advertised: &mut Option<Policy>) -> Result<Option<Response>> {
+pub async fn limited(
+    request: &Request,
+    env: &Env,
+    method: &str,
+    path: &str,
+    on_mcp: bool,
+    advertised: &mut Option<Policy>,
+) -> Result<Option<Response>> {
     let header = request.headers().get("authorization")?.unwrap_or_default();
     let token = bearer(&header);
     if !counts(method, path, token.is_some()) {

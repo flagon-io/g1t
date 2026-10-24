@@ -42,15 +42,13 @@
 //! (protected, billing that cannot settle), with the staff member as
 //! `deleted_by` and a line in sudo's audit log with the reason.
 
-use g1t_contracts::audit::{
-    AuditActor, AuditOutcome, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface,
-};
+use g1t_contracts::account_deletion::WorkspaceDeletedWith;
+use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface};
 use g1t_contracts::billing::CloseWorkspaceArgs;
 use g1t_contracts::events::{WorkspaceDeleting, WorkspaceRestored};
 use g1t_contracts::identity::*;
 use g1t_contracts::repos::NamespaceCountArgs;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::account_deletion::WorkspaceDeletedWith;
 use g1t_contracts::{FailureCode, Membership, Outcome, PrincipalKind, Role, User, new_id};
 use g1t_kit::now_ms;
 use serde::Deserialize;
@@ -79,24 +77,15 @@ pub fn may_delete(
         return Err((FailureCode::Forbidden, protected_refusal(slug)));
     }
     if !person || role != Some(Role::Owner) {
-        return Err((
-            FailureCode::Forbidden,
-            "Only an owner can delete a workspace.".into(),
-        ));
+        return Err((FailureCode::Forbidden, "Only an owner can delete a workspace.".into()));
     }
     if !verified {
-        return Err((
-            FailureCode::Forbidden,
-            "Confirm your email address before deleting a workspace.".into(),
-        ));
+        return Err((FailureCode::Forbidden, "Confirm your email address before deleting a workspace.".into()));
     }
     if let Some(typed) = confirm
         && typed.trim().to_lowercase() != slug
     {
-        return Err((
-            FailureCode::Invalid,
-            format!("Type {slug} to confirm."),
-        ));
+        return Err((FailureCode::Invalid, format!("Type {slug} to confirm.")));
     }
     Ok(())
 }
@@ -130,10 +119,7 @@ pub fn is_protected(names: &[String], id: &str, slug: &str, flagged: bool, old_s
 /// Whether staff may restore a deleted workspace, now `now`.
 pub fn may_restore(slug: &str, purge_after: &str, now: &str) -> std::result::Result<(), Refusal> {
     if !restorable(purge_after, now) {
-        return Err((
-            FailureCode::Conflict,
-            format!("{slug} is being purged and can no longer be restored."),
-        ));
+        return Err((FailureCode::Conflict, format!("{slug} is being purged and can no longer be restored.")));
     }
     Ok(())
 }
@@ -197,9 +183,7 @@ fn went_json(went: &WorkspaceDeletion) -> String {
 }
 
 fn went_of(stored: Option<&str>) -> WorkspaceDeletion {
-    stored
-        .and_then(|text| serde_json::from_str::<WorkspaceDeletion>(text).ok())
-        .unwrap_or_default()
+    stored.and_then(|text| serde_json::from_str::<WorkspaceDeletion>(text).ok()).unwrap_or_default()
 }
 
 #[derive(Deserialize)]
@@ -264,11 +248,7 @@ impl Identity {
 
     /// A workspace made again under a deleted slug is a workspace again.
     pub async fn forget_deleted(&self, slug: &str) -> Result<()> {
-        self.db
-            .prepare("DELETE FROM deleted_workspaces WHERE slug = ?")
-            .bind(&[slug.into()])?
-            .run()
-            .await?;
+        self.db.prepare("DELETE FROM deleted_workspaces WHERE slug = ?").bind(&[slug.into()])?.run().await?;
         Ok(())
     }
 
@@ -309,11 +289,7 @@ impl Identity {
         let closing: Outcome<bool> = g1t_kit::call(
             &self.env.service("BILLING")?,
             "close_workspace",
-            &CloseWorkspaceArgs {
-                actor: actor.clone(),
-                workspace: slug.to_owned(),
-                dry_run: true,
-            },
+            &CloseWorkspaceArgs { actor: actor.clone(), workspace: slug.to_owned(), dry_run: true },
         )
         .await?;
         Ok(match closing {
@@ -325,20 +301,9 @@ impl Identity {
     /// What would go with the workspace, and whether billing can close it
     /// for `actor`.
     async fn deletion_facts(&self, actor: &User, slug: &str, target: &Target) -> Result<WorkspaceDeletion> {
-        let repositories: u32 = g1t_kit::call(
-            &self.env.service("REPOS")?,
-            "namespace_count",
-            &NamespaceCountArgs {
-                namespace: slug.to_owned(),
-            },
-        )
-        .await?;
-        let projects: u32 = g1t_kit::call(
-            &self.env.service("PROJECTS")?,
-            "count",
-            &json!({ "workspace": slug }),
-        )
-        .await?;
+        let repositories: u32 =
+            g1t_kit::call(&self.env.service("REPOS")?, "namespace_count", &NamespaceCountArgs { namespace: slug.to_owned() }).await?;
+        let projects: u32 = g1t_kit::call(&self.env.service("PROJECTS")?, "count", &json!({ "workspace": slug })).await?;
         #[derive(Deserialize)]
         struct Count {
             n: u32,
@@ -448,7 +413,9 @@ impl Identity {
             surface: Surface::Web,
             rule: "staff",
             message: Box::new(|purge| {
-                format!("Deleted {slug} by g1t's staff, with the account {owner} that was its only owner; restorable by g1t's staff until {purge}")
+                format!(
+                    "Deleted {slug} by g1t's staff, with the account {owner} that was its only owner; restorable by g1t's staff until {purge}"
+                )
             }),
             actor_id: None,
         };
@@ -483,11 +450,7 @@ impl Identity {
         let closed: Outcome<bool> = g1t_kit::call(
             &self.env.service("BILLING")?,
             "close_workspace",
-            &CloseWorkspaceArgs {
-                actor: deleter.billing.clone(),
-                workspace: slug.to_owned(),
-                dry_run: false,
-            },
+            &CloseWorkspaceArgs { actor: deleter.billing.clone(), workspace: slug.to_owned(), dry_run: false },
         )
         .await?;
         if let Outcome::Fail(failure) = closed {
@@ -521,12 +484,7 @@ impl Identity {
         self.announce(
             "workspace.deleting",
             deleter.actor_id,
-            WorkspaceDeleting {
-                workspace_id: workspace.id.clone(),
-                slug: slug.to_owned(),
-                by: deleter.by.to_owned(),
-                purge_after: purge,
-            },
+            WorkspaceDeleting { workspace_id: workspace.id.clone(), slug: slug.to_owned(), by: deleter.by.to_owned(), purge_after: purge },
         )
         .await;
         Ok(Outcome::Ok(true))
@@ -560,11 +518,7 @@ impl Identity {
     }
 
     async fn deleted_row(&self, id: &str) -> Result<Option<DeletedRow>> {
-        self.db
-            .prepare(format!("SELECT {DELETED_COLUMNS} AND w.id = ?"))
-            .bind(&[id.into()])?
-            .first::<DeletedRow>(None)
-            .await
+        self.db.prepare(format!("SELECT {DELETED_COLUMNS} AND w.id = ?")).bind(&[id.into()])?.first::<DeletedRow>(None).await
     }
 
     /// Staff bring a deleted workspace back within its window, with its
@@ -594,19 +548,9 @@ impl Identity {
             row.deleter.as_deref().or(row.deleted_by.as_deref()).unwrap_or("an owner"),
             row.deleted_at
         );
-        self.record_on_workspace(&row.slug, AuditActor::system(), Surface::Web, "workspace.restored", "staff", message)
-            .await;
-        self.record_for_staff(&row.slug, "workspace_restored", &format!("Restored {}", row.slug), staff)
-            .await;
-        self.announce(
-            "workspace.restored",
-            None,
-            WorkspaceRestored {
-                workspace_id: row.id,
-                slug: row.slug,
-            },
-        )
-        .await;
+        self.record_on_workspace(&row.slug, AuditActor::system(), Surface::Web, "workspace.restored", "staff", message).await;
+        self.record_for_staff(&row.slug, "workspace_restored", &format!("Restored {}", row.slug), staff).await;
+        self.announce("workspace.restored", None, WorkspaceRestored { workspace_id: row.id, slug: row.slug }).await;
         Ok(Outcome::Ok(true))
     }
 
@@ -634,8 +578,7 @@ impl Identity {
             "Purged by g1t's staff before its restore window ended".to_owned(),
         )
         .await;
-        self.record_for_staff(&row.slug, "workspace_purged", &format!("Purged {} now", row.slug), staff)
-            .await;
+        self.record_for_staff(&row.slug, "workspace_purged", &format!("Purged {} now", row.slug), staff).await;
         Ok(Outcome::Ok(true))
     }
 
@@ -645,9 +588,7 @@ impl Identity {
     pub async fn purge_due_workspaces(&self) -> Result<u32> {
         let due = self
             .db
-            .prepare(format!(
-                "SELECT {DELETED_COLUMNS} AND w.purge_after <= ? ORDER BY w.purge_after LIMIT {PURGES_PER_SWEEP}"
-            ))
+            .prepare(format!("SELECT {DELETED_COLUMNS} AND w.purge_after <= ? ORDER BY w.purge_after LIMIT {PURGES_PER_SWEEP}"))
             .bind(&[rfc3339(now_ms()).into()])?
             .all()
             .await?
@@ -812,24 +753,14 @@ impl Identity {
             actor,
             action: action.to_owned(),
             surface,
-            target: AuditTarget {
-                workspace: slug.to_owned(),
-                ..AuditTarget::default()
-            },
+            target: AuditTarget { workspace: slug.to_owned(), ..AuditTarget::default() },
             outcome: AuditOutcome::Allowed,
             rule: rule.to_owned(),
             result: Some("ok".to_owned()),
             message: Some(message),
             request_id: new_id("req", now_ms()),
         };
-        let recorded: Result<u32> = g1t_kit::call(
-            &events,
-            "audit_record",
-            &RecordAuditArgs {
-                entries: vec![entry],
-            },
-        )
-        .await;
+        let recorded: Result<u32> = g1t_kit::call(&events, "audit_record", &RecordAuditArgs { entries: vec![entry] }).await;
         if let Err(error) = recorded {
             worker::console_error!("{action} of {slug} not recorded: {error}");
         }
@@ -841,12 +772,8 @@ impl Identity {
         let Ok(billing) = self.env.service("BILLING") else {
             return;
         };
-        let recorded: Result<bool> = g1t_kit::call(
-            &billing,
-            "admin_log",
-            &json!({ "workspace": slug, "action": action, "detail": detail, "by": staff }),
-        )
-        .await;
+        let recorded: Result<bool> =
+            g1t_kit::call(&billing, "admin_log", &json!({ "workspace": slug, "action": action, "detail": detail, "by": staff })).await;
         if let Err(error) = recorded {
             worker::console_error!("{action} of {slug} by {staff} not recorded for sudo: {error}");
         }
@@ -885,27 +812,12 @@ mod tests {
     fn only_a_verified_owner_who_types_the_name() {
         assert!(may_delete(false, true, true, Some(Role::Owner), "acme", Some(" Acme ")).is_ok());
         assert!(may_delete(false, true, true, Some(Role::Owner), "acme", None).is_ok());
-        assert_eq!(
-            may_delete(false, true, true, Some(Role::Member), "acme", Some("acme")).unwrap_err().0,
-            FailureCode::Forbidden
-        );
-        assert_eq!(
-            may_delete(false, false, true, Some(Role::Owner), "acme", Some("acme")).unwrap_err().0,
-            FailureCode::Forbidden
-        );
-        assert_eq!(
-            may_delete(false, true, false, Some(Role::Owner), "acme", Some("acme")).unwrap_err().0,
-            FailureCode::Forbidden
-        );
-        assert_eq!(
-            may_delete(false, true, true, Some(Role::Owner), "acme", Some("acme-inc")).unwrap_err().0,
-            FailureCode::Invalid
-        );
+        assert_eq!(may_delete(false, true, true, Some(Role::Member), "acme", Some("acme")).unwrap_err().0, FailureCode::Forbidden);
+        assert_eq!(may_delete(false, false, true, Some(Role::Owner), "acme", Some("acme")).unwrap_err().0, FailureCode::Forbidden);
+        assert_eq!(may_delete(false, true, false, Some(Role::Owner), "acme", Some("acme")).unwrap_err().0, FailureCode::Forbidden);
+        assert_eq!(may_delete(false, true, true, Some(Role::Owner), "acme", Some("acme-inc")).unwrap_err().0, FailureCode::Invalid);
         // Nothing typed is no confirmation.
-        assert_eq!(
-            may_delete(false, true, true, Some(Role::Owner), "acme", Some("")).unwrap_err().0,
-            FailureCode::Invalid
-        );
+        assert_eq!(may_delete(false, true, true, Some(Role::Owner), "acme", Some("")).unwrap_err().0, FailureCode::Invalid);
     }
 
     #[test]
@@ -914,12 +826,9 @@ mod tests {
             may_delete(true, person, verified, role, "flagon-io", Some("flagon-io")).unwrap_err()
         };
         // An owner who types the name, a workspace's token, a member, anyone.
-        for (person, verified, role) in [
-            (true, true, Some(Role::Owner)),
-            (false, true, Some(Role::Owner)),
-            (true, true, Some(Role::Member)),
-            (true, false, None),
-        ] {
+        for (person, verified, role) in
+            [(true, true, Some(Role::Owner)), (false, true, Some(Role::Owner)), (true, true, Some(Role::Member)), (true, false, None)]
+        {
             let (code, message) = refused(person, verified, role);
             assert_eq!(code, FailureCode::Forbidden);
             assert_eq!(message, "flagon-io is protected and can never be deleted.");
@@ -968,13 +877,7 @@ mod tests {
 
     #[test]
     fn what_went_is_kept_and_read_back() {
-        let went = WorkspaceDeletion {
-            repositories: 4,
-            projects: 2,
-            members: 3,
-            billing: None,
-            protected: false,
-        };
+        let went = WorkspaceDeletion { repositories: 4, projects: 2, members: 3, billing: None, protected: false };
         assert_eq!(went_of(Some(&went_json(&went))), went);
         assert_eq!(went_of(None), WorkspaceDeletion::default());
         assert_eq!(went_of(Some("not json")), WorkspaceDeletion::default());

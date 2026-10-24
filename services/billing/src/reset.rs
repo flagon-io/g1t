@@ -118,7 +118,10 @@ impl Billing {
             .await?;
         if let Some(found) = found {
             if found.comped > 0 {
-                return Ok(Outcome::fail(FailureCode::Forbidden, format!("{workspace} is comped (g1t's own): its spend is a budget, kept.")));
+                return Ok(Outcome::fail(
+                    FailureCode::Forbidden,
+                    format!("{workspace} is comped (g1t's own): its spend is a budget, kept."),
+                ));
             }
             if found.enterprise > 0 {
                 return Ok(Outcome::fail(FailureCode::Forbidden, format!("An enterprise pays for {workspace}: move it off first.")));
@@ -190,13 +193,44 @@ mod tests {
             assert!(!all.contains(&format!("DELETE FROM {table} ")), "{table} is kept on purpose");
         }
         for table in [
-            "ledger", "runs", "checkouts", "workspace_invoices", "workspace_invoice_lines", "sales_notes", "accounts",
-            "pending_usage", "pending_baselines", "pending_days", "limits", "subscriptions", "month_closes", "sales_records",
-            "billing_accounts", "allowance_use", "trial_grants", "credit_grants", "storage_days", "package_storage_days",
-            "token_usage", "reservations", "spikes", "limit_requests", "plan_payments",
-            "card_checks", "alerts_sent", "price_notices", "closed_workspaces", "workspace_costs",
-            "margin_alerts", "budget_alerts", "ai_reload", "ai_reloads", "tax_and_fees", "gateway_requests",
-            "complimentary", "complimentary_periods",
+            "ledger",
+            "runs",
+            "checkouts",
+            "workspace_invoices",
+            "workspace_invoice_lines",
+            "sales_notes",
+            "accounts",
+            "pending_usage",
+            "pending_baselines",
+            "pending_days",
+            "limits",
+            "subscriptions",
+            "month_closes",
+            "sales_records",
+            "billing_accounts",
+            "allowance_use",
+            "trial_grants",
+            "credit_grants",
+            "storage_days",
+            "package_storage_days",
+            "token_usage",
+            "reservations",
+            "spikes",
+            "limit_requests",
+            "plan_payments",
+            "card_checks",
+            "alerts_sent",
+            "price_notices",
+            "closed_workspaces",
+            "workspace_costs",
+            "margin_alerts",
+            "budget_alerts",
+            "ai_reload",
+            "ai_reloads",
+            "tax_and_fees",
+            "gateway_requests",
+            "complimentary",
+            "complimentary_periods",
         ] {
             assert!(!kept.contains(&table));
             assert!(all.contains(&format!("DELETE FROM {table} WHERE")), "{table}");

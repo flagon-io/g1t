@@ -118,15 +118,9 @@ impl Identity {
         Ok(Outcome::Ok(true))
     }
 
-    pub(crate) async fn request_erasure(
-        &self,
-        a: RequestArgs,
-    ) -> Result<Outcome<serde_json::Value>> {
+    pub(crate) async fn request_erasure(&self, a: RequestArgs) -> Result<Outcome<serde_json::Value>> {
         if !is_person(&a.user) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Sign in as yourself to request erasure.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Sign in as yourself to request erasure."));
         }
         #[derive(Deserialize)]
         struct Person {
@@ -152,9 +146,7 @@ impl Identity {
             .first::<ErasureRequest>(None)
             .await?
             .ok_or_else(|| worker::Error::RustError("Request not recorded".into()))?;
-        Ok(Outcome::Ok(
-            serde_json::json!({"id": row.id, "requested_at": row.requested_at, "due_at": row.due_at, "status": row.status}),
-        ))
+        Ok(Outcome::Ok(serde_json::json!({"id": row.id, "requested_at": row.requested_at, "due_at": row.due_at, "status": row.status})))
     }
 
     pub(crate) async fn my_erasure(&self, a: UserArgs) -> Result<Option<serde_json::Value>> {
@@ -162,14 +154,29 @@ impl Identity {
             return Ok(None);
         }
         // Internal notes and staff details are not part of the self-service status.
-        self.db.prepare("SELECT id, requested_at, due_at, status FROM erasure_requests WHERE user_id = ? ORDER BY requested_at DESC LIMIT 1")
-            .bind(&[a.user.id.into()])?.first(None).await
+        self.db
+            .prepare("SELECT id, requested_at, due_at, status FROM erasure_requests WHERE user_id = ? ORDER BY requested_at DESC LIMIT 1")
+            .bind(&[a.user.id.into()])?
+            .first(None)
+            .await
     }
 
     pub(crate) async fn erasure_requests(&self) -> Result<Vec<ErasureRequest>> {
         const LISTED: &str = "SELECT id FROM erasure_requests ORDER BY closed_at IS NOT NULL, due_at LIMIT 500";
-        let mut requests = self.db.prepare(format!("SELECT * FROM erasure_requests WHERE id IN ({LISTED}) ORDER BY closed_at IS NOT NULL, due_at")).all().await?.results::<ErasureRequest>()?;
-        let reviews = self.db.prepare(format!("SELECT request_id, at, staff, status, evidence FROM erasure_reviews WHERE request_id IN ({LISTED}) ORDER BY id")).all().await?.results::<Review>()?;
+        let mut requests = self
+            .db
+            .prepare(format!("SELECT * FROM erasure_requests WHERE id IN ({LISTED}) ORDER BY closed_at IS NOT NULL, due_at"))
+            .all()
+            .await?
+            .results::<ErasureRequest>()?;
+        let reviews = self
+            .db
+            .prepare(format!(
+                "SELECT request_id, at, staff, status, evidence FROM erasure_reviews WHERE request_id IN ({LISTED}) ORDER BY id"
+            ))
+            .all()
+            .await?
+            .results::<Review>()?;
         for review in reviews {
             if let Some(request) = requests.iter_mut().find(|r| r.id == review.request_id) {
                 request.reviews.push(review);
@@ -184,10 +191,7 @@ impl Identity {
             || a.evidence.trim().is_empty()
             || a.evidence.len() > 16000
         {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                "Choose a status and record the review evidence (up to 16,000 bytes).",
-            ));
+            return Ok(Outcome::fail(FailureCode::Invalid, "Choose a status and record the review evidence (up to 16,000 bytes)."));
         }
         let Some(case) = self
             .db
@@ -196,48 +200,24 @@ impl Identity {
             .first::<ErasureRequest>(None)
             .await?
         else {
-            return Ok(Outcome::fail(
-                FailureCode::NotFound,
-                "Open request not found.",
-            ));
+            return Ok(Outcome::fail(FailureCode::NotFound, "Open request not found."));
         };
         if a.status == "completed" {
             let pending = self.db.prepare("SELECT 1 FROM users WHERE id = ?1 UNION ALL SELECT 1 FROM purge_jobs WHERE subject_id = ?1 AND completed_at IS NULL LIMIT 1")
                 .bind(&[case.user_id.as_str().into()])?.first::<serde_json::Value>(None).await?.is_some();
             if pending {
-                return Ok(Outcome::fail(
-                    FailureCode::Conflict,
-                    "Account purge and its cleanup jobs must finish before completion.",
-                ));
+                return Ok(Outcome::fail(FailureCode::Conflict, "Account purge and its cleanup jobs must finish before completion."));
             }
             // Each part needs an actual outcome, including a reason for anything retained.
             let evidence: serde_json::Value = match serde_json::from_str(&a.evidence) {
                 Ok(value) => value,
                 Err(_) => {
-                    return Ok(Outcome::fail(
-                        FailureCode::Invalid,
-                        "Completion evidence must be a JSON object.",
-                    ));
+                    return Ok(Outcome::fail(FailureCode::Invalid, "Completion evidence must be a JSON object."));
                 }
             };
-            for key in [
-                "identity",
-                "downstream",
-                "shared_content",
-                "processors",
-                "backups",
-                "response",
-                "retention",
-            ] {
-                if evidence
-                    .get(key)
-                    .and_then(serde_json::Value::as_str)
-                    .is_none_or(|v| v.trim().is_empty())
-                {
-                    return Ok(Outcome::fail(
-                        FailureCode::Invalid,
-                        format!("Record the {key} outcome before completing this request."),
-                    ));
+            for key in ["identity", "downstream", "shared_content", "processors", "backups", "response", "retention"] {
+                if evidence.get(key).and_then(serde_json::Value::as_str).is_none_or(|v| v.trim().is_empty()) {
+                    return Ok(Outcome::fail(FailureCode::Invalid, format!("Record the {key} outcome before completing this request.")));
                 }
             }
         }
@@ -257,16 +237,10 @@ mod tests {
     use super::*;
     #[test]
     fn calendar_month_deadlines() {
-        for (from, to) in [
-            ("2026-01-31", "2026-02-28"),
-            ("2028-01-31", "2028-02-29"),
-            ("2026-12-14", "2027-01-14"),
-            ("2026-10-14", "2026-11-14"),
-        ] {
-            assert_eq!(
-                deadline(&format!("{from}T15:30:00.123Z")),
-                format!("{to}T15:30:00.123Z")
-            );
+        for (from, to) in
+            [("2026-01-31", "2026-02-28"), ("2028-01-31", "2028-02-29"), ("2026-12-14", "2027-01-14"), ("2026-10-14", "2026-11-14")]
+        {
+            assert_eq!(deadline(&format!("{from}T15:30:00.123Z")), format!("{to}T15:30:00.123Z"));
         }
     }
 }

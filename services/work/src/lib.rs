@@ -10,13 +10,13 @@ mod automerge;
 mod checks;
 mod closing;
 mod cloud_agents;
-mod ghost;
 mod codeowners;
 mod commit_checks;
 mod commit_comments;
 mod contributions;
 mod coordination;
 mod decisions;
+mod ghost;
 mod guardrails;
 mod head_repo;
 mod heads;
@@ -25,11 +25,11 @@ mod insights;
 mod integration;
 mod items;
 mod lifecycle;
-#[cfg(test)]
-mod migrated;
 mod merge_message;
 mod mergeability;
 mod merging;
+#[cfg(test)]
+mod migrated;
 mod opened;
 mod prefetch;
 mod pull_edits;
@@ -47,26 +47,26 @@ mod spend;
 mod statuses;
 mod team_reviews;
 
+use futures_util::future::{try_join, try_join_all, try_join3};
+use g1t_contracts::access::{self, Capability, Denied};
 use g1t_contracts::events::{
-    ChangedFrom, CommentChanges, CommentCreated, CommentDeleted, CommentEdited, CommentOn, DeletedComment, Event, NewEvent,
-    Publish, PullEvent, SessionAppended,
+    ChangedFrom, CommentChanges, CommentCreated, CommentDeleted, CommentEdited, CommentOn, DeletedComment, Event, NewEvent, Publish,
+    PullEvent, SessionAppended,
 };
 use g1t_contracts::identity::UsernameArgs;
 use g1t_contracts::repos::{
-    ForkArgs, GetArgs, HeadArgs, LandArgs, Landed, NeedsAgentReason, PullBranchUpdate, ReadableArgs, Repo, RepoPath,
-    UpdateMethod, UpdatePullBranchArgs,
+    ForkArgs, GetArgs, HeadArgs, LandArgs, Landed, NeedsAgentReason, PullBranchUpdate, ReadableArgs, Repo, RepoPath, UpdateMethod,
+    UpdatePullBranchArgs,
 };
-use g1t_contracts::access::{self, Capability, Denied};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
-use futures_util::future::{try_join, try_join3, try_join_all};
 use g1t_contracts::{FailureCode, Outcome, User, Viewer, new_id};
 use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::Serialize;
 use worker::wasm_bindgen::JsValue;
 use worker::{
-    Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, QueueRetryOptionsBuilder, Request, Response, Result, ScheduleContext, ScheduledEvent,
-    event,
+    Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, QueueRetryOptionsBuilder, Request, Response, Result, ScheduleContext,
+    ScheduledEvent, event,
 };
 
 use items::Held;
@@ -188,10 +188,9 @@ pub(crate) fn allowed(actor: Option<&User>, repo: &Repo, capability: Capability)
     match access::check(actor, repo, capability) {
         Ok(()) => Outcome::Ok(()),
         Err(Denied::NotFound) => Outcome::fail(FailureCode::NotFound, "Repository not found."),
-        Err(Denied::Forbidden) => Outcome::fail(
-            FailureCode::Forbidden,
-            access::needs(capability, &format!("{}/{}", repo.namespace, repo.name)),
-        ),
+        Err(Denied::Forbidden) => {
+            Outcome::fail(FailureCode::Forbidden, access::needs(capability, &format!("{}/{}", repo.namespace, repo.name)))
+        }
     }
 }
 
@@ -309,17 +308,10 @@ struct Work {
 }
 
 impl Work {
-    async fn publish<T: Serialize>(
-        &self,
-        kind: &'static str,
-        repo_id: &str,
-        actor: &User,
-        data: T,
-    ) -> Result<()> {
+    async fn publish<T: Serialize>(&self, kind: &'static str, repo_id: &str, actor: &User, data: T) -> Result<()> {
         // What a workflow job's token did is marked, so it starts no
         // workflows (`g1t_contracts::events::CAUSED_BY_JOB`).
-        self.publish_as(kind, repo_id, Some(actor.id.clone()), g1t_contracts::events::marked(data, Some(actor)))
-            .await
+        self.publish_as(kind, repo_id, Some(actor.id.clone()), g1t_contracts::events::marked(data, Some(actor))).await
     }
 
     /// A pull request's owner (whoever asked g1t for it, or its author) as
@@ -328,12 +320,8 @@ impl Work {
     /// to them. The membership given reads and nothing more: it is for
     /// looking, never for acting.
     pub(crate) async fn owner_viewer(&self, pull: &Pull) -> Result<Viewer> {
-        let path: Option<RepoPath> = g1t_kit::call(
-            &self.repos,
-            "path_by_id",
-            &g1t_contracts::repos::PathByIdArgs { id: pull.repo_id.clone() },
-        )
-        .await?;
+        let path: Option<RepoPath> =
+            g1t_kit::call(&self.repos, "path_by_id", &g1t_contracts::repos::PathByIdArgs { id: pull.repo_id.clone() }).await?;
         let mut owner = pull.owner().clone();
         if let Some(path) = path
             && !owner.is_member(&path.namespace.to_lowercase())
@@ -347,13 +335,7 @@ impl Work {
     }
 
     /// Publishes an event caused by `actor`, or by g1t itself.
-    async fn publish_as<T: Serialize>(
-        &self,
-        kind: &'static str,
-        repo_id: &str,
-        actor: Option<String>,
-        data: T,
-    ) -> Result<()> {
+    async fn publish_as<T: Serialize>(&self, kind: &'static str, repo_id: &str, actor: Option<String>, data: T) -> Result<()> {
         let data = serde_json::to_value(data)?;
         // Store agent updates before external event delivery. A retry may repeat
         // an event, but an external delivery failure cannot erase its inbox copy.
@@ -383,21 +365,8 @@ impl Work {
         actor: Option<String>,
         data: serde_json::Value,
     ) -> Result<()> {
-        let event = NewEvent {
-            kind,
-            source: SOURCE,
-            repo_id: repo_id.map(str::to_owned),
-            actor,
-            data,
-        };
-        g1t_kit::call(
-            &self.events,
-            "publish",
-            &Publish {
-                events: vec![event],
-            },
-        )
-        .await
+        let event = NewEvent { kind, source: SOURCE, repo_id: repo_id.map(str::to_owned), actor, data };
+        g1t_kit::call(&self.events, "publish", &Publish { events: vec![event] }).await
     }
 
     /// The repository, if the viewer may see it. Whether they may is
@@ -409,10 +378,7 @@ impl Work {
             .rpc(g1t_kit::call_in(
                 &self.repos,
                 "get",
-                &GetArgs {
-                    path: path.clone(),
-                    viewer: viewer.clone(),
-                },
+                &GetArgs { path: path.clone(), viewer: viewer.clone() },
                 self.repos_session.as_deref(),
             ))
             .await?;
@@ -448,12 +414,7 @@ impl Work {
     }
 
     /// The repository and one of its pull requests, as seen by `viewer`.
-    async fn pull_at(
-        &self,
-        path: &RepoPath,
-        number: u32,
-        viewer: &Viewer,
-    ) -> Result<Outcome<(Repo, Pull)>> {
+    async fn pull_at(&self, path: &RepoPath, number: u32, viewer: &Viewer) -> Result<Outcome<(Repo, Pull)>> {
         let Outcome::Ok(repo) = self.repo(path, viewer).await? else {
             return Ok(no_pull());
         };
@@ -467,13 +428,7 @@ impl Work {
     /// in the conversation where it happened. `text` is what `author` did,
     /// as the rest of a sentence starting with their name: an id and a
     /// name, or someone acting, as [`rows::By`] records them.
-    pub(crate) async fn note<'a>(
-        &self,
-        repo_id: &str,
-        number: u32,
-        author: impl Into<rows::By<'a>>,
-        text: &str,
-    ) -> Result<()> {
+    pub(crate) async fn note<'a>(&self, repo_id: &str, number: u32, author: impl Into<rows::By<'a>>, text: &str) -> Result<()> {
         self.note_on(On::Pull(repo_id, number), author.into(), text).await
     }
 
@@ -518,13 +473,7 @@ impl Work {
         after: &[String],
         (added, removed): (&str, &str),
     ) -> Result<()> {
-        let joined = |names: Vec<&String>| {
-            names
-                .into_iter()
-                .map(String::as_str)
-                .collect::<Vec<_>>()
-                .join(", ")
-        };
+        let joined = |names: Vec<&String>| names.into_iter().map(String::as_str).collect::<Vec<_>>().join(", ");
         let new: Vec<&String> = after.iter().filter(|name| !before.contains(name)).collect();
         let gone: Vec<&String> = before.iter().filter(|name| !after.contains(name)).collect();
         let who = actor;
@@ -551,10 +500,7 @@ impl Work {
         g1t_kit::call(
             &self.repos,
             "head",
-            &HeadArgs {
-                repo_id: pull.source_id().to_owned(),
-                branch: pull.branch.clone().unwrap_or_default(),
-            },
+            &HeadArgs { repo_id: pull.source_id().to_owned(), branch: pull.branch.clone().unwrap_or_default() },
         )
         .await
     }
@@ -591,19 +537,9 @@ impl Work {
                 assignees.push(name);
                 continue;
             }
-            let account: Viewer = g1t_kit::call(
-                &self.identity,
-                "user_by_username",
-                &UsernameArgs {
-                    username: name.clone(),
-                },
-            )
-            .await?;
+            let account: Viewer = g1t_kit::call(&self.identity, "user_by_username", &UsernameArgs { username: name.clone() }).await?;
             if account.is_none() {
-                return Ok(Outcome::fail(
-                    FailureCode::Invalid,
-                    format!("There is no account named {name}."),
-                ));
+                return Ok(Outcome::fail(FailureCode::Invalid, format!("There is no account named {name}.")));
             }
             assignees.push(name);
         }
@@ -640,41 +576,25 @@ impl Work {
         let body = a.body.trim();
         // An approval speaks for itself; anything else has to say something.
         if body.is_empty() && a.verdict != Some(Verdict::Approve) {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                "A comment cannot be empty.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Invalid, "A comment cannot be empty."));
         }
-        let path = a
-            .path
-            .as_deref()
-            .map(str::trim)
-            .filter(|path| !path.is_empty());
+        let path = a.path.as_deref().map(str::trim).filter(|path| !path.is_empty());
         let line = a.line.filter(|line| *line > 0 && path.is_some());
         if body.chars().count() > MAX_ENTRY_CHARS {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                "That comment is too long.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Invalid, "That comment is too long."));
         }
         let thread = check!(self.thread(&Some(a.actor.clone()), a.repo.as_ref(), &a.workspace, a.number).await?);
         match &thread {
             Thread::Pull(repo, pull) => {
                 check!(writable(repo));
                 if a.verdict.is_some() && pull.is_owned_by(&a.actor.id) {
-                    return Ok(Outcome::fail(
-                        FailureCode::Forbidden,
-                        "You cannot approve or request changes on your own pull request.",
-                    ));
+                    return Ok(Outcome::fail(FailureCode::Forbidden, "You cannot approve or request changes on your own pull request."));
                 }
             }
             Thread::Item(held) => {
                 check!(held.allowed(Some(&a.actor), Capability::Participate));
                 if path.is_some() || a.verdict.is_some() {
-                    return Ok(Outcome::fail(
-                        FailureCode::Invalid,
-                        "Only a pull request can be reviewed or commented on by line.",
-                    ));
+                    return Ok(Outcome::fail(FailureCode::Invalid, "Only a pull request can be reviewed or commented on by line."));
                 }
             }
         }
@@ -727,8 +647,7 @@ impl Work {
                         body.into(),
                         optional(&comment.path),
                         optional_number(line),
-                        a.verdict
-                            .map_or(JsValue::NULL, |verdict| verdict.as_str().into()),
+                        a.verdict.map_or(JsValue::NULL, |verdict| verdict.as_str().into()),
                         comment.created_at.as_str().into(),
                         by.acting_for.map_or(JsValue::NULL, |(id, _)| id.into()),
                         by.acting_for.map_or(JsValue::NULL, |(_, name)| name.into()),
@@ -740,12 +659,7 @@ impl Work {
             "comment.created",
             &thread,
             &a.actor,
-            CommentCreated {
-                comment_id: comment.id.clone(),
-                on: thread.comment_on(),
-                verdict: a.verdict,
-                ..CommentCreated::default()
-            },
+            CommentCreated { comment_id: comment.id.clone(), on: thread.comment_on(), verdict: a.verdict, ..CommentCreated::default() },
         )
         .await?;
         // An approval is a decision: a person's is approved.
@@ -826,14 +740,7 @@ impl Work {
         let maintains = thread.may(&a.actor, Capability::ManageSettings);
         // What an agent wrote as itself is answered for by whoever it acted for.
         let author_id = row.answerable_id().to_owned();
-        if let Err(refusal) = may_change_comment(
-            row.kind,
-            row.has_verdict(),
-            &author_id,
-            &a.actor.id,
-            maintains,
-            deleting,
-        ) {
+        if let Err(refusal) = may_change_comment(row.kind, row.has_verdict(), &author_id, &a.actor.id, maintains, deleting) {
             // Someone who may change it otherwise was refused for what it is.
             let code = if author_id == a.actor.id || maintains { FailureCode::Conflict } else { FailureCode::Forbidden };
             return Ok(Outcome::fail(code, refusal));
@@ -884,11 +791,7 @@ impl Work {
     /// comment as it was.
     async fn delete_comment(&self, a: CommentActionArgs) -> Result<Outcome<bool>> {
         let (thread, row) = check!(self.changeable_comment(&a, true).await?);
-        self.db
-            .prepare("DELETE FROM comments WHERE id = ?")
-            .bind(&[row.id.as_str().into()])?
-            .run()
-            .await?;
+        self.db.prepare("DELETE FROM comments WHERE id = ?").bind(&[row.id.as_str().into()])?.run().await?;
         self.db.prepare("DELETE FROM reactions WHERE subject = ?").bind(&[row.id.as_str().into()])?.run().await?;
         let comment = Comment::from(row);
         self.publish_thread(
@@ -953,11 +856,7 @@ impl Work {
 
         let now = now_ms();
         let id = new_id("pr", now);
-        let branch = a
-            .branch
-            .as_deref()
-            .map(str::trim)
-            .filter(|branch| !branch.is_empty());
+        let branch = a.branch.as_deref().map(str::trim).filter(|branch| !branch.is_empty());
         // A branch of someone's fork of the repository, rather than of the
         // repository itself (head_repo.rs).
         let head_repo = match &a.head_repo {
@@ -983,12 +882,8 @@ impl Work {
                     format!("A pull request cannot merge {base} into itself. Choose another base."),
                 ));
             }
-            let exists: Option<String> = g1t_kit::call(
-                &self.repos,
-                "head",
-                &HeadArgs { repo_id: repo.id.clone(), branch: base.clone() },
-            )
-            .await?;
+            let exists: Option<String> =
+                g1t_kit::call(&self.repos, "head", &HeadArgs { repo_id: repo.id.clone(), branch: base.clone() }).await?;
             if exists.is_none() {
                 return Ok(Outcome::fail(FailureCode::NotFound, format!("There is no branch named {base} to merge into.")));
             }
@@ -1004,25 +899,16 @@ impl Work {
                 // A fork's branch may share the base's name: it is another
                 // repository's.
                 if head_repo.is_none() && branch == base_name {
-                    return Ok(Outcome::fail(
-                        FailureCode::Invalid,
-                        format!("Choose a branch other than {branch}."),
-                    ));
+                    return Ok(Outcome::fail(FailureCode::Invalid, format!("Choose a branch other than {branch}.")));
                 }
                 let head: Option<String> = g1t_kit::call(
                     &self.repos,
                     "head",
-                    &HeadArgs {
-                        repo_id: head_repo_id.clone().unwrap_or_else(|| repo.id.clone()),
-                        branch: branch.to_owned(),
-                    },
+                    &HeadArgs { repo_id: head_repo_id.clone().unwrap_or_else(|| repo.id.clone()), branch: branch.to_owned() },
                 )
                 .await?;
                 let Some(head) = head else {
-                    return Ok(Outcome::fail(
-                        FailureCode::NotFound,
-                        format!("There is no branch named {source}. Push it first."),
-                    ));
+                    return Ok(Outcome::fail(FailureCode::NotFound, format!("There is no branch named {source}. Push it first.")));
                 };
                 // One open pull request for each branch (of the repository
                 // or of one fork) and base.
@@ -1044,11 +930,7 @@ impl Work {
                 let fork: Outcome<Repo> = g1t_kit::call(
                     &self.repos,
                     "fork_for_pull",
-                    &ForkArgs {
-                        source_id: repo.id.clone(),
-                        pull_id: id.clone(),
-                        actor: a.actor.clone(),
-                    },
+                    &ForkArgs { source_id: repo.id.clone(), pull_id: id.clone(), actor: a.actor.clone() },
                 )
                 .await?;
                 (Some(check!(fork)), None)
@@ -1070,7 +952,8 @@ impl Work {
         // The work items it says it closes and is part of (closing.rs).
         let item_id = item.as_ref().map(|held| held.item.id.clone());
         let named =
-            items::named(self, &repo, item_id.as_deref(), &format!("{title}\n{}", body.as_deref().unwrap_or_default()), &[&a.actor]).await?;
+            items::named(self, &repo, item_id.as_deref(), &format!("{title}\n{}", body.as_deref().unwrap_or_default()), &[&a.actor])
+                .await?;
         self.db
             .prepare(
                 "INSERT INTO pulls
@@ -1139,10 +1022,8 @@ impl Work {
             Some(State::Closed) => "AND status IN ('merged', 'closed')",
             None => "",
         };
-        let label = a
-            .label
-            .map(|label| label.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase())
-            .filter(|label| !label.is_empty());
+        let label =
+            a.label.map(|label| label.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()).filter(|label| !label.is_empty());
         let milestone = a.milestone;
         let before = a.before;
         let merged_since = a.merged_since.map(|at| at.trim().to_owned()).filter(|at| !at.is_empty());
@@ -1204,10 +1085,8 @@ impl Work {
         if readable.is_empty() {
             return Ok(Vec::new());
         }
-        let mut answer: Vec<RepoPulls> = readable
-            .iter()
-            .map(|repo| RepoPulls { repo_id: repo.id.clone(), open: Vec::new(), closed: Vec::new() })
-            .collect();
+        let mut answer: Vec<RepoPulls> =
+            readable.iter().map(|repo| RepoPulls { repo_id: repo.id.clone(), open: Vec::new(), closed: Vec::new() }).collect();
         for pull in rows.into_iter().map(Pull::from) {
             let Some(entry) = answer.iter_mut().find(|entry| entry.repo_id == pull.repo_id) else {
                 continue;
@@ -1260,8 +1139,7 @@ impl Work {
             .held(prefetch::Slot::Item)?
             .filter(|held| held.may(a.viewer.as_ref(), Capability::Read))
             .map(|held| held.shown(a.viewer.as_ref()));
-        let mut comments: Vec<Comment> =
-            found.rows::<CommentRow>(prefetch::Slot::Comments)?.into_iter().map(Comment::from).collect();
+        let mut comments: Vec<Comment> = found.rows::<CommentRow>(prefetch::Slot::Comments)?.into_iter().map(Comment::from).collect();
         let reactions = reactions::attach(&found.rows::<reactions::ReactionRow>(prefetch::Slot::Reactions)?, &row.id, &mut comments);
         self.keep_prefetched(Some(found));
         let default_branch = repo.default_branch.clone();
@@ -1331,26 +1209,18 @@ impl Work {
             let lifecycle = self.assess(&pull, &item, behind).await?.map(|(lifecycle, _)| lifecycle);
             Ok::<_, worker::Error>((behind, lifecycle, merge))
         };
-        let (((behind, lifecycle, (mergeable, conflicts)), (landing, stalled), comments), (checks, overlaps)) =
-            try_join(
-                try_join3(standing, self.landing_state(&pull.id), async { Ok(comments) }),
-                try_join(self.latest_checks(&pull.id), self.overlaps(&pull)),
-            )
-            .await?;
-        // The rules of the branch it merges into, as they stack, and which
-        // of them it does not meet yet, for whoever is looking.
-        let (statuses, settings, gate) = try_join3(
-            self.statuses(&repo.id, pull.head_commit.as_deref()),
-            self.settings_on(&repo, &pull),
-            async {
-                if pull.status.is_active() {
-                    self.merge_gate_seen(&repo, &pull, viewer.as_ref(), behind).await.map(Some)
-                } else {
-                    Ok(None)
-                }
-            },
+        let (((behind, lifecycle, (mergeable, conflicts)), (landing, stalled), comments), (checks, overlaps)) = try_join(
+            try_join3(standing, self.landing_state(&pull.id), async { Ok(comments) }),
+            try_join(self.latest_checks(&pull.id), self.overlaps(&pull)),
         )
         .await?;
+        // The rules of the branch it merges into, as they stack, and which
+        // of them it does not meet yet, for whoever is looking.
+        let (statuses, settings, gate) =
+            try_join3(self.statuses(&repo.id, pull.head_commit.as_deref()), self.settings_on(&repo, &pull), async {
+                if pull.status.is_active() { self.merge_gate_seen(&repo, &pull, viewer.as_ref(), behind).await.map(Some) } else { Ok(None) }
+            })
+            .await?;
         let code_owners = self.pull_code_owners(&pull, &comments, &settings).await?;
         // The work items it closes, as its title and description say now;
         // none where the repository does not close them that way.
@@ -1367,7 +1237,9 @@ impl Work {
         };
         Ok(Outcome::Ok(PullDetail {
             required_checks: required,
-            rules: gate.map(|gate| rulesets::merge_rules(&gate.judged, &gate.requirements, pull.base_branch(&repo.default_branch) == repo.default_branch)),
+            rules: gate.map(|gate| {
+                rulesets::merge_rules(&gate.judged, &gate.requirements, pull.base_branch(&repo.default_branch) == repo.default_branch)
+            }),
             code_owners,
             comments,
             checks,
@@ -1388,12 +1260,7 @@ impl Work {
 
     /// The pull request, whatever its status, if its repository is not
     /// archived and `actor` opened it or may triage its pull requests.
-    async fn managed_pull(
-        &self,
-        actor: &User,
-        path: &RepoPath,
-        number: u32,
-    ) -> Result<Outcome<Pull>> {
+    async fn managed_pull(&self, actor: &User, path: &RepoPath, number: u32) -> Result<Outcome<Pull>> {
         let (repo, pull) = check!(self.pull_at(path, number, &Some(actor.clone())).await?);
         check!(writable(&repo));
         if !pull.is_owned_by(&actor.id) {
@@ -1404,18 +1271,10 @@ impl Work {
 
     /// The pull request, if it is still active and `actor` opened it or
     /// may triage the repository's pull requests.
-    async fn manageable_pull(
-        &self,
-        actor: &User,
-        path: &RepoPath,
-        number: u32,
-    ) -> Result<Outcome<Pull>> {
+    async fn manageable_pull(&self, actor: &User, path: &RepoPath, number: u32) -> Result<Outcome<Pull>> {
         let pull = check!(self.managed_pull(actor, path, number).await?);
         if !pull.status.is_active() {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                format!("This pull request is already {}.", pull.status.as_str()),
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, format!("This pull request is already {}.", pull.status.as_str())));
         }
         Ok(Outcome::Ok(pull))
     }
@@ -1431,10 +1290,7 @@ impl Work {
         let (repo, pull) = check!(self.pull_at(&a.repo, a.number, &Some(a.actor.clone())).await?);
         check!(writable(&repo));
         if !pull.status.is_active() {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                format!("This pull request is already {}.", pull.status.as_str()),
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, format!("This pull request is already {}.", pull.status.as_str())));
         }
         if pull.fork_repo_id.is_some() {
             if !pull.is_owned_by(&a.actor.id) {
@@ -1550,20 +1406,13 @@ impl Work {
             .run()
             .await?;
         if let Some(assignees) = &assignees {
-            self.note_changes(
-                On::Pull(&pull.repo_id, pull.number),
-                &a.actor,
-                &pull.assignees,
-                assignees,
-                ("assigned", "unassigned"),
-            )
-            .await?;
+            self.note_changes(On::Pull(&pull.repo_id, pull.number), &a.actor, &pull.assignees, assignees, ("assigned", "unassigned"))
+                .await?;
         }
         // Who was newly assigned or asked to review, and whose request was
         // withdrawn: the inbox tells them, and webhooks say so.
-        let newly = |after: &[String], before: &[String]| -> Vec<String> {
-            after.iter().filter(|name| !before.contains(name)).cloned().collect()
-        };
+        let newly =
+            |after: &[String], before: &[String]| -> Vec<String> { after.iter().filter(|name| !before.contains(name)).cloned().collect() };
         if let Some(assignees) = &assignees {
             let added = newly(assignees, &pull.assignees);
             if !added.is_empty() {
@@ -1571,11 +1420,7 @@ impl Work {
                     "pull.assigned",
                     &pull.repo_id,
                     &a.actor,
-                    PullEvent {
-                        assignees: Some(assignees.clone()),
-                        added: Some(added),
-                        ..Self::pull_event(&pull)
-                    },
+                    PullEvent { assignees: Some(assignees.clone()), added: Some(added), ..Self::pull_event(&pull) },
                 )
                 .await?;
             }
@@ -1610,20 +1455,14 @@ impl Work {
                 format!("A pull request cannot merge {base} into itself. Choose another base."),
             ));
         }
-        let exists: Option<String> = g1t_kit::call(
-            &self.repos,
-            "head",
-            &HeadArgs { repo_id: repo.id.clone(), branch: base.to_owned() },
-        )
-        .await?;
+        let exists: Option<String> =
+            g1t_kit::call(&self.repos, "head", &HeadArgs { repo_id: repo.id.clone(), branch: base.to_owned() }).await?;
         if exists.is_none() {
             return Ok(Outcome::fail(FailureCode::NotFound, format!("There is no branch named {base} to merge into.")));
         }
         // In the merge queue it was headed for the default branch; it
         // leaves the queue for another base.
-        let left_queue = self
-            .leave(&pull.repo_id, pull, QueueState::Removed, Some("Its base branch changed."))
-            .await?;
+        let left_queue = self.leave(&pull.repo_id, pull, QueueState::Removed, Some("Its base branch changed.")).await?;
         // Its tested commit is being published to the default branch: a new
         // base would describe a merge that is not the one taking place.
         if !left_queue && self.publishing(&pull.id).await? {
@@ -1640,28 +1479,12 @@ impl Work {
             .bind(&[optional(&stored), rfc3339(now_ms()).into(), pull.id.as_str().into()])?
             .run()
             .await?;
-        self.note(
-            &pull.repo_id,
-            pull.number,
-            actor,
-            &format!("changed the base branch from `{before}` to `{base}`"),
-        )
-        .await?;
-        self.publish(
-            "pull.base_changed",
-            &pull.repo_id,
-            actor,
-            PullEvent { base: Some(base.to_owned()), ..Self::pull_event(pull) },
-        )
-        .await?;
-        if left_queue {
-            self.publish_as(
-                "queue.changed",
-                &pull.repo_id,
-                None,
-                g1t_contracts::events::QueueChanged { repo_id: pull.repo_id.clone() },
-            )
+        self.note(&pull.repo_id, pull.number, actor, &format!("changed the base branch from `{before}` to `{base}`")).await?;
+        self.publish("pull.base_changed", &pull.repo_id, actor, PullEvent { base: Some(base.to_owned()), ..Self::pull_event(pull) })
             .await?;
+        if left_queue {
+            self.publish_as("queue.changed", &pull.repo_id, None, g1t_contracts::events::QueueChanged { repo_id: pull.repo_id.clone() })
+                .await?;
         }
         // Its merge ref, and whether it merges cleanly, against the new base.
         if let Some(moved) = self.pull_by_id(&pull.id).await? {
@@ -1703,25 +1526,10 @@ impl Work {
             // The head as it is now: the push that came just before may not
             // have reached `head_commit` yet, and workflows run on it.
             let commit = self.live_head(&pull).await?.or_else(|| pull.head_commit.clone());
-            self.publish(
-                "pull.ready",
-                &pull.repo_id,
-                &a.actor,
-                PullEvent {
-                    commit,
-                    ..Self::pull_event(&pull)
-                },
-            )
-            .await?;
+            self.publish("pull.ready", &pull.repo_id, &a.actor, PullEvent { commit, ..Self::pull_event(&pull) }).await?;
         }
         if pull.status == PullStatus::Draft {
-            self.note(
-                &pull.repo_id,
-                pull.number,
-                &a.actor,
-                "marked this ready for review",
-            )
-            .await?;
+            self.note(&pull.repo_id, pull.number, &a.actor, "marked this ready for review").await?;
         }
         pull.status = PullStatus::Open;
         pull.body = summary.or(pull.body);
@@ -1751,34 +1559,12 @@ impl Work {
         if closed.is_none() {
             return Ok(Outcome::fail(FailureCode::Conflict, "This pull request is being published or has already merged."));
         }
-        self.publish(
-            "pull.closed",
-            &pull.repo_id,
-            &a.actor,
-            Self::pull_event(&pull),
-        )
-        .await?;
-        self.note(
-            &pull.repo_id,
-            pull.number,
-            &a.actor,
-            "closed this",
-        )
-        .await?;
+        self.publish("pull.closed", &pull.repo_id, &a.actor, Self::pull_event(&pull)).await?;
+        self.note(&pull.repo_id, pull.number, &a.actor, "closed this").await?;
         // A closed pull request leaves the merge queue.
-        if self
-            .leave(&pull.repo_id, &pull, QueueState::Removed, Some("It was closed."))
-            .await?
-        {
-            self.publish_as(
-                "queue.changed",
-                &pull.repo_id,
-                None,
-                g1t_contracts::events::QueueChanged {
-                    repo_id: pull.repo_id.clone(),
-                },
-            )
-            .await?;
+        if self.leave(&pull.repo_id, &pull, QueueState::Removed, Some("It was closed.")).await? {
+            self.publish_as("queue.changed", &pull.repo_id, None, g1t_contracts::events::QueueChanged { repo_id: pull.repo_id.clone() })
+                .await?;
         }
         pull.status = PullStatus::Closed;
         pull.auto_merge = None;
@@ -1806,12 +1592,8 @@ impl Work {
                 ),
             ));
         }
-        let closed_from: Option<ClosedFrom> = self
-            .db
-            .prepare("SELECT closed_from FROM pulls WHERE id = ?")
-            .bind(&[pull.id.as_str().into()])?
-            .first(None)
-            .await?;
+        let closed_from: Option<ClosedFrom> =
+            self.db.prepare("SELECT closed_from FROM pulls WHERE id = ?").bind(&[pull.id.as_str().into()])?.first(None).await?;
         let status = reopened_status(closed_from.and_then(|row| row.closed_from).as_deref());
         let now = rfc3339(now_ms());
         self.db
@@ -1823,19 +1605,10 @@ impl Work {
             "pull.reopened",
             &pull.repo_id,
             &a.actor,
-            PullEvent {
-                commit: head.or_else(|| pull.head_commit.clone()),
-                ..Self::pull_event(&pull)
-            },
+            PullEvent { commit: head.or_else(|| pull.head_commit.clone()), ..Self::pull_event(&pull) },
         )
         .await?;
-        self.note(
-            &pull.repo_id,
-            pull.number,
-            &a.actor,
-            "reopened this",
-        )
-        .await?;
+        self.note(&pull.repo_id, pull.number, &a.actor, "reopened this").await?;
         pull.status = status;
         pull.superseded_by = None;
         pull.updated_at = now;
@@ -1870,33 +1643,11 @@ impl Work {
         if drafted.is_none() {
             return Ok(Outcome::fail(FailureCode::Conflict, "This pull request changed or is already being published."));
         }
-        self.publish(
-            "pull.converted_to_draft",
-            &pull.repo_id,
-            &a.actor,
-            Self::pull_event(&pull),
-        )
-        .await?;
-        self.note(
-            &pull.repo_id,
-            pull.number,
-            &a.actor,
-            "marked this as a draft",
-        )
-        .await?;
-        if self
-            .leave(&pull.repo_id, &pull, QueueState::Removed, Some("It was marked as a draft."))
-            .await?
-        {
-            self.publish_as(
-                "queue.changed",
-                &pull.repo_id,
-                None,
-                g1t_contracts::events::QueueChanged {
-                    repo_id: pull.repo_id.clone(),
-                },
-            )
-            .await?;
+        self.publish("pull.converted_to_draft", &pull.repo_id, &a.actor, Self::pull_event(&pull)).await?;
+        self.note(&pull.repo_id, pull.number, &a.actor, "marked this as a draft").await?;
+        if self.leave(&pull.repo_id, &pull, QueueState::Removed, Some("It was marked as a draft.")).await? {
+            self.publish_as("queue.changed", &pull.repo_id, None, g1t_contracts::events::QueueChanged { repo_id: pull.repo_id.clone() })
+                .await?;
         }
         pull.status = PullStatus::Draft;
         pull.updated_at = now;
@@ -1916,16 +1667,10 @@ impl Work {
         match pull.status {
             PullStatus::Open => {}
             PullStatus::Draft => {
-                return Ok(Outcome::fail(
-                    FailureCode::Conflict,
-                    "This pull request is still a draft. Mark it ready for review first.",
-                ));
+                return Ok(Outcome::fail(FailureCode::Conflict, "This pull request is still a draft. Mark it ready for review first."));
             }
             status => {
-                return Ok(Outcome::fail(
-                    FailureCode::Conflict,
-                    format!("This pull request is already {}.", status.as_str()),
-                ));
+                return Ok(Outcome::fail(FailureCode::Conflict, format!("This pull request is already {}.", status.as_str())));
             }
         }
         // Whoever looked at one head merges that one.
@@ -1954,10 +1699,7 @@ impl Work {
         let gate = if a.bypass_rules || a.actor.is_system() { gate } else { gate.without_bypass() };
         let settings = rulesets::overlay(self.settings(&repo.id).await?, &gate.requirements, base == repo.default_branch);
         if pull.check_status == Some(CheckStatus::Failed) && !(a.ignore_checks && settings.allow_ignoring_checks) {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                "It failed in the merge queue; push a fix to try again.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, "It failed in the merge queue; push a fix to try again."));
         }
         if let Some(refusal) = gate.refusal() {
             if access::can(Some(&a.actor), &repo, Capability::Merge) {
@@ -1973,11 +1715,7 @@ impl Work {
         // Known ahead of time to conflict: neither a merge nor the queue
         // would get through, so say what has to be resolved now.
         if let Some(files) = self.conflicting_files(&pull).await? {
-            let named = if files.is_empty() {
-                String::new()
-            } else {
-                format!(" in {}", files.join(", "))
-            };
+            let named = if files.is_empty() { String::new() } else { format!(" in {}", files.join(", ")) };
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
                 format!(
@@ -2014,13 +1752,11 @@ impl Work {
 
         // The commit it makes, for a merge or a squash: what the merger
         // wrote, over the repository's default.
-        let message = match self
-            .merge_message_for(&repo, &pull, &settings, method, a.commit_title.as_deref(), a.commit_message.as_deref())
-            .await?
-        {
-            Ok(message) => message,
-            Err(problem) => return Ok(Outcome::fail(FailureCode::Invalid, problem)),
-        };
+        let message =
+            match self.merge_message_for(&repo, &pull, &settings, method, a.commit_title.as_deref(), a.commit_message.as_deref()).await? {
+                Ok(message) => message,
+                Err(problem) => return Ok(Outcome::fail(FailureCode::Invalid, problem)),
+            };
 
         // The branch it merges into has moved under it. A merge, squash or
         // rebase makes new commits on its head anyway; a fast-forward needs
@@ -2042,14 +1778,8 @@ impl Work {
                 // (lifecycle.rs `land_if_requested`, `land_when_checked`).
                 // Merging past failing checks, where that is allowed, carries
                 // over: it then lands without waiting for them.
-                self.request_landing(
-                    &pull,
-                    &a.actor,
-                    a.keep_item_open,
-                    a.delete_branch,
-                    a.ignore_checks && settings.allow_ignoring_checks,
-                )
-                .await?;
+                self.request_landing(&pull, &a.actor, a.keep_item_open, a.delete_branch, a.ignore_checks && settings.allow_ignoring_checks)
+                    .await?;
                 // Bounded: a repository that does not answer gets a clear
                 // failure back to whoever clicked, not a request that hangs
                 // until the site gives up on it.
@@ -2175,27 +1905,28 @@ impl Work {
             pull.head_commit.clone().or_else(|| Some(landed.commit.clone()))
         };
         let now = rfc3339(now_ms());
-        let mut statements = vec![self
-            .db
-            .prepare(
-                "UPDATE pulls
+        let mut statements = vec![
+            self.db
+                .prepare(
+                    "UPDATE pulls
                  SET status = 'merged', head_commit = ?, merge_base = ?, merged_by = ?,
                      merged_at = ?, updated_at = ?, merge_method = ?, merge_commit = ?,
                      auto_merge = NULL, closes_items = ?, parts = ?
                  WHERE id = ? AND status <> 'merged' RETURNING id AS value",
-            )
-            .bind(&[
-                optional(&head),
-                optional(&landed.previous),
-                actor.username.as_str().into(),
-                now.as_str().into(),
-                now.as_str().into(),
-                landed.method.as_str().into(),
-                landed.commit.as_str().into(),
-                serde_json::to_string(&named.close_ids())?.into(),
-                serde_json::to_string(&named.part_ids())?.into(),
-                pull.id.as_str().into(),
-            ])?];
+                )
+                .bind(&[
+                    optional(&head),
+                    optional(&landed.previous),
+                    actor.username.as_str().into(),
+                    now.as_str().into(),
+                    now.as_str().into(),
+                    landed.method.as_str().into(),
+                    landed.commit.as_str().into(),
+                    serde_json::to_string(&named.close_ids())?.into(),
+                    serde_json::to_string(&named.part_ids())?.into(),
+                    pull.id.as_str().into(),
+                ])?,
+        ];
         // The others for its own work item in this repository were other
         // ways to do the same thing.
         if let Some(own) = own.as_deref().filter(|own| named.close_ids().iter().any(|id| id == own)) {
@@ -2213,16 +1944,7 @@ impl Work {
             return Ok(self.pull_by_id(&pull.id).await?.unwrap_or(pull));
         }
 
-        self.publish(
-            "pull.merged",
-            &repo.id,
-            actor,
-            PullEvent {
-                commit: Some(landed.commit.clone()),
-                ..Self::pull_event(&pull)
-            },
-        )
-        .await?;
+        self.publish("pull.merged", &repo.id, actor, PullEvent { commit: Some(landed.commit.clone()), ..Self::pull_event(&pull) }).await?;
         let who = (actor.id.as_str(), actor.username.as_str());
         let note = match pushed {
             Some(branch) => format!("merged this by pushing {} to {branch}", landed.commit),
@@ -2325,23 +2047,13 @@ impl Work {
             let lifecycle = if pull.status == PullStatus::Draft && !managed {
                 None
             } else if let (Some(stage), Some(detail)) = (snapshot.stage, snapshot.stage_detail) {
-                Some(Lifecycle {
-                    stage,
-                    detail,
-                    revisions: snapshot.revisions,
-                })
+                Some(Lifecycle { stage, detail, revisions: snapshot.revisions })
             } else {
                 // Never worked out yet: once, and remembered.
                 let behind = self.behind_now(&pull).await?;
-                self.assess(&pull, &item, behind)
-                    .await?
-                    .map(|(lifecycle, _)| lifecycle)
+                self.assess(&pull, &item, behind).await?.map(|(lifecycle, _)| lifecycle)
             };
-            Ok::<_, worker::Error>(ActivePull {
-                pull,
-                item,
-                lifecycle,
-            })
+            Ok::<_, worker::Error>(ActivePull { pull, item, lifecycle })
         }))
         .await
     }
@@ -2353,10 +2065,7 @@ impl Work {
             return Ok(Outcome::Ok(Appended { count: 0 }));
         }
         if a.entries.len() > MAX_ENTRY_BATCH {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                format!("Send at most {MAX_ENTRY_BATCH} entries at a time."),
-            ));
+            return Ok(Outcome::fail(FailureCode::Invalid, format!("Send at most {MAX_ENTRY_BATCH} entries at a time.")));
         }
         let viewer = Some(a.actor.clone());
         let (_, pull) = check!(self.pull_at(&a.repo, a.number, &viewer).await?);
@@ -2393,22 +2102,14 @@ impl Work {
                     ])?,
             );
         }
-        statements.push(
-            self.db
-                .prepare("UPDATE pulls SET updated_at = ? WHERE id = ?")
-                .bind(&[now.as_str().into(), pull.id.as_str().into()])?,
-        );
+        statements
+            .push(self.db.prepare("UPDATE pulls SET updated_at = ? WHERE id = ?").bind(&[now.as_str().into(), pull.id.as_str().into()])?);
         self.db.batch(statements).await?;
         self.publish(
             "session.appended",
             &pull.repo_id,
             &a.actor,
-            SessionAppended {
-                pull_id: pull.id.clone(),
-                repo_id: pull.repo_id.clone(),
-                number: pull.number,
-                count,
-            },
+            SessionAppended { pull_id: pull.id.clone(), repo_id: pull.repo_id.clone(), number: pull.number, count },
         )
         .await?;
         Ok(Outcome::Ok(Appended { count }))
@@ -2426,9 +2127,7 @@ impl Work {
             .all()
             .await?
             .results::<SessionRow>()?;
-        Ok(Outcome::Ok(
-            rows.into_iter().map(SessionEntry::from).collect(),
-        ))
+        Ok(Outcome::Ok(rows.into_iter().map(SessionEntry::from).collect()))
     }
 
     /// A push moves the head of the pull request it concerns: the one whose
@@ -2463,11 +2162,9 @@ impl Work {
         if event.kind != "git.push" {
             return Ok(());
         }
-        let (Some(repo_id), Some(after), Some(git_ref)) = (
-            event.repo_id.as_deref(),
-            event.data["after"].as_str(),
-            event.data["ref"].as_str(),
-        ) else {
+        let (Some(repo_id), Some(after), Some(git_ref)) =
+            (event.repo_id.as_deref(), event.data["after"].as_str(), event.data["ref"].as_str())
+        else {
             return Ok(());
         };
         let now = rfc3339(now_ms());
@@ -2875,7 +2572,16 @@ const RETRY_DELAY_SECONDS: u32 = 30;
 async fn on_message(work: &Work, env: &Env, event: &Event) -> Result<()> {
     // A workspace renamed: its runs, work items, labels, milestones,
     // projects and numbers move to the slug it has now.
-    let renamed = [runs::RENAMED, guardrails::RENAMED, rulesets::RENAMED, items::RENAMED, items::PROJECTS_RENAMED, items::CYCLES_RENAMED, attachments::RENAMED].concat();
+    let renamed = [
+        runs::RENAMED,
+        guardrails::RENAMED,
+        rulesets::RENAMED,
+        items::RENAMED,
+        items::PROJECTS_RENAMED,
+        items::CYCLES_RENAMED,
+        attachments::RENAMED,
+    ]
+    .concat();
     if g1t_kit::rename::on_event(env, &env.d1("DB")?, event, &renamed).await? {
         return Ok(());
     }

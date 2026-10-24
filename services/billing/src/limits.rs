@@ -42,7 +42,7 @@
 
 use std::collections::BTreeSet;
 
-use futures_util::future::{try_join, try_join3, try_join_all};
+use futures_util::future::{try_join, try_join_all, try_join3};
 use g1t_contracts::billing::{
     BillingAccount, CheckLimitArgs, Limit, LimitArgs, LimitState, NotePendingArgs, PlanKind, SetBudgetArgs, SetSpendLimitArgs, Trust,
 };
@@ -82,9 +82,7 @@ pub(crate) struct Ceilings {
 
 impl Ceilings {
     pub(crate) fn from_env(env: &Env) -> Self {
-        let number = |name: &str, default: i64| {
-            env.var(name).ok().and_then(|v| v.to_string().parse::<i64>().ok()).unwrap_or(default)
-        };
+        let number = |name: &str, default: i64| env.var(name).ok().and_then(|v| v.to_string().parse::<i64>().ok()).unwrap_or(default);
         Ceilings {
             new: number("LIMIT_NEW_MICROS", 3_000_000),
             paid_min: number("LIMIT_PAID_MIN_MICROS", 25_000_000),
@@ -287,7 +285,10 @@ pub(crate) fn webhook_ok(url: &str) -> bool {
         && url.starts_with("https://")
         && url.len() > "https://".len() + 3
         && !url.contains(char::is_whitespace)
-        && !url["https://".len()..].split('/').next().is_some_and(|host| host == "g1t.sh" || host.ends_with(".g1t.sh") || host.starts_with("localhost") || host.starts_with("127."))
+        && !url["https://".len()..]
+            .split('/')
+            .next()
+            .is_some_and(|host| host == "g1t.sh" || host.ends_with(".g1t.sh") || host.starts_with("localhost") || host.starts_with("127."))
 }
 
 /// What is owed and what is prepaid, from this month's usage and payments
@@ -449,10 +450,9 @@ impl Billing {
                     _ if account.terms.full_discount() => (Trust::Internal, None, false),
                     _ if account.terms.ceiling_micros.is_some() => (Trust::Reviewed, account.terms.ceiling_micros, false),
                     _ => {
-                        let first = async {
-                            if plan == PlanKind::Paid { self.first_month(&workspace).await } else { Ok(false) }
-                        };
-                        let ((paid, established), first_month) = try_join(self.paid_and_established(&members, live_since.as_deref()), first).await?;
+                        let first = async { if plan == PlanKind::Paid { self.first_month(&workspace).await } else { Ok(false) } };
+                        let ((paid, established), first_month) =
+                            try_join(self.paid_and_established(&members, live_since.as_deref()), first).await?;
                         if plan == PlanKind::Free {
                             // Nothing on demand: only what a free workspace can owe.
                             (Trust::New, Some(self.ceilings.new), false)
@@ -487,7 +487,8 @@ impl Billing {
         // Charged this month: the one definition (`charged`), so this is
         // the Billing page's and Usage's figure, to the micro.
         let percent = account.terms.percent_off();
-        let mut splits: Vec<PendingSplit> = pending.iter().map(|p| pending_split(p.cost(), p.charge(), self.margin_percent, percent)).collect();
+        let mut splits: Vec<PendingSplit> =
+            pending.iter().map(|p| pending_split(p.cost(), p.charge(), self.margin_percent, percent)).collect();
         // Pending usage is paid from what is left of each workspace's
         // included usage before anything of it is charged.
         let mut paid_by_plan = vec![0; splits.len()];
@@ -611,33 +612,38 @@ impl Billing {
             Trust::Paid => Some(format!(
                 "Grows to twice what you have paid, as payments clear ({SETTLE_DAYS} days), up to $1,000. After three steady months it follows your monthly spend, up to $10,000, by itself. Prepaying raises it at once."
             )),
-            Trust::Established => Some("Follows your monthly spend, up to $10,000, by itself. Prepaying raises it at once, and you can ask for more.".to_owned()),
+            Trust::Established => Some(
+                "Follows your monthly spend, up to $10,000, by itself. Prepaying raises it at once, and you can ask for more.".to_owned(),
+            ),
             Trust::Reviewed | Trust::Internal => None,
         };
-        Ok((Limit {
-            workspace,
-            account: account.id.clone(),
-            account_name: account.name.clone(),
-            spent_micros: spent,
-            default_spend_limit,
-            available_micros: available,
-            growth,
-            trust,
-            exposure_micros: exposure,
-            ceiling_micros: ceiling,
-            trust_ceiling_micros: trust_ceiling,
-            spend_limit_micros: spend_limit,
-            state,
-            message,
-            prepaid_micros: prepaid,
-            max_ceiling_micros: max_ever.filter(|_| plan != PlanKind::Free),
-            raise_once_micros: raise_once,
-            raised_at,
-            first_month,
-            alert_levels: alert_levels(row.as_ref().and_then(|row| row.alert_levels.as_deref())),
-            pause_at_limit: pause,
-            budget_webhook: row.as_ref().and_then(|row| row.budget_webhook.clone()),
-        }, pending_unpaid.min(exposure)))
+        Ok((
+            Limit {
+                workspace,
+                account: account.id.clone(),
+                account_name: account.name.clone(),
+                spent_micros: spent,
+                default_spend_limit,
+                available_micros: available,
+                growth,
+                trust,
+                exposure_micros: exposure,
+                ceiling_micros: ceiling,
+                trust_ceiling_micros: trust_ceiling,
+                spend_limit_micros: spend_limit,
+                state,
+                message,
+                prepaid_micros: prepaid,
+                max_ceiling_micros: max_ever.filter(|_| plan != PlanKind::Free),
+                raise_once_micros: raise_once,
+                raised_at,
+                first_month,
+                alert_levels: alert_levels(row.as_ref().and_then(|row| row.alert_levels.as_deref())),
+                pause_at_limit: pause,
+                budget_webhook: row.as_ref().and_then(|row| row.budget_webhook.clone()),
+            },
+            pending_unpaid.min(exposure),
+        ))
     }
 
     /// Whether the workspace's plan is in its first billing cycle.
@@ -1137,25 +1143,26 @@ impl Billing {
 
             // A declined card, once per decline.
             if let Some(Told { autopay_failed_at: Some(failed), declined_told_at }) = &told
-                && declined_told_at.as_deref().is_none_or(|at| at < failed.as_str()) {
-                    let limit = self.limit_of(&workspace).await?;
-                    let sent = notify(
-                        identity,
-                        &workspace,
-                        &format!("g1t: the card for {workspace} was declined"),
-                        &limit.message.clone().unwrap_or_else(|| format!("g1t could not charge the card on file for {workspace}.")),
-                        "Update the card",
-                        &billing,
-                    )
-                    .await;
-                    if sent {
-                        self.db
-                            .prepare("UPDATE limits SET declined_told_at = ? WHERE workspace = ?")
-                            .bind(&[now.as_str().into(), workspace.as_str().into()])?
-                            .run()
-                            .await?;
-                    }
+                && declined_told_at.as_deref().is_none_or(|at| at < failed.as_str())
+            {
+                let limit = self.limit_of(&workspace).await?;
+                let sent = notify(
+                    identity,
+                    &workspace,
+                    &format!("g1t: the card for {workspace} was declined"),
+                    &limit.message.clone().unwrap_or_else(|| format!("g1t could not charge the card on file for {workspace}.")),
+                    "Update the card",
+                    &billing,
+                )
+                .await;
+                if sent {
+                    self.db
+                        .prepare("UPDATE limits SET declined_told_at = ? WHERE workspace = ?")
+                        .bind(&[now.as_str().into(), workspace.as_str().into()])?
+                        .run()
+                        .await?;
                 }
+            }
 
             // 50, 75, 90 and 100%, once each a month and meter: only the
             // highest new level is emailed.
@@ -1188,10 +1195,14 @@ impl Billing {
                 }
                 if notify(identity, &workspace, &subject, &alert.message, "Open billing", &billing).await {
                     self.db
-                        .prepare(
-                            "INSERT OR IGNORE INTO alerts_sent (workspace, month, meter, level, sent_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-                        )
-                        .bind(&[workspace.as_str().into(), month.into(), alert.meter.as_str().into(), alert.level.into(), now.as_str().into()])?
+                        .prepare("INSERT OR IGNORE INTO alerts_sent (workspace, month, meter, level, sent_at) VALUES (?1, ?2, ?3, ?4, ?5)")
+                        .bind(&[
+                            workspace.as_str().into(),
+                            month.into(),
+                            alert.meter.as_str().into(),
+                            alert.level.into(),
+                            now.as_str().into(),
+                        ])?
                         .run()
                         .await?;
                 }
@@ -1214,10 +1225,7 @@ impl Billing {
     pub(crate) async fn set_spend_limit(&self, a: SetSpendLimitArgs) -> Result<Outcome<Limit>> {
         let workspace = a.workspace.to_lowercase();
         if !a.actor.manages_billing(&workspace) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only an owner or a billing manager can set the workspace's spend limit.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner or a billing manager can set the workspace's spend limit."));
         }
         let before = self.limit_of(&workspace).await?;
         // A free workspace has no on-demand usage to limit: its ceiling is
@@ -1225,7 +1233,10 @@ impl Billing {
         if before.trust == Trust::New {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
-                format!("{workspace} is not on the g1t plan, so it has no usage to put a spend limit on. The plan starts with a {} limit for its first month.", dollars_plain(self.plans.paid_start_micros)),
+                format!(
+                    "{workspace} is not on the g1t plan, so it has no usage to put a spend limit on. The plan starts with a {} limit for its first month.",
+                    dollars_plain(self.plans.paid_start_micros)
+                ),
             ));
         }
         let mut raising = false;
@@ -1243,7 +1254,8 @@ impl Billing {
             }
         }
         let now = rfc3339(now_ms());
-        let limit = if a.use_full_limit { JsValue::NULL } else { a.spend_limit_micros.map_or(JsValue::NULL, |limit| (limit as f64).into()) };
+        let limit =
+            if a.use_full_limit { JsValue::NULL } else { a.spend_limit_micros.map_or(JsValue::NULL, |limit| (limit as f64).into()) };
         self.db
             .prepare(
                 "INSERT INTO limits (workspace, spend_limit_micros, spend_limit_full, updated_at) VALUES (?1, ?2, ?3, ?4)
@@ -1264,8 +1276,13 @@ impl Billing {
                 .run()
                 .await?;
             let account = self.account_of(&workspace).await?;
-            self.audit(&account.id, "raise_once", &format!("{workspace} used its one-time raise: {}", dollars_plain(raised)), &a.actor.username)
-                .await?;
+            self.audit(
+                &account.id,
+                "raise_once",
+                &format!("{workspace} used its one-time raise: {}", dollars_plain(raised)),
+                &a.actor.username,
+            )
+            .await?;
         }
         Ok(Outcome::Ok(self.limit_of(&workspace).await?))
     }
@@ -1302,7 +1319,10 @@ impl Billing {
                 return Ok(Outcome::Fail(failure));
             }
         } else if self.limit_of(&workspace).await?.trust == Trust::New {
-            return Ok(Outcome::fail(FailureCode::Conflict, format!("{workspace} is not on the g1t plan, so it has no budget to alert on.")));
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                format!("{workspace} is not on the g1t plan, so it has no budget to alert on."),
+            ));
         } else {
             // The row the alerts are kept on, if the workspace has none yet.
             self.db
@@ -1316,9 +1336,7 @@ impl Billing {
         levels.dedup();
         let stored = levels.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
         self.db
-            .prepare(
-                "UPDATE limits SET alert_levels = ?2, pause_at_limit = ?3, budget_webhook = ?4, updated_at = ?5 WHERE workspace = ?1",
-            )
+            .prepare("UPDATE limits SET alert_levels = ?2, pause_at_limit = ?3, budget_webhook = ?4, updated_at = ?5 WHERE workspace = ?1")
             .bind(&[
                 workspace.as_str().into(),
                 stored.as_str().into(),
@@ -1344,7 +1362,6 @@ impl Billing {
         .await?;
         Ok(Outcome::Ok(self.limit_of(&workspace).await?))
     }
-
 
     /// The budget's webhook, if the workspace has one.
     async fn budget_webhook_of(&self, workspace: &str) -> Result<Option<String>> {
@@ -1463,11 +1480,7 @@ pub(crate) fn pending_month(given: Option<&str>, current: &str) -> std::result::
 pub(crate) fn previous_month(month: &str) -> String {
     let year: i32 = month[..4].parse().unwrap_or(1970);
     let number: u32 = month[5..7].parse().unwrap_or(1);
-    if number == 1 {
-        format!("{}-12", year - 1)
-    } else {
-        format!("{year}-{:02}", number - 1)
-    }
+    if number == 1 { format!("{}-12", year - 1) } else { format!("{year}-{:02}", number - 1) }
 }
 
 #[cfg(test)]

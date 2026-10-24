@@ -315,9 +315,7 @@ impl Identity {
         }
         let claimed = self
             .db
-            .prepare(format!(
-                "UPDATE waitlist SET acknowledged_at = {SQL_NOW} WHERE id = ? AND acknowledged_at IS NULL RETURNING id"
-            ))
+            .prepare(format!("UPDATE waitlist SET acknowledged_at = {SQL_NOW} WHERE id = ? AND acknowledged_at IS NULL RETURNING id"))
             .bind(&[id.into()])?
             .first::<Id>(None)
             .await?;
@@ -327,11 +325,7 @@ impl Identity {
         if let Err(error) = crate::email::send_waitlist_confirmation(&self.env, email).await {
             worker::console_error!("waitlist confirmation failed: {error}");
             // Not sent: leave it unclaimed, so staff can see it was not.
-            self.db
-                .prepare("UPDATE waitlist SET acknowledged_at = NULL WHERE id = ?")
-                .bind(&[id.into()])?
-                .run()
-                .await?;
+            self.db.prepare("UPDATE waitlist SET acknowledged_at = NULL WHERE id = ?").bind(&[id.into()])?.run().await?;
         }
         Ok(())
     }
@@ -354,12 +348,7 @@ impl Identity {
         struct Last {
             at: Option<String>,
         }
-        let last = self
-            .db
-            .prepare("SELECT max(notified_at) AS at FROM waitlist")
-            .first::<Last>(None)
-            .await?
-            .and_then(|last| last.at);
+        let last = self.db.prepare("SELECT max(notified_at) AS at FROM waitlist").first::<Last>(None).await?.and_then(|last| last.at);
         let now = now_ms();
         if !summary_due(last.as_deref(), &rfc3339(now.saturating_sub(SUMMARY_EVERY_MS))) {
             return Ok(());
@@ -386,18 +375,12 @@ impl Identity {
         }
         new.sort_by(|a, b| a.created_at.cmp(&b.created_at));
         let waiting = self.admin_waitlist_pending().await?;
-        let new: Vec<crate::email::Requested> = new
-            .into_iter()
-            .map(|row| crate::email::Requested { email: row.email, about: row.about })
-            .collect();
+        let new: Vec<crate::email::Requested> =
+            new.into_iter().map(|row| crate::email::Requested { email: row.email, about: row.about }).collect();
         if let Err(error) = crate::email::send_waitlist_summary(&self.env, &to, &new, waiting).await {
             worker::console_error!("waitlist summary failed: {error}");
             // Not sent: the next request, or the sweep, tries again.
-            self.db
-                .prepare("UPDATE waitlist SET notified_at = NULL WHERE notified_at = ?")
-                .bind(&[stamp.as_str().into()])?
-                .run()
-                .await?;
+            self.db.prepare("UPDATE waitlist SET notified_at = NULL WHERE notified_at = ?").bind(&[stamp.as_str().into()])?.run().await?;
         }
         Ok(())
     }
@@ -421,9 +404,7 @@ impl Identity {
         let order = if a.status == Some(WaitlistStatus::Waiting) { "ASC" } else { "DESC" };
         Ok(self
             .db
-            .prepare(format!(
-                "SELECT {COLUMNS} {filter} ORDER BY wl.created_at {order}, wl.id {order} LIMIT {ADMIN_INVITES_LIMIT}"
-            ))
+            .prepare(format!("SELECT {COLUMNS} {filter} ORDER BY wl.created_at {order}, wl.id {order} LIMIT {ADMIN_INVITES_LIMIT}"))
             .bind(&binds)?
             .all()
             .await?
@@ -434,11 +415,7 @@ impl Identity {
     }
 
     async fn waitlist_entry(&self, id: &str) -> Result<Option<WaitlistRow>> {
-        self.db
-            .prepare(format!("SELECT {COLUMNS} WHERE wl.id = ?"))
-            .bind(&[id.into()])?
-            .first::<WaitlistRow>(None)
-            .await
+        self.db.prepare(format!("SELECT {COLUMNS} WHERE wl.id = ?")).bind(&[id.into()])?.first::<WaitlistRow>(None).await
     }
 
     /// How many requests are waiting, for sudo's navigation.
@@ -502,9 +479,7 @@ impl Identity {
             };
             if let Some(message) = refused {
                 self.db
-                    .prepare(
-                        "UPDATE waitlist SET status = 'waiting', decided_by = NULL, decided_at = NULL, note = NULL WHERE id = ?",
-                    )
+                    .prepare("UPDATE waitlist SET status = 'waiting', decided_by = NULL, decided_at = NULL, note = NULL WHERE id = ?")
                     .bind(&[entry.id.as_str().into()])?
                     .run()
                     .await?;

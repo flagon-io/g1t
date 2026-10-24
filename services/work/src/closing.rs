@@ -2,8 +2,8 @@
 //! description say: read through items/ (`items::named`, refs.rs), and
 //! landed when it merges (`items::land`, landing.rs).
 
-use g1t_contracts::repos::Repo;
 use g1t_contracts::User;
+use g1t_contracts::repos::Repo;
 use g1t_contracts::work::*;
 use worker::Result;
 

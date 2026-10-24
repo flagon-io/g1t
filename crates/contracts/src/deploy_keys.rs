@@ -264,10 +264,7 @@ mod tests {
         assert!(refusal(Some(&writer), repo(), "acme/web").unwrap().contains("Admin"));
         assert!(refusal(Some(&person(Some(RepoRole::Maintain), None)), repo(), "acme/web").is_some());
         assert!(refusal(None, repo(), "acme/web").is_some());
-        let owner = User {
-            workspaces: vec![Membership { role: Role::Owner, ..Membership::member("acme") }],
-            ..person(None, None)
-        };
+        let owner = User { workspaces: vec![Membership { role: Role::Owner, ..Membership::member("acme") }], ..person(None, None) };
         assert!(refusal(Some(&owner), repo(), "acme/web").is_none());
     }
 

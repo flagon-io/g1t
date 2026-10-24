@@ -36,11 +36,7 @@ pub fn tidy_events(given: &[String]) -> Result<Vec<String>, String> {
     if let Some(unknown) = given.iter().find(|event| !EVENT_TYPES.contains(&event.as_str())) {
         return Err(format!("There is no event called {unknown}."));
     }
-    Ok(EVENT_TYPES
-        .iter()
-        .filter(|kind| given.iter().any(|event| event == *kind))
-        .map(|kind| (*kind).to_owned())
-        .collect())
+    Ok(EVENT_TYPES.iter().filter(|kind| given.iter().any(|event| event == *kind)).map(|kind| (*kind).to_owned()).collect())
 }
 
 /// What is sent for an event: the event as the bus has it, with the
@@ -84,10 +80,7 @@ pub fn workspace_scoped(event: &Event) -> Option<String> {
     if event.repo_id.as_deref().is_some_and(|id| !id.is_empty()) || !own {
         return None;
     }
-    event.data["workspace"]
-        .as_str()
-        .map(|slug| slug.trim().to_lowercase())
-        .filter(|slug| !slug.is_empty())
+    event.data["workspace"].as_str().map(|slug| slug.trim().to_lowercase()).filter(|slug| !slug.is_empty())
 }
 
 /// For an event about a work item (`work_item.*`, or a comment on one):
@@ -148,23 +141,26 @@ pub fn check_url(url: &str) -> Result<(), String> {
     }
     let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
     let host = authority.rsplit('@').next().unwrap_or_default();
-    let host = host.strip_prefix('[').map_or_else(
-        || host.split(':').next().unwrap_or_default(),
-        |v6| v6.split(']').next().unwrap_or_default(),
-    );
+    let host =
+        host.strip_prefix('[').map_or_else(|| host.split(':').next().unwrap_or_default(), |v6| v6.split(']').next().unwrap_or_default());
     let host = host.to_ascii_lowercase();
     if host.is_empty() || !host.contains(['.', ':']) {
         return Err("The address needs a host g1t can reach on the internet.".to_owned());
     }
-    let private_name = host == "localhost"
-        || [".localhost", ".local", ".internal", ".lan", ".home.arpa"]
-            .iter()
-            .any(|suffix| host.ends_with(suffix));
+    let private_name =
+        host == "localhost" || [".localhost", ".local", ".internal", ".lan", ".home.arpa"].iter().any(|suffix| host.ends_with(suffix));
     let private_ip = host.parse::<std::net::IpAddr>().is_ok_and(|ip| match ip {
         std::net::IpAddr::V4(v4) => {
-            v4.is_private() || v4.is_loopback() || v4.is_link_local() || v4.is_unspecified() || v4.is_broadcast() || v4.octets()[0] == 100 && (64..128).contains(&v4.octets()[1])
+            v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.octets()[0] == 100 && (64..128).contains(&v4.octets()[1])
         }
-        std::net::IpAddr::V6(v6) => v6.is_loopback() || v6.is_unspecified() || (v6.segments()[0] & 0xfe00) == 0xfc00 || (v6.segments()[0] & 0xffc0) == 0xfe80,
+        std::net::IpAddr::V6(v6) => {
+            v6.is_loopback() || v6.is_unspecified() || (v6.segments()[0] & 0xfe00) == 0xfc00 || (v6.segments()[0] & 0xffc0) == 0xfe80
+        }
     });
     if private_name || private_ip {
         return Err("Webhooks go to public addresses, not private or local ones.".to_owned());
@@ -279,7 +275,8 @@ mod tests {
 
     #[test]
     fn a_workspaces_own_package_events_go_to_its_webhooks() {
-        let mut event = repo_event("package.published", json!({ "packageId": "pkg_1", "workspace": "Acme", "name": "tools", "repoId": null }));
+        let mut event =
+            repo_event("package.published", json!({ "packageId": "pkg_1", "workspace": "Acme", "name": "tools", "repoId": null }));
         event.repo_id = None;
         assert_eq!(workspace_scoped(&event).as_deref(), Some("acme"));
         let sent = payload(&event, "acme", None, Some("ana"));
@@ -302,7 +299,10 @@ mod tests {
         let own = repo_event("ruleset.created", json!({ "workspace": "acme", "repository": "acme/web" }));
         assert_eq!(workspace_scoped(&own), None);
         // Someone joining the workspace is the workspace's.
-        let mut joined = repo_event("workspace.member_joined", json!({ "workspaceId": "wsp_1", "workspace": "Acme", "userId": "usr_1", "username": "ada", "role": "member", "how": "invitation" }));
+        let mut joined = repo_event(
+            "workspace.member_joined",
+            json!({ "workspaceId": "wsp_1", "workspace": "Acme", "userId": "usr_1", "username": "ada", "role": "member", "how": "invitation" }),
+        );
         joined.repo_id = None;
         assert_eq!(workspace_scoped(&joined).as_deref(), Some("acme"));
         assert_eq!(payload(&joined, "acme", None, Some("ada"))["data"]["user_id"], "usr_1", "snake_case as everything sent");
@@ -328,10 +328,8 @@ mod tests {
 
     #[test]
     fn work_item_events_go_to_its_workspace_and_every_linked_repository() {
-        let opened = repo_event(
-            "work_item.opened",
-            json!({ "itemId": "wki_1", "workspace": "Acme", "number": 12, "repoIds": ["rep_1", "rep_2"] }),
-        );
+        let opened =
+            repo_event("work_item.opened", json!({ "itemId": "wki_1", "workspace": "Acme", "number": 12, "repoIds": ["rep_1", "rep_2"] }));
         assert_eq!(item_scoped(&opened), Some(("acme".to_owned(), vec!["rep_1".to_owned(), "rep_2".to_owned()])));
         // Filed in the workspace, linked nowhere yet.
         let mut alone = repo_event("work_item.opened", json!({ "itemId": "wki_2", "workspace": "acme", "number": 13 }));

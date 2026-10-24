@@ -19,7 +19,8 @@ pub fn split(rest: &str) -> Option<(String, String)> {
     };
     let workspace = workspace.trim().to_lowercase();
     // The workspace's id (`wsp_…`), or for an older setup its name.
-    let valid = !workspace.is_empty() && workspace.len() <= 64 && workspace.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    let valid =
+        !workspace.is_empty() && workspace.len() <= 64 && workspace.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
     valid.then_some((workspace, path))
 }
 
@@ -38,20 +39,17 @@ fn reply(status: u16, body: Option<serde_json::Value>) -> Result<Response> {
 
 pub async fn handle(mut request: Request, services: &Services, method: &str, rest: &str) -> Result<Response> {
     let Some((workspace, path)) = split(rest) else {
-        return reply(404, Some(json!({ "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"], "status": "404", "detail": "Name the workspace: /scim/v2/{workspace}/Users." })));
+        return reply(
+            404,
+            Some(
+                json!({ "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"], "status": "404", "detail": "Name the workspace: /scim/v2/{workspace}/Users." }),
+            ),
+        );
     };
     let query = request.url()?.query().map(str::to_owned);
     let body = if matches!(method, "POST" | "PUT" | "PATCH") { Some(request.text().await?) } else { None };
     let base = format!("{}/scim/v2/{workspace}", services.addresses.api);
-    let args = ScimRequestArgs {
-        workspace,
-        token: crate::toolkit::bearer(&request),
-        method: method.to_owned(),
-        path,
-        query,
-        body,
-        base,
-    };
+    let args = ScimRequestArgs { workspace, token: crate::toolkit::bearer(&request), method: method.to_owned(), path, query, body, base };
     let answer: ScimAnswer = g1t_kit::call(&services.identity, "scim_request", &args).await?;
     reply(answer.status, answer.body)
 }

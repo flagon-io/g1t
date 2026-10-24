@@ -95,7 +95,15 @@ use AiGroup::{Labs, Platforms, SelfHosted};
 pub const AI_PROVIDERS: [AiSpec; 14] = [
     spec(AiProvider::Anthropic, "anthropic", "Anthropic", Labs, "anthropic", "https://api.anthropic.com", "x-api-key"),
     spec(AiProvider::Openai, "openai", "OpenAI", Labs, "openai", "https://api.openai.com/v1", "authorization"),
-    spec(AiProvider::Gemini, "gemini", "Google Gemini", Labs, "openai", "https://generativelanguage.googleapis.com/v1beta/openai", "authorization"),
+    spec(
+        AiProvider::Gemini,
+        "gemini",
+        "Google Gemini",
+        Labs,
+        "openai",
+        "https://generativelanguage.googleapis.com/v1beta/openai",
+        "authorization",
+    ),
     spec(AiProvider::Xai, "xai", "xAI", Labs, "openai", "https://api.x.ai/v1", "authorization"),
     spec(AiProvider::Mistral, "mistral", "Mistral", Labs, "openai", "https://api.mistral.ai/v1", "authorization"),
     spec(AiProvider::Deepseek, "deepseek", "DeepSeek", Labs, "openai", "https://api.deepseek.com/v1", "authorization"),
@@ -111,10 +119,7 @@ pub const AI_PROVIDERS: [AiSpec; 14] = [
 
 impl AiProvider {
     pub fn spec(self) -> &'static AiSpec {
-        AI_PROVIDERS
-            .iter()
-            .find(|spec| spec.provider == self)
-            .expect("every AI provider is in the catalogue")
+        AI_PROVIDERS.iter().find(|spec| spec.provider == self).expect("every AI provider is in the catalogue")
     }
 
     pub fn all() -> impl Iterator<Item = AiProvider> {
@@ -541,7 +546,8 @@ mod tests {
         );
         // Auto says so; a chosen model's line is as it was.
         assert!(!serde_json::to_string(&meta).unwrap().contains("auto"));
-        let auto = AskEvent::Meta { provider: AiProvider::Anthropic, provider_label: "Anthropic".into(), model: "claude".into(), auto: true };
+        let auto =
+            AskEvent::Meta { provider: AiProvider::Anthropic, provider_label: "Anthropic".into(), model: "claude".into(), auto: true };
         assert_eq!(
             serde_json::to_string(&auto).unwrap(),
             r#"{"type":"meta","provider":"anthropic","provider_label":"Anthropic","model":"claude","auto":true}"#

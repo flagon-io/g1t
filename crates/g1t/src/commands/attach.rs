@@ -73,9 +73,7 @@ pub fn upload_to_item(client: &Client, workspace: &str, number: u64, path: &Path
 /// is known to be small enough.
 fn read(path: &Path) -> Result<(String, Option<&'static str>, String)> {
     let shown = path.display();
-    let size = std::fs::metadata(path)
-        .map_err(|error| Error::usage(format!("{shown}: {error}")))?
-        .len();
+    let size = std::fs::metadata(path).map_err(|error| Error::usage(format!("{shown}: {error}")))?.len();
     if size > MAX_BYTES {
         return Err(Error::usage(format!(
             "{shown} is {:.1} MB; an attachment can be at most {} MB.",
@@ -84,11 +82,7 @@ fn read(path: &Path) -> Result<(String, Option<&'static str>, String)> {
         )));
     }
     let bytes = std::fs::read(path).map_err(|error| Error::usage(format!("{shown}: {error}")))?;
-    let name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("image")
-        .to_owned();
+    let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("image").to_owned();
     Ok((name, content_type(path), base64::engine::general_purpose::STANDARD.encode(bytes)))
 }
 
@@ -108,7 +102,13 @@ pub fn with_attachments(client: &Client, repo: &Repo, body: Option<String>, file
 
 /// As [`with_attachments`], with the files kept by work item `number` of
 /// `workspace`.
-pub fn with_item_attachments(client: &Client, workspace: &str, number: u64, body: Option<String>, files: &[PathBuf]) -> Result<Option<String>> {
+pub fn with_item_attachments(
+    client: &Client,
+    workspace: &str,
+    number: u64,
+    body: Option<String>,
+    files: &[PathBuf],
+) -> Result<Option<String>> {
     if files.is_empty() {
         return Ok(body);
     }

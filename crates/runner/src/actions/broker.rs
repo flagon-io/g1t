@@ -79,7 +79,8 @@ const HOP_BY_HOP: &[&str] = &[
 /// pointed at the system's bundle with this job's authority added, as g1t's
 /// own sandboxes set them (services/runner egress.ts, docker/oci.rs).
 /// `NODE_EXTRA_CA_CERTS` takes the authority alone.
-const BUNDLE_VARIABLES: &[&str] = &["SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "PIP_CERT", "GIT_SSL_CAINFO", "CARGO_HTTP_CAINFO"];
+const BUNDLE_VARIABLES: &[&str] =
+    &["SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "PIP_CERT", "GIT_SSL_CAINFO", "CARGO_HTTP_CAINFO"];
 /// Where a system keeps its bundle of trusted certificates: Debian and
 /// Ubuntu, Fedora and RHEL, Alpine and macOS, openSUSE.
 const SYSTEM_BUNDLES: &[&str] =
@@ -115,7 +116,10 @@ pub(crate) fn stand_ins(spec: &Value) -> Vec<StandIn> {
 /// and when the computer has no proxy of its own set for HTTPS, which this
 /// one would have to chain to.
 pub(crate) fn possible(env: impl Fn(&str) -> Option<String>) -> bool {
-    cfg!(unix) && ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"].iter().all(|name| !matches!(env(name), Some(value) if !value.trim().is_empty()))
+    cfg!(unix)
+        && ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"]
+            .iter()
+            .all(|name| !matches!(env(name), Some(value) if !value.trim().is_empty()))
 }
 
 /// A host as a list names it: lowercase, without its port or a final dot.
@@ -157,7 +161,9 @@ fn readable(value: &str) -> Option<String> {
 pub(crate) fn carries(target: &str, headers: &[(String, String)], stand_ins: &[StandIn]) -> bool {
     stand_ins.iter().any(|known| {
         target.contains(&known.stand_in)
-            || headers.iter().any(|(_, value)| value.contains(&known.stand_in) || readable(value).is_some_and(|decoded| decoded.contains(&known.stand_in)))
+            || headers.iter().any(|(_, value)| {
+                value.contains(&known.stand_in) || readable(value).is_some_and(|decoded| decoded.contains(&known.stand_in))
+            })
     })
 }
 
@@ -253,7 +259,11 @@ pub(crate) fn read_head(reader: &mut impl BufRead) -> io::Result<Option<Head>> {
     };
     let headers = lines[1..]
         .iter()
-        .map(|line| line.split_once(':').map(|(name, value)| (name.trim().to_owned(), value.trim().to_owned())).ok_or_else(|| invalid("a header does not read")))
+        .map(|line| {
+            line.split_once(':')
+                .map(|(name, value)| (name.trim().to_owned(), value.trim().to_owned()))
+                .ok_or_else(|| invalid("a header does not read"))
+        })
         .collect::<io::Result<Vec<_>>>()?;
     Ok(Some(Head { method: method.to_owned(), target: target.to_owned(), version: version.to_owned(), headers }))
 }
@@ -264,7 +274,8 @@ pub(crate) fn read_body(reader: &mut impl BufRead, head: &Head) -> io::Result<Ve
         let mut body = Vec::new();
         loop {
             let line = read_line(reader, 1024)?.ok_or(io::ErrorKind::UnexpectedEof)?;
-            let size = usize::from_str_radix(line.split(';').next().unwrap_or_default().trim(), 16).map_err(|_| invalid("a chunk's size does not read"))?;
+            let size = usize::from_str_radix(line.split(';').next().unwrap_or_default().trim(), 16)
+                .map_err(|_| invalid("a chunk's size does not read"))?;
             if size == 0 {
                 // Trailers, which go no further, up to the blank line.
                 while !read_line(reader, MAX_HEAD_BYTES)?.ok_or(io::ErrorKind::UnexpectedEof)?.is_empty() {}
@@ -382,7 +393,8 @@ impl Relay {
                 let Some(answer) = answer else {
                     return Answer::Refused { status: 502, message: "g1t's answer did not read.".into() };
                 };
-                let status = answer["status"].as_u64().and_then(|s| u16::try_from(s).ok()).filter(|s| (100..600).contains(s)).unwrap_or(502);
+                let status =
+                    answer["status"].as_u64().and_then(|s| u16::try_from(s).ok()).filter(|s| (100..600).contains(s)).unwrap_or(502);
                 let headers = answer["headers"]
                     .as_array()
                     .map(|pairs| {
@@ -464,9 +476,14 @@ impl Authority {
     /// A new authority that can sign for `hosts` alone, good for
     /// `valid_for` (the job's time, and a margin).
     pub(crate) fn new(hosts: &[String], valid_for: Duration) -> Result<Authority> {
-        use rcgen::{BasicConstraints, CertificateParams, DistinguishedName, DnType, GeneralSubtree, IsCa, KeyPair, KeyUsagePurpose, NameConstraints};
+        use rcgen::{
+            BasicConstraints, CertificateParams, DistinguishedName, DnType, GeneralSubtree, IsCa, KeyPair, KeyUsagePurpose, NameConstraints,
+        };
         let now = time::OffsetDateTime::now_utc();
-        let valid = (now - time::Duration::days(1), now + time::Duration::try_from(valid_for).unwrap_or(time::Duration::days(2)) + time::Duration::days(1));
+        let valid = (
+            now - time::Duration::days(1),
+            now + time::Duration::try_from(valid_for).unwrap_or(time::Duration::days(2)) + time::Duration::days(1),
+        );
         let key = KeyPair::generate().context("could not make a key")?;
         let mut params = CertificateParams::default();
         let mut name = DistinguishedName::new();
@@ -541,7 +558,10 @@ fn client_config(bundle: Option<&Path>) -> Result<Arc<ClientConfig>> {
     if roots.is_empty() {
         roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     }
-    let mut config = ClientConfig::builder_with_provider(provider()).with_safe_default_protocol_versions()?.with_root_certificates(roots).with_no_client_auth();
+    let mut config = ClientConfig::builder_with_provider(provider())
+        .with_safe_default_protocol_versions()?
+        .with_root_certificates(roots)
+        .with_no_client_auth();
     config.alpn_protocols = vec![b"http/1.1".to_vec()];
     Ok(Arc::new(config))
 }
@@ -681,7 +701,8 @@ fn serve<S: Read + Write>(tls: S, host: &str, port: u16, shared: &Shared) -> io:
             return direct(reader.get_mut(), &head, &body, host, port, &shared.client);
         }
         let url = url_of(host, port, &head.target);
-        let headers: Vec<(String, String)> = head.headers.iter().filter(|(name, _)| !hop_by_hop(name) && !name.eq_ignore_ascii_case("host")).cloned().collect();
+        let headers: Vec<(String, String)> =
+            head.headers.iter().filter(|(name, _)| !hop_by_hop(name) && !name.eq_ignore_ascii_case("host")).cloned().collect();
         let answer = shared.relay.send(&head.method, &url, &headers, &body);
         write_answer(reader.get_mut(), &head.method, answer)?;
         if head.closes() {
@@ -765,7 +786,13 @@ fn listen(shared: Shared) -> Result<Proxy> {
 /// `HTTPS_PROXY` and the trusted-certificate files, written to `folder`.
 /// `env` is the steps' own environment, whose certificate files are kept
 /// in what they are pointed at.
-pub(crate) fn start(stand_ins: Vec<StandIn>, relay: Relay, folder: &Path, env: &BTreeMap<String, String>, valid_for: Duration) -> Result<(Proxy, Vec<(String, String)>)> {
+pub(crate) fn start(
+    stand_ins: Vec<StandIn>,
+    relay: Relay,
+    folder: &Path,
+    env: &BTreeMap<String, String>,
+    valid_for: Duration,
+) -> Result<(Proxy, Vec<(String, String)>)> {
     let hosts: Vec<String> = stand_ins.iter().flat_map(|known| known.hosts.iter().cloned()).collect();
     let authority = Authority::new(&hosts, valid_for)?;
     std::fs::create_dir_all(folder).context("could not make the certificates' folder")?;
@@ -943,9 +970,14 @@ mod tests {
             });
             let mut roots = RootCertStore::empty();
             roots.add(authority.der()).unwrap();
-            let config = ClientConfig::builder_with_provider(provider()).with_safe_default_protocol_versions().unwrap().with_root_certificates(roots).with_no_client_auth();
+            let config = ClientConfig::builder_with_provider(provider())
+                .with_safe_default_protocol_versions()
+                .unwrap()
+                .with_root_certificates(roots)
+                .with_no_client_auth();
             let stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
-            let mut tls = StreamOwned::new(ClientConnection::new(Arc::new(config), ServerName::try_from(host.to_owned()).unwrap()).unwrap(), stream);
+            let mut tls =
+                StreamOwned::new(ClientConnection::new(Arc::new(config), ServerName::try_from(host.to_owned()).unwrap()).unwrap(), stream);
             let mut byte = [0; 1];
             let read = tls.read_exact(&mut byte).map_err(|error| error.to_string());
             let _ = serving.join();
@@ -974,9 +1006,14 @@ mod tests {
                 let head = read_head(&mut reader).unwrap().unwrap();
                 let body = read_body(&mut reader, &head).unwrap();
                 tell.send((head.headers.clone(), body.clone())).unwrap();
-                let answer = BASE64.encode(json!({ "status": answer_status, "headers": [["content-type", "text/plain"], ["x-from", "upstream"]] }).to_string());
+                let answer = BASE64.encode(
+                    json!({ "status": answer_status, "headers": [["content-type", "text/plain"], ["x-from", "upstream"]] }).to_string(),
+                );
                 let mut stream = stream;
-                let reply = format!("HTTP/1.1 200 OK\r\n{ANSWER_HEADER}: {answer}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n", body.len() + 4);
+                let reply = format!(
+                    "HTTP/1.1 200 OK\r\n{ANSWER_HEADER}: {answer}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    body.len() + 4
+                );
                 stream.write_all(reply.as_bytes()).unwrap();
                 stream.write_all(b"got ").unwrap();
                 stream.write_all(&body).unwrap();
@@ -991,7 +1028,11 @@ mod tests {
         let authority = Authority::new(&hosts, Duration::from_secs(3600)).unwrap();
         let mut roots = RootCertStore::empty();
         roots.add(authority.der()).unwrap();
-        let trusting = ClientConfig::builder_with_provider(provider()).with_safe_default_protocol_versions().unwrap().with_root_certificates(roots).with_no_client_auth();
+        let trusting = ClientConfig::builder_with_provider(provider())
+            .with_safe_default_protocol_versions()
+            .unwrap()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
         let proxy = listen(Shared { stand_ins, relay: Relay::new(&api), authority, client, open: AtomicUsize::new(0) }).unwrap();
         (proxy, Arc::new(trusting))
     }
@@ -1040,7 +1081,9 @@ mod tests {
         assert_eq!(wanted["url"], "https://localhost:8443/publish?x=1");
         let sent: Vec<(String, String)> = serde_json::from_value(wanted["headers"].clone()).unwrap();
         assert!(sent.contains(&("Authorization".into(), format!("Bearer {STAND_IN}"))), "the stand-in, never a value: {sent:?}");
-        assert!(!sent.iter().any(|(n, _)| n.eq_ignore_ascii_case("host") || n.eq_ignore_ascii_case("connection") || n.eq_ignore_ascii_case("content-length")));
+        assert!(!sent.iter().any(|(n, _)| n.eq_ignore_ascii_case("host")
+            || n.eq_ignore_ascii_case("connection")
+            || n.eq_ignore_ascii_case("content-length")));
     }
 
     #[test]
@@ -1053,7 +1096,12 @@ mod tests {
                 let head = read_head(&mut reader).unwrap().unwrap();
                 read_body(&mut reader, &head).unwrap();
                 let body = r#"{"error":{"code":"forbidden","message":"not for this host"}}"#;
-                write!(stream, "HTTP/1.1 403 Forbidden\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len()).unwrap();
+                write!(
+                    stream,
+                    "HTTP/1.1 403 Forbidden\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .unwrap();
             }
         });
         let api = Api { base, job: "job_1".into(), token: "t".into() };
@@ -1109,7 +1157,13 @@ mod tests {
         });
         let mut roots = RootCertStore::empty();
         roots.add(host_ca.der()).unwrap();
-        let upstream = Arc::new(ClientConfig::builder_with_provider(provider()).with_safe_default_protocol_versions().unwrap().with_root_certificates(roots).with_no_client_auth());
+        let upstream = Arc::new(
+            ClientConfig::builder_with_provider(provider())
+                .with_safe_default_protocol_versions()
+                .unwrap()
+                .with_root_certificates(roots)
+                .with_no_client_auth(),
+        );
         let known = StandIn { stand_in: STAND_IN.into(), name: "NPM_TOKEN".into(), hosts: vec!["localhost".into()] };
         let (proxy, trusting) = proxy_for("http://127.0.0.1:1", vec![known], upstream);
         let stream = through(&proxy, &format!("localhost:{port}"));

@@ -174,7 +174,11 @@ impl Packages {
 
     /// The workspace's gems the viewer may see, with their versions in the
     /// index (not yanked), oldest first.
-    async fn gem_index(&self, workspace: &str, viewer: Option<&User>) -> Result<std::result::Result<Vec<(PackageRow, Vec<VersionRow>)>, Response>> {
+    async fn gem_index(
+        &self,
+        workspace: &str,
+        viewer: Option<&User>,
+    ) -> Result<std::result::Result<Vec<(PackageRow, Vec<VersionRow>)>, Response>> {
         if viewer.is_none() && self.db.has_private(workspace, RUBYGEMS).await? {
             return Ok(Err(error(401, sign_in(workspace))?));
         }
@@ -245,8 +249,10 @@ impl Packages {
             Ok(gems) => gems,
             Err(refused) => return Ok(refused),
         };
-        let tuples: Vec<rubygems::Tuple> =
-            gems.iter().flat_map(|(package, rows)| rows.iter().map(|row| rubygems::Tuple::of(&package.name, &row.version, &row.meta()))).collect();
+        let tuples: Vec<rubygems::Tuple> = gems
+            .iter()
+            .flat_map(|(package, rows)| rows.iter().map(|row| rubygems::Tuple::of(&package.name, &row.version, &row.meta())))
+            .collect();
         binary(rubygems::specs_file(which, &tuples), head, "no-cache")
     }
 
@@ -334,7 +340,12 @@ impl Packages {
             return too_large();
         }
         if viewer.is_none() {
-            return error(401, format!("Push with a g1t access token: GEM_HOST_API_KEY=<token> gem push <file> --host https://g1t.sh/-/rubygems/{workspace}. Make one at {TOKENS}."));
+            return error(
+                401,
+                format!(
+                    "Push with a g1t access token: GEM_HOST_API_KEY=<token> gem push <file> --host https://g1t.sh/-/rubygems/{workspace}. Make one at {TOKENS}."
+                ),
+            );
         }
         let spec = match rubygems::read_gem(&gem) {
             Ok(spec) => spec,
@@ -389,7 +400,10 @@ impl Packages {
         };
         let existing = self.db.versions(&package.id, MAX_VERSIONS).await?;
         if existing.iter().any(|v| v.version == key) {
-            return error(409, format!("{} ({key}) is already pushed, and a version is pushed once, yanked or not. Bump the version.", package.name));
+            return error(
+                409,
+                format!("{} ({key}) is already pushed, and a version is pushed once, yanked or not. Bump the version.", package.name),
+            );
         }
         if let Some(refused) = self.reserved_refusal(&package, &key).await? {
             return error(409, refused);
@@ -420,7 +434,12 @@ impl Packages {
                     metadata: rubygems::stored(&spec).to_string(),
                     subject: None,
                     published_by: published_by(&caller),
-                    files: vec![NewFile { name: "gem".to_owned(), digest: digest.to_string(), size, media_type: Some("application/octet-stream".to_owned()) }],
+                    files: vec![NewFile {
+                        name: "gem".to_owned(),
+                        digest: digest.to_string(),
+                        size,
+                        media_type: Some("application/octet-stream".to_owned()),
+                    }],
                 },
                 None,
                 now,
@@ -429,19 +448,16 @@ impl Packages {
         // The description the page shows: the highest stable version's.
         let highest = !rubygems::is_prerelease(&spec.version)
             && existing.iter().map(|v| v.meta()).filter_map(|m| m["number"].as_str().map(str::to_owned)).all(|other| {
-                rubygems::is_prerelease(&other) || crate::db::newest_version(&format!("{other}\n{}", spec.version)).as_deref() == Some(spec.version.as_str())
+                rubygems::is_prerelease(&other)
+                    || crate::db::newest_version(&format!("{other}\n{}", spec.version)).as_deref() == Some(spec.version.as_str())
             });
         if highest || existing.is_empty() {
             let description = spec.summary.as_deref().or(spec.description.as_deref());
             self.db.set_readme(&package.id, None, description, now).await?;
         }
         self.db.measure(&package.workspace).await?;
-        let event = PackageEvent {
-            version: Some(key.clone()),
-            digest: Some(digest.to_string()),
-            size: Some(size),
-            ..self.event_of(&package)
-        };
+        let event =
+            PackageEvent { version: Some(key.clone()), digest: Some(digest.to_string()), size: Some(size), ..self.event_of(&package) };
         self.announce("package.published", &package, event, &caller).await;
         self.audit(&caller, "package.publish", &package, Some(&format!("{workspace}/{}@{key}", package.name)), None).await;
         let mut response = Response::ok(format!("Successfully registered gem: {} ({key})", package.name))?;

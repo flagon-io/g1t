@@ -189,7 +189,9 @@ pub fn parse(value: &Value) -> Result<(Permissions, Vec<String>), String> {
         Value::String(text) => match text.trim() {
             "read-all" => Ok((Permissions::all(Access::Read), Vec::new())),
             "write-all" => Ok((Permissions::all(Access::Write), Vec::new())),
-            other => Err(format!("`permissions: {other}` is not `read-all`, `write-all` or a mapping of permissions to `read`, `write` or `none`.")),
+            other => Err(format!(
+                "`permissions: {other}` is not `read-all`, `write-all` or a mapping of permissions to `read`, `write` or `none`."
+            )),
         },
         Value::Object(map) => {
             let mut permissions = Permissions::default();
@@ -249,9 +251,7 @@ mod tests {
     fn every_permission_has_its_scopes() {
         let (all, _) = parse(&json!("write-all")).unwrap();
         let scopes = all.scopes();
-        for scope in [
-            "workflows:write", "checks:write", "deployments:write", "packages:write", "security:write", "work:write",
-        ] {
+        for scope in ["workflows:write", "checks:write", "deployments:write", "packages:write", "security:write", "work:write"] {
             assert!(scopes.contains(&scope), "{scope}");
         }
         // Statuses and checks are one resource on g1t; each scope once.

@@ -228,8 +228,7 @@ impl PackSizer {
                     let flags = inflate_flags::TINFL_FLAG_PARSE_ZLIB_HEADER
                         | inflate_flags::TINFL_FLAG_HAS_MORE_INPUT
                         | inflate_flags::TINFL_FLAG_IGNORE_ADLER32;
-                    let (status, consumed, written) =
-                        decompress(&mut self.inflater, input, &mut self.window, self.window_at, flags);
+                    let (status, consumed, written) = decompress(&mut self.inflater, input, &mut self.window, self.window_at, flags);
                     if self.delta && self.head.len() < DELTA_HEAD {
                         let wanted = (DELTA_HEAD - self.head.len()).min(written);
                         for n in 0..wanted {
@@ -494,7 +493,13 @@ mod tests {
         let mut copied = 0;
         while copied < target {
             let size = (target - copied).min(0xffff);
-            delta.extend_from_slice(&[0x80 | 0x01 | 0x02 | 0x10 | 0x20, (copied & 0xff) as u8, ((copied >> 8) & 0xff) as u8, (size & 0xff) as u8, ((size >> 8) & 0xff) as u8]);
+            delta.extend_from_slice(&[
+                0x80 | 0x01 | 0x02 | 0x10 | 0x20,
+                (copied & 0xff) as u8,
+                ((copied >> 8) & 0xff) as u8,
+                (size & 0xff) as u8,
+                ((size >> 8) & 0xff) as u8,
+            ]);
             copied += size;
         }
         let mut entry = Vec::new();
@@ -531,7 +536,11 @@ mod tests {
     #[test]
     fn a_push_that_only_deletes_has_no_pack() {
         let old = "c71546fcd893ef8b0f57388b65e620d759705dda";
-        let body = [pkt(&format!("{old} 0000000000000000000000000000000000000000 refs/heads/gone\0 report-status delete-refs\n")), b"0000".to_vec()].concat();
+        let body = [
+            pkt(&format!("{old} 0000000000000000000000000000000000000000 refs/heads/gone\0 report-status delete-refs\n")),
+            b"0000".to_vec(),
+        ]
+        .concat();
         let sizer = walk(&body, 5, MAX_OBJECT_BYTES).unwrap();
         assert_eq!(sizer.objects, 0);
         assert!(sizer.complete());

@@ -78,7 +78,9 @@ pub(crate) fn friendly(error: &Error) -> String {
         .and_then(|body| body["error"]["message"].as_str().map(str::to_owned));
     match message {
         Some(message) => format!("Stripe refused it: {}", message.trim_end_matches('.').to_owned() + "."),
-        None if text.contains("the card processor answered") => "Stripe refused it. Try again in a minute; if it keeps happening, write to support@g1t.sh.".to_owned(),
+        None if text.contains("the card processor answered") => {
+            "Stripe refused it. Try again in a minute; if it keeps happening, write to support@g1t.sh.".to_owned()
+        }
         None => "Stripe could not be reached. Try again in a minute.".to_owned(),
     }
 }
@@ -223,11 +225,8 @@ impl StripeSubscription {
 
     /// When the period paid for ends, in Unix seconds.
     pub fn period_end(&self) -> Option<i64> {
-        self.current_period_end.or_else(|| {
-            self.items
-                .as_ref()
-                .and_then(|items| items.data.iter().filter_map(|item| item.current_period_end).max())
-        })
+        self.current_period_end
+            .or_else(|| self.items.as_ref().and_then(|items| items.data.iter().filter_map(|item| item.current_period_end).max()))
     }
 }
 
@@ -371,11 +370,7 @@ pub struct TaxPending {
 }
 
 pub(crate) fn form(fields: &[(&str, String)]) -> String {
-    fields
-        .iter()
-        .map(|(name, value)| format!("{}={}", encode(name), encode(value)))
-        .collect::<Vec<_>>()
-        .join("&")
+    fields.iter().map(|(name, value)| format!("{}={}", encode(name), encode(value))).collect::<Vec<_>>().join("&")
 }
 
 /// The idempotency key for starting a plan on a saved card: the same
@@ -414,21 +409,11 @@ impl Stripe {
 
     /// A form POST that Stripe does at most once for `key`, however often
     /// it is sent.
-    pub(crate) async fn post_idempotent<T: for<'a> Deserialize<'a>>(
-        &self,
-        path: &str,
-        fields: &[(&str, String)],
-        key: &str,
-    ) -> Result<T> {
+    pub(crate) async fn post_idempotent<T: for<'a> Deserialize<'a>>(&self, path: &str, fields: &[(&str, String)], key: &str) -> Result<T> {
         self.send(Method::Post, path, Some(form(fields)), Some(key)).await
     }
 
-    async fn call<T: for<'a> Deserialize<'a>>(
-        &self,
-        method: Method,
-        path: &str,
-        body: Option<String>,
-    ) -> Result<T> {
+    async fn call<T: for<'a> Deserialize<'a>>(&self, method: Method, path: &str, body: Option<String>) -> Result<T> {
         self.send(method, path, body, None).await
     }
 
@@ -440,7 +425,9 @@ impl Stripe {
         idempotency_key: Option<&str>,
     ) -> Result<T> {
         let body = match body {
-            Some(body) if matches!(method, Method::Post) && taxed_path(path) && body.contains("automatic_tax") && !self.tax_active().await => {
+            Some(body)
+                if matches!(method, Method::Post) && taxed_path(path) && body.contains("automatic_tax") && !self.tax_active().await =>
+            {
                 if self.live() {
                     worker::console_error!(
                         "STRIPE TAX IS NOT ACTIVE for the live key: refused {path} rather than charge without tax. Turn it on in Stripe (Tax → Settings)."
@@ -492,7 +479,8 @@ impl Stripe {
         if !deleting && is_deleted_customer(&found) {
             return Err(Error::RustError(DELETED_CUSTOMER.to_owned()));
         }
-        serde_json::from_value(found).map_err(|error| Error::RustError(format!("the card processor's answer to {path} was unexpected: {error}")))
+        serde_json::from_value(found)
+            .map_err(|error| Error::RustError(format!("the card processor's answer to {path} was unexpected: {error}")))
     }
 
     /// Whether Stripe Tax is active for this key's mode (`GET /tax/settings`,
@@ -543,11 +531,7 @@ impl Stripe {
             url: String,
         }
         let configuration = self.portal_configuration().await?;
-        let fields = [
-            ("customer", customer.to_owned()),
-            ("return_url", return_url.to_owned()),
-            ("configuration", configuration.id),
-        ];
+        let fields = [("customer", customer.to_owned()), ("return_url", return_url.to_owned()), ("configuration", configuration.id)];
         let portal: Portal = self.call(Method::Post, "/billing_portal/sessions", Some(form(&fields))).await?;
         Ok(portal.url)
     }
@@ -613,12 +597,8 @@ impl Stripe {
         bank_transfer: bool,
     ) -> Result<Session> {
         let fields = prepay_fields(workspace, amount_cents, customer, return_url, bank_transfer);
-        let key = page_key(
-            "prepay",
-            workspace,
-            &format!("{amount_cents}/{bank_transfer}/{}", customer.unwrap_or("new")),
-            g1t_kit::now_ms(),
-        );
+        let key =
+            page_key("prepay", workspace, &format!("{amount_cents}/{bank_transfer}/{}", customer.unwrap_or("new")), g1t_kit::now_ms());
         self.send(Method::Post, "/checkout/sessions", Some(form(&fields)), Some(&key)).await
     }
 
@@ -634,12 +614,7 @@ impl Stripe {
         return_url: &str,
     ) -> Result<Session> {
         let fields = subscription_fields(workspace, feature, title, monthly_cents, customer, return_url);
-        let key = page_key(
-            "plan",
-            workspace,
-            &format!("{feature}/{monthly_cents}/{}", customer.unwrap_or("new")),
-            g1t_kit::now_ms(),
-        );
+        let key = page_key("plan", workspace, &format!("{feature}/{monthly_cents}/{}", customer.unwrap_or("new")), g1t_kit::now_ms());
         self.send(Method::Post, "/checkout/sessions", Some(form(&fields)), Some(&key)).await
     }
 
@@ -656,18 +631,13 @@ impl Stripe {
     /// charged to, else its newest card. None when it has none.
     pub async fn default_payment_method(&self, customer: &str) -> Result<Option<SavedMethod>> {
         let found: serde_json::Value = self
-            .call(
-                Method::Get,
-                &format!("/customers/{}?expand[]=invoice_settings.default_payment_method", encode(customer)),
-                None,
-            )
+            .call(Method::Get, &format!("/customers/{}?expand[]=invoice_settings.default_payment_method", encode(customer)), None)
             .await?;
         if let Some(method) = SavedMethod::from_json(&found["invoice_settings"]["default_payment_method"]) {
             return Ok(Some(method));
         }
-        let list: serde_json::Value = self
-            .call(Method::Get, &format!("/payment_methods?customer={}&type=card&limit=1", encode(customer)), None)
-            .await?;
+        let list: serde_json::Value =
+            self.call(Method::Get, &format!("/payment_methods?customer={}&type=card&limit=1", encode(customer)), None).await?;
         Ok(list["data"].as_array().and_then(|data| data.first()).and_then(SavedMethod::from_json))
     }
 
@@ -1087,7 +1057,8 @@ impl Stripe {
         let list: List = self.call(Method::Get, "/products?active=true&limit=100", None).await?;
         let ours = |p: &Product| p.metadata.as_ref().and_then(|m| m.get("g1t")).map(String::as_str) == Some(tag);
         if let Some(found) = list.data.into_iter().find(ours) {
-            let coded = found.tax_code.as_ref().is_some_and(|code| code.as_str() == Some(TAX_CODE) || code["id"].as_str() == Some(TAX_CODE));
+            let coded =
+                found.tax_code.as_ref().is_some_and(|code| code.as_str() == Some(TAX_CODE) || code["id"].as_str() == Some(TAX_CODE));
             if !coded {
                 let _: serde_json::Value = self
                     .call(Method::Post, &format!("/products/{}", encode(&found.id)), Some(form(&[("tax_code", TAX_CODE.to_owned())])))
@@ -1150,34 +1121,23 @@ impl Stripe {
         self.send(Method::Post, "/subscriptions", Some(form(&fields)), Some(&key)).await
     }
 
-
     /// Ends a subscription now: one that never started properly.
     pub async fn cancel_now(&self, id: &str) -> Result<StripeSubscription> {
         self.call(Method::Delete, &format!("/subscriptions/{}", encode(id)), None).await
     }
 
     pub async fn subscription(&self, id: &str) -> Result<StripeSubscription> {
-        self.call(Method::Get, &format!("/subscriptions/{}", encode(id)), None)
-            .await
+        self.call(Method::Get, &format!("/subscriptions/{}", encode(id)), None).await
     }
 
     /// Ends a plan when its period does (`cancel` true), or takes that back.
     pub async fn cancel_at_period_end(&self, id: &str, cancel: bool) -> Result<StripeSubscription> {
-        self.call(
-            Method::Post,
-            &format!("/subscriptions/{}", encode(id)),
-            Some(form(&[("cancel_at_period_end", cancel.to_string())])),
-        )
-        .await
+        self.call(Method::Post, &format!("/subscriptions/{}", encode(id)), Some(form(&[("cancel_at_period_end", cancel.to_string())])))
+            .await
     }
 
     pub async fn session(&self, id: &str) -> Result<Session> {
-        self.call(
-            Method::Get,
-            &format!("/checkout/sessions/{}", encode(id)),
-            None,
-        )
-        .await
+        self.call(Method::Get, &format!("/checkout/sessions/{}", encode(id)), None).await
     }
 }
 
@@ -1208,8 +1168,15 @@ mod tax_mode_tests {
 
     #[test]
     fn untaxed_requests_lose_only_automatic_tax() {
-        let body = form(&[("mode", "payment".to_owned()), ("automatic_tax[enabled]", "true".to_owned()), ("tax_id_collection[enabled]", "true".to_owned())]);
-        assert_eq!(without_automatic_tax(&body), form(&[("mode", "payment".to_owned()), ("tax_id_collection[enabled]", "true".to_owned())]));
+        let body = form(&[
+            ("mode", "payment".to_owned()),
+            ("automatic_tax[enabled]", "true".to_owned()),
+            ("tax_id_collection[enabled]", "true".to_owned()),
+        ]);
+        assert_eq!(
+            without_automatic_tax(&body),
+            form(&[("mode", "payment".to_owned()), ("tax_id_collection[enabled]", "true".to_owned())])
+        );
         assert_eq!(plan_line_name("g1t", "acme"), "g1t plan for acme");
         assert_eq!(plan_line_name("Deployments", "acme"), "g1t Deployments plan for acme");
         assert!(taxed_path("/checkout/sessions") && taxed_path("/invoices") && taxed_path("/subscriptions"));
@@ -1258,10 +1225,7 @@ mod tests {
     fn form_values_are_percent_encoded() {
         assert_eq!(
             form(&[
-                (
-                    "success_url",
-                    "https://g1t.sh/a/-/settings/billing?session={ID}".to_owned()
-                ),
+                ("success_url", "https://g1t.sh/a/-/settings/billing?session={ID}".to_owned()),
                 ("line_items[0][quantity]", "1".to_owned()),
             ]),
             "success_url=https%3A%2F%2Fg1t.sh%2Fa%2F-%2Fsettings%2Fbilling%3Fsession%3D%7BID%7D&line_items%5B0%5D%5Bquantity%5D=1"
@@ -1299,7 +1263,10 @@ mod tests {
             assert!(has(&fields, "customer_creation").is_none());
             assert!(has(&fields, "payment_intent_data[setup_future_usage]").is_none());
             assert_eq!(has(&fields, "customer").as_deref(), customer);
-            assert_eq!(has(&fields, "success_url").unwrap(), "https://g1t.sh/acme/-/settings/billing?plan=plan&session={CHECKOUT_SESSION_ID}");
+            assert_eq!(
+                has(&fields, "success_url").unwrap(),
+                "https://g1t.sh/acme/-/settings/billing?plan=plan&session={CHECKOUT_SESSION_ID}"
+            );
             assert_eq!(has(&fields, "line_items[0][price_data][recurring][interval]").as_deref(), Some("month"));
             // The plan at its price is the only line: no card fee.
             assert_eq!(has(&fields, "line_items[0][price_data][unit_amount]").as_deref(), Some("2100"));
@@ -1390,18 +1357,26 @@ mod tests {
             login_page: None,
             metadata: tag.map(|t| std::collections::HashMap::from([("g1t".to_owned(), t.to_owned())])),
         };
-        assert_eq!(ours(vec![config("a", true, None), config("b", false, Some("billing")), config("c", true, Some("billing"))]).map(|c| c.id).as_deref(), Some("c"));
+        assert_eq!(
+            ours(vec![config("a", true, None), config("b", false, Some("billing")), config("c", true, Some("billing"))])
+                .map(|c| c.id)
+                .as_deref(),
+            Some("c")
+        );
         assert_eq!(ours(vec![config("b", false, Some("billing"))]).map(|c| c.id).as_deref(), Some("b"));
         assert!(ours(vec![config("a", true, None), config("d", true, Some("other"))]).is_none());
     }
 
     #[test]
     fn stripe_taxs_settings_say_what_is_missing() {
-        let settings: TaxSettings =
-            serde_json::from_value(serde_json::json!({ "status": "pending", "status_details": { "pending": { "missing_fields": ["head_office"] } } })).unwrap();
+        let settings: TaxSettings = serde_json::from_value(
+            serde_json::json!({ "status": "pending", "status_details": { "pending": { "missing_fields": ["head_office"] } } }),
+        )
+        .unwrap();
         assert_eq!(settings.status, "pending");
         assert_eq!(settings.status_details.pending.and_then(|p| p.missing_fields), Some(vec!["head_office".to_owned()]));
-        let active: TaxSettings = serde_json::from_value(serde_json::json!({ "status": "active", "status_details": { "active": {} } })).unwrap();
+        let active: TaxSettings =
+            serde_json::from_value(serde_json::json!({ "status": "active", "status_details": { "active": {} } })).unwrap();
         assert!(active.status_details.pending.is_none());
     }
 
@@ -1428,7 +1403,8 @@ mod tests {
 
     #[test]
     fn a_plan_on_a_saved_card_is_taxed_at_its_price_alone() {
-        let plan = SavedPlan { workspace: "acme", feature: "plan", title: "g1t", monthly_cents: 2_100, customer: "cus_1", payment_method: "pm_1" };
+        let plan =
+            SavedPlan { workspace: "acme", feature: "plan", title: "g1t", monthly_cents: 2_100, customer: "cus_1", payment_method: "pm_1" };
         let fields = saved_subscription_fields(&plan, "prod_plan");
         assert_eq!(has(&fields, "automatic_tax[enabled]").as_deref(), Some("true"));
         assert_eq!(has(&fields, "items[0][price_data][tax_behavior]").as_deref(), Some("exclusive"));
@@ -1481,7 +1457,8 @@ mod tests {
         assert!(address_places_customer(&json!({ "country": "CA", "state": "ON" })));
         assert!(!address_places_customer(&json!({ "country": "" })));
         assert!(!address_places_customer(&serde_json::Value::Null));
-        let error = Error::RustError(r#"the card processor answered 400: {"error":{"code":"customer_tax_location_invalid","message":"x"}}"#.into());
+        let error =
+            Error::RustError(r#"the card processor answered 400: {"error":{"code":"customer_tax_location_invalid","message":"x"}}"#.into());
         assert!(is_tax_location_error(&error));
     }
 

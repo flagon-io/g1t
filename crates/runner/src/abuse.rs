@@ -120,9 +120,36 @@ const MINER_ARGS: &[&str] = &[
 /// they generate code. Busiest-process names, as `/proc/<pid>/stat` gives
 /// them (cut to 15 characters).
 const TOOLCHAINS: &[&str] = &[
-    "rustc", "cc1", "cc1plus", "clang", "clang++", "ld", "ld.lld", "lld", "mold", "go", "compile", "link",
-    "javac", "java", "kotlinc", "scalac", "swift-frontend", "ghc", "node", "tsc", "esbuild", "webpack", "python3",
-    "python", "pytest", "cargo", "gcc", "g++", "rust-analyzer", "dotnet",
+    "rustc",
+    "cc1",
+    "cc1plus",
+    "clang",
+    "clang++",
+    "ld",
+    "ld.lld",
+    "lld",
+    "mold",
+    "go",
+    "compile",
+    "link",
+    "javac",
+    "java",
+    "kotlinc",
+    "scalac",
+    "swift-frontend",
+    "ghc",
+    "node",
+    "tsc",
+    "esbuild",
+    "webpack",
+    "python3",
+    "python",
+    "pytest",
+    "cargo",
+    "gcc",
+    "g++",
+    "rust-analyzer",
+    "dotnet",
 ];
 
 /// The miner a command line names, if it names one.
@@ -207,9 +234,7 @@ impl Detector {
         }
         self.samples.push_back(sample);
         // Keep just over one window: the oldest sample is its start.
-        while self.samples.len() > 2
-            && self.samples[1].at + WINDOW_SECONDS <= self.samples.back().map_or(0, |last| last.at)
-        {
+        while self.samples.len() > 2 && self.samples[1].at + WINDOW_SECONDS <= self.samples.back().map_or(0, |last| last.at) {
             self.samples.pop_front();
         }
         let first = self.samples.front()?;
@@ -428,9 +453,7 @@ pub fn watch() {
 /// Reports the verdict, kills everything else and exits.
 fn stop(verdict: &Verdict, own: u32) -> ! {
     eprintln!("g1t-runner: stopped for unusual CPU use: {}", serde_json::to_string(verdict).unwrap_or_default());
-    let _ = crate::http::agent().post(REPORT_URL)
-        .timeout(Duration::from_secs(10))
-        .send_json(serde_json::json!({ "verdict": verdict }));
+    let _ = crate::http::agent().post(REPORT_URL).timeout(Duration::from_secs(10)).send_json(serde_json::json!({ "verdict": verdict }));
     if let Ok(entries) = std::fs::read_dir("/proc") {
         let pids: Vec<String> = entries
             .flatten()
@@ -461,7 +484,15 @@ mod tests {
 
     /// A sandbox whose CPU runs at `cpu` (0 to 1), with this much I/O,
     /// network and process churn each sample, sampled for `minutes`.
-    fn run(minutes: u64, cpu: f64, io_per_sample: u64, net_per_sample: u64, new_per_sample: u64, busiest: &str, active: bool) -> Option<Verdict> {
+    fn run(
+        minutes: u64,
+        cpu: f64,
+        io_per_sample: u64,
+        net_per_sample: u64,
+        new_per_sample: u64,
+        busiest: &str,
+        active: bool,
+    ) -> Option<Verdict> {
         let mut detector = Detector::default();
         let mut sample = Sample::default();
         let mut verdict = None;
@@ -543,9 +574,7 @@ mod tests {
     #[test]
     fn a_miner_seen_by_name_is_flagged_at_once() {
         let mut detector = Detector::default();
-        let verdict = detector
-            .observe(Sample { miner: Some("xmrig".to_owned()), ..Sample::default() })
-            .expect("flagged");
+        let verdict = detector.observe(Sample { miner: Some("xmrig".to_owned()), ..Sample::default() }).expect("flagged");
         assert_eq!(verdict.reason, "miner");
     }
 
@@ -580,7 +609,8 @@ mod tests {
     fn proc_files_read_as_the_kernel_writes_them() {
         let stat = "cpu  100 0 50 800 50 0 0 0 0 0\ncpu0 100 0 50 800 50 0 0 0 0 0\n";
         assert_eq!(parse_cpu(stat), Some((150, 1000)));
-        let dev = "Inter-|   Receive\n face |bytes\n    lo: 999 1 0 0 0 0 0 0 999 1 0 0 0 0 0 0\n  eth0: 1000 2 0 0 0 0 0 0 500 3 0 0 0 0 0 0\n";
+        let dev =
+            "Inter-|   Receive\n face |bytes\n    lo: 999 1 0 0 0 0 0 0 999 1 0 0 0 0 0 0\n  eth0: 1000 2 0 0 0 0 0 0 500 3 0 0 0 0 0 0\n";
         assert_eq!(parse_net(dev), 1500);
         let disks = "   8       0 sda 10 0 100 0 5 0 50 0 0 0 0\n   8       1 sda1 10 0 100 0 5 0 50 0 0 0 0\n   7       0 loop0 1 0 8 0 0 0 0 0 0 0 0\n 259 0 nvme0n1 1 0 2 0 1 0 2 0 0 0 0\n 259 1 nvme0n1p1 1 0 2 0 1 0 2 0 0 0 0\n";
         assert_eq!(parse_disks(disks), (150 + 4) * 512);

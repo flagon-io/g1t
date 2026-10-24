@@ -21,19 +21,17 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use futures_util::future::{try_join, try_join_all};
 use g1t_contracts::audit::{AuditActor, NewAuditEntry, Surface};
 use g1t_contracts::credentials::Decision;
-use g1t_contracts::repos::{
-    EntryKind, NeedsAgentReason, PullBranchUpdate, RepoPath, TreeEntry, UpdateMethod, UpdatePullBranchArgs,
-};
+use g1t_contracts::repos::{EntryKind, NeedsAgentReason, PullBranchUpdate, RepoPath, TreeEntry, UpdateMethod, UpdatePullBranchArgs};
 use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
 use g1t_scan::pack::{ObjectKind, TreeItem, encode_tree, extend_pack, object_id, write_pack};
 use worker::Result;
 
+use crate::merge_base::{MergeBase, merge_base};
+use crate::merge_methods::{Applied, Reader, apply};
 use crate::public_storage::Operation;
 use crate::registry::{can_read, can_write, store_key};
 use crate::store::{GitRepo, GitStore, Scope};
-use crate::merge_methods::{Applied, Reader, apply};
-use crate::merge_base::{MergeBase, merge_base};
 use crate::{MAX_ANCESTRY, Repos, UNVERIFIED, descends_from, land, not_found};
 
 /// The mode git writes for an entry of each kind.
@@ -63,11 +61,7 @@ pub(crate) fn encode_entries(entries: &[TreeEntry]) -> Vec<u8> {
     sorted.sort_by_key(|entry| sort_key(entry));
     let items: Vec<TreeItem> = sorted
         .into_iter()
-        .map(|entry| TreeItem {
-            mode: mode(entry.kind).to_owned(),
-            name: entry.name.clone(),
-            id: entry.hash.clone(),
-        })
+        .map(|entry| TreeItem { mode: mode(entry.kind).to_owned(), name: entry.name.clone(), id: entry.hash.clone() })
         .collect();
     encode_tree(&items)
 }
@@ -130,9 +124,7 @@ struct Dir {
 /// exactly its id: a tree holding something this cannot write, such as an
 /// unusual file mode, is refused rather than changed.
 fn load(id: &str, trees: &HashMap<String, Vec<TreeEntry>>) -> std::result::Result<Dir, String> {
-    let entries = trees
-        .get(id)
-        .ok_or_else(|| format!("tree {id} was not read"))?;
+    let entries = trees.get(id).ok_or_else(|| format!("tree {id} was not read"))?;
     if object_id(ObjectKind::Tree, &encode_entries(entries)) != id {
         return Err(format!("tree {id} holds entries g1t cannot write back exactly"));
     }
@@ -151,10 +143,7 @@ fn load(id: &str, trees: &HashMap<String, Vec<TreeEntry>>) -> std::result::Resul
 }
 
 /// The directory at `node`, read if it was not yet.
-fn open<'a>(
-    node: &'a mut Node,
-    trees: &HashMap<String, Vec<TreeEntry>>,
-) -> std::result::Result<&'a mut Dir, String> {
+fn open<'a>(node: &'a mut Node, trees: &HashMap<String, Vec<TreeEntry>>) -> std::result::Result<&'a mut Dir, String> {
     if let Node::Subtree(id) = node {
         *node = Node::Dir(load(id, trees)?);
     }
@@ -165,11 +154,7 @@ fn open<'a>(
 }
 
 /// Removes the file at `parts`, and any directory that leaves empty.
-fn remove(
-    dir: &mut Dir,
-    parts: &[&str],
-    trees: &HashMap<String, Vec<TreeEntry>>,
-) -> std::result::Result<(), String> {
+fn remove(dir: &mut Dir, parts: &[&str], trees: &HashMap<String, Vec<TreeEntry>>) -> std::result::Result<(), String> {
     let (name, rest) = parts.split_first().ok_or("an empty path")?;
     if rest.is_empty() {
         return match dir.entries.get(*name) {
@@ -181,10 +166,7 @@ fn remove(
             None => Err(format!("{name} is not there to remove")),
         };
     }
-    let child = dir
-        .entries
-        .get_mut(*name)
-        .ok_or_else(|| format!("{name} is not there"))?;
+    let child = dir.entries.get_mut(*name).ok_or_else(|| format!("{name} is not there"))?;
     let inner = open(child, trees)?;
     remove(inner, rest, trees)?;
     if inner.entries.is_empty() {
@@ -209,10 +191,7 @@ fn insert(
         dir.entries.insert((*name).to_owned(), Node::Leaf(kind, hash.to_owned()));
         return Ok(());
     }
-    let child = dir
-        .entries
-        .entry((*name).to_owned())
-        .or_insert_with(|| Node::Dir(Dir::default()));
+    let child = dir.entries.entry((*name).to_owned()).or_insert_with(|| Node::Dir(Dir::default()));
     insert(open(child, trees)?, rest, kind, hash, trees)
 }
 
@@ -251,8 +230,7 @@ pub(crate) fn merge_tree(
     for change in changes {
         if let Some((kind, hash)) = &change.entry {
             let parts: Vec<&str> = change.path.split('/').collect();
-            insert(&mut root, &parts, *kind, hash, trees)
-                .map_err(|why| format!("{}: {why}", change.path))?;
+            insert(&mut root, &parts, *kind, hash, trees).map_err(|why| format!("{}: {why}", change.path))?;
         }
     }
     let mut objects = Vec::new();
@@ -343,18 +321,12 @@ pub(crate) async fn read_dirs<R: GitRepo>(
 /// makes. None for anyone else.
 pub(crate) fn g1t_commit_identity(actor: &g1t_contracts::User) -> Option<g1t_contracts::accounts::CommitIdentity> {
     use g1t_contracts::{PrincipalKind, system};
-    matches!(actor.kind, PrincipalKind::Agent | PrincipalKind::System).then(|| g1t_contracts::accounts::CommitIdentity {
-        name: system::USERNAME.to_owned(),
-        email: system::EMAIL.to_owned(),
-    })
+    matches!(actor.kind, PrincipalKind::Agent | PrincipalKind::System)
+        .then(|| g1t_contracts::accounts::CommitIdentity { name: system::USERNAME.to_owned(), email: system::EMAIL.to_owned() })
 }
 
 fn needs_agent(reason: NeedsAgentReason, detail: impl Into<String>, paths: Vec<String>) -> Outcome<PullBranchUpdate> {
-    Outcome::Ok(PullBranchUpdate::NeedsAgent {
-        reason,
-        detail: detail.into(),
-        paths,
-    })
+    Outcome::Ok(PullBranchUpdate::NeedsAgent { reason, detail: detail.into(), paths })
 }
 
 impl<S: GitStore> Repos<S> {
@@ -402,10 +374,7 @@ impl<S: GitStore> Repos<S> {
                 if source.fork_of.is_some() {
                     "Only whoever opened this pull request can update it.".to_owned()
                 } else {
-                    g1t_contracts::access::needs(
-                        g1t_contracts::access::Capability::Push,
-                        &format!("{}/{}", source.namespace, source.name),
-                    )
+                    g1t_contracts::access::needs(g1t_contracts::access::Capability::Push, &format!("{}/{}", source.namespace, source.name))
                 },
             ));
         }
@@ -430,19 +399,14 @@ impl<S: GitStore> Repos<S> {
             None => return Ok(Outcome::fail(FailureCode::Invalid, "Say which branch of the fork to update.")),
         };
         if !from_fork && branch == base_branch {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                format!("{base_branch} cannot be merged into itself."),
-            ));
+            return Ok(Outcome::fail(FailureCode::Invalid, format!("{base_branch} cannot be merged into itself.")));
         }
         match a.method {
             UpdateMethod::Merge => {
                 let message = merge_message(&base_branch, &branch, a.number);
                 self.merge_up(source, target, branch, base_branch, &a.actor, message, a.expected_head.as_deref()).await
             }
-            UpdateMethod::Rebase => {
-                self.rebase_up(source, target, branch, base_branch, &a.actor, a.expected_head.as_deref()).await
-            }
+            UpdateMethod::Rebase => self.rebase_up(source, target, branch, base_branch, &a.actor, a.expected_head.as_deref()).await,
         }
     }
 
@@ -469,24 +433,15 @@ impl<S: GitStore> Repos<S> {
         self.live(&source).await?;
         let source_git = self.store.open(&store_key(&source)).await?;
         let target_git = self.store.open(&store_key(&target)).await?;
-        let (history, target_history) = try_join(
-            source_git.log(&branch, MAX_ANCESTRY),
-            target_git.log(&base_branch, MAX_ANCESTRY),
-        )
-        .await?;
+        let (history, target_history) = try_join(source_git.log(&branch, MAX_ANCESTRY), target_git.log(&base_branch, MAX_ANCESTRY)).await?;
         let (Some(head), Some(base)) = (history.first(), target_history.first()) else {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                format!("{branch} has no commits to bring up to date."),
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, format!("{branch} has no commits to bring up to date.")));
         };
         if let Some(refused) = moved_since(&branch, &head.hash, expected_head) {
             return Ok(refused);
         }
         if descends_from(&source_git, &history, &base.hash).await? {
-            return Ok(Outcome::Ok(PullBranchUpdate::UpToDate {
-                commit: head.hash.clone(),
-            }));
+            return Ok(Outcome::Ok(PullBranchUpdate::UpToDate { commit: head.hash.clone() }));
         }
         let shared: HashSet<String> = target_history.iter().map(|commit| commit.hash.clone()).collect();
         let found = merge_base(&source_git, &history, &target_git, &target_history, &shared).await?;
@@ -511,11 +466,7 @@ impl<S: GitStore> Repos<S> {
                 ));
             }
             Applied::Unsupported(why) => {
-                return Ok(needs_agent(
-                    NeedsAgentReason::Unsupported,
-                    format!("g1t could not merge this itself: {why}."),
-                    Vec::new(),
-                ));
+                return Ok(needs_agent(NeedsAgentReason::Unsupported, format!("g1t could not merge this itself: {why}."), Vec::new()));
             }
         };
 
@@ -523,11 +474,7 @@ impl<S: GitStore> Repos<S> {
         let commit = commit_object(
             &tree,
             &[&head.hash, &base.hash],
-            &Signature {
-                name: &author.name,
-                email: &author.email,
-                seconds: now_ms() / 1000,
-            },
+            &Signature { name: &author.name, email: &author.email, seconds: now_ms() / 1000 },
             &message,
         );
         let commit_id = object_id(ObjectKind::Commit, &commit);
@@ -605,10 +552,7 @@ impl<S: GitStore> Repos<S> {
         };
         self.refs_moved(&source.id).await;
         let git_ref = format!("refs/heads/{branch}");
-        let path = RepoPath {
-            namespace: source.namespace.clone(),
-            name: source.name.clone(),
-        };
+        let path = RepoPath { namespace: source.namespace.clone(), name: source.name.clone() };
         let mut target_entry = self.audit_target(&path).await?;
         target_entry.git_ref = Some(git_ref.clone());
         let mut entry = NewAuditEntry::new(
@@ -632,12 +576,8 @@ impl<S: GitStore> Repos<S> {
         self.record_git(entry).await;
         // As any push does: the pull request's head moves, its checks run
         // again, and whether it merges cleanly is worked out anew.
-        self.publish_push(source, &git_ref, Some(update.head), update.commit, Some(actor), Some(update.commits))
-            .await?;
-        Ok(Outcome::Ok(PullBranchUpdate::Updated {
-            commit: update.commit.to_owned(),
-            previous: update.head.to_owned(),
-        }))
+        self.publish_push(source, &git_ref, Some(update.head), update.commit, Some(actor), Some(update.commits)).await?;
+        Ok(Outcome::Ok(PullBranchUpdate::Updated { commit: update.commit.to_owned(), previous: update.head.to_owned() }))
     }
 }
 
@@ -658,10 +598,7 @@ pub(crate) struct BranchUpdate<'a> {
 /// The refusal for a branch that is no longer at `expected`.
 pub(crate) fn moved_since(branch: &str, head: &str, expected: Option<&str>) -> Option<Outcome<PullBranchUpdate>> {
     expected.filter(|expected| *expected != head).map(|_| {
-        Outcome::fail(
-            FailureCode::Conflict,
-            format!("{branch} has changed since it was last looked at. Look again, then update it."),
-        )
+        Outcome::fail(FailureCode::Conflict, format!("{branch} has changed since it was last looked at. Look again, then update it."))
     })
 }
 
@@ -670,11 +607,7 @@ mod tests {
     use super::*;
 
     fn entry(name: &str, kind: EntryKind, hash: &str) -> TreeEntry {
-        TreeEntry {
-            name: name.to_owned(),
-            hash: hash.to_owned(),
-            kind,
-        }
+        TreeEntry { name: name.to_owned(), hash: hash.to_owned(), kind }
     }
 
     fn paths(list: &[&str]) -> Vec<String> {
@@ -754,10 +687,7 @@ mod tests {
 
     #[test]
     fn the_empty_tree_is_gits() {
-        assert_eq!(
-            object_id(ObjectKind::Tree, &encode_entries(&[])),
-            "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-        );
+        assert_eq!(object_id(ObjectKind::Tree, &encode_entries(&[])), "4b825dc642cb6eb9a060e54bf8d69288fbee4904");
     }
 
     /// A base with `README.md`, `bin/run` (executable), `docs/old.md`,
@@ -859,19 +789,13 @@ mod tests {
         let (root, trees) = base();
         let changes = vec![Change { path: "src/new.rs".into(), entry: Some((EntryKind::Blob, HELLO.into())) }];
         let merged = merge_tree(&root, &trees, &changes).unwrap();
-        let mut objects: Vec<(ObjectKind, Vec<u8>)> =
-            merged.objects.iter().map(|bytes| (ObjectKind::Tree, bytes.clone())).collect();
+        let mut objects: Vec<(ObjectKind, Vec<u8>)> = merged.objects.iter().map(|bytes| (ObjectKind::Tree, bytes.clone())).collect();
         let pack = write_pack(&objects);
         let read = g1t_scan::pack::Pack::parse(&pack).unwrap();
         assert!(read.tree(&merged.tree).is_some());
 
         // Extended with a commit, it still reads, and its checksum holds.
-        let commit = commit_object(
-            &merged.tree,
-            &[&root],
-            &Signature { name: "octo", email: "octo@users.g1t.sh", seconds: 1 },
-            "m",
-        );
+        let commit = commit_object(&merged.tree, &[&root], &Signature { name: "octo", email: "octo@users.g1t.sh", seconds: 1 }, "m");
         let commit_id = object_id(ObjectKind::Commit, &commit);
         objects.clear();
         objects.push((ObjectKind::Commit, commit));

@@ -5,9 +5,7 @@ use serde_json::{Map, Value, json};
 use std::io::{IsTerminal, Read};
 use std::time::Duration;
 
-use crate::cli::{
-    WorkflowCommand, WorkflowListArgs, WorkflowRunArgs, WorkflowSelect, WorkflowViewArgs,
-};
+use crate::cli::{WorkflowCommand, WorkflowListArgs, WorkflowRunArgs, WorkflowSelect, WorkflowViewArgs};
 use crate::client::Client;
 use crate::context::Ctx;
 use crate::error::{Error, Result};
@@ -46,10 +44,7 @@ fn label(workflow: &Value) -> String {
 }
 
 fn all(client: &Client, repo: &Repo) -> Result<Vec<Value>> {
-    Ok(super::items(
-        client.op("list_workflows").repo(repo).send()?,
-        "workflows",
-    ))
+    Ok(super::items(client.op("list_workflows").repo(repo).send()?, "workflows"))
 }
 
 /// The workflows `given` names: by id or path, then file name, then name
@@ -57,9 +52,7 @@ fn all(client: &Client, repo: &Repo) -> Result<Vec<Value>> {
 pub fn matching<'a>(workflows: &'a [Value], given: &str) -> Vec<&'a Value> {
     let given = given.trim();
     let file = given.trim_start_matches(".g1t/workflows/");
-    let by = |test: &dyn Fn(&Value) -> bool| -> Vec<&'a Value> {
-        workflows.iter().filter(|w| test(w)).collect()
-    };
+    let by = |test: &dyn Fn(&Value) -> bool| -> Vec<&'a Value> { workflows.iter().filter(|w| test(w)).collect() };
     for found in [
         by(&|w| s(w, "id") == given || s(w, "path") == given),
         by(&|w| file_of(w) == file),
@@ -74,37 +67,22 @@ pub fn matching<'a>(workflows: &'a [Value], given: &str) -> Vec<&'a Value> {
 
 /// The workflow the command is about: named, or picked at a terminal from
 /// those `fits` keeps.
-fn pick(
-    client: &Client,
-    repo: &Repo,
-    given: Option<&str>,
-    fits: impl Fn(&Value) -> bool,
-    none: &str,
-) -> Result<Value> {
+fn pick(client: &Client, repo: &Repo, given: Option<&str>, fits: impl Fn(&Value) -> bool, none: &str) -> Result<Value> {
     let workflows = all(client, repo)?;
     if let Some(given) = given {
         let found = matching(&workflows, given);
         return match found.as_slice() {
-            [] => Err(Error::failed(format!(
-                "There is no workflow {} in {repo}. `g1t workflow list --all` lists them.",
-                given.trim()
-            ))),
+            [] => Err(Error::failed(format!("There is no workflow {} in {repo}. `g1t workflow list --all` lists them.", given.trim()))),
             [one] => Ok((*one).clone()),
             many if prompt::interactive() => {
                 let options: Vec<String> = many.iter().map(|w| label(w)).collect();
-                let i = prompt::select(
-                    &format!("More than one workflow is called {}. Which?", given.trim()),
-                    &options,
-                )?;
+                let i = prompt::select(&format!("More than one workflow is called {}. Which?", given.trim()), &options)?;
                 Ok(many[i].clone())
             }
             many => Err(Error::usage(format!(
                 "More than one workflow is called {}: {}. Name it by its file.",
                 given.trim(),
-                many.iter()
-                    .map(|w| file_of(w))
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                many.iter().map(|w| file_of(w)).collect::<Vec<_>>().join(", ")
             ))),
         };
     }
@@ -139,9 +117,7 @@ fn list(ctx: &Ctx, args: WorkflowListArgs) -> Result<()> {
         if off > 0 {
             eprintln!("No workflows are on in {repo}; --all lists the {off} turned off.");
         } else {
-            eprintln!(
-                "No workflows in {repo}. They are read from .g1t/workflows on the default branch."
-            );
+            eprintln!("No workflows in {repo}. They are read from .g1t/workflows on the default branch.");
         }
         return Ok(());
     }
@@ -149,11 +125,7 @@ fn list(ctx: &Ctx, args: WorkflowListArgs) -> Result<()> {
     let rows: Vec<Vec<Cell>> = workflows
         .iter()
         .map(|w| {
-            let state = if w["error"].is_string() && active(w) {
-                "error"
-            } else {
-                s(w, "state")
-            };
+            let state = if w["error"].is_string() && active(w) { "error" } else { s(w, "state") };
             vec![
                 Cell::styled(s(w, "name"), out.bold(s(w, "name"))),
                 Cell::styled(state, out.state(state)),
@@ -167,24 +139,12 @@ fn list(ctx: &Ctx, args: WorkflowListArgs) -> Result<()> {
 }
 
 fn events(workflow: &Value) -> String {
-    workflow["events"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .collect::<Vec<_>>()
-        .join(", ")
+    workflow["events"].as_array().into_iter().flatten().filter_map(Value::as_str).collect::<Vec<_>>().join(", ")
 }
 
 fn view(ctx: &Ctx, args: WorkflowViewArgs) -> Result<()> {
     let (repo, client) = ctx.repo_client()?;
-    let workflow = pick(
-        &client,
-        &repo,
-        args.workflow.as_deref(),
-        |_| true,
-        "workflows",
-    )?;
+    let workflow = pick(&client, &repo, args.workflow.as_deref(), |_| true, "workflows")?;
     let id = s(&workflow, "id");
     let url = workflow_url(&client.host.site, &repo, id);
     if args.web {
@@ -192,21 +152,12 @@ fn view(ctx: &Ctx, args: WorkflowViewArgs) -> Result<()> {
     }
     let out = &ctx.out;
     if args.yaml {
-        let detail = client
-            .op("get_workflow")
-            .repo(&repo)
-            .arg("workflow", id)
-            .query_opt("ref", args.git_ref.clone())
-            .send()?;
+        let detail = client.op("get_workflow").repo(&repo).arg("workflow", id).query_opt("ref", args.git_ref.clone()).send()?;
         if out.structured() {
             return out.emit(&detail);
         }
         if out.tty {
-            println!(
-                "{} {}",
-                out.bold(s(&detail, "name")),
-                out.dim(&format!("· {} · {}", s(&detail, "path"), s(&detail, "ref")))
-            );
+            println!("{} {}", out.bold(s(&detail, "name")), out.dim(&format!("· {} · {}", s(&detail, "path"), s(&detail, "ref"))));
             println!();
         }
         let source = s(&detail, "source");
@@ -216,15 +167,8 @@ fn view(ctx: &Ctx, args: WorkflowViewArgs) -> Result<()> {
         }
         return Ok(());
     }
-    let runs = super::items(
-        client
-            .op("list_workflow_runs")
-            .repo(&repo)
-            .query("workflow", id)
-            .query("per_page", 5)
-            .send()?,
-        "workflow_runs",
-    );
+    let runs =
+        super::items(client.op("list_workflow_runs").repo(&repo).query("workflow", id).query("per_page", 5).send()?, "workflow_runs");
     let mut shown = workflow.clone();
     if let Some(map) = shown.as_object_mut() {
         map.insert("runs".into(), Value::Array(runs.clone()));
@@ -233,11 +177,7 @@ fn view(ctx: &Ctx, args: WorkflowViewArgs) -> Result<()> {
     if out.structured() {
         return out.emit(&shown);
     }
-    println!(
-        "{} {}",
-        out.bold(s(&workflow, "name")),
-        out.dim(s(&workflow, "path"))
-    );
+    println!("{} {}", out.bold(s(&workflow, "name")), out.dim(s(&workflow, "path")));
     let mut facts = vec![out.state(s(&workflow, "state"))];
     if !events(&workflow).is_empty() {
         facts.push(format!("on {}", events(&workflow)));
@@ -273,10 +213,7 @@ fn view(ctx: &Ctx, args: WorkflowViewArgs) -> Result<()> {
                     "completed" => r["conclusion"].as_str().unwrap_or("completed"),
                     other => other,
                 };
-                let branch = s(r, "ref")
-                    .trim_start_matches("refs/heads/")
-                    .trim_start_matches("refs/tags/")
-                    .to_owned();
+                let branch = s(r, "ref").trim_start_matches("refs/heads/").trim_start_matches("refs/tags/").to_owned();
                 vec![
                     Cell::styled(st, out.state(st)),
                     Cell::new(format!("#{} {}", r["number"], s(r, "title"))),
@@ -290,13 +227,7 @@ fn view(ctx: &Ctx, args: WorkflowViewArgs) -> Result<()> {
         out.table(&["state", "run", "branch", "event", "id", "age"], &rows)?;
     }
     println!();
-    println!(
-        "{}",
-        out.dim(&format!(
-            "More runs: g1t run list --workflow {}",
-            file_of(&workflow)
-        ))
-    );
+    println!("{}", out.dim(&format!("More runs: g1t run list --workflow {}", file_of(&workflow))));
     println!("{}", out.dim(&url));
     Ok(())
 }
@@ -332,18 +263,15 @@ fn text(value: &Value) -> String {
 
 /// `key=value` into `inputs`; `files` reads `@FILE` values.
 fn put(inputs: &mut Map<String, Value>, pair: &str, files: bool) -> Result<()> {
-    let (key, value) = pair
-        .split_once('=')
-        .filter(|(k, _)| !k.trim().is_empty())
-        .ok_or_else(|| Error::usage(format!("`{pair}` is not key=value.")))?;
+    let (key, value) =
+        pair.split_once('=').filter(|(k, _)| !k.trim().is_empty()).ok_or_else(|| Error::usage(format!("`{pair}` is not key=value.")))?;
     let value = match value.strip_prefix('@').filter(|_| files) {
         Some("-") => {
             let mut text = String::new();
             std::io::stdin().read_to_string(&mut text)?;
             text
         }
-        Some(path) => std::fs::read_to_string(path)
-            .map_err(|e| Error::usage(format!("Could not read {path}: {e}")))?,
+        Some(path) => std::fs::read_to_string(path).map_err(|e| Error::usage(format!("Could not read {path}: {e}")))?,
         None => value.to_owned(),
     };
     inputs.insert(key.trim().to_owned(), Value::String(value));
@@ -355,10 +283,7 @@ fn ask(spec: &Map<String, Value>) -> Result<Map<String, Value>> {
     let mut inputs = Map::new();
     for (name, input) in spec {
         let default = input.get("default").filter(|d| !d.is_null()).map(text);
-        let options: Vec<String> = input["options"]
-            .as_array()
-            .map(|o| o.iter().map(text).collect())
-            .unwrap_or_default();
+        let options: Vec<String> = input["options"].as_array().map(|o| o.iter().map(text).collect()).unwrap_or_default();
         let value = if !options.is_empty() {
             // The default first, so taking the first is taking it.
             let mut ordered = options.clone();
@@ -384,34 +309,21 @@ fn dispatch(ctx: &Ctx, args: WorkflowRunArgs) -> Result<()> {
     // A bare --json is the inputs on stdin, as a JSON object; --json FIELDS
     // and --jq still shape what is printed.
     let from_stdin = ctx.out.json.as_ref().is_some_and(Vec::is_empty) && ctx.out.jq.is_none();
-    let out = if from_stdin {
-        Output {
-            json: None,
-            ..ctx.out.clone()
-        }
-    } else {
-        ctx.out.clone()
-    };
+    let out = if from_stdin { Output { json: None, ..ctx.out.clone() } } else { ctx.out.clone() };
     let mut inputs = Map::new();
     if from_stdin {
         if !args.raw_field.is_empty() || !args.field.is_empty() {
-            return Err(Error::usage(
-                "--json reads every input from stdin: leave out -f and -F.",
-            ));
+            return Err(Error::usage("--json reads every input from stdin: leave out -f and -F."));
         }
         if std::io::stdin().is_terminal() {
-            return Err(Error::usage(
-                "--json reads the inputs from stdin, as a JSON object such as {\"channel\":\"stable\"}.",
-            ));
+            return Err(Error::usage("--json reads the inputs from stdin, as a JSON object such as {\"channel\":\"stable\"}."));
         }
         let mut text = String::new();
         std::io::stdin().read_to_string(&mut text)?;
         inputs = match serde_json::from_str::<Value>(&text) {
             Ok(Value::Object(map)) => map,
             _ => {
-                return Err(Error::usage(
-                    "The inputs on stdin must be a JSON object, such as {\"channel\":\"stable\"}.",
-                ));
+                return Err(Error::usage("The inputs on stdin must be a JSON object, such as {\"channel\":\"stable\"}."));
             }
         };
     }
@@ -451,16 +363,10 @@ fn dispatch(ctx: &Ctx, args: WorkflowRunArgs) -> Result<()> {
         if r.is_empty() {
             "the default branch".to_owned()
         } else {
-            r.trim_start_matches("refs/heads/")
-                .trim_start_matches("refs/tags/")
-                .to_owned()
+            r.trim_start_matches("refs/heads/").trim_start_matches("refs/tags/").to_owned()
         }
     });
-    let run = if started["id"].is_string() {
-        Some(started)
-    } else {
-        look_for_run(&client, &repo, &id, since)?
-    };
+    let run = if started["id"].is_string() { Some(started) } else { look_for_run(&client, &repo, &id, since)? };
     let Some(mut run) = run else {
         if out.structured() {
             return out.emit(&json!({ "workflow": workflow, "run": null }));
@@ -481,15 +387,8 @@ fn dispatch(ctx: &Ctx, args: WorkflowRunArgs) -> Result<()> {
     if out.structured() {
         return out.emit(&run);
     }
-    let number = run["number"]
-        .as_u64()
-        .map(|n| format!(" #{n}"))
-        .unwrap_or_default();
-    eprintln!(
-        "{} Started {}{number} on {on}",
-        out.green("✓"),
-        label(&workflow)
-    );
+    let number = run["number"].as_u64().map(|n| format!(" #{n}")).unwrap_or_default();
+    eprintln!("{} Started {}{number} on {on}", out.green("✓"), label(&workflow));
     println!("{url}");
     if out.tty {
         eprintln!("{}", out.dim(&format!("Follow it: g1t run watch {run_id}")));
@@ -515,10 +414,7 @@ fn look_for_run(client: &Client, repo: &Repo, workflow: &str, since: i64) -> Res
             "workflow_runs",
         );
         // A few seconds' grace for the server's clock and this one's.
-        if let Some(run) = runs
-            .into_iter()
-            .find(|r| parse_time(s(r, "created_at")).is_some_and(|t| t >= since - 5))
-        {
+        if let Some(run) = runs.into_iter().find(|r| parse_time(s(r, "created_at")).is_some_and(|t| t >= since - 5)) {
             return Ok(Some(run));
         }
     }
@@ -528,42 +424,18 @@ fn look_for_run(client: &Client, repo: &Repo, workflow: &str, since: i64) -> Res
 fn switch(ctx: &Ctx, args: WorkflowSelect, on: bool) -> Result<()> {
     let (repo, client) = ctx.repo_client()?;
     let workflow = if on {
-        pick(
-            &client,
-            &repo,
-            args.workflow.as_deref(),
-            |w| !active(w),
-            "workflows turned off",
-        )?
+        pick(&client, &repo, args.workflow.as_deref(), |w| !active(w), "workflows turned off")?
     } else {
-        pick(
-            &client,
-            &repo,
-            args.workflow.as_deref(),
-            active,
-            "workflows turned on",
-        )?
+        pick(&client, &repo, args.workflow.as_deref(), active, "workflows turned on")?
     };
     let id = s(&workflow, "id");
-    let call = if on {
-        client.op("enable_workflow")
-    } else {
-        client.op("disable_workflow")
-    };
+    let call = if on { client.op("enable_workflow") } else { client.op("disable_workflow") };
     let changed = call.repo(&repo).arg("workflow", id).send()?;
-    let shown = if changed.is_object() {
-        changed
-    } else {
-        workflow.clone()
-    };
+    let shown = if changed.is_object() { changed } else { workflow.clone() };
     super::done(
         ctx,
         &shown,
-        &format!(
-            "Turned {} {}",
-            label(&workflow),
-            if on { "on" } else { "off" }
-        ),
+        &format!("Turned {} {}", label(&workflow), if on { "on" } else { "off" }),
         &workflow_url(&client.host.site, &repo, id),
     )
 }
@@ -583,9 +455,7 @@ mod tests {
     #[test]
     fn workflows_are_named_by_id_file_path_or_name() {
         let all = workflows();
-        let ids = |given: &str| -> Vec<&str> {
-            matching(&all, given).iter().map(|w| s(w, "id")).collect()
-        };
+        let ids = |given: &str| -> Vec<&str> { matching(&all, given).iter().map(|w| s(w, "id")).collect() };
         assert_eq!(ids("wfl_2"), ["wfl_2"]);
         assert_eq!(ids("release.yml"), ["wfl_2"]);
         assert_eq!(ids(".g1t/workflows/release.yml"), ["wfl_2"]);
@@ -598,11 +468,9 @@ mod tests {
 
     #[test]
     fn inputs_are_described_with_their_options_and_default() {
-        let spec = json!({ "type": "choice", "options": ["beta", "stable"], "default": "beta", "required": true, "description": "Where it goes" });
-        assert_eq!(
-            describe(&spec),
-            "(choice: beta, stable; default beta; required) Where it goes"
-        );
+        let spec =
+            json!({ "type": "choice", "options": ["beta", "stable"], "default": "beta", "required": true, "description": "Where it goes" });
+        assert_eq!(describe(&spec), "(choice: beta, stable; default beta; required) Where it goes");
     }
 
     #[test]

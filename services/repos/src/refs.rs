@@ -29,10 +29,7 @@ fn parse_refs(bytes: &[u8]) -> Vec<(String, String)> {
 
 /// The branches in a ref advertisement, in the order advertised.
 fn parse_advertisement(bytes: &[u8]) -> Vec<Branch> {
-    parse_refs(bytes)
-        .into_iter()
-        .filter_map(|(name, hash)| Some(Branch { name: name.strip_prefix(HEADS)?.to_owned(), hash }))
-        .collect()
+    parse_refs(bytes).into_iter().filter_map(|(name, hash)| Some(Branch { name: name.strip_prefix(HEADS)?.to_owned(), hash })).collect()
 }
 
 /// Branches and tags from every ref, an annotated tag's commit taken from
@@ -79,18 +76,12 @@ async fn advertisement(access: &GitAccess, meter: &str) -> Result<Vec<u8>> {
     headers.set("authorization", &format!("Bearer {}", access.token))?;
     let mut init = RequestInit::new();
     init.with_method(Method::Get).with_headers(headers);
-    let request = Request::new_with_init(
-        &format!("{}/info/refs?service=git-upload-pack", access.remote),
-        &init,
-    )?;
+    let request = Request::new_with_init(&format!("{}/info/refs?service=git-upload-pack", access.remote), &init)?;
     let mut response = Fetch::Request(request).send().await?;
     let bytes = response.bytes().await?;
     crate::meters::record_remote(meter, &access.remote, 0, bytes.len() as u64);
     if response.status_code() != 200 {
-        return Err(Error::RustError(format!(
-            "listing refs returned {}",
-            response.status_code()
-        )));
+        return Err(Error::RustError(format!("listing refs returned {}", response.status_code())));
     }
     Ok(bytes)
 }
@@ -110,9 +101,7 @@ mod tests {
         let advertisement = [
             pkt("# service=git-upload-pack\n"),
             b"0000".to_vec(),
-            pkt(&format!(
-                "{main} HEAD\0side-band-64k symref=HEAD:refs/heads/main\n"
-            )),
+            pkt(&format!("{main} HEAD\0side-band-64k symref=HEAD:refs/heads/main\n")),
             pkt(&format!("{main} refs/heads/main\n")),
             pkt(&format!("{shout} refs/heads/shout\n")),
             pkt(&format!("{shout} refs/tags/v1.0.0\n")),

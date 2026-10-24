@@ -136,15 +136,7 @@ pub const ROUTES: &[(&str, &[&str])] = &[
     // shown as ghost (repos/src/lib.rs handle_event).
     (
         "SUBSCRIBER_REPOS",
-        &[
-            "pull.merged",
-            "pull.closed",
-            "pull.reopened",
-            "workspace.deleting",
-            "workspace.restored",
-            "user.deleting",
-            "user.restored",
-        ],
+        &["pull.merged", "pull.closed", "pull.reopened", "workspace.deleting", "workspace.restored", "user.deleting", "user.restored"],
     ),
     // Usage rows that follow a renamed workspace or repository.
     ("SUBSCRIBER_BILLING", &[]),
@@ -174,14 +166,7 @@ pub const ROUTES: &[(&str, &[&str])] = &[
     // their workspace, team or repository (packages/src/lib.rs on_event).
     (
         "SUBSCRIBER_PACKAGES",
-        &[
-            "git.push",
-            "repo.visibility_changed",
-            "workspace.deleting",
-            "workspace.restored",
-            "team.edited",
-            "team.deleted",
-        ],
+        &["git.push", "repo.visibility_changed", "workspace.deleting", "workspace.restored", "team.edited", "team.deleted"],
     ),
     // Pages that cite code a merge or a push to the default branch
     // changed become possibly out of date, and projects' docs folders shown
@@ -200,9 +185,7 @@ fn matches(pattern: &str, kind: &str) -> bool {
 /// Whether the subscriber behind `binding` is sent events of type `kind`.
 pub fn routed(binding: &str, kind: &str) -> bool {
     match ROUTES.iter().find(|(name, _)| *name == binding) {
-        Some((_, patterns)) => {
-            LIFECYCLE.contains(&kind) || patterns.iter().any(|pattern| matches(pattern, kind))
-        }
+        Some((_, patterns)) => LIFECYCLE.contains(&kind) || patterns.iter().any(|pattern| matches(pattern, kind)),
         None => true,
     }
 }

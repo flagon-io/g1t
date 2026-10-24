@@ -93,7 +93,9 @@ fn key_for<'a>(jwks: &'a Value, kid: Option<&str>, alg: Alg, name: &str) -> Resu
         None if usable.len() == 1 => usable.into_iter().next(),
         None => None,
     };
-    found.ok_or_else(|| "The identity provider's published keys have none for this ID token. If it just rotated its keys, try again.".to_owned())
+    found.ok_or_else(|| {
+        "The identity provider's published keys have none for this ID token. If it just rotated its keys, try again.".to_owned()
+    })
 }
 
 /// Verifies `token`'s signature with a key of `jwks` and returns its claims.
@@ -123,7 +125,8 @@ pub fn verify(token: &str, jwks: &Value) -> Result<Value, String> {
             if modulus.iter().skip_while(|b| **b == 0).count() < 256 {
                 return Err("The identity provider signs with an RSA key shorter than 2048 bits, which g1t does not accept.".to_owned());
             }
-            let public = RsaPublicKey::new(BigUint::from_bytes_be(&modulus), BigUint::from_bytes_be(&decode(e)?)).map_err(|_| BAD_SIGNATURE.to_owned())?;
+            let public = RsaPublicKey::new(BigUint::from_bytes_be(&modulus), BigUint::from_bytes_be(&decode(e)?))
+                .map_err(|_| BAD_SIGNATURE.to_owned())?;
             let hashed = bits.digest(signed.as_bytes());
             match (alg, bits) {
                 (Alg::Rs(_), Bits::B256) => public.verify(Pkcs1v15Sign::new::<Sha256>(), &hashed, &signature),
@@ -205,9 +208,14 @@ mod tests {
         let jwks = fixtures()["jwks"].clone();
         let unsigned = format!("{}.{}.", URL_SAFE_NO_PAD.encode(r#"{"alg":"none"}"#), URL_SAFE_NO_PAD.encode(r#"{"sub":"eve"}"#));
         assert!(verify(&unsigned, &jwks).unwrap_err().contains("\"none\""));
-        let hmac = format!("{}.{}.c2ln", URL_SAFE_NO_PAD.encode(r#"{"alg":"HS256","kid":"rsa1"}"#), URL_SAFE_NO_PAD.encode(r#"{"sub":"eve"}"#));
+        let hmac =
+            format!("{}.{}.c2ln", URL_SAFE_NO_PAD.encode(r#"{"alg":"HS256","kid":"rsa1"}"#), URL_SAFE_NO_PAD.encode(r#"{"sub":"eve"}"#));
         assert!(verify(&hmac, &jwks).unwrap_err().contains("HS256"));
-        let own_key = format!("{}.{}.c2ln", URL_SAFE_NO_PAD.encode(r#"{"alg":"RS256","jku":"https://evil.test/keys"}"#), URL_SAFE_NO_PAD.encode(r#"{"sub":"eve"}"#));
+        let own_key = format!(
+            "{}.{}.c2ln",
+            URL_SAFE_NO_PAD.encode(r#"{"alg":"RS256","jku":"https://evil.test/keys"}"#),
+            URL_SAFE_NO_PAD.encode(r#"{"sub":"eve"}"#)
+        );
         assert!(verify(&own_key, &jwks).unwrap_err().contains("names its own key"));
     }
 

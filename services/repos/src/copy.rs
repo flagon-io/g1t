@@ -28,8 +28,8 @@ const USER_AGENT: &str = "git/2.45.0 (g1t)";
 /// A pack with no objects: for a push whose refs all name objects the
 /// target already holds. The last 20 bytes are the SHA-1 of the first 12.
 const EMPTY_PACK: [u8; 32] = [
-    b'P', b'A', b'C', b'K', 0, 0, 0, 2, 0, 0, 0, 0, 0x02, 0x9d, 0x08, 0x82, 0x3b, 0xd8, 0xa8, 0xea,
-    0xb5, 0x10, 0xad, 0x6a, 0xc7, 0x5c, 0x82, 0x3c, 0xfd, 0x3e, 0xd3, 0x1e,
+    b'P', b'A', b'C', b'K', 0, 0, 0, 2, 0, 0, 0, 0, 0x02, 0x9d, 0x08, 0x82, 0x3b, 0xd8, 0xa8, 0xea, 0xb5, 0x10, 0xad, 0x6a, 0xc7, 0x5c,
+    0x82, 0x3c, 0xfd, 0x3e, 0xd3, 0x1e,
 ];
 
 /// One side of a copy: a repository's smart HTTP address and the
@@ -42,19 +42,13 @@ pub struct Endpoint {
 impl Endpoint {
     /// A g1t repository, with a credential from the git store.
     pub fn bearer(url: &str, token: &str) -> Self {
-        Endpoint {
-            url: url.trim_end_matches('/').to_owned(),
-            authorization: format!("Bearer {token}"),
-        }
+        Endpoint { url: url.trim_end_matches('/').to_owned(), authorization: format!("Bearer {token}") }
     }
 
     /// A public repository anywhere, read with no credential: importing
     /// one copies every branch and tag, as with a credential.
     pub fn anonymous(url: &str) -> Self {
-        Endpoint {
-            url: url.trim_end_matches('/').to_owned(),
-            authorization: String::new(),
-        }
+        Endpoint { url: url.trim_end_matches('/').to_owned(), authorization: String::new() }
     }
 
     /// A GitHub repository, with an installation access token. GitHub takes
@@ -66,12 +60,8 @@ impl Endpoint {
 
     /// Any https git host, with a token sent as `username`'s password.
     pub fn basic(url: &str, username: &str, token: &str) -> Self {
-        Endpoint {
-            url: url.trim_end_matches('/').to_owned(),
-            authorization: format!("Basic {}", base64(&format!("{username}:{token}"))),
-        }
+        Endpoint { url: url.trim_end_matches('/').to_owned(), authorization: format!("Basic {}", base64(&format!("{username}:{token}"))) }
     }
-
 }
 
 const GITHUB_USER: &str = "x-access-token";
@@ -117,11 +107,7 @@ impl fmt::Display for Problem {
 /// What an answer's status says about the host: a server error, a timeout
 /// or a rate limit means it may be down; anything else, that it answered.
 pub fn problem_for_status(status: u16, what: impl Into<String>) -> Problem {
-    if status >= 500 || status == 408 || status == 429 {
-        Problem::Unreachable(what.into())
-    } else {
-        Problem::Refused(what.into())
-    }
+    if status >= 500 || status == 408 || status == 429 { Problem::Unreachable(what.into()) } else { Problem::Refused(what.into()) }
 }
 
 /// What a copy changed.
@@ -140,9 +126,7 @@ fn base64(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
-        let n = (chunk[0] as u32) << 16
-            | (*chunk.get(1).unwrap_or(&0) as u32) << 8
-            | *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (chunk[0] as u32) << 16 | (*chunk.get(1).unwrap_or(&0) as u32) << 8 | *chunk.get(2).unwrap_or(&0) as u32;
         for (i, shift) in [18, 12, 6, 0].into_iter().enumerate() {
             if i <= chunk.len() {
                 out.push(ALPHABET[(n >> shift) as usize & 63] as char);
@@ -280,17 +264,10 @@ pub fn refused(report: &[u8], commands: &[Command]) -> Vec<String> {
             String::from_utf8_lossy(line).trim_end().to_owned()
         })
         .collect();
-    let mut problems: Vec<String> = lines
-        .iter()
-        .filter(|line| line.starts_with("unpack ") && *line != "unpack ok")
-        .cloned()
-        .collect();
+    let mut problems: Vec<String> = lines.iter().filter(|line| line.starts_with("unpack ") && *line != "unpack ok").cloned().collect();
     for (name, _, _) in commands {
         if !lines.iter().any(|line| *line == format!("ok {name}")) {
-            let reason = lines
-                .iter()
-                .find_map(|line| line.strip_prefix(&format!("ng {name} ")))
-                .unwrap_or("not reported");
+            let reason = lines.iter().find_map(|line| line.strip_prefix(&format!("ng {name} "))).unwrap_or("not reported");
             problems.push(format!("{name}: {reason}"));
         }
     }
@@ -348,10 +325,7 @@ async fn advertise_raw(endpoint: &Endpoint, service: &str) -> Result<std::result
 async fn fetch_pack(source: &Endpoint, wants: &[String], haves: &[String]) -> Result<std::result::Result<Vec<u8>, Problem>> {
     let body = upload_request(wants, haves);
     let url = format!("{}/git-upload-pack", source.url);
-    let Ok(mut response) = Fetch::Request(request(Method::Post, &url, source, Some(("git-upload-pack", body)))?)
-        .send()
-        .await
-    else {
+    let Ok(mut response) = Fetch::Request(request(Method::Post, &url, source, Some(("git-upload-pack", body)))?).send().await else {
         return Ok(Err(Problem::Unreachable("The repository stopped answering while sending.".to_owned())));
     };
     if response.status_code() != 200 {
@@ -375,7 +349,10 @@ async fn fetch_pack(source: &Endpoint, wants: &[String], haves: &[String]) -> Re
 /// Makes `target`'s branches and tags match `source`'s. `Err` in the inner
 /// result is a reason to show a person.
 pub async fn copy<F, Fut>(source: &Endpoint, target: &Endpoint, admit: F) -> Result<std::result::Result<Copied, Problem>>
-where F: FnOnce(u64) -> Fut, Fut: std::future::Future<Output = Result<std::result::Result<(), Refusal>>> {
+where
+    F: FnOnce(u64) -> Fut,
+    Fut: std::future::Future<Output = Result<std::result::Result<(), Refusal>>>,
+{
     let theirs = match advertise(source, "git-upload-pack").await? {
         Ok(refs) => refs,
         Err(problem) => return Ok(Err(problem)),
@@ -385,10 +362,7 @@ where F: FnOnce(u64) -> Fut, Fut: std::future::Future<Output = Result<std::resul
         Err(problem) => return Ok(Err(problem.map(|reason| format!("Writing the copy failed: {reason}")))),
     };
     let commands = plan(&theirs, &ours);
-    let mut copied = Copied {
-        head: theirs.head.clone(),
-        ..Copied::default()
-    };
+    let mut copied = Copied { head: theirs.head.clone(), ..Copied::default() };
     if commands.is_empty() {
         return Ok(Ok(copied));
     }
@@ -397,10 +371,8 @@ where F: FnOnce(u64) -> Fut, Fut: std::future::Future<Output = Result<std::resul
         Err(problem) => return Ok(Err(problem)),
     };
     copied.pack_bytes = pack_bytes;
-    let problems: Vec<String> = results
-        .iter()
-        .filter_map(|(name, problem)| problem.as_ref().map(|problem| format!("{name}: {problem}")))
-        .collect();
+    let problems: Vec<String> =
+        results.iter().filter_map(|(name, problem)| problem.as_ref().map(|problem| format!("{name}: {problem}"))).collect();
     if !problems.is_empty() {
         return Ok(Err(Problem::Refused(format!("Some refs were not updated: {}", problems.join("; ")))));
     }
@@ -424,14 +396,13 @@ async fn transfer<F, Fut>(
     commands: &[Command],
     admit: F,
 ) -> Result<std::result::Result<(Vec<(String, Option<String>)>, u64), Problem>>
-where F: FnOnce(u64) -> Fut, Fut: std::future::Future<Output = Result<std::result::Result<(), Refusal>>> {
+where
+    F: FnOnce(u64) -> Fut,
+    Fut: std::future::Future<Output = Result<std::result::Result<(), Refusal>>>,
+{
     let have: HashSet<&String> = held.refs.values().collect();
-    let mut wants: Vec<String> = commands
-        .iter()
-        .map(|(_, _, new)| new)
-        .filter(|new| *new != ZERO_ID && !have.contains(new))
-        .cloned()
-        .collect();
+    let mut wants: Vec<String> =
+        commands.iter().map(|(_, _, new)| new).filter(|new| *new != ZERO_ID && !have.contains(new)).cloned().collect();
     wants.sort();
     wants.dedup();
     let pack = if wants.is_empty() {
@@ -449,10 +420,7 @@ where F: FnOnce(u64) -> Fut, Fut: std::future::Future<Output = Result<std::resul
     }
     let body = receive_request(commands, pack);
     let url = format!("{}/git-receive-pack", target.url);
-    let Ok(mut response) = Fetch::Request(request(Method::Post, &url, target, Some(("git-receive-pack", body)))?)
-        .send()
-        .await
-    else {
+    let Ok(mut response) = Fetch::Request(request(Method::Post, &url, target, Some(("git-receive-pack", body)))?).send().await else {
         return Ok(Err(Problem::Unreachable("The repository stopped answering while receiving.".to_owned())));
     };
     let report = response.bytes().await?;
@@ -507,10 +475,7 @@ mod tests {
     const C: &str = "1111111111111111111111111111111111111111";
 
     fn advertised(refs: &[(&str, &str)]) -> Advertised {
-        Advertised {
-            refs: refs.iter().map(|(name, hash)| (name.to_string(), hash.to_string())).collect(),
-            head: None,
-        }
+        Advertised { refs: refs.iter().map(|(name, hash)| (name.to_string(), hash.to_string())).collect(), head: None }
     }
 
     #[test]
@@ -544,10 +509,10 @@ mod tests {
         .concat();
         let parsed = parse_advertisement(&bytes);
         assert_eq!(parsed.head.as_deref(), Some("trunk"));
-        assert_eq!(parsed, Advertised {
-            refs: advertised(&[("refs/heads/trunk", A), ("refs/tags/v1", B)]).refs,
-            head: Some("trunk".to_owned()),
-        });
+        assert_eq!(
+            parsed,
+            Advertised { refs: advertised(&[("refs/heads/trunk", A), ("refs/tags/v1", B)]).refs, head: Some("trunk".to_owned()) }
+        );
         assert_eq!(parsed.default_branch().as_deref(), Some("trunk"));
         assert_eq!(advertised(&[("refs/heads/a", A), ("refs/heads/main", A)]).default_branch().as_deref(), Some("main"));
         assert_eq!(advertised(&[("refs/tags/v1", A)]).default_branch(), None);
@@ -578,10 +543,7 @@ mod tests {
         assert_eq!(source.default_branch().as_deref(), Some("master"), "HEAD stays the default branch");
         let commands = plan(&source, &Advertised::default());
         let names: Vec<(&str, &str)> = commands.iter().map(|(name, _, new)| (name.as_str(), new.as_str())).collect();
-        assert_eq!(
-            names,
-            [("refs/heads/master", A), ("refs/heads/next", B), ("refs/tags/1.0.0", C), ("refs/tags/2.0.0", B)]
-        );
+        assert_eq!(names, [("refs/heads/master", A), ("refs/heads/next", B), ("refs/tags/1.0.0", C), ("refs/tags/2.0.0", B)]);
         let pushes = import_pushes(&commands, "master");
         let order: Vec<&str> = pushes.iter().map(|(name, _)| name.as_str()).collect();
         assert_eq!(order, ["refs/heads/master", "refs/heads/next", "refs/tags/1.0.0", "refs/tags/2.0.0"]);
@@ -595,11 +557,14 @@ mod tests {
     fn a_copy_deletes_what_the_source_does_not_have() {
         let source = advertised(&[("refs/heads/main", A), ("refs/tags/v1", B)]);
         let target = advertised(&[("refs/heads/main", B), ("refs/heads/old", C)]);
-        assert_eq!(plan(&source, &target), vec![
-            ("refs/heads/main".to_owned(), Some(B.to_owned()), A.to_owned()),
-            ("refs/tags/v1".to_owned(), None, B.to_owned()),
-            ("refs/heads/old".to_owned(), Some(C.to_owned()), ZERO_ID.to_owned()),
-        ]);
+        assert_eq!(
+            plan(&source, &target),
+            vec![
+                ("refs/heads/main".to_owned(), Some(B.to_owned()), A.to_owned()),
+                ("refs/tags/v1".to_owned(), None, B.to_owned()),
+                ("refs/heads/old".to_owned(), Some(C.to_owned()), ZERO_ID.to_owned()),
+            ]
+        );
         assert!(plan(&source, &source).is_empty());
     }
 
@@ -634,10 +599,7 @@ mod tests {
 
     #[test]
     fn each_command_comes_back_with_its_refusal() {
-        let commands = vec![
-            ("refs/heads/main".to_owned(), None, A.to_owned()),
-            ("refs/heads/x".to_owned(), None, B.to_owned()),
-        ];
+        let commands = vec![("refs/heads/main".to_owned(), None, A.to_owned()), ("refs/heads/x".to_owned(), None, B.to_owned())];
         let report = [
             pkt_line("unpack ok\n"),
             pkt_line("ok refs/heads/main\n"),
@@ -645,25 +607,18 @@ mod tests {
             b"0000".to_vec(),
         ]
         .concat();
-        assert_eq!(outcomes(&report, &commands), vec![
-            ("refs/heads/main".to_owned(), None),
-            ("refs/heads/x".to_owned(), Some("protected branch hook declined".to_owned())),
-        ]);
+        assert_eq!(
+            outcomes(&report, &commands),
+            vec![("refs/heads/main".to_owned(), None), ("refs/heads/x".to_owned(), Some("protected branch hook declined".to_owned())),]
+        );
     }
 
     #[test]
     fn refusals_are_reported_by_ref() {
-        let commands = vec![
-            ("refs/heads/main".to_owned(), None, A.to_owned()),
-            ("refs/heads/x".to_owned(), None, B.to_owned()),
-        ];
-        let report = [
-            pkt_line("unpack ok\n"),
-            pkt_line("ok refs/heads/main\n"),
-            pkt_line("ng refs/heads/x protected branch\n"),
-            b"0000".to_vec(),
-        ]
-        .concat();
+        let commands = vec![("refs/heads/main".to_owned(), None, A.to_owned()), ("refs/heads/x".to_owned(), None, B.to_owned())];
+        let report =
+            [pkt_line("unpack ok\n"), pkt_line("ok refs/heads/main\n"), pkt_line("ng refs/heads/x protected branch\n"), b"0000".to_vec()]
+                .concat();
         assert_eq!(refused(&report, &commands), vec!["refs/heads/x: protected branch".to_owned()]);
         let fine = [pkt_line("unpack ok\n"), pkt_line("ok refs/heads/main\n"), pkt_line("ok refs/heads/x\n")].concat();
         assert!(refused(&fine, &commands).is_empty());

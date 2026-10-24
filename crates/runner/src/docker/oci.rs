@@ -150,10 +150,7 @@ pub(crate) fn patch_process(process: &mut Value, ca_dir: Option<&str>) -> bool {
 
 /// Whether this program was started as `runc`.
 pub(crate) fn invoked_as_runc() -> bool {
-    std::env::args_os()
-        .next()
-        .and_then(|arg| std::path::Path::new(&arg).file_name().map(|name| name == "runc"))
-        .unwrap_or(false)
+    std::env::args_os().next().and_then(|arg| std::path::Path::new(&arg).file_name().map(|name| name == "runc")).unwrap_or(false)
 }
 
 /// Rewrites a JSON file in place, if `change` changes it.
@@ -212,7 +209,9 @@ mod tests {
         ));
         assert_eq!(call.command.as_deref(), Some("create"));
         assert_eq!(call.bundle.as_deref(), Some("/var/run/docker/containerd/daemon/io.containerd.runtime.v2.task/moby/abc"));
-        let call = parse(&args("--log /var/lib/docker/buildkit/executor/runc-log.json --log-format json run --bundle /var/lib/docker/buildkit/executor/x1 --keep x1"));
+        let call = parse(&args(
+            "--log /var/lib/docker/buildkit/executor/runc-log.json --log-format json run --bundle /var/lib/docker/buildkit/executor/x1 --keep x1",
+        ));
         assert_eq!((call.command.as_deref(), call.bundle.as_deref()), (Some("run"), Some("/var/lib/docker/buildkit/executor/x1")));
         let call = parse(&args("--root /r exec --process /tmp/runc-process1 --detach --pid-file /p abc"));
         assert_eq!((call.command.as_deref(), call.process.as_deref()), (Some("exec"), Some("/tmp/runc-process1")));

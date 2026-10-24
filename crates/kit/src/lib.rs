@@ -18,16 +18,12 @@ pub fn rpc_method(request: &Request) -> Option<String> {
     if request.method() != Method::Post {
         return None;
     }
-    request
-        .path()
-        .strip_prefix("/rpc/")
-        .map(|method| method.to_owned())
+    request.path().strip_prefix("/rpc/").map(|method| method.to_owned())
 }
 
 /// Deserializes a method's arguments.
 pub fn args<A: DeserializeOwned>(body: serde_json::Value) -> Result<A> {
-    serde_json::from_value(body)
-        .map_err(|error| worker::Error::RustError(format!("bad arguments: {error}")))
+    serde_json::from_value(body).map_err(|error| worker::Error::RustError(format!("bad arguments: {error}")))
 }
 
 /// Serializes a method's return value as the response body.
@@ -36,11 +32,7 @@ pub fn reply<R: Serialize>(value: &R) -> Result<Response> {
 }
 
 /// Calls `method` on another service through its binding.
-pub async fn call<A: Serialize, R: DeserializeOwned>(
-    service: &Fetcher,
-    method: &str,
-    arguments: &A,
-) -> Result<R> {
+pub async fn call<A: Serialize, R: DeserializeOwned>(service: &Fetcher, method: &str, arguments: &A) -> Result<R> {
     call_in(service, method, arguments, None).await
 }
 
@@ -60,9 +52,7 @@ pub async fn call_in<A: Serialize, R: DeserializeOwned>(
         headers.set(d1::BOOKMARK, session)?;
     }
     let mut init = RequestInit::new();
-    init.with_method(Method::Post)
-        .with_headers(headers)
-        .with_body(Some(serde_json::to_string(arguments)?.into()));
+    init.with_method(Method::Post).with_headers(headers).with_body(Some(serde_json::to_string(arguments)?.into()));
     // The hostname is ignored; a service binding always reaches its service.
     let request = Request::new_with_init(&format!("https://service/rpc/{method}"), &init)?;
     let mut response = service.fetch_request(request).await?;
@@ -142,9 +132,7 @@ mod deadline_tests {
 
 /// A method's answer, read from its body.
 pub fn read_answer<R: DeserializeOwned>(method: &str, text: &str) -> Result<R> {
-    serde_json::from_str(text).map_err(|error| {
-        worker::Error::RustError(format!("{method} answered with what could not be read: {error}"))
-    })
+    serde_json::from_str(text).map_err(|error| worker::Error::RustError(format!("{method} answered with what could not be read: {error}")))
 }
 
 pub mod d1;
@@ -173,15 +161,8 @@ pub mod js {
 
     impl Thrown {
         fn from_value(value: JsValue) -> Self {
-            let property = |name: &str| {
-                Reflect::get(&value, &name.into())
-                    .ok()
-                    .and_then(|property| property.as_string())
-            };
-            Thrown {
-                code: property("code"),
-                message: property("message").unwrap_or_else(|| format!("{value:?}")),
-            }
+            let property = |name: &str| Reflect::get(&value, &name.into()).ok().and_then(|property| property.as_string());
+            Thrown { code: property("code"), message: property("message").unwrap_or_else(|| format!("{value:?}")) }
         }
 
         pub fn is(&self, code: &str) -> bool {
@@ -208,9 +189,7 @@ pub mod js {
     pub fn binding(env: &Env, name: &str) -> Result<JsValue> {
         let value = Reflect::get(env.as_ref(), &name.into()).map_err(Thrown::from_value)?;
         if value.is_undefined() {
-            return Err(Error::RustError(format!(
-                "binding {name} is not configured"
-            )));
+            return Err(Error::RustError(format!("binding {name} is not configured")));
         }
         Ok(value)
     }
@@ -230,37 +209,22 @@ pub mod js {
     }
 
     pub fn from_js<T: DeserializeOwned>(value: &JsValue) -> Result<T> {
-        let text = if value.is_undefined() {
-            None
-        } else {
-            JSON::stringify(value)
-                .map_err(Thrown::from_value)?
-                .as_string()
-        };
+        let text = if value.is_undefined() { None } else { JSON::stringify(value).map_err(Thrown::from_value)?.as_string() };
         let text = text.as_deref().unwrap_or("null");
         serde_json::from_str(text).map_err(|error| {
             // Say what arrived; a bare serde error is useless in a log.
             let seen: String = text.chars().take(300).collect();
-            Error::RustError(format!(
-                "unexpected value from JavaScript ({error}): {seen}"
-            ))
+            Error::RustError(format!("unexpected value from JavaScript ({error}): {seen}"))
         })
     }
 
     /// Calls `target[method](...args)` and awaits the result if it is a
     /// thenable. `method` may be a name or a symbol.
-    pub async fn call_key(
-        target: &JsValue,
-        method: &JsValue,
-        args: &[JsValue],
-    ) -> std::result::Result<JsValue, Thrown> {
+    pub async fn call_key(target: &JsValue, method: &JsValue, args: &[JsValue]) -> std::result::Result<JsValue, Thrown> {
         let function: Function = Reflect::get(target, method)
             .map_err(Thrown::from_value)?
             .dyn_into()
-            .map_err(|_| Thrown {
-                code: None,
-                message: format!("{method:?} is not a function"),
-            })?;
+            .map_err(|_| Thrown { code: None, message: format!("{method:?} is not a function") })?;
         let arguments: Array = args.iter().collect();
         // An RPC stub treats every property access as a remote method, so
         // `function.apply(...)` would be sent over the wire as a call to
@@ -268,17 +232,11 @@ pub mod js {
         let returned = Reflect::apply(&function, target, &arguments).map_err(Thrown::from_value)?;
         // Worker RPC returns its own thenable rather than a Promise, so
         // resolve whatever came back instead of testing its type.
-        JsFuture::from(Promise::resolve(&returned))
-            .await
-            .map_err(Thrown::from_value)
+        JsFuture::from(Promise::resolve(&returned)).await.map_err(Thrown::from_value)
     }
 
     /// Calls `target.method(...args)`; see [`call_key`].
-    pub async fn call(
-        target: &JsValue,
-        method: &str,
-        args: &[JsValue],
-    ) -> std::result::Result<JsValue, Thrown> {
+    pub async fn call(target: &JsValue, method: &str, args: &[JsValue]) -> std::result::Result<JsValue, Thrown> {
         call_key(target, &method.into(), args).await
     }
 }
@@ -306,18 +264,9 @@ pub mod rename {
             worker::console_error!("workspace.renamed {} could not be read", event.id);
             return Ok(true);
         };
-        let names: HashMap<String, String> = crate::call(
-            &env.service("IDENTITY")?,
-            "usernames",
-            &UsernamesArgs {
-                ids: vec![renamed.workspace_id.clone()],
-            },
-        )
-        .await?;
-        let current = names
-            .get(&renamed.workspace_id)
-            .cloned()
-            .unwrap_or_else(|| renamed.to.clone());
+        let names: HashMap<String, String> =
+            crate::call(&env.service("IDENTITY")?, "usernames", &UsernamesArgs { ids: vec![renamed.workspace_id.clone()] }).await?;
+        let current = names.get(&renamed.workspace_id).cloned().unwrap_or_else(|| renamed.to.clone());
         for stale in renamed.stale_slugs(&current) {
             let values: [JsValue; 2] = [current.as_str().into(), stale.as_str().into()];
             let mut batch = Vec::with_capacity(statements.len());
@@ -396,19 +345,13 @@ pub mod transfer {
 
     impl From<RepoTransferred> for Moved {
         fn from(t: RepoTransferred) -> Self {
-            Moved {
-                paths: [format!("{}/{}", t.from, t.name), format!("{}/{}", t.to, t.name)],
-                repo_id: t.repo_id,
-            }
+            Moved { paths: [format!("{}/{}", t.from, t.name), format!("{}/{}", t.to, t.name)], repo_id: t.repo_id }
         }
     }
 
     impl From<RepoRenamed> for Moved {
         fn from(r: RepoRenamed) -> Self {
-            Moved {
-                paths: [format!("{}/{}", r.namespace, r.from), format!("{}/{}", r.namespace, r.to)],
-                repo_id: r.repo_id,
-            }
+            Moved { paths: [format!("{}/{}", r.namespace, r.from), format!("{}/{}", r.namespace, r.to)], repo_id: r.repo_id }
         }
     }
 
@@ -419,15 +362,7 @@ pub mod transfer {
     pub fn values(current: &str, stale: &str, repo_id: &str) -> [String; 7] {
         let namespace = |path: &str| path.split_once('/').map_or(path, |(ns, _)| ns).to_owned();
         let name = |path: &str| path.split_once('/').map_or("", |(_, name)| name).to_owned();
-        [
-            current.to_owned(),
-            stale.to_owned(),
-            namespace(current),
-            namespace(stale),
-            repo_id.to_owned(),
-            name(current),
-            name(stale),
-        ]
+        [current.to_owned(), stale.to_owned(), namespace(current), namespace(stale), repo_id.to_owned(), name(current), name(stale)]
     }
 
     /// Handles `repo.transferred` and `repo.renamed` with `statements`, and
@@ -469,18 +404,8 @@ pub mod transfer {
     /// The repository's path now, as `namespace/name`: asked of repos, or
     /// where the event says it went when repos does not know it.
     pub async fn current_path(env: &Env, moved: &Moved) -> Result<String> {
-        let path: Option<RepoPath> = crate::call(
-            &env.service("REPOS")?,
-            "path_by_id",
-            &PathByIdArgs {
-                id: moved.repo_id.clone(),
-            },
-        )
-        .await?;
-        Ok(path.map_or_else(
-            || moved.destination().to_owned(),
-            |path| format!("{}/{}", path.namespace, path.name),
-        ))
+        let path: Option<RepoPath> = crate::call(&env.service("REPOS")?, "path_by_id", &PathByIdArgs { id: moved.repo_id.clone() }).await?;
+        Ok(path.map_or_else(|| moved.destination().to_owned(), |path| format!("{}/{}", path.namespace, path.name)))
     }
 
     #[cfg(test)]
@@ -498,22 +423,12 @@ pub mod transfer {
 
         #[test]
         fn a_rename_and_a_transfer_are_both_moves() {
-            let renamed: Moved = RepoRenamed {
-                repo_id: "rep_1".into(),
-                namespace: "acme".into(),
-                from: "old".into(),
-                to: "new".into(),
-            }
-            .into();
+            let renamed: Moved =
+                RepoRenamed { repo_id: "rep_1".into(), namespace: "acme".into(), from: "old".into(), to: "new".into() }.into();
             assert_eq!(renamed.stale_paths("acme/new"), vec!["acme/old"]);
             assert_eq!(renamed.destination(), "acme/new");
-            let transferred: Moved = RepoTransferred {
-                repo_id: "rep_1".into(),
-                name: "g1t".into(),
-                from: "a".into(),
-                to: "b".into(),
-            }
-            .into();
+            let transferred: Moved =
+                RepoTransferred { repo_id: "rep_1".into(), name: "g1t".into(), from: "a".into(), to: "b".into() }.into();
             assert_eq!(transferred.stale_paths("c/g1t"), vec!["a/g1t", "b/g1t"]);
         }
     }
@@ -689,10 +604,7 @@ pub mod work_migrated {
         F: FnMut(WorkMigrated) -> Fut,
         Fut: Future<Output = Result<()>>,
     {
-        let row = db
-            .prepare("SELECT cursor, page, done_at FROM work_catch_up WHERE name = 'work.migrated'")
-            .first::<Row>(None)
-            .await?;
+        let row = db.prepare("SELECT cursor, page, done_at FROM work_catch_up WHERE name = 'work.migrated'").first::<Row>(None).await?;
         let Some(row) = row else { return Ok(true) };
         if row.done_at.is_some() {
             return Ok(true);

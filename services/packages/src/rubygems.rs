@@ -199,7 +199,12 @@ pub fn read_spec(text_yaml: &str) -> Result<Gemspec, String> {
                 .filter(|d| d["type"].as_str().is_none_or(|t| t.trim_start_matches(':') == "runtime"))
                 .filter_map(|d| {
                     let name = text(&d["name"])?;
-                    let req = d.get("requirement").filter(|r| r.is_object()).or_else(|| d.get("version_requirements")).map(requirement).unwrap_or_default();
+                    let req = d
+                        .get("requirement")
+                        .filter(|r| r.is_object())
+                        .or_else(|| d.get("version_requirements"))
+                        .map(requirement)
+                        .unwrap_or_default();
                     Some((name, if req.is_empty() { ">= 0".to_owned() } else { req }))
                 })
                 .collect()
@@ -253,9 +258,7 @@ pub fn info_line(key: &str, stored: &Value, checksum: &str) -> String {
     let deps: Vec<String> = stored["dependencies"]
         .as_array()
         .map(|deps| {
-            deps.iter()
-                .filter_map(|d| Some(format!("{}:{}", d["name"].as_str()?, d["requirement"].as_str().unwrap_or(">= 0"))))
-                .collect()
+            deps.iter().filter_map(|d| Some(format!("{}:{}", d["name"].as_str()?, d["requirement"].as_str().unwrap_or(">= 0")))).collect()
         })
         .unwrap_or_default();
     let mut requirements = vec![format!("checksum:{checksum}")];
@@ -361,9 +364,10 @@ impl Tuple {
     /// What a version keeps says its number and platform.
     pub fn of(name: &str, key: &str, stored: &Value) -> Tuple {
         let platform = stored["platform"].as_str().filter(|p| !p.is_empty()).unwrap_or("ruby").to_owned();
-        let number = stored["number"].as_str().map(str::to_owned).unwrap_or_else(|| {
-            key.strip_suffix(&format!("-{platform}")).unwrap_or(key).to_owned()
-        });
+        let number = stored["number"]
+            .as_str()
+            .map(str::to_owned)
+            .unwrap_or_else(|| key.strip_suffix(&format!("-{platform}")).unwrap_or(key).to_owned());
         Tuple { name: name.to_owned(), number, platform }
     }
 }
@@ -392,10 +396,7 @@ pub fn specs_file(which: Specs, tuples: &[Tuple]) -> Vec<u8> {
         }
     };
     chosen.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| compare(&a.number, &b.number)).then_with(|| a.platform.cmp(&b.platform)));
-    let list = chosen
-        .into_iter()
-        .map(|t| Ruby::Array(vec![Ruby::str(&t.name), gem_version(&t.number), Ruby::str(&t.platform)]))
-        .collect();
+    let list = chosen.into_iter().map(|t| Ruby::Array(vec![Ruby::str(&t.name), gem_version(&t.number), Ruby::str(&t.platform)])).collect();
     archive::gzip(&marshal::dump(&Ruby::Array(list)))
 }
 
@@ -639,7 +640,11 @@ summary: Says hello
         gem.extend_from_slice(&[0; 1024]);
         let spec = read_gem(&gem).unwrap();
         assert_eq!((spec.name.as_str(), spec.version.as_str(), spec.platform.as_str()), ("hello-world", "0.2.0", "ruby"));
-        assert_eq!(spec.dependencies, [("rack".to_owned(), "< 4&>= 2.0".to_owned()), ("json".to_owned(), ">= 0".to_owned())], "runtime only");
+        assert_eq!(
+            spec.dependencies,
+            [("rack".to_owned(), "< 4&>= 2.0".to_owned()), ("json".to_owned(), ">= 0".to_owned())],
+            "runtime only"
+        );
         assert_eq!(spec.ruby.as_deref(), Some(">= 3.0.0"));
         assert_eq!(spec.rubygems, None, ">= 0 says nothing");
         assert_eq!(spec.source_code_uri.as_deref(), Some("https://g1t.sh/acme/hello-world"));
@@ -672,7 +677,8 @@ summary: Says hello
     }
 
     fn tuples() -> Vec<Tuple> {
-        let tuple = |name: &str, number: &str, platform: &str| Tuple { name: name.into(), number: number.into(), platform: platform.into() };
+        let tuple =
+            |name: &str, number: &str, platform: &str| Tuple { name: name.into(), number: number.into(), platform: platform.into() };
         vec![
             tuple("hello", "0.2.0", "ruby"),
             tuple("hello", "0.10.0", "ruby"),
@@ -735,8 +741,13 @@ summary: Says hello
             "authors": ["Ada"], "licenses": ["MIT"], "homepage": "https://g1t.sh/acme/hello-world", "source_code_uri": "https://g1t.sh/acme/hello-world",
             "dependencies": [{ "name": "rack", "requirement": "< 4&>= 2.0" }, { "name": "json", "requirement": ">= 0" }], "ruby": ">= 3.0.0",
         });
-        std::fs::write(dir.join("hello-world-0.2.0.gemspec.rz"), quick_spec("hello-world", "0.2.0", &stored, "2026-10-07T00:00:00.000Z")).unwrap();
+        std::fs::write(dir.join("hello-world-0.2.0.gemspec.rz"), quick_spec("hello-world", "0.2.0", &stored, "2026-10-07T00:00:00.000Z"))
+            .unwrap();
         let native = json!({ "name": "native", "number": "1.0.0", "platform": "x86_64-linux", "dependencies": [] });
-        std::fs::write(dir.join("native-1.0.0-x86_64-linux.gemspec.rz"), quick_spec("native", "1.0.0-x86_64-linux", &native, "2026-10-07T00:00:00.000Z")).unwrap();
+        std::fs::write(
+            dir.join("native-1.0.0-x86_64-linux.gemspec.rz"),
+            quick_spec("native", "1.0.0-x86_64-linux", &native, "2026-10-07T00:00:00.000Z"),
+        )
+        .unwrap();
     }
 }

@@ -13,8 +13,8 @@ use std::collections::{HashMap, HashSet};
 
 use g1t_contracts::events::Event;
 use g1t_contracts::inbox::*;
-use g1t_kit::now_ms;
 use g1t_contracts::time::rfc3339;
+use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::wasm_bindgen::JsValue;
 use worker::{D1Database, D1PreparedStatement, Fetcher, Result};
@@ -42,9 +42,7 @@ impl State {
     }
 
     pub fn parse(value: &str) -> Option<State> {
-        [State::Subscribed, State::Unsubscribed, State::Ignored]
-            .into_iter()
-            .find(|state| state.as_str() == value)
+        [State::Subscribed, State::Unsubscribed, State::Ignored].into_iter().find(|state| state.as_str() == value)
     }
 }
 
@@ -78,10 +76,7 @@ impl Audience {
     /// Hears of nothing here: they ignore the thread or the repository.
     pub fn ignores(&self, username: &str) -> bool {
         self.row(username).is_some_and(|row| row.state == State::Ignored)
-            || self
-                .watchers
-                .iter()
-                .any(|watcher| watcher.level == WatchLevel::Ignore && watcher.username.eq_ignore_ascii_case(username))
+            || self.watchers.iter().any(|watcher| watcher.level == WatchLevel::Ignore && watcher.username.eq_ignore_ascii_case(username))
     }
 
     /// Hears only of what is asked of them.
@@ -177,11 +172,7 @@ pub async fn watchers(db: &D1Database, repo_id: &str) -> Result<Vec<Watcher>> {
         .results::<WatcherRow>()?
         .into_iter()
         .filter_map(|row| {
-            Some(Watcher {
-                level: WatchLevel::parse(&row.level)?,
-                events: events_of(row.events.as_deref()),
-                username: row.username,
-            })
+            Some(Watcher { level: WatchLevel::parse(&row.level)?, events: events_of(row.events.as_deref()), username: row.username })
         })
         .collect())
 }
@@ -249,12 +240,8 @@ pub async fn watch_created(db: &D1Database, event: &Event, names: &HashMap<Strin
     ) else {
         return Ok(());
     };
-    let repo = format!(
-        "{}/{}",
-        event.data["namespace"].as_str().unwrap_or_default(),
-        event.data["name"].as_str().unwrap_or_default()
-    )
-    .to_lowercase();
+    let repo = format!("{}/{}", event.data["namespace"].as_str().unwrap_or_default(), event.data["name"].as_str().unwrap_or_default())
+        .to_lowercase();
     db.prepare(
         "INSERT OR IGNORE INTO inbox_watching (username, repo_id, repo, level, events, updated_at)
          SELECT ?1, ?2, ?3, COALESCE((SELECT default_watch FROM inbox_settings WHERE username = ?1), ?4), '[]', ?5",
@@ -297,12 +284,7 @@ struct Target {
 impl Target {
     /// What the work service is asked, to know it is there and who takes part.
     fn subject_args(&self) -> InboxSubjectArgs {
-        InboxSubjectArgs {
-            repo_id: self.repo_id.clone(),
-            number: self.number,
-            item_id: self.item_id.clone(),
-            comment_id: None,
-        }
+        InboxSubjectArgs { repo_id: self.repo_id.clone(), number: self.number, item_id: self.item_id.clone(), comment_id: None }
     }
 }
 
@@ -324,36 +306,18 @@ async fn target(db: &D1Database, username: &str, a: &SubscriptionArgs) -> Result
                     number,
                     repo: row.workspace,
                 }),
-                Some(SubjectKind::Pull) => Some(Target {
-                    thread,
-                    repo_id: Some(row.repo_id?),
-                    item_id: None,
-                    number,
-                    repo: row.repo,
-                }),
+                Some(SubjectKind::Pull) => Some(Target { thread, repo_id: Some(row.repo_id?), item_id: None, number, repo: row.repo }),
                 _ => None,
             }
         }));
     }
     if let (Some(item_id), Some(number)) = (&a.item_id, a.number) {
-        return Ok(Some(Target {
-            thread: item_thread(item_id),
-            repo_id: None,
-            item_id: Some(item_id.clone()),
-            number,
-            repo: None,
-        }));
+        return Ok(Some(Target { thread: item_thread(item_id), repo_id: None, item_id: Some(item_id.clone()), number, repo: None }));
     }
     let (Some(repo_id), Some(number)) = (&a.repo_id, a.number) else {
         return Ok(None);
     };
-    Ok(Some(Target {
-        thread: numbered_thread(repo_id, number),
-        repo_id: Some(repo_id.clone()),
-        item_id: None,
-        number,
-        repo: None,
-    }))
+    Ok(Some(Target { thread: numbered_thread(repo_id, number), repo_id: Some(repo_id.clone()), item_id: None, number, repo: None }))
 }
 
 /// Why the person is subscribed without a row: they own it, wrote it, are
@@ -500,19 +464,12 @@ pub async fn watching(db: &D1Database, a: WatchingArgs) -> Result<Watching> {
         .bind(&[a.repo_id.as_str().into(), a.username.to_lowercase().into()])?
         .first::<WatchingRow>(None)
         .await?;
-    Ok(row.map(WatchingRow::into_watching).unwrap_or(Watching {
-        repo_id: a.repo_id,
-        ..Watching::default()
-    }))
+    Ok(row.map(WatchingRow::into_watching).unwrap_or(Watching { repo_id: a.repo_id, ..Watching::default() }))
 }
 
 /// The kinds a custom watch follows: known ones, each once, in their order.
 pub fn custom_events(events: &[String]) -> Vec<String> {
-    WATCH_EVENTS
-        .into_iter()
-        .filter(|kind| events.iter().any(|event| event.trim().eq_ignore_ascii_case(kind)))
-        .map(str::to_owned)
-        .collect()
+    WATCH_EVENTS.into_iter().filter(|kind| events.iter().any(|event| event.trim().eq_ignore_ascii_case(kind))).map(str::to_owned).collect()
 }
 
 /// Sets how the person watches a repository; no level goes back to the
@@ -547,14 +504,7 @@ pub async fn watch(db: &D1Database, a: WatchArgs) -> Result<Watching> {
             .await?;
         }
     }
-    watching(
-        db,
-        WatchingArgs {
-            username,
-            repo_id: a.repo_id,
-        },
-    )
-    .await
+    watching(db, WatchingArgs { username, repo_id: a.repo_id }).await
 }
 
 /// The repositories the person watches other than the default way.
@@ -603,10 +553,7 @@ impl SettingsRow {
 
 /// Reasons as given, known ones only, each once, in their order.
 pub fn email_reasons(reasons: &[String]) -> Vec<Reason> {
-    Reason::ALL
-        .into_iter()
-        .filter(|reason| reasons.iter().any(|given| given == reason.as_str()))
-        .collect()
+    Reason::ALL.into_iter().filter(|reason| reasons.iter().any(|given| given == reason.as_str())).collect()
 }
 
 /// Each person's settings, by username; the defaults for those who never chose.
@@ -617,7 +564,9 @@ pub async fn settings_of(db: &D1Database, usernames: &[String]) -> Result<HashMa
     let marks = vec!["?"; usernames.len()].join(", ");
     let values: Vec<JsValue> = usernames.iter().map(|name| JsValue::from(name.as_str())).collect();
     Ok(db
-        .prepare(format!("SELECT username, email, default_watch, security_alerts, security_digest FROM inbox_settings WHERE username IN ({marks})"))
+        .prepare(format!(
+            "SELECT username, email, default_watch, security_alerts, security_digest FROM inbox_settings WHERE username IN ({marks})"
+        ))
         .bind(&values)?
         .all()
         .await?
@@ -629,10 +578,7 @@ pub async fn settings_of(db: &D1Database, usernames: &[String]) -> Result<HashMa
 
 pub async fn settings(db: &D1Database, a: InboxCountsArgs) -> Result<InboxSettings> {
     let username = a.username.to_lowercase();
-    Ok(settings_of(db, std::slice::from_ref(&username))
-        .await?
-        .remove(&username)
-        .unwrap_or_default())
+    Ok(settings_of(db, std::slice::from_ref(&username)).await?.remove(&username).unwrap_or_default())
 }
 
 pub async fn update_settings(db: &D1Database, a: UpdateInboxSettingsArgs) -> Result<InboxSettings> {
@@ -672,12 +618,7 @@ mod tests {
     use g1t_contracts::credentials::Principal;
 
     fn row(state: &str, reason: Option<&str>) -> SubscriptionRow {
-        SubscriptionRow {
-            username: "ana".into(),
-            state: state.into(),
-            reason: reason.map(str::to_owned),
-            chosen_at: None,
-        }
+        SubscriptionRow { username: "ana".into(), state: state.into(), reason: reason.map(str::to_owned), chosen_at: None }
     }
 
     #[test]
@@ -722,30 +663,51 @@ mod tests {
         };
         assert!(audience.ignores("ana") && audience.ignores("eve") && !audience.ignores("bo"));
         assert!(audience.unsubscribed("bo") && !audience.unsubscribed("cy"));
-        assert_eq!(
-            audience.subscribed().collect::<Vec<_>>(),
-            vec![("cy".to_owned(), Reason::Mention), ("dee".to_owned(), Reason::Manual)]
-        );
+        assert_eq!(audience.subscribed().collect::<Vec<_>>(), vec![("cy".to_owned(), Reason::Mention), ("dee".to_owned(), Reason::Manual)]);
         assert_eq!(audience.watching("deployments").collect::<Vec<_>>(), vec!["fay", "gus"]);
         assert_eq!(audience.watching("work_items").collect::<Vec<_>>(), vec!["gus"]);
     }
 
     #[test]
     fn choices_keep_only_what_is_known() {
-        assert_eq!(custom_events(&["Pulls".into(), "releases".into(), "issues".into(), "work_items".into(), "pulls".into()]), vec!["work_items", "pulls"]);
+        assert_eq!(
+            custom_events(&["Pulls".into(), "releases".into(), "issues".into(), "work_items".into(), "pulls".into()]),
+            vec!["work_items", "pulls"]
+        );
         assert_eq!(email_reasons(&["mention".into(), "nope".into(), "agent".into()]), vec![Reason::Agent, Reason::Mention]);
-        let settings = SettingsRow { username: "ana".into(), email: None, default_watch: Some("participating".into()), security_alerts: None, security_digest: None }.into_settings();
+        let settings = SettingsRow {
+            username: "ana".into(),
+            email: None,
+            default_watch: Some("participating".into()),
+            security_alerts: None,
+            security_digest: None,
+        }
+        .into_settings();
         assert_eq!(settings.email, DEFAULT_EMAIL.to_vec());
         assert_eq!(settings.default_watch, WatchLevel::Participating);
         // Until chosen: urgent alerts at once, the rest daily.
         assert!(settings.security_alerts);
         assert_eq!(settings.security_digest, DigestCadence::Daily);
-        let settings = SettingsRow { username: "ana".into(), email: Some("[]".into()), default_watch: None, security_alerts: Some(0.0), security_digest: Some("weekly".into()) }.into_settings();
+        let settings = SettingsRow {
+            username: "ana".into(),
+            email: Some("[]".into()),
+            default_watch: None,
+            security_alerts: Some(0.0),
+            security_digest: Some("weekly".into()),
+        }
+        .into_settings();
         assert!(settings.email.is_empty());
         assert_eq!(settings.default_watch, WatchLevel::All);
         assert!(!settings.security_alerts);
         assert_eq!(settings.security_digest, DigestCadence::Weekly);
-        let settings = SettingsRow { username: "ana".into(), email: None, default_watch: None, security_alerts: None, security_digest: Some("hourly".into()) }.into_settings();
+        let settings = SettingsRow {
+            username: "ana".into(),
+            email: None,
+            default_watch: None,
+            security_alerts: None,
+            security_digest: Some("hourly".into()),
+        }
+        .into_settings();
         assert_eq!(settings.security_digest, DigestCadence::Daily);
     }
 }

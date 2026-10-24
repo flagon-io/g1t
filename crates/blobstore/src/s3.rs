@@ -35,13 +35,7 @@ fn xml_value<'a>(xml: &'a str, tag: &str) -> Option<&'a str> {
 }
 
 fn host_of(endpoint: &str) -> String {
-    endpoint
-        .split_once("://")
-        .map_or(endpoint, |(_, rest)| rest)
-        .split('/')
-        .next()
-        .unwrap_or_default()
-        .to_owned()
+    endpoint.split_once("://").map_or(endpoint, |(_, rest)| rest).split('/').next().unwrap_or_default().to_owned()
 }
 
 impl S3Store {
@@ -49,16 +43,10 @@ impl S3Store {
         let endpoint = var(env, "S3_ENDPOINT").trim_end_matches('/').to_owned();
         let bucket = var(env, config.s3_bucket);
         if endpoint.is_empty() || bucket.is_empty() {
-            return Err(worker::Error::RustError(format!(
-                "{} is s3, but S3_ENDPOINT or {} is not set",
-                config.kind, config.s3_bucket
-            )));
+            return Err(worker::Error::RustError(format!("{} is s3, but S3_ENDPOINT or {} is not set", config.kind, config.s3_bucket)));
         }
         let region = var(env, "S3_REGION");
-        let public = config
-            .s3_public_endpoint
-            .map(|name| var(env, name).trim_end_matches('/').to_owned())
-            .unwrap_or_default();
+        let public = config.s3_public_endpoint.map(|name| var(env, name).trim_end_matches('/').to_owned()).unwrap_or_default();
         Ok(S3Store {
             endpoint,
             public_endpoint: (!public.is_empty()).then_some(public),
@@ -95,9 +83,7 @@ impl S3Store {
         for (name, value) in extra {
             signed.push(((*name).to_owned(), value.clone()));
         }
-        let authorization = self
-            .credentials
-            .authorization(method.as_ref(), &path, query, &signed, UNSIGNED);
+        let authorization = self.credentials.authorization(method.as_ref(), &path, query, &signed, UNSIGNED);
         let headers = Headers::new();
         for (name, value) in &signed {
             if name != "host" {
@@ -141,17 +127,13 @@ fn query(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
 impl BlobStore for S3Store {
     async fn put(&self, key: &str, bytes: Vec<u8>) -> Result<()> {
         let length = bytes.len().to_string();
-        let response = self
-            .send(Method::Put, key, &[], &[("content-length", length)], Some(bytes))
-            .await?;
+        let response = self.send(Method::Put, key, &[], &[("content-length", length)], Some(bytes)).await?;
         self.ok("put", response).await.map(|_| ())
     }
 
     async fn get(&self, key: &str, range: Option<Wanted>) -> Result<Option<Got>> {
-        let extra: Vec<(&str, String)> = range
-            .map(|r| ("range", format!("bytes={}-{}", r.offset, r.offset + r.length - 1)))
-            .into_iter()
-            .collect();
+        let extra: Vec<(&str, String)> =
+            range.map(|r| ("range", format!("bytes={}-{}", r.offset, r.offset + r.length - 1))).into_iter().collect();
         let response = self.send(Method::Get, key, &[], &extra, None).await?;
         if response.status_code() == 404 {
             return Ok(None);
@@ -186,9 +168,7 @@ impl BlobStore for S3Store {
     async fn create_multipart(&self, key: &str) -> Result<String> {
         let response = self.send(Method::Post, key, &query(&[("uploads", "")]), &[], None).await?;
         let text = self.ok("create multipart", response).await?.text().await?;
-        xml_value(&text, "UploadId")
-            .map(str::to_owned)
-            .ok_or_else(|| failed("create multipart", 200, &text))
+        xml_value(&text, "UploadId").map(str::to_owned).ok_or_else(|| failed("create multipart", 200, &text))
     }
 
     async fn upload_part(&self, key: &str, upload_id: &str, number: u16, bytes: Vec<u8>) -> Result<Part> {
@@ -215,9 +195,8 @@ impl BlobStore for S3Store {
         }
         xml.push_str("</CompleteMultipartUpload>");
         let length = xml.len().to_string();
-        let response = self
-            .send(Method::Post, key, &query(&[("uploadId", upload_id)]), &[("content-length", length)], Some(xml.into_bytes()))
-            .await?;
+        let response =
+            self.send(Method::Post, key, &query(&[("uploadId", upload_id)]), &[("content-length", length)], Some(xml.into_bytes())).await?;
         // S3 may answer 200 and still have failed, saying so in the body.
         let text = self.ok("complete multipart", response).await?.text().await?;
         if text.contains("<Error>") {

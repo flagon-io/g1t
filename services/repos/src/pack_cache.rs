@@ -45,8 +45,8 @@ use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
 use futures_util::{Stream, StreamExt};
-use g1t_contracts::repos::GitService;
 use g1t_blobstore::{BlobStore, Config, Part, Store};
+use g1t_contracts::repos::GitService;
 use worker::{Env, Headers, Response, ResponseBody, Result};
 
 use crate::git_http::GitRequest;
@@ -105,13 +105,8 @@ pub trait PackStore {
 /// file). On either an object exists only once it is whole: a `put` makes
 /// it in one write, and a multipart upload is nothing anyone can read
 /// until it is completed.
-pub const STORAGE: Config = Config {
-    kind: "PACK_STORE",
-    binding: "GIT_PACKS",
-    r2_signer: None,
-    s3_bucket: "PACK_S3_BUCKET",
-    s3_public_endpoint: None,
-};
+pub const STORAGE: Config =
+    Config { kind: "PACK_STORE", binding: "GIT_PACKS", r2_signer: None, s3_bucket: "PACK_S3_BUCKET", s3_public_endpoint: None };
 
 /// The adapter: packs as objects in a [`BlobStore`].
 pub struct Packs<B: BlobStore = Store> {
@@ -588,7 +583,9 @@ impl Drop for Tee {
 /// How a fill went.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Filled {
-    Kept { bytes: u64 },
+    Kept {
+        bytes: u64,
+    },
     /// Let go: too large, the bucket behind, or the answer cut short.
     Abandoned,
     /// Not a whole pack (an error the store sent as a 200).
@@ -705,11 +702,7 @@ impl Drop for Filling {
 /// kept: a 200 of the right type, not known to be too large.
 pub fn keepable(response: &Response) -> bool {
     let headers = response.headers();
-    let typed = headers
-        .get("content-type")
-        .ok()
-        .flatten()
-        .is_some_and(|value| value.trim().eq_ignore_ascii_case(CONTENT_TYPE));
+    let typed = headers.get("content-type").ok().flatten().is_some_and(|value| value.trim().eq_ignore_ascii_case(CONTENT_TYPE));
     let length = headers.get("content-length").ok().flatten().and_then(|value| value.parse::<u64>().ok());
     response.status_code() == 200 && typed && length.is_none_or(|length| length <= MAX_PACK_BYTES)
 }
@@ -800,31 +793,57 @@ mod tests {
         );
         let two = v2(
             &["object-format=sha1", "agent=git/2.47.1", "session-id=abc"],
-            &["done", "filter blob:none", &format!("want {B}"), "deepen 1", "ofs-delta", &format!("want {A}"), "thin-pack", &format!("want {A}")],
+            &[
+                "done",
+                "filter blob:none",
+                &format!("want {B}"),
+                "deepen 1",
+                "ofs-delta",
+                &format!("want {A}"),
+                "thin-pack",
+                &format!("want {A}"),
+            ],
         );
         let first = normalize(2, &one).unwrap();
         assert_eq!(first, normalize(2, &two).unwrap());
         assert!(!first.contains("agent="));
         // Each of deepen, filter and the wants changes the answer.
-        let deeper = v2(&["object-format=sha1"], &["thin-pack", "ofs-delta", "deepen 2", &format!("want {A}"), &format!("want {B}"), "filter blob:none", "done"]);
-        let unfiltered = v2(&["object-format=sha1"], &["thin-pack", "ofs-delta", "deepen 1", &format!("want {A}"), &format!("want {B}"), "done"]);
+        let deeper = v2(
+            &["object-format=sha1"],
+            &["thin-pack", "ofs-delta", "deepen 2", &format!("want {A}"), &format!("want {B}"), "filter blob:none", "done"],
+        );
+        let unfiltered =
+            v2(&["object-format=sha1"], &["thin-pack", "ofs-delta", "deepen 1", &format!("want {A}"), &format!("want {B}"), "done"]);
         let fewer = v2(&["object-format=sha1"], &["thin-pack", "ofs-delta", "deepen 1", &format!("want {A}"), "filter blob:none", "done"]);
         for other in [deeper, unfiltered, fewer] {
             assert_ne!(normalize(2, &other).unwrap(), first);
         }
         // Progress is part of the answer.
-        let quiet = v2(&["object-format=sha1"], &["no-progress", "thin-pack", "ofs-delta", "deepen 1", &format!("want {A}"), &format!("want {B}"), "filter blob:none", "done"]);
+        let quiet = v2(
+            &["object-format=sha1"],
+            &["no-progress", "thin-pack", "ofs-delta", "deepen 1", &format!("want {A}"), &format!("want {B}"), "filter blob:none", "done"],
+        );
         assert_ne!(normalize(2, &quiet).unwrap(), first);
     }
 
     #[test]
     fn a_v0_clone_is_the_same_whatever_the_order_or_the_agent() {
         let one = v0(
-            &[&format!("want {A} multi_ack_detailed side-band-64k thin-pack ofs-delta agent=git/2.45.0"), &format!("want {B}"), "deepen 1", "filter blob:none"],
+            &[
+                &format!("want {A} multi_ack_detailed side-band-64k thin-pack ofs-delta agent=git/2.45.0"),
+                &format!("want {B}"),
+                "deepen 1",
+                "filter blob:none",
+            ],
             &["done"],
         );
         let two = v0(
-            &[&format!("want {B} ofs-delta thin-pack side-band-64k multi_ack_detailed agent=git/2.47.1"), "filter blob:none", "deepen 1", &format!("want {A}")],
+            &[
+                &format!("want {B} ofs-delta thin-pack side-band-64k multi_ack_detailed agent=git/2.47.1"),
+                "filter blob:none",
+                "deepen 1",
+                &format!("want {A}"),
+            ],
             &["done"],
         );
         let first = normalize(0, &one).unwrap();
@@ -870,11 +889,7 @@ mod tests {
     }
 
     fn git(endpoint: &'static str, service: GitService) -> GitRequest {
-        GitRequest {
-            path: g1t_contracts::repos::RepoPath { namespace: "acme".into(), name: "rocket".into() },
-            endpoint,
-            service,
-        }
+        GitRequest { path: g1t_contracts::repos::RepoPath { namespace: "acme".into(), name: "rocket".into() }, endpoint, service }
     }
 
     #[test]
@@ -1039,7 +1054,8 @@ mod tests {
         let pipe = SharedPipe::default();
         let measured = Rc::new(Cell::new(None));
         let told = measured.clone();
-        let mut tee = Tee::new(Box::pin(futures_util::stream::iter(chunks)), Some(pipe.clone()), Box::new(move |bytes| told.set(Some(bytes))));
+        let mut tee =
+            Tee::new(Box::pin(futures_util::stream::iter(chunks)), Some(pipe.clone()), Box::new(move |bytes| told.set(Some(bytes))));
         // Git reads, and the fill keeps up, a piece at a time.
         let mut got = Vec::new();
         let mut drain = Drain(pipe);
@@ -1135,10 +1151,11 @@ mod tests {
             Ok(())
         }
         async fn get(&self, key: &str, _range: Option<g1t_blobstore::Wanted>) -> Result<Option<g1t_blobstore::Got>> {
-            Ok(self.objects.borrow().get(key).map(|bytes| g1t_blobstore::Got {
-                size: bytes.len() as u64,
-                body: ResponseBody::Body(bytes.clone()),
-            }))
+            Ok(self
+                .objects
+                .borrow()
+                .get(key)
+                .map(|bytes| g1t_blobstore::Got { size: bytes.len() as u64, body: ResponseBody::Body(bytes.clone()) }))
         }
         async fn head(&self, key: &str) -> Result<Option<u64>> {
             Ok(self.objects.borrow().get(key).map(|bytes| bytes.len() as u64))

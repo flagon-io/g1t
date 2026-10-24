@@ -140,11 +140,7 @@ impl Query {
             if text.trim().is_empty() {
                 continue;
             }
-            query.terms.push(Term {
-                text: if phrase { text } else { text.trim().to_owned() },
-                phrase,
-                negated,
-            });
+            query.terms.push(Term { text: if phrase { text } else { text.trim().to_owned() }, phrase, negated });
         }
         query
     }
@@ -156,8 +152,21 @@ impl Query {
         let value = value.trim().to_owned();
         let known = matches!(
             key,
-            "repo" | "org" | "workspace" | "owner" | "user" | "language" | "lang" | "path" | "is" | "state" | "author"
-                | "label" | "type" | "in" | "parent"
+            "repo"
+                | "org"
+                | "workspace"
+                | "owner"
+                | "user"
+                | "language"
+                | "lang"
+                | "path"
+                | "is"
+                | "state"
+                | "author"
+                | "label"
+                | "type"
+                | "in"
+                | "parent"
         );
         if !known {
             return false;
@@ -294,15 +303,15 @@ impl Query {
             SearchType::Repositories => self.paths.is_empty() && self.kind.is_none() && !item_only,
             SearchType::Code => self.kind.is_none() && !item_only,
             SearchType::Items => {
-                self.paths.is_empty() && self.languages.is_empty() && self.kind != Some(ItemKind::Pull)
+                self.paths.is_empty()
+                    && self.languages.is_empty()
+                    && self.kind != Some(ItemKind::Pull)
                     && !matches!(self.state, Some(ItemState::Merged | ItemState::Draft))
             }
             SearchType::Pulls => {
                 self.paths.is_empty() && self.languages.is_empty() && self.kind != Some(ItemKind::Item) && self.parent.is_none()
             }
-            SearchType::People => {
-                self.paths.is_empty() && self.languages.is_empty() && self.kind.is_none() && !item_only && !repo_scoped
-            }
+            SearchType::People => self.paths.is_empty() && self.languages.is_empty() && self.kind.is_none() && !item_only && !repo_scoped,
         }
     }
 
@@ -310,11 +319,7 @@ impl Query {
     /// every word, each a prefix as people type it, phrases exact, `-`
     /// words left out. `None` when there are no words to match.
     pub fn prose_match(&self) -> Option<String> {
-        let words: Vec<&Term> = self
-            .terms
-            .iter()
-            .filter(|term| term.text.chars().any(char::is_alphanumeric))
-            .collect();
+        let words: Vec<&Term> = self.terms.iter().filter(|term| term.text.chars().any(char::is_alphanumeric)).collect();
         let positive: Vec<&&Term> = words.iter().filter(|term| !term.negated).collect();
         if positive.is_empty() {
             return None;
@@ -429,11 +434,7 @@ pub fn path_pattern(value: &str) -> String {
             c => escaped.push(c),
         }
     }
-    if value.contains('*') || value.contains('?') {
-        escaped
-    } else {
-        format!("%{escaped}%")
-    }
+    if value.contains('*') || value.contains('?') { escaped } else { format!("%{escaped}%") }
 }
 
 #[cfg(test)]

@@ -42,17 +42,17 @@
 
 use std::collections::BTreeMap;
 
+use g1t_contracts::access::{self, Capability};
 use g1t_contracts::agent_sessions::*;
+use g1t_contracts::ai::AiProvider;
 use g1t_contracts::credentials::{CreateRunCredentialArgs, CredentialUse, GitGrant, RunCredentialKind};
 use g1t_contracts::events::{NewEvent, Publish};
 use g1t_contracts::identity::{CreatedAccessToken, RemoveArgs};
-use g1t_contracts::access::{self, Capability};
-use g1t_contracts::ai::AiProvider;
 use g1t_contracts::repos::{GetArgs, Repo, RepoPath};
 use g1t_contracts::time::{parse_rfc3339, rfc3339};
 use g1t_contracts::work::{
-    EndSessionArgs, Harness, KeyedSessionEntry, NewSessionEntry, NewTouch, OpenWorkItemArgs, PullDetail, RecordEntriesArgs, Recorded, Session,
-    SessionEntryKind, StartSessionArgs, TouchKind, UpdateSessionArgs, ViewArgs, WorkItem, WorkItemDetail, WorkItemViewArgs,
+    EndSessionArgs, Harness, KeyedSessionEntry, NewSessionEntry, NewTouch, OpenWorkItemArgs, PullDetail, RecordEntriesArgs, Recorded,
+    Session, SessionEntryKind, StartSessionArgs, TouchKind, UpdateSessionArgs, ViewArgs, WorkItem, WorkItemDetail, WorkItemViewArgs,
 };
 use g1t_contracts::{FailureCode, Outcome, User};
 use g1t_kit::now_ms;
@@ -478,7 +478,10 @@ fn prompt_kickoff(k: &Kickoff, prompt: &str) -> String {
         text.push_str(&format!("\nAlso: {}\n", cut(instruction, MAX_INSTRUCTION_CHARS)));
     }
     if k.managed {
-        text.push_str(&format!("\nSet up first, as one command:\n\n```sh\n{}\n```\n", setup_command(site, &repo, &k.repo.name, k.session_id, k.author)));
+        text.push_str(&format!(
+            "\nSet up first, as one command:\n\n```sh\n{}\n```\n",
+            setup_command(site, &repo, &k.repo.name, k.session_id, k.author)
+        ));
         text.push_str(&format!(
             "\nIf /usr/local/bin cannot be written, install without G1T_INSTALL_DIR and run ~/.local/bin/g1t. Then work in /workspace/{}.\n",
             k.repo.name
@@ -507,7 +510,12 @@ pub fn kickoff(k: &Kickoff) -> String {
     let site = k.site.trim_end_matches('/');
     let mut text = match &k.pull {
         Some(pull) => {
-            let mut text = format!("Carry on with pull request #{} in {repo} on g1t ({site}/{repo}/pull/{}): {}\n", pull.number, pull.number, pull.title.trim());
+            let mut text = format!(
+                "Carry on with pull request #{} in {repo} on g1t ({site}/{repo}/pull/{}): {}\n",
+                pull.number,
+                pull.number,
+                pull.title.trim()
+            );
             if let Some(branch) = pull.branch {
                 text.push_str(&format!("Its branch is `{branch}`: check it out and push to it.\n"));
             }
@@ -561,7 +569,10 @@ pub fn kickoff(k: &Kickoff) -> String {
         text.push_str(&format!("\nAlso: {}\n", cut(instruction, MAX_INSTRUCTION_CHARS)));
     }
     if k.managed {
-        text.push_str(&format!("\nSet up first, as one command:\n\n```sh\n{}\n```\n", setup_command(site, &repo, &k.repo.name, k.session_id, k.author)));
+        text.push_str(&format!(
+            "\nSet up first, as one command:\n\n```sh\n{}\n```\n",
+            setup_command(site, &repo, &k.repo.name, k.session_id, k.author)
+        ));
         text.push_str(&format!(
             "\nIf /usr/local/bin cannot be written, install without G1T_INSTALL_DIR and run ~/.local/bin/g1t. Then work in /workspace/{}.\n",
             k.repo.name
@@ -684,15 +695,32 @@ pub fn branch_in(command: &str) -> Option<String> {
 /// What one event of a session, or of one of its threads, means on g1t.
 #[derive(Debug, PartialEq)]
 pub enum Mapped {
-    Entry { kind: SessionEntryKind, text: String, tool: Option<String> },
+    Entry {
+        kind: SessionEntryKind,
+        text: String,
+        tool: Option<String>,
+    },
     Touch(NewTouch),
     /// A call waits for approval: its event id, its tool, and what it does.
-    Confirm { id: String, tool: String, summary: String },
-    ThreadCreated { thread: String, agent: Option<String> },
+    Confirm {
+        id: String,
+        tool: String,
+        summary: String,
+    },
+    ThreadCreated {
+        thread: String,
+        agent: Option<String>,
+    },
     /// The coordinator gave a thread its task.
-    ThreadTask { thread: String, text: String },
+    ThreadTask {
+        thread: String,
+        text: String,
+    },
     /// A thread reported back.
-    ThreadResult { thread: String, text: String },
+    ThreadResult {
+        thread: String,
+        text: String,
+    },
     ThreadEnded(String),
     /// The session stopped: why (`end_turn`, `requires_action`, …).
     Idle(String),
@@ -703,13 +731,7 @@ pub enum Mapped {
 fn texts(content: &Value) -> String {
     match content {
         Value::String(text) => text.trim().to_owned(),
-        Value::Array(blocks) => blocks
-            .iter()
-            .filter_map(|block| block["text"].as_str())
-            .collect::<Vec<_>>()
-            .join("\n")
-            .trim()
-            .to_owned(),
+        Value::Array(blocks) => blocks.iter().filter_map(|block| block["text"].as_str()).collect::<Vec<_>>().join("\n").trim().to_owned(),
         _ => String::new(),
     }
 }
@@ -741,7 +763,8 @@ pub fn map_event(event: &Value) -> Vec<Mapped> {
             };
             // A skill read is the skill used: its name.
             let path = input["file_path"].as_str().or_else(|| input["path"].as_str()).unwrap_or_default();
-            if let Some(skill) = path.split("/skills/").nth(1).and_then(|rest| rest.strip_suffix("/SKILL.md")).filter(|s| !s.contains('/')) {
+            if let Some(skill) = path.split("/skills/").nth(1).and_then(|rest| rest.strip_suffix("/SKILL.md")).filter(|s| !s.contains('/'))
+            {
                 out.push(Mapped::Entry { kind: SessionEntryKind::Skill, text: skill.to_owned(), tool: None });
             } else {
                 out.push(Mapped::Entry { kind: SessionEntryKind::ToolCall, text: summarize(&tool, input), tool: Some(tool.clone()) });
@@ -755,7 +778,8 @@ pub fn map_event(event: &Value) -> Vec<Mapped> {
                 out.push(Mapped::Touch(NewTouch { kind: TouchKind::Branch, value: branch }));
             }
             if kind == "agent.mcp_tool_use" {
-                if name == "work_item" && input["action"].as_str() == Some("claim")
+                if name == "work_item"
+                    && input["action"].as_str() == Some("claim")
                     && let Some(number) = input["number"].as_u64()
                 {
                     out.push(Mapped::Touch(NewTouch { kind: TouchKind::Item, value: number.to_string() }));
@@ -800,7 +824,11 @@ pub fn map_event(event: &Value) -> Vec<Mapped> {
         "session.status_terminated" => out.push(Mapped::Terminated),
         "session.error" => {
             let message = event["error"]["message"].as_str().or_else(|| event["message"].as_str()).unwrap_or("an error");
-            out.push(Mapped::Entry { kind: SessionEntryKind::Note, text: cut(&format!("The session reported {message}"), 500), tool: None });
+            out.push(Mapped::Entry {
+                kind: SessionEntryKind::Note,
+                text: cut(&format!("The session reported {message}"), 500),
+                tool: None,
+            });
         }
         "agent.thread_context_compacted" => {
             out.push(Mapped::Entry { kind: SessionEntryKind::Note, text: "Its context was compacted.".to_owned(), tool: None })
@@ -959,7 +987,8 @@ const END_WAITING: &str = "UPDATE agent_approvals SET status = 'ended', answered
   RETURNING tool_use_id";
 /// Claims the next read of a running run for the pages following it: moves
 /// `synced_at` on to ?1 only if it is at or before ?3, and gives the run when it did.
-const CLAIM_READ: &str = "UPDATE agent_runs SET synced_at = ?1 WHERE session_id = ?2 AND status = 'running' AND synced_at <= ?3 RETURNING *";
+const CLAIM_READ: &str =
+    "UPDATE agent_runs SET synced_at = ?1 WHERE session_id = ?2 AND status = 'running' AND synced_at <= ?3 RETURNING *";
 /// One call.
 const APPROVAL: &str = "SELECT * FROM agent_approvals WHERE session_id = ?1 AND tool_use_id = ?2";
 /// Whether one of a session's calls still waits, asked after ?2.
@@ -997,7 +1026,8 @@ impl Integrations {
 
     /// The hosts a session reaches g1t at.
     fn g1t_hosts(&self) -> Vec<String> {
-        let mut hosts: Vec<String> = [self.site_url.as_str(), self.api_url.as_str(), &self.mcp_url()].iter().filter_map(|url| host_of(url)).collect();
+        let mut hosts: Vec<String> =
+            [self.site_url.as_str(), self.api_url.as_str(), &self.mcp_url()].iter().filter_map(|url| host_of(url)).collect();
         hosts.dedup();
         hosts
     }
@@ -1005,7 +1035,11 @@ impl Integrations {
     pub(crate) async fn call_anthropic(&self, key: &str, method: Method, path: &str, body: Option<Value>) -> Result<Answered> {
         let headers = [("x-api-key", key), ("anthropic-version", VERSION), ("anthropic-beta", BETA)];
         let answer = http::send(method, &format!("{API}{path}"), &headers, body.map(|body| body.to_string())).await?;
-        Ok(if answer.ok() { Ok(if answer.body.trim().is_empty() { Value::Null } else { answer.json() }) } else { Err(answer.problem("Anthropic")) })
+        Ok(if answer.ok() {
+            Ok(if answer.body.trim().is_empty() { Value::Null } else { answer.json() })
+        } else {
+            Err(answer.problem("Anthropic"))
+        })
     }
 
     /// The workspace's Anthropic provider: the one Ask answers with when it
@@ -1019,7 +1053,12 @@ impl Integrations {
         let rows: Vec<AiRow> = self.ai_rows(workspace).await?.into_iter().filter(|row| row.provider() == AiProvider::Anthropic).collect();
         if rows.is_empty() {
             return Ok((
-                AgentSessionsSetup { problem: Some("The workspace has no Anthropic provider. An owner can add one in the workspace's AI settings.".to_owned()), ..Default::default() },
+                AgentSessionsSetup {
+                    problem: Some(
+                        "The workspace has no Anthropic provider. An owner can add one in the workspace's AI settings.".to_owned(),
+                    ),
+                    ..Default::default()
+                },
                 None,
             ));
         }
@@ -1115,7 +1154,8 @@ impl Integrations {
                 _ => worker::console_error!("agent sessions: g1t's {name} skill was not uploaded: {}", answer.problem("Anthropic")),
             }
         }
-        let mut skills: Vec<Value> = ours.values().filter(|skill| !skill.retired).map(|skill| skill_ref(&skill.id, skill.version.as_deref())).collect();
+        let mut skills: Vec<Value> =
+            ours.values().filter(|skill| !skill.retired).map(|skill| skill_ref(&skill.id, skill.version.as_deref())).collect();
         // The account's own skills, as many as fit.
         let headers = [("x-api-key", key), ("anthropic-version", VERSION)];
         let listed = http::send(Method::Get, &format!("{API}/v1/skills?source=custom&limit=100"), &headers, None).await?;
@@ -1151,7 +1191,10 @@ impl Integrations {
         let (agent_id, version, environment_id) = match stored {
             Some(stored) if stored.config_hash == hash => return Ok(Ok((stored.agent_id, stored.agent_version, stored.environment_id))),
             Some(stored) => {
-                if let Err(problem) = self.call_anthropic(key, Method::Post, &format!("/v1/environments/{}", stored.environment_id), Some(environment)).await? {
+                if let Err(problem) = self
+                    .call_anthropic(key, Method::Post, &format!("/v1/environments/{}", stored.environment_id), Some(environment))
+                    .await?
+                {
                     return Ok(Err(problem));
                 }
                 match self.call_anthropic(key, Method::Post, &format!("/v1/agents/{}", stored.agent_id), Some(body)).await? {
@@ -1160,15 +1203,14 @@ impl Integrations {
                 }
             }
             None => {
-                let environment = match self
-                    .call_anthropic(key, Method::Post, "/v1/environments", Some(environment))
-                    .await?
-                {
+                let environment = match self.call_anthropic(key, Method::Post, "/v1/environments", Some(environment)).await? {
                     Ok(environment) => environment["id"].as_str().unwrap_or_default().to_owned(),
                     Err(problem) => return Ok(Err(problem)),
                 };
                 match self.call_anthropic(key, Method::Post, "/v1/agents", Some(body)).await? {
-                    Ok(agent) => (agent["id"].as_str().unwrap_or_default().to_owned(), agent["version"].as_u64().unwrap_or(1) as u32, environment),
+                    Ok(agent) => {
+                        (agent["id"].as_str().unwrap_or_default().to_owned(), agent["version"].as_u64().unwrap_or(1) as u32, environment)
+                    }
                     Err(problem) => return Ok(Err(problem)),
                 }
             }
@@ -1279,11 +1321,18 @@ impl Integrations {
             return Ok(Outcome::fail(FailureCode::Invalid, format!("What you ask is at most {MAX_PROMPT_CHARS} characters.")));
         }
         if prompt.is_some() && a.handoff == Some(true) {
-            return Ok(Outcome::fail(FailureCode::Invalid, "A request from Chat runs on the workspace's Anthropic account, not as a hand-off."));
+            return Ok(Outcome::fail(
+                FailureCode::Invalid,
+                "A request from Chat runs on the workspace's Anthropic account, not as a hand-off.",
+            ));
         }
-        let (setup, connection) = if a.handoff == Some(true) { (AgentSessionsSetup::default(), None) } else { self.anthropic_connection(&workspace).await? };
+        let (setup, connection) =
+            if a.handoff == Some(true) { (AgentSessionsSetup::default(), None) } else { self.anthropic_connection(&workspace).await? };
         if a.handoff == Some(false) && connection.is_none() {
-            return Ok(Outcome::fail(FailureCode::Conflict, setup.problem.unwrap_or_else(|| "Sessions cannot start on this workspace's Anthropic account.".to_owned())));
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                setup.problem.unwrap_or_else(|| "Sessions cannot start on this workspace's Anthropic account.".to_owned()),
+            ));
         }
         if connection.is_some() && !actor.is_member(&workspace) {
             return Ok(Outcome::fail(FailureCode::Forbidden, "Only the workspace's members can start sessions on its Anthropic account."));
@@ -1356,7 +1405,9 @@ impl Integrations {
         )
         .await?;
         let revoke = || async {
-            let _: Result<()> = g1t_kit::call(&self.identity, "remove_access_token", &RemoveArgs { user: actor.clone(), id: created.info.id.clone() }).await;
+            let _: Result<()> =
+                g1t_kit::call(&self.identity, "remove_access_token", &RemoveArgs { user: actor.clone(), id: created.info.id.clone() })
+                    .await;
         };
         // The vault that holds it, on the account.
         let pending_id = if subject.number == 0 { repo_name.clone() } else { format!("{repo_name}#{}", subject.number) };
@@ -1369,14 +1420,21 @@ impl Integrations {
         };
         let hosts = self.g1t_hosts();
         for credential in [mcp_credential(&self.mcp_url(), &created.token), token_credential(&created.token, &hosts)] {
-            if let Err(problem) = self.call_anthropic(&key, Method::Post, &format!("/v1/vaults/{vault}/credentials"), Some(credential)).await? {
+            if let Err(problem) =
+                self.call_anthropic(&key, Method::Post, &format!("/v1/vaults/{vault}/credentials"), Some(credential)).await?
+            {
                 self.forget_vault(&key, &vault).await;
                 revoke().await;
                 return Ok(Outcome::fail(FailureCode::Unavailable, problem));
             }
         }
         let provider_session = match self
-            .call_anthropic(&key, Method::Post, "/v1/sessions", Some(session_body(&agent_id, version, &environment_id, &vault, &title, &repo_name, subject.number)))
+            .call_anthropic(
+                &key,
+                Method::Post,
+                "/v1/sessions",
+                Some(session_body(&agent_id, version, &environment_id, &vault, &title, &repo_name, subject.number)),
+            )
             .await?
         {
             Ok(session) => session["id"].as_str().unwrap_or_default().to_owned(),
@@ -1420,14 +1478,24 @@ impl Integrations {
             }
         };
         let prompt = kickoff_of(Some(&session.id), true);
-        if let Err(problem) = self.call_anthropic(&key, Method::Post, &format!("/v1/sessions/{provider_session}/events"), Some(message_event(&prompt))).await? {
+        if let Err(problem) = self
+            .call_anthropic(&key, Method::Post, &format!("/v1/sessions/{provider_session}/events"), Some(message_event(&prompt)))
+            .await?
+        {
             let _ = self.call_anthropic(&key, Method::Delete, &format!("/v1/sessions/{provider_session}"), None).await;
             self.forget_vault(&key, &vault).await;
             revoke().await;
             let _: Outcome<Session> = g1t_kit::call(
                 &self.work,
                 "end_session",
-                &EndSessionArgs { actor: actor.clone(), repo: repo.clone(), id: session.id.clone(), reason: Some("could not start".to_owned()), result: Some(problem.clone()), by_hand: false },
+                &EndSessionArgs {
+                    actor: actor.clone(),
+                    repo: repo.clone(),
+                    id: session.id.clone(),
+                    reason: Some("could not start".to_owned()),
+                    result: Some(problem.clone()),
+                    by_hand: false,
+                },
             )
             .await?;
             return Ok(Outcome::fail(FailureCode::Unavailable, problem));
@@ -1458,7 +1526,12 @@ impl Integrations {
         Ok(Outcome::Ok(AgentSessionStarted {
             item: subject.number,
             pull: pull_number,
-            session_url: Some(format!("{}/{}/-/chat/sessions/{}", self.site_url.trim_end_matches('/'), repo.namespace.to_lowercase(), session.id)),
+            session_url: Some(format!(
+                "{}/{}/-/chat/sessions/{}",
+                self.site_url.trim_end_matches('/'),
+                repo.namespace.to_lowercase(),
+                session.id
+            )),
             session: Some(session),
             provider: Some("anthropic".to_owned()),
             provider_session_url: Some(console_url(row.config().console_workspace.as_deref(), &provider_session)),
@@ -1512,7 +1585,14 @@ impl Integrations {
             let recorded: Outcome<Recorded> = g1t_kit::call(
                 &self.work,
                 "record_session_entries",
-                &RecordEntriesArgs { actor: run.actor(), repo: repo.clone(), id: session_id.to_owned(), entries: chunk, touched: touched.clone(), acknowledge: vec![] },
+                &RecordEntriesArgs {
+                    actor: run.actor(),
+                    repo: repo.clone(),
+                    id: session_id.to_owned(),
+                    entries: chunk,
+                    touched: touched.clone(),
+                    acknowledge: vec![],
+                },
             )
             .await?;
             if let Outcome::Fail(failure) = recorded {
@@ -1572,17 +1652,20 @@ impl Integrations {
         let key = self.ai_secret(&row).unwrap_or_default();
         let now = now_ms();
         if now.saturating_sub(parse_rfc3339(&run.created_at).unwrap_or(now)) > MAX_RUN_MS {
-            let _ = self.call_anthropic(&key, Method::Post, &format!("/v1/sessions/{}/events", run.provider_session_id), Some(interrupt_event())).await?;
+            let _ = self
+                .call_anthropic(&key, Method::Post, &format!("/v1/sessions/{}/events", run.provider_session_id), Some(interrupt_event()))
+                .await?;
             self.finish_run(&run, Some(&key), "timed_out").await?;
             return Ok(false);
         }
-        let events = match self.new_events(&key, &format!("/v1/sessions/{}/events", run.provider_session_id), run.last_event_id.as_deref()).await? {
-            Ok(events) => events.as_array().cloned().unwrap_or_default(),
-            Err(problem) => {
-                worker::console_error!("agent sessions: {}: not read: {problem}", run.session_id);
-                return Ok(true);
-            }
-        };
+        let events =
+            match self.new_events(&key, &format!("/v1/sessions/{}/events", run.provider_session_id), run.last_event_id.as_deref()).await? {
+                Ok(events) => events.as_array().cloned().unwrap_or_default(),
+                Err(problem) => {
+                    worker::console_error!("agent sessions: {}: not read: {problem}", run.session_id);
+                    return Ok(true);
+                }
+            };
         let mut threads = run.threads();
         let mut entries = Vec::new();
         let mut touched = Vec::new();
@@ -1640,12 +1723,18 @@ impl Integrations {
                     Mapped::ThreadTask { thread, text } => {
                         if let Some(state) = threads.get(&thread) {
                             let task = text.lines().next().unwrap_or_default().to_owned();
-                            self.update_run_session(UpdateSessionArgs { task: Some(task), prompt: Some(text), ..Self::update_args(&run, &state.session) }).await?;
+                            self.update_run_session(UpdateSessionArgs {
+                                task: Some(task),
+                                prompt: Some(text),
+                                ..Self::update_args(&run, &state.session)
+                            })
+                            .await?;
                         }
                     }
                     Mapped::ThreadResult { thread, text } => {
                         if let Some(state) = threads.get(&thread) {
-                            self.update_run_session(UpdateSessionArgs { result: Some(text), ..Self::update_args(&run, &state.session) }).await?;
+                            self.update_run_session(UpdateSessionArgs { result: Some(text), ..Self::update_args(&run, &state.session) })
+                                .await?;
                         }
                     }
                     Mapped::ThreadEnded(thread) => {
@@ -1739,7 +1828,8 @@ impl Integrations {
             self.forget_vault(key, vault).await;
         }
         if let Some(token) = &run.token_id {
-            let _: Result<()> = g1t_kit::call(&self.identity, "remove_access_token", &RemoveArgs { user: run.actor(), id: token.clone() }).await;
+            let _: Result<()> =
+                g1t_kit::call(&self.identity, "remove_access_token", &RemoveArgs { user: run.actor(), id: token.clone() }).await;
         }
         self.db
             .prepare("UPDATE agent_runs SET status = 'ended', synced_at = ? WHERE session_id = ?")
@@ -1800,7 +1890,8 @@ impl Integrations {
                 }
             }
         };
-        if a.waiting && out.running
+        if a.waiting
+            && out.running
             && let Some(viewer) = a.viewer.as_ref()
         {
             out.waiting = self.waits_on(viewer, &run).await?;
@@ -1814,12 +1905,7 @@ impl Integrations {
     /// started it.
     async fn waits_on(&self, viewer: &User, run: &RunRow) -> Result<bool> {
         let since = rfc3339(now_ms().saturating_sub(APPROVAL_WAIT_MS));
-        let one = self
-            .db
-            .prepare(ANY_WAITING)
-            .bind(&[run.session_id.as_str().into(), since.as_str().into()])?
-            .first::<Value>(None)
-            .await?;
+        let one = self.db.prepare(ANY_WAITING).bind(&[run.session_id.as_str().into(), since.as_str().into()])?.first::<Value>(None).await?;
         if one.is_none() {
             return Ok(false);
         }
@@ -1855,7 +1941,9 @@ impl Integrations {
         }
         let key = self.ai_row(&run.connection_id).await?.map(|row| self.ai_secret(&row).unwrap_or_default());
         if let Some(key) = &key {
-            let _ = self.call_anthropic(key, Method::Post, &format!("/v1/sessions/{}/events", run.provider_session_id), Some(interrupt_event())).await?;
+            let _ = self
+                .call_anthropic(key, Method::Post, &format!("/v1/sessions/{}/events", run.provider_session_id), Some(interrupt_event()))
+                .await?;
         }
         self.finish_run(&run, key.as_deref(), "stopped").await?;
         Ok(Outcome::Ok(true))
@@ -1940,7 +2028,12 @@ impl Integrations {
             .results::<ApprovalRow>()?;
         for approval in due {
             let declined = self
-                .call_anthropic(key, Method::Post, &format!("/v1/sessions/{}/events", run.provider_session_id), Some(expired_event(&approval.tool_use_id)))
+                .call_anthropic(
+                    key,
+                    Method::Post,
+                    &format!("/v1/sessions/{}/events", run.provider_session_id),
+                    Some(expired_event(&approval.tool_use_id)),
+                )
                 .await?;
             if let Err(problem) = declined {
                 // Answered meanwhile (in the Console, say) or gone: it waits on nobody now either way.
@@ -2010,11 +2103,15 @@ impl Integrations {
         // Only those still in time: one past it is declined at the next look.
         let since = rfc3339(now_ms().saturating_sub(APPROVAL_WAIT_MS));
         let rows = match a.session.as_deref().map(str::trim) {
-            Some(session) => self
-                .db
-                .prepare(WAITING_IN_SESSION)
-                .bind(&[workspace.as_str().into(), session.into(), since.as_str().into(), MAX_APPROVALS.into()])?,
-            None => self.db.prepare(WAITING_IN_WORKSPACE).bind(&[workspace.as_str().into(), since.as_str().into(), MAX_APPROVALS.into()])?,
+            Some(session) => self.db.prepare(WAITING_IN_SESSION).bind(&[
+                workspace.as_str().into(),
+                session.into(),
+                since.as_str().into(),
+                MAX_APPROVALS.into(),
+            ])?,
+            None => {
+                self.db.prepare(WAITING_IN_WORKSPACE).bind(&[workspace.as_str().into(), since.as_str().into(), MAX_APPROVALS.into()])?
+            }
         }
         .all()
         .await?
@@ -2028,7 +2125,8 @@ impl Integrations {
             } else if let Some(&known) = pushes.get(&row.repo) {
                 known
             } else {
-                let path = row.repo.split_once('/').map(|(namespace, name)| RepoPath { namespace: namespace.to_owned(), name: name.to_owned() });
+                let path =
+                    row.repo.split_once('/').map(|(namespace, name)| RepoPath { namespace: namespace.to_owned(), name: name.to_owned() });
                 let known = match path {
                     Some(path) => self.can_push(&viewer, &path).await?,
                     None => false,
@@ -2051,11 +2149,7 @@ impl Integrations {
         };
         let tool_use_id = a.tool_use_id.trim();
         let read = || async {
-            self.db
-                .prepare(APPROVAL)
-                .bind(&[run.session_id.as_str().into(), tool_use_id.into()])?
-                .first::<ApprovalRow>(None)
-                .await
+            self.db.prepare(APPROVAL).bind(&[run.session_id.as_str().into(), tool_use_id.into()])?.first::<ApprovalRow>(None).await
         };
         let Some(approval) = read().await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "No call of this session waits for that approval."));
@@ -2096,17 +2190,20 @@ impl Integrations {
         };
         let key = self.ai_secret(&row).unwrap_or_default();
         let event = confirmation_event(tool_use_id, a.answer, Some(&denial_told(&a.actor.username, a.note.as_deref())));
-        if let Err(problem) = self.call_anthropic(&key, Method::Post, &format!("/v1/sessions/{}/events", run.provider_session_id), Some(event)).await? {
+        if let Err(problem) =
+            self.call_anthropic(&key, Method::Post, &format!("/v1/sessions/{}/events", run.provider_session_id), Some(event)).await?
+        {
             // Not sent: it waits again, for another try or the timeout.
-            self.db
-                .prepare(UNTAKE_ANSWER)
-                .bind(&[run.session_id.as_str().into(), tool_use_id.into()])?
-                .run()
-                .await?;
+            self.db.prepare(UNTAKE_ANSWER).bind(&[run.session_id.as_str().into(), tool_use_id.into()])?.run().await?;
             return Ok(Outcome::fail(FailureCode::Unavailable, problem));
         }
         let entry = KeyedSessionEntry {
-            entry: NewSessionEntry { kind: SessionEntryKind::Note, text: answered_note(&a.actor.username, a.answer, &taken.summary), tool: None, commit: None },
+            entry: NewSessionEntry {
+                kind: SessionEntryKind::Note,
+                text: answered_note(&a.actor.username, a.answer, &taken.summary),
+                tool: None,
+                commit: None,
+            },
             key: Some(format!("approval:{tool_use_id}:answered")),
         };
         self.record_run(&run, &run.session_id, vec![entry], Vec::new()).await?;
@@ -2135,13 +2232,21 @@ impl Integrations {
             return Ok(Outcome::fail(FailureCode::Unavailable, "The workspace's Anthropic connection is gone."));
         };
         let key = self.ai_secret(&row).unwrap_or_default();
-        if let Err(problem) = self.call_anthropic(&key, Method::Post, &format!("/v1/sessions/{}/events", run.provider_session_id), Some(message_event(text))).await? {
+        if let Err(problem) = self
+            .call_anthropic(&key, Method::Post, &format!("/v1/sessions/{}/events", run.provider_session_id), Some(message_event(text)))
+            .await?
+        {
             return Ok(Outcome::fail(FailureCode::Unavailable, problem));
         }
         // The message itself shows as a prompt when the session is next read;
         // this says who sent it, which the session's stream does not.
         let entry = KeyedSessionEntry {
-            entry: NewSessionEntry { kind: SessionEntryKind::Note, text: format!("{} sent it a message from g1t.", a.actor.username), tool: None, commit: None },
+            entry: NewSessionEntry {
+                kind: SessionEntryKind::Note,
+                text: format!("{} sent it a message from g1t.", a.actor.username),
+                tool: None,
+                commit: None,
+            },
             key: Some(format!("message:{}:{}", a.actor.id, now_ms())),
         };
         self.record_run(&run, &run.session_id, vec![entry], Vec::new()).await?;
@@ -2175,9 +2280,8 @@ impl Integrations {
 /// had said something already), and nothing ran after.
 pub fn finished(events: &[Value], spoke_before: bool) -> bool {
     let running = |event: &Value| event["type"] == "session.status_running";
-    let Some(idle) = events
-        .iter()
-        .rposition(|event| event["type"] == "session.status_idle" && event["stop_reason"]["type"] != "requires_action")
+    let Some(idle) =
+        events.iter().rposition(|event| event["type"] == "session.status_idle" && event["stop_reason"]["type"] != "requires_action")
     else {
         return false;
     };
@@ -2258,7 +2362,10 @@ mod tests {
         let tools = body["tools"].as_array().unwrap();
         assert_eq!(tools[0]["type"], "agent_toolset_20260401");
         assert!(tools[0].get("configs").is_none(), "web_search and web_fetch are on, as every tool is");
-        assert_eq!(tools[1], json!({ "type": "mcp_toolset", "mcp_server_name": "g1t", "default_config": { "permission_policy": { "type": "always_allow" } } }));
+        assert_eq!(
+            tools[1],
+            json!({ "type": "mcp_toolset", "mcp_server_name": "g1t", "default_config": { "permission_policy": { "type": "always_allow" } } })
+        );
         assert_eq!(body["skills"], json!(skills));
         assert_eq!(body["multiagent"]["agents"][0]["type"], "self");
         // Nothing secret is in what the agent is: its credentials are the vault's.
@@ -2318,7 +2425,10 @@ mod tests {
         assert!(prompt.contains("git clone https://g1t.sh/acme/web.git /workspace/web"));
         assert!(prompt.contains("git config --global user.name 'ada'"));
         assert!(prompt.contains("git config --global user.email '6c1d0efg+ada@users.noreply.g1t.sh'"));
-        assert!(prompt.contains("commit the first version straight to the default branch and push it there"), "an empty repository's first push is asked for");
+        assert!(
+            prompt.contains("commit the first version straight to the default branch and push it there"),
+            "an empty repository's first push is asked for"
+        );
         assert!(prompt.contains("echo ses_1 > /workspace/web/.git/g1t/session"));
         assert!(prompt.contains("G1t-Session: ses_1"));
         // The sandbox reaches the web; the token, only g1t's hosts.
@@ -2433,7 +2543,10 @@ mod tests {
         assert_eq!(own_skills(&serde_json::to_string(&kept).unwrap()), kept);
         assert!(own_skills("not json").is_empty());
         // g1t's own are pinned, so a new version changes the agent; others follow their latest.
-        assert_eq!(skill_ref("skill_01A", Some("1760000000")), json!({ "type": "custom", "skill_id": "skill_01A", "version": "1760000000" }));
+        assert_eq!(
+            skill_ref("skill_01A", Some("1760000000")),
+            json!({ "type": "custom", "skill_id": "skill_01A", "version": "1760000000" })
+        );
         assert_eq!(skill_ref("skill_02B", None)["version"], "latest");
         assert_eq!(uploaded_version(&json!({ "version": "1760000001" })).as_deref(), Some("1760000001"));
         assert_eq!(uploaded_version(&json!({ "id": "skill_01A", "latest_version": 1760000000 })).as_deref(), Some("1760000000"));
@@ -2469,15 +2582,25 @@ mod tests {
         let bash = json!({ "type": "agent.tool_use", "id": "sevt_3", "name": "bash", "input": { "command": "git push -u origin 4-greet" }, "evaluated_permission": "ask" });
         let mapped = map_event(&bash);
         assert!(mapped.contains(&Mapped::Touch(NewTouch { kind: TouchKind::Branch, value: "4-greet".into() })));
-        assert!(mapped.contains(&Mapped::Confirm { id: "sevt_3".into(), tool: "bash".into(), summary: "bash: git push -u origin 4-greet".into() }));
+        assert!(mapped.contains(&Mapped::Confirm {
+            id: "sevt_3".into(),
+            tool: "bash".into(),
+            summary: "bash: git push -u origin 4-greet".into()
+        }));
         let mcp = json!({ "type": "agent.mcp_tool_use", "id": "sevt_4", "name": "work_item", "mcp_server_name": "g1t", "input": { "action": "claim", "workspace": "acme", "number": 4 } });
         let mapped = map_event(&mcp);
-        assert_eq!(mapped[0], Mapped::Entry { kind: SessionEntryKind::ToolCall, text: "g1t:work_item: claim".into(), tool: Some("g1t:work_item".into()) });
+        assert_eq!(
+            mapped[0],
+            Mapped::Entry { kind: SessionEntryKind::ToolCall, text: "g1t:work_item: claim".into(), tool: Some("g1t:work_item".into()) }
+        );
         assert!(mapped.contains(&Mapped::Touch(NewTouch { kind: TouchKind::Item, value: "4".into() })));
         let skill = json!({ "type": "agent.tool_use", "id": "sevt_5", "name": "read", "input": { "file_path": "/workspace/skills/work-on-item/SKILL.md" } });
         assert_eq!(map_event(&skill), vec![Mapped::Entry { kind: SessionEntryKind::Skill, text: "work-on-item".into(), tool: None }]);
         let message = json!({ "type": "agent.message", "id": "sevt_6", "content": [{ "type": "text", "text": "Done: opened #9." }] });
-        assert_eq!(map_event(&message), vec![Mapped::Entry { kind: SessionEntryKind::Message, text: "Done: opened #9.".into(), tool: None }]);
+        assert_eq!(
+            map_event(&message),
+            vec![Mapped::Entry { kind: SessionEntryKind::Message, text: "Done: opened #9.".into(), tool: None }]
+        );
         let created = json!({ "type": "session.thread_created", "id": "sevt_7", "session_thread_id": "sthr_1", "agent_name": "g1t" });
         assert_eq!(map_event(&created), vec![Mapped::ThreadCreated { thread: "sthr_1".into(), agent: Some("g1t".into()) }]);
         let advisor = json!({ "type": "session.thread_created", "session_thread_id": "sthr_2", "agent_name": "anthropic.advisor" });
@@ -2505,7 +2628,10 @@ mod tests {
         let quiet = confirmation_event("sevt_3", ApprovalAnswer::Deny, None);
         assert!(quiet["events"][0].get("deny_message").is_none());
         let long = "x".repeat(MAX_NOTE + 50);
-        assert!(confirmation_event("sevt_3", ApprovalAnswer::Deny, Some(&long))["events"][0]["deny_message"].as_str().unwrap().chars().count() <= MAX_NOTE + 1);
+        assert!(
+            confirmation_event("sevt_3", ApprovalAnswer::Deny, Some(&long))["events"][0]["deny_message"].as_str().unwrap().chars().count()
+                <= MAX_NOTE + 1
+        );
         let expired = expired_event("sevt_4");
         assert_eq!(expired["events"][0]["type"], "user.tool_confirmation");
         assert_eq!(expired["events"][0]["result"], "deny");
@@ -2536,7 +2662,10 @@ mod tests {
         // What the transcript says at each step.
         assert!(waiting_note("bash: npm install").starts_with("Waiting for approval: bash: npm install."));
         assert!(waiting_note("bash: npm install").contains("10 minutes"));
-        assert_eq!(expired_note("bash: npm install"), "g1t declined a call that waited 10 minutes for approval and nobody answered: bash: npm install.");
+        assert_eq!(
+            expired_note("bash: npm install"),
+            "g1t declined a call that waited 10 minutes for approval and nobody answered: bash: npm install."
+        );
         assert_eq!(answered_note("ada", ApprovalAnswer::Allow, "bash: npm install"), "ada allowed bash: npm install.");
         // What it shows never holds a secret the call was given.
         let call = json!({ "type": "agent.tool_use", "id": "sevt_9", "name": "bash", "input": { "command": "curl -H 'x' api_key=sk-ant-123" }, "evaluated_permission": "ask" });

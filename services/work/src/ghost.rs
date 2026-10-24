@@ -19,18 +19,12 @@ pub(crate) fn statements() -> Vec<String> {
     sql.extend(crate::items::projects_user_deleted());
     sql.extend(crate::items::cycles_user_deleted());
     for table in ["pulls", "comments", "plans", "agent_messages", "commit_comments"] {
-        sql.push(format!(
-            "UPDATE {table} SET author_id = '{GHOST_ID}', author_name = '{GHOST_USERNAME}' WHERE author_id = ?1"
-        ));
+        sql.push(format!("UPDATE {table} SET author_id = '{GHOST_ID}', author_name = '{GHOST_USERNAME}' WHERE author_id = ?1"));
     }
-    sql.push(format!(
-        "UPDATE pulls SET requested_by_id = '{GHOST_ID}', requested_by_name = '{GHOST_USERNAME}' WHERE requested_by_id = ?1"
-    ));
+    sql.push(format!("UPDATE pulls SET requested_by_id = '{GHOST_ID}', requested_by_name = '{GHOST_USERNAME}' WHERE requested_by_id = ?1"));
     // What a coding agent did for it (cloud_agents.rs).
     sql.push(format!("UPDATE pulls SET agent_by_id = '{GHOST_ID}', agent_by_name = '{GHOST_USERNAME}' WHERE agent_by_id = ?1"));
-    sql.push(format!(
-        "UPDATE agent_commits SET person_id = '{GHOST_ID}', person_name = '{GHOST_USERNAME}' WHERE person_id = ?1"
-    ));
+    sql.push(format!("UPDATE agent_commits SET person_id = '{GHOST_ID}', person_name = '{GHOST_USERNAME}' WHERE person_id = ?1"));
     for (table, column) in [("pulls", "assignees"), ("pulls", "reviewers")] {
         sql.push(format!(
             "UPDATE {table} SET {column} = (SELECT json_group_array(value) FROM json_each({table}.{column}) WHERE value <> ?2)

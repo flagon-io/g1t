@@ -79,11 +79,7 @@ impl Checked {
 /// Who answers for each owner (by its text, `@acme/backend`) that
 /// resolved; owners that did not are left out, so they own nothing.
 pub(crate) fn members_of(resolved: &[ResolvedOwner]) -> HashMap<String, Vec<String>> {
-    resolved
-        .iter()
-        .filter(|owner| owner.check == OwnerCheck::Ok)
-        .map(|owner| (owner.owner.text(), owner.members.clone()))
-        .collect()
+    resolved.iter().filter(|owner| owner.check == OwnerCheck::Ok).map(|owner| (owner.owner.text(), owner.members.clone())).collect()
 }
 
 /// The requirements with only owners that resolved, dropping any left
@@ -108,10 +104,7 @@ pub(crate) fn latest_verdicts(comments: &[Comment]) -> Vec<codeowners::Verdict> 
         };
         let username = comment.author.username.to_lowercase();
         latest.retain(|had| had.username != username);
-        latest.push(codeowners::Verdict {
-            username,
-            approved: verdict == Verdict::Approve,
-        });
+        latest.push(codeowners::Verdict { username, approved: verdict == Verdict::Approve });
     }
     latest
 }
@@ -128,13 +121,7 @@ pub(crate) fn standing(
 ) -> PullCodeOwners {
     let lookup = |owner: &Owner| members.get(&owner.text()).cloned().unwrap_or_default();
     let reviews = codeowners::evaluate(requirements, &lookup, verdicts, author);
-    PullCodeOwners {
-        path: path.to_owned(),
-        required,
-        missing: codeowners::missing(&reviews),
-        reviews,
-        errors,
-    }
+    PullCodeOwners { path: path.to_owned(), required, missing: codeowners::missing(&reviews), reviews, errors }
 }
 
 /// Who to ask to review: the people and teams owning what changed, not yet
@@ -199,23 +186,14 @@ impl Work {
             let found: Outcome<BlobView> = g1t_kit::call(
                 &self.repos,
                 "blob",
-                &BlobArgs {
-                    path: path.clone(),
-                    viewer: viewer.clone(),
-                    git_ref: git_ref.to_owned(),
-                    file_path: location.to_owned(),
-                },
+                &BlobArgs { path: path.clone(), viewer: viewer.clone(), git_ref: git_ref.to_owned(), file_path: location.to_owned() },
             )
             .await?;
             let Outcome::Ok(blob) = found else {
                 continue;
             };
             if blob.size as usize > codeowners::MAX_BYTES {
-                return Ok(Some(Read {
-                    path: location.to_owned(),
-                    size: blob.size,
-                    text: None,
-                }));
+                return Ok(Some(Read { path: location.to_owned(), size: blob.size, text: None }));
             }
             let text = match blob.text {
                 Some(text) => Some(text),
@@ -236,11 +214,7 @@ impl Work {
                         .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
                 }
             };
-            return Ok(Some(Read {
-                path: location.to_owned(),
-                size: blob.size,
-                text: Some(text.unwrap_or_default()),
-            }));
+            return Ok(Some(Read { path: location.to_owned(), size: blob.size, text: Some(text.unwrap_or_default()) }));
         }
         Ok(None)
     }
@@ -271,11 +245,7 @@ impl Work {
             g1t_kit::call(
                 &self.identity,
                 "resolve_owners",
-                &ResolveOwnersArgs {
-                    repo_id: owners_repo.0.to_owned(),
-                    workspace: owners_repo.1.to_owned(),
-                    owners,
-                },
+                &ResolveOwnersArgs { repo_id: owners_repo.0.to_owned(), workspace: owners_repo.1.to_owned(), owners },
             )
             .await?
         };
@@ -283,25 +253,12 @@ impl Work {
         let mut errors = file.errors.clone();
         errors.extend(codeowners::check_owners(&file, &|owner| checks.get(owner).copied().unwrap_or(OwnerCheck::Ok)));
         errors.sort_by(|a, b| a.line.cmp(&b.line).then_with(|| a.token.cmp(&b.token)));
-        Ok(Some(Checked {
-            path: read.path,
-            size: read.size,
-            file,
-            resolved,
-            errors,
-        }))
+        Ok(Some(Checked { path: read.path, size: read.size, file, resolved, errors }))
     }
 
     pub(crate) async fn repo_by_id(&self, repo_id: &str, namespace: &str) -> Result<Option<Repo>> {
-        let found: Outcome<Repo> = g1t_kit::call(
-            &self.repos,
-            "get_by_id",
-            &GetByIdArgs {
-                id: repo_id.to_owned(),
-                viewer: Some(User::system(namespace)),
-            },
-        )
-        .await?;
+        let found: Outcome<Repo> =
+            g1t_kit::call(&self.repos, "get_by_id", &GetByIdArgs { id: repo_id.to_owned(), viewer: Some(User::system(namespace)) }).await?;
         Ok(match found {
             Outcome::Ok(repo) => Some(repo),
             Outcome::Fail(_) => None,
@@ -310,12 +267,8 @@ impl Work {
 
     /// The target repository of a pull request, as g1t reads it.
     pub(crate) async fn target_of(&self, pull: &Pull) -> Result<Option<Repo>> {
-        let path: Option<RepoPath> = g1t_kit::call(
-            &self.repos,
-            "path_by_id",
-            &g1t_contracts::repos::PathByIdArgs { id: pull.repo_id.clone() },
-        )
-        .await?;
+        let path: Option<RepoPath> =
+            g1t_kit::call(&self.repos, "path_by_id", &g1t_contracts::repos::PathByIdArgs { id: pull.repo_id.clone() }).await?;
         let Some(path) = path else {
             return Ok(None);
         };
@@ -325,14 +278,9 @@ impl Work {
     /// The pull request's code owners worked out afresh from the branch it
     /// merges into: the file, and the reviews the changed files need.
     async fn fresh_requirements(&self, repo: &Repo, pull: &Pull) -> Result<Option<(Checked, Vec<Requirement>)>> {
-        let path = RepoPath {
-            namespace: repo.namespace.clone(),
-            name: repo.name.clone(),
-        };
+        let path = RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() };
         let viewer = Some(User::system(&repo.namespace));
-        let Some(checked) = self
-            .check_codeowners(&repo.id, &path, &repo.default_branch, &viewer, (&repo.id, &repo.namespace))
-            .await?
+        let Some(checked) = self.check_codeowners(&repo.id, &path, &repo.default_branch, &viewer, (&repo.id, &repo.namespace)).await?
         else {
             return Ok(None);
         };
@@ -364,11 +312,7 @@ impl Work {
         }
         self.check_changed_codeowners(&repo, &pull).await?;
         let Some((checked, requirements)) = self.fresh_requirements(&repo, &pull).await? else {
-            self.db
-                .prepare("DELETE FROM pull_code_owners WHERE pull_id = ?")
-                .bind(&[pull.id.as_str().into()])?
-                .run()
-                .await?;
+            self.db.prepare("DELETE FROM pull_code_owners WHERE pull_id = ?").bind(&[pull.id.as_str().into()])?.run().await?;
             return Ok(());
         };
         let before = self
@@ -377,20 +321,11 @@ impl Work {
             .bind(&[pull.id.as_str().into()])?
             .first::<SnapshotRow>(None)
             .await?;
-        let mut asked_before: Vec<String> = before
-            .as_ref()
-            .and_then(|row| serde_json::from_str(&row.requested).ok())
-            .unwrap_or_default();
+        let mut asked_before: Vec<String> = before.as_ref().and_then(|row| serde_json::from_str(&row.requested).ok()).unwrap_or_default();
         // A draft is asked once it is ready.
         if pull.status == PullStatus::Open {
-            let (people, teams, owners) = to_ask(
-                &requirements,
-                &checked.resolved,
-                &pull.owner().username,
-                &pull.reviewers,
-                &pull.team_reviewers,
-                &asked_before,
-            );
+            let (people, teams, owners) =
+                to_ask(&requirements, &checked.resolved, &pull.owner().username, &pull.reviewers, &pull.team_reviewers, &asked_before);
             if !people.is_empty() || !teams.is_empty() {
                 self.ask_reviewers(&pull, people, teams, None, true).await?;
             }
@@ -424,23 +359,13 @@ impl Work {
         let Some(head) = pull.head_commit.as_deref() else {
             return Ok(());
         };
-        let Some(changed) = pull
-            .files
-            .iter()
-            .find(|file| codeowners::is_codeowners_path(&file.path))
-            .map(|file| file.path.clone())
-        else {
+        let Some(changed) = pull.files.iter().find(|file| codeowners::is_codeowners_path(&file.path)).map(|file| file.path.clone()) else {
             return Ok(());
         };
-        let source = pull.source_path(&RepoPath {
-            namespace: repo.namespace.clone(),
-            name: repo.name.clone(),
-        });
+        let source = pull.source_path(&RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() });
         let source_id = pull.source_id().to_owned();
         let viewer = self.owner_viewer(pull).await?;
-        let checked = self
-            .check_codeowners(&source_id, &source, head, &viewer, (&repo.id, &repo.namespace))
-            .await?;
+        let checked = self.check_codeowners(&source_id, &source, head, &viewer, (&repo.id, &repo.namespace)).await?;
         let (state, description) = match &checked {
             // Deleted: nothing to check.
             None => ("success", format!("{changed} was removed")),
@@ -451,9 +376,7 @@ impl Work {
             }
         };
         // The pull request's own changes: its head may exist only in its fork.
-        let target_url = checked
-            .as_ref()
-            .map(|_| format!("/{}/{}/pull/{}/files", repo.namespace, repo.name, pull.number));
+        let target_url = checked.as_ref().map(|_| format!("/{}/{}/pull/{}/files", repo.namespace, repo.name, pull.number));
         self.set_commit_status(SetCommitStatusArgs {
             repo_id: repo.id.clone(),
             sha: head.to_owned(),
@@ -469,7 +392,12 @@ impl Work {
 
     /// The pull request's code owners as last worked out, with where each
     /// review stands now.
-    pub(crate) async fn pull_code_owners(&self, pull: &Pull, comments: &[Comment], settings: &RepoSettings) -> Result<Option<PullCodeOwners>> {
+    pub(crate) async fn pull_code_owners(
+        &self,
+        pull: &Pull,
+        comments: &[Comment],
+        settings: &RepoSettings,
+    ) -> Result<Option<PullCodeOwners>> {
         let Some(row) = self
             .db
             .prepare("SELECT * FROM pull_code_owners WHERE pull_id = ?")
@@ -544,32 +472,17 @@ impl Work {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        let git_ref = a
-            .git_ref
-            .as_deref()
-            .map(str::trim)
-            .filter(|git_ref| !git_ref.is_empty())
-            .unwrap_or(&repo.default_branch)
-            .to_owned();
+        let git_ref = a.git_ref.as_deref().map(str::trim).filter(|git_ref| !git_ref.is_empty()).unwrap_or(&repo.default_branch).to_owned();
         if git_ref.len() > 255 {
             return Ok(Outcome::fail(FailureCode::Invalid, "That ref is too long."));
         }
-        let path = RepoPath {
-            namespace: repo.namespace.clone(),
-            name: repo.name.clone(),
-        };
+        let path = RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() };
         // Read as g1t: the viewer can read the repository, and the file
         // decides who owns it, whoever asks.
         let viewer = Some(User::system(&repo.namespace));
-        let checked = self
-            .check_codeowners(&repo.id, &path, &git_ref, &viewer, (&repo.id, &repo.namespace))
-            .await?;
+        let checked = self.check_codeowners(&repo.id, &path, &git_ref, &viewer, (&repo.id, &repo.namespace)).await?;
         Ok(Outcome::Ok(match checked {
-            None => CodeOwnersReport {
-                path: None,
-                git_ref,
-                ..CodeOwnersReport::default()
-            },
+            None => CodeOwnersReport { path: None, git_ref, ..CodeOwnersReport::default() },
             Some(checked) => {
                 let mut sections: Vec<String> = Vec::new();
                 for section in &checked.file.sections {
@@ -608,11 +521,7 @@ mod tests {
         Comment {
             id: format!("cmt_{author}"),
             kind: CommentKind::Comment,
-            author: User {
-                id: format!("usr_{author}"),
-                username: author.to_owned(),
-                ..User::default()
-            },
+            author: User { id: format!("usr_{author}"), username: author.to_owned(), ..User::default() },
             body: String::new(),
             path: None,
             line: None,
@@ -735,7 +644,8 @@ mod tests {
         assert_eq!(by("zed", &[comment("g1t", Some(Verdict::Approve))]), None);
         // Elsewhere g1t's approval does not count.
         let api = requirements(&["src/api/users.rs"]);
-        let api_missing = standing("CODEOWNERS", true, &api, &members, &latest_verdicts(&[comment("g1t", Some(Verdict::Approve))]), "zed", 0);
+        let api_missing =
+            standing("CODEOWNERS", true, &api, &members, &latest_verdicts(&[comment("g1t", Some(Verdict::Approve))]), "zed", 0);
         assert!(api_missing.missing.is_some());
         // The author approving their own does not count.
         let own = standing("CODEOWNERS", true, &api, &members, &latest_verdicts(&[comment("ana", Some(Verdict::Approve))]), "ana", 0);
@@ -763,11 +673,7 @@ mod tests {
 
     #[test]
     fn only_verdicts_count_and_the_latest_one() {
-        let comments = [
-            comment("bo", Some(Verdict::RequestChanges)),
-            comment("cy", None),
-            comment("BO", Some(Verdict::Approve)),
-        ];
+        let comments = [comment("bo", Some(Verdict::RequestChanges)), comment("cy", None), comment("BO", Some(Verdict::Approve))];
         let latest = latest_verdicts(&comments);
         assert_eq!(latest.len(), 1);
         assert_eq!(latest[0].username, "bo");

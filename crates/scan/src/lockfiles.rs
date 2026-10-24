@@ -54,16 +54,8 @@ pub enum Lockfile {
 }
 
 impl Lockfile {
-    pub const NAMES: [&'static str; 8] = [
-        "package-lock.json",
-        "pnpm-lock.yaml",
-        "yarn.lock",
-        "Cargo.lock",
-        "go.mod",
-        "go.sum",
-        "requirements.txt",
-        "poetry.lock",
-    ];
+    pub const NAMES: [&'static str; 8] =
+        ["package-lock.json", "pnpm-lock.yaml", "yarn.lock", "Cargo.lock", "go.mod", "go.sum", "requirements.txt", "poetry.lock"];
 
     pub fn for_path(path: &str) -> Option<Lockfile> {
         Some(match path.rsplit('/').next().unwrap_or(path) {
@@ -105,10 +97,7 @@ impl Lockfile {
             .filter(|(name, version)| !name.is_empty() && version.starts_with(|c: char| c.is_ascii_digit() || c == 'v'))
             .map(|(name, version)| (ecosystem.normalize(&name), version))
             .collect();
-        unique
-            .into_iter()
-            .map(|(name, version)| Package { ecosystem, name, version })
-            .collect()
+        unique.into_iter().map(|(name, version)| Package { ecosystem, name, version }).collect()
     }
 }
 
@@ -135,10 +124,7 @@ fn package_lock(text: &str) -> Vec<(String, String)> {
             if entry.get("link").and_then(Value::as_bool) == Some(true) {
                 continue;
             }
-            let name = entry
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or(&path[at + "node_modules/".len()..]);
+            let name = entry.get("name").and_then(Value::as_str).unwrap_or(&path[at + "node_modules/".len()..]);
             if let Some(version) = entry.get("version").and_then(Value::as_str) {
                 found.push((name.to_owned(), version.to_owned()));
             }
@@ -292,7 +278,13 @@ fn go_mod(text: &str) -> Vec<(String, String)> {
             block = true;
             continue;
         }
-        let line = if block { line } else if let Some(rest) = line.strip_prefix("require ") { rest.trim() } else { continue };
+        let line = if block {
+            line
+        } else if let Some(rest) = line.strip_prefix("require ") {
+            rest.trim()
+        } else {
+            continue;
+        };
         let mut words = line.split_whitespace();
         if let (Some(module), Some(version)) = (words.next(), words.next()) {
             found.push((module.to_owned(), version.to_owned()));
@@ -311,9 +303,7 @@ fn go_sum(text: &str) -> Vec<(String, String)> {
             continue;
         };
         let version = version.trim_end_matches("/go.mod");
-        let keep = highest
-            .get(module)
-            .is_none_or(|current| crate::version::compare(version, current).is_gt());
+        let keep = highest.get(module).is_none_or(|current| crate::version::compare(version, current).is_gt());
         if keep {
             highest.insert(module.to_owned(), version.to_owned());
         }
@@ -348,11 +338,8 @@ fn requirements(text: &str) -> Vec<(String, String)> {
 /// the vulnerable version is gone from the lockfile.
 pub fn still_locked_check(lockfile: Lockfile, path: &str, name: &str, version: &str) -> String {
     let quote = |text: &str| format!("'{}'", text.replace('\'', "'\\''"));
-    let escape = |text: &str| {
-        text.chars()
-            .flat_map(|c| if ".[]^$*+?(){}|\\".contains(c) { vec!['\\', c] } else { vec![c] })
-            .collect::<String>()
-    };
+    let escape =
+        |text: &str| text.chars().flat_map(|c| if ".[]^$*+?(){}|\\".contains(c) { vec!['\\', c] } else { vec![c] }).collect::<String>();
     let file = quote(path);
     match lockfile {
         Lockfile::PackageLock => format!(
@@ -363,10 +350,7 @@ pub fn still_locked_check(lockfile: Lockfile, path: &str, name: &str, version: &
                 "const l=require(require(\"path\").resolve(process.argv[1]));const hit=Object.entries(l.packages||{{}}).some(([k,p])=>k.endsWith(\"node_modules/{name}\")&&p.version===\"{version}\");process.exit(hit?1:0)"
             ))
         ),
-        Lockfile::PnpmLock => format!(
-            "! grep -Eq {} {file}",
-            quote(&format!("^ +'?/?{}[@/]{}[:(_']", escape(name), escape(version)))
-        ),
+        Lockfile::PnpmLock => format!("! grep -Eq {} {file}", quote(&format!("^ +'?/?{}[@/]{}[:(_']", escape(name), escape(version)))),
         Lockfile::YarnLock => format!(
             "! grep -A3 -E {} {file} | grep -Eq {}",
             quote(&format!("^\"?{}@", escape(name))),
@@ -377,10 +361,9 @@ pub fn still_locked_check(lockfile: Lockfile, path: &str, name: &str, version: &
             quote(&format!("name = \"{name}\"")),
             quote(&format!("version = \"{version}\""))
         ),
-        Lockfile::GoMod | Lockfile::GoSum => format!(
-            "! grep -Eq {} {file}",
-            quote(&format!("(^|[[:space:]]){} {}([[:space:]]|/|$)", escape(name), escape(version)))
-        ),
+        Lockfile::GoMod | Lockfile::GoSum => {
+            format!("! grep -Eq {} {file}", quote(&format!("(^|[[:space:]]){} {}([[:space:]]|/|$)", escape(name), escape(version))))
+        }
         Lockfile::Requirements => format!(
             "! grep -Eiq {} {file}",
             quote(&format!("^{}(\\[.*\\])? *===? *{}([^0-9.]|$)", escape(name).replace('-', "[-_.]"), escape(version)))
@@ -406,11 +389,7 @@ mod tests {
     use super::*;
 
     fn names(lockfile: Lockfile, text: &str) -> Vec<String> {
-        lockfile
-            .parse(text)
-            .into_iter()
-            .map(|package| format!("{}@{}", package.name, package.version))
-            .collect()
+        lockfile.parse(text).into_iter().map(|package| format!("{}@{}", package.name, package.version)).collect()
     }
 
     #[test]
@@ -465,7 +444,8 @@ mod tests {
 
     #[test]
     fn requirements_and_poetry() {
-        let requirements = "# web\nDjango==3.2.0\nrequests[security]==2.19.1 ; python_version >= '3'\nflask>=2.0\n-r other.txt\nPyYAML===5.3\n";
+        let requirements =
+            "# web\nDjango==3.2.0\nrequests[security]==2.19.1 ; python_version >= '3'\nflask>=2.0\n-r other.txt\nPyYAML===5.3\n";
         assert_eq!(names(Lockfile::Requirements, requirements), ["django@3.2.0", "pyyaml@5.3", "requests@2.19.1"]);
         let poetry = "[[package]]\nname = \"Jinja2\"\nversion = \"2.10\"\ndescription = \"x\"\n\n[package.dependencies]\nMarkupSafe = \">=0.23\"\n\n[[package]]\nname = \"urllib3\"\nversion = \"1.24.1\"\n\n[metadata]\nlock-version = \"2.0\"\n";
         assert_eq!(names(Lockfile::PoetryLock, poetry), ["jinja2@2.10", "urllib3@1.24.1"]);

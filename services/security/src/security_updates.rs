@@ -20,8 +20,8 @@
 use std::collections::BTreeMap;
 
 use g1t_contracts::repos::RepoPath;
-use g1t_contracts::security::{BUMP_NEEDS_CHANGES_EXIT, BUMP_UNSUPPORTED_EXIT, BumpArgs, UpdateState, update_branch};
 use g1t_contracts::repos::{BlobArgs, BlobView};
+use g1t_contracts::security::{BUMP_NEEDS_CHANGES_EXIT, BUMP_UNSUPPORTED_EXIT, BumpArgs, UpdateState, update_branch};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::{
     CloseReason, CloseWorkItemArgs, OpenPullArgs, Pull, PullActionArgs, PullDetail, PullStatus, Runtime, ViewArgs, WorkItemActionArgs,
@@ -207,10 +207,12 @@ pub fn security_entry<'a>(config: &'a Config, default_branch: &str, osv: &str, m
 /// comment, and named by `allow` when it names dependencies.
 pub fn security_allowed(entry: &Entry, comments: &[IgnoreCondition], package: &str, target: &str) -> bool {
     let ignored = entry.ignore.iter().filter(|rule| matches(&rule.dependency, package)).any(|rule| {
-        (rule.versions.is_empty() && rule.update_types.is_empty()) || rule.versions.iter().any(|versions| ranges::ignored_by(versions, target))
+        (rule.versions.is_empty() && rule.update_types.is_empty())
+            || rule.versions.iter().any(|versions| ranges::ignored_by(versions, target))
     });
     let commented = comments.iter().filter(|c| c.ecosystem == entry.ecosystem && c.dependency.eq_ignore_ascii_case(package)).any(|c| {
-        (c.versions.is_none() && c.update_type.is_none()) || c.versions.as_deref().is_some_and(|versions| ranges::ignored_by(versions, target))
+        (c.versions.is_none() && c.update_type.is_none())
+            || c.versions.as_deref().is_some_and(|versions| ranges::ignored_by(versions, target))
     });
     let named: Vec<&str> = entry.allow.iter().filter_map(|rule| rule.dependency.as_deref()).collect();
     let allowed = named.is_empty() || named.iter().any(|pattern| matches(pattern, package));
@@ -244,7 +246,11 @@ pub fn security_settings<'a>(state: &'a VersionUpdatesState, osv: &str, manifest
 pub fn commit_message_of(entry: &VersionUpdateEntry) -> Option<CommitMessage> {
     let message = entry.options.get("commit-message")?;
     let text = |key: &str| message.get(key).and_then(Value::as_str).map(str::to_owned);
-    Some(CommitMessage { prefix: text("prefix"), prefix_development: text("prefix-development"), scope: text("include").as_deref() == Some("scope") })
+    Some(CommitMessage {
+        prefix: text("prefix"),
+        prefix_development: text("prefix-development"),
+        scope: text("include").as_deref() == Some("scope"),
+    })
 }
 
 /// A title with the file's commit message prefix, if it has one.
@@ -255,7 +261,9 @@ fn prefixed(prefix: &str, plain: String) -> String {
 
 /// A grouped security update's body.
 pub fn group_text(group: &str, members: &[GroupMember], vulns: &[&VulnRow], file: &str) -> String {
-    let mut body = format!("Upgrades the {group} group's vulnerable packages to the versions that fix them:\n\n| Package | From | To |\n| --- | --- | --- |\n");
+    let mut body = format!(
+        "Upgrades the {group} group's vulnerable packages to the versions that fix them:\n\n| Package | From | To |\n| --- | --- | --- |\n"
+    );
     for member in members {
         body.push_str(&format!("| `{}` | {} | **{}** |\n", member.package, member.from, member.target));
     }
@@ -340,9 +348,14 @@ impl Security {
         let system = User::system(&repo.namespace);
         let workspace = linked.workspace_or(&Self::workspace_of(repo)).to_owned();
         let number = linked.number;
-        let item = WorkItemActionArgs { actor: system.clone(), workspace: workspace.clone(), number, reason: Some(CloseReason::NotPlanned) };
-        let closed: Outcome<Value> =
-            g1t_kit::call(&self.work, "close_work_item", &CloseWorkItemArgs { item, repo: None, commit: None, sub_items: Some(g1t_contracts::work::OpenSubItems::Leave), move_to: None }).await?;
+        let item =
+            WorkItemActionArgs { actor: system.clone(), workspace: workspace.clone(), number, reason: Some(CloseReason::NotPlanned) };
+        let closed: Outcome<Value> = g1t_kit::call(
+            &self.work,
+            "close_work_item",
+            &CloseWorkItemArgs { item, repo: None, commit: None, sub_items: Some(g1t_contracts::work::OpenSubItems::Leave), move_to: None },
+        )
+        .await?;
         if matches!(closed, Outcome::Ok(_)) {
             self.comment_on(&system, None, &workspace, number, why).await?;
         }
@@ -380,10 +393,8 @@ impl Security {
         if !enabled {
             return Ok(());
         }
-        let mut groups: Vec<((String, String), Vec<&VulnRow>)> = by_package
-            .into_iter()
-            .filter(|(_, vulns)| vulns.iter().any(|vuln| vuln.fixed_version.is_some()))
-            .collect();
+        let mut groups: Vec<((String, String), Vec<&VulnRow>)> =
+            by_package.into_iter().filter(|(_, vulns)| vulns.iter().any(|vuln| vuln.fixed_version.is_some())).collect();
         groups.sort_by_key(|(_, vulns)| std::cmp::Reverse(vulns.iter().map(|v| Severity::parse(&v.severity)).max()));
         let retry_after = rfc3339(now_ms().saturating_sub(RETRY_FAILED_MS));
         let comments = self.store.ignores(&repo.repo_id).await?;
@@ -408,7 +419,13 @@ impl Security {
                         asked += 1;
                     }
                     let manifests = manifests.iter().map(|path| (*path).to_owned()).collect();
-                    grouped.entry(key).or_default().push(GroupMember { ecosystem: ecosystem.clone(), package: package.clone(), from, target, manifests });
+                    grouped.entry(key).or_default().push(GroupMember {
+                        ecosystem: ecosystem.clone(),
+                        package: package.clone(),
+                        from,
+                        target,
+                        manifests,
+                    });
                     continue;
                 }
             }
@@ -422,10 +439,7 @@ impl Security {
                     // An upgrade work item from before security updates,
                     // still open, is left to the agent on it.
                     if let Some(existing) = self.store.upgrade(&repo.repo_id, &ecosystem, &package).await?.and_then(|row| row.linked_item())
-                        && self
-                            .linked(repo, &existing)
-                            .await?
-                            .is_some_and(|item| item.state == g1t_contracts::work::State::Open)
+                        && self.linked(repo, &existing).await?.is_some_and(|item| item.state == g1t_contracts::work::State::Open)
                     {
                         continue;
                     }
@@ -445,7 +459,15 @@ impl Security {
     /// Asks for one pull request for a `security-updates` group's
     /// packages, unless one for the same versions is under way or was
     /// closed.
-    async fn request_group(&self, repo: &RepoRow, loaded: &Loaded, entry: &Entry, group: &str, members: Vec<GroupMember>, open: &[VulnRow]) -> Result<()> {
+    async fn request_group(
+        &self,
+        repo: &RepoRow,
+        loaded: &Loaded,
+        entry: &Entry,
+        group: &str,
+        members: Vec<GroupMember>,
+        open: &[VulnRow],
+    ) -> Result<()> {
         let subject = format!("security:{group}");
         let mut signature: Vec<String> = members.iter().map(|m| format!("{}@{}", m.package, m.target)).collect();
         signature.sort();
@@ -456,14 +478,16 @@ impl Security {
             return Ok(());
         }
         let branch = format!("{UPDATE_BRANCH_PREFIX}{}-{}", group.to_lowercase().replace('|', "-"), pull_text::digest(&signature));
-        let vulns: Vec<&VulnRow> = open.iter().filter(|vuln| members.iter().any(|m| m.ecosystem == vuln.ecosystem && m.package == vuln.package)).collect();
+        let vulns: Vec<&VulnRow> =
+            open.iter().filter(|vuln| members.iter().any(|m| m.ecosystem == vuln.ecosystem && m.package == vuln.package)).collect();
         let count = if members.len() == 1 { "1 security update".to_owned() } else { format!("{} security updates", members.len()) };
         let title = prefixed(&pull_text::prefix(entry.commit_message.as_ref(), false), format!("Bump the {group} group with {count}"));
         let body = group_text(group, &members, &vulns, &loaded.file);
         let mut lockfiles: Vec<String> = members.iter().flat_map(|m| m.manifests.clone()).collect();
         lockfiles.sort();
         lockfiles.dedup();
-        let packages: Vec<BumpPackage> = members.iter().map(|m| BumpPackage { package: m.package.clone(), version: m.target.clone() }).collect();
+        let packages: Vec<BumpPackage> =
+            members.iter().map(|m| BumpPackage { package: m.package.clone(), version: m.target.clone() }).collect();
         let bump = BumpArgs {
             repo: Self::path_of(repo),
             ecosystem: members[0].ecosystem.clone(),
@@ -485,7 +509,11 @@ impl Security {
                 name: m.package.clone(),
                 from: m.from.clone(),
                 to: m.target.clone(),
-                directory: m.manifests.first().map(|path| format!("/{}", path.rsplit_once('/').map_or("", |(dir, _)| dir))).unwrap_or_else(|| "/".to_owned()),
+                directory: m
+                    .manifests
+                    .first()
+                    .map(|path| format!("/{}", path.rsplit_once('/').map_or("", |(dir, _)| dir)))
+                    .unwrap_or_else(|| "/".to_owned()),
                 dependency_type: String::new(),
                 update_type: ranges::update_type(&m.from, &m.target),
             })
@@ -530,7 +558,9 @@ impl Security {
             }
         }
         if let Err(reason) = started {
-            self.store.set_update_pull(&id, UpdateState::Failed, None, None, Some(&format!("g1t could not start the security update: {reason}"))).await?;
+            self.store
+                .set_update_pull(&id, UpdateState::Failed, None, None, Some(&format!("g1t could not start the security update: {reason}")))
+                .await?;
         }
         Ok(())
     }
@@ -592,10 +622,7 @@ impl Security {
             return Ok(());
         };
         let open = self.store.open_vulnerabilities(repo_id).await?;
-        let vulns: Vec<&VulnRow> = open
-            .iter()
-            .filter(|vuln| vuln.ecosystem == row.ecosystem && vuln.package == row.package)
-            .collect();
+        let vulns: Vec<&VulnRow> = open.iter().filter(|vuln| vuln.ecosystem == row.ecosystem && vuln.package == row.package).collect();
         let system = User::system(&repo.namespace);
         // What the dependency update file says for this package's directory.
         let state = repo.version_updates();
@@ -642,7 +669,11 @@ impl Security {
             && let Some(found) = self.get_pull(&repo, older).await?
             && matches!(found.status, PullStatus::Open | PullStatus::Draft)
             && self
-                .close_with(&repo, older, format!("Closed: superseded by #{}, which upgrades `{}` to {}.", pull.number, row.package, row.target))
+                .close_with(
+                    &repo,
+                    older,
+                    format!("Closed: superseded by #{}, which upgrades `{}` to {}.", pull.number, row.package, row.target),
+                )
                 .await?
             && found.branch.as_deref() != Some(branch)
         {
@@ -776,7 +807,11 @@ impl Security {
         let before = rfc3339(now_ms().saturating_sub(STALLED_MS));
         for row in self.store.stalled_updates(&before, 10).await? {
             let Some(repo) = self.store.repo(&row.repo_id).await? else { continue };
-            let waits = if repo.upkeep == 0 { Some("The version could not be raised in a sandbox.".to_owned()) } else { self.takes_updates(&repo).await?.err() };
+            let waits = if repo.upkeep == 0 {
+                Some("The version could not be raised in a sandbox.".to_owned())
+            } else {
+                self.takes_updates(&repo).await?.err()
+            };
             if let Some(why) = waits {
                 self.store.set_update(&row, UpdateState::Failed, row.pull(), None, Some(&why)).await?;
                 continue;
@@ -792,10 +827,14 @@ impl Security {
             if let (Some(repo), Some(linked)) = (self.store.repo(&row.repo_id).await?, row.linked_item()) {
                 let path = Self::path_of(&repo);
                 let alerts = format!("/{}/{}/security/vulnerabilities", path.namespace, path.name);
-                self.close_item_with(&repo, &linked, format!(
-                    "g1t no longer opens work items for upgrades it cannot make on its own. This one is on [its alert]({alerts}), \
+                self.close_item_with(
+                    &repo,
+                    &linked,
+                    format!(
+                        "g1t no longer opens work items for upgrades it cannot make on its own. This one is on [its alert]({alerts}), \
                      which says why and is tried again later."
-                ))
+                    ),
+                )
                 .await?;
             }
             self.store.set_update(&row, UpdateState::Failed, row.pull(), None, Some(&why)).await?;
@@ -824,7 +863,9 @@ mod tests {
             let packages: Vec<String> = versions
                 .iter()
                 .enumerate()
-                .map(|(i, version)| format!("\"{}node_modules/lodash\": {{\"version\": \"{version}\"}}", if i == 0 { "" } else { "node_modules/x/" }))
+                .map(|(i, version)| {
+                    format!("\"{}node_modules/lodash\": {{\"version\": \"{version}\"}}", if i == 0 { "" } else { "node_modules/x/" })
+                })
                 .collect();
             format!("{{\"lockfileVersion\": 3, \"packages\": {{\"\": {{}}, {}}}}}", packages.join(", "))
         };
@@ -851,7 +892,10 @@ mod tests {
         assert!(stopped_why(4, None, Some(("zod", "4.6.6"))).contains("cannot update this lockfile"));
         assert!(stopped_why(1, None, None).contains("exit code 1"));
         // What g1t stopped it for wins over the exit code it passed on.
-        assert_eq!(stopped_why(137, Some("It ran past 15 minutes."), None), "The sandbox was stopped before it pushed: It ran past 15 minutes.");
+        assert_eq!(
+            stopped_why(137, Some("It ran past 15 minutes."), None),
+            "The sandbox was stopped before it pushed: It ran past 15 minutes."
+        );
         assert!(stopped_why(3, Some(""), None).starts_with("The packages"));
     }
 
@@ -868,7 +912,15 @@ mod tests {
         assert!(!security_allowed(entry, &[], "left-pad", "1.3.0"));
         assert!(!security_allowed(entry, &[], "react", "19.0.1"));
         assert!(security_allowed(entry, &[], "react", "18.3.1"));
-        let comment = IgnoreCondition { ecosystem: "npm".into(), dependency: "Lodash".into(), versions: None, update_type: None, by: "ana".into(), pull: None, at: String::new() };
+        let comment = IgnoreCondition {
+            ecosystem: "npm".into(),
+            dependency: "Lodash".into(),
+            versions: None,
+            update_type: None,
+            by: "ana".into(),
+            pull: None,
+            at: String::new(),
+        };
         assert!(!security_allowed(entry, &[comment], "lodash", "4.17.21"));
         assert_eq!(security_group(entry, "@babel/core", "7.0.0", "7.24.1").as_deref(), Some("fixes"));
         // A major bump is outside the group's update types, and only security groups count.
@@ -882,7 +934,13 @@ mod tests {
     #[test]
     fn grouped_security_updates_say_what_they_fix() {
         let vuln = row("4.17.20", "4.17.21");
-        let members = vec![GroupMember { ecosystem: "npm".into(), package: "lodash".into(), from: "4.17.20".into(), target: "4.17.21".into(), manifests: vec!["package-lock.json".into()] }];
+        let members = vec![GroupMember {
+            ecosystem: "npm".into(),
+            package: "lodash".into(),
+            from: "4.17.20".into(),
+            target: "4.17.21".into(),
+            manifests: vec!["package-lock.json".into()],
+        }];
         let body = group_text("fixes", &members, &[&vuln], ".github/dependabot.yml");
         assert!(body.starts_with("Upgrades the fixes group's vulnerable packages"));
         assert!(body.contains("| `lodash` | 4.17.20 | **4.17.21** |"));

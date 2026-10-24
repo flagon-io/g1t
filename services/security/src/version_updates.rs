@@ -27,7 +27,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use g1t_contracts::access::{Capability, CollaboratorPermissionArgs, PermissionInfo};
 use g1t_contracts::actions::{ResolveSettingsArgs, ResolvedSettings};
 use g1t_contracts::events::Event;
-use g1t_contracts::repos::{BlobArgs, BlobView, BlobText, FileList, ListFilesArgs, RawFile, RawFileArgs, ReadBlobsArgs, RepoPath};
+use g1t_contracts::repos::{BlobArgs, BlobText, BlobView, FileList, ListFilesArgs, RawFile, RawFileArgs, ReadBlobsArgs, RepoPath};
 use g1t_contracts::security::{BumpArgs, UpdateState};
 use g1t_contracts::time::{parse_rfc3339, rfc3339};
 use g1t_contracts::updates::{
@@ -35,8 +35,8 @@ use g1t_contracts::updates::{
     VersionUpdatesState, update_command,
 };
 use g1t_contracts::work::{
-    Mergeable, OpenPullArgs, Pull, PullActionArgs, PullDetail, PullStatus, RequiredState, Runtime, SetCommitStatusArgs,
-    UpdatePullArgs, ViewArgs,
+    Mergeable, OpenPullArgs, Pull, PullActionArgs, PullDetail, PullStatus, RequiredState, Runtime, SetCommitStatusArgs, UpdatePullArgs,
+    ViewArgs,
 };
 use g1t_contracts::{FailureCode, Outcome, User};
 use g1t_kit::now_ms;
@@ -253,7 +253,9 @@ pub fn directory_candidates(entry: &Entry, directory: &Directory) -> Vec<(String
         let locked = directory.locked.get(&name).cloned().unwrap_or_default();
         let fitting: Vec<&String> = locked
             .iter()
-            .filter(|version| declared.requirement.as_deref().is_none_or(|req| ranges::satisfies(req, version, bare(ecosystem)) != Some(false)))
+            .filter(|version| {
+                declared.requirement.as_deref().is_none_or(|req| ranges::satisfies(req, version, bare(ecosystem)) != Some(false))
+            })
             .collect();
         let current = fitting
             .into_iter()
@@ -296,7 +298,9 @@ pub fn admit<'a>(plans: &'a [PullPlan], existing: &'a [PullRow], limit: u32) -> 
         let signature = plan.signature();
         let mine: Vec<&PullRow> = existing.iter().filter(|row| row.subject == subject).collect();
         // Already open for these versions, or closed by a person for them.
-        if mine.iter().any(|row| row.signature == signature && (in_progress(row) || matches!(row.state(), UpdateState::Closed | UpdateState::NeedsCode))) {
+        if mine.iter().any(|row| {
+            row.signature == signature && (in_progress(row) || matches!(row.state(), UpdateState::Closed | UpdateState::NeedsCode))
+        }) {
             continue;
         }
         match mine.into_iter().find(in_progress) {
@@ -342,7 +346,12 @@ impl Security {
             let read: Outcome<BlobView> = g1t_kit::call(
                 &self.repos,
                 "blob",
-                &BlobArgs { path: path.clone(), viewer: Some(User::system(&repo.namespace)), git_ref: String::new(), file_path: file.to_owned() },
+                &BlobArgs {
+                    path: path.clone(),
+                    viewer: Some(User::system(&repo.namespace)),
+                    git_ref: String::new(),
+                    file_path: file.to_owned(),
+                },
             )
             .await?;
             if let Outcome::Ok(blob) = read {
@@ -421,21 +430,23 @@ impl Security {
         }
         let loaded = self.load_config(repo).await;
         let (result, error, next) = match loaded {
-            Ok(Some(loaded)) => match loaded.config.updates.iter().find(|entry| entry.id() == entry_id && runnable(entry, Some(&loaded.default_branch))) {
-                Some(entry) => {
-                    let next = entry
-                        .schedule
-                        .as_ref()
-                        .and_then(|schedule| schedule.next_run(now_ms(), &updates::seed(&repo.repo_id, entry)))
-                        .map(rfc3339);
-                    match self.run_entry(repo, &loaded, entry).await {
-                        Ok(Ok(summary)) => (Some(summary), None, next),
-                        Ok(Err(problem)) => (None, Some(problem), next),
-                        Err(error) => (None, Some(format!("The check could not finish: {error}")), next),
+            Ok(Some(loaded)) => {
+                match loaded.config.updates.iter().find(|entry| entry.id() == entry_id && runnable(entry, Some(&loaded.default_branch))) {
+                    Some(entry) => {
+                        let next = entry
+                            .schedule
+                            .as_ref()
+                            .and_then(|schedule| schedule.next_run(now_ms(), &updates::seed(&repo.repo_id, entry)))
+                            .map(rfc3339);
+                        match self.run_entry(repo, &loaded, entry).await {
+                            Ok(Ok(summary)) => (Some(summary), None, next),
+                            Ok(Err(problem)) => (None, Some(problem), next),
+                            Err(error) => (None, Some(format!("The check could not finish: {error}")), next),
+                        }
                     }
+                    None => (None, None, None),
                 }
-                None => (None, None, None),
-            },
+            }
             Ok(None) => (None, Some("The dependency update file is missing or has problems.".to_owned()), None),
             Err(error) => (None, Some(format!("The dependency update file could not be read: {error}")), Some(config_retry_at(now_ms()))),
         };
@@ -465,7 +476,10 @@ impl Security {
         }
         // Claimed: run_claimed would claim again, so run it here.
         let (result, error) = match self.load_config(&repo).await {
-            Ok(loaded) => match loaded.as_ref().and_then(|loaded| loaded.config.updates.iter().find(|entry| entry.id() == a.entry).map(|entry| (loaded, entry))) {
+            Ok(loaded) => match loaded
+                .as_ref()
+                .and_then(|loaded| loaded.config.updates.iter().find(|entry| entry.id() == a.entry).map(|entry| (loaded, entry)))
+            {
                 Some((loaded, entry)) => match self.run_entry(&repo, loaded, entry).await {
                     Ok(Ok(summary)) => (Some(summary), None),
                     Ok(Err(problem)) => (None, Some(problem)),
@@ -485,7 +499,12 @@ impl Security {
 
     /// The registries an entry may use, ready for the sandbox and for
     /// asking about versions, and what kept any from being used.
-    async fn entry_registries(&self, repo: &RepoRow, loaded: &Loaded, entry: &Entry) -> Result<(Vec<(Registry, BumpRegistry, Source)>, Vec<String>)> {
+    async fn entry_registries(
+        &self,
+        repo: &RepoRow,
+        loaded: &Loaded,
+        entry: &Entry,
+    ) -> Result<(Vec<(Registry, BumpRegistry, Source)>, Vec<String>)> {
         let kind_for = |ecosystem: &str| match ecosystem {
             "npm" => "npm-registry",
             "cargo" => "cargo-registry",
@@ -584,25 +603,32 @@ impl Security {
 
     /// What `name`'s registry says, from the private one that serves it if
     /// the entry names one.
-    async fn package(&self, ecosystem: &str, name: &str, current: &str, registries: &[(Registry, BumpRegistry, Source)]) -> Result<Option<Package>> {
-        let private = registries.iter().find(|(registry, _, _)| {
-            registry.replaces_base || registry.scopes.iter().any(|scope| name.starts_with(&format!("{scope}/")))
-        });
+    async fn package(
+        &self,
+        ecosystem: &str,
+        name: &str,
+        current: &str,
+        registries: &[(Registry, BumpRegistry, Source)],
+    ) -> Result<Option<Package>> {
+        let private = registries
+            .iter()
+            .find(|(registry, _, _)| registry.replaces_base || registry.scopes.iter().any(|scope| name.starts_with(&format!("{scope}/"))));
         let source = private.map(|(_, _, source)| source);
         let Some(url) = registries::package_url(ecosystem, name, source) else { return Ok(None) };
-        let accept = if ecosystem == "pip" && source.is_some() { "application/vnd.pypi.simple.v1+json" } else { "application/json, text/plain" };
+        let accept =
+            if ecosystem == "pip" && source.is_some() { "application/vnd.pypi.simple.v1+json" } else { "application/json, text/plain" };
         let Some(body) = self.get(&url, source, accept).await? else { return Ok(None) };
         let mut package = registries::read(ecosystem, name, source.is_some(), &body);
         if ecosystem == "gomod" {
             // When the newest few were published, for the cooldown.
-            let mut newer: Vec<usize> = (0..package.releases.len())
-                .filter(|at| version::compare(&package.releases[*at].version, current).is_gt())
-                .collect();
+            let mut newer: Vec<usize> =
+                (0..package.releases.len()).filter(|at| version::compare(&package.releases[*at].version, current).is_gt()).collect();
             newer.sort_by(|a, b| version::compare(&package.releases[*b].version, &package.releases[*a].version));
             for at in newer.into_iter().take(GO_TIMES) {
                 let info = url.replace("/@v/list", &format!("/@v/{}.info", package.releases[at].version));
                 if let Some(text) = self.get(&info, source, "application/json").await? {
-                    package.releases[at].published_ms = serde_json::from_str(&text).ok().and_then(|value: Value| registries::go_info_time(&value));
+                    package.releases[at].published_ms =
+                        serde_json::from_str(&text).ok().and_then(|value: Value| registries::go_info_time(&value));
                 }
             }
         }
@@ -662,7 +688,11 @@ impl Security {
             let blobs: Vec<BlobText> = g1t_kit::call(
                 &self.repos,
                 "read_blobs",
-                &ReadBlobsArgs { repo_id: repo.repo_id.clone(), hashes: chunk.iter().map(|(_, hash)| hash.clone()).collect(), max_bytes: MAX_BLOB_BYTES },
+                &ReadBlobsArgs {
+                    repo_id: repo.repo_id.clone(),
+                    hashes: chunk.iter().map(|(_, hash)| hash.clone()).collect(),
+                    max_bytes: MAX_BLOB_BYTES,
+                },
             )
             .await?;
             for ((path, _), blob) in chunk.iter().zip(blobs) {
@@ -864,7 +894,9 @@ impl Security {
             .await?;
         bump.registries = registries.iter().map(|(_, ready, _)| ready.clone()).collect();
         if let Err(reason) = self.start_bump(&bump).await {
-            self.store.set_update_pull(&id, UpdateState::Failed, None, None, Some(&format!("g1t could not start the update: {reason}"))).await?;
+            self.store
+                .set_update_pull(&id, UpdateState::Failed, None, None, Some(&format!("g1t could not start the update: {reason}")))
+                .await?;
         }
         Ok(())
     }
@@ -1093,8 +1125,13 @@ impl Security {
                 .await?;
                 if let Outcome::Fail(refused) = merged {
                     self.store.set_merge_by(&row.id, None).await?;
-                    self.comment(&User::system(&repo.namespace), &Self::repo_path(&repo), number, format!("I could not merge this: {}", refused.message))
-                        .await?;
+                    self.comment(
+                        &User::system(&repo.namespace),
+                        &Self::repo_path(&repo),
+                        number,
+                        format!("I could not merge this: {}", refused.message),
+                    )
+                    .await?;
                 }
                 return Ok(());
             }
@@ -1145,7 +1182,8 @@ impl Security {
         let Some(detail) = self.pull_detail(&repo, commented.number).await? else { return Ok(()) };
         let Some(comment) = detail.comments.iter().find(|comment| comment.id == commented.comment_id) else { return Ok(()) };
         let Some(command) = update_command(&comment.body) else { return Ok(()) };
-        let author = serde_json::from_value::<CommentAuthor>(serde_json::to_value(&comment.author)?).map(|a| a.username).unwrap_or_default();
+        let author =
+            serde_json::from_value::<CommentAuthor>(serde_json::to_value(&comment.author)?).map(|a| a.username).unwrap_or_default();
         let system = User::system(&repo.namespace);
         let path = Self::repo_path(&repo);
         let needed = if matches!(command, UpdateCommand::Merge | UpdateCommand::SquashAndMerge | UpdateCommand::CancelMerge) {
@@ -1161,7 +1199,10 @@ impl Security {
         .await?;
         let allowed = matches!(&permission, Outcome::Ok(info) if info.capabilities.contains(&needed));
         if !allowed {
-            let text = format!("@{author}, that takes the {} role on this repository.", if needed == Capability::Merge { "Maintain or Write" } else { "Write" });
+            let text = format!(
+                "@{author}, that takes the {} role on this repository.",
+                if needed == Capability::Merge { "Maintain or Write" } else { "Write" }
+            );
             return self.comment(&system, &path, commented.number, text).await;
         }
         let Some(row) = row else {
@@ -1176,7 +1217,14 @@ impl Security {
     }
 
     /// Acts on a command on an update pull request; what to say back.
-    async fn command(&self, repo: &RepoRow, row: &PullRow, command: &UpdateCommand, author: &str, detail: &PullDetail) -> Result<Option<String>> {
+    async fn command(
+        &self,
+        repo: &RepoRow,
+        row: &PullRow,
+        command: &UpdateCommand,
+        author: &str,
+        detail: &PullDetail,
+    ) -> Result<Option<String>> {
         let number = detail.pull.number;
         let open = detail.pull.status.is_active();
         let ignore = |dependency: &str, versions: Option<String>, update_type: Option<String>| IgnoreCondition {
@@ -1192,14 +1240,22 @@ impl Security {
         Ok(Some(match command {
             UpdateCommand::Rebase | UpdateCommand::Recreate => {
                 if !open {
-                    return Ok(Some(format!("@{author}, this pull request is {}; `@g1t reopen` opens it again.", detail.pull.status.as_str())));
+                    return Ok(Some(format!(
+                        "@{author}, this pull request is {}; `@g1t reopen` opens it again.",
+                        detail.pull.status.as_str()
+                    )));
                 }
                 let pushed_by_others = row.head.is_some() && row.head != detail.pull.head_commit;
                 if *command == UpdateCommand::Rebase && pushed_by_others {
-                    return Ok(Some(format!("@{author}, someone else has pushed to this branch, so a rebase would drop their commits. `@g1t recreate` makes it again from scratch.")));
+                    return Ok(Some(format!(
+                        "@{author}, someone else has pushed to this branch, so a rebase would drop their commits. `@g1t recreate` makes it again from scratch."
+                    )));
                 }
                 match self.remake(repo, row).await {
-                    Ok(()) => format!("@{author}, {} this pull request from its base branch now.", if *command == UpdateCommand::Rebase { "rebasing" } else { "recreating" }),
+                    Ok(()) => format!(
+                        "@{author}, {} this pull request from its base branch now.",
+                        if *command == UpdateCommand::Rebase { "rebasing" } else { "recreating" }
+                    ),
                     Err(reason) => format!("@{author}, I could not start that: {reason}"),
                 }
             }
@@ -1223,7 +1279,14 @@ impl Security {
             }
             UpdateCommand::Close => {
                 self.store.set_update_pull(&row.id, UpdateState::Closed, row.pull(), None, None).await?;
-                self.close_with(repo, number, format!("@{author}, closed. g1t will not open a pull request for these versions again, but will when a newer one is out.")).await?;
+                self.close_with(
+                    repo,
+                    number,
+                    format!(
+                        "@{author}, closed. g1t will not open a pull request for these versions again, but will when a newer one is out."
+                    ),
+                )
+                .await?;
                 return Ok(None);
             }
             UpdateCommand::Reopen => {
@@ -1244,7 +1307,9 @@ impl Security {
                 }
                 for dependency in &dependencies {
                     let condition = match command {
-                        UpdateCommand::IgnoreVersion { level } => ignore(&dependency.name, Some(ranges::ignore_level(&dependency.to, level)), None),
+                        UpdateCommand::IgnoreVersion { level } => {
+                            ignore(&dependency.name, Some(ranges::ignore_level(&dependency.to, level)), None)
+                        }
                         _ => ignore(&dependency.name, None, None),
                     };
                     self.store.add_ignore(&repo.repo_id, &condition).await?;
@@ -1254,8 +1319,15 @@ impl Security {
                     UpdateCommand::IgnoreVersion { level } => format!("this {level} version"),
                     _ => "this dependency".to_owned(),
                 };
-                self.close_with(repo, number, format!("@{author}, g1t will skip {what} from now on. `@g1t unignore {}` undoes it.", dependencies.first().map(|d| d.name.as_str()).unwrap_or("*")))
-                    .await?;
+                self.close_with(
+                    repo,
+                    number,
+                    format!(
+                        "@{author}, g1t will skip {what} from now on. `@g1t unignore {}` undoes it.",
+                        dependencies.first().map(|d| d.name.as_str()).unwrap_or("*")
+                    ),
+                )
+                .await?;
                 return Ok(None);
             }
             UpdateCommand::IgnoreNamed { dependency, level } => {
@@ -1267,7 +1339,11 @@ impl Security {
                     None => ignore(&found.name, None, None),
                 };
                 self.store.add_ignore(&repo.repo_id, &condition).await?;
-                format!("@{author}, g1t will skip {}{}; the next check leaves it out of this group.", found.name, level.as_deref().map(|level| format!(" {level} versions like {}", found.to)).unwrap_or_default())
+                format!(
+                    "@{author}, g1t will skip {}{}; the next check leaves it out of this group.",
+                    found.name,
+                    level.as_deref().map(|level| format!(" {level} versions like {}", found.to)).unwrap_or_default()
+                )
             }
             UpdateCommand::Unignore { dependency, level } => {
                 let condition = match (level, dependencies.iter().find(|d| d.name.eq_ignore_ascii_case(dependency))) {
@@ -1278,7 +1354,10 @@ impl Security {
                 if removed == 0 {
                     format!("@{author}, nothing was being ignored for {dependency}.")
                 } else {
-                    format!("@{author}, removed {removed} ignore {} for {dependency}.", if removed == 1 { "condition" } else { "conditions" })
+                    format!(
+                        "@{author}, removed {removed} ignore {} for {dependency}.",
+                        if removed == 1 { "condition" } else { "conditions" }
+                    )
                 }
             }
             UpdateCommand::ShowIgnores { dependency } => {
@@ -1356,7 +1435,12 @@ impl Security {
         let reply = match command {
             UpdateCommand::Close => {
                 self.store.set_update(update, UpdateState::Closed, Some(number), None, None).await?;
-                self.close_with(repo, number, format!("@{author}, closed. g1t will not open a security update for {} {} again.", update.package, update.target)).await?;
+                self.close_with(
+                    repo,
+                    number,
+                    format!("@{author}, closed. g1t will not open a security update for {} {} again.", update.package, update.target),
+                )
+                .await?;
                 return Ok(());
             }
             UpdateCommand::IgnoreDependency | UpdateCommand::IgnoreVersion { .. } => {
@@ -1366,7 +1450,15 @@ impl Security {
                 };
                 self.store.add_ignore(&repo.repo_id, &ignore(versions)).await?;
                 self.store.set_update(update, UpdateState::Closed, Some(number), None, None).await?;
-                self.close_with(repo, number, format!("@{author}, g1t will skip that for {} from now on. `@g1t unignore {}` undoes it.", update.package, update.package)).await?;
+                self.close_with(
+                    repo,
+                    number,
+                    format!(
+                        "@{author}, g1t will skip that for {} from now on. `@g1t unignore {}` undoes it.",
+                        update.package, update.package
+                    ),
+                )
+                .await?;
                 return Ok(());
             }
             UpdateCommand::Unignore { dependency, .. } => {
@@ -1382,7 +1474,22 @@ impl Security {
                     let merged: Outcome<Pull> = g1t_kit::call(
                         &self.work,
                         "merge_pull",
-                        &PullActionArgs { actor: system.clone(), repo: path.clone(), number, summary: String::new(), keep_item_open: false, ignore_checks: false, bypass_rules: false, merge_method: matches!(command, UpdateCommand::SquashAndMerge).then_some(g1t_contracts::rules::MergeMethod::Squash), commit_title: None, commit_message: None, expected_head: None, delete_branch: None, update_method: None },
+                        &PullActionArgs {
+                            actor: system.clone(),
+                            repo: path.clone(),
+                            number,
+                            summary: String::new(),
+                            keep_item_open: false,
+                            ignore_checks: false,
+                            bypass_rules: false,
+                            merge_method: matches!(command, UpdateCommand::SquashAndMerge)
+                                .then_some(g1t_contracts::rules::MergeMethod::Squash),
+                            commit_title: None,
+                            commit_message: None,
+                            expected_head: None,
+                            delete_branch: None,
+                            update_method: None,
+                        },
                     )
                     .await?;
                     match merged {
@@ -1392,7 +1499,9 @@ impl Security {
                 }
                 _ => format!("@{author}, its required checks have not passed yet; merge it once they do."),
             },
-            _ => format!("@{author}, a security update is made again by `Re-scan now` on the Security page; this command is for version updates."),
+            _ => format!(
+                "@{author}, a security update is made again by `Re-scan now` on the Security page; this command is for version updates."
+            ),
         };
         self.comment(&system, &path, number, reply).await
     }
@@ -1415,12 +1524,7 @@ impl Security {
         let found: Option<RawFile> = g1t_kit::call(
             &self.repos,
             "raw_file",
-            &RawFileArgs {
-                repo_id: pull.source_id().to_owned(),
-                git_ref: head.clone(),
-                path: file.path.clone(),
-                max_bytes: 1_000_000,
-            },
+            &RawFileArgs { repo_id: pull.source_id().to_owned(), git_ref: head.clone(), path: file.path.clone(), max_bytes: 1_000_000 },
         )
         .await?;
         let (state, description) = match found.and_then(|raw| base64_decode(&raw.data)).map(String::from_utf8) {
@@ -1533,9 +1637,10 @@ mod tests {
 
     #[test]
     fn directories_from_globs_and_exclusions() {
-        let files: Vec<String> = ["package.json", "apps/web/package.json", "apps/admin/package.json", "apps/web/vendor/x/package.json", "docs/readme.md"]
-            .map(str::to_owned)
-            .to_vec();
+        let files: Vec<String> =
+            ["package.json", "apps/web/package.json", "apps/admin/package.json", "apps/web/vendor/x/package.json", "docs/readme.md"]
+                .map(str::to_owned)
+                .to_vec();
         assert_eq!(entry_directories(&entry("    directory: /\n"), &files), ["/"]);
         assert_eq!(entry_directories(&entry("    directories: [\"/apps/*\"]\n"), &files), ["/apps/admin", "/apps/web"]);
         assert_eq!(
@@ -1552,7 +1657,9 @@ mod tests {
     fn current_versions_come_from_the_lockfile() {
         let directory = Directory {
             path: "/".into(),
-            declared: manifests::package_json(r#"{"dependencies":{"lodash":"^4.17.0","left-pad":"1.0.0"},"devDependencies":{"vitest":"^1"}}"#),
+            declared: manifests::package_json(
+                r#"{"dependencies":{"lodash":"^4.17.0","left-pad":"1.0.0"},"devDependencies":{"vitest":"^1"}}"#,
+            ),
             locked: BTreeMap::from([
                 ("lodash".to_owned(), vec!["4.17.20".to_owned(), "3.10.1".to_owned()]),
                 ("minimist".to_owned(), vec!["1.2.0".to_owned()]),
@@ -1641,7 +1748,15 @@ mod tests {
     #[test]
     fn checks_decide_failure_and_success() {
         let check = |state| RequiredCheck { name: "CI".into(), state, description: None, target_url: None };
-        let status = |state: &str| CommitStatus { context: "CI / push".into(), state: state.into(), description: None, target_url: None, updated_at: String::new(), source: None, check_run_id: None };
+        let status = |state: &str| CommitStatus {
+            context: "CI / push".into(),
+            state: state.into(),
+            description: None,
+            target_url: None,
+            updated_at: String::new(),
+            source: None,
+            check_run_id: None,
+        };
         let detail = |required: Vec<RequiredCheck>, statuses: Vec<CommitStatus>| {
             let mut detail: PullDetail = serde_json::from_value(json!({
                 "pull": {"id": "pul_1", "repoId": "rep_1", "number": 1, "item": null, "title": "t", "body": null, "agent": "", "runtime": "external",

@@ -27,8 +27,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use futures_util::future::{try_join, try_join_all};
 use g1t_contracts::repos::{
-    Branch, BuildQueueStepArgs, Commit, EntryKind, GitAccess, LandArgs, Landed, NeedsAgentReason, PullBranchUpdate, QueueStep,
-    Repo, TreeEntry,
+    Branch, BuildQueueStepArgs, Commit, EntryKind, GitAccess, LandArgs, Landed, NeedsAgentReason, PullBranchUpdate, QueueStep, Repo,
+    TreeEntry,
 };
 use g1t_contracts::rules::MergeMethod;
 use g1t_contracts::time::parse_rfc3339;
@@ -37,10 +37,10 @@ use g1t_kit::now_ms;
 use g1t_scan::pack::{ObjectKind, extend_pack, object_id, parse_tree, write_pack};
 use worker::Result;
 
-use crate::public_storage::Operation;
 use crate::catch_up::{BranchUpdate, Change, Signature, ancestors, commit_object_by, merge_tree, moved_since, read_dirs};
 use crate::diff::{FileEntry, changed_entries_up_to};
 use crate::merge_base::{MergeBase, merge_base};
+use crate::public_storage::Operation;
 use crate::registry::store_key;
 use crate::store::{GitRepo, GitStore, Scope};
 use crate::test_merge::{as_text, changes_too_much, merge_text};
@@ -374,8 +374,14 @@ pub(crate) struct Replayed {
 pub(crate) enum Replay {
     Done(Replayed),
     /// A commit's changes clash with what is there: the commit, and the files.
-    Conflict { commit: Commit, paths: Vec<String> },
-    Unsupported { commit: Commit, why: String },
+    Conflict {
+        commit: Commit,
+        paths: Vec<String>,
+    },
+    Unsupported {
+        commit: Commit,
+        why: String,
+    },
 }
 
 /// When a commit says it was authored, in seconds.
@@ -507,11 +513,8 @@ pub(crate) fn co_authors(commits: &[Commit], author: &str) -> Vec<String> {
 /// commit's own author (`author_email`) or g1t, and one naming someone in
 /// `known` (trailers g1t made from the commits) as that one names them.
 pub(crate) fn tidy_co_authors(message: &str, author_email: &str, known: &[String]) -> String {
-    let email_of = |line: &str| {
-        line.rsplit_once('<')
-            .and_then(|(_, rest)| rest.split_once('>'))
-            .map(|(email, _)| email.trim().to_lowercase())
-    };
+    let email_of =
+        |line: &str| line.rsplit_once('<').and_then(|(_, rest)| rest.split_once('>')).map(|(email, _)| email.trim().to_lowercase());
     let author = author_email.trim().to_lowercase();
     message
         .lines()
@@ -523,7 +526,13 @@ pub(crate) fn tidy_co_authors(message: &str, author_email: &str, known: &[String
             if email == author || email == g1t_contracts::system::EMAIL {
                 return None;
             }
-            Some(known.iter().find(|trailer| email_of(trailer).as_deref() == Some(email.as_str())).cloned().unwrap_or_else(|| line.to_owned()))
+            Some(
+                known
+                    .iter()
+                    .find(|trailer| email_of(trailer).as_deref() == Some(email.as_str()))
+                    .cloned()
+                    .unwrap_or_else(|| line.to_owned()),
+            )
         })
         .collect::<Vec<_>>()
         .join("\n")
@@ -566,7 +575,10 @@ struct Made {
 enum NotMade {
     Refused(Outcome<Landed>),
     /// Lines clash in these files.
-    Clash { message: String, paths: Vec<String> },
+    Clash {
+        message: String,
+        paths: Vec<String>,
+    },
     /// Nothing to make: the branch already has every change.
     AlreadyThere,
 }
@@ -614,15 +626,9 @@ async fn make_on<R: GitRepo>(
     let Some(base) = target_history.first() else {
         return Ok(Err(refused(FailureCode::Conflict, format!("{branch} has no commits yet."))));
     };
-    let line: HashSet<String> = target_history
-        .iter()
-        .map(|commit| commit.hash.clone())
-        .collect();
-    let Some(MergeBase {
-        hash: merge_base,
-        tree: merge_base_tree,
-        merged,
-    }) = merge_base(reader, history, reader, target_history, &line).await?
+    let line: HashSet<String> = target_history.iter().map(|commit| commit.hash.clone()).collect();
+    let Some(MergeBase { hash: merge_base, tree: merge_base_tree, merged }) =
+        merge_base(reader, history, reader, target_history, &line).await?
     else {
         return Ok(Err(refused(
             FailureCode::Conflict,
@@ -679,11 +685,9 @@ async fn make_on<R: GitRepo>(
             };
             match replay(reader, &commits, (&base.hash, &base.tree_hash), by, sign_off, objects).await? {
                 Replay::Done(replayed) if replayed.made.is_empty() => Err(NotMade::AlreadyThere),
-                Replay::Done(replayed) => Ok(Made {
-                    commit: replayed.head,
-                    commits: Some(replayed.made.len() as u32),
-                    rebased: replayed.made,
-                }),
+                Replay::Done(replayed) => {
+                    Ok(Made { commit: replayed.head, commits: Some(replayed.made.len() as u32), rebased: replayed.made })
+                }
                 Replay::Conflict { commit, paths } => Err(NotMade::Clash {
                     message: format!(
                         "Rebasing stopped at {}: it and {branch} changed the same lines of {}. Rebase the branch onto {branch} and resolve them, or merge it another way.",
@@ -694,7 +698,10 @@ async fn make_on<R: GitRepo>(
                 }),
                 Replay::Unsupported { commit, why } => Err(refused(
                     FailureCode::Conflict,
-                    format!("g1t cannot rebase {} itself: {why}. Rebase the branch onto {branch}, or merge it another way.", named_commit(&commit)),
+                    format!(
+                        "g1t cannot rebase {} itself: {why}. Rebase the branch onto {branch}, or merge it another way.",
+                        named_commit(&commit)
+                    ),
                 )),
             }
         }
@@ -836,12 +843,14 @@ impl<S: GitStore> Repos<S> {
         from_fork: bool,
     ) -> Result<Outcome<Landed>> {
         let message = match method {
-            MergeMethod::Merge | MergeMethod::Squash => match a.message.as_deref().map(str::trim_end).filter(|text| !text.trim().is_empty()) {
-                Some(text) => text.to_owned(),
-                None => {
-                    return Ok(Outcome::fail(FailureCode::Invalid, "Say what the commit's message is: its first line is its title."));
+            MergeMethod::Merge | MergeMethod::Squash => {
+                match a.message.as_deref().map(str::trim_end).filter(|text| !text.trim().is_empty()) {
+                    Some(text) => text.to_owned(),
+                    None => {
+                        return Ok(Outcome::fail(FailureCode::Invalid, "Say what the commit's message is: its first line is its title."));
+                    }
                 }
-            },
+            }
             _ => String::new(),
         };
         let committer = self.commit_identity(&a.actor).await;
@@ -863,7 +872,9 @@ impl<S: GitStore> Repos<S> {
             let Some(base) = target_history.first().cloned() else {
                 return Ok(Outcome::fail(
                     FailureCode::Conflict,
-                    format!("{branch} has no commits yet, so there is nothing to make this pull request's commits on. Land it by fast-forward instead."),
+                    format!(
+                        "{branch} has no commits yet, so there is nothing to make this pull request's commits on. Land it by fast-forward instead."
+                    ),
                 ));
             };
             // There already: an attempt that published and stopped before
@@ -882,9 +893,19 @@ impl<S: GitStore> Repos<S> {
             let seconds = now_ms() / 1000;
             let by = Signature { name: &committer.name, email: &committer.email, seconds };
             let author = Signature { name: &author.name, email: &author.email, seconds };
-            let made =
-                make_on(method, &reader, &target_history, history, &new, &message, (&author, &by), sign_off.as_deref(), branch, &mut objects)
-                    .await?;
+            let made = make_on(
+                method,
+                &reader,
+                &target_history,
+                history,
+                &new,
+                &message,
+                (&author, &by),
+                sign_off.as_deref(),
+                branch,
+                &mut objects,
+            )
+            .await?;
             let (made, merge_base) = match made {
                 Ok(made) => made,
                 Err(NotMade::Refused(outcome)) => return Ok(outcome),
@@ -905,8 +926,7 @@ impl<S: GitStore> Repos<S> {
             self.refs_moved(&target.id).await;
             match pushed {
                 Ok(()) => {
-                    self.publish_landing(target, branch, Some(&base.hash), &made.commit, a, made.commits)
-                        .await?;
+                    self.publish_landing(target, branch, Some(&base.hash), &made.commit, a, made.commits).await?;
                     return Ok(Outcome::Ok(Landed {
                         commit: made.commit,
                         previous: Some(base.hash.clone()),
@@ -984,11 +1004,7 @@ impl<S: GitStore> Repos<S> {
             StepMade::Refused(message) => return refused(message),
         };
         // Nothing new when it was there already.
-        let pack = if commit == base {
-            write_pack(&objects)
-        } else {
-            pack_for(held, &source_git, &new, &merge_base, &objects).await?
-        };
+        let pack = if commit == base { write_pack(&objects) } else { pack_for(held, &source_git, &new, &merge_base, &objects).await? };
         let old = target_git.log(&a.push_branch, 1).await?.into_iter().next().map(|commit| commit.hash);
         let target_access = target_git.access(Scope::Write).await?;
         let pushed = match self
@@ -1023,8 +1039,7 @@ impl<S: GitStore> Repos<S> {
         self.live(&source).await?;
         let source_git = self.store.open(&store_key(&source)).await?;
         let target_git = self.store.open(&store_key(&target)).await?;
-        let (history, target_history) =
-            try_join(source_git.log(&branch, MAX_ANCESTRY), target_git.log(&base_branch, MAX_ANCESTRY)).await?;
+        let (history, target_history) = try_join(source_git.log(&branch, MAX_ANCESTRY), target_git.log(&base_branch, MAX_ANCESTRY)).await?;
         let (Some(head), Some(base)) = (history.first(), target_history.first()) else {
             return Ok(Outcome::fail(FailureCode::Conflict, format!("{branch} has no commits to bring up to date.")));
         };
@@ -1032,16 +1047,9 @@ impl<S: GitStore> Repos<S> {
             return Ok(refused);
         }
         let needs_agent = |reason, detail: String, paths| Outcome::Ok(PullBranchUpdate::NeedsAgent { reason, detail, paths });
-        let line: HashSet<String> = target_history
-            .iter()
-            .map(|commit| commit.hash.clone())
-            .collect();
+        let line: HashSet<String> = target_history.iter().map(|commit| commit.hash.clone()).collect();
         let reader = Reader::new(&source_git, from_fork.then_some(&target_git));
-        let Some(MergeBase {
-            hash: merge_base,
-            merged,
-            ..
-        }) = merge_base(&reader, &history, &target_git, &target_history, &line).await?
+        let Some(MergeBase { hash: merge_base, merged, .. }) = merge_base(&reader, &history, &target_git, &target_history, &line).await?
         else {
             return Ok(needs_agent(
                 NeedsAgentReason::Unsupported,
@@ -1175,7 +1183,10 @@ mod tests {
             "Fix it\n\nBody.\n\nCo-authored-by: Cy <cy@example.com>\nCo-authored-by: Bo <bo@example.com>\nSigned-off-by: Ana <ana@example.com>"
         );
         // A body that only looks like it has a colon is not a trailer.
-        assert_eq!(with_trailers("Fix it\n\nNote: see below\nmore text", std::slice::from_ref(&co)), "Fix it\n\nNote: see below\nmore text\n\nCo-authored-by: Bo <bo@example.com>");
+        assert_eq!(
+            with_trailers("Fix it\n\nNote: see below\nmore text", std::slice::from_ref(&co)),
+            "Fix it\n\nNote: see below\nmore text\n\nCo-authored-by: Bo <bo@example.com>"
+        );
         // Twice in one list: once.
         assert_eq!(with_trailers("Fix", &[co.clone(), co.clone()]), "Fix\n\nCo-authored-by: Bo <bo@example.com>");
         // Adding it to a message already holding it changes nothing.
@@ -1205,10 +1216,7 @@ mod tests {
             commit("e", &["d", "x"], "Cy", "cy@example.com"),
             commit("f", &["e"], "Di", "di@example.com"),
         ];
-        assert_eq!(
-            co_authors(&commits, "ANA@example.com"),
-            ["Co-authored-by: Bo <bo@example.com>", "Co-authored-by: Di <di@example.com>"]
-        );
+        assert_eq!(co_authors(&commits, "ANA@example.com"), ["Co-authored-by: Bo <bo@example.com>", "Co-authored-by: Di <di@example.com>"]);
     }
 
     #[test]
@@ -1338,12 +1346,7 @@ mod tests {
         let m = store.commit("m", &[], "ana", &[("README.md", "hi\n"), ("src/lib.rs", "a\nb\nc\nd\ne\n")]);
         let b = store.commit("b", &["m"], "ana", &[("README.md", "hello\n"), ("src/lib.rs", "a\nb\nc\nd\nE\n")]);
         let h1 = store.commit("h1", &["m"], "bo", &[("README.md", "hi\n"), ("src/lib.rs", "A\nb\nc\nd\ne\n")]);
-        let h2 = store.commit(
-            "h2",
-            &["h1"],
-            "cy",
-            &[("README.md", "hi\n"), ("src/lib.rs", "A\nb\nc\nd\ne\n"), ("src/new.rs", "new\n")],
-        );
+        let h2 = store.commit("h2", &["h1"], "cy", &[("README.md", "hi\n"), ("src/lib.rs", "A\nb\nc\nd\ne\n"), ("src/new.rs", "new\n")]);
         (store, [m, b, h1, h2])
     }
 
@@ -1400,7 +1403,9 @@ mod tests {
         let sign = sign_off_trailer("Di", "di@example.com");
         let mut objects = Vec::new();
         let commits = [h1.clone(), h2.clone()];
-        let Replay::Done(replayed) = block_on(replay(&git, &commits, (&b.hash, &b.tree_hash), &committer, Some(&sign), &mut objects)).unwrap() else {
+        let Replay::Done(replayed) =
+            block_on(replay(&git, &commits, (&b.hash, &b.tree_hash), &committer, Some(&sign), &mut objects)).unwrap()
+        else {
             panic!("not replayed")
         };
         assert_eq!(replayed.made.iter().map(|(_, original)| original.as_str()).collect::<Vec<_>>(), ["h1", "h2"]);
@@ -1465,72 +1470,27 @@ mod tests {
         // main as a merge commit (M) after main took m1.
         let mut store = Store::default();
         store.commit("m0", &[], "ana", &[("home.tsx", "a\n"), ("other", "1\n")]);
-        store.commit(
-            "p1",
-            &["m0"],
-            "ana",
-            &[("home.tsx", "a\nP\n"), ("other", "1\n")],
-        );
-        store.commit(
-            "s1",
-            &["p1"],
-            "bo",
-            &[("home.tsx", "a\nP\nS\n"), ("other", "1\n")],
-        );
-        store.commit(
-            "m1",
-            &["m0"],
-            "cy",
-            &[("home.tsx", "a\n"), ("other", "2\n")],
-        );
-        let main = store.commit(
-            "M",
-            &["m1", "p1"],
-            "cy",
-            &[("home.tsx", "a\nP\n"), ("other", "2\n")],
-        );
+        store.commit("p1", &["m0"], "ana", &[("home.tsx", "a\nP\n"), ("other", "1\n")]);
+        store.commit("s1", &["p1"], "bo", &[("home.tsx", "a\nP\nS\n"), ("other", "1\n")]);
+        store.commit("m1", &["m0"], "cy", &[("home.tsx", "a\n"), ("other", "2\n")]);
+        let main = store.commit("M", &["m1", "p1"], "cy", &[("home.tsx", "a\nP\n"), ("other", "2\n")]);
         let git = Reader::new(&store, None);
-        let (history, target_history) = (
-            block_on(store.log("s1", 100)).unwrap(),
-            block_on(store.log("M", 100)).unwrap(),
-        );
-        let line: HashSet<String> = target_history
-            .iter()
-            .map(|commit| commit.hash.clone())
-            .collect();
-        let found = block_on(merge_base(&git, &history, &store, &target_history, &line))
-            .unwrap()
-            .unwrap();
+        let (history, target_history) = (block_on(store.log("s1", 100)).unwrap(), block_on(store.log("M", 100)).unwrap());
+        let line: HashSet<String> = target_history.iter().map(|commit| commit.hash.clone()).collect();
+        let found = block_on(merge_base(&git, &history, &store, &target_history, &line)).unwrap().unwrap();
         assert_eq!(found.hash, "p1");
         // Bringing it up to date (catch_up.rs `merge_up`) applies only its own change.
         let mut objects = Vec::new();
-        let Applied::Tree(tree) = block_on(apply(
-            &git,
-            Some(&found.tree),
-            &history[0].tree_hash,
-            &main.tree_hash,
-            &mut objects,
-        ))
-        .unwrap() else {
+        let Applied::Tree(tree) = block_on(apply(&git, Some(&found.tree), &history[0].tree_hash, &main.tree_hash, &mut objects)).unwrap()
+        else {
             panic!("not applied")
         };
-        assert_eq!(
-            Store::files(&git, &tree),
-            files(&[("home.tsx", "a\nP\nS\n"), ("other", "2\n")])
-        );
+        assert_eq!(Store::files(&git, &tree), files(&[("home.tsx", "a\nP\nS\n"), ("other", "2\n")]));
         // A rebase makes only its own commits again.
         let mut shared = line;
         shared.extend(found.merged);
-        let commits = block_on(branch_commits(&git, &history, &shared, 10))
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            commits
-                .iter()
-                .map(|commit| commit.hash.as_str())
-                .collect::<Vec<_>>(),
-            ["s1"]
-        );
+        let commits = block_on(branch_commits(&git, &history, &shared, 10)).unwrap().unwrap();
+        assert_eq!(commits.iter().map(|commit| commit.hash.as_str()).collect::<Vec<_>>(), ["s1"]);
     }
 
     #[test]
@@ -1597,7 +1557,8 @@ mod tests {
         let onto = vec![b.clone(), m.clone()];
 
         // The first squashes onto the default branch: one commit, one parent.
-        let StepMade::Made { commit: first, .. } = step(MergeMethod::Squash, &onto, &[h2.clone(), h1.clone(), m.clone()], &mut objects) else {
+        let StepMade::Made { commit: first, .. } = step(MergeMethod::Squash, &onto, &[h2.clone(), h1.clone(), m.clone()], &mut objects)
+        else {
             panic!("not squashed")
         };
         let first = made_commit(&objects, &first);
@@ -1624,9 +1585,7 @@ mod tests {
         assert_eq!(commit, second.hash);
 
         // A fast-forward needs its head to hold the state ahead of it.
-        let StepMade::Refused(why) = step(MergeMethod::FastForward, &onto, &[k, m.clone()], &mut objects) else {
-            panic!("fast-forwarded")
-        };
+        let StepMade::Refused(why) = step(MergeMethod::FastForward, &onto, &[k, m.clone()], &mut objects) else { panic!("fast-forwarded") };
         assert!(why.contains("fast-forward"), "{why}");
     }
 
@@ -1639,10 +1598,32 @@ mod tests {
         let by = Signature { name: "Di", email: "di@example.com", seconds: 7 };
         let mut objects = Vec::new();
         let onto = vec![b.clone(), m.clone()];
-        let made = block_on(queue_step_on(&git, true, MergeMethod::FastForward, (&onto, &[ahead.clone(), b.clone(), m.clone()]), None, (&by, &by), None, "main", &mut objects)).unwrap();
+        let made = block_on(queue_step_on(
+            &git,
+            true,
+            MergeMethod::FastForward,
+            (&onto, &[ahead.clone(), b.clone(), m.clone()]),
+            None,
+            (&by, &by),
+            None,
+            "main",
+            &mut objects,
+        ))
+        .unwrap();
         assert!(matches!(made, StepMade::Made { ref commit, .. } if commit == "f"), "{made:?}");
         assert!(objects.is_empty());
-        let clashed = block_on(queue_step_on(&git, true, MergeMethod::Rebase, (&onto, &[clash, m.clone()]), None, (&by, &by), None, "main", &mut objects)).unwrap();
+        let clashed = block_on(queue_step_on(
+            &git,
+            true,
+            MergeMethod::Rebase,
+            (&onto, &[clash, m.clone()]),
+            None,
+            (&by, &by),
+            None,
+            "main",
+            &mut objects,
+        ))
+        .unwrap();
         assert!(matches!(clashed, StepMade::Conflict { ref paths, .. } if paths == &["README.md".to_owned()]), "{clashed:?}");
         let _ = (h1, h2);
     }

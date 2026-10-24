@@ -223,10 +223,11 @@ struct EngineSpec {
 /// container: Sysbox maps its root to an unprivileged user on the
 /// machine, and gives the runner's container no devices of the machine's.
 fn engine_args(spec: &EngineSpec) -> Vec<String> {
-    let mut args: Vec<String> = ["run", "-d", "--rm", "--name", &spec.container, "--label", &spec.label, "--privileged", "--pull", "missing"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    let mut args: Vec<String> =
+        ["run", "-d", "--rm", "--name", &spec.container, "--label", &spec.label, "--privileged", "--pull", "missing"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
     args.extend(["--network".into(), format!("container:{}", spec.job)]);
     // No TLS certificates and no TCP port: only the socket, which the
     // runner passes on.
@@ -270,7 +271,11 @@ fn serve(mut client: UnixStream, spec: &EngineSpec, started: &Mutex<Option<Resul
     };
     if let Err(problem) = ready {
         let body = serde_json::to_string(&json!({ "message": problem })).unwrap_or_default();
-        let _ = write!(client, "HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+        let _ = write!(
+            client,
+            "HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
         return;
     }
     let Ok(engine) = UnixStream::connect(spec.engine_dir.join("docker.sock")) else { return };
@@ -292,7 +297,9 @@ impl JobEngine {
         let dir = Path::new(JOBS_DIR).join(job);
         let _ = std::fs::remove_dir_all(&dir);
         let (proxy, engine_dir) = (dir.join("proxy"), dir.join("engine"));
-        std::fs::create_dir_all(&proxy).and_then(|()| std::fs::create_dir_all(&engine_dir)).with_context(|| format!("could not make {}", dir.display()))?;
+        std::fs::create_dir_all(&proxy)
+            .and_then(|()| std::fs::create_dir_all(&engine_dir))
+            .with_context(|| format!("could not make {}", dir.display()))?;
         let socket = proxy.join("docker.sock");
         let listener = UnixListener::bind(&socket).with_context(|| format!("could not listen on {}", socket.display()))?;
         {

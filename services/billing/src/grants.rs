@@ -67,9 +67,8 @@ pub(crate) struct Grant {
 
 /// The tasks that are not a model's work: sandbox and runner time,
 /// deployments, and the month-end meters.
-const NOT_MODELS: [&str; 11] = [
-    "sandbox", "self_hosted", "deployments", "security", "context", "storage", "git", "cache", "domains", "package_storage", "telemetry",
-];
+const NOT_MODELS: [&str; 11] =
+    ["sandbox", "self_hosted", "deployments", "security", "context", "storage", "git", "cache", "domains", "package_storage", "telemetry"];
 
 /// Whether a usage line is model usage (an agent run's model cost), which
 /// credit scoped to models can pay for.
@@ -298,7 +297,8 @@ pub(crate) fn usage_key(task: Option<&str>, reference: &str) -> String {
 /// back than the reconciliation recomputes from the day it was given.
 pub(crate) fn refund_cash_day(refund_day: Option<&str>, granted_at: &str) -> String {
     let granted = &granted_at[..10];
-    let oldest = rfc3339(parse_rfc3339(&format!("{granted}T00:00:00Z")).unwrap_or(0).saturating_sub(REFUND_DAYS_BACK * DAY_MS))[..10].to_owned();
+    let oldest =
+        rfc3339(parse_rfc3339(&format!("{granted}T00:00:00Z")).unwrap_or(0).saturating_sub(REFUND_DAYS_BACK * DAY_MS))[..10].to_owned();
     match refund_day {
         Some(day) if day.len() == 10 && day <= granted => day.max(oldest.as_str()).to_owned(),
         _ => granted.to_owned(),
@@ -559,11 +559,7 @@ impl Billing {
             .results::<Line>()?;
         let facts: Vec<Grant> = grants.iter().map(GrantRow::facts).collect();
         let replay = replay(opening, &lines, &facts);
-        Ok(facts
-            .iter()
-            .filter(|g| g.models_only && open_at(g, before))
-            .map(|g| replay.left.get(&g.id).copied().unwrap_or(0).max(0))
-            .sum())
+        Ok(facts.iter().filter(|g| g.models_only && open_at(g, before)).map(|g| replay.left.get(&g.id).copied().unwrap_or(0).max(0)).sum())
     }
 
     /// What credit (AI credit and credit from g1t) paid for usage entered
@@ -667,7 +663,8 @@ impl Billing {
             .await?;
         let account = self.account_of(&workspace).await?;
         let until = a.expires_at.as_deref().map(|at| format!(", until {}", &at[..10])).unwrap_or_default();
-        let refund = a.refund_for.as_deref().filter(|_| a.kind == CreditKind::Refund).map(|f| format!(" for {}", f.trim())).unwrap_or_default();
+        let refund =
+            a.refund_for.as_deref().filter(|_| a.kind == CreditKind::Refund).map(|f| format!(" for {}", f.trim())).unwrap_or_default();
         self.audit(
             &account.id,
             "credit",
@@ -675,7 +672,8 @@ impl Billing {
             a.by.trim(),
         )
         .await?;
-        self.tell_owners_of_credit(&workspace, a.kind, a.amount_micros, a.note.trim(), a.refund_for.as_deref(), a.expires_at.as_deref()).await;
+        self.tell_owners_of_credit(&workspace, a.kind, a.amount_micros, a.note.trim(), a.refund_for.as_deref(), a.expires_at.as_deref())
+            .await;
         let row = self
             .db
             .prepare("SELECT * FROM ledger WHERE reference = ?")
@@ -768,7 +766,14 @@ impl Billing {
         self.audit(
             &account.id,
             "credit_revoked",
-            &format!("{} unused of {}'s {} {} credit from {}: {note}", cents(taken), grant.workspace, cents(grant.amount_micros), grant.kind, &grant.created_at[..10]),
+            &format!(
+                "{} unused of {}'s {} {} credit from {}: {note}",
+                cents(taken),
+                grant.workspace,
+                cents(grant.amount_micros),
+                grant.kind,
+                &grant.created_at[..10]
+            ),
             a.by.trim(),
         )
         .await?;
@@ -797,7 +802,14 @@ impl Billing {
             self.audit(
                 &account.id,
                 "credit_expired",
-                &format!("{} unused of {}'s {} {} credit from {}", cents(taken), grant.workspace, cents(grant.amount_micros), grant.kind, &grant.created_at[..10]),
+                &format!(
+                    "{} unused of {}'s {} {} credit from {}",
+                    cents(taken),
+                    grant.workspace,
+                    cents(grant.amount_micros),
+                    grant.kind,
+                    &grant.created_at[..10]
+                ),
                 "g1t",
             )
             .await?;
@@ -938,7 +950,13 @@ mod tests {
     }
 
     fn line(reference: &str, kind: &str, amount: i64, at: &str) -> Line {
-        Line { reference: reference.into(), kind: kind.into(), amount_micros: amount, created_at: at.into(), task: Some("implement".into()) }
+        Line {
+            reference: reference.into(),
+            kind: kind.into(),
+            amount_micros: amount,
+            created_at: at.into(),
+            task: Some("implement".into()),
+        }
     }
 
     #[test]
@@ -976,10 +994,8 @@ mod tests {
         assert_eq!((r.used("crd_soon"), r.used("crd_late"), r.used("crd_never")), (5_000_000, 5_000_000, 3_000_000));
         assert_eq!(r.left["crd_never"], 2_000_000);
         // Past its expiry, a grant pays for nothing more.
-        let lines = [
-            line("crd_soon", "top_up", 5_000_000, "2026-10-01T00:00:02Z"),
-            line("run_late", "usage", -1_000_000, "2026-11-02T00:00:00Z"),
-        ];
+        let lines =
+            [line("crd_soon", "top_up", 5_000_000, "2026-10-01T00:00:02Z"), line("run_late", "usage", -1_000_000, "2026-11-02T00:00:00Z")];
         let r = replay(0, &lines, &grants);
         assert_eq!(r.used("crd_soon"), 0);
         assert_eq!(r.left["crd_soon"], 5_000_000);
@@ -987,7 +1003,8 @@ mod tests {
 
     #[test]
     fn credit_for_models_pays_only_for_models_and_is_spent_first() {
-        let models = Grant { models_only: true, ..grant("pi_ai", CreditKind::Purchased, Some("2027-10-01T00:00:00Z"), "2026-10-01T00:00:01Z") };
+        let models =
+            Grant { models_only: true, ..grant("pi_ai", CreditKind::Purchased, Some("2027-10-01T00:00:00Z"), "2026-10-01T00:00:01Z") };
         let grants = [grant("crd_all", CreditKind::Promotional, Some("2026-11-01T00:00:00Z"), "2026-10-01T00:00:00Z"), models];
         let mut sandbox = line("run_1/sandbox", "usage", -2_000_000, "2026-10-02T00:00:00Z");
         sandbox.task = Some("sandbox".into());
@@ -1003,7 +1020,6 @@ mod tests {
         assert_eq!((r.used("pi_ai"), r.used("crd_all")), (3_000_000, 2_000_000));
         assert!(is_model_usage(Some("implement")) && !is_model_usage(Some("sandbox")) && !is_model_usage(None));
     }
-
 
     #[test]
     fn bought_ai_credit_is_spent_on_models_first_and_never_on_what_else_was_owed() {
@@ -1115,12 +1131,24 @@ mod tests {
         assert!(invalid(&AdminCreditArgs { amount_micros: 0, ..clone(&ok) }, now).is_some());
         assert!(invalid(&AdminCreditArgs { amount_micros: MAX_CREDIT_MICROS + 1, ..clone(&ok) }, now).is_some());
         assert_eq!(invalid(&AdminCreditArgs { amount_micros: MAX_CREDIT_MICROS, ..clone(&ok) }, now), None);
-        assert!(invalid(&AdminCreditArgs { expires_at: Some("2026-10-01T00:00:00Z".into()), ..clone(&ok) }, now).unwrap().contains("future"));
+        assert!(
+            invalid(&AdminCreditArgs { expires_at: Some("2026-10-01T00:00:00Z".into()), ..clone(&ok) }, now).unwrap().contains("future")
+        );
         assert!(invalid(&AdminCreditArgs { expires_at: Some("2040-01-01T00:00:00Z".into()), ..clone(&ok) }, now).is_some());
         // A refund says what for, never expires, and refunds a day that was.
-        let refund = AdminCreditArgs { kind: CreditKind::Refund, expires_at: None, refund_for: Some("the failed runs on Oct 2".into()), refund_day: Some("2026-10-02".into()), ..clone(&ok) };
+        let refund = AdminCreditArgs {
+            kind: CreditKind::Refund,
+            expires_at: None,
+            refund_for: Some("the failed runs on Oct 2".into()),
+            refund_day: Some("2026-10-02".into()),
+            ..clone(&ok)
+        };
         assert_eq!(invalid(&refund, now), None);
-        assert!(invalid(&AdminCreditArgs { expires_at: Some("2027-01-05T23:59:59Z".into()), ..clone(&refund) }, now).unwrap().contains("never expires"));
+        assert!(
+            invalid(&AdminCreditArgs { expires_at: Some("2027-01-05T23:59:59Z".into()), ..clone(&refund) }, now)
+                .unwrap()
+                .contains("never expires")
+        );
         assert!(invalid(&AdminCreditArgs { refund_for: None, ..clone(&refund) }, now).is_some());
         assert!(invalid(&AdminCreditArgs { refund_day: Some("2026-10-09".into()), ..clone(&refund) }, now).is_some());
         assert!(invalid(&AdminCreditArgs { refund_day: Some("2026-02-30".into()), ..clone(&refund) }, now).is_some());
@@ -1161,12 +1189,16 @@ mod tests {
 
     #[test]
     fn the_statement_and_the_email_say_what_the_credit_is() {
-        assert_eq!(describe_grant(CreditKind::Promotional, "Welcome to g1t", None, Some("2027-01-05T23:59:59Z")), "Credit from g1t (promotional, until 2027-01-05): Welcome to g1t");
+        assert_eq!(
+            describe_grant(CreditKind::Promotional, "Welcome to g1t", None, Some("2027-01-05T23:59:59Z")),
+            "Credit from g1t (promotional, until 2027-01-05): Welcome to g1t"
+        );
         assert_eq!(
             describe_grant(CreditKind::Refund, "Sorry about that", Some("the failed runs on Oct 2"), None),
             "Credit from g1t (refund for the failed runs on Oct 2): Sorry about that"
         );
-        let (subject, intro) = credit_notice("acme", CreditKind::Promotional, 25_000_000, "Welcome to g1t", None, Some("2027-01-05T23:59:59Z"));
+        let (subject, intro) =
+            credit_notice("acme", CreditKind::Promotional, 25_000_000, "Welcome to g1t", None, Some("2027-01-05T23:59:59Z"));
         assert_eq!(subject, "g1t: $25.00 of credit for acme");
         assert!(intro.starts_with("g1t added $25.00 of credit to acme. Welcome to g1t. It pays for usage"));
         assert!(intro.ends_with("Unused credit expires on 2027-01-05."));
@@ -1189,12 +1221,32 @@ mod tests {
             ..GrantRow::default()
         };
         let draws = [
-            Draw { grant: "crd_a".into(), kind: CreditKind::Promotional, reference: "r1".into(), task: None, at: "2026-09-25T00:00:00Z".into(), micros: 15_000_000 },
-            Draw { grant: "crd_a".into(), kind: CreditKind::Promotional, reference: "r2".into(), task: None, at: "2026-10-02T00:00:00Z".into(), micros: 5_000_000 },
+            Draw {
+                grant: "crd_a".into(),
+                kind: CreditKind::Promotional,
+                reference: "r1".into(),
+                task: None,
+                at: "2026-09-25T00:00:00Z".into(),
+                micros: 15_000_000,
+            },
+            Draw {
+                grant: "crd_a".into(),
+                kind: CreditKind::Promotional,
+                reference: "r2".into(),
+                task: None,
+                at: "2026-10-02T00:00:00Z".into(),
+                micros: 5_000_000,
+            },
         ];
         let months = fold_months(&[promo], &draws);
         assert_eq!(months.len(), 2);
-        assert_eq!((months[0].month.as_str(), months[0].used_micros, months[0].expired_micros, months[0].given_micros), ("2026-10", 5_000_000, 5_000_000, 0));
-        assert_eq!((months[1].month.as_str(), months[1].used_micros, months[1].given_micros, months[1].grants), ("2026-09", 15_000_000, 25_000_000, 1));
+        assert_eq!(
+            (months[0].month.as_str(), months[0].used_micros, months[0].expired_micros, months[0].given_micros),
+            ("2026-10", 5_000_000, 5_000_000, 0)
+        );
+        assert_eq!(
+            (months[1].month.as_str(), months[1].used_micros, months[1].given_micros, months[1].grants),
+            ("2026-09", 15_000_000, 25_000_000, 1)
+        );
     }
 }

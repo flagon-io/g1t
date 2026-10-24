@@ -65,18 +65,13 @@ impl Operation {
 }
 
 pub fn find(id: &str) -> Option<&'static Operation> {
-    OPERATIONS
-        .iter()
-        .find(|op| op.id == id)
-        .or_else(|| PENDING.iter().find(|op| op.id == id))
+    OPERATIONS.iter().find(|op| op.id == id).or_else(|| PENDING.iter().find(|op| op.id == id))
 }
 
 /// Every operation the CLI can call: the generated table's, then the
 /// pending ones it does not have yet.
 pub fn all() -> impl Iterator<Item = &'static Operation> {
-    OPERATIONS
-        .iter()
-        .chain(PENDING.iter().filter(|op| !OPERATIONS.iter().any(|known| known.id == op.id)))
+    OPERATIONS.iter().chain(PENDING.iter().filter(|op| !OPERATIONS.iter().any(|known| known.id == op.id)))
 }
 
 /// Operations the coordination commands (`g1t session`, `g1t work`,
@@ -102,10 +97,7 @@ pub mod generate {
     use std::fmt::Write as _;
 
     pub fn openapi() -> Value {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../apps/docs/src/data/openapi.json"
-        );
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../apps/docs/src/data/openapi.json");
         let text = std::fs::read_to_string(path).expect("apps/docs/src/data/openapi.json");
         serde_json::from_str(&text).expect("openapi.json parses")
     }
@@ -113,29 +105,14 @@ pub mod generate {
     fn kind(schema: &Value) -> String {
         match &schema["type"] {
             Value::String(s) => s.clone(),
-            Value::Array(list) => list
-                .iter()
-                .filter_map(Value::as_str)
-                .find(|t| *t != "null")
-                .unwrap_or("string")
-                .to_owned(),
-            _ if schema.get("oneOf").is_some() || schema.get("anyOf").is_some() => {
-                "string".to_owned()
-            }
+            Value::Array(list) => list.iter().filter_map(Value::as_str).find(|t| *t != "null").unwrap_or("string").to_owned(),
+            _ if schema.get("oneOf").is_some() || schema.get("anyOf").is_some() => "string".to_owned(),
             _ => "object".to_owned(),
         }
     }
 
     fn values(schema: &Value) -> Vec<String> {
-        schema["enum"]
-            .as_array()
-            .map(|list| {
-                list.iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_owned)
-                    .collect()
-            })
-            .unwrap_or_default()
+        schema["enum"].as_array().map(|list| list.iter().filter_map(Value::as_str).map(str::to_owned).collect()).unwrap_or_default()
     }
 
     fn quoted(list: &[String]) -> String {
@@ -197,10 +174,8 @@ pub mod generate {
                     writeln!(text, "        ],").unwrap();
                 }
                 let schema = &op["requestBody"]["content"]["application/json"]["schema"];
-                let required: Vec<&str> = schema["required"]
-                    .as_array()
-                    .map(|l| l.iter().filter_map(Value::as_str).collect())
-                    .unwrap_or_default();
+                let required: Vec<&str> =
+                    schema["required"].as_array().map(|l| l.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
                 match schema["properties"].as_object() {
                     Some(props) if !props.is_empty() => {
                         writeln!(text, "        body: &[").unwrap();
@@ -269,9 +244,7 @@ mod tests {
             std::fs::write(path, &want).unwrap();
             return;
         }
-        let have = std::fs::read_to_string(path)
-            .unwrap_or_default()
-            .replace("\r\n", "\n");
+        let have = std::fs::read_to_string(path).unwrap_or_default().replace("\r\n", "\n");
         assert!(
             have == want,
             "crates/g1t/src/ops_table.rs is out of date with apps/docs/src/data/openapi.json: run G1T_WRITE_OPS=1 cargo test -p g1t ops_table"
@@ -306,12 +279,7 @@ mod tests {
     fn every_path_parameter_is_in_the_path() {
         for op in OPERATIONS {
             for p in op.path_params() {
-                assert!(
-                    op.path.contains(&format!("{{{}}}", p.name)),
-                    "{}: {}",
-                    op.id,
-                    p.name
-                );
+                assert!(op.path.contains(&format!("{{{}}}", p.name)), "{}: {}", op.id, p.name);
             }
         }
     }

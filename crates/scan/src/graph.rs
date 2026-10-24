@@ -131,13 +131,7 @@ pub fn dependencies(lockfile: Lockfile, manifest: &str, text: &str) -> Vec<Depen
             let key = (package.name.clone(), package.version.clone());
             let development = facts.development.contains(&key)
                 || (relationship == Relationship::Direct && facts.direct_development.contains(&package.name));
-            Dependency {
-                license: facts.licenses.get(&key).cloned(),
-                manifest: manifest.to_owned(),
-                relationship,
-                development,
-                package,
-            }
+            Dependency { license: facts.licenses.get(&key).cloned(), manifest: manifest.to_owned(), relationship, development, package }
         })
         .collect()
 }
@@ -260,11 +254,7 @@ fn pnpm_lock(text: &str) -> Facts {
             _ => {}
         }
     }
-    Facts {
-        direct: found_any.then_some(direct),
-        direct_development: development,
-        ..Facts::default()
-    }
+    Facts { direct: found_any.then_some(direct), direct_development: development, ..Facts::default() }
 }
 
 /// `Cargo.lock`: the project's own crates have no `source`, and their
@@ -337,7 +327,13 @@ fn go_mod(text: &str) -> Facts {
             block = true;
             continue;
         }
-        let line = if block { line } else if let Some(rest) = line.strip_prefix("require ") { rest.trim() } else { continue };
+        let line = if block {
+            line
+        } else if let Some(rest) = line.strip_prefix("require ") {
+            rest.trim()
+        } else {
+            continue;
+        };
         if let Some(module) = line.split_whitespace().next()
             && !indirect
         {
@@ -441,10 +437,7 @@ mod tests {
     #[test]
     fn cargo_lock_direct_is_what_the_projects_crates_use() {
         let lock = "version = 3\n\n[[package]]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\n \"serde\",\n \"time 0.1.43\",\n]\n\n[[package]]\nname = \"serde\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\ndependencies = [\n \"serde_derive\",\n]\n\n[[package]]\nname = \"serde_derive\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n\n[[package]]\nname = \"time\"\nversion = \"0.1.43\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n";
-        assert_eq!(
-            summary(Lockfile::CargoLock, lock),
-            ["serde@1.0.0 direct", "serde_derive@1.0.0 transitive", "time@0.1.43 direct"]
-        );
+        assert_eq!(summary(Lockfile::CargoLock, lock), ["serde@1.0.0 direct", "serde_derive@1.0.0 transitive", "time@0.1.43 direct"]);
     }
 
     #[test]

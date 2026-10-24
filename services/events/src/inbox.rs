@@ -188,17 +188,16 @@ pub fn wants(event: &Event) -> Option<Wanted> {
         });
     }
     let repo_id = text("repoId").or_else(|| event.repo_id.clone())?;
-    let on = |number: Option<u32>, comment_id: Option<String>| {
-        Some(Wanted {
-            repo_id: Some(repo_id.clone()),
-            number,
-            comment_id,
-            item: None,
-        })
-    };
+    let on =
+        |number: Option<u32>, comment_id: Option<String>| Some(Wanted { repo_id: Some(repo_id.clone()), number, comment_id, item: None });
     match event.kind.as_str() {
-        "pull.stalled" | "pull.merged" | "pull.closed" | "pull.opened" | "pull.auto_merge_disabled"
-        | "pull.review_requested" | "pull.assigned" => on(Some(number("number")?), None),
+        "pull.stalled"
+        | "pull.merged"
+        | "pull.closed"
+        | "pull.opened"
+        | "pull.auto_merge_disabled"
+        | "pull.review_requested"
+        | "pull.assigned" => on(Some(number("number")?), None),
         "checks.completed" => match data["status"].as_str() {
             Some("failed" | "errored") => on(Some(number("number")?), None),
             _ => None,
@@ -286,23 +285,16 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
     let text = |key: &str| data[key].as_str().filter(|value| !value.is_empty()).map(str::to_owned);
     match event.kind.as_str() {
         // A project's production, or one pull request's preview.
-        "deployment.failed" | "deployment.succeeded" => {
-            Thread {
-                key: deploy_thread(wanted.repo(), data, wanted.number),
-                kind: Some(SubjectKind::Deploy),
-                number: wanted.number,
-                run_id: text("deploymentId"),
-                link: text("path"),
-            }
-        }
+        "deployment.failed" | "deployment.succeeded" => Thread {
+            key: deploy_thread(wanted.repo(), data, wanted.number),
+            kind: Some(SubjectKind::Deploy),
+            number: wanted.number,
+            run_id: text("deploymentId"),
+            link: text("path"),
+        },
         // One run's deployment to one environment, waiting for review.
         "deployment.review_requested" => Thread {
-            key: format!(
-                "{}/review/{}/{}",
-                wanted.repo(),
-                text("runId").unwrap_or_default(),
-                text("environment").unwrap_or_default()
-            ),
+            key: format!("{}/review/{}/{}", wanted.repo(), text("runId").unwrap_or_default(), text("environment").unwrap_or_default()),
             kind: Some(SubjectKind::Run),
             number: None,
             run_id: text("runId"),
@@ -310,13 +302,7 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
         },
         // A workflow on a branch: its next failure bumps the same thread.
         "workflow.completed" if subject.is_none() => {
-            Thread {
-                key: run_thread(wanted.repo(), data),
-                kind: Some(SubjectKind::Run),
-                number: None,
-                run_id: text("runId"),
-                link: None,
-            }
+            Thread { key: run_thread(wanted.repo(), data), kind: Some(SubjectKind::Run), number: None, run_id: text("runId"), link: None }
         }
         // One commit's comments (work/src/commit_comments.rs).
         "commit_comment.created" => Thread {
@@ -335,13 +321,7 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
                 _ if kind.ends_with(".summary") => text("alertType").unwrap_or_else(|| "alerts".to_owned()),
                 _ => text("requestId").or_else(|| text("alertId")).unwrap_or_else(|| event.id.clone()),
             };
-            Thread {
-                key: format!("{}/security/{which}", wanted.repo()),
-                kind: None,
-                number: None,
-                run_id: None,
-                link: text("link"),
-            }
+            Thread { key: format!("{}/security/{which}", wanted.repo()), kind: None, number: None, run_id: None, link: text("link") }
         }
         // A work item: one thread, wherever it is linked.
         _ if wanted.item.is_some() => Thread {
@@ -359,13 +339,7 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
                 run_id: None,
                 link: None,
             },
-            None => Thread {
-                key: format!("event/{}", event.id),
-                kind: None,
-                number: None,
-                run_id: None,
-                link: None,
-            },
+            None => Thread { key: format!("event/{}", event.id), kind: None, number: None, run_id: None, link: None },
         },
     }
 }
@@ -429,21 +403,11 @@ pub struct Settled {
 
 impl Settle {
     fn thread(thread: impl Into<String>) -> Self {
-        Settle {
-            scope: Scope::Thread(thread.into()),
-            username: None,
-            reasons: Vec::new(),
-            events: Vec::new(),
-            why: None,
-            by: None,
-        }
+        Settle { scope: Scope::Thread(thread.into()), username: None, reasons: Vec::new(), events: Vec::new(), why: None, by: None }
     }
 
     fn matching(pattern: impl Into<String>) -> Self {
-        Settle {
-            scope: Scope::Matching(pattern.into()),
-            ..Settle::thread("")
-        }
+        Settle { scope: Scope::Matching(pattern.into()), ..Settle::thread("") }
     }
 
     fn because(mut self, reasons: &[Reason]) -> Self {
@@ -661,10 +625,8 @@ pub fn closes(event: &Event, actor: Option<&str>) -> Vec<Settle> {
     };
     let mut settled = vec![Settle::thread(thread).saying(why, actor)];
     if event.kind.starts_with("pull.")
-        && let (Some(repo_id), Some(number)) = (
-            event.data["repoId"].as_str().map(str::to_owned).or_else(|| event.repo_id.clone()),
-            event.data["number"].as_u64(),
-        )
+        && let (Some(repo_id), Some(number)) =
+            (event.data["repoId"].as_str().map(str::to_owned).or_else(|| event.repo_id.clone()), event.data["number"].as_u64())
     {
         settled.push(Settle::matching(format!("{repo_id}/deploy/*/{number}")).saying(why, actor));
     }
@@ -724,13 +686,7 @@ impl Told<'_> {
         {
             return;
         }
-        let notice = Notice {
-            username,
-            reason,
-            severity,
-            title: clip(title, MAX_TITLE),
-            body: clip(body, MAX_BODY),
-        };
+        let notice = Notice { username, reason, severity, title: clip(title, MAX_TITLE), body: clip(body, MAX_BODY) };
         match self.notices.iter_mut().find(|told| told.username == notice.username) {
             Some(told) if notice.reason.rank() < told.reason.rank() => *told = notice,
             Some(_) => {}
@@ -798,20 +754,12 @@ fn activity_of(subject: &InboxSubject) -> &'static str {
 fn teams_asked(data: &serde_json::Value) -> Vec<(String, Vec<String>)> {
     data["teams"]
         .as_array()
-        .map(|teams| {
-            teams
-                .iter()
-                .filter_map(|team| Some((team["team"].as_str()?.to_owned(), names(team, "notified"))))
-                .collect()
-        })
+        .map(|teams| teams.iter().filter_map(|team| Some((team["team"].as_str()?.to_owned(), names(team, "notified")))).collect())
         .unwrap_or_default()
 }
 
 fn names(data: &serde_json::Value, key: &str) -> Vec<String> {
-    data[key]
-        .as_array()
-        .map(|names| names.iter().filter_map(|name| name.as_str().map(str::to_owned)).collect())
-        .unwrap_or_default()
+    data[key].as_array().map(|names| names.iter().filter_map(|name| name.as_str().map(str::to_owned)).collect()).unwrap_or_default()
 }
 
 /// Who is told of `event`, in `repo` (`owner/name`, or for a work item its
@@ -836,11 +784,7 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
             | "deployment.succeeded"
             | "deployment.review_requested"
     ) || SECURITY_EVENTS.contains(&event.kind.as_str());
-    let mut told = Told {
-        actor: if outcome { &nobody } else { actor },
-        audience,
-        notices: Vec::new(),
-    };
+    let mut told = Told { actor: if outcome { &nobody } else { actor }, audience, notices: Vec::new() };
     // Who did it, as titles name them.
     let who = actor.name().unwrap_or("g1t");
 
@@ -873,20 +817,12 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
         ("pull.review_requested", Some(pull)) => {
             // Asked because the CODEOWNERS file says they own what changed.
             let owned = data["codeOwners"].as_bool() == Some(true);
-            let title = if owned {
-                format!("{at} changes files you own")
-            } else {
-                format!("{who} asked you to review {at}")
-            };
+            let title = if owned { format!("{at} changes files you own") } else { format!("{who} asked you to review {at}") };
             for name in names(data, "reviewers") {
                 told.tell(&name, Reason::ReviewRequested, Severity::Warning, &title, &pull.title, true);
             }
             for (team, people) in teams_asked(data) {
-                let title = if owned {
-                    format!("{at} changes files @{team} owns")
-                } else {
-                    format!("{who} asked @{team} to review {at}")
-                };
+                let title = if owned { format!("{at} changes files @{team} owns") } else { format!("{who} asked @{team} to review {at}") };
                 for name in people {
                     told.tell(&name, Reason::ReviewRequested, Severity::Warning, &title, &pull.title, true);
                 }
@@ -953,11 +889,8 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
                 Some(_) => format!("The preview of {at}"),
                 None => format!("Production of {project}"),
             };
-            let (title, severity) = if failed {
-                (format!("{what} failed to deploy"), Severity::Error)
-            } else {
-                (format!("{what} is live"), Severity::Success)
-            };
+            let (title, severity) =
+                if failed { (format!("{what} failed to deploy"), Severity::Error) } else { (format!("{what} is live"), Severity::Success) };
             let body = match (failed, data["error"].as_str().map(str::trim).filter(|error| !error.is_empty())) {
                 (true, Some(error)) => error.to_owned(),
                 _ => match subject {
@@ -1100,10 +1033,7 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
             // anything they set off.
             let writer = match &comment.agent {
                 Some(agent) => Actor { id: Some(agent.id.clone()), username: None },
-                None => Actor {
-                    id: Some(comment.author.id.clone()),
-                    username: Some(comment.author.username.clone()),
-                },
+                None => Actor { id: Some(comment.author.id.clone()), username: Some(comment.author.username.clone()) },
             };
             told.actor = &writer;
             let who = match &comment.agent {
@@ -1483,7 +1413,13 @@ async fn actor_names(sources: &Sources<'_>, events: &[Event]) -> HashMap<String,
     })
 }
 
-async fn deliver_events(db: &D1Database, sources: &Sources<'_>, events: &[Event], names: &HashMap<String, String>, settled: &mut HashSet<Settled>) {
+async fn deliver_events(
+    db: &D1Database,
+    sources: &Sources<'_>,
+    events: &[Event],
+    names: &HashMap<String, String>,
+    settled: &mut HashSet<Settled>,
+) {
     // A workspace's own notices, about no repository (workspace_notices).
     for event in events.iter().filter(|event| WORKSPACE_EVENTS.contains(&event.kind.as_str())) {
         if let Err(error) = deliver_workspace(db, event).await {
@@ -1502,10 +1438,7 @@ async fn deliver_events(db: &D1Database, sources: &Sources<'_>, events: &[Event]
             }
         }
     }
-    let wanted: Vec<(&Event, Wanted)> = events
-        .iter()
-        .filter_map(|event| wants(event).map(|wanted| (event, wanted)))
-        .collect();
+    let wanted: Vec<(&Event, Wanted)> = events.iter().filter_map(|event| wants(event).map(|wanted| (event, wanted))).collect();
     let created: Vec<&Event> = events.iter().filter(|event| event.kind == "repo.created").collect();
     if wanted.is_empty() && created.is_empty() {
         return;
@@ -1739,11 +1672,7 @@ async fn deliver_one(
     // Who watches it: its repository's watchers, or a work item's linked
     // repositories', its origin's first.
     let linked: Vec<&str> = wanted.item.as_ref().map_or_else(Vec::new, |item| {
-        item.repo_ids
-            .iter()
-            .map(String::as_str)
-            .filter(|id| wanted.repo_id.as_deref() != Some(*id))
-            .collect()
+        item.repo_ids.iter().map(String::as_str).filter(|id| wanted.repo_id.as_deref() != Some(*id)).collect()
     });
     for repo_id in wanted.repo_id.iter().map(String::as_str).chain(linked.iter().copied()) {
         if !watchers.contains_key(repo_id) {
@@ -1776,11 +1705,8 @@ async fn deliver_one(
     // workspace, or anyone when its origin is public. Nothing of it (title,
     // body, push, email, count) reaches anyone else.
     if let Some(item) = &wanted.item {
-        let hearsay: Vec<String> = told
-            .iter()
-            .filter(|notice| only_elsewhere(notice, &elsewhere))
-            .map(|notice| notice.username.clone())
-            .collect();
+        let hearsay: Vec<String> =
+            told.iter().filter(|notice| only_elsewhere(notice, &elsewhere)).map(|notice| notice.username.clone()).collect();
         if !hearsay.is_empty() {
             let asked = MembersAmongArgs { workspace: item.workspace.clone(), usernames: hearsay.clone() };
             let members: HashSet<String> = g1t_kit::call::<_, Vec<String>>(sources.identity, "members_among", &asked)
@@ -2078,12 +2004,7 @@ async fn email(db: &D1Database, identity: &Fetcher, written: Vec<Written>) -> Re
     if written.is_empty() {
         return Ok(());
     }
-    let people: Vec<String> = written
-        .iter()
-        .map(|item| item.notice.username.clone())
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
+    let people: Vec<String> = written.iter().map(|item| item.notice.username.clone()).collect::<HashSet<_>>().into_iter().collect();
     let settings = subscriptions::settings_of(db, &people).await?;
     for item in written {
         let wants = settings.get(&item.notice.username).map_or(&DEFAULT_EMAIL[..], |settings| &settings.email[..]);
@@ -2267,12 +2188,8 @@ pub async fn list(db: &D1Database, repos: &Fetcher, a: ListInboxArgs) -> Result<
     rest_values.push((limit + 1).into());
     let order = if a.view == InboxView::Done { "done_at DESC, bumped DESC" } else { "bumped DESC" };
     let mut statements = vec![
-        db.prepare(format!(
-            "SELECT {COLUMNS} FROM inbox_items WHERE {} ORDER BY {order} LIMIT ?{}",
-            rest.join(" AND "),
-            rest_values.len()
-        ))
-        .bind(&rest_values)?,
+        db.prepare(format!("SELECT {COLUMNS} FROM inbox_items WHERE {} ORDER BY {order} LIMIT ?{}", rest.join(" AND "), rest_values.len()))
+            .bind(&rest_values)?,
     ];
     if ranked && a.before.is_none() {
         statements.push(
@@ -2294,10 +2211,7 @@ pub async fn list(db: &D1Database, repos: &Fetcher, a: ListInboxArgs) -> Result<
     let mut items: Vec<Row> = results.get(1).map(|result| result.results::<Row>()).transpose()?.unwrap_or_default();
     items.extend(rows);
     let items = readable_only(db, repos, &a.viewer, &username, items).await?;
-    Ok(InboxPage {
-        items: items.into_iter().map(Row::into_item).collect(),
-        next,
-    })
+    Ok(InboxPage { items: items.into_iter().map(Row::into_item).collect(), next })
 }
 
 /// The workspaces whose work items the viewer sees all of: those they are
@@ -2325,7 +2239,13 @@ impl Row {
 /// Rows the viewer may still see: about repositories they can read, and
 /// work items of workspaces they belong to or whose origin they can read.
 /// The rest are removed from their inbox as they are found.
-pub(crate) async fn readable_only(db: &D1Database, repos: &Fetcher, viewer: &g1t_contracts::Viewer, username: &str, mut rows: Vec<Row>) -> Result<Vec<Row>> {
+pub(crate) async fn readable_only(
+    db: &D1Database,
+    repos: &Fetcher,
+    viewer: &g1t_contracts::Viewer,
+    username: &str,
+    mut rows: Vec<Row>,
+) -> Result<Vec<Row>> {
     let members = member_of(viewer);
     // A work item outside the viewer's workspaces with no origin is not theirs to see.
     let unseen: Vec<String> = rows
@@ -2343,15 +2263,7 @@ pub(crate) async fn readable_only(db: &D1Database, repos: &Fetcher, viewer: &g1t
     let gone: Vec<String> = if ids.is_empty() {
         Vec::new()
     } else {
-        let readable: Vec<Repo> = g1t_kit::call(
-            repos,
-            "readable",
-            &ReadableArgs {
-                ids: ids.clone(),
-                viewer: viewer.clone(),
-            },
-        )
-        .await?;
+        let readable: Vec<Repo> = g1t_kit::call(repos, "readable", &ReadableArgs { ids: ids.clone(), viewer: viewer.clone() }).await?;
         let readable: HashSet<String> = readable.into_iter().map(|repo| repo.id).collect();
         ids.into_iter().filter(|id| !readable.contains(id)).collect()
     };
@@ -2379,8 +2291,7 @@ async fn forget(db: &D1Database, username: &str, repo_ids: &[String], unseen: &[
         serde_json::to_string(unseen)?.into(),
     ];
     db.batch(vec![
-        db.prepare(format!("DELETE FROM inbox_activity WHERE item_id IN (SELECT id FROM inbox_items WHERE {which})"))
-            .bind(&values)?,
+        db.prepare(format!("DELETE FROM inbox_activity WHERE item_id IN (SELECT id FROM inbox_items WHERE {which})")).bind(&values)?,
         db.prepare(format!("DELETE FROM inbox_items WHERE {which}")).bind(&values)?,
     ])
     .await?;
@@ -2476,10 +2387,7 @@ pub async fn mark(db: &D1Database, a: MarkInboxArgs) -> Result<u32> {
         format!("id IN ({})", marks.join(", "))
     };
     let changed = db
-        .prepare(format!(
-            "UPDATE inbox_items SET {} WHERE username = ?3 AND {target} RETURNING id",
-            mark_change(a.mark)
-        ))
+        .prepare(format!("UPDATE inbox_items SET {} WHERE username = ?3 AND {target} RETURNING id", mark_change(a.mark)))
         .bind(&values)?
         .all()
         .await?
@@ -2538,21 +2446,13 @@ pub async fn thread(db: &D1Database, repos: &Fetcher, work: &Fetcher, a: ThreadA
             subscriptions::subscription(
                 db,
                 work,
-                SubscriptionArgs {
-                    viewer: a.viewer.clone(),
-                    id: Some(item.id.clone()),
-                    ..SubscriptionArgs::default()
-                },
+                SubscriptionArgs { viewer: a.viewer.clone(), id: Some(item.id.clone()), ..SubscriptionArgs::default() },
             )
             .await?
         }
         _ => None,
     };
-    Ok(Some(InboxThread {
-        item,
-        activity,
-        subscription,
-    }))
+    Ok(Some(InboxThread { item, activity, subscription }))
 }
 
 // --- Keeping up ------------------------------------------------------------------
@@ -2631,14 +2531,8 @@ pub async fn follow(db: &D1Database, events: &[Event]) -> Result<()> {
                 }
             }
             "workspace.deleted" => {
-                statements.push(
-                    db.prepare("DELETE FROM inbox_items WHERE workspace = ?")
-                        .bind(&[text("slug").into()])?,
-                );
-                statements.push(
-                    db.prepare("DELETE FROM inbox_watching WHERE repo LIKE ? || '/%'")
-                        .bind(&[text("slug").into()])?,
-                );
+                statements.push(db.prepare("DELETE FROM inbox_items WHERE workspace = ?").bind(&[text("slug").into()])?);
+                statements.push(db.prepare("DELETE FROM inbox_watching WHERE repo LIKE ? || '/%'").bind(&[text("slug").into()])?);
             }
             // Issues moved into work items: what was kept by their numbers follows.
             "work.migrated" => statements.extend(crate::work_items::moved(db, event)?),
@@ -2674,10 +2568,8 @@ pub async fn purge(db: &D1Database, now: u64) -> Result<u32> {
     let done = crate::audit::keep_from(now, DONE_DAYS);
     let oldest = crate::audit::keep_from(now, MAX_DAYS);
     let statements: Vec<D1PreparedStatement> = vec![
-        db.prepare("DELETE FROM inbox_items WHERE saved = 0 AND done_at < ?")
-            .bind(&[done.into()])?,
-        db.prepare("DELETE FROM inbox_items WHERE saved = 0 AND COALESCE(updated_at, created_at) < ?")
-            .bind(&[oldest.into()])?,
+        db.prepare("DELETE FROM inbox_items WHERE saved = 0 AND done_at < ?").bind(&[done.into()])?,
+        db.prepare("DELETE FROM inbox_items WHERE saved = 0 AND COALESCE(updated_at, created_at) < ?").bind(&[oldest.into()])?,
         db.prepare("DELETE FROM inbox_activity WHERE NOT EXISTS (SELECT 1 FROM inbox_items WHERE inbox_items.id = inbox_activity.item_id)"),
     ];
     let results = db.batch(statements).await?;
@@ -2707,17 +2599,11 @@ mod tests {
     }
 
     fn person(id: &str, username: &str) -> Principal {
-        Principal {
-            id: id.into(),
-            username: username.into(),
-        }
+        Principal { id: id.into(), username: username.into() }
     }
 
     fn actor(id: &str, username: &str) -> Actor {
-        Actor {
-            id: Some(id.into()),
-            username: Some(username.into()),
-        }
+        Actor { id: Some(id.into()), username: Some(username.into()) }
     }
 
     /// A pull request ana opened, assigned to bo, for a work item cy filed and dee is assigned.
@@ -2740,11 +2626,7 @@ mod tests {
 
     /// A change g1t made for ana.
     fn g1t_pull() -> InboxSubject {
-        InboxSubject {
-            author: person(AGENT_ID, "g1t"),
-            requested_by: Some(person("usr_ana", "ana")),
-            ..pull()
-        }
+        InboxSubject { author: person(AGENT_ID, "g1t"), requested_by: Some(person("usr_ana", "ana")), ..pull() }
     }
 
     fn nobody() -> Audience {
@@ -2752,10 +2634,7 @@ mod tests {
     }
 
     fn told(notices: &[Notice]) -> Vec<(&str, Reason, Severity)> {
-        notices
-            .iter()
-            .map(|notice| (notice.username.as_str(), notice.reason, notice.severity))
-            .collect()
+        notices.iter().map(|notice| (notice.username.as_str(), notice.reason, notice.severity)).collect()
     }
 
     fn comment(author: Principal, body: &str, mentions: &[&str]) -> InboxSubject {
@@ -2774,11 +2653,7 @@ mod tests {
         Audience {
             subscriptions: rows
                 .iter()
-                .map(|(name, state, reason)| Subscription {
-                    username: (*name).into(),
-                    state: *state,
-                    reason: *reason,
-                })
+                .map(|(name, state, reason)| Subscription { username: (*name).into(), state: *state, reason: *reason })
                 .collect(),
             watchers: Vec::new(),
         }
@@ -2865,14 +2740,16 @@ mod tests {
             json!({ "itemId": "wki_1", "workspace": "acme", "number": 40, "resolution": { "repo": "acme/api", "pull": 9 } }),
         );
         assert_eq!(closes(&closed, Some("bo")), vec![Settle::thread("item:wki_1").saying("Closed", Some("bo"))]);
-        let item = InboxSubject { kind: Some(SubjectKind::Item), title: "Ship it".into(), author: person("usr_cy", "cy"), ..InboxSubject::default() };
+        let item = InboxSubject {
+            kind: Some(SubjectKind::Item),
+            title: "Ship it".into(),
+            author: person("usr_cy", "cy"),
+            ..InboxSubject::default()
+        };
         assert_eq!(notices(&closed, "acme", &Actor::default(), Some(&item), &nobody())[0].title, "acme#40 was closed by acme/api#9");
         // A comment on it is handled on its thread.
         let comment = event("comment.created", None, json!({ "itemId": "wki_1", "workspace": "acme", "number": 40, "commentId": "cmt_1" }));
-        let on = InboxSubject {
-            comment: Some(InboxComment { author: person("usr_bo", "bo"), ..InboxComment::default() }),
-            ..item
-        };
+        let on = InboxSubject { comment: Some(InboxComment { author: person("usr_bo", "bo"), ..InboxComment::default() }), ..item };
         assert_eq!(handled_by(&comment, Some(&on)).map(|settle| settle.scope), Some(Scope::Thread("item:wki_1".into())));
         assert!(subscribable("item:wki_1") && subscribable("rep_1#7") && !subscribable("rep_1/run/ci@main"));
     }
@@ -2881,7 +2758,8 @@ mod tests {
     fn a_work_items_origin_is_its_events_repository_alone() {
         // Filed in the workspace and linked to rep_2: no origin, whatever
         // its data's `repoId` or the first of its `repoIds` say.
-        let data = json!({ "itemId": "wki_1", "workspace": "acme", "number": 40, "commentId": "cmt_1", "repoId": "rep_2", "repoIds": ["rep_2"] });
+        let data =
+            json!({ "itemId": "wki_1", "workspace": "acme", "number": 40, "commentId": "cmt_1", "repoId": "rep_2", "repoIds": ["rep_2"] });
         for kind in ["work_item.opened", "comment.created"] {
             let wanted = wants(&Event { repo_id: None, ..event(kind, None, data.clone()) }).unwrap_or_else(|| panic!("{kind}"));
             assert_eq!(wanted.repo_id, None, "{kind}");
@@ -2954,7 +2832,11 @@ mod tests {
 
     #[test]
     fn whoever_turned_on_auto_merge_hears_it_is_off() {
-        let off = event("pull.auto_merge_disabled", None, json!({ "number": 7, "autoMergeBy": "bo", "detail": "Its branch conflicts with main." }));
+        let off = event(
+            "pull.auto_merge_disabled",
+            None,
+            json!({ "number": 7, "autoMergeBy": "bo", "detail": "Its branch conflicts with main." }),
+        );
         let notices_ = notices(&off, "acme/rocket", &Actor::default(), Some(&pull()), &nobody());
         assert_eq!(told(&notices_), vec![("bo", Reason::StateChange, Severity::Warning)]);
         assert_eq!(notices_[0].title, "Auto-merge was turned off on acme/rocket#7");
@@ -3011,9 +2893,7 @@ mod tests {
 
     #[test]
     fn a_workflow_passing_on_a_branch_settles_its_failures_there() {
-        let data = |conclusion: &str| {
-            json!({ "repoId": "rep_1", "runId": "run_9", "workflow": "Deploy", "path": ".g1t/workflows/deploy.yml", "ref": "refs/heads/main", "conclusion": conclusion, "number": 328 })
-        };
+        let data = |conclusion: &str| json!({ "repoId": "rep_1", "runId": "run_9", "workflow": "Deploy", "path": ".g1t/workflows/deploy.yml", "ref": "refs/heads/main", "conclusion": conclusion, "number": 328 });
         let failed = event("workflow.completed", Some("usr_bo"), data("failure"));
         let thread = thread_of(&failed, &wants(&failed).unwrap(), None).key;
         assert_eq!(thread, "rep_1/run/.g1t/workflows/deploy.yml@main");
@@ -3031,7 +2911,9 @@ mod tests {
         for conclusion in ["failure", "cancelled"] {
             assert_eq!(
                 settles(&event("workflow.completed", None, data(conclusion)), None),
-                vec![Settle::matching("rep_1/review/run_9/*").because(&[Reason::ReviewRequested]).saying("Deploy finished in run 328", None)]
+                vec![
+                    Settle::matching("rep_1/review/run_9/*").because(&[Reason::ReviewRequested]).saying("Deploy finished in run 328", None)
+                ]
             );
         }
         // On a pull request, its checks passing settles the failure instead.
@@ -3041,7 +2923,8 @@ mod tests {
 
     #[test]
     fn checks_passing_settle_the_failure_its_owner_was_told_of() {
-        let passed = event("checks.completed", None, json!({ "repoId": "rep_1", "number": 7, "status": "passed", "commit": "abcdef0123456" }));
+        let passed =
+            event("checks.completed", None, json!({ "repoId": "rep_1", "number": 7, "status": "passed", "commit": "abcdef0123456" }));
         assert_eq!(
             settles(&passed, None),
             vec![Settle::thread("rep_1#7").because(&[Reason::CiActivity]).saying("Checks passed on abcdef0", None)]
@@ -3052,13 +2935,22 @@ mod tests {
 
     #[test]
     fn a_deployment_settles_the_failure_before_it() {
-        let live = event("deployment.succeeded", Some("usr_bo"), json!({ "repoId": "rep_1", "projectId": "prj_1", "project": "web", "commit": "1234567890" }));
+        let live = event(
+            "deployment.succeeded",
+            Some("usr_bo"),
+            json!({ "repoId": "rep_1", "projectId": "prj_1", "project": "web", "commit": "1234567890" }),
+        );
         assert_eq!(
             settles(&live, Some("bo")),
-            vec![Settle::thread("rep_1/deploy/prj_1/production").after(&["deployment.failed"]).saying("Production of web deployed at 1234567", Some("bo"))]
+            vec![
+                Settle::thread("rep_1/deploy/prj_1/production")
+                    .after(&["deployment.failed"])
+                    .saying("Production of web deployed at 1234567", Some("bo"))
+            ]
         );
         // Started by g1t or a workflow: the deployment names who.
-        let preview = event("deployment.succeeded", None, json!({ "repoId": "rep_1", "projectId": "prj_1", "number": 7, "triggeredBy": "g1t" }));
+        let preview =
+            event("deployment.succeeded", None, json!({ "repoId": "rep_1", "projectId": "prj_1", "number": 7, "triggeredBy": "g1t" }));
         assert_eq!(
             settles(&preview, None),
             vec![Settle::thread("rep_1/deploy/prj_1/7").after(&["deployment.failed"]).saying("Preview of #7 deployed", Some("g1t"))]
@@ -3079,7 +2971,11 @@ mod tests {
         let token = event("token.approval_reviewed", None, json!({ "workspace": "acme", "tokenId": "tok_1" }));
         assert_eq!(
             settles(&token, Some("ana")),
-            vec![Settle::thread("workspace:acme/token/tok_1").because(&[Reason::ReviewRequested]).saying("Token request decided", Some("ana"))]
+            vec![
+                Settle::thread("workspace:acme/token/tok_1")
+                    .because(&[Reason::ReviewRequested])
+                    .saying("Token request decided", Some("ana"))
+            ]
         );
         let bypass = event("secret_scanning.bypass_reviewed", None, json!({ "repoId": "rep_1", "requestId": "byp_1" }));
         assert_eq!(
@@ -3169,19 +3065,18 @@ mod tests {
     fn a_team_mention_tells_its_people_once_and_a_name_wins() {
         let mut on = comment(person("usr_bo", "bo"), "cc @ana @acme/backend", &["ana"]);
         if let Some(comment) = on.comment.as_mut() {
-            comment.team_mentions = vec![TeamMentioned {
-                team: "acme/backend".into(),
-                members: vec!["ana".into(), "cy".into(), "bo".into()],
-            }];
+            comment.team_mentions =
+                vec![TeamMentioned { team: "acme/backend".into(), members: vec!["ana".into(), "cy".into(), "bo".into()] }];
         }
         let created = event("comment.created", Some("usr_bo"), json!({ "number": 7, "commentId": "cmt_1" }));
         let notices_ = notices(&created, "acme/rocket", &actor("usr_bo", "bo"), Some(&on), &nobody());
-        let mentioned: Vec<(&str, Reason)> = notices_.iter().map(|n| (n.username.as_str(), n.reason)).filter(|(_, r)| matches!(r, Reason::Mention | Reason::TeamMention)).collect();
+        let mentioned: Vec<(&str, Reason)> = notices_
+            .iter()
+            .map(|n| (n.username.as_str(), n.reason))
+            .filter(|(_, r)| matches!(r, Reason::Mention | Reason::TeamMention))
+            .collect();
         assert_eq!(mentioned, vec![("ana", Reason::Mention), ("cy", Reason::TeamMention)]);
-        assert_eq!(
-            notices_.iter().find(|n| n.username == "cy").unwrap().title,
-            "bo mentioned @acme/backend on acme/rocket#7"
-        );
+        assert_eq!(notices_.iter().find(|n| n.username == "cy").unwrap().title, "bo mentioned @acme/backend on acme/rocket#7");
         let subscribed = subscribes(&created, Some(&on));
         assert!(subscribed.contains(&("cy".into(), Reason::TeamMention)));
         assert!(subscribed.contains(&("ana".into(), Reason::Mention)));
@@ -3191,18 +3086,12 @@ mod tests {
     fn a_description_tells_the_people_and_teams_it_mentions() {
         let mut on = pull();
         on.mentions = vec!["dee".into()];
-        on.team_mentions = vec![TeamMentioned {
-            team: "acme/web".into(),
-            members: vec!["eve".into()],
-        }];
+        on.team_mentions = vec![TeamMentioned { team: "acme/web".into(), members: vec!["eve".into()] }];
         let opened = event("pull.opened", Some("usr_ana"), json!({ "number": 7 }));
         let notices_ = notices(&opened, "acme/rocket", &actor("usr_ana", "ana"), Some(&on), &nobody());
         assert!(told(&notices_).contains(&("dee", Reason::Mention, Severity::Info)));
         assert!(told(&notices_).contains(&("eve", Reason::TeamMention, Severity::Info)));
-        assert_eq!(
-            subscribes(&opened, Some(&on)),
-            vec![("dee".into(), Reason::Mention), ("eve".into(), Reason::TeamMention)]
-        );
+        assert_eq!(subscribes(&opened, Some(&on)), vec![("dee".into(), Reason::Mention), ("eve".into(), Reason::TeamMention)]);
     }
 
     #[test]
@@ -3216,7 +3105,10 @@ mod tests {
         assert_eq!(told(&notices_), vec![("eve", Reason::Assign, Severity::Info)]);
         assert_eq!(notices_[0].title, "ana assigned you to acme/rocket#3");
         // Both subscribe whoever they name, never g1t.
-        assert_eq!(subscribes(&requested, Some(&pull())), vec![("bo".into(), Reason::ReviewRequested), ("ana".into(), Reason::ReviewRequested)]);
+        assert_eq!(
+            subscribes(&requested, Some(&pull())),
+            vec![("bo".into(), Reason::ReviewRequested), ("ana".into(), Reason::ReviewRequested)]
+        );
         assert_eq!(subscribes(&assigned, Some(&pull())), vec![("ana".into(), Reason::Assign), ("eve".into(), Reason::Assign)]);
     }
 
@@ -3269,7 +3161,11 @@ mod tests {
             Some("usr_bo"),
             json!({ "repoId": "rep_1", "projectId": "prj_1", "project": "rocket", "deploymentId": "dpl_1", "error": "The build failed.", "path": "/acme/rocket/deployments/dpl_1" }),
         );
-        let audience = watched(&[("cy", WatchLevel::Custom, &["deployments"]), ("dee", WatchLevel::Custom, &["work_items"]), ("eve", WatchLevel::All, &[])]);
+        let audience = watched(&[
+            ("cy", WatchLevel::Custom, &["deployments"]),
+            ("dee", WatchLevel::Custom, &["work_items"]),
+            ("eve", WatchLevel::All, &[]),
+        ]);
         let notices_ = notices(&failed, "acme/rocket", &actor("usr_bo", "bo"), None, &audience);
         assert_eq!(
             told(&notices_),
@@ -3286,23 +3182,38 @@ mod tests {
         assert_eq!(url(Some("acme/rocket"), None, thread.kind, None, None, thread.link.as_deref()), "/acme/rocket/deployments/dpl_1");
         // A success tells the owner nothing, even after a failure: it
         // settles the failure (settles). Watchers who chose deployments hear of it.
-        let live = event("deployment.succeeded", Some("usr_bo"), json!({ "repoId": "rep_1", "projectId": "prj_1", "project": "rocket", "commit": "abcdef0123" }));
+        let live = event(
+            "deployment.succeeded",
+            Some("usr_bo"),
+            json!({ "repoId": "rep_1", "projectId": "prj_1", "project": "rocket", "commit": "abcdef0123" }),
+        );
         assert!(notices(&live, "acme/rocket", &actor("usr_bo", "bo"), None, &nobody()).is_empty());
-        let recovered = event("deployment.succeeded", Some("usr_bo"), json!({ "repoId": "rep_1", "projectId": "prj_1", "project": "rocket", "recovered": true }));
+        let recovered = event(
+            "deployment.succeeded",
+            Some("usr_bo"),
+            json!({ "repoId": "rep_1", "projectId": "prj_1", "project": "rocket", "recovered": true }),
+        );
         assert!(notices(&recovered, "acme/rocket", &actor("usr_bo", "bo"), None, &nobody()).is_empty());
         let notices_ = notices(&recovered, "acme/rocket", &actor("usr_bo", "bo"), None, &audience);
         assert_eq!(told(&notices_), vec![("cy", Reason::Subscribed, Severity::Success), ("eve", Reason::Subscribed, Severity::Success)]);
         assert_eq!(notices_[0].title, "Production of rocket is live");
         // A preview's is the pull request's owner's.
-        let preview = event("deployment.failed", None, json!({ "repoId": "rep_1", "projectId": "prj_1", "number": 7, "triggeredBy": "g1t" }));
-        assert_eq!(told(&notices(&preview, "acme/rocket", &Actor::default(), Some(&pull()), &nobody())), vec![("ana", Reason::CiActivity, Severity::Error)]);
+        let preview =
+            event("deployment.failed", None, json!({ "repoId": "rep_1", "projectId": "prj_1", "number": 7, "triggeredBy": "g1t" }));
+        assert_eq!(
+            told(&notices(&preview, "acme/rocket", &Actor::default(), Some(&pull()), &nobody())),
+            vec![("ana", Reason::CiActivity, Severity::Error)]
+        );
         assert_eq!(thread_of(&preview, &wants(&preview).unwrap(), Some(&pull())).key, "rep_1/deploy/prj_1/7");
     }
 
     /// A scan's summary, as the security service publishes it.
     fn summary(alert_type: &str, opened: &[&str], new: (u32, u32, u32, u32), open: (u32, u32, u32, u32), pusher: Option<&str>) -> Event {
         let counts = |(critical, high, medium, low): (u32, u32, u32, u32)| json!({ "critical": critical, "high": high, "medium": medium, "low": low, "unknown": 0 });
-        let worst = [(new.0, "critical"), (new.1, "high"), (new.2, "medium"), (new.3, "low")].into_iter().find(|(n, _)| *n > 0).map(|(_, name)| name);
+        let worst = [(new.0, "critical"), (new.1, "high"), (new.2, "medium"), (new.3, "low")]
+            .into_iter()
+            .find(|(n, _)| *n > 0)
+            .map(|(_, name)| name);
         let page = match alert_type {
             "secret_scanning" => "secret-scanning",
             "code_scanning" => "code-scanning",
@@ -3341,7 +3252,10 @@ mod tests {
         // The same thread for every scan of this type, however many alerts.
         let thread = thread_of(&found, &wants(&found).unwrap(), None);
         assert_eq!(thread.key, "rep_1/security/vulnerability");
-        assert_eq!(url(Some("acme/rocket"), None, thread.kind, None, None, thread.link.as_deref()), "/acme/rocket/security/vulnerabilities");
+        assert_eq!(
+            url(Some("acme/rocket"), None, thread.kind, None, None, thread.link.as_deref()),
+            "/acme/rocket/security/vulnerabilities"
+        );
         // Medium and low are news, but not urgent: an info item, or the digest.
         let quiet = summary("code_scanning", &["cod_1"], (0, 0, 1, 0), (0, 0, 1, 0), None);
         let notices_ = notices(&quiet, "acme/rocket", &Actor::default(), None, &audience);
@@ -3353,8 +3267,12 @@ mod tests {
         let (title, body) = refreshed_text("acme/rocket", &SecuritySummary { fixed_count: 2, ..security_summary(&fixed).unwrap() });
         assert_eq!(title, "1 open vulnerability in acme/rocket: 1 high");
         assert_eq!(body, "2 fixed");
-        let settled = SecuritySummary { fixed_count: 1, dismissed_count: 1, open: SeverityCounts::default(), ..security_summary(&fixed).unwrap() };
-        assert_eq!(refreshed_text("acme/rocket", &settled), ("No open vulnerabilities in acme/rocket".to_owned(), "1 fixed, 1 dismissed".to_owned()));
+        let settled =
+            SecuritySummary { fixed_count: 1, dismissed_count: 1, open: SeverityCounts::default(), ..security_summary(&fixed).unwrap() };
+        assert_eq!(
+            refreshed_text("acme/rocket", &settled),
+            ("No open vulnerabilities in acme/rocket".to_owned(), "1 fixed, 1 dismissed".to_owned())
+        );
         // Per-alert events are for webhooks.
         assert_eq!(wants(&event("vulnerability_alert.created", None, json!({ "repoId": "rep_1" }))), None);
         assert_eq!(wants(&event("code_scanning_alert.fixed", None, json!({ "repoId": "rep_1" }))), None);
@@ -3463,17 +3381,29 @@ mod tests {
             ]
         );
         assert_eq!(notices_[0].title, "bo closed acme#3");
-        let by_pull = event("work_item.closed", None, json!({ "number": 3, "resolution": { "repo": "acme/rocket", "commit": "1a2b3c4d5e" } }));
-        assert_eq!(notices(&by_pull, "acme", &Actor::default(), Some(&item), &nobody())[0].title, "acme#3 was closed by acme/rocket@1a2b3c4");
+        let by_pull =
+            event("work_item.closed", None, json!({ "number": 3, "resolution": { "repo": "acme/rocket", "commit": "1a2b3c4d5e" } }));
+        assert_eq!(
+            notices(&by_pull, "acme", &Actor::default(), Some(&item), &nobody())[0].title,
+            "acme#3 was closed by acme/rocket@1a2b3c4"
+        );
         let reopened = event("work_item.reopened", Some("usr_cy"), json!({ "number": 3 }));
-        assert_eq!(told(&notices(&reopened, "acme", &actor("usr_cy", "cy"), Some(&item), &nobody())), vec![("bo", Reason::StateChange, Severity::Info)]);
+        assert_eq!(
+            told(&notices(&reopened, "acme", &actor("usr_cy", "cy"), Some(&item), &nobody())),
+            vec![("bo", Reason::StateChange, Severity::Info)]
+        );
     }
 
     #[test]
     fn opening_tells_who_it_names_and_watchers_of_its_kind() {
         let opened = event("pull.opened", Some("usr_ana"), json!({ "number": 7 }));
         let subject = InboxSubject { reviewers: vec!["cy".into(), "g1t".into()], ..pull() };
-        let audience = watched(&[("bo", WatchLevel::All, &[]), ("dee", WatchLevel::Custom, &["work_items"]), ("eve", WatchLevel::Custom, &["pulls"]), ("fay", WatchLevel::Participating, &[])]);
+        let audience = watched(&[
+            ("bo", WatchLevel::All, &[]),
+            ("dee", WatchLevel::Custom, &["work_items"]),
+            ("eve", WatchLevel::Custom, &["pulls"]),
+            ("fay", WatchLevel::Participating, &[]),
+        ]);
         let notices_ = notices(&opened, "acme/rocket", &actor("usr_ana", "ana"), Some(&subject), &audience);
         assert_eq!(
             told(&notices_),
@@ -3491,7 +3421,9 @@ mod tests {
         let created = event("comment.created", Some("usr_bo"), json!({ "number": 7, "commentId": "cmt_1" }));
         let on = comment(person("usr_bo", "bo"), "@cy have a look", &["cy"]);
         let audience = watched(&[("cy", WatchLevel::Ignore, &[]), ("ana", WatchLevel::All, &[])]);
-        assert!(notices(&created, "acme/rocket", &actor("usr_bo", "bo"), Some(&on), &audience).iter().all(|notice| notice.username != "cy"));
+        assert!(
+            notices(&created, "acme/rocket", &actor("usr_bo", "bo"), Some(&on), &audience).iter().all(|notice| notice.username != "cy")
+        );
         let audience = subscribed(&[("cy", State::Unsubscribed, None), ("ana", State::Unsubscribed, None)]);
         let notices_ = notices(&created, "acme/rocket", &actor("usr_bo", "bo"), Some(&on), &audience);
         // cy was mentioned, which is asked of them; ana unsubscribed from the conversation.
@@ -3584,7 +3516,10 @@ mod tests {
         assert_eq!(wanted.number, None);
         let thread = thread_of(&created, &wanted, None);
         assert_eq!(thread.key, "rep_1/commit/abcdef1234567890");
-        assert_eq!(url(Some("acme/rocket"), None, thread.kind, thread.number, None, thread.link.as_deref()), "/acme/rocket/commit/abcdef1234567890");
+        assert_eq!(
+            url(Some("acme/rocket"), None, thread.kind, thread.number, None, thread.link.as_deref()),
+            "/acme/rocket/commit/abcdef1234567890"
+        );
         let notices_ = notices(&created, "acme/rocket", &actor("usr_bo", "bo"), None, &nobody());
         assert_eq!(
             told(&notices_),
@@ -3616,7 +3551,10 @@ mod tests {
         assert_eq!(url(Some("acme/rocket"), Some("acme"), Some(SubjectKind::Item), Some(3), None, None), "/acme/-/work/3");
         assert_eq!(url(None, Some("acme"), Some(SubjectKind::Item), Some(3), None, None), "/acme/-/work/3");
         assert_eq!(url(Some("acme/rocket"), None, Some(SubjectKind::Run), None, Some("run_1"), None), "/acme/rocket/actions/runs/run_1");
-        assert_eq!(url(Some("acme/rocket"), None, Some(SubjectKind::Deploy), None, None, Some("/acme/site/deployments/dpl_1")), "/acme/site/deployments/dpl_1");
+        assert_eq!(
+            url(Some("acme/rocket"), None, Some(SubjectKind::Deploy), None, None, Some("/acme/site/deployments/dpl_1")),
+            "/acme/site/deployments/dpl_1"
+        );
         assert_eq!(url(Some("acme/rocket"), None, None, None, None, None), "/acme/rocket");
         assert_eq!(url(None, None, None, None, None, None), "/inbox");
     }
@@ -3649,10 +3587,7 @@ mod tests {
         };
         // Two values come first: the username and now.
         let (conditions, values) = filters(&a, 2);
-        assert_eq!(
-            conditions,
-            vec!["reason = ?3", "repo_id = ?4", "reason NOT IN ('manual', 'subscribed')", "read_at IS NULL"]
-        );
+        assert_eq!(conditions, vec!["reason = ?3", "repo_id = ?4", "reason NOT IN ('manual', 'subscribed')", "read_at IS NULL"]);
         assert_eq!(values, vec!["mention", "rep_1"]);
     }
 
@@ -3730,7 +3665,11 @@ mod tests {
         assert_eq!(names, ["bo", "cy"], "each once, lowercased, never g1t");
         assert!(told.iter().all(|notice| notice.reason == Reason::ReviewRequested && notice.severity == Severity::Warning));
         assert!(wants(&asked).is_none(), "about no repository");
-        let reviewed = event("token.approval_reviewed", None, json!({ "workspace": "acme", "tokenId": "tok_1", "notify": ["ana"], "title": "approved" }));
+        let reviewed = event(
+            "token.approval_reviewed",
+            None,
+            json!({ "workspace": "acme", "tokenId": "tok_1", "notify": ["ana"], "title": "approved" }),
+        );
         let (_, told) = workspace_notices(&reviewed, None);
         assert_eq!(told[0].reason, Reason::Author);
         assert!(WORKSPACE_EVENTS.contains(&"token.approval_reviewed"));
@@ -3758,14 +3697,22 @@ mod tests {
         assert_eq!(told[0].body, "bash: npm install");
         // Answered: that call's item is done, saying how and by whom, once the
         // batch's notices are written, so one asked in the same batch is settled too.
-        let answered = event(APPROVAL_SETTLED, Some("usr_bea"), json!({ "workspace": "acme", "sessionId": "ses_1", "toolUseId": "sevt_3", "why": "Allowed" }));
+        let answered = event(
+            APPROVAL_SETTLED,
+            Some("usr_bea"),
+            json!({ "workspace": "acme", "sessionId": "ses_1", "toolUseId": "sevt_3", "why": "Allowed" }),
+        );
         assert!(settles(&answered, Some("bea")).is_empty(), "not before the batch's notices");
         let settled = closes(&answered, Some("bea"));
         assert_eq!(settled.len(), 1);
         assert_eq!(settled[0].scope, Scope::Thread("agent-session:ses_1/approval/sevt_3".into()));
-        assert_eq!((settled[0].reasons.as_slice(), settled[0].why.as_deref(), settled[0].by.as_deref()), (&[Reason::Agent][..], Some("Allowed"), Some("bea")));
+        assert_eq!(
+            (settled[0].reasons.as_slice(), settled[0].why.as_deref(), settled[0].by.as_deref()),
+            (&[Reason::Agent][..], Some("Allowed"), Some("bea"))
+        );
         // The session ended: every call of it, and no other session's.
-        let ended = event(APPROVAL_SETTLED, None, json!({ "workspace": "acme", "sessionId": "ses_1", "why": "The session ended while it waited" }));
+        let ended =
+            event(APPROVAL_SETTLED, None, json!({ "workspace": "acme", "sessionId": "ses_1", "why": "The session ended while it waited" }));
         assert_eq!(closes(&ended, None)[0].scope, Scope::Matching("agent-session:ses_1/approval/*".into()));
         let wild = event(APPROVAL_SETTLED, None, json!({ "workspace": "acme", "sessionId": "*", "why": "x" }));
         assert!(closes(&wild, None).is_empty(), "never a pattern wider than one session");
@@ -3785,11 +3732,19 @@ mod tests {
         assert_eq!(thread, "invitation:inv_1");
         assert_eq!(told.len(), 1);
         assert_eq!((told[0].username.as_str(), told[0].reason, told[0].severity), ("daweazl", Reason::ReviewRequested, Severity::Warning));
-        let accepted = event("workspace_invitation.accepted", None, json!({ "workspace": "flagon-io", "thread": "invitation:inv_1", "notify": ["syntaqx"] }));
+        let accepted = event(
+            "workspace_invitation.accepted",
+            None,
+            json!({ "workspace": "flagon-io", "thread": "invitation:inv_1", "notify": ["syntaqx"] }),
+        );
         let (thread, told) = workspace_notices(&accepted, None);
         assert_eq!(thread, "invitation:inv_1");
         assert_eq!((told[0].reason, told[0].severity), (Reason::Author, Severity::Success));
-        let declined = event("workspace_invitation.declined", None, json!({ "workspace": "flagon-io", "thread": "invitation:inv_1", "notify": ["syntaqx"] }));
+        let declined = event(
+            "workspace_invitation.declined",
+            None,
+            json!({ "workspace": "flagon-io", "thread": "invitation:inv_1", "notify": ["syntaqx"] }),
+        );
         assert_eq!(workspace_notices(&declined, None).1[0].severity, Severity::Info);
         // Answered or revoked, the person's item is done; a revocation tells nobody.
         for kind in ["workspace_invitation.accepted", "workspace_invitation.declined", "workspace_invitation.revoked"] {

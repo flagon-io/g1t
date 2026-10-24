@@ -6,9 +6,7 @@
 //! reasons, as `claimed`. Each is published as `decision.recorded`.
 
 use g1t_contracts::access::Capability;
-use g1t_contracts::decisions::{
-    Decision, DecisionConfidence, DecisionKind, DecisionRecorded, ListDecisionsArgs, RecordDecisionArgs,
-};
+use g1t_contracts::decisions::{Decision, DecisionConfidence, DecisionKind, DecisionRecorded, ListDecisionsArgs, RecordDecisionArgs};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, User, new_id};
 use g1t_kit::now_ms;
@@ -86,9 +84,7 @@ pub(crate) fn checked(
     session_id: Option<&str>,
 ) -> std::result::Result<(String, Value), &'static str> {
     if !DecisionKind::RECORDABLE.contains(&kind) {
-        return Err(
-            "kind must be proposal, claim, fix or note. g1t records integration results, approvals and merges itself.",
-        );
+        return Err("kind must be proposal, claim, fix or note. g1t records integration results, approvals and merges itself.");
     }
     let summary = summary.trim();
     if summary.is_empty() {
@@ -133,11 +129,7 @@ pub(crate) fn merge_confidence(through_queue: bool, actor: &User) -> DecisionCon
 /// How sure an approval is: a person's is approved, an agent's only
 /// claimed.
 pub(crate) fn approval_confidence(actor: &User) -> DecisionConfidence {
-    if g1t_contracts::rules::is_agent(actor) {
-        DecisionConfidence::Claimed
-    } else {
-        DecisionConfidence::Approved
-    }
+    if g1t_contracts::rules::is_agent(actor) { DecisionConfidence::Claimed } else { DecisionConfidence::Approved }
 }
 
 impl Work {
@@ -167,28 +159,29 @@ impl Work {
             item: decision.item,
             decision: decision.clone(),
         })?;
-        let mut statements = vec![self
-            .db
-            .prepare(
-                "INSERT INTO decisions
+        let mut statements = vec![
+            self.db
+                .prepare(
+                    "INSERT INTO decisions
                    (id, repo_id, item_id, pull, session_id, actor, actor_name, kind, confidence,
                     summary, evidence, created_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            )
-            .bind(&[
-                decision.id.as_str().into(),
-                repo_id.into(),
-                crate::optional(&new.item),
-                number(decision.pull),
-                decision.session_id.as_deref().map_or(JsValue::NULL, JsValue::from),
-                new.actor.map_or(JsValue::NULL, |actor| actor.id.as_str().into()),
-                decision.actor.as_deref().map_or(JsValue::NULL, JsValue::from),
-                decision.kind.as_str().into(),
-                decision.confidence.as_str().into(),
-                decision.summary.as_str().into(),
-                decision.evidence.to_string().into(),
-                decision.created_at.as_str().into(),
-            ])?];
+                )
+                .bind(&[
+                    decision.id.as_str().into(),
+                    repo_id.into(),
+                    crate::optional(&new.item),
+                    number(decision.pull),
+                    decision.session_id.as_deref().map_or(JsValue::NULL, JsValue::from),
+                    new.actor.map_or(JsValue::NULL, |actor| actor.id.as_str().into()),
+                    decision.actor.as_deref().map_or(JsValue::NULL, JsValue::from),
+                    decision.kind.as_str().into(),
+                    decision.confidence.as_str().into(),
+                    decision.summary.as_str().into(),
+                    decision.evidence.to_string().into(),
+                    decision.created_at.as_str().into(),
+                ])?,
+        ];
         // Kept and delivered to the sessions it concerns in one change.
         let sent = crate::coordination::updates::push_delivery(
             &mut statements,
@@ -210,11 +203,10 @@ impl Work {
     /// `record_decision`: an agent's or a person's reason on a pull
     /// request, kept as claimed.
     pub(crate) async fn record_decision(&self, a: RecordDecisionArgs) -> Result<Outcome<Decision>> {
-        let (summary, evidence) =
-            match checked(a.kind, &a.summary, a.evidence.as_ref(), a.session_id.as_deref()) {
-                Ok(checked) => checked,
-                Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
-            };
+        let (summary, evidence) = match checked(a.kind, &a.summary, a.evidence.as_ref(), a.session_id.as_deref()) {
+            Ok(checked) => checked,
+            Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
+        };
         let viewer = Some(a.actor.clone());
         let (repo, pull) = match self.pull_at(&a.repo, a.number, &viewer).await? {
             Outcome::Ok(found) => found,
@@ -290,12 +282,8 @@ impl Work {
                 let mut ids: Vec<String> = rows.iter().map(|row| row.repo_id.clone()).collect();
                 ids.sort();
                 ids.dedup();
-                let readable: Vec<g1t_contracts::repos::Repo> = g1t_kit::call(
-                    &self.repos,
-                    "readable",
-                    &g1t_contracts::repos::ReadableArgs { ids, viewer: a.viewer.clone() },
-                )
-                .await?;
+                let readable: Vec<g1t_contracts::repos::Repo> =
+                    g1t_kit::call(&self.repos, "readable", &g1t_contracts::repos::ReadableArgs { ids, viewer: a.viewer.clone() }).await?;
                 rows.into_iter().filter(|row| readable.iter().any(|repo| repo.id == row.repo_id)).collect()
             }
         };
@@ -322,12 +310,7 @@ mod tests {
     fn only_claims_are_recorded_by_hand() {
         assert!(checked(DecisionKind::Proposal, "Use a trie.", None, None).is_ok());
         assert!(checked(DecisionKind::Fix, "Rebased on #12.", None, None).is_ok());
-        for kind in [
-            DecisionKind::IntegrationFailure,
-            DecisionKind::IntegrationPassed,
-            DecisionKind::Approval,
-            DecisionKind::Merge,
-        ] {
+        for kind in [DecisionKind::IntegrationFailure, DecisionKind::IntegrationPassed, DecisionKind::Approval, DecisionKind::Merge] {
             assert!(checked(kind, "x", None, None).is_err(), "{kind:?}");
         }
     }
@@ -357,10 +340,7 @@ mod tests {
         let policy = User { id: "g1t_policy".into(), username: "g1t".into(), ..User::default() };
         assert_eq!(merge_confidence(false, &policy), DecisionConfidence::Tested);
         assert_eq!(approval_confidence(&person), DecisionConfidence::Approved);
-        let agent = User {
-            kind: g1t_contracts::PrincipalKind::Agent,
-            ..person.clone()
-        };
+        let agent = User { kind: g1t_contracts::PrincipalKind::Agent, ..person.clone() };
         if g1t_contracts::rules::is_agent(&agent) {
             assert_eq!(approval_confidence(&agent), DecisionConfidence::Claimed);
             assert_eq!(merge_confidence(false, &agent), DecisionConfidence::Claimed);

@@ -63,10 +63,7 @@ fn time_label(ms: u64) -> String {
 /// (`Date`, today included).
 pub(crate) fn windows(now: u64) -> [(&'static str, String, String); 2] {
     let today = rfc3339(now)[..10].to_owned();
-    [
-        ("Time", time_label(now.saturating_sub(DAY_MS)), time_label(now)),
-        ("Date", format!("{}-01", &today[..7]), today),
-    ]
+    [("Time", time_label(now.saturating_sub(DAY_MS)), time_label(now)), ("Date", format!("{}-01", &today[..7]), today)]
 }
 
 /// The GraphQL request for what the application `app` used over a window.
@@ -116,7 +113,8 @@ impl Billing {
     pub(crate) async fn git_edge(&self, keeper: &Keeper) -> Result<GitEdgeReport> {
         let guard_levels = self.pause_states().await?;
         let pause = guard_levels.into_iter().find(|s| s.level == PauseLevel::GitEdge.as_str()).unwrap_or_default();
-        let mut report = GitEdgeReport { application: APPLICATION.to_owned(), pause, can_read: keeper.can_read_bill(), ..GitEdgeReport::default() };
+        let mut report =
+            GitEdgeReport { application: APPLICATION.to_owned(), pause, can_read: keeper.can_read_bill(), ..GitEdgeReport::default() };
         if !report.can_read {
             let why = "billing has no Cloudflare token (CLOUDFLARE_BILLING_TOKEN or CLOUDFLARE_USAGE_TOKEN) and account".to_owned();
             report.instances_error = Some(why.clone());
@@ -179,7 +177,11 @@ mod tests {
         // Nothing running says so with no health at all.
         assert_eq!(application(&with_max), Ok(("x".to_owned(), 0, 12)));
         assert!(application(&json!({ "result": [] })).unwrap_err().contains("no Containers application named g1t-runner-gitedge"));
-        assert!(application(&json!({ "success": false, "errors": [{ "message": "Authentication error" }] })).unwrap_err().contains("Authentication error"));
+        assert!(
+            application(&json!({ "success": false, "errors": [{ "message": "Authentication error" }] }))
+                .unwrap_err()
+                .contains("Authentication error")
+        );
     }
 
     #[test]

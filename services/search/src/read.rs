@@ -163,15 +163,7 @@ fn repo_hit(row: RepoRow, terms: &[String]) -> Found {
     hit.language = row.language;
     hit.topics = split_topics(&row.topics);
     hit.updated_at = row.pushed_at.or(Some(row.created_at));
-    Found {
-        hit,
-        repo: Some(Indexed {
-            repo_id: row.repo_id,
-            namespace: row.namespace,
-            private: row.private != 0,
-        }),
-        workspace: None,
-    }
+    Found { hit, repo: Some(Indexed { repo_id: row.repo_id, namespace: row.namespace, private: row.private != 0 }), workspace: None }
 }
 
 fn item_hit(row: ItemRow, terms: &[String]) -> Option<Found> {
@@ -225,19 +217,13 @@ impl Search {
             return (HashSet::new(), HashSet::new());
         }
         let ids: Vec<String> = indexed.iter().map(|row| row.repo_id.clone()).collect::<HashSet<_>>().into_iter().collect();
-        let readable: Result<Vec<Repo>> =
-            g1t_kit::call(&self.repos, "readable", &ReadableArgs { ids, viewer: viewer.clone() }).await;
+        let readable: Result<Vec<Repo>> = g1t_kit::call(&self.repos, "readable", &ReadableArgs { ids, viewer: viewer.clone() }).await;
         if let Err(error) = &readable {
             worker::console_error!("search: could not check visibility: {error}");
         }
         let verdict = check(&Reader::of(viewer), indexed, readable.as_deref().ok());
-        let archived: HashSet<String> = readable
-            .as_deref()
-            .unwrap_or_default()
-            .iter()
-            .filter(|repo| repo.archived())
-            .map(|repo| repo.id.clone())
-            .collect();
+        let archived: HashSet<String> =
+            readable.as_deref().unwrap_or_default().iter().filter(|repo| repo.archived()).map(|repo| repo.id.clone()).collect();
         if !verdict.corrections.is_empty() {
             let mut statements = Vec::new();
             for correction in &verdict.corrections {
@@ -272,11 +258,7 @@ impl Search {
         let indexed: Vec<Indexed> = found.iter().filter_map(|f| f.repo.clone()).collect();
         let (keep, _) = self.readable(viewer, &indexed).await;
         let reader = Reader::of(viewer);
-        found
-            .into_iter()
-            .filter(|f| f.shown(&reader, &keep))
-            .map(|f| f.hit)
-            .collect()
+        found.into_iter().filter(|f| f.shown(&reader, &keep)).map(|f| f.hit).collect()
     }
 
     async fn count_of(&self, kind: SearchType, query: &Query, reader: &Reader) -> Result<u32> {
@@ -297,11 +279,8 @@ impl Search {
     }
 
     async fn code_hits(&self, plan: &CodePlan, query: &Query, reader: &Reader, page: Page, terms: &[String]) -> Result<Vec<Found>> {
-        let fids: Vec<i64> = store::all::<FileHit>(&self.db, &sql::code_page(plan, query, reader, page))
-            .await?
-            .into_iter()
-            .map(|row| row.fid)
-            .collect();
+        let fids: Vec<i64> =
+            store::all::<FileHit>(&self.db, &sql::code_page(plan, query, reader, page)).await?.into_iter().map(|row| row.fid).collect();
         if fids.is_empty() {
             return Ok(Vec::new());
         }
@@ -343,11 +322,7 @@ impl Search {
             hit.lines = lines;
             found.push(Found {
                 hit,
-                repo: Some(Indexed {
-                    repo_id: file.repo_id.clone(),
-                    namespace: file.namespace.clone(),
-                    private: file.private != 0,
-                }),
+                repo: Some(Indexed { repo_id: file.repo_id.clone(), namespace: file.namespace.clone(), private: file.private != 0 }),
                 workspace: None,
             });
         }
@@ -377,11 +352,7 @@ impl Search {
                     .collect()
             }
             SearchType::People => match sql::people_page(query, page) {
-                Some(sql) => store::all::<PersonRow>(&self.db, &sql)
-                    .await?
-                    .into_iter()
-                    .map(|row| person_hit(row, terms))
-                    .collect(),
+                Some(sql) => store::all::<PersonRow>(&self.db, &sql).await?.into_iter().map(|row| person_hit(row, terms)).collect(),
                 None => Vec::new(),
             },
         })

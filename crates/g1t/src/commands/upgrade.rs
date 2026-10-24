@@ -86,11 +86,8 @@ pub fn verify(message: &[u8], signature: &str, key: &str) -> std::result::Result
         .ok()
         .and_then(|bytes| bytes.try_into().ok())
         .ok_or("the release key built into this g1t does not read")?;
-    let signature: [u8; 64] = STANDARD
-        .decode(signature.trim())
-        .ok()
-        .and_then(|bytes| bytes.try_into().ok())
-        .ok_or("the release's signature does not read")?;
+    let signature: [u8; 64] =
+        STANDARD.decode(signature.trim()).ok().and_then(|bytes| bytes.try_into().ok()).ok_or("the release's signature does not read")?;
     let key = ed25519_dalek::VerifyingKey::from_bytes(&key).map_err(|_| "the release key is not a key")?;
     key.verify_strict(message, &ed25519_dalek::Signature::from_bytes(&signature))
         .map_err(|_| "the release's signature is not g1t's".to_owned())
@@ -111,7 +108,8 @@ fn download(agent: &ureq::Agent, url: &str) -> std::result::Result<Vec<u8>, Stri
 fn latest(agent: &ureq::Agent, key: &str) -> std::result::Result<Manifest, String> {
     let base = downloads();
     let manifest = download(agent, &format!("{base}/latest.json"))?;
-    let signature = String::from_utf8(download(agent, &format!("{base}/latest.json.sig"))?).map_err(|_| "the release's signature does not read")?;
+    let signature =
+        String::from_utf8(download(agent, &format!("{base}/latest.json.sig"))?).map_err(|_| "the release's signature does not read")?;
     verify(&manifest, &signature, key)?;
     serde_json::from_slice(&manifest).map_err(|error| format!("the release's manifest does not read: {error}"))
 }
@@ -171,10 +169,8 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
         println!("g1t {} is out; this is {VERSION}. Run `g1t upgrade` to install it.", latest.version);
         return Ok(());
     }
-    let file = latest
-        .files
-        .get(&platform())
-        .ok_or_else(|| Error::failed(format!("g1t {} has no build for {}.", latest.version, platform())))?;
+    let file =
+        latest.files.get(&platform()).ok_or_else(|| Error::failed(format!("g1t {} has no build for {}.", latest.version, platform())))?;
     eprintln!("Downloading g1t {} ({})…", latest.version, platform());
     let bytes = download(&agent, &format!("{}/{}/{}", downloads(), latest.version, file.name)).map_err(Error::failed)?;
     let have = sha256(&bytes);
@@ -234,10 +230,8 @@ impl Notice {
         if upgrading || quiet("G1T_NO_UPDATE_NOTIFIER") || quiet("CI") || !std::io::stderr().is_terminal() {
             return off;
         }
-        let seen: Seen = seen_path()
-            .and_then(|path| std::fs::read(path).ok())
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .unwrap_or_default();
+        let seen: Seen =
+            seen_path().and_then(|path| std::fs::read(path).ok()).and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default();
         let known = (!seen.version.is_empty()).then(|| seen.version.clone());
         if now().saturating_sub(seen.checked_at) < CHECK_EVERY.as_secs() {
             return Notice { known, looking: None };

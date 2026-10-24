@@ -179,10 +179,7 @@ impl Work {
             // Slot::Pull: the row, with everything the lifecycle tracks on it.
             self.statement(&format!("SELECT {PULL_COLUMNS} FROM pulls WHERE repo_id = ?1 AND number = ?2"), &key())?,
             // Slot::Item
-            self.statement(
-                &items::select("id = (SELECT item_id FROM pulls WHERE repo_id = ?1 AND number = ?2)"),
-                &key(),
-            )?,
+            self.statement(&items::select("id = (SELECT item_id FROM pulls WHERE repo_id = ?1 AND number = ?2)"), &key())?,
             // Slot::Comments (lib.rs `comments`)
             self.statement("SELECT * FROM comments WHERE repo_id = ?1 AND number = ?2 ORDER BY id LIMIT 500", &key())?,
             // Slot::Verdicts: every verdict, oldest first, for the approval
@@ -234,39 +231,21 @@ impl Work {
         ];
         let count = statements.len() as u32;
         let results = self.timing.db(count, self.db.batch(statements)).await?;
-        let Some(row) = results
-            .first()
-            .map(|result| result.results::<IdRow>())
-            .transpose()?
-            .and_then(|rows| rows.into_iter().next())
+        let Some(row) = results.first().map(|result| result.results::<IdRow>()).transpose()?.and_then(|rows| rows.into_iter().next())
         else {
             return Ok(None);
         };
-        Ok(Some(Prefetched {
-            pull_id: row.id,
-            repo_id,
-            namespace: namespace.to_lowercase(),
-            head: row.head_commit,
-            results,
-        }))
+        Ok(Some(Prefetched { pull_id: row.id, repo_id, namespace: namespace.to_lowercase(), head: row.head_commit, results }))
     }
 
     /// The rows read for pull request `pull_id` in this request, if any.
     pub(crate) fn prefetched_pull(&self, pull_id: &str) -> Option<Rc<Prefetched>> {
-        self.prefetched
-            .borrow()
-            .as_ref()
-            .filter(|found| found.pull_id == pull_id)
-            .cloned()
+        self.prefetched.borrow().as_ref().filter(|found| found.pull_id == pull_id).cloned()
     }
 
     /// The rows read in this request for a pull request of `repo_id`.
     pub(crate) fn prefetched_repo(&self, repo_id: &str) -> Option<Rc<Prefetched>> {
-        self.prefetched
-            .borrow()
-            .as_ref()
-            .filter(|found| found.repo_id == repo_id)
-            .cloned()
+        self.prefetched.borrow().as_ref().filter(|found| found.repo_id == repo_id).cloned()
     }
 
     /// Keeps `found` for the rest of this request.

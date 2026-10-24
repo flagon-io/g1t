@@ -292,9 +292,7 @@ pub fn free_from(found: &serde_json::Value) -> bool {
 /// cap, on each of its requests.
 pub async fn is_free_kept(billing: Option<&Fetcher>, namespace: &str) -> bool {
     let now = g1t_kit::now_ms();
-    let kept = FREE.with(|free| {
-        free.borrow().get(namespace).filter(|(free, at)| plan_kept(*free, *at, now)).map(|(free, _)| *free)
-    });
+    let kept = FREE.with(|free| free.borrow().get(namespace).filter(|(free, at)| plan_kept(*free, *at, now)).map(|(free, _)| *free));
     if let Some(free) = kept {
         return free;
     }
@@ -305,10 +303,7 @@ pub async fn is_free_kept(billing: Option<&Fetcher>, namespace: &str) -> bool {
 
 /// The private storage a free workspace may push to: 1 GB unless set.
 pub fn free_private_bytes(env: &worker::Env) -> i64 {
-    env.var("FREE_PRIVATE_STORAGE_BYTES")
-        .ok()
-        .and_then(|value| value.to_string().parse().ok())
-        .unwrap_or(1_000_000_000)
+    env.var("FREE_PRIVATE_STORAGE_BYTES").ok().and_then(|value| value.to_string().parse().ok()).unwrap_or(1_000_000_000)
 }
 
 /// What every workspace's public repositories may hold together:
@@ -490,7 +485,14 @@ mod tests {
         assert_eq!(classify(ReceivePack, "info/refs", true, None), GitCall::RefAdvertisement);
         let ls_refs = [pkt("command=ls-refs\n"), b"0001".to_vec(), pkt("peel\n"), b"0000".to_vec()].concat();
         assert_eq!(classify(UploadPack, "git-upload-pack", false, Some(&ls_refs)), GitCall::LsRefs);
-        let fetch = [pkt("command=fetch\n"), b"0001".to_vec(), pkt("want 1111111111111111111111111111111111111111\n"), pkt("done\n"), b"0000".to_vec()].concat();
+        let fetch = [
+            pkt("command=fetch\n"),
+            b"0001".to_vec(),
+            pkt("want 1111111111111111111111111111111111111111\n"),
+            pkt("done\n"),
+            b"0000".to_vec(),
+        ]
+        .concat();
         assert_eq!(classify(UploadPack, "git-upload-pack", false, Some(&fetch)), GitCall::Fetch);
         let v0 = [pkt("want 1111111111111111111111111111111111111111 side-band-64k\n"), b"0000".to_vec(), pkt("done\n")].concat();
         assert_eq!(classify(UploadPack, "git-upload-pack", false, Some(&v0)), GitCall::Fetch);
@@ -573,7 +575,10 @@ mod tests {
         assert!(public.contains("5 GB public storage limit") && public.contains("https://g1t.sh/acme/-/settings/billing"), "{public}");
         let repository = repository_full_message("acme", "rocket", 950_000_000);
         assert!(repository.starts_with("acme/rocket holds about "), "{repository}");
-        assert!(repository.contains("takes no more pushes") && repository.contains("https://docs.g1t.sh/guides/git/#size-limits"), "{repository}");
+        assert!(
+            repository.contains("takes no more pushes") && repository.contains("https://docs.g1t.sh/guides/git/#size-limits"),
+            "{repository}"
+        );
         let slowed = too_many_message("acme", 50_000, 60);
         assert!(slowed.contains("so g1t allows 60 an hour") && slowed.contains("https://g1t.sh/acme/-/settings/billing"), "{slowed}");
         for message in [&private, &public, &repository, &slowed] {

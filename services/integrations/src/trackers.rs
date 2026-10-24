@@ -30,17 +30,9 @@ fn jira_site(config: &ConnectionConfig) -> String {
 }
 
 async fn jira(config: &ConnectionConfig, token: &str, method: Method, path: &str, body: Option<Value>) -> Result<Answer> {
-    let auth = format!(
-        "Basic {}",
-        STANDARD.encode(format!("{}:{token}", config.email.as_deref().unwrap_or_default()))
-    );
-    http::send(
-        method,
-        &format!("{}/rest/api/3{path}", jira_site(config)),
-        &[("authorization", &auth)],
-        body.map(|body| body.to_string()),
-    )
-    .await
+    let auth = format!("Basic {}", STANDARD.encode(format!("{}:{token}", config.email.as_deref().unwrap_or_default())));
+    http::send(method, &format!("{}/rest/api/3{path}", jira_site(config)), &[("authorization", &auth)], body.map(|body| body.to_string()))
+        .await
 }
 
 /// Atlassian's document format, as plain text.
@@ -64,14 +56,9 @@ pub fn adf_text(node: &Value) -> String {
 }
 
 pub async fn jira_fetch(config: &ConnectionConfig, token: &str, key: &str) -> Result<Fetched> {
-    let answer = jira(
-        config,
-        token,
-        Method::Get,
-        &format!("/issue/{key}?fields=summary,description,status,issuetype,priority,labels"),
-        None,
-    )
-    .await?;
+    let answer =
+        jira(config, token, Method::Get, &format!("/issue/{key}?fields=summary,description,status,issuetype,priority,labels"), None)
+            .await?;
     if answer.status == 404 {
         return Ok(Ok(None));
     }
@@ -94,10 +81,7 @@ pub async fn jira_fetch(config: &ConnectionConfig, token: &str, key: &str) -> Re
         body.push(description.trim().to_owned());
     }
     if let Some(labels) = fields["labels"].as_array().filter(|labels| !labels.is_empty()) {
-        body.push(format!(
-            "Labels: {}",
-            labels.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", ")
-        ));
+        body.push(format!("Labels: {}", labels.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", ")));
     }
     let key = issue["key"].as_str().unwrap_or(key).to_owned();
     Ok(Ok(Some(Ticket {
@@ -114,7 +98,13 @@ pub async fn jira_fetch(config: &ConnectionConfig, token: &str, key: &str) -> Re
     })))
 }
 
-pub async fn jira_comment(config: &ConnectionConfig, token: &str, key: &str, text: &str, link: &str) -> Result<std::result::Result<(), String>> {
+pub async fn jira_comment(
+    config: &ConnectionConfig,
+    token: &str,
+    key: &str,
+    text: &str,
+    link: &str,
+) -> Result<std::result::Result<(), String>> {
     let body = json!({ "body": { "type": "doc", "version": 1, "content": [{
         "type": "paragraph",
         "content": [
@@ -129,11 +119,7 @@ pub async fn jira_comment(config: &ConnectionConfig, token: &str, key: &str, tex
 pub async fn jira_test(config: &ConnectionConfig, token: &str) -> Result<std::result::Result<String, String>> {
     let answer = jira(config, token, Method::Get, "/myself", None).await?;
     Ok(if answer.ok() {
-        Ok(format!(
-            "Connected to {} as {}.",
-            jira_site(config),
-            answer.json()["displayName"].as_str().unwrap_or("you")
-        ))
+        Ok(format!("Connected to {} as {}.", jira_site(config), answer.json()["displayName"].as_str().unwrap_or("you")))
     } else {
         Err(answer.problem("Jira"))
     })

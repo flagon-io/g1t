@@ -61,11 +61,8 @@ fn listed(numbers: &[u32]) -> String {
 
 /// Why closing work item `number` waits: `open`, its sub-items still open.
 pub(crate) fn has_open_sub_items(number: u32, open: &[u32]) -> String {
-    let (count, them) = if open.len() == 1 {
-        ("1 open sub-item".to_owned(), "it")
-    } else {
-        (format!("{} open sub-items", open.len()), "them")
-    };
+    let (count, them) =
+        if open.len() == 1 { ("1 open sub-item".to_owned(), "it") } else { (format!("{} open sub-items", open.len()), "them") };
     format!(
         "#{number} has {count} ({}). Say what to do with {them}: leave {them} open, close {them} too, or move {them} to another \
          work item (sub_items: leave, close or move, with move_to).",
@@ -75,68 +72,30 @@ pub(crate) fn has_open_sub_items(number: u32, open: &[u32]) -> String {
 
 /// `Ok` when `actor` may change `held`: theirs, or one they may triage.
 fn manageable(actor: &User, held: &Held) -> Outcome<()> {
-    let capability = if held.item.owner().id == actor.id {
-        Capability::Read
-    } else {
-        Capability::Triage
-    };
+    let capability = if held.item.owner().id == actor.id { Capability::Read } else { Capability::Triage };
     held.allowed(Some(actor), capability)
 }
 
 impl Work {
     async fn numbers_of(&self, sql: &str, id: &str) -> Result<Vec<u32>> {
-        Ok(self
-            .db
-            .prepare(sql)
-            .bind(&[id.into()])?
-            .all()
-            .await?
-            .results::<Numbered>()?
-            .into_iter()
-            .map(|row| row.number)
-            .collect())
+        Ok(self.db.prepare(sql).bind(&[id.into()])?.all().await?.results::<Numbered>()?.into_iter().map(|row| row.number).collect())
     }
 
     /// `held`'s sub-items, whoever is asking.
     async fn sub_items_of(&self, held: &Held) -> Result<Vec<Held>> {
-        held_rows(
-            &self
-                .db
-                .prepare(select(SUB_ITEMS))
-                .bind(&[held.item.id.as_str().into()])?
-                .all()
-                .await?,
-        )
+        held_rows(&self.db.prepare(select(SUB_ITEMS)).bind(&[held.item.id.as_str().into()])?.all().await?)
     }
 
     /// The work item `held` is a sub-item of and its sub-items, as far as
     /// `viewer` may see them.
-    pub(super) async fn parent_and_sub_items(
-        &self,
-        held: &Held,
-        viewer: Option<&User>,
-    ) -> Result<(Option<ItemBrief>, Vec<ItemBrief>)> {
-        let brief = |item: Held| ItemBrief {
-            number: item.item.number,
-            title: item.item.title,
-            state: item.item.state,
-        };
+    pub(super) async fn parent_and_sub_items(&self, held: &Held, viewer: Option<&User>) -> Result<(Option<ItemBrief>, Vec<ItemBrief>)> {
+        let brief = |item: Held| ItemBrief { number: item.item.number, title: item.item.title, state: item.item.state };
         let parent = match held.item.parent {
-            Some(number) => self
-                .visible_numbered(&held.item.workspace, &[number], viewer)
-                .await?
-                .into_iter()
-                .next()
-                .map(brief),
+            Some(number) => self.visible_numbered(&held.item.workspace, &[number], viewer).await?.into_iter().next().map(brief),
             None => None,
         };
         let sub_items = if held.item.sub_item_progress.is_some() {
-            self.sub_items_of(held)
-                .await?
-                .into_iter()
-                .filter(|item| item.may(viewer, Capability::Read))
-                .map(brief)
-                .collect()
+            self.sub_items_of(held).await?.into_iter().filter(|item| item.may(viewer, Capability::Read)).map(brief).collect()
         } else {
             Vec::new()
         };
@@ -146,21 +105,10 @@ impl Work {
     /// Work item `number` of `held`'s workspace as `held`'s new parent, or
     /// why it cannot be: one `actor` may not see is refused as one that is
     /// not there.
-    async fn checked_parent(
-        &self,
-        held: &Held,
-        actor: &User,
-        number: u32,
-    ) -> Result<Outcome<Held>> {
-        let found = self
-            .item(&held.item.workspace, number)
-            .await?
-            .filter(|parent| parent.may(Some(actor), Capability::Read));
+    async fn checked_parent(&self, held: &Held, actor: &User, number: u32) -> Result<Outcome<Held>> {
+        let found = self.item(&held.item.workspace, number).await?.filter(|parent| parent.may(Some(actor), Capability::Read));
         let Some(parent) = found else {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                format!("#{number} is not a work item in this workspace."),
-            ));
+            return Ok(Outcome::fail(FailureCode::Invalid, format!("#{number} is not a work item in this workspace.")));
         };
         let ancestors = self.numbers_of(ANCESTORS, &parent.item.id).await?;
         Ok(match check_parent(held.item.number, number, &ancestors) {
@@ -171,47 +119,24 @@ impl Work {
 
     /// Checks `parent` (a number, 0 for none) as the parent of a work item
     /// about to be opened in `workspace` by `actor`: its id, if any.
-    pub(super) async fn parent_for_new(
-        &self,
-        workspace: &str,
-        actor: &User,
-        parent: Option<u32>,
-    ) -> Result<Outcome<Option<String>>> {
+    pub(super) async fn parent_for_new(&self, workspace: &str, actor: &User, parent: Option<u32>) -> Result<Outcome<Option<String>>> {
         let Some(number) = parent.filter(|number| *number > 0) else {
             return Ok(Outcome::Ok(None));
         };
-        Ok(
-            match self
-                .item(workspace, number)
-                .await?
-                .filter(|parent| parent.may(Some(actor), Capability::Read))
-            {
-                Some(parent) => Outcome::Ok(Some(parent.item.id)),
-                None => Outcome::fail(
-                    FailureCode::Invalid,
-                    format!("#{number} is not a work item in this workspace."),
-                ),
-            },
-        )
+        Ok(match self.item(workspace, number).await?.filter(|parent| parent.may(Some(actor), Capability::Read)) {
+            Some(parent) => Outcome::Ok(Some(parent.item.id)),
+            None => Outcome::fail(FailureCode::Invalid, format!("#{number} is not a work item in this workspace.")),
+        })
     }
 
     /// Makes `held` a sub-item of `parent` (none: of nothing), as `actor`,
     /// who may manage it; with `only_from`, only when that is its parent
     /// now. Returns it as it is after.
-    pub(super) async fn reparent(
-        &self,
-        held: &Held,
-        actor: &User,
-        parent: Option<u32>,
-        only_from: Option<u32>,
-    ) -> Result<Outcome<Held>> {
+    pub(super) async fn reparent(&self, held: &Held, actor: &User, parent: Option<u32>, only_from: Option<u32>) -> Result<Outcome<Held>> {
         let number = held.item.number;
         if let Some(from) = only_from {
             if held.item.parent != Some(from) {
-                return Ok(Outcome::fail(
-                    FailureCode::Invalid,
-                    format!("#{number} is not a sub-item of #{from}."),
-                ));
+                return Ok(Outcome::fail(FailureCode::Invalid, format!("#{number} is not a sub-item of #{from}.")));
             }
         }
         if parent == held.item.parent {
@@ -228,11 +153,7 @@ impl Work {
         let now = rfc3339(now_ms());
         self.db
             .prepare("UPDATE work_items SET parent_id = ?, updated_at = ? WHERE id = ?")
-            .bind(&[
-                optional(&joined.as_ref().map(|parent| parent.item.id.clone())),
-                now.as_str().into(),
-                held.item.id.as_str().into(),
-            ])?
+            .bind(&[optional(&joined.as_ref().map(|parent| parent.item.id.clone())), now.as_str().into(), held.item.id.as_str().into()])?
             .run()
             .await?;
         let Some(after) = self.item_by_id(&held.item.id).await? else {
@@ -242,88 +163,44 @@ impl Work {
             "work_item.parent_changed",
             &after,
             Some(actor),
-            WorkItemEvent {
-                parent,
-                from_parent: held.item.parent,
-                ..Self::item_event(&after)
-            },
+            WorkItemEvent { parent, from_parent: held.item.parent, ..Self::item_event(&after) },
         )
         .await?;
         match (&left, &joined) {
             (Some(left), Some(joined)) => {
-                let text = format!(
-                    "moved this from #{} to #{}",
-                    left.item.number, joined.item.number
-                );
+                let text = format!("moved this from #{} to #{}", left.item.number, joined.item.number);
                 self.note_item(&after.item.id, actor, &text).await?;
             }
             (None, Some(joined)) => {
-                self.note_item(
-                    &after.item.id,
-                    actor,
-                    &format!("added this as a sub-item of #{}", joined.item.number),
-                )
-                .await?
+                self.note_item(&after.item.id, actor, &format!("added this as a sub-item of #{}", joined.item.number)).await?
             }
-            (Some(left), None) => {
-                self.note_item(
-                    &after.item.id,
-                    actor,
-                    &format!("removed this from #{}", left.item.number),
-                )
-                .await?
-            }
+            (Some(left), None) => self.note_item(&after.item.id, actor, &format!("removed this from #{}", left.item.number)).await?,
             (None, None) => {}
         }
         if let Some(left) = left {
-            self.note_item(
-                &left.item.id,
-                actor,
-                &format!("removed #{number} from this"),
-            )
-            .await?;
-            self.sub_items_changed(&left.item.id, number, "removed", actor)
-                .await?;
+            self.note_item(&left.item.id, actor, &format!("removed #{number} from this")).await?;
+            self.sub_items_changed(&left.item.id, number, "removed", actor).await?;
         }
         if let Some(joined) = joined {
-            self.note_item(
-                &joined.item.id,
-                actor,
-                &format!("added #{number} as a sub-item"),
-            )
-            .await?;
-            self.sub_items_changed(&joined.item.id, number, "added", actor)
-                .await?;
+            self.note_item(&joined.item.id, actor, &format!("added #{number} as a sub-item")).await?;
+            self.sub_items_changed(&joined.item.id, number, "added", actor).await?;
         }
         Ok(Outcome::Ok(after))
     }
 
     /// `held` was just opened as a sub-item of the work item of id
     /// `parent_id`: the parent says so.
-    pub(super) async fn sub_item_opened(
-        &self,
-        parent_id: &str,
-        held: &Held,
-        actor: &User,
-    ) -> Result<()> {
+    pub(super) async fn sub_item_opened(&self, parent_id: &str, held: &Held, actor: &User) -> Result<()> {
         let number = held.item.number;
-        self.note_item(parent_id, actor, &format!("added #{number} as a sub-item"))
-            .await?;
-        self.sub_items_changed(parent_id, number, "added", actor)
-            .await?;
+        self.note_item(parent_id, actor, &format!("added #{number} as a sub-item")).await?;
+        self.sub_items_changed(parent_id, number, "added", actor).await?;
         Ok(())
     }
 
     /// Says on the parent of id `parent_id` that its sub-item `number`
     /// changed (`added`, `removed`, `closed` or `reopened`), with how far
     /// along its sub-items are now; returns that.
-    async fn sub_items_changed(
-        &self,
-        parent_id: &str,
-        number: u32,
-        change: &'static str,
-        actor: &User,
-    ) -> Result<Option<SubItemProgress>> {
+    async fn sub_items_changed(&self, parent_id: &str, number: u32, change: &'static str, actor: &User) -> Result<Option<SubItemProgress>> {
         let Some(parent) = self.item_by_id(parent_id).await? else {
             return Ok(None);
         };
@@ -332,12 +209,7 @@ impl Work {
             "work_item.sub_items_changed",
             &parent,
             Some(actor),
-            WorkItemEvent {
-                sub_item: Some(number),
-                change: Some(change),
-                progress,
-                ..Self::item_event(&parent)
-            },
+            WorkItemEvent { sub_item: Some(number), change: Some(change), progress, ..Self::item_event(&parent) },
         )
         .await?;
         Ok(progress)
@@ -356,30 +228,17 @@ impl Work {
                 return Ok(());
             };
             let change = if closed { "closed" } else { "reopened" };
-            let progress = self
-                .sub_items_changed(&found.item.id, number, change, actor)
-                .await?;
-            if closed
-                && found.item.state == State::Open
-                && progress.is_some_and(|progress| progress.finished())
-            {
+            let progress = self.sub_items_changed(&found.item.id, number, change, actor).await?;
+            if closed && found.item.state == State::Open && progress.is_some_and(|progress| progress.finished()) {
                 let total = progress.map_or(0, |progress| progress.total);
-                let all = if total == 1 {
-                    "its only sub-item is done".to_owned()
-                } else {
-                    format!("all {total} sub-items are done")
-                };
-                let text = format!(
-                    "closed #{number}, the last open sub-item: {all}. This stays open until someone closes it."
-                );
+                let all = if total == 1 { "its only sub-item is done".to_owned() } else { format!("all {total} sub-items are done") };
+                let text = format!("closed #{number}, the last open sub-item: {all}. This stays open until someone closes it.");
                 self.note_item(&found.item.id, actor, &text).await?;
             }
             Ok::<(), worker::Error>(())
         };
         if let Err(error) = told.await {
-            worker::console_error!(
-                "#{number} closed or reopened, but its parent #{parent} was not told: {error}"
-            );
+            worker::console_error!("#{number} closed or reopened, but its parent #{parent} was not told: {error}");
         }
     }
 
@@ -394,41 +253,23 @@ impl Work {
         asked: Option<OpenSubItems>,
         move_to: Option<u32>,
     ) -> Result<Outcome<Vec<Held>>> {
-        if held
-            .item
-            .sub_item_progress
-            .is_none_or(|progress| progress.finished())
-        {
+        if held.item.sub_item_progress.is_none_or(|progress| progress.finished()) {
             return Ok(Outcome::Ok(Vec::new()));
         }
-        let open: Vec<Held> = self
-            .sub_items_of(held)
-            .await?
-            .into_iter()
-            .filter(|item| item.item.state == State::Open)
-            .collect();
+        let open: Vec<Held> = self.sub_items_of(held).await?.into_iter().filter(|item| item.item.state == State::Open).collect();
         if open.is_empty() {
             return Ok(Outcome::Ok(Vec::new()));
         }
         let numbers: Vec<u32> = open.iter().map(|item| item.item.number).collect();
         match asked {
-            None => Ok(Outcome::fail(
-                FailureCode::Conflict,
-                has_open_sub_items(held.item.number, &numbers),
-            )),
+            None => Ok(Outcome::fail(FailureCode::Conflict, has_open_sub_items(held.item.number, &numbers))),
             Some(OpenSubItems::Leave) => Ok(Outcome::Ok(Vec::new())),
             Some(OpenSubItems::Move) => {
                 let Some(to) = move_to.filter(|to| *to > 0) else {
-                    return Ok(Outcome::fail(
-                        FailureCode::Invalid,
-                        "Say which work item they move to (move_to).",
-                    ));
+                    return Ok(Outcome::fail(FailureCode::Invalid, "Say which work item they move to (move_to)."));
                 };
                 if to == held.item.number {
-                    return Ok(Outcome::fail(
-                        FailureCode::Invalid,
-                        format!("#{to} is the work item being closed."),
-                    ));
+                    return Ok(Outcome::fail(FailureCode::Invalid, format!("#{to} is the work item being closed.")));
                 }
                 // Every one checked before any moves.
                 for item in &open {
@@ -457,19 +298,8 @@ impl Work {
     // --- RPC methods ----------------------------------------------------------
 
     pub(crate) async fn set_work_item_parent(&self, a: SetParentArgs) -> Result<Outcome<WorkItem>> {
-        let held = check!(
-            self.manageable_item(&a.actor, &a.workspace, a.number)
-                .await?
-        );
-        let after = check!(
-            self.reparent(
-                &held,
-                &a.actor,
-                a.parent.filter(|number| *number > 0),
-                a.only_from
-            )
-            .await?
-        );
+        let held = check!(self.manageable_item(&a.actor, &a.workspace, a.number).await?);
+        let after = check!(self.reparent(&held, &a.actor, a.parent.filter(|number| *number > 0), a.only_from).await?);
         Ok(Outcome::Ok(after.shown(Some(&a.actor))))
     }
 }
@@ -498,11 +328,7 @@ mod tests {
 
     fn numbers(db: &Connection, sql: &str, id: &str) -> Vec<u32> {
         let mut statement = db.prepare(sql).unwrap();
-        statement
-            .query_map([id], |row| row.get(0))
-            .unwrap()
-            .map(std::result::Result::unwrap)
-            .collect()
+        statement.query_map([id], |row| row.get(0)).unwrap().map(std::result::Result::unwrap).collect()
     }
 
     #[test]
@@ -526,26 +352,11 @@ mod tests {
     #[test]
     fn a_work_item_is_read_with_its_parent_and_how_far_along_its_sub_items_are() {
         let db = parent_and_sub_items();
-        let sql = format!(
-            "SELECT parent_number, sub_total, sub_done FROM ({}) ORDER BY number",
-            select("workspace = 'acme'")
-        );
+        let sql = format!("SELECT parent_number, sub_total, sub_done FROM ({}) ORDER BY number", select("workspace = 'acme'"));
         let mut statement = db.prepare(&sql).unwrap();
-        let rows: Vec<(Option<u32>, u32, u32)> = statement
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
-            .unwrap()
-            .map(std::result::Result::unwrap)
-            .collect();
-        assert_eq!(
-            rows,
-            vec![
-                (None, 2, 1),
-                (Some(1), 1, 0),
-                (Some(2), 0, 0),
-                (Some(1), 0, 0),
-                (None, 0, 0)
-            ]
-        );
+        let rows: Vec<(Option<u32>, u32, u32)> =
+            statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).unwrap().map(std::result::Result::unwrap).collect();
+        assert_eq!(rows, vec![(None, 2, 1), (Some(1), 1, 0), (Some(2), 0, 0), (Some(1), 0, 0), (None, 0, 0)]);
     }
 
     #[test]
@@ -555,10 +366,6 @@ mod tests {
             "#212 has 3 open sub-items (#230, #231 and #233). Say what to do with them: leave them open, close them too, or \
              move them to another work item (sub_items: leave, close or move, with move_to)."
         );
-        assert!(
-            has_open_sub_items(212, &[230]).starts_with(
-                "#212 has 1 open sub-item (#230). Say what to do with it: leave it open"
-            )
-        );
+        assert!(has_open_sub_items(212, &[230]).starts_with("#212 has 1 open sub-item (#230). Say what to do with it: leave it open"));
     }
 }

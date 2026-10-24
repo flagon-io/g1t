@@ -24,7 +24,9 @@ pub enum Answer {
 /// The question, the button that waits for the job, and what g1t does.
 fn words(going: Going) -> (&'static str, &'static str, &'static str) {
     match going {
-        Going::Restart => ("A job is running on this computer. Restart when it finishes, or stop it now?", "Restart when it finishes", "restart"),
+        Going::Restart => {
+            ("A job is running on this computer. Restart when it finishes, or stop it now?", "Restart when it finishes", "restart")
+        }
         Going::Quit => ("A job is running on this computer. Quit when it finishes, or stop it now?", "Quit when it finishes", "quit"),
     }
 }
@@ -57,7 +59,8 @@ fn asked(question: &str, _when: &str, verb: &str) -> Answer {
     let (text, caption) = (wide(&text), wide("g1t"));
     // SAFETY: both strings live until the call returns. No owner window: this
     // isn't the window's thread, and the dialog stays on top by itself.
-    let pressed = unsafe { MessageBoxW(0, text.as_ptr(), caption.as_ptr(), MB_YESNOCANCEL | MB_ICONWARNING | MB_SETFOREGROUND | MB_TOPMOST) };
+    let pressed =
+        unsafe { MessageBoxW(0, text.as_ptr(), caption.as_ptr(), MB_YESNOCANCEL | MB_ICONWARNING | MB_SETFOREGROUND | MB_TOPMOST) };
     message_box(pressed)
 }
 

@@ -55,7 +55,13 @@ fn probe(auth: &str) -> Result<Vec<String>> {
     crate::clone::ensure(workdir, auth, &head_remote, &head_branch, &head)?;
     // Shallow: deep enough for the two to share a commit to merge from.
     if crate::clone::has(workdir, &base) && crate::clone::has(workdir, &head) {
-        crate::clone::share_history(workdir, auth, &[("origin", base_branch.as_str()), (head_remote.as_str(), head_branch.as_str())], &base, &head)?;
+        crate::clone::share_history(
+            workdir,
+            auth,
+            &[("origin", base_branch.as_str()), (head_remote.as_str(), head_branch.as_str())],
+            &base,
+            &head,
+        )?;
     }
     for (commit, what) in [(&base, "the target branch's commit"), (&head, "the change's commit")] {
         let present = Command::new("git")
@@ -92,10 +98,7 @@ fn probe(auth: &str) -> Result<Vec<String>> {
     if clean {
         return Ok(Vec::new());
     }
-    let files: Vec<String> = git(workdir, &["diff", "--name-only", "--diff-filter=U"])?
-        .lines()
-        .map(str::to_owned)
-        .collect();
+    let files: Vec<String> = git(workdir, &["diff", "--name-only", "--diff-filter=U"])?.lines().map(str::to_owned).collect();
     if files.is_empty() {
         bail!("the merge failed for a reason other than a conflict");
     }
@@ -104,9 +107,7 @@ fn probe(auth: &str) -> Result<Vec<String>> {
 
 fn report(api: &str, pull: &str, token: &str, mut body: serde_json::Value) -> Result<()> {
     body["token"] = token.into();
-    crate::http::agent().post(&format!("{api}/mergechecks/{pull}"))
-        .send_json(body)
-        .context("could not report the merge check")?;
+    crate::http::agent().post(&format!("{api}/mergechecks/{pull}")).send_json(body).context("could not report the merge check")?;
     Ok(())
 }
 
@@ -118,14 +119,9 @@ pub fn main() -> i32 {
             return 2;
         }
     };
-    let secrets: Vec<String> = ["G1T_TOKEN", "MERGECHECK_TOKEN"]
-        .iter()
-        .filter_map(|name| std::env::var(name).ok())
-        .filter(|secret| !secret.is_empty())
-        .collect();
-    let found = env("G1T_USER")
-        .and_then(|user| Ok(auth_option(&user, &env("G1T_TOKEN")?)))
-        .and_then(|auth| probe(&auth));
+    let secrets: Vec<String> =
+        ["G1T_TOKEN", "MERGECHECK_TOKEN"].iter().filter_map(|name| std::env::var(name).ok()).filter(|secret| !secret.is_empty()).collect();
+    let found = env("G1T_USER").and_then(|user| Ok(auth_option(&user, &env("G1T_TOKEN")?))).and_then(|auth| probe(&auth));
     let body = match found {
         Ok(conflicts) => serde_json::json!({ "conflicts": conflicts }),
         Err(error) => serde_json::json!({ "error": redact(&format!("{error:#}"), &secrets) }),

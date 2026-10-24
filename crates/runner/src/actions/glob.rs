@@ -56,10 +56,8 @@ pub(crate) fn find(lines: &[String], workspace: &str, home: &str, hidden: bool) 
     let searches: Vec<String> = includes.iter().map(|p| search_path(p)).collect();
     let all: Vec<String> = matched.into_iter().collect();
     let Some(root) = root_dir(&searches, &all) else { return Found::default() };
-    let mut files: Vec<(String, PathBuf)> = all
-        .iter()
-        .filter_map(|file| relative(&root, file).map(|name| (name, PathBuf::from(file))))
-        .collect();
+    let mut files: Vec<(String, PathBuf)> =
+        all.iter().filter_map(|file| relative(&root, file).map(|name| (name, PathBuf::from(file)))).collect();
     files.sort();
     files.dedup_by(|a, b| a.0 == b.0);
     Found { root, files }
@@ -90,7 +88,13 @@ pub(crate) fn resolve(line: &str, workspace: &str, home: &str) -> String {
         }
     }
     let joined = parts.join("/");
-    if joined.is_empty() || (parts.len() == 1 && parts[0].is_empty()) { "/".into() } else if parts.len() == 1 { format!("{joined}/") } else { joined }
+    if joined.is_empty() || (parts.len() == 1 && parts[0].is_empty()) {
+        "/".into()
+    } else if parts.len() == 1 {
+        format!("{joined}/")
+    } else {
+        joined
+    }
 }
 
 fn separators(path: &str) -> String {
@@ -166,11 +170,8 @@ pub(crate) fn root_dir(searches: &[String], files: &[String]) -> Option<String> 
         }
     }
     // A search path inside another one adds nothing.
-    let unique: Vec<String> = unique
-        .iter()
-        .filter(|s| !unique.iter().any(|other| other != *s && relative(other, s).is_some()))
-        .cloned()
-        .collect();
+    let unique: Vec<String> =
+        unique.iter().filter(|s| !unique.iter().any(|other| other != *s && relative(other, s).is_some())).cloned().collect();
     match unique.as_slice() {
         [] => None,
         [one] if files.len() == 1 && files[0] == *one => {
@@ -384,7 +385,8 @@ mod tests {
 
     #[test]
     fn finding_files_takes_folders_globs_and_exclusions() {
-        let (dir, w) = tree(&["dist/a.js", "dist/sub/b.js", "dist/sub/c.map", "dist/.env", "dist/.cache/x", "src/main.rs", "README.md", ".hidden/y"]);
+        let (dir, w) =
+            tree(&["dist/a.js", "dist/sub/b.js", "dist/sub/c.map", "dist/.env", "dist/.cache/x", "src/main.rs", "README.md", ".hidden/y"]);
         let found = find(&lines("dist"), &w, "/h", false);
         assert_eq!(found.root, format!("{w}/dist"));
         assert_eq!(names(&found), ["a.js", "sub/b.js", "sub/c.map"]);

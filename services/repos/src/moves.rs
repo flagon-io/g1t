@@ -37,8 +37,8 @@ use g1t_contracts::repos::Repo;
 use g1t_contracts::{FailureCode, Outcome, new_id};
 use g1t_kit::now_ms;
 use serde::{Deserialize, Serialize};
-use worker::wasm_bindgen::JsValue;
 use worker::Result;
+use worker::wasm_bindgen::JsValue;
 
 use crate::registry::{Registry, store_key};
 use crate::store::{GitRepo, GitStore, Scope, locate};
@@ -133,11 +133,8 @@ pub fn plan(source: &BTreeMap<String, String>, target: &BTreeMap<String, String>
         }
     }
     let held: std::collections::BTreeSet<&String> = target.values().collect();
-    let mut wants: Vec<String> = commands
-        .iter()
-        .map(|(_, _, new)| new.clone())
-        .filter(|new| new != ZERO_ID && !held.contains(new))
-        .collect();
+    let mut wants: Vec<String> =
+        commands.iter().map(|(_, _, new)| new.clone()).filter(|new| new != ZERO_ID && !held.contains(new)).collect();
     wants.sort();
     wants.dedup();
     let mut haves: Vec<String> = held.into_iter().cloned().collect();
@@ -147,10 +144,7 @@ pub fn plan(source: &BTreeMap<String, String>, target: &BTreeMap<String, String>
 
 /// What a writer is told while writes wait.
 pub fn paused_message(repo: &Repo, reason: &str) -> String {
-    format!(
-        "{}/{} is paused for maintenance ({reason}); changes to it wait a few minutes. Try again shortly.",
-        repo.namespace, repo.name
-    )
+    format!("{}/{} is paused for maintenance ({reason}); changes to it wait a few minutes. Try again shortly.", repo.namespace, repo.name)
 }
 
 /// Why a move cannot start, if it cannot.
@@ -227,7 +221,14 @@ impl Registry {
                    cleaned_ms = CASE WHEN ?6 THEN ?4 ELSE cleaned_ms END
                  WHERE id = ?1",
             )
-            .bind(&[id.into(), status.into(), note.map_or(JsValue::NULL, JsValue::from), (now as f64).into(), finished.into(), cleaned.into()])?
+            .bind(&[
+                id.into(),
+                status.into(),
+                note.map_or(JsValue::NULL, JsValue::from),
+                (now as f64).into(),
+                finished.into(),
+                cleaned.into(),
+            ])?
             .run()
             .await?;
         Ok(())
@@ -238,9 +239,11 @@ impl Registry {
         let statements = ids
             .iter()
             .map(|id| {
-                self.db
-                    .prepare("UPDATE repos SET writes_paused_until = ?, writes_paused_for = ? WHERE id = ?")
-                    .bind(&[(until as f64).into(), reason.into(), id.as_str().into()])
+                self.db.prepare("UPDATE repos SET writes_paused_until = ?, writes_paused_for = ? WHERE id = ?").bind(&[
+                    (until as f64).into(),
+                    reason.into(),
+                    id.as_str().into(),
+                ])
             })
             .collect::<Result<Vec<_>>>()?;
         self.db.batch(statements).await?;
@@ -618,7 +621,11 @@ mod tests {
 
     #[test]
     fn peeled_tags_are_not_refs() {
-        let map = ref_map(vec![("refs/tags/v1".into(), "t".into()), ("refs/tags/v1^{}".into(), "c".into()), ("refs/heads/main".into(), "m".into())]);
+        let map = ref_map(vec![
+            ("refs/tags/v1".into(), "t".into()),
+            ("refs/tags/v1^{}".into(), "c".into()),
+            ("refs/heads/main".into(), "m".into()),
+        ]);
         assert_eq!(map.len(), 2);
         assert_eq!(map.get("refs/tags/v1").map(String::as_str), Some("t"));
     }

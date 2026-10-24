@@ -15,10 +15,7 @@ pub struct R2Store {
 
 impl R2Store {
     pub fn from_env(env: &Env, config: &Config) -> Result<R2Store> {
-        let [key, secret, account, bucket] = config
-            .r2_signer
-            .map(|names| names.map(|name| var(env, name)))
-            .unwrap_or_default();
+        let [key, secret, account, bucket] = config.r2_signer.map(|names| names.map(|name| var(env, name))).unwrap_or_default();
         let signer = (!key.is_empty() && !secret.is_empty() && !account.is_empty() && !bucket.is_empty()).then(|| {
             (
                 Credentials { access_key_id: key, secret_access_key: secret, region: "auto".to_owned() },
@@ -72,9 +69,7 @@ impl BlobStore for R2Store {
 
     async fn complete_multipart(&self, key: &str, upload_id: &str, parts: &[Part]) -> Result<()> {
         let upload = self.bucket.resume_multipart_upload(key, upload_id)?;
-        upload
-            .complete(parts.iter().map(|part| UploadedPart::new(part.number, part.etag.clone())))
-            .await?;
+        upload.complete(parts.iter().map(|part| UploadedPart::new(part.number, part.etag.clone()))).await?;
         Ok(())
     }
 

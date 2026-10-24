@@ -123,19 +123,13 @@ pub(crate) fn source_label(annotations: Option<&serde_json::Value>, config: Opti
 fn grants_of(rows: &[crate::db::AccessRow]) -> Vec<Grant> {
     rows.iter()
         .filter_map(|row| {
-            Some(Grant {
-                kind: GranteeKind::parse(&row.grantee_kind)?,
-                id: row.grantee_id.clone(),
-                role: PackageRole::parse(&row.role)?,
-            })
+            Some(Grant { kind: GranteeKind::parse(&row.grantee_kind)?, id: row.grantee_id.clone(), role: PackageRole::parse(&row.role)? })
         })
         .collect()
 }
 
 fn actions_of(rows: &[crate::db::ActionsRow]) -> Vec<RepoAccess> {
-    rows.iter()
-        .filter_map(|row| Some(RepoAccess { name: row.repo_name.clone(), role: PackageRole::parse(&row.role)? }))
-        .collect()
+    rows.iter().filter_map(|row| Some(RepoAccess { name: row.repo_name.clone(), role: PackageRole::parse(&row.role)? })).collect()
 }
 
 impl Packages {
@@ -180,7 +174,8 @@ impl Packages {
             return Ok(may);
         }
         let refused: Vec<usize> = (0..targets.len()).filter(|at| !may[*at]).collect();
-        let mut again: Vec<TargetOf> = refused.iter().map(|at| std::mem::replace(&mut targets[*at], TargetOf::unmade("", "", None))).collect();
+        let mut again: Vec<TargetOf> =
+            refused.iter().map(|at| std::mem::replace(&mut targets[*at], TargetOf::unmade("", "", None))).collect();
         self.load(viewer, &mut again).await?;
         for (at, target) in refused.into_iter().zip(again) {
             may[at] = access::decide(viewer, &target.view(), action).allowed;
@@ -232,12 +227,8 @@ impl Packages {
     /// Which of these teams (`workspace/slug`) the person is in, by id,
     /// counting their child teams' people.
     async fn teams_with(&self, person: &str, names: Vec<String>) -> Result<HashSet<String>> {
-        let resolved: Vec<ResolvedTeam> = g1t_kit::call(
-            &self.identity,
-            "resolve_teams",
-            &ResolveTeamsArgs { teams: names, repo_id: None, asker: None },
-        )
-        .await?;
+        let resolved: Vec<ResolvedTeam> =
+            g1t_kit::call(&self.identity, "resolve_teams", &ResolveTeamsArgs { teams: names, repo_id: None, asker: None }).await?;
         Ok(resolved
             .into_iter()
             .filter(|team| team.members.iter().chain(&team.child_members).any(|member| member.id == person))
@@ -295,7 +286,13 @@ impl Packages {
 
     /// Deletes a version: hidden at once, restorable for 30 days; its
     /// version string cannot be published again until it is purged.
-    pub(crate) async fn remove_version_from(&self, package: &PackageRow, version: &VersionRow, caller: &Caller, surface: Option<Surface>) -> Result<()> {
+    pub(crate) async fn remove_version_from(
+        &self,
+        package: &PackageRow,
+        version: &VersionRow,
+        caller: &Caller,
+        surface: Option<Surface>,
+    ) -> Result<()> {
         let by = caller.actor.as_ref().map_or("", |actor| actor.actor.as_str());
         self.db.soft_delete_version(&version.id, by, now_ms()).await?;
         self.db.measure(&package.workspace).await?;
@@ -334,10 +331,19 @@ impl Packages {
             Outcome::Ok(package) => package,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        let Some(version) = self.db.deleted_version(&package.id, a.version.trim()).await?.filter(|v| v.deleted_at.as_deref().is_some_and(|at| restorable(at, now_ms()))) else {
+        let Some(version) = self
+            .db
+            .deleted_version(&package.id, a.version.trim())
+            .await?
+            .filter(|v| v.deleted_at.as_deref().is_some_and(|at| restorable(at, now_ms())))
+        else {
             return Ok(Outcome::fail(
                 FailureCode::NotFound,
-                format!("No deleted version {} of {} can be restored: it was never deleted, or was purged.", a.version.trim(), package.name),
+                format!(
+                    "No deleted version {} of {} can be restored: it was never deleted, or was purged.",
+                    a.version.trim(),
+                    package.name
+                ),
             ));
         };
         let now = now_ms();
@@ -359,7 +365,11 @@ impl Packages {
     }
 
     pub(crate) async fn restore_package(&self, a: RestorePackageArgs) -> Result<Outcome<PackageSummary>> {
-        let Some(package) = self.package_any(&a.workspace, a.ecosystem, &a.name).await?.filter(|package| package.deleted_at.as_deref().is_some_and(|at| restorable(at, now_ms()))) else {
+        let Some(package) = self
+            .package_any(&a.workspace, a.ecosystem, &a.name)
+            .await?
+            .filter(|package| package.deleted_at.as_deref().is_some_and(|at| restorable(at, now_ms())))
+        else {
             return Ok(Outcome::fail(
                 FailureCode::NotFound,
                 format!("There is no deleted package {} to restore: it was never deleted, or was purged.", a.name),
@@ -476,7 +486,12 @@ impl Packages {
     }
 
     /// The person or team a change of access names: (kind, id, name kept).
-    async fn grantee(&self, package: &PackageRow, user: Option<&str>, team: Option<&str>) -> Result<Outcome<(GranteeKind, String, String)>> {
+    async fn grantee(
+        &self,
+        package: &PackageRow,
+        user: Option<&str>,
+        team: Option<&str>,
+    ) -> Result<Outcome<(GranteeKind, String, String)>> {
         let clean = |text: &str| text.trim().trim_start_matches('@').to_lowercase();
         match (user.map(clean).filter(|u| !u.is_empty()), team.map(clean).filter(|t| !t.is_empty())) {
             (Some(username), None) => {
@@ -490,7 +505,10 @@ impl Packages {
                 let slug = match team.split_once('/') {
                     Some((owner, slug)) if owner == package.workspace => slug.to_owned(),
                     Some(_) => {
-                        return Ok(Outcome::fail(FailureCode::Invalid, format!("Only a team of {} can have a role on its packages.", package.workspace)));
+                        return Ok(Outcome::fail(
+                            FailureCode::Invalid,
+                            format!("Only a team of {} can have a role on its packages.", package.workspace),
+                        ));
                     }
                     None => team,
                 };
@@ -557,12 +575,10 @@ impl Packages {
             }
             _ => return Ok(Outcome::fail(FailureCode::Invalid, "Name one person (user, a username) or one team (team, its slug).")),
         };
-        let found = self
-            .db
-            .access(std::slice::from_ref(&package.id))
-            .await?
-            .into_iter()
-            .find(|row| row.grantee_kind == kind.as_str() && (row.grantee_name.eq_ignore_ascii_case(&wanted) || row.grantee_id == wanted));
+        let found =
+            self.db.access(std::slice::from_ref(&package.id)).await?.into_iter().find(|row| {
+                row.grantee_kind == kind.as_str() && (row.grantee_name.eq_ignore_ascii_case(&wanted) || row.grantee_id == wanted)
+            });
         let Some(found) = found else {
             return Ok(Outcome::fail(FailureCode::NotFound, format!("{wanted} has no role on the package itself.")));
         };
@@ -631,7 +647,10 @@ impl Packages {
         if before != Some(a.role) {
             self.db.set_actions(&package.id, &repo.id, &repo.name, a.role.as_str(), &a.actor.username, now_ms()).await?;
             let (action, message) = match before {
-                None => ("package.actions_access_added", format!("Let {}/{}'s workflows use it with the {} role", repo.namespace, repo.name, a.role.label())),
+                None => (
+                    "package.actions_access_added",
+                    format!("Let {}/{}'s workflows use it with the {} role", repo.namespace, repo.name, a.role.label()),
+                ),
                 Some(was) => (
                     "package.actions_access_role_changed",
                     format!("Changed {}/{}'s workflows' role from {} to {}", repo.namespace, repo.name, was.label(), a.role.label()),
@@ -662,7 +681,10 @@ impl Packages {
             .into_iter()
             .find(|row| row.repo_name.eq_ignore_ascii_case(wanted) || row.repo_id == wanted)
         else {
-            return Ok(Outcome::fail(FailureCode::NotFound, format!("{}/{wanted} has no Actions access to the package.", package.workspace)));
+            return Ok(Outcome::fail(
+                FailureCode::NotFound,
+                format!("{}/{wanted} has no Actions access to the package.", package.workspace),
+            ));
         };
         self.db.remove_actions(&package.id, &found.repo_id).await?;
         self.audit_with(
@@ -686,7 +708,15 @@ impl Packages {
         let mut workspaces: HashSet<String> = HashSet::new();
         for package in self.db.expired_packages(&before, PURGE_BATCH).await? {
             self.db.delete_package(&package.id).await?;
-            self.audit_with(&caller, "package.purged", &package, None, Some(Surface::Registry), Some("Removed for good, 30 days after it was deleted".to_owned())).await;
+            self.audit_with(
+                &caller,
+                "package.purged",
+                &package,
+                None,
+                Some(Surface::Registry),
+                Some("Removed for good, 30 days after it was deleted".to_owned()),
+            )
+            .await;
             workspaces.insert(package.workspace.clone());
             packages += 1;
         }
@@ -771,7 +801,9 @@ impl Packages {
             && package.repo_name.as_deref().is_none_or(|linked| !linked.eq_ignore_ascii_case(repo_name))
             && let Some(found) = self.repo_by_name(workspace, repo_name).await?
         {
-            self.db.set_actions(&package.id, &found.id, &found.name, PackageRole::Write.as_str(), &format!("{workspace}/{repo_name}"), now).await?;
+            self.db
+                .set_actions(&package.id, &found.id, &found.name, PackageRole::Write.as_str(), &format!("{workspace}/{repo_name}"), now)
+                .await?;
         }
         Ok(package)
     }
@@ -780,7 +812,13 @@ impl Packages {
     /// first push or while it is unlinked, when that is a repository of its
     /// workspace and the pusher may publish its packages. Says whether it
     /// linked it.
-    pub(crate) async fn link_by_source(&self, package: &PackageRow, label: &str, caller: &Caller, first: bool) -> Result<Option<PackageRow>> {
+    pub(crate) async fn link_by_source(
+        &self,
+        package: &PackageRow,
+        label: &str,
+        caller: &Caller,
+        first: bool,
+    ) -> Result<Option<PackageRow>> {
         if !first && package.repo_id.is_some() {
             return Ok(None);
         }

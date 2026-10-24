@@ -105,11 +105,7 @@ pub(crate) fn anchor_of(period_start: &str) -> Option<u32> {
 /// applied to all of a cycle's usage.
 pub(crate) fn bill_since(today: &str, anchor: u32, restate_days: u32, first: bool) -> String {
     let current = cycle_of(today, anchor);
-    if first || current.days_elapsed(today) <= restate_days {
-        current.previous(anchor).start
-    } else {
-        current.start
-    }
+    if first || current.days_elapsed(today) <= restate_days { current.previous(anchor).start } else { current.start }
 }
 
 /// A meter's list price, with what each cycle includes.
@@ -194,7 +190,15 @@ pub(crate) const LIST_PRICES: &[ListPrice] = &[
     price("containers", "container_egress_everywhere_else", 500.0, 0.04, 1.0, false),
     price("vectorize", "vectorize_queried", 50.0 * M, 0.01, M, false),
     price("vectorize", "vectorize_stored", 10.0 * M, 0.05, 100.0 * M, false),
-    ListPrice { product: "workers_ai", meter: "workers_ai_neurons", included: 10_000.0, usd: 0.011, per: 1_000.0, whole: false, daily: true },
+    ListPrice {
+        product: "workers_ai",
+        meter: "workers_ai_neurons",
+        included: 10_000.0,
+        usd: 0.011,
+        per: 1_000.0,
+        whole: false,
+        daily: true,
+    },
 ];
 
 /// The list price for a line: its product's with the longest matching
@@ -382,7 +386,11 @@ mod tests {
         assert_eq!((lines[1].cost_usd, lines[1].basis), (0.19, BASIS_CLOUDFLARE));
         assert_eq!(lines[2].basis, BASIS_LIST);
         // Not billable usage: left as it is.
-        let mut other = vec![CostLine { source: crate::costs::SOURCE_GATEWAY, cost_usd: 1.5, ..line("2026-10-07", "ai_gateway_requests", "m", 3.0, 0.0) }];
+        let mut other = vec![CostLine {
+            source: crate::costs::SOURCE_GATEWAY,
+            cost_usd: 1.5,
+            ..line("2026-10-07", "ai_gateway_requests", "m", 3.0, 0.0)
+        }];
         price_lines(&mut other, 28);
         assert_eq!((other[0].cost_usd, other[0].basis), (1.5, ""));
     }

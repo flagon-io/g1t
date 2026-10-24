@@ -63,7 +63,13 @@ pub fn count<'a>(severities: impl Iterator<Item = &'a str>) -> SeverityCounts {
 
 /// The summary of a scan, from what it changed, the new alerts (severity
 /// and title, newest first) and what is open after it. Pure.
-pub fn shape(repo: &RepoRow, alert_type: AlertType, changed: &Changed<'_>, news: &[(String, String)], open: SeverityCounts) -> SecuritySummary {
+pub fn shape(
+    repo: &RepoRow,
+    alert_type: AlertType,
+    changed: &Changed<'_>,
+    news: &[(String, String)],
+    open: SeverityCounts,
+) -> SecuritySummary {
     SecuritySummary {
         repo_id: repo.repo_id.clone(),
         alert_type: alert_type.as_str().to_owned(),
@@ -86,7 +92,13 @@ pub fn shape(repo: &RepoRow, alert_type: AlertType, changed: &Changed<'_>, news:
 
 impl Security {
     /// Publishes what a scan changed, once, unless it changed nothing.
-    pub(crate) async fn summarize(&self, repo: &RepoRow, alert_type: AlertType, changed: Changed<'_>, actor_id: Option<String>) -> Result<()> {
+    pub(crate) async fn summarize(
+        &self,
+        repo: &RepoRow,
+        alert_type: AlertType,
+        changed: Changed<'_>,
+        actor_id: Option<String>,
+    ) -> Result<()> {
         if changed.opened.is_empty() && changed.fixed.is_empty() && changed.dismissed == 0 && changed.scan != "change" {
             return Ok(());
         }
@@ -159,7 +171,12 @@ mod tests {
 
     #[test]
     fn a_scan_is_one_summary_with_counts_the_worst_and_the_newest() {
-        let changed = Changed { scan: "dependencies", opened: vec!["vul_3".into(), "vul_2".into(), "vul_1".into()], fixed: vec!["vul_0".into()], ..Changed::default() };
+        let changed = Changed {
+            scan: "dependencies",
+            opened: vec!["vul_3".into(), "vul_2".into(), "vul_1".into()],
+            fixed: vec!["vul_0".into()],
+            ..Changed::default()
+        };
         let news = vec![
             ("high".to_owned(), "lodash 4.17.20 in package-lock.json: GHSA-1".to_owned()),
             ("critical".to_owned(), "minimist 1.2.5 in package-lock.json: GHSA-2".to_owned()),
@@ -191,7 +208,13 @@ mod tests {
     #[test]
     fn a_refused_push_is_urgent_whatever_was_found() {
         let changed = Changed { scan: "push", opened: vec!["sec_1".into()], pusher: Some("bo"), blocked: 1, ..Changed::default() };
-        let summary = shape(&repo(), AlertType::SecretScanning, &changed, &[("low".into(), "An example key in README.md".into())], SeverityCounts::default());
+        let summary = shape(
+            &repo(),
+            AlertType::SecretScanning,
+            &changed,
+            &[("low".into(), "An example key in README.md".into())],
+            SeverityCounts::default(),
+        );
         assert_eq!(summary.pusher.as_deref(), Some("bo"));
         assert!(summary.urgent());
         assert_eq!(worst(["low", "medium", "high"].into_iter()).as_deref(), Some("high"));

@@ -31,20 +31,13 @@ struct DeviceRow {
 fn new_user_code() -> String {
     let mut random = [0u8; 8];
     getrandom::getrandom(&mut random).expect("no source of randomness");
-    let letters: String = random
-        .iter()
-        .map(|byte| USER_CODE_ALPHABET[*byte as usize % USER_CODE_ALPHABET.len()] as char)
-        .collect();
+    let letters: String = random.iter().map(|byte| USER_CODE_ALPHABET[*byte as usize % USER_CODE_ALPHABET.len()] as char).collect();
     format!("{}-{}", &letters[..4], &letters[4..])
 }
 
 /// A user code as stored, however it was typed.
 fn normalize(user_code: &str) -> String {
-    let letters: String = user_code
-        .chars()
-        .filter(char::is_ascii_alphabetic)
-        .map(|c| c.to_ascii_uppercase())
-        .collect();
+    let letters: String = user_code.chars().filter(char::is_ascii_alphabetic).map(|c| c.to_ascii_uppercase()).collect();
     match letters.len() {
         8 => format!("{}-{}", &letters[..4], &letters[4..]),
         _ => letters,
@@ -65,19 +58,10 @@ impl Identity {
                  VALUES (?, ?, ?, {})",
                 sql_after(EXPIRES_IN_SECONDS)
             ))
-            .bind(&[
-                crypto::sha256_hex(&device_code).into(),
-                user_code.as_str().into(),
-                client_name.into(),
-            ])?
+            .bind(&[crypto::sha256_hex(&device_code).into(), user_code.as_str().into(), client_name.into()])?
             .run()
             .await?;
-        Ok(DeviceStart {
-            device_code,
-            user_code,
-            expires_in: EXPIRES_IN_SECONDS as u32,
-            interval: POLL_INTERVAL_SECONDS,
-        })
+        Ok(DeviceStart { device_code, user_code, expires_in: EXPIRES_IN_SECONDS as u32, interval: POLL_INTERVAL_SECONDS })
     }
 
     /// The pending, unexpired request with this user code.
@@ -93,13 +77,7 @@ impl Identity {
     }
 
     pub async fn device_lookup(&self, a: DeviceLookupArgs) -> Result<Option<DeviceRequest>> {
-        Ok(self
-            .pending_device(&a.user_code)
-            .await?
-            .map(|row| DeviceRequest {
-                user_code: row.user_code,
-                client_name: row.client_name,
-            }))
+        Ok(self.pending_device(&a.user_code).await?.map(|row| DeviceRequest { user_code: row.user_code, client_name: row.client_name }))
     }
 
     pub async fn device_resolve(&self, a: DeviceResolveArgs) -> Result<Outcome<bool>> {
@@ -108,18 +86,11 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Forbidden, "Confirm your email address before signing in to an application."));
         }
         let Some(row) = self.pending_device(&a.user_code).await? else {
-            return Ok(Outcome::fail(
-                FailureCode::NotFound,
-                "That code is not valid or has expired. Start again from the application.",
-            ));
+            return Ok(Outcome::fail(FailureCode::NotFound, "That code is not valid or has expired. Start again from the application."));
         };
         self.db
             .prepare("UPDATE device_codes SET status = ?, user_id = ? WHERE user_code = ?")
-            .bind(&[
-                if a.approve { "approved" } else { "denied" }.into(),
-                a.user.id.into(),
-                row.user_code.into(),
-            ])?
+            .bind(&[if a.approve { "approved" } else { "denied" }.into(), a.user.id.into(), row.user_code.into()])?
             .run()
             .await?;
         Ok(Outcome::Ok(a.approve))
@@ -172,18 +143,11 @@ impl Identity {
                 repo: None,
             })
             .await?;
-        Ok(DeviceClaim::Approved {
-            token: created.token,
-            user,
-        })
+        Ok(DeviceClaim::Approved { token: created.token, user })
     }
 
     async fn forget_device(&self, id: &str) -> Result<()> {
-        self.db
-            .prepare("DELETE FROM device_codes WHERE id = ?")
-            .bind(&[id.into()])?
-            .run()
-            .await?;
+        self.db.prepare("DELETE FROM device_codes WHERE id = ?").bind(&[id.into()])?.run().await?;
         Ok(())
     }
 }

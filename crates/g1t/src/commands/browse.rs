@@ -43,11 +43,7 @@ pub fn address(site: &str, repo: &Repo, args: &BrowseArgs, branch: Option<&str>)
         // request of the repository.
         return format!("{base}/pull/{target}");
     }
-    if target.len() >= 7
-        && target.len() <= 40
-        && target.chars().all(|c| c.is_ascii_hexdigit())
-        && !target.contains('.')
-    {
+    if target.len() >= 7 && target.len() <= 40 && target.chars().all(|c| c.is_ascii_hexdigit()) && !target.contains('.') {
         return format!("{base}/commit/{target}");
     }
     let (path, line) = match target.rsplit_once(':') {
@@ -64,12 +60,7 @@ pub fn address(site: &str, repo: &Repo, args: &BrowseArgs, branch: Option<&str>)
 
 pub fn run(ctx: &Ctx, args: BrowseArgs) -> Result<()> {
     let (repo, client) = ctx.repo_client()?;
-    let branch = if args
-        .target
-        .as_deref()
-        .is_some_and(|t| t.contains('/') || t.contains('.'))
-        && args.branch.is_none()
-    {
+    let branch = if args.target.as_deref().is_some_and(|t| t.contains('/') || t.contains('.')) && args.branch.is_none() {
         // A file: on the branch checked out, when it is this repository.
         crate::git::current_branch()
     } else {
@@ -78,7 +69,8 @@ pub fn run(ctx: &Ctx, args: BrowseArgs) -> Result<()> {
     let mut url = address(&client.host.site, &repo, &args, branch.as_deref());
     // `#N` here: a pull request of the repository, or a work item of its
     // workspace (an old issue number of the repository included).
-    if let Some(number) = args.target.as_deref().map(|t| t.trim_start_matches('#')).filter(|t| !t.is_empty() && t.chars().all(|c| c.is_ascii_digit()))
+    if let Some(number) =
+        args.target.as_deref().map(|t| t.trim_start_matches('#')).filter(|t| !t.is_empty() && t.chars().all(|c| c.is_ascii_digit()))
         && let Ok(found) = client.op("resolve_ref").repo(&repo).arg("number", number).send()
     {
         url = match found["kind"].as_str() {
@@ -112,36 +104,17 @@ mod tests {
 
     #[test]
     fn addresses_follow_the_site() {
-        let repo = Repo {
-            host: "g1t.sh".into(),
-            owner: "acme".into(),
-            name: "web".into(),
-        };
+        let repo = Repo { host: "g1t.sh".into(), owner: "acme".into(), name: "web".into() };
         let site = "https://g1t.sh";
-        assert_eq!(
-            address(site, &repo, &args(None), None),
-            "https://g1t.sh/acme/web"
-        );
-        assert_eq!(
-            address(site, &repo, &args(Some("12")), None),
-            "https://g1t.sh/acme/web/pull/12"
-        );
-        assert_eq!(
-            address(site, &repo, &args(Some("src/main.rs:41")), Some("dev")),
-            "https://g1t.sh/acme/web/blob/dev/src/main.rs#L41"
-        );
-        assert_eq!(
-            address(site, &repo, &args(Some("9f2c4e1")), None),
-            "https://g1t.sh/acme/web/commit/9f2c4e1"
-        );
+        assert_eq!(address(site, &repo, &args(None), None), "https://g1t.sh/acme/web");
+        assert_eq!(address(site, &repo, &args(Some("12")), None), "https://g1t.sh/acme/web/pull/12");
+        assert_eq!(address(site, &repo, &args(Some("src/main.rs:41")), Some("dev")), "https://g1t.sh/acme/web/blob/dev/src/main.rs#L41");
+        assert_eq!(address(site, &repo, &args(Some("9f2c4e1")), None), "https://g1t.sh/acme/web/commit/9f2c4e1");
         let mut work = args(None);
         work.work = true;
         assert_eq!(address(site, &repo, &work, None), "https://g1t.sh/acme/-/work?repo=web");
         let mut settings = args(None);
         settings.settings = true;
-        assert_eq!(
-            address(site, &repo, &settings, None),
-            "https://g1t.sh/acme/web/settings"
-        );
+        assert_eq!(address(site, &repo, &settings, None), "https://g1t.sh/acme/web/settings");
     }
 }

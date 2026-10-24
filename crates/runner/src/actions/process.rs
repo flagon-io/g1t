@@ -76,7 +76,21 @@ impl Commands {
         // Echoed as it reads, before it is acted on; `::add-mask::` never is.
         let known = matches!(
             name.as_str(),
-            "add-mask" | "error" | "warning" | "notice" | "group" | "endgroup" | "debug" | "set-output" | "save-state" | "stop-commands" | "echo" | "add-matcher" | "remove-matcher" | "add-path" | "set-env"
+            "add-mask"
+                | "error"
+                | "warning"
+                | "notice"
+                | "group"
+                | "endgroup"
+                | "debug"
+                | "set-output"
+                | "save-state"
+                | "stop-commands"
+                | "echo"
+                | "add-matcher"
+                | "remove-matcher"
+                | "add-path"
+                | "set-env"
         );
         if known && name != "add-mask" && self.echo.unwrap_or(self.debug) {
             log.line(line);
@@ -115,13 +129,20 @@ impl Commands {
                 match data.trim().to_ascii_lowercase().as_str() {
                     "on" => self.echo = Some(true),
                     "off" => self.echo = Some(false),
-                    _ => return Some(format!("##[error]Invalid echo command value. Possible values can be: 'on', 'off'. Current value is: '{}'.", data.trim())),
+                    _ => {
+                        return Some(format!(
+                            "##[error]Invalid echo command value. Possible values can be: 'on', 'off'. Current value is: '{}'.",
+                            data.trim()
+                        ));
+                    }
                 }
                 None
             }
             "add-matcher" => {
                 let path = matcher_path(data.trim(), &log.matchers.workspace);
-                let read = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display())).and_then(|text| super::matchers::parse(&text));
+                let read = std::fs::read_to_string(&path)
+                    .map_err(|e| format!("{}: {e}", path.display()))
+                    .and_then(|text| super::matchers::parse(&text));
                 match read {
                     Ok(matchers) => {
                         log.matchers.add(matchers);
@@ -136,9 +157,14 @@ impl Commands {
                     // No owner: every matcher in the file named.
                     None => {
                         let path = matcher_path(data.trim(), &log.matchers.workspace);
-                        match std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display())).and_then(|text| super::matchers::parse(&text)) {
+                        match std::fs::read_to_string(&path)
+                            .map_err(|e| format!("{}: {e}", path.display()))
+                            .and_then(|text| super::matchers::parse(&text))
+                        {
                             Ok(matchers) => matchers.iter().for_each(|m| log.matchers.remove(&m.owner)),
-                            Err(problem) => return Some(format!("##[error]Unable to process command '{line}' successfully.\n##[error]{problem}")),
+                            Err(problem) => {
+                                return Some(format!("##[error]Unable to process command '{line}' successfully.\n##[error]{problem}"));
+                            }
                         }
                     }
                 }
@@ -360,10 +386,8 @@ fn run_until(
     let mut child = command.spawn()?;
     let (sender, lines) = mpsc::channel::<String>();
     let mut readers = Vec::new();
-    let pipes: Vec<Box<dyn Read + Send>> = vec![
-        Box::new(child.stdout.take().expect("piped")),
-        Box::new(child.stderr.take().expect("piped")),
-    ];
+    let pipes: Vec<Box<dyn Read + Send>> =
+        vec![Box::new(child.stdout.take().expect("piped")), Box::new(child.stderr.take().expect("piped"))];
     for pipe in pipes {
         let sender = sender.clone();
         readers.push(std::thread::spawn(move || {
@@ -457,9 +481,7 @@ fn run_until(
     if code != 0 {
         // Whether the kernel stopped anything for want of memory meanwhile:
         // None when that cannot be told.
-        let oom = oom_before
-            .zip(oom_kills())
-            .map(|(before, after)| after.saturating_sub(before));
+        let oom = oom_before.zip(oom_kills()).map(|(before, after)| after.saturating_sub(before));
         if let Some(stopped) = stopped_by(&status, oom.is_none()) {
             log.line(&stopped);
         }
@@ -510,19 +532,9 @@ fn stopped_by(status: &std::process::ExitStatus, guess: bool) -> Option<String> 
             libc::SIGPIPE => "SIGPIPE",
             _ => "",
         };
-        let name = if name.is_empty() {
-            String::new()
-        } else {
-            format!(" ({name})")
-        };
-        let why = if signal == libc::SIGKILL && guess {
-            " The likeliest cause is the machine running out of memory."
-        } else {
-            ""
-        };
-        Some(format!(
-            "##[error]The step's process was stopped by signal {signal}{name}.{why}"
-        ))
+        let name = if name.is_empty() { String::new() } else { format!(" ({name})") };
+        let why = if signal == libc::SIGKILL && guess { " The likeliest cause is the machine running out of memory." } else { "" };
+        Some(format!("##[error]The step's process was stopped by signal {signal}{name}.{why}"))
     }
     #[cfg(not(unix))]
     {
@@ -535,14 +547,8 @@ fn stopped_by(status: &std::process::ExitStatus, guess: bool) -> Option<String> 
 /// cgroup's count (cgroup v2 `memory.events`), else the machine's
 /// (`/proc/vmstat`). None where neither can be read (not Linux).
 fn oom_kills() -> Option<u64> {
-    let cgroup = std::fs::read_to_string("/sys/fs/cgroup/memory.events")
-        .ok()
-        .and_then(|text| counter(&text, "oom_kill"));
-    cgroup.or_else(|| {
-        std::fs::read_to_string("/proc/vmstat")
-            .ok()
-            .and_then(|text| counter(&text, "oom_kill"))
-    })
+    let cgroup = std::fs::read_to_string("/sys/fs/cgroup/memory.events").ok().and_then(|text| counter(&text, "oom_kill"));
+    cgroup.or_else(|| std::fs::read_to_string("/proc/vmstat").ok().and_then(|text| counter(&text, "oom_kill")))
 }
 
 /// `name value` from a file of such lines.
@@ -555,14 +561,8 @@ fn counter(text: &str, name: &str) -> Option<u64> {
 
 /// The line that says the machine ran out of memory while a step ran.
 fn out_of_memory(stopped: u64) -> String {
-    let processes = if stopped == 1 {
-        "1 process".to_owned()
-    } else {
-        format!("{stopped} processes")
-    };
-    format!(
-        "##[error]The machine ran out of memory while this step ran: the kernel stopped {processes} to free some."
-    )
+    let processes = if stopped == 1 { "1 process".to_owned() } else { format!("{stopped} processes") };
+    format!("##[error]The machine ran out of memory while this step ran: the kernel stopped {processes} to free some.")
 }
 
 #[cfg(test)]
@@ -631,7 +631,14 @@ mod tests {
 
         let mut log = Log::new(Api::offline(), Vec::new());
         let mut commands = Commands::default();
-        for line in ["::set-output name=a::1", "::echo::on", "::save-state name=b::2", "::add-mask::s3cret", "::echo::off", "::save-state name=c::3"] {
+        for line in [
+            "::set-output name=a::1",
+            "::echo::on",
+            "::save-state name=b::2",
+            "::add-mask::s3cret",
+            "::echo::off",
+            "::save-state name=c::3",
+        ] {
             if let Some(shown) = commands.handle(line, &mut log) {
                 log.line(&shown);
             }
@@ -712,31 +719,16 @@ mod tests {
         let mut log = Log::new(Api::offline(), Vec::new());
         let mut command = Command::new("sh");
         command.args(["-c", "echo compiling; kill -9 $$"]);
-        let ended = run(
-            command,
-            Duration::from_secs(60),
-            &mut log,
-            &mut Commands::default(),
-        )
-        .unwrap();
+        let ended = run(command, Duration::from_secs(60), &mut log, &mut Commands::default()).unwrap();
         assert!(matches!(ended, Ended::Exited(137)));
         let text = log.buffered();
         assert!(text.starts_with("compiling\n"), "{text}");
-        assert!(
-            text.contains("##[error]The step's process was stopped by signal 9 (SIGKILL)."),
-            "{text}"
-        );
+        assert!(text.contains("##[error]The step's process was stopped by signal 9 (SIGKILL)."), "{text}");
         // A process that fails by itself says nothing more.
         let mut log = Log::new(Api::offline(), Vec::new());
         let mut command = Command::new("sh");
         command.args(["-c", "echo failed >&2; exit 101"]);
-        let ended = run(
-            command,
-            Duration::from_secs(60),
-            &mut log,
-            &mut Commands::default(),
-        )
-        .unwrap();
+        let ended = run(command, Duration::from_secs(60), &mut log, &mut Commands::default()).unwrap();
         assert!(matches!(ended, Ended::Exited(101)));
         assert_eq!(log.buffered(), "failed\n");
     }

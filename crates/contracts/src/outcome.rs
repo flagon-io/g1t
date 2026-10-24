@@ -78,10 +78,7 @@ pub enum Outcome<T> {
 
 impl<T> Outcome<T> {
     pub fn fail(code: FailureCode, message: impl Into<String>) -> Self {
-        Outcome::Fail(Failure {
-            code,
-            message: message.into(),
-        })
+        Outcome::Fail(Failure { code, message: message.into() })
     }
 
     pub fn into_result(self) -> Result<T, Failure> {
@@ -105,16 +102,8 @@ struct Wire<T> {
 impl<T: Serialize> Serialize for Outcome<T> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
-            Outcome::Ok(value) => Wire {
-                ok: true,
-                value: Some(value),
-                error: None,
-            },
-            Outcome::Fail(failure) => Wire {
-                ok: false,
-                value: None,
-                error: Some(failure.clone()),
-            },
+            Outcome::Ok(value) => Wire { ok: true, value: Some(value), error: None },
+            Outcome::Fail(failure) => Wire { ok: false, value: None, error: Some(failure.clone()) },
         }
         .serialize(serializer)
     }

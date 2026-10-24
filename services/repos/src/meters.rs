@@ -211,9 +211,7 @@ pub struct Mapping {
 
 impl Mapping {
     pub fn from_rows(rows: &[MappingRow]) -> Self {
-        Mapping {
-            rows: rows.iter().map(|row| (row.meter.clone(), (row.cost_operations, row.billable_operations))).collect(),
-        }
+        Mapping { rows: rows.iter().map(|row| (row.meter.clone(), (row.cost_operations, row.billable_operations))).collect() }
     }
 
     /// Used until the table can be read: the same as its defaults.
@@ -458,9 +456,9 @@ pub fn mapping_now() -> Mapping {
 /// The mapping, read at most every few minutes; the defaults if it cannot be.
 pub async fn mapping(db: &D1Database) -> Mapping {
     let now = g1t_kit::now_ms();
-    if let Some(mapping) = MAPPING.with(|kept| {
-        kept.borrow().as_ref().filter(|(_, at)| now.saturating_sub(*at) < MAPPING_TTL_MS).map(|(m, _)| m.clone())
-    }) {
+    if let Some(mapping) =
+        MAPPING.with(|kept| kept.borrow().as_ref().filter(|(_, at)| now.saturating_sub(*at) < MAPPING_TTL_MS).map(|(m, _)| m.clone()))
+    {
         return mapping;
     }
     match read_mapping(db).await {
@@ -611,7 +609,8 @@ async fn write(db: &D1Database, pending: &Pending, mapping: &Mapping) -> Result<
         statements = rest;
     }
     // What each workspace now stands at, for its free limits (git_ops.rs).
-    let workspaces: Vec<String> = billable.keys().map(|(workspace, _)| workspace.clone()).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
+    let workspaces: Vec<String> =
+        billable.keys().map(|(workspace, _)| workspace.clone()).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
     for workspace in workspaces {
         if let Err(error) = crate::git_ops::refresh(db, &workspace).await {
             worker::console_error!("git operations of {workspace} not read back: {error}");
@@ -658,7 +657,8 @@ pub struct Usage {
 const MAX_USAGE_ROWS: usize = 10_000;
 
 pub async fn usage(db: &D1Database, a: &UsageArgs) -> Result<Usage> {
-    let (repo, group) = if a.by_repo { ("repo", "day, store, repo, workspace, meter") } else { ("NULL AS repo", "day, store, workspace, meter") };
+    let (repo, group) =
+        if a.by_repo { ("repo", "day, store, repo, workspace, meter") } else { ("NULL AS repo", "day, store, workspace, meter") };
     let sql = format!(
         "SELECT day, store, {repo}, workspace, meter, SUM(count) AS count, SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out
          FROM artifacts_meters WHERE day >= ?1 AND day <= ?2 AND (?3 IS NULL OR workspace = ?3)
@@ -721,7 +721,13 @@ mod tests {
     use super::*;
 
     fn place(hour: &str, workspace: &str, meter: &str) -> Place {
-        Place { hour: hour.into(), store: "g1t".into(), repo: format!("{workspace}--rocket"), workspace: workspace.into(), meter: meter.into() }
+        Place {
+            hour: hour.into(),
+            store: "g1t".into(),
+            repo: format!("{workspace}--rocket"),
+            workspace: workspace.into(),
+            meter: meter.into(),
+        }
     }
 
     #[test]

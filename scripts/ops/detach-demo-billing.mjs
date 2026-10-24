@@ -9,7 +9,7 @@ import { getPlatformProxy } from "wrangler";
 const apply = process.argv.includes("--apply");
 const source = (name) => readFileSync(`services/billing/src/${name}.rs`, "utf8");
 const constant = (file, name) => {
-  const match = source(file).match(new RegExp(`const ${name}: &str = "([\\s\\S]*?)";`));
+  const match = source(file).match(new RegExp(`const ${name}: &str =\\s*"([\\s\\S]*?)";`));
   assert.ok(match, `${file}::${name}`);
   return match[1];
 };

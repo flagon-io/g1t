@@ -16,9 +16,9 @@
 
 use g1t_contracts::access::Capability;
 use g1t_contracts::actions::{
-    ARTIFACT_MAX_BYTES, ARTIFACT_RETENTION_DEFAULT_DAYS, ARTIFACT_RETENTION_MAX_DAYS, Artifact, ArtifactArgs, ArtifactBlob, ArtifactCommitArgs,
-    ArtifactList, ArtifactReservation, ArtifactReserveArgs, ArtifactRetention, ArtifactRetentionArgs, ArtifactsArgs, DeleteArtifactArgs,
-    JobArtifactsArgs, RUN_ARTIFACTS_MAX_BYTES,
+    ARTIFACT_MAX_BYTES, ARTIFACT_RETENTION_DEFAULT_DAYS, ARTIFACT_RETENTION_MAX_DAYS, Artifact, ArtifactArgs, ArtifactBlob,
+    ArtifactCommitArgs, ArtifactList, ArtifactReservation, ArtifactReserveArgs, ArtifactRetention, ArtifactRetentionArgs, ArtifactsArgs,
+    DeleteArtifactArgs, JobArtifactsArgs, RUN_ARTIFACTS_MAX_BYTES,
 };
 use g1t_contracts::time::{parse_rfc3339, rfc3339};
 use g1t_contracts::{FailureCode, Outcome, new_id};
@@ -80,7 +80,9 @@ impl Row {
 /// GitHub's rule for an artifact's name: 1 to 256 characters, none of
 /// `" : < > | * ? \ /` or line breaks.
 pub(crate) fn valid_name(name: &str) -> bool {
-    !name.trim().is_empty() && name.chars().count() <= 256 && !name.chars().any(|c| matches!(c, '"' | ':' | '<' | '>' | '|' | '*' | '?' | '\\' | '/' | '\r' | '\n'))
+    !name.trim().is_empty()
+        && name.chars().count() <= 256
+        && !name.chars().any(|c| matches!(c, '"' | ':' | '<' | '>' | '|' | '*' | '?' | '\\' | '/' | '\r' | '\n'))
 }
 
 /// The days an artifact is kept: what it asked for (as days, or as a time
@@ -208,14 +210,21 @@ impl Actions {
         if held + a.size > RUN_ARTIFACTS_MAX_BYTES {
             return Ok(fail(
                 FailureCode::Invalid,
-                format!("A run's artifacts are at most {} MB together, and this run's hold {} MB.", RUN_ARTIFACTS_MAX_BYTES / 1_048_576, held / 1_048_576),
+                format!(
+                    "A run's artifacts are at most {} MB together, and this run's hold {} MB.",
+                    RUN_ARTIFACTS_MAX_BYTES / 1_048_576,
+                    held / 1_048_576
+                ),
             ));
         }
         if let Some(why) = self.storage_refused(&job.namespace, a.size).await? {
             return Ok(fail(FailureCode::Limit, why));
         }
         let existing = self
-            .artifact_rows("artifacts.run_id = ? AND artifacts.name = ? AND artifacts.status <> 'expired'", &[job.run_id.as_str().into(), a.name.as_str().into()])
+            .artifact_rows(
+                "artifacts.run_id = ? AND artifacts.name = ? AND artifacts.status <> 'expired'",
+                &[job.run_id.as_str().into(), a.name.as_str().into()],
+            )
             .await?;
         if !existing.is_empty() {
             // Uploaded by this job before it was run again: a re-run makes
@@ -225,13 +234,22 @@ impl Actions {
             let mut earlier = true;
             for row in &existing {
                 let gone = row.job_id != job.id
-                    && self.db.prepare("SELECT id FROM jobs WHERE id = ?").bind(&[row.job_id.as_str().into()])?.first::<serde_json::Value>(None).await?.is_none();
+                    && self
+                        .db
+                        .prepare("SELECT id FROM jobs WHERE id = ?")
+                        .bind(&[row.job_id.as_str().into()])?
+                        .first::<serde_json::Value>(None)
+                        .await?
+                        .is_none();
                 earlier &= from_an_earlier_attempt(&row.job_id, &row.created_at, &job.id, job.started_at.as_deref(), gone);
             }
             if !a.overwrite && !earlier {
                 return Ok(fail(
                     FailureCode::Conflict,
-                    format!("This run already has an artifact named {}. Give the upload another name, or `overwrite: true` to replace it.", a.name),
+                    format!(
+                        "This run already has an artifact named {}. Give the upload another name, or `overwrite: true` to replace it.",
+                        a.name
+                    ),
                 ));
             }
             let replaced: Vec<(u64, String)> = existing.iter().map(|row| (row.id as u64, row.object.clone())).collect();
@@ -287,9 +305,16 @@ impl Actions {
     /// The pending artifact of a job's run named by id or name.
     async fn pending_artifact(&self, run: &str, id: Option<u64>, name: Option<&str>) -> Result<Option<Row>> {
         let rows = match (id, name) {
-            (Some(id), _) => self.artifact_rows("artifacts.id = ? AND artifacts.run_id = ? AND artifacts.status = 'pending'", &[number(id), run.into()]).await?,
+            (Some(id), _) => {
+                self.artifact_rows("artifacts.id = ? AND artifacts.run_id = ? AND artifacts.status = 'pending'", &[number(id), run.into()])
+                    .await?
+            }
             (None, Some(name)) => {
-                self.artifact_rows("artifacts.name = ? AND artifacts.run_id = ? AND artifacts.status = 'pending'", &[name.into(), run.into()]).await?
+                self.artifact_rows(
+                    "artifacts.name = ? AND artifacts.run_id = ? AND artifacts.status = 'pending'",
+                    &[name.into(), run.into()],
+                )
+                .await?
             }
             (None, None) => Vec::new(),
         };
@@ -310,7 +335,11 @@ impl Actions {
         let refused = if size > ARTIFACT_MAX_BYTES {
             Some(format!("It is {} MB; an artifact is at most {} MB.", size / 1_048_576, ARTIFACT_MAX_BYTES / 1_048_576))
         } else if held + size > RUN_ARTIFACTS_MAX_BYTES {
-            Some(format!("A run's artifacts are at most {} MB together, and this run's hold {} MB.", RUN_ARTIFACTS_MAX_BYTES / 1_048_576, held / 1_048_576))
+            Some(format!(
+                "A run's artifacts are at most {} MB together, and this run's hold {} MB.",
+                RUN_ARTIFACTS_MAX_BYTES / 1_048_576,
+                held / 1_048_576
+            ))
         } else {
             None
         };
@@ -343,13 +372,19 @@ impl Actions {
         // An id names one artifact of the repository, whichever run made it.
         if let (Some(id), None) = (a.id, a.run_id.as_deref().filter(|r| !r.is_empty())) {
             let rows = self
-                .artifact_rows("artifacts.id = ? AND artifacts.repo_id = ? AND artifacts.status = 'ready'", &[number(id), job.repo_id.as_str().into()])
+                .artifact_rows(
+                    "artifacts.id = ? AND artifacts.repo_id = ? AND artifacts.status = 'ready'",
+                    &[number(id), job.repo_id.as_str().into()],
+                )
                 .await?;
             return Ok(Outcome::Ok((job, rows)));
         }
         let run = a.run_id.clone().filter(|r| !r.is_empty()).unwrap_or_else(|| job.run_id.clone());
         let mut rows = self
-            .artifact_rows("artifacts.run_id = ? AND artifacts.repo_id = ? AND artifacts.status = 'ready' ORDER BY artifacts.id", &[run.as_str().into(), job.repo_id.as_str().into()])
+            .artifact_rows(
+                "artifacts.run_id = ? AND artifacts.repo_id = ? AND artifacts.status = 'ready' ORDER BY artifacts.id",
+                &[run.as_str().into(), job.repo_id.as_str().into()],
+            )
             .await?;
         if rows.is_empty() && run != job.run_id {
             let found = self.run_row(&run).await?;
@@ -437,7 +472,13 @@ impl Actions {
             return Ok(fail(FailureCode::NotFound, "There is no such repository."));
         };
         let rows = match (a.id, a.run.as_deref(), a.name.as_deref()) {
-            (Some(id), _, _) => self.artifact_rows("artifacts.id = ? AND artifacts.repo_id = ? AND artifacts.status = 'ready'", &[number(id), repo.id.as_str().into()]).await?,
+            (Some(id), _, _) => {
+                self.artifact_rows(
+                    "artifacts.id = ? AND artifacts.repo_id = ? AND artifacts.status = 'ready'",
+                    &[number(id), repo.id.as_str().into()],
+                )
+                .await?
+            }
             (None, Some(run), Some(name)) => {
                 self.artifact_rows(
                     "artifacts.run_id = ? AND artifacts.name = ? AND artifacts.repo_id = ? AND artifacts.status = 'ready'",
@@ -465,7 +506,12 @@ impl Actions {
     /// `delete_artifact`.
     pub async fn delete_artifact(&self, a: DeleteArtifactArgs) -> Result<Outcome<Artifact>> {
         let repo = check!(self.may(&a.actor, &a.repo, Capability::Run).await?);
-        let rows = self.artifact_rows("artifacts.id = ? AND artifacts.repo_id = ? AND artifacts.status <> 'expired'", &[number(a.id), repo.id.as_str().into()]).await?;
+        let rows = self
+            .artifact_rows(
+                "artifacts.id = ? AND artifacts.repo_id = ? AND artifacts.status <> 'expired'",
+                &[number(a.id), repo.id.as_str().into()],
+            )
+            .await?;
         let Some(row) = rows.into_iter().next() else {
             return Ok(fail(FailureCode::NotFound, "No such artifact, or it has expired."));
         };
@@ -501,7 +547,10 @@ impl Actions {
                 None => return Ok(fail(FailureCode::NotFound, "There is no such repository.")),
             },
         };
-        Ok(Outcome::Ok(ArtifactRetention { days: self.retention_setting(&repo.id).await?, maximum_allowed_days: ARTIFACT_RETENTION_MAX_DAYS }))
+        Ok(Outcome::Ok(ArtifactRetention {
+            days: self.retention_setting(&repo.id).await?,
+            maximum_allowed_days: ARTIFACT_RETENTION_MAX_DAYS,
+        }))
     }
 
     /// Hourly: artifacts past their time, and uploads left unfinished,

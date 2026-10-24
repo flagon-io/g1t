@@ -36,7 +36,8 @@ use super::{CREATES_PER_HOUR, Draft, InviteRow, TOO_MANY};
 use crate::Identity;
 
 /// What an invitation that is not someone's, or no longer open, gets.
-const NOT_OPEN: &str = "That invitation is not open: it may have been answered, revoked or expired. Ask the workspace's owners to invite you again.";
+const NOT_OPEN: &str =
+    "That invitation is not open: it may have been answered, revoked or expired. Ask the workspace's owners to invite you again.";
 /// The most people `find_people` returns.
 const MAX_PEOPLE: u32 = 10;
 /// The most invitations one person's list shows.
@@ -260,7 +261,11 @@ impl Identity {
             row,
             vec![username.to_owned()],
             format!("{from} invited you to join {workspace}"),
-            format!("Join as {}, or decline. The invitation works until {}.", as_role(row.joins_as()), &row.expires_at[..10.min(row.expires_at.len())]),
+            format!(
+                "Join as {}, or decline. The invitation works until {}.",
+                as_role(row.joins_as()),
+                &row.expires_at[..10.min(row.expires_at.len())]
+            ),
             "/invitations".to_owned(),
         )
         .await;
@@ -325,11 +330,7 @@ impl Identity {
                 id: row.id,
                 workspace: ProfileWorkspace { slug: row.slug, name: row.name, avatar: row.avatar },
                 role: if row.role.as_deref() == Some("owner") { Role::Owner } else { Role::Member },
-                invited_by: row.inviter.map(|username| InviteFrom {
-                    username,
-                    name: row.inviter_name,
-                    avatar: row.inviter_avatar,
-                }),
+                invited_by: row.inviter.map(|username| InviteFrom { username, name: row.inviter_name, avatar: row.inviter_avatar }),
                 created_at: row.created_at,
                 expires_at: row.expires_at,
             })
@@ -338,10 +339,7 @@ impl Identity {
 
     /// The invitation `id` if it is `user`'s and can be answered.
     async fn open_invitation(&self, user: &User, id: &str) -> Result<std::result::Result<InviteRow, &'static str>> {
-        let row = self
-            .invite_by_id(id)
-            .await?
-            .filter(|row| row.invitee_id.as_deref() == Some(user.id.as_str()));
+        let row = self.invite_by_id(id).await?.filter(|row| row.invitee_id.as_deref() == Some(user.id.as_str()));
         let Some(row) = row else {
             return Ok(Err(NOT_OPEN));
         };
@@ -418,8 +416,7 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Conflict, NOT_OPEN));
         }
         // They are a member now: the workspace's @g1t welcomes them (agents service).
-        self.announce_member_joined(&workspace_id, &slug, &a.user, role, g1t_contracts::events::JoinedHow::Invitation)
-            .await;
+        self.announce_member_joined(&workspace_id, &slug, &a.user, role, g1t_contracts::events::JoinedHow::Invitation).await;
         if row.kind == "workspace" {
             // An existing account's invitation: using it is this.
             self.settled(&row, &a.user, false, Some(slug.clone())).await;
@@ -535,19 +532,11 @@ impl Identity {
                  ORDER BY username = ?3 DESC, username LIKE ?1 ESCAPE '\\' DESC, length(username), username
                  LIMIT {limit}"
             ))
-            .bind(&[
-                username.into(),
-                name.into(),
-                exact.into(),
-                g1t_contracts::identity::AGENT_NAME.into(),
-            ])?
+            .bind(&[username.into(), name.into(), exact.into(), g1t_contracts::identity::AGENT_NAME.into()])?
             .all()
             .await?
             .results::<Row>()?;
-        Ok(rows
-            .into_iter()
-            .map(|row| InviteFrom { username: row.username, name: row.name, avatar: row.avatar })
-            .collect())
+        Ok(rows.into_iter().map(|row| InviteFrom { username: row.username, name: row.name, avatar: row.avatar }).collect())
     }
 }
 

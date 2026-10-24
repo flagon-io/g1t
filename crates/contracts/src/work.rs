@@ -74,10 +74,8 @@ pub const DEFAULT_LABELS: [(&str, &str, &str); 11] = [
 /// The color a label gets when none is given: chosen from its name, so
 /// the same name always gets the same color.
 pub fn label_color_for(name: &str) -> String {
-    const PALETTE: [&str; 12] = [
-        "b60205", "d93f0b", "fbca04", "0e8a16", "006b75", "1d76db", "0052cc", "5319e7", "e99695", "f9d0c4",
-        "c2e0c6", "bfdadc",
-    ];
+    const PALETTE: [&str; 12] =
+        ["b60205", "d93f0b", "fbca04", "0e8a16", "006b75", "1d76db", "0052cc", "5319e7", "e99695", "f9d0c4", "c2e0c6", "bfdadc"];
     if let Some((_, color, _)) = DEFAULT_LABELS.iter().find(|(known, _, _)| *known == name) {
         return (*color).to_owned();
     }
@@ -551,7 +549,6 @@ pub struct Overlap {
     pub paths: Vec<String>,
 }
 
-
 impl Pull {
     /// Who the pull request is theirs to answer for: whoever asked g1t to
     /// make it, or its author. Every rule that once read "its author" reads
@@ -581,20 +578,14 @@ impl Pull {
     /// The id of the repository holding the change: its working copy, the
     /// fork its branch is in, or the repository itself.
     pub fn source_id(&self) -> &str {
-        self.fork_repo_id
-            .as_deref()
-            .or(self.head_repo_id.as_deref())
-            .unwrap_or(&self.repo_id)
+        self.fork_repo_id.as_deref().or(self.head_repo_id.as_deref()).unwrap_or(&self.repo_id)
     }
 
     /// The repository holding the change, by path: its working copy, the
     /// fork its branch is in, or `repo` (the path of the repository it is
     /// in).
     pub fn source_path(&self, repo: &RepoPath) -> RepoPath {
-        self.fork
-            .clone()
-            .or_else(|| self.head_repo.clone())
-            .unwrap_or_else(|| repo.clone())
+        self.fork.clone().or_else(|| self.head_repo.clone()).unwrap_or_else(|| repo.clone())
     }
 
     /// Whether the change is in another repository than the one it merges
@@ -629,11 +620,7 @@ impl Pull {
             // repository it merges into holds too (`refs/pull/<n>/head`),
             // so those who read that repository can read it.
             None if self.from_head_repo() => self.head_commit.clone().or_else(|| self.branch.clone()),
-            None => self
-                .head_commit
-                .clone()
-                .filter(|_| settled)
-                .or_else(|| self.branch.clone()),
+            None => self.head_commit.clone().filter(|_| settled).or_else(|| self.branch.clone()),
         };
         CompareArgs {
             repo_id: self.source_id().to_owned(),
@@ -686,12 +673,7 @@ pub fn authorship(actor: &User) -> (User, Option<User>) {
             .map(|on_behalf_of| person(&on_behalf_of.id, &on_behalf_of.username));
         return (g1t_author(), asked);
     }
-    let author = User {
-        id: actor.id.clone(),
-        username: actor.username.clone(),
-        kind: actor.kind,
-        ..User::default()
-    };
+    let author = User { id: actor.id.clone(), username: actor.username.clone(), kind: actor.kind, ..User::default() };
     (author, None)
 }
 
@@ -1029,7 +1011,6 @@ pub struct NewSessionEntry {
     pub commit: Option<String>,
 }
 
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PullDetail {
     pub pull: Pull,
@@ -1165,10 +1146,8 @@ pub fn required_checks(required: &[String], statuses: &[CommitStatus]) -> Vec<Re
     required
         .iter()
         .map(|name| {
-            let matching: Vec<&CommitStatus> = statuses
-                .iter()
-                .filter(|status| check_name(&status.context).0.eq_ignore_ascii_case(name.trim()))
-                .collect();
+            let matching: Vec<&CommitStatus> =
+                statuses.iter().filter(|status| check_name(&status.context).0.eq_ignore_ascii_case(name.trim())).collect();
             let failed = matching.iter().find(|s| s.state == "failure" || s.state == "error");
             let pending = matching.iter().find(|s| s.state == "pending");
             let passed = matching.iter().find(|s| s.state == "success");
@@ -1241,11 +1220,7 @@ pub fn with_definition_of_done(body: &str, items: &[String]) -> String {
         return body.to_owned();
     }
     let list = items.iter().map(|item| format!("- {item}")).collect::<Vec<_>>().join("\n");
-    if body.is_empty() {
-        format!("{DEFINITION_OF_DONE}\n\n{list}")
-    } else {
-        format!("{body}\n\n{DEFINITION_OF_DONE}\n\n{list}")
-    }
+    if body.is_empty() { format!("{DEFINITION_OF_DONE}\n\n{list}") } else { format!("{body}\n\n{DEFINITION_OF_DONE}\n\n{list}") }
 }
 
 /// Commands, as items of a definition of done: "`npm test` passes."
@@ -2199,11 +2174,7 @@ pub struct Appended {
 pub fn normalize_labels(labels: &[String]) -> Option<Vec<String>> {
     let mut normalized: Vec<String> = Vec::new();
     for label in labels {
-        let label = label
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
-            .to_lowercase();
+        let label = label.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
         if label.is_empty() || normalized.contains(&label) {
             continue;
         }
@@ -2251,10 +2222,7 @@ mod tests {
 
     #[test]
     fn labels_are_lowercased_trimmed_and_unique() {
-        assert_eq!(
-            normalize_labels(&labels(&[" Bug ", "bug", "", "Good  First Issue"])),
-            Some(labels(&["bug", "good first issue"]))
-        );
+        assert_eq!(normalize_labels(&labels(&[" Bug ", "bug", "", "Good  First Issue"])), Some(labels(&["bug", "good first issue"])));
     }
 
     #[test]
@@ -2265,7 +2233,6 @@ mod tests {
         assert_eq!(normalize_labels(&many), None);
     }
 }
-
 
 // --- Merge queue ----------------------------------------------------------
 
@@ -2301,10 +2268,7 @@ impl QueueState {
 
     /// Still in the queue.
     pub fn is_active(self) -> bool {
-        matches!(
-            self,
-            QueueState::Waiting | QueueState::Testing | QueueState::Passed
-        )
+        matches!(self, QueueState::Waiting | QueueState::Testing | QueueState::Passed)
     }
 }
 
@@ -2441,7 +2405,6 @@ pub struct ReportQueueArgs {
     #[serde(default)]
     pub conflicts: Vec<String>,
 }
-
 
 /// `locate_pull`: where a pull request lives, by its id, for a tool that
 /// knows only the fork it is working in (`g1t.sh/pulls/<id>`). Returns
@@ -2646,16 +2609,10 @@ mod required_tests {
     #[test]
     fn required_checks_are_missing_pending_failed_or_passed() {
         let required = vec!["CI".to_owned(), "Lint".to_owned(), "g1t / deploy".to_owned(), "Docs".to_owned()];
-        let statuses = [
-            status("CI / pull_request", "success"),
-            status("Lint / pull_request", "pending"),
-            status("g1t / deploy", "failure"),
-        ];
+        let statuses =
+            [status("CI / pull_request", "success"), status("Lint / pull_request", "pending"), status("g1t / deploy", "failure")];
         let states: Vec<RequiredState> = required_checks(&required, &statuses).into_iter().map(|c| c.state).collect();
-        assert_eq!(
-            states,
-            [RequiredState::Success, RequiredState::Pending, RequiredState::Failure, RequiredState::Expected]
-        );
+        assert_eq!(states, [RequiredState::Success, RequiredState::Pending, RequiredState::Failure, RequiredState::Expected]);
     }
 
     #[test]
@@ -2714,12 +2671,7 @@ mod authorship_tests {
     use crate::identity::{AGENT_ID, AgentScope};
 
     fn person() -> User {
-        User {
-            id: "usr_1".into(),
-            username: "syntaqx".into(),
-            verified: true,
-            ..User::default()
-        }
+        User { id: "usr_1".into(), username: "syntaqx".into(), verified: true, ..User::default() }
     }
 
     fn agent_for(id: &str, username: &str) -> User {
@@ -2731,11 +2683,7 @@ mod authorship_tests {
                 credential_id: "tok_1".into(),
                 agent: "g1t".into(),
                 on_behalf_of: Principal { id: id.into(), username: username.into() },
-                scope: AgentScope {
-                    repo: RepoPath { namespace: "acme".into(), name: "web".into() },
-                    operations: Vec::new(),
-                    run: None,
-                },
+                scope: AgentScope { repo: RepoPath { namespace: "acme".into(), name: "web".into() }, operations: Vec::new(), run: None },
             })),
             ..User::default()
         }

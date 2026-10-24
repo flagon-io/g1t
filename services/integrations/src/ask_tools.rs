@@ -398,7 +398,8 @@ pub fn link(site: &str, tool: &str, arguments: &Value) -> Option<String> {
     // Work items are the workspace's: its Work list, filtered to a repository when one is named.
     if tool == "work_item" {
         let repo = arguments["repo"].as_str().and_then(|repo| repo.trim_matches('/').split_once('/'));
-        let workspace = arguments["workspace"].as_str().filter(|slug| !slug.is_empty() && !slug.contains('/')).or(repo.map(|(owner, _)| owner))?;
+        let workspace =
+            arguments["workspace"].as_str().filter(|slug| !slug.is_empty() && !slug.contains('/')).or(repo.map(|(owner, _)| owner))?;
         return Some(match (arguments["number"].as_u64(), repo) {
             (Some(number), _) => format!("{site}/{workspace}/-/work/{number}"),
             (None, Some((_, name))) => format!("{site}/{workspace}/-/work?repo={name}"),
@@ -444,7 +445,20 @@ pub fn summary(text: &str, failed: bool) -> String {
         Value::Array(items) => count(items.len()),
         Value::Object(fields) => {
             // The list an answer is about, where it has one.
-            for key in ["events", "items", "results", "pulls", "work_items", "runs", "workflow_runs", "jobs", "chunks", "entries", "repositories", "threads"] {
+            for key in [
+                "events",
+                "items",
+                "results",
+                "pulls",
+                "work_items",
+                "runs",
+                "workflow_runs",
+                "jobs",
+                "chunks",
+                "entries",
+                "repositories",
+                "threads",
+            ] {
                 if let Some(items) = fields.get(key).and_then(Value::as_array) {
                     return count(items.len());
                 }
@@ -572,9 +586,9 @@ fn shorten(value: &Value, chars: usize, items: usize, keep: Keep) -> Value {
             }
         }
         Value::Array(list) => Value::Array(list.iter().map(|item| shorten(item, chars, items, keep)).collect()),
-        Value::Object(fields) => Value::Object(
-            fields.iter().map(|(key, value)| (key.clone(), shorten(value, chars, items, keep))).collect::<Map<_, _>>(),
-        ),
+        Value::Object(fields) => {
+            Value::Object(fields.iter().map(|(key, value)| (key.clone(), shorten(value, chars, items, keep))).collect::<Map<_, _>>())
+        }
         other => other.clone(),
     }
 }
@@ -752,7 +766,11 @@ mod tests {
     #[test]
     fn a_dispatch_waits_for_the_persons_yes() {
         let start = Native {
-            spec: ToolSpec { name: "start_session".into(), description: "Start a session".into(), input_schema: json!({ "type": "object" }) },
+            spec: ToolSpec {
+                name: "start_session".into(),
+                description: "Start a session".into(),
+                input_schema: json!({ "type": "object" }),
+            },
             kind: Kind::Dispatch,
         };
         let toolbox = Toolbox::new(Vec::new(), vec![start]);
@@ -764,7 +782,8 @@ mod tests {
     fn a_proposed_session_is_a_card_the_person_starts() {
         let toolbox = Toolbox::new(Vec::new(), native());
         assert!(toolbox.is_native(PROPOSE_SESSION));
-        let on_item = json!({ "repo": "acme/web", "item": 12, "mode": "implement", "title": "ignored", "instruction": " use the new name " });
+        let on_item =
+            json!({ "repo": "acme/web", "item": 12, "mode": "implement", "title": "ignored", "instruction": " use the new name " });
         assert_eq!(toolbox.decide(PROPOSE_SESSION, &on_item), Decision::Confirm);
         let AskEvent::Proposal { id, repo, item, title, body, mode, instruction, new_repository, deploy, .. } =
             proposal("proposal_0_0", &on_item).unwrap()
@@ -786,7 +805,9 @@ mod tests {
     #[test]
     fn a_new_repository_is_created_deployed_and_built_from_one_card() {
         let build = json!({ "repo": "acme/hello-world", "new_repository": true, "title": "Hello world", "body": "A page that says hello.", "mode": "implement" });
-        let AskEvent::Proposal { repo, item, title, new_repository, private, deploy, .. } = proposal("p", &build).unwrap() else { panic!() };
+        let AskEvent::Proposal { repo, item, title, new_repository, private, deploy, .. } = proposal("p", &build).unwrap() else {
+            panic!()
+        };
         assert_eq!((repo.as_str(), item, title.as_deref()), ("acme/hello-world", None, Some("Hello world")));
         assert!(new_repository && deploy && !private, "public and deployed unless asked otherwise");
         let quiet = json!({ "repo": "acme/notes", "new_repository": true, "private": true, "deploy": false, "title": "Notes", "mode": "implement" });
@@ -820,9 +841,18 @@ mod tests {
     fn steps_link_to_the_page_they_read() {
         let site = "https://g1t.sh/";
         assert_eq!(link(site, "pull_request", &json!({ "repo": "acme/web", "number": 7 })).unwrap(), "https://g1t.sh/acme/web/pull/7");
-        assert_eq!(link(site, "work_item", &json!({ "action": "list", "repo": "acme/web" })).unwrap(), "https://g1t.sh/acme/-/work?repo=web");
-        assert_eq!(link(site, "work_item", &json!({ "action": "get", "workspace": "acme", "number": 31 })).unwrap(), "https://g1t.sh/acme/-/work/31");
-        assert_eq!(link(site, "workflow", &json!({ "action": "get_run", "repo": "acme/web", "run_id": "run_1" })).unwrap(), "https://g1t.sh/acme/web/actions/runs/run_1");
+        assert_eq!(
+            link(site, "work_item", &json!({ "action": "list", "repo": "acme/web" })).unwrap(),
+            "https://g1t.sh/acme/-/work?repo=web"
+        );
+        assert_eq!(
+            link(site, "work_item", &json!({ "action": "get", "workspace": "acme", "number": 31 })).unwrap(),
+            "https://g1t.sh/acme/-/work/31"
+        );
+        assert_eq!(
+            link(site, "workflow", &json!({ "action": "get_run", "repo": "acme/web", "run_id": "run_1" })).unwrap(),
+            "https://g1t.sh/acme/web/actions/runs/run_1"
+        );
         assert_eq!(link(site, "workspace", &json!({ "action": "activity", "workspace": "acme" })).unwrap(), "https://g1t.sh/acme");
         assert_eq!(link(site, "search", &json!({ "query": "x" })), None);
     }
@@ -845,7 +875,8 @@ mod tests {
         let small = json!({ "title": "x", "avatar_url": "https://a", "url_template": "https://x/{?q}" }).to_string();
         assert_eq!(trim_result(&small, 1_000, Keep::Start), "{\"title\":\"x\"}");
         // A long list keeps its first items, whole, and says how many more.
-        let items: Vec<Value> = (0..400).map(|n| json!({ "number": n, "title": format!("Pull request {n}"), "body": "b".repeat(3_000) })).collect();
+        let items: Vec<Value> =
+            (0..400).map(|n| json!({ "number": n, "title": format!("Pull request {n}"), "body": "b".repeat(3_000) })).collect();
         let big = json!({ "items": items }).to_string();
         let kept = trim_result(&big, 16_000, Keep::Start);
         assert!(kept.chars().count() <= 16_000, "{}", kept.len());
@@ -866,7 +897,8 @@ mod tests {
         assert_eq!(Keep::of("workflow", &json!({ "action": "job_logs" })), Keep::End);
         assert_eq!(Keep::of("workflow", &json!({ "action": "list_runs" })), Keep::Start);
         assert_eq!(Keep::of("pull_request", &json!({ "action": "list" })), Keep::Start);
-        let mut chunks: Vec<Value> = (0..2_000).map(|seq| json!({ "seq": seq, "step": 3, "text": format!("building part {seq}\n") })).collect();
+        let mut chunks: Vec<Value> =
+            (0..2_000).map(|seq| json!({ "seq": seq, "step": 3, "text": format!("building part {seq}\n") })).collect();
         chunks.push(json!({ "seq": 2_000, "step": 4, "text": "##[error]No space left on device\n" }));
         let log = json!({ "chunks": chunks, "done": true }).to_string();
         let kept = trim_result(&log, 4_000, Keep::End);

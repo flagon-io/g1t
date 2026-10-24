@@ -70,10 +70,9 @@ impl Need {
     /// desktop app from before `needs` reads are kept as they were.
     pub fn said(self, kind: &str) -> (String, String) {
         let (cause, fix) = match (self, kind) {
-            (Need::Restart, _) => (
-                "Windows needs a restart to finish turning on what the sandbox needs.",
-                "Restart Windows; the sandbox starts after.",
-            ),
+            (Need::Restart, _) => {
+                ("Windows needs a restart to finish turning on what the sandbox needs.", "Restart Windows; the sandbox starts after.")
+            }
             (Need::WindowsUpdate, "windows") => (
                 "This Windows has Windows Sandbox but not its command line, wsb, which came in Windows 11 24H2.",
                 "Update Windows to 24H2 or later.",
@@ -123,7 +122,9 @@ impl Need {
                 "QEMU, which runs the sandbox's VM, is not installed.",
                 "Install QEMU (qemu-system-x86 on Debian and Ubuntu, qemu-kvm on Fedora), or Sysbox 0.7 or later.",
             ),
-            (Need::MacosUpdate, _) => ("The sandbox's VM needs macOS 13 or later.", "Update macOS under System Settings, General, Software Update."),
+            (Need::MacosUpdate, _) => {
+                ("The sandbox's VM needs macOS 13 or later.", "Update macOS under System Settings, General, Software Update.")
+            }
             (Need::Homebrew, _) => (
                 "vfkit, which runs the sandbox's VM with Apple's Virtualization framework, is not installed, nor is Homebrew, which installs it.",
                 "Install Homebrew (brew.sh), then run `brew install vfkit`.",
@@ -199,7 +200,10 @@ impl WindowsFacts {
         FACTS
             .get_or_init(|| {
                 let mut command = Command::new("powershell.exe");
-                command.args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded(PROBE)]).stdin(Stdio::null()).stderr(Stdio::null());
+                command
+                    .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded(PROBE)])
+                    .stdin(Stdio::null())
+                    .stderr(Stdio::null());
                 super::native::hide_window(&mut command);
                 command.output().ok().and_then(|out| serde_json::from_slice(&out.stdout).ok()).unwrap_or_default()
             })
@@ -385,9 +389,17 @@ pub fn windows_sandbox_needs(win: &WindowsFacts, feature: bool, cli: bool, resta
 /// Whether a sentence about a VM that wouldn't start is about virtualization.
 pub fn about_virtualization(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
-    ["virtualization is not enabled", "enable virtualization", "ensure virtualization", "hcs_e_hyperv_not_installed", "hypervisor is not present", "vt-x", "nested virtualization"]
-        .iter()
-        .any(|said| lower.contains(said))
+    [
+        "virtualization is not enabled",
+        "enable virtualization",
+        "ensure virtualization",
+        "hcs_e_hyperv_not_installed",
+        "hypervisor is not present",
+        "vt-x",
+        "nested virtualization",
+    ]
+    .iter()
+    .any(|said| lower.contains(said))
 }
 
 // --- Linux --------------------------------------------------------------------------
@@ -469,7 +481,9 @@ mod tests {
 
     /// A clean Windows 11 Home laptop: nothing turned on, virtualization on in its firmware.
     fn clean_home() -> WindowsFacts {
-        facts(r#"{"edition":"Core","build":26100,"hypervisor":false,"firmware":true,"model":"XPS 13","manufacturer":"Dell Inc.","features":{"VirtualMachinePlatform":2},"booted":"2026-10-14T08:00:00Z"}"#)
+        facts(
+            r#"{"edition":"Core","build":26100,"hypervisor":false,"firmware":true,"model":"XPS 13","manufacturer":"Dell Inc.","features":{"VirtualMachinePlatform":2},"booted":"2026-10-14T08:00:00Z"}"#,
+        )
     }
 
     fn wsl(installed: bool, version: Option<(u32, u32, u32)>, has_wsl2: bool) -> WslFacts {
@@ -501,10 +515,15 @@ mod tests {
     fn after_setup_it_says_restart_until_windows_has_restarted() {
         let home = clean_home();
         assert_eq!(wsl_needs(&home, &wsl(true, Some((2, 5, 9)), false), true), vec![Need::Restart]);
-        let pro = WindowsFacts { edition: Some("Professional".into()), features: [(VM_PLATFORM.to_owned(), 1), (WINDOWS_SANDBOX.to_owned(), 2)].into(), ..clean_home() };
+        let pro = WindowsFacts {
+            edition: Some("Professional".into()),
+            features: [(VM_PLATFORM.to_owned(), 1), (WINDOWS_SANDBOX.to_owned(), 2)].into(),
+            ..clean_home()
+        };
         assert_eq!(windows_sandbox_needs(&pro, false, false, true), vec![Need::Restart]);
         // Restarted, with everything there: nothing.
-        let after = WindowsFacts { hypervisor: Some(true), firmware: Some(false), features: [(VM_PLATFORM.to_owned(), 1)].into(), ..clean_home() };
+        let after =
+            WindowsFacts { hypervisor: Some(true), firmware: Some(false), features: [(VM_PLATFORM.to_owned(), 1)].into(), ..clean_home() };
         assert_eq!(wsl_needs(&after, &wsl(true, Some((2, 5, 9)), false), false), vec![]);
         // The file names the boot it was written in; a later boot's facts remove it.
         let dir = std::env::temp_dir().join(format!("g1t-needs-restart-{}", std::process::id()));
@@ -522,7 +541,11 @@ mod tests {
         let off = WindowsFacts { firmware: Some(false), ..clean_home() };
         assert!(off.firmware_off());
         assert_eq!(wsl_needs(&off, &wsl(false, None, false), false), vec![Need::Virtualization]);
-        let pro = WindowsFacts { edition: Some("Professional".into()), features: [(VM_PLATFORM.to_owned(), 2), (WINDOWS_SANDBOX.to_owned(), 2)].into(), ..off.clone() };
+        let pro = WindowsFacts {
+            edition: Some("Professional".into()),
+            features: [(VM_PLATFORM.to_owned(), 2), (WINDOWS_SANDBOX.to_owned(), 2)].into(),
+            ..off.clone()
+        };
         assert_eq!(windows_sandbox_needs(&pro, false, false, false), vec![Need::Virtualization]);
         // Pro whose feature list leaves Windows Sandbox out (Windows Server, N editions): no Windows Sandbox.
         let without = WindowsFacts { features: [(VM_PLATFORM.to_owned(), 2)].into(), ..pro };
@@ -535,7 +558,9 @@ mod tests {
         assert!(guest.virtual_machine() && !guest.firmware_off());
         assert_eq!(guest.no_virtualization(), Need::NestedVirtualization);
         assert_eq!(clean_home().no_virtualization(), Need::Virtualization);
-        assert!(about_virtualization("WSL could not import the sandbox: Please enable the Virtual Machine Platform Windows feature and ensure virtualization is enabled in the BIOS."));
+        assert!(about_virtualization(
+            "WSL could not import the sandbox: Please enable the Virtual Machine Platform Windows feature and ensure virtualization is enabled in the BIOS."
+        ));
         assert!(!about_virtualization("could not fetch https://g1t.sh"));
         // Nothing read at all (PowerShell blocked): nothing concluded but what WSL says.
         assert_eq!(wsl_needs(&WindowsFacts::default(), &wsl(false, None, false), false), vec![Need::Wsl]);
@@ -548,7 +573,8 @@ mod tests {
         assert_eq!(wsl_needs(&old, &wsl(false, None, false), false), vec![Need::WindowsUpdate]);
         let pro = facts(PRO);
         assert_eq!(windows_sandbox_needs(&pro, true, false, false), vec![Need::WindowsUpdate]);
-        let pro_23h2 = WindowsFacts { build: Some(22631), features: [(VM_PLATFORM.to_owned(), 1), (WINDOWS_SANDBOX.to_owned(), 2)].into(), ..pro };
+        let pro_23h2 =
+            WindowsFacts { build: Some(22631), features: [(VM_PLATFORM.to_owned(), 1), (WINDOWS_SANDBOX.to_owned(), 2)].into(), ..pro };
         assert_eq!(windows_sandbox_needs(&pro_23h2, false, false, false), vec![Need::WindowsSandbox, Need::WindowsUpdate]);
     }
 
@@ -601,7 +627,10 @@ mod tests {
         assert_eq!(kvm_needs(&KvmFacts { usable: false, ..all.clone() }), vec![Need::KvmGroup]);
         assert_eq!(kvm_needs(&KvmFacts { device: false, usable: false, ..all.clone() }), vec![Need::KvmModule]);
         assert_eq!(kvm_needs(&KvmFacts { device: false, usable: false, cpu: Some(false), ..all.clone() }), vec![Need::Virtualization]);
-        assert_eq!(kvm_needs(&KvmFacts { device: false, usable: false, cpu: Some(false), guest: true, qemu: false }), vec![Need::NestedVirtualization, Need::Qemu]);
+        assert_eq!(
+            kvm_needs(&KvmFacts { device: false, usable: false, cpu: Some(false), guest: true, qemu: false }),
+            vec![Need::NestedVirtualization, Need::Qemu]
+        );
     }
 
     #[test]

@@ -14,7 +14,7 @@
 //! repository the viewer could not open.
 
 use g1t_contracts::identity::UsernameArgs;
-use g1t_contracts::repos::{CommitDaysArgs, ReadableArgs, Repo, MAX_READABLE};
+use g1t_contracts::repos::{CommitDaysArgs, MAX_READABLE, ReadableArgs, Repo};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome, Viewer};
@@ -86,11 +86,7 @@ fn tally(rows: Vec<DayRow>, commits: Vec<ContributionDay>, from: String) -> Cont
     let days: Vec<ContributionDay> = by_day
         .into_iter()
         .filter(|(day, (work, commits))| work + commits > 0 && day.len() == 10 && day.as_str() >= from.as_str())
-        .map(|(date, (work, commits))| ContributionDay {
-            date,
-            count: work + commits,
-            commits,
-        })
+        .map(|(date, (work, commits))| ContributionDay { date, count: work + commits, commits })
         .collect();
     let total = days.iter().map(|day| day.count).sum();
     Contributions { days, total, from }
@@ -98,14 +94,8 @@ fn tally(rows: Vec<DayRow>, commits: Vec<ContributionDay>, from: String) -> Cont
 
 impl Work {
     pub(crate) async fn contributions(&self, a: ContributionsArgs) -> Result<Outcome<Contributions>> {
-        let person: Viewer = g1t_kit::call(
-            &self.identity,
-            "user_by_username",
-            &UsernameArgs {
-                username: a.username.trim().to_lowercase(),
-            },
-        )
-        .await?;
+        let person: Viewer =
+            g1t_kit::call(&self.identity, "user_by_username", &UsernameArgs { username: a.username.trim().to_lowercase() }).await?;
         let Some(person) = person else {
             return Ok(Outcome::fail(FailureCode::NotFound, "There is no such account."));
         };
@@ -116,11 +106,7 @@ impl Work {
             g1t_kit::call::<_, Vec<ContributionDay>>(
                 &self.repos,
                 "commit_days",
-                &CommitDaysArgs {
-                    user_id: person.id.clone(),
-                    since: from.clone(),
-                    viewer: a.viewer.clone(),
-                },
+                &CommitDaysArgs { user_id: person.id.clone(), since: from.clone(), viewer: a.viewer.clone() },
             ),
             self.work_days(&person.id, &from, a.viewer),
         )
@@ -144,26 +130,15 @@ impl Work {
         if touched.is_empty() {
             return Ok(Vec::new());
         }
-        let readable: Vec<Repo> = g1t_kit::call(
-            &self.repos,
-            "readable",
-            &ReadableArgs {
-                ids: touched.into_iter().map(|row| row.repo_id).collect(),
-                viewer,
-            },
-        )
-        .await?;
+        let readable: Vec<Repo> =
+            g1t_kit::call(&self.repos, "readable", &ReadableArgs { ids: touched.into_iter().map(|row| row.repo_id).collect(), viewer })
+                .await?;
         if readable.is_empty() {
             return Ok(Vec::new());
         }
         let ids: Vec<&str> = readable.iter().map(|repo| repo.id.as_str()).collect();
         let visible = serde_json::to_string(&ids)?;
-        self.db
-            .prepare(DAYS_SQL)
-            .bind(&[person.into(), visible.as_str().into(), from.into()])?
-            .all()
-            .await?
-            .results::<DayRow>()
+        self.db.prepare(DAYS_SQL).bind(&[person.into(), visible.as_str().into(), from.into()])?.all().await?.results::<DayRow>()
     }
 }
 

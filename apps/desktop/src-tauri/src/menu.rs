@@ -64,17 +64,19 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("notifications", "Notifications", None)?,
         ],
     )?;
-    let window = Submenu::with_items(
-        app,
-        "Window",
-        true,
-        &[&PredefinedMenuItem::minimize(app, None)?, &PredefinedMenuItem::maximize(app, None)?],
-    )?;
+    let window =
+        Submenu::with_items(app, "Window", true, &[&PredefinedMenuItem::minimize(app, None)?, &PredefinedMenuItem::maximize(app, None)?])?;
     let help = Submenu::with_items(
         app,
         "Help",
         true,
-        &[&item("docs", "Desktop app guide", None)?, &item("status", "g1t.sh status", None)?, &separator()?, &check, &tray::restart_item(app)?],
+        &[
+            &item("docs", "Desktop app guide", None)?,
+            &item("status", "g1t.sh status", None)?,
+            &separator()?,
+            &check,
+            &tray::restart_item(app)?,
+        ],
     )?;
     // macOS keeps About in g1t's own menu; elsewhere it closes Help.
     #[cfg(not(target_os = "macos"))]

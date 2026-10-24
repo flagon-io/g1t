@@ -34,9 +34,9 @@ use anyhow::{Context, Result, bail};
 use super::guest::{GuestStatus, Settings};
 use super::image::{self, Local};
 use super::{Backend, Resources, StopMode, process_alive};
-use g1t_contracts::runners::Room;
 use crate::selfhosted::native::{Availability, hide_window};
 use crate::selfhosted::needs::{self, WindowsFacts, WslFacts};
+use g1t_contracts::runners::Room;
 
 /// What the distribution is called.
 pub const DISTRO: &str = "g1t-sandbox";
@@ -101,8 +101,10 @@ pub fn mirrored(wslconfig: &str) -> bool {
 /// `processors` and `memory`, else WSL's own defaults, every CPU and half
 /// the computer's memory.
 pub fn vm_limit(wslconfig: &str, cpus: u32, memory_mib: u64) -> Room {
-    let processors = wsl2_setting(wslconfig, "processors").and_then(|n| n.parse::<u32>().ok()).filter(|n| *n > 0).map_or(cpus, |n| n.min(cpus));
-    let memory = wsl2_setting(wslconfig, "memory").and_then(|m| crate::selfhosted::exec::mib(&m)).filter(|m| *m > 0).unwrap_or(memory_mib / 2);
+    let processors =
+        wsl2_setting(wslconfig, "processors").and_then(|n| n.parse::<u32>().ok()).filter(|n| *n > 0).map_or(cpus, |n| n.min(cpus));
+    let memory =
+        wsl2_setting(wslconfig, "memory").and_then(|m| crate::selfhosted::exec::mib(&m)).filter(|m| *m > 0).unwrap_or(memory_mib / 2);
     Room { cpus: f64::from(processors), memory_mib: memory.min(memory_mib) }
 }
 
@@ -167,8 +169,17 @@ impl Backend for Wsl {
         if installed && self.exists() {
             return Availability::yes();
         }
-        let version = || wsl().arg("--version").stderr(Stdio::null()).output().ok().filter(|o| o.status.success()).and_then(|o| needs::wsl_version(&String::from_utf8_lossy(&o.stdout)));
-        let listed = || wsl().args(["--list", "--verbose"]).output().map(|o| has_wsl2(&String::from_utf8_lossy(&o.stdout))).unwrap_or(false);
+        let version = || {
+            wsl()
+                .arg("--version")
+                .stderr(Stdio::null())
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .and_then(|o| needs::wsl_version(&String::from_utf8_lossy(&o.stdout)))
+        };
+        let listed =
+            || wsl().args(["--list", "--verbose"]).output().map(|o| has_wsl2(&String::from_utf8_lossy(&o.stdout))).unwrap_or(false);
         let facts = WslFacts { installed, version: if installed { version() } else { None }, has_wsl2: installed && listed() };
         let windows = WindowsFacts::look_in(&self.dir);
         Availability::needing(needs::wsl_needs(&windows, &facts, needs::restart_pending(&self.dir, &windows)), "linux")
@@ -189,7 +200,11 @@ impl Backend for Wsl {
         std::fs::create_dir_all(&vm)?;
         let output = wsl().args(import_args(&self.distro, &vm, rootfs)).output().context("could not run wsl.exe")?;
         if !output.status.success() {
-            bail!("WSL could not import the sandbox: {}{}", String::from_utf8_lossy(&output.stdout).trim(), String::from_utf8_lossy(&output.stderr).trim());
+            bail!(
+                "WSL could not import the sandbox: {}{}",
+                String::from_utf8_lossy(&output.stdout).trim(),
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
         }
         // The disk is not limited to `disk_gib`: `wsl --manage --resize`
         // only works with all of WSL shut down, which would stop the
@@ -251,7 +266,8 @@ impl Backend for Wsl {
         let _ = wsl().args(["--terminate", &self.distro]).stdout(Stdio::null()).stderr(Stdio::null()).status();
         if let Some(pid) = std::fs::read_to_string(self.keepalive_pid()).ok().and_then(|p| p.trim().parse::<u32>().ok()) {
             if process_alive(pid) {
-                let _ = Command::new("taskkill").args(["/F", "/PID", &pid.to_string()]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+                let _ =
+                    Command::new("taskkill").args(["/F", "/PID", &pid.to_string()]).stdout(Stdio::null()).stderr(Stdio::null()).status();
             }
             let _ = std::fs::remove_file(self.keepalive_pid());
         }

@@ -113,7 +113,8 @@ fn unescape(field: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'\\'
-            && let Some(code) = bytes.get(i + 1..i + 4).and_then(|d| std::str::from_utf8(d).ok()).and_then(|d| u8::from_str_radix(d, 8).ok())
+            && let Some(code) =
+                bytes.get(i + 1..i + 4).and_then(|d| std::str::from_utf8(d).ok()).and_then(|d| u8::from_str_radix(d, 8).ok())
         {
             out.push(code);
             i += 4;
@@ -180,7 +181,8 @@ impl Findings {
         let mut findings = Findings::from_text(&mountinfo, &uid_map);
         for path in ["/var/run/docker.sock", "/run/docker.sock", "/run/containerd/containerd.sock", "/run/podman/podman.sock"] {
             // `/var/run` is often `/run`: the same file is said once.
-            let same = |a: &str, b: &str| a == b || std::fs::canonicalize(a).ok().zip(std::fs::canonicalize(b).ok()).is_some_and(|(a, b)| a == b);
+            let same =
+                |a: &str, b: &str| a == b || std::fs::canonicalize(a).ok().zip(std::fs::canonicalize(b).ok()).is_some_and(|(a, b)| a == b);
             if Path::new(path).exists() && !findings.sockets.iter().any(|s| same(s, path)) {
                 findings.stray_sockets.push(path.to_owned());
             }
@@ -202,10 +204,14 @@ impl Findings {
     pub fn problems(&self) -> Vec<String> {
         let mut problems = Vec::new();
         for socket in &self.sockets {
-            problems.push(format!("{socket} is a container engine's socket mounted in from outside this container: whoever uses it controls the machine"));
+            problems.push(format!(
+                "{socket} is a container engine's socket mounted in from outside this container: whoever uses it controls the machine"
+            ));
         }
         for socket in &self.stray_sockets {
-            problems.push(format!("{socket} is a container engine's socket that this runner did not make (a folder mounted from the machine?)"));
+            problems.push(format!(
+                "{socket} is a container engine's socket that this runner did not make (a folder mounted from the machine?)"
+            ));
         }
         if let Some(host) = &self.docker_host {
             problems.push(format!("DOCKER_HOST is set ({host}): jobs would run on that engine, not this runner's own"));

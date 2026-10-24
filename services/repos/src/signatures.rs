@@ -60,7 +60,9 @@ pub fn signed(commit: &[u8]) -> Option<Signed> {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Checked {
     /// Valid; owned by whoever registered this key.
-    Valid { fingerprint: String },
+    Valid {
+        fingerprint: String,
+    },
     Invalid(String),
 }
 
@@ -92,9 +94,8 @@ pub fn check(armored: &str, payload: &[u8]) -> Checked {
     if armored.starts_with("-----BEGIN SIGNED MESSAGE-----") {
         return Checked::Invalid("S/MIME signatures are not verified; sign with an SSH key (git config gpg.format ssh).".to_owned());
     }
-    let Some(body) = armored
-        .strip_prefix("-----BEGIN SSH SIGNATURE-----")
-        .and_then(|rest| rest.trim().strip_suffix("-----END SSH SIGNATURE-----"))
+    let Some(body) =
+        armored.strip_prefix("-----BEGIN SSH SIGNATURE-----").and_then(|rest| rest.trim().strip_suffix("-----END SSH SIGNATURE-----"))
     else {
         return Checked::Invalid("the signature is in a format g1t does not read.".to_owned());
     };
@@ -123,10 +124,7 @@ pub fn check(armored: &str, payload: &[u8]) -> Checked {
         return invalid("the signing key could not be read.");
     };
     if key_type != b"ssh-ed25519" {
-        return Checked::Invalid(format!(
-            "{} keys are not verified yet; sign with an ed25519 key.",
-            String::from_utf8_lossy(key_type)
-        ));
+        return Checked::Invalid(format!("{} keys are not verified yet; sign with an ed25519 key.", String::from_utf8_lossy(key_type)));
     }
     let mut sig = signature;
     let (Some(sig_type), Some(sig_bytes)) = (string(&mut sig), string(&mut sig)) else {
@@ -173,16 +171,12 @@ pub fn decide(
         Checked::Invalid(reason) => Signature::Unverified { reason },
         Checked::Valid { fingerprint } => {
             let Some(key_owner) = key_owners.get(&fingerprint) else {
-                return Signature::Unverified {
-                    reason: format!("the key {fingerprint} is not registered on any g1t account."),
-                };
+                return Signature::Unverified { reason: format!("the key {fingerprint} is not registered on any g1t account.") };
             };
             let email = committer_email.unwrap_or_default().to_lowercase();
             match email_owners.get(&email) {
                 Some((id, username)) if id == key_owner => Signature::Verified { signer: username.clone() },
-                Some(_) => Signature::Unverified {
-                    reason: format!("the key is not registered on the account that owns {email}."),
-                },
+                Some(_) => Signature::Unverified { reason: format!("the key is not registered on the account that owns {email}.") },
                 None => Signature::Unverified { reason: format!("{email} is not a verified email address on g1t.") },
             }
         }
@@ -235,25 +229,21 @@ NP89FV6u51GZJ+01SZ5Ag=
 
     #[test]
     fn a_good_ed25519_signature_checks_out() {
-        assert_eq!(
-            check(SIGNATURE, PAYLOAD.as_bytes()),
-            Checked::Valid { fingerprint: fingerprint_of_key() }
-        );
+        assert_eq!(check(SIGNATURE, PAYLOAD.as_bytes()), Checked::Valid { fingerprint: fingerprint_of_key() });
         assert_eq!(fingerprint(&commit("Add rules\n")), Some(fingerprint_of_key()));
     }
 
     #[test]
     fn a_changed_commit_does_not() {
-        assert_eq!(
-            check(SIGNATURE, b"tree 0000\n\nSomething else\n"),
-            Checked::Invalid("the signature does not match the commit.".into())
-        );
+        assert_eq!(check(SIGNATURE, b"tree 0000\n\nSomething else\n"), Checked::Invalid("the signature does not match the commit.".into()));
         assert_eq!(fingerprint(&commit("Add rules, sneakily\n")), None);
     }
 
     #[test]
     fn gpg_and_unknown_formats_are_not_verified() {
-        assert!(matches!(check("-----BEGIN PGP SIGNATURE-----\nabc\n-----END PGP SIGNATURE-----", b"x"), Checked::Invalid(why) if why.starts_with("GPG signatures")));
+        assert!(
+            matches!(check("-----BEGIN PGP SIGNATURE-----\nabc\n-----END PGP SIGNATURE-----", b"x"), Checked::Invalid(why) if why.starts_with("GPG signatures"))
+        );
         assert!(matches!(check("junk", b"x"), Checked::Invalid(_)));
         assert!(matches!(check("-----BEGIN SSH SIGNATURE-----\n!!!\n-----END SSH SIGNATURE-----", b"x"), Checked::Invalid(_)));
     }
@@ -263,11 +253,17 @@ NP89FV6u51GZJ+01SZ5Ag=
         let commit = commit("Add rules\n");
         let mut keys = HashMap::new();
         let mut emails = HashMap::new();
-        assert!(matches!(decide(&commit, Some("ada@acme.com"), &keys, &emails), Signature::Unverified { reason } if reason.contains("not registered")));
+        assert!(
+            matches!(decide(&commit, Some("ada@acme.com"), &keys, &emails), Signature::Unverified { reason } if reason.contains("not registered"))
+        );
         keys.insert(fingerprint_of_key(), "usr_ada".to_owned());
-        assert!(matches!(decide(&commit, Some("ada@acme.com"), &keys, &emails), Signature::Unverified { reason } if reason.contains("not a verified email")));
+        assert!(
+            matches!(decide(&commit, Some("ada@acme.com"), &keys, &emails), Signature::Unverified { reason } if reason.contains("not a verified email"))
+        );
         emails.insert("ada@acme.com".to_owned(), ("usr_eve".to_owned(), "eve".to_owned()));
-        assert!(matches!(decide(&commit, Some("Ada@acme.com"), &keys, &emails), Signature::Unverified { reason } if reason.contains("not registered on the account")));
+        assert!(
+            matches!(decide(&commit, Some("Ada@acme.com"), &keys, &emails), Signature::Unverified { reason } if reason.contains("not registered on the account"))
+        );
         emails.insert("ada@acme.com".to_owned(), ("usr_ada".to_owned(), "ada".to_owned()));
         assert_eq!(decide(&commit, Some("ada@acme.com"), &keys, &emails), Signature::Verified { signer: "ada".into() });
         assert_eq!(decide(PAYLOAD.as_bytes(), Some("ada@acme.com"), &keys, &emails), Signature::Unsigned);

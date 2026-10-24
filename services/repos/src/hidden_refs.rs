@@ -85,9 +85,7 @@ fn capabilities_of(lines: &[Line]) -> Option<Vec<u8>> {
 }
 
 fn has_capability(capabilities: &[u8], wanted: &str) -> bool {
-    String::from_utf8_lossy(capabilities)
-        .split_ascii_whitespace()
-        .any(|capability| capability == wanted)
+    String::from_utf8_lossy(capabilities).split_ascii_whitespace().any(|capability| capability == wanted)
 }
 
 /// Takes the commands to hidden refs out of a receive-pack request (see
@@ -96,21 +94,14 @@ pub fn split(body: &[u8]) -> Split {
     let Some((lines, rest)) = command_lines(body) else {
         return Split::Untouched;
     };
-    let hidden: Vec<String> = lines
-        .iter()
-        .filter_map(|line| line.name.as_deref())
-        .filter(|name| is_hidden(name))
-        .map(str::to_owned)
-        .collect();
+    let hidden: Vec<String> =
+        lines.iter().filter_map(|line| line.name.as_deref()).filter(|name| is_hidden(name)).map(str::to_owned).collect();
     if hidden.is_empty() {
         return Split::Untouched;
     }
     let capabilities = capabilities_of(&lines).unwrap_or_default();
     let caps_text = String::from_utf8_lossy(&capabilities).trim().to_owned();
-    let kept: Vec<&Line> = lines
-        .iter()
-        .filter(|line| line.name.as_deref().is_some_and(|name| !is_hidden(name)))
-        .collect();
+    let kept: Vec<&Line> = lines.iter().filter(|line| line.name.as_deref().is_some_and(|name| !is_hidden(name))).collect();
     if kept.is_empty() || has_capability(&capabilities, "atomic") {
         let mut report = pkt_line(b"unpack ok\n");
         for line in lines.iter().filter_map(|line| line.name.as_deref()) {
@@ -150,10 +141,7 @@ pub fn split(body: &[u8]) -> Split {
 }
 
 fn ng_lines(hidden: &[String]) -> Vec<Packet> {
-    hidden
-        .iter()
-        .map(|name| Packet::Data(format!("ng {name} {HIDDEN_REASON}\n").into_bytes()))
-        .collect()
+    hidden.iter().map(|name| Packet::Data(format!("ng {name} {HIDDEN_REASON}\n").into_bytes())).collect()
 }
 
 /// A report-status (bare packets ending in a flush) with `ng` lines for
@@ -211,7 +199,10 @@ pub fn advertisement_without_hidden(body: &[u8]) -> Option<Vec<u8>> {
         (matches!(oid.len(), 40 | 64) && oid.bytes().all(|byte| byte.is_ascii_hexdigit())).then(|| name.to_owned())
     };
     let is_ref = |packet: &Packet| matches!(packet, Packet::Data(data) if !data.starts_with(b"# service=") && !data.starts_with(b"version ") && name_of(data).is_some());
-    if !packets.iter().any(|packet| matches!(packet, Packet::Data(data) if is_ref(packet) && name_of(data).is_some_and(|name| is_hidden(&name)))) {
+    if !packets
+        .iter()
+        .any(|packet| matches!(packet, Packet::Data(data) if is_ref(packet) && name_of(data).is_some_and(|name| is_hidden(&name))))
+    {
         return None;
     }
     let first = packets.iter().position(is_ref)?;
@@ -306,14 +297,13 @@ mod tests {
 
     #[test]
     fn a_push_of_hidden_refs_alone_is_answered_here() {
-        let body = [
-            pkt(&format!("{OLD} {ZERO} refs/pull/7/head\0 report-status\n")),
-            b"0000".to_vec(),
-        ]
-        .concat();
+        let body = [pkt(&format!("{OLD} {ZERO} refs/pull/7/head\0 report-status\n")), b"0000".to_vec()].concat();
         let Split::Refused { report, hidden } = split(&body) else { panic!("expected a refusal") };
         assert_eq!(hidden, ["refs/pull/7/head"]);
-        assert_eq!(text(&report), text(&[pkt("unpack ok\n"), pkt("ng refs/pull/7/head deny updating a hidden ref\n"), b"0000".to_vec()].concat()));
+        assert_eq!(
+            text(&report),
+            text(&[pkt("unpack ok\n"), pkt("ng refs/pull/7/head deny updating a hidden ref\n"), b"0000".to_vec()].concat())
+        );
     }
 
     #[test]
@@ -340,7 +330,15 @@ mod tests {
         let changed = with_refused(&bare, &hidden, false).unwrap();
         assert_eq!(
             text(&changed),
-            text(&[pkt("unpack ok\n"), pkt("ok refs/heads/main\n"), pkt("ng refs/pull/1/head deny updating a hidden ref\n"), b"0000".to_vec()].concat())
+            text(
+                &[
+                    pkt("unpack ok\n"),
+                    pkt("ok refs/heads/main\n"),
+                    pkt("ng refs/pull/1/head deny updating a hidden ref\n"),
+                    b"0000".to_vec()
+                ]
+                .concat()
+            )
         );
         // Side-band: progress kept, the report re-framed on channel 1.
         let inner = [pkt("unpack ok\n"), pkt("ok refs/heads/main\n"), b"0000".to_vec()].concat();
@@ -386,14 +384,34 @@ mod tests {
             )
         );
         // Nothing hidden: nothing to change.
-        let plain = [pkt("# service=git-receive-pack\n"), b"0000".to_vec(), pkt(&format!("{OLD} refs/heads/main\0report-status\n")), b"0000".to_vec()].concat();
+        let plain = [
+            pkt("# service=git-receive-pack\n"),
+            b"0000".to_vec(),
+            pkt(&format!("{OLD} refs/heads/main\0report-status\n")),
+            b"0000".to_vec(),
+        ]
+        .concat();
         assert_eq!(advertisement_without_hidden(&plain), None);
         // Only hidden refs: the capabilities stay, on capabilities^{}.
-        let only = [pkt("# service=git-receive-pack\n"), b"0000".to_vec(), pkt(&format!("{NEW} refs/pull/1/head\0report-status\n")), b"0000".to_vec()].concat();
+        let only = [
+            pkt("# service=git-receive-pack\n"),
+            b"0000".to_vec(),
+            pkt(&format!("{NEW} refs/pull/1/head\0report-status\n")),
+            b"0000".to_vec(),
+        ]
+        .concat();
         let changed = advertisement_without_hidden(&only).unwrap();
         assert_eq!(
             text(&changed),
-            text(&[pkt("# service=git-receive-pack\n"), b"0000".to_vec(), pkt(&format!("{ZERO} capabilities^{{}}\0report-status\n")), b"0000".to_vec()].concat())
+            text(
+                &[
+                    pkt("# service=git-receive-pack\n"),
+                    b"0000".to_vec(),
+                    pkt(&format!("{ZERO} capabilities^{{}}\0report-status\n")),
+                    b"0000".to_vec()
+                ]
+                .concat()
+            )
         );
     }
 }

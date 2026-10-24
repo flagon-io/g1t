@@ -45,9 +45,7 @@ impl NpmName {
 pub fn parse_name(text: &str) -> Result<NpmName, String> {
     let text = text.replace("%2f", "/").replace("%2F", "/");
     let Some(scoped) = text.strip_prefix('@') else {
-        return Err(format!(
-            "{text} has no scope. Packages on g1t are scoped by workspace: @<workspace>/<name>."
-        ));
+        return Err(format!("{text} has no scope. Packages on g1t are scoped by workspace: @<workspace>/<name>."));
     };
     let Some((workspace, name)) = scoped.split_once('/') else {
         return Err(format!("{text} is not @<workspace>/<name>."));
@@ -68,9 +66,7 @@ pub fn parse_name(text: &str) -> Result<NpmName, String> {
         && !name.starts_with('.')
         && !name.starts_with('_')
         && name.trim() == name
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'-' | b'.' | b'_' | b'~'));
+        && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'-' | b'.' | b'_' | b'~'));
     if !name_ok {
         return Err(format!(
             "{name} is not a valid package name: lowercase letters, digits, `-`, `.`, `_` and `~`, not starting with `.` or `_`."
@@ -85,9 +81,7 @@ pub fn valid_version(version: &str) -> bool {
     let (core, build) = version.split_once('+').map_or((version, None), |(c, b)| (c, Some(b)));
     let (core, pre) = core.split_once('-').map_or((core, None), |(c, p)| (c, Some(p)));
     let ident = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
-    let number = |part: &str| {
-        !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()) && (part == "0" || !part.starts_with('0'))
-    };
+    let number = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()) && (part == "0" || !part.starts_with('0'));
     let numbers: Vec<&str> = core.split('.').collect();
     numbers.len() == 3
         && numbers.iter().all(|n| number(n))
@@ -113,10 +107,7 @@ pub struct Integrity {
 }
 
 pub fn integrity(bytes: &[u8]) -> Integrity {
-    Integrity {
-        integrity: format!("sha512-{}", STANDARD.encode(Sha512::digest(bytes))),
-        shasum: hex::encode(Sha1::digest(bytes)),
-    }
+    Integrity { integrity: format!("sha512-{}", STANDARD.encode(Sha512::digest(bytes))), shasum: hex::encode(Sha1::digest(bytes)) }
 }
 
 /// Whether what a client says about the tarball agrees with the tarball.
@@ -222,10 +213,7 @@ impl Packument<'_> {
             Some(Value::Object(dist)) => dist,
             _ => Map::new(),
         };
-        dist.insert(
-            "tarball".into(),
-            json!(format!("{}/{full}/-/{}", self.base, self.name.tarball(&stored.version))),
-        );
+        dist.insert("tarball".into(), json!(format!("{}/{full}/-/{}", self.base, self.name.tarball(&stored.version))));
         manifest.insert("dist".into(), Value::Object(dist));
         match &stored.deprecated {
             Some(message) => {
@@ -252,11 +240,7 @@ impl Packument<'_> {
             versions.insert(stored.version.clone(), self.version_json(stored));
             time.insert(stored.version.clone(), json!(stored.published_at));
         }
-        let latest = self
-            .tags
-            .iter()
-            .find(|(tag, _)| tag == "latest")
-            .and_then(|(_, v)| self.versions.iter().find(|s| &s.version == v));
+        let latest = self.tags.iter().find(|(tag, _)| tag == "latest").and_then(|(_, v)| self.versions.iter().find(|s| &s.version == v));
         let mut document = json!({
             "_id": self.name.full(),
             "_rev": self.rev(),
@@ -310,10 +294,7 @@ pub fn stored_manifest(sent: &Value, computed: &Integrity) -> Value {
     for key in ["readme", "readmeFilename", "_id", "_rev", "_attachments", "deprecated", "_npmUser", "maintainers"] {
         manifest.remove(key);
     }
-    manifest.insert(
-        "dist".into(),
-        json!({ "integrity": computed.integrity, "shasum": computed.shasum }),
-    );
+    manifest.insert("dist".into(), json!({ "integrity": computed.integrity, "shasum": computed.shasum }));
     Value::Object(manifest)
 }
 
@@ -324,10 +305,20 @@ pub enum NpmRoute {
     Whoami,
     /// `npm login --auth-type=legacy`: `/-/user/org.couchdb.user:<name>`.
     Login,
-    DistTags { name: String, tag: Option<String> },
+    DistTags {
+        name: String,
+        tag: Option<String>,
+    },
     /// The packument: read, publish, or (with a revision) change.
-    Package { name: String, rev: Option<String> },
-    Tarball { name: String, file: String, rev: Option<String> },
+    Package {
+        name: String,
+        rev: Option<String>,
+    },
+    Tarball {
+        name: String,
+        file: String,
+        rev: Option<String>,
+    },
 }
 
 /// Which endpoint a path is. `/-/npm/@acme%2fweb`, `/-/npm/@acme/web`,
@@ -461,10 +452,7 @@ mod tests {
     fn integrity_is_npms_sha512_and_sha1() {
         let computed = integrity(b"hello");
         assert_eq!(computed.shasum, "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d");
-        assert_eq!(
-            computed.integrity,
-            "sha512-m3HSJL1i83hdltRq0+o9czGb+8KJDKra4t/3JRlnPKcjI8PZm6XBHXx6zG4UuMXaDEZjR1wuXDre9G9zvN7AQw=="
-        );
+        assert_eq!(computed.integrity, "sha512-m3HSJL1i83hdltRq0+o9czGb+8KJDKra4t/3JRlnPKcjI8PZm6XBHXx6zG4UuMXaDEZjR1wuXDre9G9zvN7AQw==");
         assert!(agrees(&computed, Some(&computed.integrity), Some("AAF4C61DDCC5E8A2DABEDE0F3B482CD9AEA9434D")));
         assert!(agrees(&computed, None, None));
         assert!(agrees(&computed, Some("sha1-whatever"), None), "only sha512 is checked");

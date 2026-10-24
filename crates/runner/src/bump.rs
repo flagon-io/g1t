@@ -554,7 +554,9 @@ impl Node {
     /// range in `package.json` as it is.
     fn in_range(self, package: &str) -> Vec<String> {
         match self {
-            Node::Npm => self.command(&["update", "--package-lock-only", "--no-save", "--ignore-scripts", "--no-audit", "--no-fund", package]),
+            Node::Npm => {
+                self.command(&["update", "--package-lock-only", "--no-save", "--ignore-scripts", "--no-audit", "--no-fund", package])
+            }
             Node::Pnpm => self.command(&["update", package, "--lockfile-only", "--no-save", "--ignore-scripts"]),
             Node::YarnBerry => self.command(&["up", "--recursive", package, "--mode=update-lockfile"]),
             Node::YarnClassic => self.command(&["upgrade", package, "--ignore-scripts", "--non-interactive"]),
@@ -639,7 +641,9 @@ fn raised_requirement(requirement: &str, version: &str) -> Option<String> {
         .find_map(|operator| requirement.strip_prefix(operator).map(|rest| (*operator, rest)))
         .unwrap_or(("", requirement));
     let rest = rest.trim();
-    let plain = !rest.is_empty() && rest.starts_with(|c: char| c.is_ascii_digit()) && rest.chars().all(|c| c.is_ascii_alphanumeric() || ".-+".contains(c));
+    let plain = !rest.is_empty()
+        && rest.starts_with(|c: char| c.is_ascii_digit())
+        && rest.chars().all(|c| c.is_ascii_alphanumeric() || ".-+".contains(c));
     (plain && version::compare(rest, version).is_lt()).then(|| format!("{operator}{version}"))
 }
 
@@ -798,7 +802,10 @@ fn workspace_members(root: &toml::Value) -> Vec<String> {
         .map(|member| member.trim().trim_start_matches("./").trim_end_matches('/').to_owned())
         .filter(|member| {
             let globbed = member.strip_suffix("/*").unwrap_or(member);
-            !member.is_empty() && !globbed.contains(['*', '?', '[']) && !member.starts_with('/') && !member.split('/').any(|part| part == "..")
+            !member.is_empty()
+                && !globbed.contains(['*', '?', '['])
+                && !member.starts_with('/')
+                && !member.split('/').any(|part| part == "..")
         })
         .collect()
 }
@@ -844,10 +851,7 @@ fn cargo_manifests(workdir: &Path, job: &Job) -> Vec<String> {
 }
 
 fn go_commands(module: &str, version: &str) -> [Vec<String>; 2] {
-    [
-        vec!["go".into(), "get".into(), format!("{module}@{version}")],
-        ["go", "mod", "tidy"].map(str::to_owned).to_vec(),
-    ]
+    [vec!["go".into(), "get".into(), format!("{module}@{version}")], ["go", "mod", "tidy"].map(str::to_owned).to_vec()]
 }
 
 /// Which dependency group of `pyproject.toml` names `package`: `Some(None)`
@@ -856,19 +860,14 @@ fn go_commands(module: &str, version: &str) -> [Vec<String>; 2] {
 fn poetry_group(pyproject: &toml::Value, package: &str) -> Option<Option<String>> {
     let wanted = Ecosystem::PyPI.normalize(package);
     let names = |table: Option<&toml::Value>| -> bool {
-        table
-            .and_then(toml::Value::as_table)
-            .is_some_and(|table| table.keys().any(|key| Ecosystem::PyPI.normalize(key) == wanted))
+        table.and_then(toml::Value::as_table).is_some_and(|table| table.keys().any(|key| Ecosystem::PyPI.normalize(key) == wanted))
     };
     let poetry = pyproject.get("tool").and_then(|tool| tool.get("poetry"));
     if names(poetry.and_then(|poetry| poetry.get("dependencies"))) {
         return Some(None);
     }
-    let pep621 = pyproject
-        .get("project")
-        .and_then(|project| project.get("dependencies"))
-        .and_then(toml::Value::as_array)
-        .is_some_and(|list| {
+    let pep621 =
+        pyproject.get("project").and_then(|project| project.get("dependencies")).and_then(toml::Value::as_array).is_some_and(|list| {
             list.iter().filter_map(toml::Value::as_str).any(|requirement| {
                 let name: String = requirement.chars().take_while(|c| c.is_ascii_alphanumeric() || "-_.".contains(*c)).collect();
                 Ecosystem::PyPI.normalize(&name) == wanted
@@ -881,10 +880,7 @@ fn poetry_group(pyproject: &toml::Value, package: &str) -> Option<Option<String>
         return Some(Some("dev".to_owned()));
     }
     let groups = poetry.and_then(|poetry| poetry.get("group")).and_then(toml::Value::as_table)?;
-    groups
-        .iter()
-        .find(|(_, group)| names(group.get("dependencies")))
-        .map(|(name, _)| Some(name.clone()))
+    groups.iter().find(|(_, group)| names(group.get("dependencies"))).map(|(name, _)| Some(name.clone()))
 }
 
 fn poetry_commands(poetry: &[String], package: &str, version: &str, group: Option<Option<String>>) -> Vec<String> {
@@ -924,9 +920,7 @@ fn rewrite_pins(text: &str, package: &str, version: &str) -> (String, usize) {
             let rest = &code[start..];
             let leading = rest.len() - rest.trim_start().len();
             let from = start + leading;
-            let end = code[from..]
-                .find(|c: char| c.is_whitespace() || ",;\\".contains(c))
-                .map_or(code.len(), |at| from + at);
+            let end = code[from..].find(|c: char| c.is_whitespace() || ",;\\".contains(c)).map_or(code.len(), |at| from + at);
             let old = &line[from..end];
             if old.is_empty() || old.contains('*') || version::compare(old, version).is_ge() {
                 return None;
@@ -979,10 +973,7 @@ fn cargo_registries(config: &str) -> Vec<(String, String)> {
     let Some(registries) = config.get("registries").and_then(toml::Value::as_table) else {
         return Vec::new();
     };
-    registries
-        .iter()
-        .filter_map(|(name, registry)| Some((name.clone(), registry.get("index")?.as_str()?.to_owned())))
-        .collect()
+    registries.iter().filter_map(|(name, registry)| Some((name.clone(), registry.get("index")?.as_str()?.to_owned()))).collect()
 }
 
 /// `[[tool.poetry.source]]` names and URLs in a `pyproject.toml`.
@@ -990,13 +981,12 @@ fn poetry_sources(pyproject: &str) -> Vec<(String, String)> {
     let Ok(pyproject) = toml::from_str::<toml::Value>(pyproject) else {
         return Vec::new();
     };
-    let Some(sources) = pyproject.get("tool").and_then(|tool| tool.get("poetry")).and_then(|poetry| poetry.get("source")).and_then(toml::Value::as_array) else {
+    let Some(sources) =
+        pyproject.get("tool").and_then(|tool| tool.get("poetry")).and_then(|poetry| poetry.get("source")).and_then(toml::Value::as_array)
+    else {
         return Vec::new();
     };
-    sources
-        .iter()
-        .filter_map(|source| Some((source.get("name")?.as_str()?.to_owned(), source.get("url")?.as_str()?.to_owned())))
-        .collect()
+    sources.iter().filter_map(|source| Some((source.get("name")?.as_str()?.to_owned(), source.get("url")?.as_str()?.to_owned()))).collect()
 }
 
 /// A registry URL as compared with another: no index protocol, scheme or
@@ -1056,10 +1046,14 @@ fn check_registry(registry: &Registry) -> Result<()> {
     if secrets.iter().filter_map(|secret| secret.as_deref()).any(|secret| secret.chars().any(|c| c.is_control())) {
         bail!("a private registry's credentials must not hold control characters ({url})");
     }
-    if registry.kind == "goproxy-server" && secrets.iter().filter_map(|secret| secret.as_deref()).any(|secret| secret.chars().any(char::is_whitespace)) {
+    if registry.kind == "goproxy-server"
+        && secrets.iter().filter_map(|secret| secret.as_deref()).any(|secret| secret.chars().any(char::is_whitespace))
+    {
         bail!("a Go proxy's credentials must not hold spaces ({url})");
     }
-    if let Some(scope) = registry.scopes.iter().find(|scope| !scope.starts_with('@') || scope.len() < 2 || !scope[1..].chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))) {
+    if let Some(scope) = registry.scopes.iter().find(|scope| {
+        !scope.starts_with('@') || scope.len() < 2 || !scope[1..].chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
+    }) {
         bail!("{scope:?} is not an npm scope");
     }
     Ok(())
@@ -1118,7 +1112,9 @@ fn registry_tools(registries: &[Registry], named: &Named, dir: &Path) -> Result<
             "npm-registry" => {
                 let nerf = npm_nerf_dart(url);
                 let auth = match (registry.token.as_deref(), registry.username.as_deref(), registry.password.as_deref()) {
-                    (Some(token), _, _) if !token.is_empty() => Some(("_authToken", token.to_owned(), "YARN_NPM_AUTH_TOKEN", token.to_owned())),
+                    (Some(token), _, _) if !token.is_empty() => {
+                        Some(("_authToken", token.to_owned(), "YARN_NPM_AUTH_TOKEN", token.to_owned()))
+                    }
                     (_, Some(user), Some(password)) => {
                         let ident = format!("{user}:{password}");
                         let encoded = base64::engine::general_purpose::STANDARD.encode(&ident);
@@ -1337,15 +1333,7 @@ impl Bump {
         };
         registries.iter().try_for_each(check_registry)?;
         let jobs = jobs(ecosystem, &lockfile_list(&env("BUMP_LOCKFILES")?)?)?;
-        Ok(Bump {
-            ecosystem,
-            kind,
-            packages,
-            strategy: (kind == Kind::Version).then_some(strategy),
-            force,
-            registries,
-            jobs,
-        })
+        Ok(Bump { ecosystem, kind, packages, strategy: (kind == Kind::Version).then_some(strategy), force, registries, jobs })
     }
 
     /// The versions every lockfile of `job` still resolves below the target.
@@ -1467,7 +1455,8 @@ impl Bump {
                 let group = if self.strategy == Some(Strategy::LockfileOnly) {
                     None
                 } else {
-                    let pyproject: toml::Value = toml::from_str(&read(&dir.join("pyproject.toml"))?).context("pyproject.toml is not TOML")?;
+                    let pyproject: toml::Value =
+                        toml::from_str(&read(&dir.join("pyproject.toml"))?).context("pyproject.toml is not TOML")?;
                     poetry_group(&pyproject, package)
                 };
                 attempt(poetry_commands(&poetry(&tools.env)?, package, version, group), said)?;
@@ -1605,7 +1594,8 @@ fn bump() -> Result<(Bump, String, Pushed)> {
         if theirs.is_empty() {
             return Err(error.context("could not push the update"));
         }
-        crate::clone::fetch(workdir, &auth, "origin", &format!("refs/heads/{branch}")).context("could not read the branch already pushed")?;
+        crate::clone::fetch(workdir, &auth, "origin", &format!("refs/heads/{branch}"))
+            .context("could not read the branch already pushed")?;
         let same = git(workdir, &["rev-parse", "FETCH_HEAD^{tree}"])? == git(workdir, &["rev-parse", "HEAD^{tree}"])?;
         if !same {
             return Err(error.context(format!("{branch} already exists with other changes")));
@@ -1712,7 +1702,27 @@ mod tests {
         }
         assert!(check_branch(Kind::Version, "main", "main").is_err());
         let long = "x".repeat(201);
-        for branch in ["", " ", "a b", "a..b", "a~1", "a^", "a:b", "a?", "a*", "a[b", "a\\b", "a@{1}", "-x", "/x", "refs/heads/x", "x/", "x.lock", "a\u{7}", long.as_str()] {
+        for branch in [
+            "",
+            " ",
+            "a b",
+            "a..b",
+            "a~1",
+            "a^",
+            "a:b",
+            "a?",
+            "a*",
+            "a[b",
+            "a\\b",
+            "a@{1}",
+            "-x",
+            "/x",
+            "refs/heads/x",
+            "x/",
+            "x.lock",
+            "a\u{7}",
+            long.as_str(),
+        ] {
             assert!(check_branch(Kind::Version, branch, "main").is_err(), "{branch:?}");
         }
     }
@@ -1824,20 +1834,32 @@ mod tests {
         assert_eq!(npm.override_path(), ["overrides"]);
 
         let pnpm = Node::of(Lockfile::PnpmLock, "lockfileVersion: '9.0'").unwrap();
-        assert_eq!(pnpm.direct("lodash", "^4.17.21"), strings(&["corepack", "pnpm", "update", "lodash@^4.17.21", "--lockfile-only", "--ignore-scripts"]));
-        assert_eq!(pnpm.in_range("lodash"), strings(&["corepack", "pnpm", "update", "lodash", "--lockfile-only", "--no-save", "--ignore-scripts"]));
+        assert_eq!(
+            pnpm.direct("lodash", "^4.17.21"),
+            strings(&["corepack", "pnpm", "update", "lodash@^4.17.21", "--lockfile-only", "--ignore-scripts"])
+        );
+        assert_eq!(
+            pnpm.in_range("lodash"),
+            strings(&["corepack", "pnpm", "update", "lodash", "--lockfile-only", "--no-save", "--ignore-scripts"])
+        );
         assert_eq!(pnpm.override_path(), ["pnpm", "overrides"]);
 
         let berry = Node::of(Lockfile::YarnLock, "__metadata:\n  version: 6\n").unwrap();
         assert_eq!(berry, Node::YarnBerry);
         assert_eq!(berry.direct("lodash", "^4.17.21"), strings(&["corepack", "yarn", "up", "lodash@^4.17.21", "--mode=update-lockfile"]));
-        assert_eq!(berry.transitive("minimist").unwrap(), strings(&["corepack", "yarn", "up", "--recursive", "minimist", "--mode=update-lockfile"]));
+        assert_eq!(
+            berry.transitive("minimist").unwrap(),
+            strings(&["corepack", "yarn", "up", "--recursive", "minimist", "--mode=update-lockfile"])
+        );
         assert_eq!(berry.in_range("lodash"), strings(&["corepack", "yarn", "up", "--recursive", "lodash", "--mode=update-lockfile"]));
 
         let classic = Node::of(Lockfile::YarnLock, "# yarn lockfile v1\n").unwrap();
         assert_eq!(classic, Node::YarnClassic);
         assert_eq!(classic.transitive("minimist"), None);
-        assert_eq!(classic.in_range("lodash"), strings(&["corepack", "yarn", "upgrade", "lodash", "--ignore-scripts", "--non-interactive"]));
+        assert_eq!(
+            classic.in_range("lodash"),
+            strings(&["corepack", "yarn", "upgrade", "lodash", "--ignore-scripts", "--non-interactive"])
+        );
         assert_eq!(classic.override_path(), ["resolutions"]);
         assert_eq!(Node::of(Lockfile::CargoLock, ""), None);
     }
@@ -1858,7 +1880,10 @@ mod tests {
         assert_eq!(precise, strings(&["cargo", "update", "-p", "time@0.1.43", "--precise", "0.1.45"]));
         assert_eq!(compatible, strings(&["cargo", "update", "-p", "time@0.1.43"]));
         let [precise, _] = cargo_commands("time", "0.1.43", "0.1.45", Some("/tmp/g1t-registries/cargo.toml"));
-        assert_eq!(precise, strings(&["cargo", "--config", "/tmp/g1t-registries/cargo.toml", "update", "-p", "time@0.1.43", "--precise", "0.1.45"]));
+        assert_eq!(
+            precise,
+            strings(&["cargo", "--config", "/tmp/g1t-registries/cargo.toml", "update", "-p", "time@0.1.43", "--precise", "0.1.45"])
+        );
         let [get, tidy] = go_commands("golang.org/x/net", "v0.23.0");
         assert_eq!(get, strings(&["go", "get", "golang.org/x/net@v0.23.0"]));
         assert_eq!(tidy, strings(&["go", "mod", "tidy"]));
@@ -1933,16 +1958,23 @@ serde = []
         assert_eq!(rewrite_cargo_requirements(text, "rand", "0.9.0").1, 0);
         // A renamed table section names its package.
         let renamed = "[dependencies.json]\npackage = \"serde_json\"\nversion = \"1.0.0\"\n";
-        assert_eq!(rewrite_cargo_requirements(renamed, "serde_json", "1.0.117").0, "[dependencies.json]\npackage = \"serde_json\"\nversion = \"1.0.117\"\n");
+        assert_eq!(
+            rewrite_cargo_requirements(renamed, "serde_json", "1.0.117").0,
+            "[dependencies.json]\npackage = \"serde_json\"\nversion = \"1.0.117\"\n"
+        );
         assert_eq!(rewrite_cargo_requirements(renamed, "json", "1.0.117").1, 0);
     }
 
     #[test]
     fn workspace_members_by_path_or_trailing_star() {
-        let root: toml::Value = toml::from_str("[workspace]\nmembers = [\"crates/*\", \"./tools/xtask/\", \"apps/**\", \"../outside\", \"a?b\"]\n").unwrap();
+        let root: toml::Value =
+            toml::from_str("[workspace]\nmembers = [\"crates/*\", \"./tools/xtask/\", \"apps/**\", \"../outside\", \"a?b\"]\n").unwrap();
         assert_eq!(workspace_members(&root), ["crates/*", "tools/xtask"]);
         assert!(workspace_members(&toml::from_str::<toml::Value>("[package]\nname = \"x\"\n").unwrap()).is_empty());
-        assert_eq!(header_keys("[target.'cfg(target_os = \"linux\")'.dependencies]"), Some(strings(&["target", "cfg(target_os = \"linux\")", "dependencies"])));
+        assert_eq!(
+            header_keys("[target.'cfg(target_os = \"linux\")'.dependencies]"),
+            Some(strings(&["target", "cfg(target_os = \"linux\")", "dependencies"]))
+        );
         assert_eq!(header_keys("[[bin]]"), None);
         assert_eq!(dependency_table(&strings(&["workspace", "dependencies"])), Some(None));
         assert_eq!(dependency_table(&strings(&["dependencies", "serde"])), Some(Some("serde".into())));
@@ -2090,7 +2122,10 @@ serde = []
         base.replaces_base = true;
         let mut extra = registry("python-index", "https://extra.acme.dev/simple");
         extra.token = Some("tok".into());
-        let named = Named { cargo: Vec::new(), poetry: poetry_sources("[[tool.poetry.source]]\nname = \"acme-extra\"\nurl = \"https://extra.acme.dev/simple/\"\n") };
+        let named = Named {
+            cargo: Vec::new(),
+            poetry: poetry_sources("[[tool.poetry.source]]\nname = \"acme-extra\"\nurl = \"https://extra.acme.dev/simple/\"\n"),
+        };
         let tools = registry_tools(&[base, extra, registry("python-index", "https://open.acme.dev/simple")], &named, dir).unwrap();
         assert_eq!(
             env_of(&tools),
@@ -2113,7 +2148,10 @@ serde = []
         let tools = registry_tools(std::slice::from_ref(&proxy), &Named::default(), dir).unwrap();
         assert_eq!(
             env_of(&tools),
-            [("GOPROXY", "https://goproxy.acme.dev/mod,https://proxy.golang.org,direct"), ("NETRC", dir.join("netrc").display().to_string().as_str())]
+            [
+                ("GOPROXY", "https://goproxy.acme.dev/mod,https://proxy.golang.org,direct"),
+                ("NETRC", dir.join("netrc").display().to_string().as_str())
+            ]
         );
         assert_eq!(tools.files, [(dir.join("netrc"), "machine goproxy.acme.dev\nlogin ada\npassword pw\n".to_owned())]);
         proxy.replaces_base = true;

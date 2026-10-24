@@ -156,7 +156,10 @@ mod tests {
         assert_eq!(attachment_name("C:\\tmp\\a b.png"), "a b.png");
         assert_eq!(attachment_name("  \n"), "image");
         assert_eq!(attachment_name(&"x".repeat(500)).chars().count(), MAX_ATTACHMENT_NAME_CHARS);
-        assert_eq!(attachment_markdown("preview.png", "https://g1tusercontent.com/attachments/ab"), "![preview.png](https://g1tusercontent.com/attachments/ab)");
+        assert_eq!(
+            attachment_markdown("preview.png", "https://g1tusercontent.com/attachments/ab"),
+            "![preview.png](https://g1tusercontent.com/attachments/ab)"
+        );
         assert_eq!(attachment_markdown("a]b[c\\", "u"), "![a\\]b\\[c\\\\](u)");
         assert_eq!(normalize_content_type("Image/JPG; q=1"), "image/jpeg");
         assert_eq!(attachment_path("ab"), "/attachments/ab");

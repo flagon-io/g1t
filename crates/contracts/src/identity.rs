@@ -1004,7 +1004,6 @@ pub struct UpdateOAuthGrantArgs {
     pub scopes: Option<Vec<String>>,
 }
 
-
 /// What a scoped token may do: these operations, in this repository. Run
 /// credentials (a token for one CI or sandbox run, see
 /// [`crate::credentials`]) carry one today, and so do tokens g1t's retired
@@ -1380,10 +1379,7 @@ impl Default for SoundSettings {
             sounds_enabled: true,
             sound_set: DEFAULT_SOUND_SET.to_owned(),
             sound_volume: DEFAULT_SOUND_VOLUME,
-            sound_cues: SOUND_CUES
-                .iter()
-                .map(|cue| ((*cue).to_owned(), !SOUND_CUES_OFF_BY_DEFAULT.contains(cue)))
-                .collect(),
+            sound_cues: SOUND_CUES.iter().map(|cue| ((*cue).to_owned(), !SOUND_CUES_OFF_BY_DEFAULT.contains(cue))).collect(),
             desktop_toasts: false,
         }
     }
@@ -2088,30 +2084,15 @@ mod deletion_tests {
 
     #[test]
     fn only_billing_or_protection_stands_in_the_way() {
-        let clear = WorkspaceDeletion {
-            repositories: 2,
-            projects: 1,
-            members: 3,
-            ..WorkspaceDeletion::default()
-        };
+        let clear = WorkspaceDeletion { repositories: 2, projects: 1, members: 3, ..WorkspaceDeletion::default() };
         assert!(!clear.blocked());
         assert_eq!(clear.reason("acme"), None);
-        let owing = WorkspaceDeletion {
-            billing: Some("Pay first.".into()),
-            ..WorkspaceDeletion::default()
-        };
+        let owing = WorkspaceDeletion { billing: Some("Pay first.".into()), ..WorkspaceDeletion::default() };
         assert!(owing.blocked());
         assert_eq!(owing.reason("acme").as_deref(), Some("Pay first."));
-        let protected = WorkspaceDeletion {
-            billing: Some("Pay first.".into()),
-            protected: true,
-            ..WorkspaceDeletion::default()
-        };
+        let protected = WorkspaceDeletion { billing: Some("Pay first.".into()), protected: true, ..WorkspaceDeletion::default() };
         assert!(protected.blocked());
-        assert_eq!(
-            protected.reason("flagon-io").as_deref(),
-            Some("flagon-io is protected and can never be deleted.")
-        );
+        assert_eq!(protected.reason("flagon-io").as_deref(), Some("flagon-io is protected and can never be deleted."));
     }
 
     #[test]
@@ -2119,9 +2100,6 @@ mod deletion_tests {
         assert_eq!(protected_names(None), ["flagon-io"]);
         assert_eq!(protected_names(Some("")), ["flagon-io"]);
         assert_eq!(protected_names(Some(" , ")), ["flagon-io"]);
-        assert_eq!(
-            protected_names(Some("Flagon-IO, acme ,wsp_1")),
-            ["flagon-io", "acme", "wsp_1"]
-        );
+        assert_eq!(protected_names(Some("Flagon-IO, acme ,wsp_1")), ["flagon-io", "acme", "wsp_1"]);
     }
 }

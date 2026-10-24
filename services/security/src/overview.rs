@@ -5,13 +5,13 @@
 use std::collections::BTreeMap;
 
 use g1t_contracts::access::{self, Capability};
+use g1t_contracts::repos::{MAX_READABLE, ReadableArgs, Repo};
 use g1t_contracts::security::SeverityCounts;
 use g1t_contracts::security_suite::{
     AlertType, RepoCoverage, SecuritySettingsArgs, SecuritySettingsView, SetSecuritySettingsArgs, SetWorkspaceSecuritySettingsArgs,
-    TrendPoint, TypeTotals, WorkspaceAlert, WorkspaceAlertsArgs, WorkspaceOverview, WorkspaceOverviewArgs,
-    WorkspaceSecuritySettingsArgs, WorkspaceSecurityView,
+    TrendPoint, TypeTotals, WorkspaceAlert, WorkspaceAlertsArgs, WorkspaceOverview, WorkspaceOverviewArgs, WorkspaceSecuritySettingsArgs,
+    WorkspaceSecurityView,
 };
-use g1t_contracts::repos::{MAX_READABLE, ReadableArgs, Repo};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
@@ -146,7 +146,10 @@ impl Security {
         }))
     }
 
-    pub(crate) async fn set_workspace_security_settings(&self, a: SetWorkspaceSecuritySettingsArgs) -> Result<Outcome<WorkspaceSecurityView>> {
+    pub(crate) async fn set_workspace_security_settings(
+        &self,
+        a: SetWorkspaceSecuritySettingsArgs,
+    ) -> Result<Outcome<WorkspaceSecurityView>> {
         let workspace = a.workspace.to_lowercase();
         if !a.actor.manages_security(&workspace) {
             return Ok(fail(FailureCode::Forbidden, "Only an owner or a security manager can change the workspace's security settings."));
@@ -214,8 +217,7 @@ impl Security {
             return BTreeMap::new();
         }
         let ids = rows.iter().take(MAX_READABLE).map(|repo| repo.repo_id.clone()).collect();
-        let found: Result<Vec<Repo>> =
-            g1t_kit::call(&self.repos, "readable", &ReadableArgs { ids, viewer: Some(viewer.clone()) }).await;
+        let found: Result<Vec<Repo>> = g1t_kit::call(&self.repos, "readable", &ReadableArgs { ids, viewer: Some(viewer.clone()) }).await;
         match found {
             Ok(found) => found.into_iter().map(|repo| (repo.id, repo.is_private)).collect(),
             Err(error) => {
@@ -290,11 +292,14 @@ impl Security {
         for (alert_type, (opened, closed)) in AlertType::ALL.into_iter().zip(moved) {
             let mut open = SeverityCounts::default();
             for repo in &repos {
-                add(&mut open, match alert_type {
-                    AlertType::SecretScanning => &repo.secrets,
-                    AlertType::CodeScanning => &repo.code,
-                    AlertType::Vulnerability => &repo.vulnerabilities,
-                });
+                add(
+                    &mut open,
+                    match alert_type {
+                        AlertType::SecretScanning => &repo.secrets,
+                        AlertType::CodeScanning => &repo.code,
+                        AlertType::Vulnerability => &repo.vulnerabilities,
+                    },
+                );
             }
             totals.push(TypeTotals { alert_type: alert_type.as_str().to_owned(), open, opened, closed });
         }
@@ -314,12 +319,14 @@ impl Security {
         let mut alerts = Vec::new();
         for (repo, private) in self.visible_repos(&workspace, viewer).await? {
             match a.alert_type {
-                AlertType::SecretScanning => alerts.extend(self.store.secrets(&repo.repo_id).await?.into_iter().map(|secret| WorkspaceAlert {
-                    repo: repo.name.clone(),
-                    secret: Some(secret),
-                    code: None,
-                    vulnerability: None,
-                })),
+                AlertType::SecretScanning => {
+                    alerts.extend(self.store.secrets(&repo.repo_id).await?.into_iter().map(|secret| WorkspaceAlert {
+                        repo: repo.name.clone(),
+                        secret: Some(secret),
+                        code: None,
+                        vulnerability: None,
+                    }))
+                }
                 AlertType::Vulnerability => {
                     alerts.extend(self.store.vulnerabilities(&repo.repo_id).await?.into_iter().map(|vuln| WorkspaceAlert {
                         repo: repo.name.clone(),
@@ -330,12 +337,14 @@ impl Security {
                 }
                 // Code scanning on a private repository is the activation's.
                 AlertType::CodeScanning if private && !activated => {}
-                AlertType::CodeScanning => alerts.extend(self.store.code_alerts(&repo.repo_id).await?.into_iter().map(|code| WorkspaceAlert {
-                    repo: repo.name.clone(),
-                    secret: None,
-                    code: Some(code),
-                    vulnerability: None,
-                })),
+                AlertType::CodeScanning => {
+                    alerts.extend(self.store.code_alerts(&repo.repo_id).await?.into_iter().map(|code| WorkspaceAlert {
+                        repo: repo.name.clone(),
+                        secret: None,
+                        code: Some(code),
+                        vulnerability: None,
+                    }))
+                }
             }
             if alerts.len() >= 5_000 {
                 break;
@@ -380,7 +389,8 @@ mod tests {
             vulnerabilities,
             ..RepoCoverage::default()
         };
-        let mut repos = vec![repo("a", counts(0, 1), counts(0, 0)), repo("b", counts(1, 0), counts(0, 0)), repo("c", counts(0, 3), counts(0, 1))];
+        let mut repos =
+            vec![repo("a", counts(0, 1), counts(0, 0)), repo("b", counts(1, 0), counts(0, 0)), repo("c", counts(0, 3), counts(0, 1))];
         rank(&mut repos);
         let order: Vec<&str> = repos.iter().map(|repo| repo.name.as_str()).collect();
         assert_eq!(order, ["b", "c", "a"]);
@@ -400,7 +410,10 @@ mod tests {
             low: 0,
             unknown: 0,
         };
-        let points = trend(&span, &[row("2026-10-06", "code_scanning", 2), row("2026-10-06", "vulnerability", 0), row("2026-10-07", "code_scanning", 1)]);
+        let points = trend(
+            &span,
+            &[row("2026-10-06", "code_scanning", 2), row("2026-10-06", "vulnerability", 0), row("2026-10-07", "code_scanning", 1)],
+        );
         assert_eq!(points.len(), 3);
         assert_eq!((points[0].code_scanning, points[1].code_scanning, points[1].vulnerability, points[2].code_scanning), (0, 3, 1, 2));
     }

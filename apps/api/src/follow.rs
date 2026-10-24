@@ -52,19 +52,11 @@ fn list(value: &Value) -> Vec<String> {
         Value::Number(number) => vec![number.to_string()],
         _ => Vec::new(),
     };
-    items
-        .into_iter()
-        .map(|item| item.trim().trim_start_matches('#').to_owned())
-        .filter(|item| !item.is_empty())
-        .collect()
+    items.into_iter().map(|item| item.trim().trim_start_matches('#').to_owned()).filter(|item| !item.is_empty()).collect()
 }
 
 fn text(input: &Value, key: &str) -> Option<String> {
-    input[key]
-        .as_str()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_owned)
+    input[key].as_str().map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned)
 }
 
 fn whole(value: &Value) -> Option<u64> {
@@ -108,15 +100,7 @@ pub fn asked(input: &Value) -> std::result::Result<Asked, String> {
     if after.is_some() && before.is_some() {
         return Err("Give after to follow the timeline or before to page back through it, not both.".to_owned());
     }
-    Ok(Asked {
-        wait_ms: if after.is_some() { wait * 1_000 } else { 0 },
-        after,
-        before,
-        types,
-        numbers,
-        since: text(input, "since"),
-        limit,
-    })
+    Ok(Asked { wait_ms: if after.is_some() { wait * 1_000 } else { 0 }, after, before, types, numbers, since: text(input, "since"), limit })
 }
 
 impl Asked {
@@ -138,11 +122,7 @@ impl Asked {
 /// on until `deadline`: `None` when it is time to answer with nothing.
 /// The last poll falls on the deadline itself.
 pub fn next_poll(now: u64, deadline: u64) -> Option<u64> {
-    if now >= deadline {
-        None
-    } else {
-        Some(POLL_MS.min(deadline - now))
-    }
+    if now >= deadline { None } else { Some(POLL_MS.min(deadline - now)) }
 }
 
 /// The events of the repository `repo_id` as asked, holding on for them

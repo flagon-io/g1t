@@ -287,9 +287,23 @@ pub fn vendored(path: &str) -> bool {
 pub fn generated(path: &str) -> bool {
     let name = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
     directories(path).any(|dir| GENERATED_DIRS.iter().any(|generated| dir.eq_ignore_ascii_case(generated)))
-        || [".min.js", ".min.css", ".min.mjs", ".map", ".pb.go", "_pb2.py", "_pb2_grpc.py", ".pb.cc", ".pb.h", ".g.dart", ".freezed.dart", ".designer.cs", ".lock"]
-            .iter()
-            .any(|suffix| name.ends_with(suffix))
+        || [
+            ".min.js",
+            ".min.css",
+            ".min.mjs",
+            ".map",
+            ".pb.go",
+            "_pb2.py",
+            "_pb2_grpc.py",
+            ".pb.cc",
+            ".pb.h",
+            ".g.dart",
+            ".freezed.dart",
+            ".designer.cs",
+            ".lock",
+        ]
+        .iter()
+        .any(|suffix| name.ends_with(suffix))
         || name.contains(".generated.")
         || matches!(name.as_str(), "package-lock.json" | "pnpm-lock.yaml" | "npm-shrinkwrap.json" | "go.sum" | "composer.lock")
 }

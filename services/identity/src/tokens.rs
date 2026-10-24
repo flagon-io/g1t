@@ -35,10 +35,7 @@ pub(crate) const TOKEN_COLUMNS: &str = "access_tokens.id, access_tokens.name, ac
 /// Who a new token belongs to.
 pub(crate) enum Owner<'a> {
     User(&'a str),
-    Workspace {
-        id: &'a str,
-        created_by: Option<&'a str>,
-    },
+    Workspace { id: &'a str, created_by: Option<&'a str> },
 }
 
 #[derive(Deserialize)]
@@ -72,9 +69,7 @@ pub(crate) struct Grant {
 impl Grant {
     /// From what a caller asked for: unknown scopes are left out.
     pub(crate) fn asked(scopes: &Option<Vec<String>>) -> Self {
-        Grant {
-            scopes: scopes.as_ref().map(|scopes| parse_scopes(&scopes.join(" "))),
-        }
+        Grant { scopes: scopes.as_ref().map(|scopes| parse_scopes(&scopes.join(" "))) }
     }
 
     /// The `scopes` column: `*` for full access.
@@ -92,10 +87,7 @@ pub(crate) fn stored_scopes(column: Option<&str>) -> (Option<Vec<String>>, bool)
     match column {
         None => (None, true),
         Some(FULL_ACCESS) => (None, false),
-        Some(text) => (
-            Some(parse_scopes(text).iter().map(|scope| scope.as_str().to_owned()).collect()),
-            false,
-        ),
+        Some(text) => (Some(parse_scopes(text).iter().map(|scope| scope.as_str().to_owned()).collect()), false),
     }
 }
 
@@ -176,19 +168,8 @@ impl Identity {
         // behalf of the person it was made for, in its repository's
         // workspace while they belong to it, and only for what its scope
         // lists. See run_credentials.rs.
-        if let Some(scope) = presented
-            .agent_scope
-            .as_deref()
-            .and_then(|scope| serde_json::from_str::<AgentScope>(scope).ok())
-        {
-            return self
-                .agent_principal(
-                    &presented.id,
-                    presented.user_id.as_deref(),
-                    presented.workspace_id.as_deref(),
-                    scope,
-                )
-                .await;
+        if let Some(scope) = presented.agent_scope.as_deref().and_then(|scope| serde_json::from_str::<AgentScope>(scope).ok()) {
+            return self.agent_principal(&presented.id, presented.user_id.as_deref(), presented.workspace_id.as_deref(), scope).await;
         }
         let mut viewer = match (&presented.user_id, &presented.workspace_id) {
             (Some(user_id), _) => {
@@ -212,11 +193,9 @@ impl Identity {
                 name: presented.name.clone(),
                 repo: presented.repo.clone(),
                 job: match (&presented.job_id, &presented.job_run_id) {
-                    (Some(job_id), Some(run_id)) => Some(JobToken {
-                        run_id: run_id.clone(),
-                        job_id: job_id.clone(),
-                        pull_requests: presented.job_pulls == Some(1),
-                    }),
+                    (Some(job_id), Some(run_id)) => {
+                        Some(JobToken { run_id: run_id.clone(), job_id: job_id.clone(), pull_requests: presented.job_pulls == Some(1) })
+                    }
                     _ => None,
                 },
                 website: website_allowed(&presented),
@@ -232,7 +211,8 @@ impl Identity {
 
     pub(crate) fn info(row: TokenRow) -> AccessToken {
         let (scopes, legacy) = stored_scopes(row.scopes.as_deref());
-        let held: Vec<Scope> = scopes.as_ref().map_or_else(everything, |scopes| scopes.iter().filter_map(|scope| Scope::parse(scope)).collect());
+        let held: Vec<Scope> =
+            scopes.as_ref().map_or_else(everything, |scopes| scopes.iter().filter_map(|scope| Scope::parse(scope)).collect());
         let mut info = AccessToken {
             id: row.id,
             name: row.name,
@@ -273,11 +253,7 @@ impl Identity {
     async fn note_use(&self, presented: &Presented) -> Result<()> {
         let now = now_ms();
         let stale = rfc3339(now.saturating_sub(LAST_USED_RESOLUTION_MS));
-        if presented
-            .last_used_at
-            .as_deref()
-            .is_some_and(|at| at >= stale.as_str())
-        {
+        if presented.last_used_at.as_deref().is_some_and(|at| at >= stale.as_str()) {
             return Ok(());
         }
         self.db
@@ -313,10 +289,7 @@ impl Identity {
             created_at: rfc3339(now),
             last_used_at: None,
             created_by: None,
-            scopes: grant
-                .scopes
-                .as_ref()
-                .map(|scopes| scopes.iter().map(|scope| scope.as_str().to_owned()).collect()),
+            scopes: grant.scopes.as_ref().map(|scopes| scopes.iter().map(|scope| scope.as_str().to_owned()).collect()),
             legacy: false,
             expires_at: expires_at.clone(),
             permissions: permissions_of(&grant.scopes.clone().unwrap_or_else(everything)),
@@ -356,30 +329,14 @@ impl Identity {
         ttl_seconds: u64,
         grant: &Grant,
     ) -> Result<CreatedAccessToken> {
-        self.mint(
-            Owner::Workspace {
-                id: workspace_id,
-                created_by: None,
-            },
-            name,
-            Some(ttl_seconds),
-            grant,
-            false,
-        )
-        .await
+        self.mint(Owner::Workspace { id: workspace_id, created_by: None }, name, Some(ttl_seconds), grant, false).await
     }
 
-    pub async fn create_access_token(
-        &self,
-        a: CreateAccessTokenArgs,
-    ) -> Result<CreatedAccessToken> {
+    pub async fn create_access_token(&self, a: CreateAccessTokenArgs) -> Result<CreatedAccessToken> {
         // Told apart by the id, which says what it names, since callers pass
         // on actors that other services stored as an id and a name.
         let owner = if a.user.id.starts_with(WORKSPACE_ID_PREFIX) {
-            Owner::Workspace {
-                id: &a.user.id,
-                created_by: None,
-            }
+            Owner::Workspace { id: &a.user.id, created_by: None }
         } else {
             Owner::User(&a.user.id)
         };
@@ -445,16 +402,10 @@ impl Identity {
         Ok(rows.into_iter().map(Self::info).collect())
     }
 
-    pub async fn list_workspace_tokens(
-        &self,
-        a: WorkspaceTokensArgs,
-    ) -> Result<Outcome<Vec<AccessToken>>> {
+    pub async fn list_workspace_tokens(&self, a: WorkspaceTokensArgs) -> Result<Outcome<Vec<AccessToken>>> {
         let slug = a.slug.to_lowercase();
         if !a.viewer.as_ref().is_some_and(|viewer| viewer.is_member(&slug)) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only members can see a workspace's access tokens.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only members can see a workspace's access tokens."));
         }
         let Some(workspace) = self.get_workspace(SlugArgs { slug }).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Workspace not found."));
@@ -468,10 +419,7 @@ impl Identity {
     pub(crate) async fn owned_workspace(&self, actor: &User, slug: &str) -> Result<Outcome<String>> {
         let slug = slug.to_lowercase();
         if actor.kind != PrincipalKind::User || actor.role_in(&slug) != Some(Role::Owner) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only an owner can manage a workspace's access tokens.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can manage a workspace's access tokens."));
         }
         Ok(match self.get_workspace(SlugArgs { slug }).await? {
             Some(workspace) => Outcome::Ok(workspace.id),
@@ -479,10 +427,7 @@ impl Identity {
         })
     }
 
-    pub async fn remove_workspace_token(
-        &self,
-        a: RemoveWorkspaceTokenArgs,
-    ) -> Result<Outcome<bool>> {
+    pub async fn remove_workspace_token(&self, a: RemoveWorkspaceTokenArgs) -> Result<Outcome<bool>> {
         let workspace_id = match self.owned_workspace(&a.actor, &a.slug).await? {
             Outcome::Ok(id) => id,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),

@@ -106,11 +106,8 @@ pub fn machine_name() -> String {
                 .filter(|name| !name.is_empty())
         })
         .unwrap_or_else(|| "desktop".into());
-    let name: String = given
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '-' })
-        .take(64)
-        .collect();
+    let name: String =
+        given.chars().map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '-' }).take(64).collect();
     if name.is_empty() { "desktop".into() } else { name }
 }
 

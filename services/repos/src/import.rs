@@ -49,14 +49,9 @@ fn parse_remote(bytes: &[u8]) -> Option<Remote> {
         let reference = std::str::from_utf8(parts.next()?).ok()?.trim_end();
         // The first ref carries the capabilities, one of which names the
         // branch HEAD points to.
-        if let Some(capabilities) = parts
-            .next()
-            .and_then(|bytes| std::str::from_utf8(bytes).ok())
-        {
-            branch = capabilities
-                .split(' ')
-                .find_map(|capability| capability.trim().strip_prefix("symref=HEAD:refs/heads/"))
-                .map(str::to_owned);
+        if let Some(capabilities) = parts.next().and_then(|bytes| std::str::from_utf8(bytes).ok()) {
+            branch =
+                capabilities.split(' ').find_map(|capability| capability.trim().strip_prefix("symref=HEAD:refs/heads/")).map(str::to_owned);
         }
         let Some((hash, name)) = reference.split_once(' ') else {
             continue;
@@ -70,16 +65,9 @@ fn parse_remote(bytes: &[u8]) -> Option<Remote> {
     // Without a symref, the branch HEAD agrees with; failing that, main.
     let branch = branch.or_else(|| {
         let head = head.as_deref()?;
-        branches
-            .iter()
-            .find(|(_, hash)| hash == head)
-            .map(|(name, _)| name.clone())
+        branches.iter().find(|(_, hash)| hash == head).map(|(name, _)| name.clone())
     })?;
-    let head = branches
-        .iter()
-        .find(|(name, _)| *name == branch)
-        .map(|(_, hash)| hash.clone())
-        .or(head)?;
+    let head = branches.iter().find(|(name, _)| *name == branch).map(|(_, hash)| hash.clone()).or(head)?;
     Some(Remote { branch, head })
 }
 
@@ -101,20 +89,13 @@ fn request(method: Method, url: &str, body: Option<Vec<u8>>) -> Result<Request> 
 /// Asks the other host what it has. `Err` in the inner result is a reason
 /// to show the person importing.
 pub async fn discover(url: &str) -> Result<std::result::Result<Remote, String>> {
-    let request = request(
-        Method::Get,
-        &format!("{url}/info/refs?service=git-upload-pack"),
-        None,
-    )?;
+    let request = request(Method::Get, &format!("{url}/info/refs?service=git-upload-pack"), None)?;
     let mut response = match Fetch::Request(request).send().await {
         Ok(response) => response,
         Err(_) => return Ok(Err("That address could not be reached.".to_owned())),
     };
     if response.status_code() != 200 {
-        return Ok(Err(
-            "No public git repository was found at that address. Private repositories cannot be imported."
-                .to_owned(),
-        ));
+        return Ok(Err("No public git repository was found at that address. Private repositories cannot be imported.".to_owned()));
     }
     let bytes = response.bytes().await?;
     Ok(parse_remote(&bytes).ok_or_else(|| "That repository is empty.".to_owned()))
@@ -130,14 +111,8 @@ mod tests {
 
     #[test]
     fn only_plain_https_addresses_are_fetched() {
-        assert_eq!(
-            clean_url(" https://github.com/syntaqx/hello/ ").as_deref(),
-            Some("https://github.com/syntaqx/hello")
-        );
-        assert_eq!(
-            clean_url("https://github.com/syntaqx/hello.git").as_deref(),
-            Some("https://github.com/syntaqx/hello.git")
-        );
+        assert_eq!(clean_url(" https://github.com/syntaqx/hello/ ").as_deref(), Some("https://github.com/syntaqx/hello"));
+        assert_eq!(clean_url("https://github.com/syntaqx/hello.git").as_deref(), Some("https://github.com/syntaqx/hello.git"));
         for bad in [
             "http://github.com/a/b",
             "git@github.com:a/b.git",
@@ -157,21 +132,13 @@ mod tests {
         let advertisement = [
             pkt("# service=git-upload-pack\n"),
             b"0000".to_vec(),
-            pkt(&format!(
-                "{trunk} HEAD\0multi_ack side-band-64k symref=HEAD:refs/heads/trunk agent=git/x\n"
-            )),
+            pkt(&format!("{trunk} HEAD\0multi_ack side-band-64k symref=HEAD:refs/heads/trunk agent=git/x\n")),
             pkt(&format!("{other} refs/heads/feature\n")),
             pkt(&format!("{trunk} refs/heads/trunk\n")),
             b"0000".to_vec(),
         ]
         .concat();
-        assert_eq!(
-            parse_remote(&advertisement),
-            Some(Remote {
-                branch: "trunk".to_owned(),
-                head: trunk.to_owned()
-            })
-        );
+        assert_eq!(parse_remote(&advertisement), Some(Remote { branch: "trunk".to_owned(), head: trunk.to_owned() }));
     }
 
     #[test]

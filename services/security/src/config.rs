@@ -7,7 +7,7 @@
 //! not update yet are read, checked and listed as such (see [`SUPPORTED`]).
 //! Unknown keys are problems, as the format has it.
 
-use g1t_contracts::updates::{ConfigProblem, UpdateRegistry, UpdateAllow, UpdateGroup, UpdateIgnore};
+use g1t_contracts::updates::{ConfigProblem, UpdateAllow, UpdateGroup, UpdateIgnore, UpdateRegistry};
 
 use crate::schedule::{self, Interval, Schedule, WEEKDAYS};
 use crate::timezones;
@@ -226,11 +226,8 @@ pub fn secret_names(text: &str) -> Vec<String> {
 
 impl Registry {
     pub fn info(&self) -> UpdateRegistry {
-        let mut secrets: Vec<String> = [&self.username, &self.password, &self.token, &self.key]
-            .into_iter()
-            .flatten()
-            .flat_map(|text| secret_names(text))
-            .collect();
+        let mut secrets: Vec<String> =
+            [&self.username, &self.password, &self.token, &self.key].into_iter().flatten().flat_map(|text| secret_names(text)).collect();
         secrets.sort();
         secrets.dedup();
         UpdateRegistry { name: self.name.clone(), kind: self.kind.clone(), url: self.url.clone(), secrets }
@@ -424,7 +421,11 @@ impl Reader {
             out.push(text);
         }
         if out.len() < min {
-            self.problem(node, path, if min == 1 { "This list must not be empty.".to_owned() } else { format!("This list needs at least {min} items.") });
+            self.problem(
+                node,
+                path,
+                if min == 1 { "This list must not be empty.".to_owned() } else { format!("This list needs at least {min} items.") },
+            );
         }
         Some(out)
     }
@@ -468,7 +469,11 @@ impl Reader {
         let timezone = node.get("timezone").and_then(|zone| {
             let text = self.text(zone, &format!("{path}.timezone"))?;
             if !timezones::known(&text) {
-                self.problem(zone, &format!("{path}.timezone"), format!("`{text}` is not a time zone. Use a name from the IANA database, such as \"America/New_York\"."));
+                self.problem(
+                    zone,
+                    &format!("{path}.timezone"),
+                    format!("`{text}` is not a time zone. Use a name from the IANA database, such as \"America/New_York\"."),
+                );
                 return None;
             }
             Some(text)
@@ -523,13 +528,18 @@ impl Reader {
         self.keys(node, path, &BRANCH_KEYS, "`pull-request-branch-name`");
         let mut name = BranchName::default();
         if let Some(separator) = node.get("separator") {
-            name.separator = self.one_of(separator, &format!("{path}.separator"), &["-", "_", "/"], "a separator").unwrap_or(name.separator);
+            name.separator =
+                self.one_of(separator, &format!("{path}.separator"), &["-", "_", "/"], "a separator").unwrap_or(name.separator);
         }
         if let Some(prefix) = node.get("prefix") {
             name.prefix = self.nonempty(prefix, &format!("{path}.prefix")).filter(|text| {
                 let ok = text.chars().count() <= 50 && valid_ref_part(text);
                 if !ok {
-                    self.problem(prefix, &format!("{path}.prefix"), "A prefix is at most 50 characters and must be usable in a branch name.");
+                    self.problem(
+                        prefix,
+                        &format!("{path}.prefix"),
+                        "A prefix is at most 50 characters and must be usable in a branch name.",
+                    );
                 }
                 ok
             });
@@ -544,14 +554,12 @@ impl Reader {
             name.case = self.one_of(case, &format!("{path}.branch-name-case"), &["lowercase", "uppercase"], "a case");
         }
         if let Some(template) = node.get("template") {
-            name.template = self.text(template, &format!("{path}.template")).filter(|text| {
-                match template_problem(text) {
-                    Some(message) => {
-                        self.problem(template, &format!("{path}.template"), message);
-                        false
-                    }
-                    None => true,
+            name.template = self.text(template, &format!("{path}.template")).filter(|text| match template_problem(text) {
+                Some(message) => {
+                    self.problem(template, &format!("{path}.template"), message);
+                    false
                 }
+                None => true,
             });
         }
         if node.as_map().is_some_and(<[_]>::is_empty) {
@@ -590,7 +598,11 @@ impl Reader {
             let name = key.scalar().unwrap_or_default();
             let at = format!("{path}.{name}");
             if !valid_group_name(&name) {
-                self.problem(key, &at, "A group's name starts and ends with a letter or digit, and holds only letters, digits, `|`, `_` and `-`.");
+                self.problem(
+                    key,
+                    &at,
+                    "A group's name starts and ends with a letter or digit, and holds only letters, digits, `|`, `_` and `-`.",
+                );
             }
             if self.map(group, &at).is_none() {
                 continue;
@@ -598,15 +610,20 @@ impl Reader {
             self.keys(group, &at, &GROUP_KEYS, "a group");
             let applies_to = group
                 .get("applies-to")
-                .and_then(|value| self.one_of(value, &format!("{at}.applies-to"), &["version-updates", "security-updates"], "what a group applies to"))
+                .and_then(|value| {
+                    self.one_of(value, &format!("{at}.applies-to"), &["version-updates", "security-updates"], "what a group applies to")
+                })
                 .unwrap_or_else(|| "version-updates".to_owned());
-            let dependency_type = group
-                .get("dependency-type")
-                .and_then(|value| self.one_of(value, &format!("{at}.dependency-type"), &["development", "production"], "a dependency type"));
+            let dependency_type = group.get("dependency-type").and_then(|value| {
+                self.one_of(value, &format!("{at}.dependency-type"), &["development", "production"], "a dependency type")
+            });
             let patterns = group.get("patterns").and_then(|value| self.strings(value, &format!("{at}.patterns"), 1)).unwrap_or_default();
-            let exclude_patterns =
-                group.get("exclude-patterns").and_then(|value| self.strings(value, &format!("{at}.exclude-patterns"), 1)).unwrap_or_default();
-            let update_types = group.get("update-types").map(|value| self.update_types(value, &format!("{at}.update-types"), &LEVELS)).unwrap_or_default();
+            let exclude_patterns = group
+                .get("exclude-patterns")
+                .and_then(|value| self.strings(value, &format!("{at}.exclude-patterns"), 1))
+                .unwrap_or_default();
+            let update_types =
+                group.get("update-types").map(|value| self.update_types(value, &format!("{at}.update-types"), &LEVELS)).unwrap_or_default();
             let group_by = group
                 .get("group-by")
                 .and_then(|value| self.one_of(value, &format!("{at}.group-by"), &["dependency-name"], "something `group-by` takes"));
@@ -621,7 +638,9 @@ impl Reader {
     fn cooldown(&mut self, node: &Node, path: &str) -> Option<Cooldown> {
         self.map(node, path)?;
         self.keys(node, path, &COOLDOWN_KEYS, "`cooldown`");
-        let days = |reader: &mut Reader, key: &str, low: i64| node.get(key).and_then(|value| reader.integer(value, &format!("{path}.{key}"), low, Some(90)));
+        let days = |reader: &mut Reader, key: &str, low: i64| {
+            node.get(key).and_then(|value| reader.integer(value, &format!("{path}.{key}"), low, Some(90)))
+        };
         let list = |reader: &mut Reader, key: &str| -> Vec<String> {
             let Some(value) = node.get(key) else { return Vec::new() };
             let found = reader.strings(value, &format!("{path}.{key}"), 0).unwrap_or_default();
@@ -653,10 +672,13 @@ impl Reader {
             }
             self.keys(item, &at, &["dependency-name", "dependency-type", "update-types"], "an `allow` rule");
             let dependency = item.get("dependency-name").and_then(|value| self.nonempty(value, &format!("{at}.dependency-name")));
-            let dependency_type =
-                item.get("dependency-type").and_then(|value| self.one_of(value, &format!("{at}.dependency-type"), &DEPENDENCY_TYPES, "a dependency type"));
-            let update_types =
-                item.get("update-types").map(|value| self.update_types(value, &format!("{at}.update-types"), &SEMVER_UPDATE_TYPES)).unwrap_or_default();
+            let dependency_type = item
+                .get("dependency-type")
+                .and_then(|value| self.one_of(value, &format!("{at}.dependency-type"), &DEPENDENCY_TYPES, "a dependency type"));
+            let update_types = item
+                .get("update-types")
+                .map(|value| self.update_types(value, &format!("{at}.update-types"), &SEMVER_UPDATE_TYPES))
+                .unwrap_or_default();
             if item.get("dependency-name").is_none() && item.get("dependency-type").is_none() {
                 self.problem(item, &at, "An `allow` rule needs dependency-name or dependency-type.");
             }
@@ -683,11 +705,15 @@ impl Reader {
                 .unwrap_or_else(|| "*".to_owned());
             let versions = match item.get("versions") {
                 None => Vec::new(),
-                Some(value) if matches!(value.value, Value::Seq(_)) => self.strings(value, &format!("{at}.versions"), 1).unwrap_or_default(),
+                Some(value) if matches!(value.value, Value::Seq(_)) => {
+                    self.strings(value, &format!("{at}.versions"), 1).unwrap_or_default()
+                }
                 Some(value) => self.nonempty(value, &format!("{at}.versions")).into_iter().collect(),
             };
-            let update_types =
-                item.get("update-types").map(|value| self.update_types(value, &format!("{at}.update-types"), &SEMVER_UPDATE_TYPES)).unwrap_or_default();
+            let update_types = item
+                .get("update-types")
+                .map(|value| self.update_types(value, &format!("{at}.update-types"), &SEMVER_UPDATE_TYPES))
+                .unwrap_or_default();
             if item.as_map().is_some_and(<[_]>::is_empty) {
                 self.problem(item, &at, "An `ignore` rule needs dependency-name, versions or update-types.");
             }
@@ -729,8 +755,10 @@ impl Reader {
             let at = node.get("scope").unwrap_or(node);
             self.problem(at, &format!("{path}.scope"), format!("`{scope}` is not an npm scope; a scope starts with @."));
         }
-        let replaces_base = node.get("replaces-base").and_then(|value| self.boolean(value, &format!("{path}.replaces-base"))).unwrap_or(false);
-        let oidc = ["tenant-id", "client-id", "jfrog-oidc-provider-name", "aws-region", "role-name"].iter().any(|key| node.get(key).is_some());
+        let replaces_base =
+            node.get("replaces-base").and_then(|value| self.boolean(value, &format!("{path}.replaces-base"))).unwrap_or(false);
+        let oidc =
+            ["tenant-id", "client-id", "jfrog-oidc-provider-name", "aws-region", "role-name"].iter().any(|key| node.get(key).is_some());
         Some(Registry {
             name: name.to_owned(),
             kind,
@@ -772,7 +800,9 @@ impl Reader {
             milestone: node.get("milestone").and_then(|value| self.integer(value, &format!("{path}.milestone"), 1, None)),
             target_branch: node.get("target-branch").and_then(|value| self.nonempty(value, &format!("{path}.target-branch"))),
             commit_message: node.get("commit-message").and_then(|value| self.commit_message(value, &format!("{path}.commit-message"))),
-            branch_name: node.get("pull-request-branch-name").and_then(|value| self.branch_name(value, &format!("{path}.pull-request-branch-name"))),
+            branch_name: node
+                .get("pull-request-branch-name")
+                .and_then(|value| self.branch_name(value, &format!("{path}.pull-request-branch-name"))),
             open_pull_requests_limit: node
                 .get("open-pull-requests-limit")
                 .and_then(|value| self.integer(value, &format!("{path}.open-pull-requests-limit"), 0, None)),
@@ -793,7 +823,11 @@ impl Reader {
                 match text {
                     Some(text) if ECOSYSTEMS.contains(&text.as_str()) || config.beta => Some(text),
                     Some(text) => {
-                        self.problem(value, &format!("{path}.package-ecosystem"), format!("`{text}` is not a package ecosystem. Use one of {}.", ECOSYSTEMS.join(", ")));
+                        self.problem(
+                            value,
+                            &format!("{path}.package-ecosystem"),
+                            format!("`{text}` is not a package ecosystem. Use one of {}.", ECOSYSTEMS.join(", ")),
+                        );
                         None
                     }
                     None => None,
@@ -827,7 +861,11 @@ impl Reader {
         let multi_ecosystem_group = node.get("multi-ecosystem-group").and_then(|value| {
             let name = self.nonempty(value, &format!("{path}.multi-ecosystem-group"))?;
             if !config.multi_groups.iter().any(|group| group.name == name) {
-                self.problem(value, &format!("{path}.multi-ecosystem-group"), format!("`{name}` is not one of the groups under multi-ecosystem-groups."));
+                self.problem(
+                    value,
+                    &format!("{path}.multi-ecosystem-group"),
+                    format!("`{name}` is not one of the groups under multi-ecosystem-groups."),
+                );
             }
             Some(name)
         });
@@ -849,12 +887,18 @@ impl Reader {
         }
         let registries = match node.get("registries") {
             None => Vec::new(),
-            Some(value) if value.scalar().as_deref() == Some("*") => config.registries.iter().map(|registry| registry.name.clone()).collect(),
+            Some(value) if value.scalar().as_deref() == Some("*") => {
+                config.registries.iter().map(|registry| registry.name.clone()).collect()
+            }
             Some(value) => {
                 let names = self.strings(value, &format!("{path}.registries"), 1).unwrap_or_default();
                 for name in &names {
                     if !config.registries.iter().any(|registry| &registry.name == name) {
-                        self.problem(value, &format!("{path}.registries"), format!("`{name}` is not one of the registries under the top-level registries."));
+                        self.problem(
+                            value,
+                            &format!("{path}.registries"),
+                            format!("`{name}` is not one of the registries under the top-level registries."),
+                        );
                     }
                 }
                 if names.len() > 100 {
@@ -912,7 +956,10 @@ impl Reader {
             insecure_external_code_execution: node.get("insecure-external-code-execution").and_then(|value| {
                 self.one_of(value, &format!("{path}.insecure-external-code-execution"), &["allow", "deny"], "something this option takes")
             }),
-            exclude_paths: node.get("exclude-paths").and_then(|value| self.strings(value, &format!("{path}.exclude-paths"), 0)).unwrap_or_default(),
+            exclude_paths: node
+                .get("exclude-paths")
+                .and_then(|value| self.strings(value, &format!("{path}.exclude-paths"), 0))
+                .unwrap_or_default(),
             registries,
             patterns,
             multi_ecosystem_group,
@@ -955,7 +1002,10 @@ fn template_problem(template: &str) -> Option<String> {
         };
         let name = &after[..close];
         if !TEMPLATE_PLACEHOLDERS.contains(&name) {
-            return Some(format!("`{{{name}}}` is not a placeholder. Use {}.", TEMPLATE_PLACEHOLDERS.map(|p| format!("{{{p}}}")).join(", ")));
+            return Some(format!(
+                "`{{{name}}}` is not a placeholder. Use {}.",
+                TEMPLATE_PLACEHOLDERS.map(|p| format!("{{{p}}}")).join(", ")
+            ));
         }
         rest = &after[close + 1..];
     }
@@ -985,7 +1035,11 @@ pub fn read(source: &str) -> Read {
         Some(version) => {
             let two = matches!(&version.value, Value::Int(2)) || matches!(&version.value, Value::Text { text, .. } if text.trim() == "2");
             if !two {
-                reader.problem(version, "version", format!("The version must be 2, not {}.", version.scalar().unwrap_or_else(|| version.kind().to_owned())));
+                reader.problem(
+                    version,
+                    "version",
+                    format!("The version must be 2, not {}.", version.scalar().unwrap_or_else(|| version.kind().to_owned())),
+                );
             }
         }
     }
@@ -1086,10 +1140,7 @@ pub fn ecosystem_label(ecosystem: &str) -> Option<&'static str> {
 pub fn update_labels(labels: Option<&[String]>, ecosystem: &str) -> Vec<String> {
     match labels {
         Some(labels) => labels.to_vec(),
-        None => std::iter::once("dependencies")
-            .chain(ecosystem_label(ecosystem))
-            .map(|label| label.to_lowercase())
-            .collect(),
+        None => std::iter::once("dependencies").chain(ecosystem_label(ecosystem)).map(|label| label.to_lowercase()).collect(),
     }
 }
 
@@ -1173,7 +1224,8 @@ pub fn glob(pattern: &str, path: &str) -> bool {
         }
         go(&p, &n)
     }
-    let split = |text: &str| -> Vec<String> { text.trim_matches('/').split('/').filter(|part| !part.is_empty()).map(str::to_owned).collect() };
+    let split =
+        |text: &str| -> Vec<String> { text.trim_matches('/').split('/').filter(|part| !part.is_empty()).map(str::to_owned).collect() };
     let (pattern, path) = (split(pattern), split(path));
     let pattern: Vec<&str> = pattern.iter().map(String::as_str).collect();
     let path: Vec<&str> = path.iter().map(String::as_str).collect();
@@ -1301,7 +1353,10 @@ updates:
         assert_eq!((schedule.interval, schedule.day, schedule.time), (Interval::Weekly, Some(2), Some((9, 30))));
         assert_eq!(schedule.timezone.as_deref(), Some("Europe/Berlin"));
         assert_eq!(npm.allow.len(), 2);
-        assert_eq!(npm.ignore[1], UpdateIgnore { dependency: "*".into(), versions: vec![], update_types: vec!["version-update:semver-major".into()] });
+        assert_eq!(
+            npm.ignore[1],
+            UpdateIgnore { dependency: "*".into(), versions: vec![], update_types: vec!["version-update:semver-major".into()] }
+        );
         assert_eq!(npm.ignore[2].versions, ["1.x"]);
         assert_eq!(npm.groups.len(), 3);
         assert_eq!(npm.groups[0].update_types, ["minor", "patch"]);
@@ -1309,7 +1364,10 @@ updates:
         assert_eq!(npm.groups[1].applies_to, "security-updates");
         assert_eq!(npm.groups[2].group_by.as_deref(), Some("dependency-name"));
         assert_eq!(npm.cooldown.as_ref().unwrap().patch_days, Some(0));
-        assert_eq!(npm.commit_message, Some(CommitMessage { prefix: Some("build".into()), prefix_development: Some("chore".into()), scope: true }));
+        assert_eq!(
+            npm.commit_message,
+            Some(CommitMessage { prefix: Some("build".into()), prefix_development: Some("chore".into()), scope: true })
+        );
         assert_eq!(npm.open_pull_requests_limit, 10);
         assert_eq!(npm.branch_name.separator, "-");
         assert_eq!(npm.branch_name.template.as_deref(), Some("{prefix}/{package_manager}/{name}"));
@@ -1328,9 +1386,11 @@ updates:
         assert_eq!(docker.schedule.as_ref().unwrap().interval, Interval::Weekly);
         assert!(notes(docker, Some("main")).iter().any(|note| note.contains("does not open version update pull requests for docker")));
         // labels, milestone and target-branch are acted on, so nothing is said of them.
-        assert!(!notes(npm, Some("main")).iter().any(|note| {
-            note.starts_with("target-branch") || note.starts_with("labels") || note.starts_with("milestone")
-        }));
+        assert!(
+            !notes(npm, Some("main"))
+                .iter()
+                .any(|note| { note.starts_with("target-branch") || note.starts_with("labels") || note.starts_with("milestone") })
+        );
         assert_eq!(update_labels(npm.labels.as_deref(), &npm.ecosystem), ["deps", "javascript"]);
         assert_eq!(update_labels(None, "cargo"), ["dependencies", "rust"]);
         assert_eq!(update_labels(None, "github-actions"), ["dependencies", "github_actions"]);
@@ -1340,7 +1400,8 @@ updates:
 
     #[test]
     fn defaults() {
-        let entry = only("version: 2\nupdates:\n  - package-ecosystem: cargo\n    directory: \"/\"\n    schedule:\n      interval: daily\n");
+        let entry =
+            only("version: 2\nupdates:\n  - package-ecosystem: cargo\n    directory: \"/\"\n    schedule:\n      interval: daily\n");
         assert_eq!(entry.directories, ["/"]);
         assert_eq!(entry.open_pull_requests_limit, 5);
         assert_eq!(entry.rebase_strategy, "auto");
@@ -1350,7 +1411,11 @@ updates:
         // The version may be written as text.
         assert!(read("version: \"2\"\nupdates: []\n").problems.is_empty());
         // A directory is written with or without its slashes.
-        assert_eq!(only("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: web/app/\n    schedule: {interval: weekly}\n").directories, ["/web/app"]);
+        assert_eq!(
+            only("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: web/app/\n    schedule: {interval: weekly}\n")
+                .directories,
+            ["/web/app"]
+        );
     }
 
     #[test]
@@ -1361,47 +1426,161 @@ updates:
             ("version: 2", "updates: `updates` is required"),
             ("version: 2\nupdates: []\nextra: 1", "line 3, `extra` is not an option of the file."),
             ("version: 2\nupdates: {}", "line 2, updates: `updates` must be a list of entries, not a mapping."),
-            ("version: 2\nupdates:\n  - directory: /\n    schedule: {interval: daily}", "line 3, updates[0]: `package-ecosystem` is required"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npmx\n    directory: /\n    schedule: {interval: daily}", "line 3, updates[0].package-ecosystem: `npmx` is not a package ecosystem"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    schedule: {interval: daily}", "`directory` (or `directories`) is required"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    directories: [/]\n    schedule: {interval: daily}", "not both"),
+            (
+                "version: 2\nupdates:\n  - directory: /\n    schedule: {interval: daily}",
+                "line 3, updates[0]: `package-ecosystem` is required",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npmx\n    directory: /\n    schedule: {interval: daily}",
+                "line 3, updates[0].package-ecosystem: `npmx` is not a package ecosystem",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    schedule: {interval: daily}",
+                "`directory` (or `directories`) is required",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    directories: [/]\n    schedule: {interval: daily}",
+                "not both",
+            ),
             ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n", "`schedule` is required"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: hourly\n", "line 6, updates[0].schedule.interval: `hourly` is not an interval. Use `daily`, `weekly`, `monthly`, `quarterly`, `semiannually`, `yearly` or `cron`."),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: weekly\n      day: someday\n", "`someday` is not a day of the week"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: weekly\n      time: \"9am\"\n", "`9am` is not a time"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: weekly\n      timezone: Mars/Base\n", "`Mars/Base` is not a time zone"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: cron\n", "`cronjob` is required"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: cron\n      cronjob: \"whenever\"\n", "neither a cron expression"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    open-pull-requests-limit: -1\n", "whole number of 0 or more"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    labels: deps\n", "This must be a list, not text."),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    assignees: []\n", "This list must not be empty."),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    reviewers: [a, a]\n", "`a` is listed twice."),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    groups:\n      lint:\n        pattern: [x]\n", "`pattern` is not an option of a group."),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    groups:\n      \"-bad\":\n        patterns: [x]\n", "A group's name starts and ends"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    groups:\n      a:\n        update-types: [huge]\n", "`huge` is not an update type"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    ignore:\n      - {}\n", "An `ignore` rule needs"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    ignore:\n      - dependency-name: x\n        update-types: [major]\n", "`major` is not an update type. Use `version-update:semver-major`"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    allow:\n      - update-types: [\"version-update:semver-patch\"]\n", "An `allow` rule needs dependency-name or dependency-type."),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    allow:\n      - dependency-type: dev\n", "`dev` is not a dependency type"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    cooldown:\n      default-days: 91\n", "from 1 to 90"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    commit-message:\n      prefix: \"012345678901234567890123456789012345678901234567890\"\n", "at most 50 characters"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    commit-message:\n      include: everything\n", "`everything` is not something `include` takes"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    pull-request-branch-name:\n      separator: \"+\"\n", "`+` is not a separator"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    pull-request-branch-name:\n      template: \"{prefix}/{nope}\"\n", "`{nope}` is not a placeholder"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    rebase-strategy: squashed\n", "`squashed` is not a rebase strategy"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    versioning-strategy: newest\n", "`newest` is not a versioning strategy"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    registries: [nope]\n", "`nope` is not one of the registries"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    vendor: yes\n", "This must be true or false"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    milestone: 0\n", "whole number of 1 or more"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    target-branch: \"a b\"\n", "is not a branch name"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    multi-ecosystem-group: nope\n    patterns: [\"*\"]\n", "`nope` is not one of the groups"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: ../x\n    schedule: {interval: daily}\n", "must stay inside the repository"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /packages/*\n    schedule: {interval: daily}\n", "use `directories` for globs"),
-            ("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n  - package-ecosystem: npm\n    directories: [/, /web]\n    schedule: {interval: daily}\n", "already covered by the entry on line 3"),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: hourly\n",
+                "line 6, updates[0].schedule.interval: `hourly` is not an interval. Use `daily`, `weekly`, `monthly`, `quarterly`, `semiannually`, `yearly` or `cron`.",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: weekly\n      day: someday\n",
+                "`someday` is not a day of the week",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: weekly\n      time: \"9am\"\n",
+                "`9am` is not a time",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: weekly\n      timezone: Mars/Base\n",
+                "`Mars/Base` is not a time zone",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: cron\n",
+                "`cronjob` is required",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: cron\n      cronjob: \"whenever\"\n",
+                "neither a cron expression",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    open-pull-requests-limit: -1\n",
+                "whole number of 0 or more",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    labels: deps\n",
+                "This must be a list, not text.",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    assignees: []\n",
+                "This list must not be empty.",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    reviewers: [a, a]\n",
+                "`a` is listed twice.",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    groups:\n      lint:\n        pattern: [x]\n",
+                "`pattern` is not an option of a group.",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    groups:\n      \"-bad\":\n        patterns: [x]\n",
+                "A group's name starts and ends",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    groups:\n      a:\n        update-types: [huge]\n",
+                "`huge` is not an update type",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    ignore:\n      - {}\n",
+                "An `ignore` rule needs",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    ignore:\n      - dependency-name: x\n        update-types: [major]\n",
+                "`major` is not an update type. Use `version-update:semver-major`",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    allow:\n      - update-types: [\"version-update:semver-patch\"]\n",
+                "An `allow` rule needs dependency-name or dependency-type.",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    allow:\n      - dependency-type: dev\n",
+                "`dev` is not a dependency type",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    cooldown:\n      default-days: 91\n",
+                "from 1 to 90",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    commit-message:\n      prefix: \"012345678901234567890123456789012345678901234567890\"\n",
+                "at most 50 characters",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    commit-message:\n      include: everything\n",
+                "`everything` is not something `include` takes",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    pull-request-branch-name:\n      separator: \"+\"\n",
+                "`+` is not a separator",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    pull-request-branch-name:\n      template: \"{prefix}/{nope}\"\n",
+                "`{nope}` is not a placeholder",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    rebase-strategy: squashed\n",
+                "`squashed` is not a rebase strategy",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    versioning-strategy: newest\n",
+                "`newest` is not a versioning strategy",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    registries: [nope]\n",
+                "`nope` is not one of the registries",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    vendor: yes\n",
+                "This must be true or false",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    milestone: 0\n",
+                "whole number of 1 or more",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    target-branch: \"a b\"\n",
+                "is not a branch name",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n    multi-ecosystem-group: nope\n    patterns: [\"*\"]\n",
+                "`nope` is not one of the groups",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: ../x\n    schedule: {interval: daily}\n",
+                "must stay inside the repository",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /packages/*\n    schedule: {interval: daily}\n",
+                "use `directories` for globs",
+            ),
+            (
+                "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: daily}\n  - package-ecosystem: npm\n    directories: [/, /web]\n    schedule: {interval: daily}\n",
+                "already covered by the entry on line 3",
+            ),
             ("version: 2\nregistries:\n  r:\n    type: npm\n    url: https://x\nupdates: []\n", "`npm` is not a registry type"),
             ("version: 2\nregistries:\n  r:\n    type: npm-registry\nupdates: []\n", "`url` is required."),
-            ("version: 2\nregistries:\n  r:\n    type: npm-registry\n    url: https://x\n    scope: acme\nupdates: []\n", "`acme` is not an npm scope"),
-            ("version: 2\nregistries:\n  r:\n    type: npm-registry\n    url: https://x\n    secret: y\nupdates: []\n", "`secret` is not an option of a registry."),
+            (
+                "version: 2\nregistries:\n  r:\n    type: npm-registry\n    url: https://x\n    scope: acme\nupdates: []\n",
+                "`acme` is not an npm scope",
+            ),
+            (
+                "version: 2\nregistries:\n  r:\n    type: npm-registry\n    url: https://x\n    secret: y\nupdates: []\n",
+                "`secret` is not an option of a registry.",
+            ),
             ("version: 2\nmulti-ecosystem-groups:\n  infra: {}\nupdates: []\n", "`schedule` is required."),
             ("version: 2\nupdates: [\n", "This is not valid YAML"),
             ("[1, 2]", "The file must be a mapping"),
@@ -1447,7 +1626,8 @@ updates:
 
     #[test]
     fn every_problem_is_reported_not_just_the_first() {
-        let source = "version: 3\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: hourly}\n    labelz: []\n";
+        let source =
+            "version: 3\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {interval: hourly}\n    labelz: []\n";
         let found = read(source).problems;
         assert_eq!(found.len(), 3, "{found:?}");
         assert_eq!(found.iter().map(|problem| problem.line).collect::<Vec<_>>(), [1, 5, 6]);

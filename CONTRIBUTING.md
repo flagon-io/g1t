@@ -74,6 +74,12 @@ cd apps/docs && npm run build
 ## Before you push
 
 - `cargo test` in the crate or service you changed.
+- `cargo fmt --all` at the root after changing Rust (and `cargo fmt` in
+  `apps/desktop/src-tauri`, which is outside the workspace). CI fails a pull
+  request whose Rust is not formatted (`rustfmt.toml`). If a rebase
+  conflicts with the one-time reformat, take your side and run `cargo fmt`
+  again. `git config blame.ignoreRevsFile .git-blame-ignore-revs` keeps
+  that reformat out of `git blame`.
 - `npx tsc -b --force` in `apps/web` (the incremental build misses changes
   in `packages/contracts`).
 - `npm run format -- <files>` on the TypeScript files you added

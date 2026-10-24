@@ -11,8 +11,8 @@
 //! ceiling trust gives, and the owners' spend limit moves up to it.
 
 use g1t_contracts::billing::{
-    AdminDecideLimitRequestArgs, AdminLimitRequestsArgs, AdminRecordPaymentArgs, EntryKind, LedgerEntry, LimitRequest,
-    LimitRequestReview, LimitRequestsArgs, RequestLimitArgs, WorkspaceHistory, MICROS_PER_DOLLAR,
+    AdminDecideLimitRequestArgs, AdminLimitRequestsArgs, AdminRecordPaymentArgs, EntryKind, LedgerEntry, LimitRequest, LimitRequestReview,
+    LimitRequestsArgs, MICROS_PER_DOLLAR, RequestLimitArgs, WorkspaceHistory,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, new_id};
@@ -112,7 +112,10 @@ impl Billing {
     pub(crate) async fn request_limit(&self, a: RequestLimitArgs) -> Result<Outcome<LimitRequest>> {
         let workspace = a.workspace.to_lowercase();
         if !a.actor.manages_billing(&workspace) {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner or a billing manager can ask g1t about the workspace's limit."));
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                "Only an owner or a billing manager can ask g1t about the workspace's limit.",
+            ));
         }
         let limit = self.limit_of(&workspace).await?;
         let current = limit.available_micros.max(limit.raise_once_micros);
@@ -351,8 +354,15 @@ impl Billing {
                 ("limit", false) => format!("g1t: about {workspace}'s limit"),
                 _ => format!("g1t: about {workspace}'s usage this month"),
             };
-            crate::limits::notify(identity, &workspace, &subject, &text, "Open billing", &format!("https://g1t.sh/{workspace}/-/settings/billing"))
-                .await;
+            crate::limits::notify(
+                identity,
+                &workspace,
+                &subject,
+                &text,
+                "Open billing",
+                &format!("https://g1t.sh/{workspace}/-/settings/billing"),
+            )
+            .await;
         }
         Ok(match self.request(&a.id).await? {
             Some(request) => Outcome::Ok(request),
@@ -383,22 +393,21 @@ impl Billing {
         }
         let note = a.note.trim();
         let description = if note.is_empty() { "Paid by bank transfer".to_owned() } else { format!("Paid by bank transfer: {note}") };
-        self.enter(&workspace, EntryKind::TopUp, a.amount_micros, &description, &key, None, Some(a.by.trim()), None)
-            .await?;
+        self.enter(&workspace, EntryKind::TopUp, a.amount_micros, &description, &key, None, Some(a.by.trim()), None).await?;
         let account = self.account_of(&workspace).await?;
         self.audit(
             &account.id,
             "payment",
-            &format!("{} to {workspace} by bank transfer, reference {reference}{}", dollars(a.amount_micros), if note.is_empty() { String::new() } else { format!(": {note}") }),
+            &format!(
+                "{} to {workspace} by bank transfer, reference {reference}{}",
+                dollars(a.amount_micros),
+                if note.is_empty() { String::new() } else { format!(": {note}") }
+            ),
             a.by.trim(),
         )
         .await?;
-        let row = self
-            .db
-            .prepare("SELECT * FROM ledger WHERE reference = ?")
-            .bind(&[key.as_str().into()])?
-            .first::<LedgerRow>(None)
-            .await?;
+        let row =
+            self.db.prepare("SELECT * FROM ledger WHERE reference = ?").bind(&[key.as_str().into()])?.first::<LedgerRow>(None).await?;
         Ok(match row {
             Some(row) => Outcome::Ok(LedgerEntry::from(row)),
             None => Outcome::fail(FailureCode::NotFound, "The payment was not saved."),
@@ -429,6 +438,9 @@ mod tests {
             answer("limit", Some(300_000_000), 500_000_000, "We can go higher after a month of payments."),
             "Approved at $300.00, rather than the $500.00 asked for. We can go higher after a month of payments."
         );
-        assert_eq!(answer("limit", None, 500_000_000, "Your card was declined twice."), "Not approved this time. Your card was declined twice.");
+        assert_eq!(
+            answer("limit", None, 500_000_000, "Your card was declined twice."),
+            "Not approved this time. Your card was declined twice."
+        );
     }
 }

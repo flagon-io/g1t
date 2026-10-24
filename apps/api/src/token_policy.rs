@@ -58,12 +58,24 @@ impl TokenOp {
 
     pub fn description(self) -> &'static str {
         match self {
-            TokenOp::GetTokenPolicy => "A workspace's rules for its members' personal access tokens: allow_tokens_for_all_workspaces (a token made for every workspace of its owner reaches this one), allow_tokens_for_this_workspace (a token may be made for this workspace alone), require_approval (a token made for this workspace waits for an owner's approval; true unless an owner says, and never for an owner's own token), max_lifetime_days (the longest a token reaching it may last; null for no limit, and a token with an expiry lasts at most 366 days anyway) and forbid_no_expiry (a token that never expires does not reach it). A token outside the rules keeps working elsewhere and reaches the workspace's public repositories only. Members only.",
-            TokenOp::SetTokenPolicy => "Change a workspace's rules for personal access tokens; fields left out stay as they are. max_lifetime_days of 0 removes the limit. The rules apply from each token's next request, to tokens made before them too. Owners only, as people.",
-            TokenOp::ListMemberTokens => "The personal access tokens of the workspace's members and outside collaborators that can reach it and have not expired: every token made for this workspace, whatever its status, and every token made for all of its owner's workspaces. Each with its owner, name, description, permissions (each resource at its level, such as {\"work\": \"write\"}), scopes, workspace (the one it is made for; null for all of its owner's), repository_selection (all, selected or public), repositories, status (active, pending, denied or revoked), when it was made, last used and expires, and whether it reaches the workspace now (reaches, and blocked_by when not: pending approval, denied, revoked, tokens for all workspaces not allowed, tokens made for this workspace not allowed, lasts too long, never expires). Never the token itself. Owners only, as people.",
-            TokenOp::ListTokenRequests => "The tokens made for the workspace that wait for an owner's approval, as list_member_tokens shows them. Until approved, a token reaches public repositories only. Owners only, as people.",
-            TokenOp::ReviewTokenRequest => "Approve or deny a token waiting for approval: decision is approve or deny, and reason, if given, is shown to the token's owner, who hears of it in their inbox. An approved token reaches the workspace from its next request; a denied one reaches public repositories only. Recorded in the audit log as token.approved or token.denied. Owners only, as people.",
-            TokenOp::RevokeMemberToken => "Take a member's token out of the workspace, with an optional reason its owner is shown. A token made for this workspace stops reaching it for good; a token made for all of its owner's workspaces keeps working everywhere else but never reaches this one again. Recorded in the audit log as token.revoked. Owners only, as people.",
+            TokenOp::GetTokenPolicy => {
+                "A workspace's rules for its members' personal access tokens: allow_tokens_for_all_workspaces (a token made for every workspace of its owner reaches this one), allow_tokens_for_this_workspace (a token may be made for this workspace alone), require_approval (a token made for this workspace waits for an owner's approval; true unless an owner says, and never for an owner's own token), max_lifetime_days (the longest a token reaching it may last; null for no limit, and a token with an expiry lasts at most 366 days anyway) and forbid_no_expiry (a token that never expires does not reach it). A token outside the rules keeps working elsewhere and reaches the workspace's public repositories only. Members only."
+            }
+            TokenOp::SetTokenPolicy => {
+                "Change a workspace's rules for personal access tokens; fields left out stay as they are. max_lifetime_days of 0 removes the limit. The rules apply from each token's next request, to tokens made before them too. Owners only, as people."
+            }
+            TokenOp::ListMemberTokens => {
+                "The personal access tokens of the workspace's members and outside collaborators that can reach it and have not expired: every token made for this workspace, whatever its status, and every token made for all of its owner's workspaces. Each with its owner, name, description, permissions (each resource at its level, such as {\"work\": \"write\"}), scopes, workspace (the one it is made for; null for all of its owner's), repository_selection (all, selected or public), repositories, status (active, pending, denied or revoked), when it was made, last used and expires, and whether it reaches the workspace now (reaches, and blocked_by when not: pending approval, denied, revoked, tokens for all workspaces not allowed, tokens made for this workspace not allowed, lasts too long, never expires). Never the token itself. Owners only, as people."
+            }
+            TokenOp::ListTokenRequests => {
+                "The tokens made for the workspace that wait for an owner's approval, as list_member_tokens shows them. Until approved, a token reaches public repositories only. Owners only, as people."
+            }
+            TokenOp::ReviewTokenRequest => {
+                "Approve or deny a token waiting for approval: decision is approve or deny, and reason, if given, is shown to the token's owner, who hears of it in their inbox. An approved token reaches the workspace from its next request; a denied one reaches public repositories only. Recorded in the audit log as token.approved or token.denied. Owners only, as people."
+            }
+            TokenOp::RevokeMemberToken => {
+                "Take a member's token out of the workspace, with an optional reason its owner is shown. A token made for this workspace stops reaching it for good; a token made for all of its owner's workspaces keeps working everywhere else but never reaches this one again. Recorded in the audit log as token.revoked. Owners only, as people."
+            }
         }
     }
 
@@ -78,7 +90,9 @@ impl TokenOp {
         let id = json!({ "type": "string", "description": "The token's id, tok_…." });
         let reason = json!({ "type": "string", "description": "Why, shown to the token's owner." });
         let (properties, required): (Value, &[&str]) = match self {
-            TokenOp::GetTokenPolicy | TokenOp::ListTokenRequests | TokenOp::ListMemberTokens => (json!({ "workspace": workspace }), &["workspace"]),
+            TokenOp::GetTokenPolicy | TokenOp::ListTokenRequests | TokenOp::ListMemberTokens => {
+                (json!({ "workspace": workspace }), &["workspace"])
+            }
             TokenOp::SetTokenPolicy => (
                 json!({
                     "workspace": workspace,
@@ -165,7 +179,8 @@ pub async fn run(op: TokenOp, services: &Services, viewer: &Viewer, input: &Valu
     };
     let identity = &services.identity;
     let surface = services.audit.surface;
-    let list = |members: &Value| Value::Array(members.as_array().map(|members| members.iter().map(member_view).collect()).unwrap_or_default());
+    let list =
+        |members: &Value| Value::Array(members.as_array().map(|members| members.iter().map(member_view).collect()).unwrap_or_default());
     Ok(match op {
         TokenOp::GetTokenPolicy => g1t_kit::call(identity, "get_token_policy", &json!({ "viewer": viewer, "slug": workspace })).await?,
         TokenOp::SetTokenPolicy => {
@@ -194,7 +209,8 @@ pub async fn run(op: TokenOp, services: &Services, viewer: &Viewer, input: &Valu
         }
         TokenOp::ListMemberTokens | TokenOp::ListTokenRequests => {
             let status = (op == TokenOp::ListTokenRequests).then_some("pending");
-            let members: Outcome<Value> = g1t_kit::call(identity, "list_member_tokens", &json!({ "actor": actor, "slug": workspace, "status": status })).await?;
+            let members: Outcome<Value> =
+                g1t_kit::call(identity, "list_member_tokens", &json!({ "actor": actor, "slug": workspace, "status": status })).await?;
             map(members, list)
         }
         TokenOp::ReviewTokenRequest => {
@@ -271,7 +287,12 @@ mod tests {
     #[test]
     fn only_changes_write() {
         for op in TokenOp::ALL {
-            assert_eq!(op.writes(), op.name().starts_with("set_") || op.name().starts_with("review_") || op.name().starts_with("revoke_"), "{}", op.name());
+            assert_eq!(
+                op.writes(),
+                op.name().starts_with("set_") || op.name().starts_with("review_") || op.name().starts_with("revoke_"),
+                "{}",
+                op.name()
+            );
             assert!(op.input()["required"].as_array().unwrap().contains(&json!("workspace")));
         }
     }

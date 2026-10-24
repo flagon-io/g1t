@@ -8,7 +8,7 @@ import { test } from "node:test";
 const source = (name) => readFileSync(new URL(`../services/billing/src/${name}.rs`, import.meta.url), "utf8");
 const sqlFile = (name) => readFileSync(new URL(`../services/billing/src/${name}.sql`, import.meta.url), "utf8");
 const constant = (file, name) => {
-  const match = source(file).match(new RegExp(`const ${name}: &str = "([\\s\\S]*?)";`));
+  const match = source(file).match(new RegExp(`const ${name}: &str =\\s*"([\\s\\S]*?)";`));
   assert.ok(match, `${file}::${name}`);
   return match[1];
 };

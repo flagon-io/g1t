@@ -12,8 +12,7 @@ use g1t_contracts::checks::StatusEvent;
 use g1t_contracts::events::ChecksEvent;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::{
-    CommitStatus, RequiredCheck, RequiredState, SeenCheck, SeenChecksArgs, SetCommitStatusArgs, check_name,
-    required_checks,
+    CommitStatus, RequiredCheck, RequiredState, SeenCheck, SeenChecksArgs, SetCommitStatusArgs, check_name, required_checks,
 };
 use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
@@ -67,8 +66,7 @@ pub(crate) struct WorkflowFacts {
 impl WorkflowFacts {
     /// Missing and pending required checks are not evidence of a passing build.
     pub(crate) fn passed(&self) -> bool {
-        self.pending.is_empty() && self.failed.is_empty()
-            && self.required.iter().all(|check| check.state == RequiredState::Success)
+        self.pending.is_empty() && self.failed.is_empty() && self.required.iter().all(|check| check.state == RequiredState::Success)
     }
 
     /// `required` names the checks the default branch's protection requires.
@@ -122,22 +120,15 @@ pub(crate) struct AttemptEvidence {
 /// would otherwise decide this one. Actions' statuses are replaced by this
 /// attempt's own runs (started on its own branch); anything else counts
 /// only once set after the attempt was claimed.
-pub(crate) fn attempt_evidence(
-    statuses: &[CommitStatus],
-    runs: &[(WorkflowRun, Vec<Job>)],
-    attempt: &Attempt<'_>,
-) -> AttemptEvidence {
+pub(crate) fn attempt_evidence(statuses: &[CommitStatus], runs: &[(WorkflowRun, Vec<Job>)], attempt: &Attempt<'_>) -> AttemptEvidence {
     let mut kept: Vec<CommitStatus> = statuses
         .iter()
         .filter(|status| status.source.as_deref() != Some("actions"))
         .filter(|status| attempt.since.is_none_or(|since| status.updated_at.as_str() >= since))
         .cloned()
         .collect();
-    let ours: Vec<(WorkflowRun, Vec<Job>)> = runs
-        .iter()
-        .filter(|(run, _)| run.sha == attempt.sha && run.git_ref == attempt.head_ref)
-        .cloned()
-        .collect();
+    let ours: Vec<(WorkflowRun, Vec<Job>)> =
+        runs.iter().filter(|(run, _)| run.sha == attempt.sha && run.git_ref == attempt.head_ref).cloned().collect();
     let latest = g1t_contracts::checks::latest_runs(&ours);
     for (run, _) in &latest {
         let state = match (run.status.as_str(), run.conclusion.as_deref()) {
@@ -233,8 +224,7 @@ pub(crate) fn list(names: &[String]) -> String {
 impl Work {
     /// Where a commit's checks stand, against the repository's required ones.
     pub(crate) async fn facts(&self, repo_id: &str, sha: Option<&str>) -> Result<WorkflowFacts> {
-        let (statuses, settings) =
-            futures_util::future::try_join(self.statuses(repo_id, sha), self.settings_by_id(repo_id)).await?;
+        let (statuses, settings) = futures_util::future::try_join(self.statuses(repo_id, sha), self.settings_by_id(repo_id)).await?;
         self.workflow_facts(repo_id, sha, &statuses, &settings.required_checks).await
     }
 
@@ -281,10 +271,19 @@ impl Work {
     /// `statuses` and, for each g1t Actions job on `sha`, the status its
     /// check run stands as (`g1t_contracts::checks::job_statuses`), so a
     /// required check named for a job, as GitHub's are, is met by it.
-    pub(crate) async fn with_job_checks(&self, repo_id: &str, sha: Option<&str>, mut statuses: Vec<CommitStatus>) -> Result<Vec<CommitStatus>> {
+    pub(crate) async fn with_job_checks(
+        &self,
+        repo_id: &str,
+        sha: Option<&str>,
+        mut statuses: Vec<CommitStatus>,
+    ) -> Result<Vec<CommitStatus>> {
         let Some(sha) = sha else { return Ok(statuses) };
         let details = self
-            .actions_runs(g1t_contracts::checks::ActionsChecksArgs { repo_id: repo_id.to_owned(), shas: vec![sha.to_owned()], ..Default::default() })
+            .actions_runs(g1t_contracts::checks::ActionsChecksArgs {
+                repo_id: repo_id.to_owned(),
+                shas: vec![sha.to_owned()],
+                ..Default::default()
+            })
             .await?;
         let runs: Vec<_> = details.into_iter().map(|detail| (detail.run, detail.jobs)).collect();
         statuses.extend(g1t_contracts::checks::job_statuses(&runs, sha));
@@ -315,11 +314,7 @@ impl Work {
     pub(crate) async fn statuses(&self, repo_id: &str, sha: Option<&str>) -> Result<Vec<CommitStatus>> {
         let Some(sha) = sha else { return Ok(Vec::new()) };
         if let Some(found) = self.prefetched_repo(repo_id).filter(|found| found.head.as_deref() == Some(sha)) {
-            return Ok(found
-                .rows::<StatusRow>(crate::prefetch::Slot::Statuses)?
-                .into_iter()
-                .map(CommitStatus::from)
-                .collect());
+            return Ok(found.rows::<StatusRow>(crate::prefetch::Slot::Statuses)?.into_iter().map(CommitStatus::from).collect());
         }
         Ok(self
             .db

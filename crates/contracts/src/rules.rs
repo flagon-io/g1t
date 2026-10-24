@@ -164,12 +164,7 @@ pub struct RepositoryCondition {
 
 impl Default for RepositoryCondition {
     fn default() -> Self {
-        RepositoryCondition {
-            include: vec![ALL.to_owned()],
-            exclude: Vec::new(),
-            visibility: VisibilityCondition::Any,
-            topics: Vec::new(),
-        }
+        RepositoryCondition { include: vec![ALL.to_owned()], exclude: Vec::new(), visibility: VisibilityCondition::Any, topics: Vec::new() }
     }
 }
 
@@ -415,7 +410,6 @@ pub struct StatusChecksRule {
     pub allow_bypass_on_merge: bool,
 }
 
-
 /// `merge_queue`: merging joins the queue, which tests each pull request
 /// together with those ahead of it. The queue lands on the default branch.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -567,15 +561,7 @@ pub enum Weekday {
 }
 
 impl Weekday {
-    pub const ALL: [Weekday; 7] = [
-        Weekday::Mon,
-        Weekday::Tue,
-        Weekday::Wed,
-        Weekday::Thu,
-        Weekday::Fri,
-        Weekday::Sat,
-        Weekday::Sun,
-    ];
+    pub const ALL: [Weekday; 7] = [Weekday::Mon, Weekday::Tue, Weekday::Wed, Weekday::Thu, Weekday::Fri, Weekday::Sat, Weekday::Sun];
 
     pub fn as_str(self) -> &'static str {
         match self {
@@ -627,12 +613,7 @@ pub struct MergeWindowRule {
 
 impl Default for MergeWindowRule {
     fn default() -> Self {
-        MergeWindowRule {
-            time_zone: "UTC".to_owned(),
-            windows: Vec::new(),
-            freezes: Vec::new(),
-            exceptions: Vec::new(),
-        }
+        MergeWindowRule { time_zone: "UTC".to_owned(), windows: Vec::new(), freezes: Vec::new(), exceptions: Vec::new() }
     }
 }
 

@@ -98,7 +98,9 @@ pub async fn sweep(env: &Env, now_ms: u64, minutes: &[u64]) {
     match Actions::new(env) {
         Ok(service) => match service.on_minute(now_ms, minutes).await {
             Ok(report) => worker::console_log!("{}", report.line(now_ms, g1t_kit::now_ms())),
-            Err(error) => worker::console_error!("actions: the sweep failed after {} ms: {error}", g1t_kit::now_ms().saturating_sub(now_ms)),
+            Err(error) => {
+                worker::console_error!("actions: the sweep failed after {} ms: {error}", g1t_kit::now_ms().saturating_sub(now_ms))
+            }
         },
         Err(error) => worker::console_error!("actions: could not start: {error}"),
     }

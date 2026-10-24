@@ -6,61 +6,56 @@
 
 mod about;
 mod activity;
-mod agent_telemetry;
-mod commits;
-mod contents;
-mod run_artifacts;
-mod caches;
-mod archives;
 mod addresses;
+mod agent_telemetry;
 mod alerts;
+mod archives;
 mod audit;
 mod billing;
 mod blobs;
 mod broker;
+mod caches;
 mod checks;
+mod commits;
+mod contents;
 mod coordination;
-mod deployments;
-mod telemetry;
 mod deploy_keys;
+mod deployments;
+mod folios;
+mod follow;
 mod limits;
-mod version;
 mod logs;
 mod mcp;
 mod notifications;
 mod oauth;
 mod oidc;
-mod packages;
-mod folios;
-mod follow;
-mod people;
+mod onboarding;
 mod openapi;
+mod operations;
+mod packages;
+mod people;
 mod pins;
 mod projects;
 mod protection;
-mod operations;
 mod renamed;
 #[cfg(test)]
 mod responses;
 mod rest;
 mod rules;
+mod run_artifacts;
 mod runners;
-mod security;
-mod tools;
-mod why;
-mod token_policy;
-mod sso;
 mod scim;
-mod onboarding;
+mod security;
+mod sso;
+mod telemetry;
+mod token_policy;
 mod toolkit;
+mod tools;
+mod version;
+mod why;
 
-use g1t_contracts::identity::{
-    DeviceClaim, DeviceClaimArgs, DeviceStart, DeviceStartArgs, TokenArgs,
-};
-use g1t_contracts::work::{
-    CheckRun, Mergeable, QueueState, ReportChecksArgs, ReportMergecheckArgs,
-    ReportQueueArgs,
-};
+use g1t_contracts::identity::{DeviceClaim, DeviceClaimArgs, DeviceStart, DeviceStartArgs, TokenArgs};
+use g1t_contracts::work::{CheckRun, Mergeable, QueueState, ReportChecksArgs, ReportMergecheckArgs, ReportQueueArgs};
 use g1t_contracts::{Failure, FailureCode, Outcome, PrincipalKind, User, Viewer};
 use g1t_kit::wire;
 use serde_json::{Value, json};
@@ -92,9 +87,7 @@ pub(crate) fn reply<T: serde::Serialize>(value: &T) -> Result<Response> {
 /// The parts of a job's spec (`POST /actions/jobs/{job}/spec`) that are the
 /// workflow file, GitHub's contexts and event, and where to check out, all
 /// passed through as they are.
-const JOB_SPEC_AS_GIVEN: &[&str] = &[
-    "spec", "workflow", "github", "event", "contexts", "checkout", "permissions",
-];
+const JOB_SPEC_AS_GIVEN: &[&str] = &["spec", "workflow", "github", "event", "contexts", "checkout", "permissions"];
 
 /// Puts the toolkit's variables in a job's spec: its runtime token, where
 /// the toolkit's services are, and where to ask for an OIDC token when the
@@ -114,11 +107,7 @@ fn with_runtime(spec: &mut Value, api: &str, oidc: bool) {
 /// call: who they are, their addresses, and confirming one with the code
 /// from the email. Nothing over MCP.
 fn pending_may(method: &str, path: &str, on_mcp: bool) -> bool {
-    !on_mcp
-        && matches!(
-            (method, path.trim_end_matches('/')),
-            ("GET", "/user") | ("GET", "/user/emails") | ("POST", "/user/emails/confirm")
-        )
+    !on_mcp && matches!((method, path.trim_end_matches('/')), ("GET", "/user") | ("GET", "/user/emails") | ("POST", "/user/emails/confirm"))
 }
 
 /// An error in the shape every endpoint uses.
@@ -127,10 +116,7 @@ fn failure(failure: &Failure) -> Result<Response> {
 }
 
 fn fail(code: FailureCode, message: &str) -> Result<Response> {
-    failure(&Failure {
-        code,
-        message: message.to_owned(),
-    })
+    failure(&Failure { code, message: message.to_owned() })
 }
 
 /// A request body as JSON. An empty or malformed body is no input.
@@ -141,31 +127,18 @@ async fn json_body(request: &mut Request) -> Value {
 /// Who a request's `Authorization: Bearer g1t_…` (or `token g1t_…`, as
 /// Octokit sends it) names. A missing token is an anonymous viewer; a
 /// wrong one is refused, so that a typo does not silently look signed out.
-async fn authenticate(
-    request: &Request,
-    services: &Services,
-) -> Result<std::result::Result<Viewer, Response>> {
+async fn authenticate(request: &Request, services: &Services) -> Result<std::result::Result<Viewer, Response>> {
     let header = request.headers().get("authorization")?.unwrap_or_default();
     let Some(token) = limits::bearer(&header) else {
         return Ok(Ok(None));
     };
-    let viewer: Viewer = g1t_kit::call(
-        &services.identity,
-        "user_for_access_token",
-        &TokenArgs {
-            token: token.to_owned(),
-        },
-    )
-    .await?;
+    let viewer: Viewer = g1t_kit::call(&services.identity, "user_for_access_token", &TokenArgs { token: token.to_owned() }).await?;
     if viewer.is_some() {
         return Ok(Ok(viewer));
     }
     let mut response = fail(FailureCode::Unauthenticated, "Invalid access token.")?;
     // Tells an MCP client where to sign in again.
-    response.headers_mut().set(
-        "www-authenticate",
-        &format!("{}, error=\"invalid_token\"", services.addresses.mcp_challenge()),
-    )?;
+    response.headers_mut().set("www-authenticate", &format!("{}, error=\"invalid_token\"", services.addresses.mcp_challenge()))?;
     Ok(Err(response))
 }
 
@@ -212,11 +185,8 @@ fn index(addresses: &addresses::Addresses) -> Value {
 /// Passes a request from an outside system to its connection, as it came:
 /// its signature covers the exact bytes of the body.
 async fn receive_hook(request: &mut Request, services: &Services, id: &str) -> Result<Response> {
-    let headers: std::collections::HashMap<String, String> = request
-        .headers()
-        .entries()
-        .map(|(name, value)| (name.to_lowercase(), value))
-        .collect();
+    let headers: std::collections::HashMap<String, String> =
+        request.headers().entries().map(|(name, value)| (name.to_lowercase(), value)).collect();
     let body = request.text().await.unwrap_or_default();
     // A push to GitHub with many commits makes a large payload.
     let limit = if id == "github" { 10_000_000 } else { 1_000_000 };
@@ -230,8 +200,7 @@ async fn receive_hook(request: &mut Request, services: &Services, id: &str) -> R
     } else {
         ("receive", json!({ "id": id, "headers": headers, "body": body }))
     };
-    let received: g1t_contracts::integrations::Received =
-        g1t_kit::call(&services.integrations, method, &args).await?;
+    let received: g1t_contracts::integrations::Received = g1t_kit::call(&services.integrations, method, &args).await?;
     Ok(reply(&json!({ "message": received.message }))?.with_status(received.status))
 }
 
@@ -241,19 +210,14 @@ async fn receive_stripe(request: &mut Request, env: &Env) -> Result<Response> {
     if payload.len() > 1_000_000 || signature.is_empty() {
         return Ok(reply(&json!({ "message": "Not a Stripe event." }))?.with_status(400));
     }
-    let handled: g1t_contracts::Outcome<bool> = g1t_kit::call(
-        &env.service("BILLING")?,
-        "stripe_webhook",
-        &g1t_contracts::billing::StripeWebhookArgs { payload, signature },
-    )
-    .await?;
+    let handled: g1t_contracts::Outcome<bool> =
+        g1t_kit::call(&env.service("BILLING")?, "stripe_webhook", &g1t_contracts::billing::StripeWebhookArgs { payload, signature })
+            .await?;
     // A refusal is a 400, so Stripe shows it as failed; anything handled,
     // or already handled, is a 200, so Stripe stops sending it.
     Ok(match handled {
         g1t_contracts::Outcome::Ok(_) => reply(&json!({ "received": true }))?,
-        g1t_contracts::Outcome::Fail(failure) => {
-            reply(&json!({ "message": failure.message }))?.with_status(400)
-        }
+        g1t_contracts::Outcome::Fail(failure) => reply(&json!({ "message": failure.message }))?.with_status(400),
     })
 }
 
@@ -262,9 +226,7 @@ async fn device_code(request: &mut Request, services: &Services) -> Result<Respo
     let started: DeviceStart = g1t_kit::call(
         &services.identity,
         "device_start",
-        &DeviceStartArgs {
-            client_name: body["client_name"].as_str().unwrap_or_default().to_owned(),
-        },
+        &DeviceStartArgs { client_name: body["client_name"].as_str().unwrap_or_default().to_owned() },
     )
     .await?;
     reply(&json!({
@@ -282,9 +244,7 @@ async fn device_token(request: &mut Request, services: &Services) -> Result<Resp
     let claim: DeviceClaim = g1t_kit::call(
         &services.identity,
         "device_claim",
-        &DeviceClaimArgs {
-            device_code: body["device_code"].as_str().unwrap_or_default().to_owned(),
-        },
+        &DeviceClaimArgs { device_code: body["device_code"].as_str().unwrap_or_default().to_owned() },
     )
     .await?;
     reply(&match claim {
@@ -305,11 +265,7 @@ async fn device_token(request: &mut Request, services: &Services) -> Result<Resp
 /// request's checks were the workflows run on it.
 /// The run's own token, in the body, is the credential: it was given to
 /// that sandbox and to nothing else.
-async fn report_checks(
-    request: &mut Request,
-    services: &Services,
-    run_id: &str,
-) -> Result<Response> {
+async fn report_checks(request: &mut Request, services: &Services, run_id: &str) -> Result<Response> {
     let body = json_body(request).await;
     let reported: Outcome<CheckRun> = g1t_kit::call(
         &services.work,
@@ -331,11 +287,7 @@ async fn report_checks(
 
 /// A sandbox reporting one tested state of a merge queue. As with checks,
 /// the entry's own token is the credential.
-async fn report_queue(
-    request: &mut Request,
-    services: &Services,
-    entry_id: &str,
-) -> Result<Response> {
+async fn report_queue(request: &mut Request, services: &Services, entry_id: &str) -> Result<Response> {
     let body = json_body(request).await;
     let reported: Outcome<QueueState> = g1t_kit::call(
         &services.work,
@@ -359,11 +311,7 @@ async fn report_queue(
 
 /// A sandbox reporting whether a pull request merges cleanly. As with
 /// checks, the probe's own token is the credential.
-async fn report_mergecheck(
-    request: &mut Request,
-    services: &Services,
-    pull_id: &str,
-) -> Result<Response> {
+async fn report_mergecheck(request: &mut Request, services: &Services, pull_id: &str) -> Result<Response> {
     let body = json_body(request).await;
     let reported: Outcome<Mergeable> = g1t_kit::call(
         &services.work,
@@ -409,9 +357,7 @@ async fn backup_job(request: &mut Request, services: &Services, method: &str, pa
         let headers = worker::Headers::new();
         headers.set(TOKEN_HEADER, &token)?;
         let mut init = worker::RequestInit::new();
-        init.with_method(Method::Put)
-            .with_headers(headers)
-            .with_body(Some(worker::js_sys::Uint8Array::from(bytes.as_slice()).into()));
+        init.with_method(Method::Put).with_headers(headers).with_body(Some(worker::js_sys::Uint8Array::from(bytes.as_slice()).into()));
         let forwarded = Request::new_with_init(&format!("https://repos/backups/{job}/{action}"), &init)?;
         let mut answered = services.repos.fetch_request(forwarded).await?;
         return outcome_as_given(answered.json().await?);
@@ -458,7 +404,10 @@ async fn respond(mut request: Request, env: &Env, rate_policy: &mut Option<limit
     // self-hosted (addresses.rs).
     let on_mcp = services.addresses.mcp_path(&url).is_some();
     if !on_mcp && !version::supported(request.headers().get(version::HEADER)?.as_deref()) {
-        return fail(FailureCode::Invalid, "Unsupported X-G1t-Api-Version. Use 1 or omit the header. See https://docs.g1t.sh/reference/api/#versioning-and-deprecation.");
+        return fail(
+            FailureCode::Invalid,
+            "Unsupported X-G1t-Api-Version. Use 1 or omit the header. See https://docs.g1t.sh/reference/api/#versioning-and-deprecation.",
+        );
     }
 
     // Stripe reporting to billing. Signed with the secret of the endpoint
@@ -471,16 +420,19 @@ async fn respond(mut request: Request, env: &Env, rate_policy: &mut Option<limit
     // Outside systems reporting to a connection. They sign what they send
     // with the connection's own secret, which is not a g1t token, so this
     // comes before anything that would read one.
-    if method == "POST" && !on_mcp
-        && let Some(id) = path.strip_prefix("/hooks/").filter(|id| !id.is_empty() && !id.contains('/')) {
-            return receive_hook(&mut request, &services, id).await;
-        }
+    if method == "POST"
+        && !on_mcp
+        && let Some(id) = path.strip_prefix("/hooks/").filter(|id| !id.is_empty() && !id.contains('/'))
+    {
+        return receive_hook(&mut request, &services, id).await;
+    }
 
     // A sandbox building a deployment, reporting with its build's token,
     // which is not a g1t token, or a container app's Worker reporting how
     // long its container ran, with its own token. The body goes through as
     // it is: it can carry a Worker's bundled code.
-    if method == "POST" && !on_mcp
+    if method == "POST"
+        && !on_mcp
         && let Some(rest) = path
             .strip_prefix("/deployments/jobs/")
             .map(|rest| format!("jobs/{rest}"))
@@ -491,13 +443,8 @@ async fn respond(mut request: Request, env: &Env, rate_policy: &mut Option<limit
         let headers = worker::Headers::new();
         headers.set("content-type", "application/json")?;
         let mut init = worker::RequestInit::new();
-        init.with_method(Method::Post)
-            .with_headers(headers)
-            .with_body(Some(worker::js_sys::Uint8Array::from(body.as_slice()).into()));
-        let mut answer = env
-            .service("DEPLOYMENTS")?
-            .fetch_request(Request::new_with_init(&target, &init)?)
-            .await?;
+        init.with_method(Method::Post).with_headers(headers).with_body(Some(worker::js_sys::Uint8Array::from(body.as_slice()).into()));
+        let mut answer = env.service("DEPLOYMENTS")?.fetch_request(Request::new_with_init(&target, &init)?).await?;
         // A fresh response: a fetched one's headers cannot be changed, and
         // every response gets the API's own on the way out.
         let status = answer.status_code();
@@ -506,18 +453,17 @@ async fn respond(mut request: Request, env: &Env, rate_policy: &mut Option<limit
             Ok(body) => serde_json::to_vec(&wire::snake_case(body))?,
             Err(_) => bytes,
         };
-        return Ok(Response::from_bytes(bytes)?
-            .with_status(status)
-            .with_headers({
-                let headers = worker::Headers::new();
-                headers.set("content-type", "application/json")?;
-                headers
-            }));
+        return Ok(Response::from_bytes(bytes)?.with_status(status).with_headers({
+            let headers = worker::Headers::new();
+            headers.set("content-type", "application/json")?;
+            headers
+        }));
     }
 
     // The services GitHub's toolkit calls from inside a job, with its
     // runtime token, and the links they hand out (toolkit.rs).
-    if !on_mcp && method == "POST"
+    if !on_mcp
+        && method == "POST"
         && let Some(rest) = path.strip_prefix("/twirp/")
     {
         let (service, rpc) = rest.split_once('/').unwrap_or((rest, ""));
@@ -583,10 +529,7 @@ async fn respond(mut request: Request, env: &Env, rate_policy: &mut Option<limit
     // A person who has not confirmed their email address: who they are,
     // their addresses, and confirming one, nothing else (REST or MCP).
     if viewer.as_ref().is_some_and(User::awaits_confirmation) && !pending_may(method, &path, on_mcp) {
-        return fail(
-            FailureCode::Forbidden,
-            &g1t_contracts::accounts::confirm_email_first(&services.addresses.site),
-        );
+        return fail(FailureCode::Forbidden, &g1t_contracts::accounts::confirm_email_first(&services.addresses.site));
     }
     services.audit = audit::AuditContext::of(&request, on_mcp);
     // A run's token: what it may do comes with it, on the composite
@@ -630,11 +573,7 @@ async fn respond(mut request: Request, env: &Env, rate_policy: &mut Option<limit
             let parts: Vec<&str> = path.trim_start_matches("/repos/").split('/').collect();
             if let [owner, repo, "actions", "runs", run, "artifacts", name] = parts.as_slice() {
                 // A workflow job's token reaches its own repository only.
-                if viewer
-                    .as_ref()
-                    .and_then(|user| user.token.as_deref())
-                    .is_some_and(|token| !token.reaches(&format!("{owner}/{repo}")))
-                {
+                if viewer.as_ref().and_then(|user| user.token.as_deref()).is_some_and(|token| !token.reaches(&format!("{owner}/{repo}"))) {
                     return fail(FailureCode::NotFound, "No such run.");
                 }
                 return blobs::download(env, &services, &viewer, owner, repo, run, name).await;
@@ -644,12 +583,8 @@ async fn respond(mut request: Request, env: &Env, rate_policy: &mut Option<limit
         ("POST", "/device/token") => return device_token(&mut request, &services).await,
         // Where a pull request lives, for a tool that knows only its fork.
         ("GET", path) if path.starts_with("/pulls/") && !path[7..].contains('/') => {
-            let located: Outcome<Value> = g1t_kit::call(
-                &services.work,
-                "locate_pull",
-                &json!({ "id": &path[7..], "viewer": viewer }),
-            )
-            .await?;
+            let located: Outcome<Value> =
+                g1t_kit::call(&services.work, "locate_pull", &json!({ "id": &path[7..], "viewer": viewer })).await?;
             return match located {
                 Outcome::Ok(value) => reply(&value),
                 Outcome::Fail(refused) => failure(&refused),
@@ -737,27 +672,18 @@ async fn respond(mut request: Request, env: &Env, rate_policy: &mut Option<limit
         _ => {}
     }
 
-    let query: Vec<(String, String)> = url
-        .query_pairs()
-        .map(|(name, value)| (name.into_owned(), value.into_owned()))
-        .collect();
-    let body = if method == "GET" {
-        Value::Null
-    } else {
-        snake_case_keys(json_body(&mut request).await)
-    };
+    let query: Vec<(String, String)> = url.query_pairs().map(|(name, value)| (name.into_owned(), value.into_owned())).collect();
+    let body = if method == "GET" { Value::Null } else { snake_case_keys(json_body(&mut request).await) };
     let Some((route, input)) = rest::resolve(method, &path, &query, body) else {
         return fail(FailureCode::NotFound, "No such endpoint.");
     };
     match audit::run(route.op, &services, &viewer, &input).await? {
         // A download is a redirect to its signed link, as GitHub's is: an
         // artifact's, and a repository's tarball and zipball.
-        Outcome::Ok(value) if route.op.redirects() => {
-            match value["url"].as_str().and_then(|url| worker::Url::parse(url).ok()) {
-                Some(url) => Response::redirect_with_status(url, 302),
-                None => reply(&value),
-            }
-        }
+        Outcome::Ok(value) if route.op.redirects() => match value["url"].as_str().and_then(|url| worker::Url::parse(url).ok()) {
+            Some(url) => Response::redirect_with_status(url, 302),
+            None => reply(&value),
+        },
         // A deleted comment has nothing to say, as GitHub's says nothing.
         Outcome::Ok(_) if route.no_content() => Ok(Response::empty()?.with_status(204)),
         Outcome::Ok(value) => Response::from_json(&wire::snake_case_keeping(value, route.op.as_given())),
@@ -850,10 +776,7 @@ mod tests {
 
     #[test]
     fn snake_case_wins_when_both_are_given() {
-        assert_eq!(
-            snake_case_keys(json!({ "keep_item_open": true, "keepItemOpen": false })),
-            json!({ "keep_item_open": true })
-        );
+        assert_eq!(snake_case_keys(json!({ "keep_item_open": true, "keepItemOpen": false })), json!({ "keep_item_open": true }));
     }
 }
 
@@ -912,15 +835,19 @@ async fn fetch(request: Request, env: Env, _ctx: Context) -> Result<Response> {
     let on_mcp = addresses::Addresses::from_env(&env).mcp_path(&request.url()?).is_some();
     let mut rate_policy = None;
     let mut response = respond(request, &env, &mut rate_policy).await?;
-    if let Some(policy) = rate_policy { policy.apply(&mut response)?; }
+    if let Some(policy) = rate_policy {
+        policy.apply(&mut response)?;
+    }
     let headers = response.headers_mut();
-    if !on_mcp { headers.set(version::HEADER, version::CURRENT)?; }
+    if !on_mcp {
+        headers.set(version::HEADER, version::CURRENT)?;
+    }
     headers.set("access-control-allow-origin", "*")?;
-    headers.set(
-        "access-control-allow-headers",
-        "authorization, content-type, x-g1t-api-version",
-    )?;
+    headers.set("access-control-allow-headers", "authorization, content-type, x-g1t-api-version")?;
     headers.set("access-control-allow-methods", "GET, POST, PATCH, OPTIONS")?;
-    headers.set("access-control-expose-headers", "www-authenticate, retry-after, ratelimit-policy, ratelimit, x-g1t-api-version, deprecation, sunset, link")?;
+    headers.set(
+        "access-control-expose-headers",
+        "www-authenticate, retry-after, ratelimit-policy, ratelimit, x-g1t-api-version, deprecation, sunset, link",
+    )?;
     Ok(response)
 }

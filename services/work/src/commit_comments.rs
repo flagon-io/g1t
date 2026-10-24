@@ -21,8 +21,8 @@ use g1t_contracts::work::{AddCommitCommentArgs, CommitComment, CommitCommentArgs
 use g1t_contracts::{FailureCode, Outcome, User, new_id};
 use g1t_kit::now_ms;
 use serde::Deserialize;
-use worker::wasm_bindgen::JsValue;
 use worker::Result;
+use worker::wasm_bindgen::JsValue;
 
 use crate::Work;
 use crate::inbox::{excerpt, people_mentioned, teams_mentioned};
@@ -358,12 +358,7 @@ impl Work {
         let found: Outcome<Vec<Commit>> = g1t_kit::call(
             &self.repos,
             "log",
-            &LogArgs {
-                path: repo.clone(),
-                viewer: viewer.clone(),
-                git_ref: Some(asked.to_owned()),
-                limit: 1,
-            },
+            &LogArgs { path: repo.clone(), viewer: viewer.clone(), git_ref: Some(asked.to_owned()), limit: 1 },
         )
         .await?;
         Ok(match found {
@@ -522,7 +517,10 @@ mod tests {
             statement.query_map(params, |row| row.get(0)).unwrap().map(|id| id.unwrap()).collect()
         };
         assert_eq!(
-            ids("SELECT id FROM commit_comments WHERE repo_id = ? AND commit_hash LIKE ? || '%' ORDER BY created_at, id", &[&"rep_1", &"aaaa"]),
+            ids(
+                "SELECT id FROM commit_comments WHERE repo_id = ? AND commit_hash LIKE ? || '%' ORDER BY created_at, id",
+                &[&"rep_1", &"aaaa"]
+            ),
             ["ccm_1", "ccm_2"]
         );
         assert_eq!(

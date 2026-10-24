@@ -62,7 +62,21 @@ const IDLE_WAIT_MS: u64 = 20_000;
 /// How often an idle runner checks for a new version.
 const UPDATE_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 
-const COMMANDS: &[&str] = &["register", "register-and-run", "run", "service", "sandbox", "sizes", "remove", "update", "version", "--version", "help", "--help", "-h"];
+const COMMANDS: &[&str] = &[
+    "register",
+    "register-and-run",
+    "run",
+    "service",
+    "sandbox",
+    "sizes",
+    "remove",
+    "update",
+    "version",
+    "--version",
+    "help",
+    "--help",
+    "-h",
+];
 
 /// Whether `args` (without the program) are a command of this one, rather
 /// than the harness's `MODE`.
@@ -154,7 +168,22 @@ impl Options {
 
 /// The options that take a value.
 const VALUE_OPTIONS: [&str; 16] = [
-    "url", "api", "token", "name", "labels", "group", "work-dir", "image", "harness", "memory", "cpus", "pids-limit", "job-docker-image", "machine", "sizes", "hosted-image",
+    "url",
+    "api",
+    "token",
+    "name",
+    "labels",
+    "group",
+    "work-dir",
+    "image",
+    "harness",
+    "memory",
+    "cpus",
+    "pids-limit",
+    "job-docker-image",
+    "machine",
+    "sizes",
+    "hosted-image",
 ];
 
 const HELP: &str = "g1t-runner: a self-hosted runner for g1t.
@@ -287,7 +316,9 @@ pub fn machine_fingerprint() -> Option<String> {
 fn os_machine_id() -> Option<String> {
     let id = if cfg!(windows) {
         // HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid, set when Windows is installed.
-        let out = hidden(std::process::Command::new("reg").args(["query", r"HKLM\SOFTWARE\Microsoft\Cryptography", "/v", "MachineGuid"])).output().ok()?;
+        let out = hidden(std::process::Command::new("reg").args(["query", r"HKLM\SOFTWARE\Microsoft\Cryptography", "/v", "MachineGuid"]))
+            .output()
+            .ok()?;
         String::from_utf8_lossy(&out.stdout).lines().find(|l| l.contains("MachineGuid"))?.split_whitespace().last()?.to_owned()
     } else if cfg!(target_os = "macos") {
         let out = std::process::Command::new("ioreg").args(["-rd1", "-c", "IOPlatformExpertDevice"]).output().ok()?;
@@ -316,11 +347,8 @@ fn hidden(command: &mut std::process::Command) -> &mut std::process::Command {
 
 /// A runner's name from a machine's: what g1t accepts.
 fn runner_name(given: &str) -> String {
-    let name: String = given
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '-' })
-        .take(64)
-        .collect();
+    let name: String =
+        given.chars().map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '-' }).take(64).collect();
     if name.is_empty() { "runner".into() } else { name }
 }
 
@@ -330,13 +358,8 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
     let url = url.trim_end_matches('/').to_owned();
     let api = options.value("api").map(|a| a.trim_end_matches('/').to_owned()).unwrap_or_else(|| config::api_for(&url));
     let name = runner_name(options.value("name").map(str::to_owned).unwrap_or_else(hostname).as_str());
-    let labels: Vec<String> = options
-        .value("labels")
-        .unwrap_or_default()
-        .split(',')
-        .map(|l| l.trim().to_owned())
-        .filter(|l| !l.is_empty())
-        .collect();
+    let labels: Vec<String> =
+        options.value("labels").unwrap_or_default().split(',').map(|l| l.trim().to_owned()).filter(|l| !l.is_empty()).collect();
     let native = options.flag("native");
     if native && options.flag("no-docker") {
         bail!("--native runs each job in a VM of its own, and --no-docker runs it on this machine: pick one");
@@ -349,7 +372,9 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
         log("Docker does not answer here. Jobs will fail until it does.");
     }
     let pids_limit = match options.value("pids-limit") {
-        Some(text) => Some(text.parse::<u32>().ok().filter(|n| *n > 0).with_context(|| format!("--pids-limit takes a number of processes, not {text}"))?),
+        Some(text) => Some(
+            text.parse::<u32>().ok().filter(|n| *n > 0).with_context(|| format!("--pids-limit takes a number of processes, not {text}"))?,
+        ),
         None => None,
     };
     // Which of g1t's machines it takes jobs for: those given, else the one
@@ -361,7 +386,10 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
     let offered_sizes = sizes::offered_on(&chosen_sizes, sizes::machine(isolation))?;
     let existing = config::load(folder).ok();
     if existing.is_some() && !options.flag("replace") {
-        bail!("{} already holds a registered runner: run `g1t-runner remove` first, or register with --replace or another --dir", folder.display());
+        bail!(
+            "{} already holds a registered runner: run `g1t-runner remove` first, or register with --replace or another --dir",
+            folder.display()
+        );
     }
     // The OS jobs run on: in Docker that is Linux, whatever the machine
     // (Docker Desktop runs Linux containers on macOS and Windows). A
@@ -387,10 +415,15 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
         "isolation": isolation.as_str(),
         "machine": options.value("machine").map(str::to_owned).or_else(machine_fingerprint),
     });
-    let hosted_image = options.value("hosted-image").map(str::to_owned).or_else(|| std::env::var(exec::HOSTED_IMAGE_ENV).ok()).filter(|i| !i.trim().is_empty());
+    let hosted_image = options
+        .value("hosted-image")
+        .map(str::to_owned)
+        .or_else(|| std::env::var(exec::HOSTED_IMAGE_ENV).ok())
+        .filter(|i| !i.trim().is_empty());
     // Said only once it is here: `run` pulls it first (hosted.rs).
     let hosted_image = hosted_image.filter(|image| hosted::present(image));
-    exec::capacity(options.value("memory"), options.value("cpus"), !options.flag("no-job-docker"), isolation, hosted_image.as_deref()).add_to(&mut body);
+    exec::capacity(options.value("memory"), options.value("cpus"), !options.flag("no-job-docker"), isolation, hosted_image.as_deref())
+        .add_to(&mut body);
     body["sizes"] = json!(offered_sizes);
     let registered = Api::register(&api, &body)?;
     let work_dir = options.value("work-dir").map(PathBuf::from).unwrap_or_else(|| folder.join("work"));
@@ -426,7 +459,10 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
         None => format!("in {}{}", config.workspace, config.group.as_ref().map(|g| format!(", group {g}")).unwrap_or_default()),
     };
     log(&format!("Registered {} {place}, with labels {}.", config.name, config.labels.join(", ")));
-    log(&format!("It takes jobs asking for g1t's machines as {}: `g1t-runner sizes` says why, and changes them.", g1t_contracts::runners::sizes_said(&offered_sizes)));
+    log(&format!(
+        "It takes jobs asking for g1t's machines as {}: `g1t-runner sizes` says why, and changes them.",
+        g1t_contracts::runners::sizes_said(&offered_sizes)
+    ));
     log("Start it with `g1t-runner run`, or `g1t-runner service install` to keep it running.");
     Ok(())
 }
@@ -445,7 +481,11 @@ fn isolation(docker: bool, native: bool) -> Result<sandbox::Isolation> {
         // What would sandbox jobs native to this OS instead.
         if let Some(driver) = sandbox::native_driver() {
             match driver.preflight() {
-                Ok(_) => log(&format!("This machine can run {} jobs sandboxed, each in {}: register with --native instead of --no-docker.", std::env::consts::OS, driver.name())),
+                Ok(_) => log(&format!(
+                    "This machine can run {} jobs sandboxed, each in {}: register with --native instead of --no-docker.",
+                    std::env::consts::OS,
+                    driver.name()
+                )),
                 Err(why) => log(&format!("Sandboxed {} jobs, in {}: {why:#}", std::env::consts::OS, driver.name())),
             }
         }
@@ -761,7 +801,8 @@ fn run(folder: &Path, once: bool) -> Result<()> {
                 Ok(running) => current = Some(running),
                 Err(error) => {
                     log(&format!("Could not start it: {error:#}"));
-                    let _ = api.finished(&work.id, 1, Some(&format!("The self-hosted runner {} could not start it: {error:#}", config.name)));
+                    let _ =
+                        api.finished(&work.id, 1, Some(&format!("The self-hosted runner {} could not start it: {error:#}", config.name)));
                     if config.ephemeral || once {
                         return Ok(());
                     }
@@ -853,7 +894,8 @@ mod tests {
 
     #[test]
     fn options_read_both_ways() {
-        let options = Options::parse(&args(&["--url", "https://g1t.sh", "--labels=gpu,cuda", "--ephemeral", "install"]), &["url", "labels"]).unwrap();
+        let options =
+            Options::parse(&args(&["--url", "https://g1t.sh", "--labels=gpu,cuda", "--ephemeral", "install"]), &["url", "labels"]).unwrap();
         assert_eq!(options.value("url"), Some("https://g1t.sh"));
         assert_eq!(options.value("labels"), Some("gpu,cuda"));
         assert!(options.flag("ephemeral"));

@@ -2,10 +2,10 @@
 //! page of commits at a time, metered to its workspace; and the new commits
 //! of a push too large to scan before it was stored, after it landed.
 
+use g1t_contracts::Outcome;
 use g1t_contracts::billing::{CheckLimitArgs, Limit, LimitState, NotePendingArgs};
 use g1t_contracts::identity::NotifyOwnersArgs;
 use g1t_contracts::security::{HistoryPage, ScanHistoryArgs, SecretStatus};
-use g1t_contracts::Outcome;
 use worker::Result;
 
 use crate::Security;
@@ -79,7 +79,13 @@ impl Security {
         let noted: Result<bool> = g1t_kit::call(
             &self.billing,
             "note_pending",
-            &NotePendingArgs { workspace: workspace.to_owned(), source: "security".to_owned(), cost_micros: total, detail: None, month: Some(month) },
+            &NotePendingArgs {
+                workspace: workspace.to_owned(),
+                source: "security".to_owned(),
+                cost_micros: total,
+                detail: None,
+                month: Some(month),
+            },
         )
         .await;
         if let Err(error) = noted {
@@ -94,7 +100,11 @@ impl Security {
     /// looks real is emailed to the workspace's owners once per push.
     /// The custom patterns a scan of `repo` looks for too.
     async fn scan_patterns(&self, repo: &RepoRow) -> Vec<g1t_contracts::security_suite::PatternSpec> {
-        let args = g1t_contracts::security_suite::PatternsForArgs { repo_id: repo.repo_id.clone(), namespace: repo.namespace.clone(), private: None };
+        let args = g1t_contracts::security_suite::PatternsForArgs {
+            repo_id: repo.repo_id.clone(),
+            namespace: repo.namespace.clone(),
+            private: None,
+        };
         self.patterns_for(args).await.unwrap_or_else(|error| {
             worker::console_error!("security: patterns for {}: {error}", repo.repo_id);
             Vec::new()
@@ -141,16 +151,12 @@ impl Security {
             };
             real += fresh.len();
             self.store.landed(&repo.repo_id, &fingerprints).await?;
-            self.store
-                .add_secrets(&repo.repo_id, &page.secrets, SecretStatus::Open, "history", scan.pusher.as_deref())
-                .await?;
+            self.store.add_secrets(&repo.repo_id, &page.secrets, SecretStatus::Open, "history", scan.pusher.as_deref()).await?;
             self.secrets_found(&repo, &page.secrets, "history", &fresh, None).await?;
             let cost = history_page_cost(page.reads, page.secrets.len());
             self.meter(&repo.namespace, page.reads, page.commits, 0, cost).await?;
             let next = page.next.filter(|_| pages_done < MAX_PUSH_PAGES);
-            self.store
-                .advance_push_scan(id, next.as_deref(), page.commits, page.secrets.len() as u32)
-                .await?;
+            self.store.advance_push_scan(id, next.as_deref(), page.commits, page.secrets.len() as u32).await?;
             match next {
                 Some(next) => cursor = Some(next),
                 None => break,
@@ -205,7 +211,8 @@ impl Security {
             )
             .await?;
             let fingerprints: Vec<String> = page.secrets.iter().map(|secret| secret.fingerprint.clone()).collect();
-            let known: Vec<String> = self.store.known(&repo.repo_id, &fingerprints).await?.into_iter().map(|(fingerprint, _, _)| fingerprint).collect();
+            let known: Vec<String> =
+                self.store.known(&repo.repo_id, &fingerprints).await?.into_iter().map(|(fingerprint, _, _)| fingerprint).collect();
             let fresh: Vec<String> = page
                 .secrets
                 .iter()

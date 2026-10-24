@@ -9,9 +9,9 @@ use g1t_contracts::actions::{DispatchArgs, RepositoryDispatchArgs, WorkflowRun};
 use g1t_contracts::events::{Event, caused_by_job};
 use g1t_contracts::identity::{AGENT_ID, AGENT_NAME, UsernamesArgs};
 use g1t_contracts::repos::{Commit, CompareArgs, Comparison, FileStatus, LogArgs, PullMergeRef, PullMergeRefArgs, Repo, RepoPath};
+use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::{Label, Mergeable, PullDetail, ViewArgs, WorkItemDetail, WorkItemViewArgs, WorkspaceViewArgs};
 use g1t_contracts::{FailureCode, Outcome, User, new_id};
-use g1t_contracts::time::rfc3339;
 use g1t_kit::now_ms;
 use serde_json::{Map, Value, json};
 use worker::Result;
@@ -126,18 +126,11 @@ enum PullBuild {
 /// nothing, and a branch made from a pull request that merged with a merge
 /// commit, whose test merge went wrong (repos merge_base.rs), sat at
 /// "expected" (flagon-io/g1t#365).
-fn pull_build(
-    event_name: &str,
-    action: Option<&str>,
-    made: &PullMergeRef,
-    mergeable: Mergeable,
-) -> PullBuild {
+fn pull_build(event_name: &str, action: Option<&str>, made: &PullMergeRef, mergeable: Mergeable) -> PullBuild {
     match made {
         PullMergeRef::Merged { merge, .. } => PullBuild::Merge(merge.clone()),
         PullMergeRef::Conflict { .. }
-            if event_name == "pull_request"
-                && action != Some("closed")
-                && mergeable == Mergeable::Conflicting =>
+            if event_name == "pull_request" && action != Some("closed") && mergeable == Mergeable::Conflicting =>
         {
             PullBuild::Nothing
         }
@@ -207,11 +200,7 @@ impl Actions {
             },
         )
         .await?;
-        Ok(permission
-            .into_result()
-            .ok()
-            .and_then(|info| info.role)
-            .is_some_and(|role| access::allows(role, Capability::Push)))
+        Ok(permission.into_result().ok().and_then(|info| info.role).is_some_and(|role| access::allows(role, Capability::Push)))
     }
 
     async fn commits(&self, repo: &Repo, actor: &User, after: &str, before: Option<&str>) -> Result<Vec<Commit>> {
@@ -227,10 +216,7 @@ impl Actions {
             &self.repos,
             "log",
             &LogArgs {
-                path: RepoPath {
-                    namespace: repo.namespace.clone(),
-                    name: repo.name.clone(),
-                },
+                path: RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() },
                 viewer: Some(actor.clone()),
                 git_ref: Some(after.to_owned()),
                 limit: PUSH_LOG,
@@ -305,15 +291,7 @@ impl Actions {
 
     /// The commit `branch` points to now.
     async fn branch_head(&self, repo: &Repo, branch: &str) -> Result<Option<String>> {
-        g1t_kit::call(
-            &self.repos,
-            "head",
-            &g1t_contracts::repos::HeadArgs {
-                repo_id: repo.id.clone(),
-                branch: branch.to_owned(),
-            },
-        )
-        .await
+        g1t_kit::call(&self.repos, "head", &g1t_contracts::repos::HeadArgs { repo_id: repo.id.clone(), branch: branch.to_owned() }).await
     }
 
     /// The pull request's test merge commit for `head` (repos
@@ -340,24 +318,26 @@ impl Actions {
         let branches: Outcome<Vec<g1t_contracts::repos::Branch>> = g1t_kit::call(
             &self.repos,
             "branches",
-            &g1t_contracts::repos::BranchesArgs {
-                path: Self::repo_path(repo),
-                viewer: Some(ws.clone()),
-            },
+            &g1t_contracts::repos::BranchesArgs { path: Self::repo_path(repo), viewer: Some(ws.clone()) },
         )
         .await?;
         Ok(branches.into_result().unwrap_or_default().iter().any(|branch| branch.name == name))
     }
 
     fn repo_path(repo: &Repo) -> RepoPath {
-        RepoPath {
-            namespace: repo.namespace.clone(),
-            name: repo.name.clone(),
-        }
+        RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() }
     }
 
     /// The subject of an event of `kind`, as GitHub's `event_name`.
-    async fn subject(&self, event: &Event, event_name: &str, action: Option<&str>, repo: &Repo, ws: &User, sender: &str) -> Result<Option<Subject>> {
+    async fn subject(
+        &self,
+        event: &Event,
+        event_name: &str,
+        action: Option<&str>,
+        repo: &Repo,
+        ws: &User,
+        sender: &str,
+    ) -> Result<Option<Subject>> {
         let path = Self::repo_path(repo);
         let data = &event.data;
         let on_default = |sha: String, payload: Value, title: String, pull: Option<u32>| Subject {
@@ -377,12 +357,7 @@ impl Actions {
             approval: None,
             merge: None,
         };
-        let view = |number: u32| ViewArgs {
-            repo: path.clone(),
-            number,
-            viewer: Some(ws.clone()),
-            after_seq: 0,
-        };
+        let view = |number: u32| ViewArgs { repo: path.clone(), number, viewer: Some(ws.clone()), after_seq: 0 };
         Ok(match event_name {
             "push" => {
                 let (Some(git_ref), Some(after)) = (data["ref"].as_str(), data["after"].as_str()) else {
@@ -548,11 +523,17 @@ impl Actions {
                         match pull_build(event_name, action, &made, detail.mergeable) {
                             PullBuild::Merge(merge) => Some(merge),
                             PullBuild::Nothing => {
-                                worker::console_log!("actions: pull request #{} conflicts with {base_ref}: {made:?}; no pull_request workflows run", pull.number);
+                                worker::console_log!(
+                                    "actions: pull request #{} conflicts with {base_ref}: {made:?}; no pull_request workflows run",
+                                    pull.number
+                                );
                                 return Ok(None);
                             }
                             PullBuild::Head => {
-                                worker::console_warn!("actions: no merge commit for pull request #{}: {made:?}; its head is built", pull.number);
+                                worker::console_warn!(
+                                    "actions: no merge commit for pull request #{}: {made:?}; its head is built",
+                                    pull.number
+                                );
                                 None
                             }
                         }
@@ -596,7 +577,9 @@ impl Actions {
                 let name = data["workflow"].as_str().unwrap_or_default();
                 // The followed run's row, for what the event does not carry.
                 let row = match data["runId"].as_str() {
-                    Some(id) => self.db.prepare("SELECT * FROM runs WHERE id = ?").bind(&[id.into()])?.first::<crate::plan::RunRow>(None).await?,
+                    Some(id) => {
+                        self.db.prepare("SELECT * FROM runs WHERE id = ?").bind(&[id.into()])?.first::<crate::plan::RunRow>(None).await?
+                    }
                     None => None,
                 };
                 let head_commit = match data["sha"].as_str() {
@@ -911,8 +894,7 @@ impl Actions {
                 _ if event_name == "create" => format!("{}:create", event.id),
                 _ => event.id.clone(),
             };
-            self.start_matching(&repo, &ws, read, &mut subject, event_name, action, &key, event.actor.as_deref(), &sender)
-                .await?;
+            self.start_matching(&repo, &ws, read, &mut subject, event_name, action, &key, event.actor.as_deref(), &sender).await?;
         }
         Ok(())
     }
@@ -946,8 +928,7 @@ impl Actions {
                 Err(problem) => {
                     // A push shows a broken workflow as a failed run, as GitHub does.
                     if event_name == "push" && file.source.contains("on") {
-                        self.record_invalid(repo, &file.path, &file.source, subject, event_key, actor_id, sender, &problem)
-                            .await?;
+                        self.record_invalid(repo, &file.path, &file.source, subject, event_key, actor_id, sender, &problem).await?;
                     }
                     continue;
                 }
@@ -1039,7 +1020,15 @@ impl Actions {
         Ok(row.is_some_and(|row| row.state == "disabled"))
     }
 
-    fn run_info(&self, repo: &Repo, workflow: &Workflow, event_name: &str, subject: &Subject, sender: &str, actor_id: Option<&str>) -> RunInfo {
+    fn run_info(
+        &self,
+        repo: &Repo,
+        workflow: &Workflow,
+        event_name: &str,
+        subject: &Subject,
+        sender: &str,
+        actor_id: Option<&str>,
+    ) -> RunInfo {
         RunInfo {
             repository: format!("{}/{}", repo.namespace, repo.name),
             repository_id: repo.id.clone(),
@@ -1103,11 +1092,7 @@ impl Actions {
             let Ok(workflow) = workflow::parse(&row.source) else { continue };
             // Schedules wait while a repository is archived; a deleted one is
             // not found.
-            let Some((repo, _ws)) = self
-                .repo_by_id(&row.repo_id)
-                .await?
-                .filter(|(repo, _)| !repo.archived())
-            else {
+            let Some((repo, _ws)) = self.repo_by_id(&row.repo_id).await?.filter(|(repo, _)| !repo.archived()) else {
                 continue;
             };
             // Nor while its Actions are off.
@@ -1183,10 +1168,7 @@ impl Actions {
             let branches: Outcome<Vec<g1t_contracts::repos::Branch>> = g1t_kit::call(
                 &self.repos,
                 "branches",
-                &g1t_contracts::repos::BranchesArgs {
-                    path: Self::repo_path(&repo),
-                    viewer: Some(ws.clone()),
-                },
+                &g1t_contracts::repos::BranchesArgs { path: Self::repo_path(&repo), viewer: Some(ws.clone()) },
             )
             .await?;
             let is_branch = branches.into_result().unwrap_or_default().iter().any(|branch| branch.name == git_ref);
@@ -1211,9 +1193,7 @@ impl Actions {
         };
         let named = by_id.as_deref().unwrap_or(&a.workflow);
         let wanted = named.trim_start_matches(".g1t/workflows/");
-        let Some(file) = read.files.iter().find(|file| {
-            file.path.rsplit('/').next() == Some(wanted) || file.path == named
-        }) else {
+        let Some(file) = read.files.iter().find(|file| file.path.rsplit('/').next() == Some(wanted) || file.path == named) else {
             return Ok(fail(FailureCode::NotFound, format!("There is no workflow {wanted} on {short}.")));
         };
         let workflow = match workflow::parse(&file.source) {
@@ -1530,8 +1510,11 @@ fn dispatch_inputs(trigger: &Trigger, given: &Map<String, Value>, environments: 
                 },
                 "choice" => {
                     let text = g1t_actions::expr::to_text(&value);
-                    let options: Vec<String> =
-                        spec.get("options").and_then(Value::as_array).map(|o| o.iter().map(g1t_actions::expr::to_text).collect()).unwrap_or_default();
+                    let options: Vec<String> = spec
+                        .get("options")
+                        .and_then(Value::as_array)
+                        .map(|o| o.iter().map(g1t_actions::expr::to_text).collect())
+                        .unwrap_or_default();
                     if !options.is_empty() && !options.contains(&text) {
                         return fail(FailureCode::Invalid, format!("The input `{name}` is one of {}.", options.join(", ")));
                     }
@@ -1578,8 +1561,15 @@ mod tests {
 
     #[test]
     fn merge_group_retries_deduplicate_but_new_attempts_run_again() {
-        let mut args = MergeGroupArgs { repo_id: "repo".into(), entry: "entry".into(), sha: "tested".into(),
-            head_ref: "refs/heads/g1t-queue/entry-first".into(), base_sha: Some("base".into()), number: 1, ahead: vec![] };
+        let mut args = MergeGroupArgs {
+            repo_id: "repo".into(),
+            entry: "entry".into(),
+            sha: "tested".into(),
+            head_ref: "refs/heads/g1t-queue/entry-first".into(),
+            base_sha: Some("base".into()),
+            number: 1,
+            ahead: vec![],
+        };
         let first = args.event_key();
         assert_eq!(first, args.event_key());
         args.head_ref = "refs/heads/g1t-queue/entry-second".into();
@@ -1633,16 +1623,9 @@ mod tests {
     fn a_conflict_the_pull_request_does_not_show_still_builds_its_head() {
         // flagon-io/g1t#362: the test merge conflicted where git did not, the
         // pull request showed none, and its required check waited for good.
-        let conflict = PullMergeRef::Conflict {
-            head: "h".into(),
-            base: "b".into(),
-            paths: vec!["a".into()],
-        };
+        let conflict = PullMergeRef::Conflict { head: "h".into(), base: "b".into(), paths: vec!["a".into()] };
         for mergeable in [Mergeable::Clean, Mergeable::Checking, Mergeable::Unknown] {
-            assert_eq!(
-                pull_build("pull_request", Some("synchronize"), &conflict, mergeable),
-                PullBuild::Head
-            );
+            assert_eq!(pull_build("pull_request", Some("synchronize"), &conflict, mergeable), PullBuild::Head);
         }
     }
 
@@ -1714,15 +1697,29 @@ mod tests {
         assert_eq!(release["html_url"], "https://g1t.sh/acme/web/releases/tag/v1.2.0");
         let deployment = json!({ "id": "dep_1", "sha": "abc", "ref": "main", "environment": "staging", "creator": "ana",
                                  "production_environment": false, "created_at": "t", "updated_at": "t" });
-        let status = payload::deployment_status(&repo(), &json!({ "id": "dst_1", "state": "success", "environment_url": "https://s.example", "log_url": null, "creator": "g1t", "created_at": "t" }), &deployment);
+        let status = payload::deployment_status(
+            &repo(),
+            &json!({ "id": "dst_1", "state": "success", "environment_url": "https://s.example", "log_url": null, "creator": "g1t", "created_at": "t" }),
+            &deployment,
+        );
         assert_eq!(status["state"], "success");
         assert_eq!(status["environment"], "staging");
         assert_eq!(status["environment_url"], "https://s.example");
         assert_eq!(payload::deployment(&repo(), &deployment)["payload"], json!({}));
-        let gone = payload::deleted_comment(&repo(), 7, &json!({ "id": "cmt_1", "body": "hi", "author": { "id": "usr_1", "username": "bo" }, "createdAt": "t" }), payload::Thread::Pull);
+        let gone = payload::deleted_comment(
+            &repo(),
+            7,
+            &json!({ "id": "cmt_1", "body": "hi", "author": { "id": "usr_1", "username": "bo" }, "createdAt": "t" }),
+            payload::Thread::Pull,
+        );
         assert_eq!(gone["user"]["login"], "bo");
         assert_eq!(gone["html_url"], "https://g1t.sh/acme/web/pull/7#cmt_1");
-        let on_item = payload::deleted_comment(&repo(), 9, &json!({ "id": "cmt_2", "body": "hi", "author": { "username": "bo" } }), payload::Thread::Item { workspace: "acme" });
+        let on_item = payload::deleted_comment(
+            &repo(),
+            9,
+            &json!({ "id": "cmt_2", "body": "hi", "author": { "username": "bo" } }),
+            payload::Thread::Item { workspace: "acme" },
+        );
         assert_eq!(on_item["html_url"], "https://g1t.sh/acme/-/work/9#cmt_2");
         assert_eq!(on_item["item_url"], format!("{API}/workspaces/acme/work/9"));
         assert_eq!(on_item["url"], format!("{API}/workspaces/acme/work/comments/cmt_2"));
@@ -1819,7 +1816,8 @@ jobs:
     fn inputs_are_typed_and_the_event_has_them_as_text() {
         let trigger = dispatchable(DISPATCH);
         let environments = vec!["staging".to_owned(), "production".to_owned()];
-        let Outcome::Ok(inputs) = dispatch_inputs(&trigger, &given(json!({ "dry-run": "true", "count": "3", "target": "Staging" })), &environments)
+        let Outcome::Ok(inputs) =
+            dispatch_inputs(&trigger, &given(json!({ "dry-run": "true", "count": "3", "target": "Staging" })), &environments)
         else {
             panic!("refused");
         };
@@ -1854,7 +1852,10 @@ jobs:
         assert_eq!(branch_or_tag("refs/notes/commits"), None);
         // A workflow can name `delete`. It takes no filters, as GitHub's
         // schema says, so writing one is refused when the workflow is read.
-        assert!(workflow::parse("on:\n  delete:\n    branches: [release/*]\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").is_err());
+        assert!(
+            workflow::parse("on:\n  delete:\n    branches: [release/*]\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]")
+                .is_err()
+        );
         let workflow = workflow::parse("on:\n  delete:\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").unwrap();
         let trigger = workflow.trigger("delete").unwrap();
         assert!(trigger.wants_type(None));
@@ -1872,7 +1873,8 @@ mod work_item_runs {
     /// The migrations before [`MIGRATION`], and [`MIGRATION`] itself.
     fn migrations() -> (Vec<String>, String) {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
-        let mut names: Vec<String> = std::fs::read_dir(&dir).unwrap().map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        let mut names: Vec<String> =
+            std::fs::read_dir(&dir).unwrap().map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned()).collect();
         names.sort();
         let read = |name: &str| std::fs::read_to_string(dir.join(name)).unwrap();
         let before = names.iter().filter(|name| name.as_str() < MIGRATION).map(|name| read(name)).collect();
@@ -1904,7 +1906,12 @@ mod work_item_runs {
         }
         let issue = json!({ "number": 4, "labels": [{ "name": "bug" }] });
         run(&db, "run_1", "issues", &json!({ "eventName": "issues", "event": { "action": "opened", "issue": issue } }));
-        run(&db, "run_2", "issue_comment", &json!({ "eventName": "issue_comment", "event": { "issue": issue, "comment": { "id": "cmt_1" } } }));
+        run(
+            &db,
+            "run_2",
+            "issue_comment",
+            &json!({ "eventName": "issue_comment", "event": { "issue": issue, "comment": { "id": "cmt_1" } } }),
+        );
         run(&db, "run_3", "push", &json!({ "eventName": "push", "event": { "ref": "refs/heads/main" } }));
         run(&db, "run_4", "issues", &json!({ "eventName": "issues", "event": {} }));
         db.execute_batch(&migration).unwrap();

@@ -64,7 +64,8 @@ pub(crate) const CURRENT_CYCLE: &str = "SELECT {CYCLE_COLUMNS} FROM cycles c
 const CYCLE_BY_NUMBER: &str = "SELECT {CYCLE_COLUMNS} FROM cycles c WHERE c.workspace = ?1 AND c.number = ?2";
 
 /// Workspace `?1`'s closed cycles, the latest first, at most `?2`.
-const PAST: &str = "SELECT {CYCLE_COLUMNS} FROM cycles c WHERE c.workspace = ?1 AND c.closed_at IS NOT NULL ORDER BY c.number DESC LIMIT ?2";
+const PAST: &str =
+    "SELECT {CYCLE_COLUMNS} FROM cycles c WHERE c.workspace = ?1 AND c.closed_at IS NOT NULL ORDER BY c.number DESC LIMIT ?2";
 
 /// Whether work item `w` belongs to cycle `?2` of workspace `?1`: it is in
 /// it, or the cycle carried it out.
@@ -391,7 +392,13 @@ fn off<T>(workspace: &str) -> Outcome<T> {
 impl Work {
     /// A workspace's cycle settings, the defaults when it has none.
     pub(crate) async fn cycle_settings(&self, workspace: &str) -> Result<CycleSettings> {
-        Ok(self.db.prepare(SETTINGS).bind(&[workspace.into()])?.first::<SettingsRow>(None).await?.map_or_else(CycleSettings::default, CycleSettings::from))
+        Ok(self
+            .db
+            .prepare(SETTINGS)
+            .bind(&[workspace.into()])?
+            .first::<SettingsRow>(None)
+            .await?
+            .map_or_else(CycleSettings::default, CycleSettings::from))
     }
 
     /// The number of a workspace's current cycle: none while cycles are off.
@@ -435,10 +442,8 @@ impl Work {
     /// last `limit` closed cycles.
     async fn cycles_of(&self, workspace: &str, limit: u32) -> Result<Cycles> {
         let key = [JsValue::from(workspace)];
-        let mut statements = vec![
-            self.db.prepare(SETTINGS).bind(&key)?,
-            self.db.prepare(OPEN_CYCLE.replace("{CYCLE_COLUMNS}", CYCLE_COLUMNS)).bind(&key)?,
-        ];
+        let mut statements =
+            vec![self.db.prepare(SETTINGS).bind(&key)?, self.db.prepare(OPEN_CYCLE.replace("{CYCLE_COLUMNS}", CYCLE_COLUMNS)).bind(&key)?];
         if limit > 0 {
             statements.push(self.db.prepare(PAST.replace("{CYCLE_COLUMNS}", CYCLE_COLUMNS)).bind(&[workspace.into(), limit.into()])?);
         }
@@ -481,12 +486,12 @@ impl Work {
             .replace("{MEMBER}", MEMBER)
             .replace("{PLAN_ORDER}", PLAN_ORDER)
             .replace("{LIMIT}", &MAX_CYCLE_ITEMS.to_string());
-        let mut statements = vec![
-            self.db.prepare(items_sql).bind(&values[..2])?,
-            self.db.prepare(MEMBERS.replace("{MEMBER}", MEMBER)).bind(&values)?,
-        ];
+        let mut statements =
+            vec![self.db.prepare(items_sql).bind(&values[..2])?, self.db.prepare(MEMBERS.replace("{MEMBER}", MEMBER)).bind(&values)?];
         if current {
-            statements.push(self.db.prepare(PLANNED.replace("{ITEM_COLUMNS}", ITEM_COLUMNS).replace("{PLAN_ORDER}", PLAN_ORDER)).bind(&values[..2])?);
+            statements.push(
+                self.db.prepare(PLANNED.replace("{ITEM_COLUMNS}", ITEM_COLUMNS).replace("{PLAN_ORDER}", PLAN_ORDER)).bind(&values[..2])?,
+            );
         }
         let results = self.timing.db(statements.len() as u32, self.db.batch(statements)).await?;
         let rows = |index: usize| results.get(index).ok_or_else(|| worker::Error::RustError("short batch".into()));
@@ -540,7 +545,8 @@ impl Work {
         let now = now_ms();
         let at = rfc3339(now);
         let key = [JsValue::from(workspace.as_str())];
-        let mut statements = vec![self
+        let mut statements =
+            vec![self
             .db
             .prepare(
                 "INSERT INTO cycle_settings (workspace, enabled, length_days, starts_weekday, cooldown_days, updated_at, updated_by)
@@ -590,7 +596,12 @@ impl Work {
         let at = rfc3339(now);
         let joined = format!("{starts_on}T00:00:00.000Z");
         Ok(vec![
-            self.db.prepare(OPEN_FIRST).bind(&[workspace.into(), starts_on.as_str().into(), ends_on.as_str().into(), at.as_str().into()])?,
+            self.db.prepare(OPEN_FIRST).bind(&[
+                workspace.into(),
+                starts_on.as_str().into(),
+                ends_on.as_str().into(),
+                at.as_str().into(),
+            ])?,
             self.db.prepare(NOW_JOINS).bind(&[workspace.into(), joined.as_str().into()])?,
             self.db.prepare(UNPLAN_REST).bind(&[workspace.into()])?,
         ])
@@ -668,7 +679,12 @@ impl Work {
             "work_item.planned",
             &moved,
             Some(&a.actor),
-            WorkItemEvent { horizon: Some(moved.item.horizon), appetite: moved.item.appetite, urgent: Some(moved.item.urgent), ..Self::item_event(&moved) },
+            WorkItemEvent {
+                horizon: Some(moved.item.horizon),
+                appetite: moved.item.appetite,
+                urgent: Some(moved.item.urgent),
+                ..Self::item_event(&moved)
+            },
         )
         .await?;
         Ok(Outcome::Ok(moved.shown(Some(&a.actor))))
@@ -736,7 +752,9 @@ impl Work {
             .results::<Planned>()?;
         let mut last = self
             .db
-            .prepare("SELECT max(rank) AS rank FROM work_items WHERE workspace = ?1 AND state = 'open' AND horizon = 'now' AND rank IS NOT NULL")
+            .prepare(
+                "SELECT max(rank) AS rank FROM work_items WHERE workspace = ?1 AND state = 'open' AND horizon = 'now' AND rank IS NOT NULL",
+            )
             .bind(&base[..1])?
             .first::<Last>(None)
             .await?
@@ -841,7 +859,11 @@ mod tests {
             .map(Result::unwrap)
             .collect();
         let mut last: Option<String> = db
-            .query_row("SELECT max(rank) FROM work_items WHERE workspace = 'acme' AND state = 'open' AND horizon = 'now' AND rank IS NOT NULL", [], |row| row.get(0))
+            .query_row(
+                "SELECT max(rank) FROM work_items WHERE workspace = 'acme' AND state = 'open' AND horizon = 'now' AND rank IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         let joined = format!("{starts_on}T00:00:00.000Z");
         db.execute_batch("BEGIN").unwrap();
@@ -951,7 +973,8 @@ mod tests {
         assert_eq!((open_items(&db), carries(&db)), first);
         let count: u32 = db.query_row("SELECT count(*) FROM cycles WHERE workspace = 'acme'", [], |row| row.get(0)).unwrap();
         assert_eq!(count, 2);
-        let closed: String = db.query_row("SELECT closed_at FROM cycles WHERE workspace = 'acme' AND number = 1", [], |row| row.get(0)).unwrap();
+        let closed: String =
+            db.query_row("SELECT closed_at FROM cycles WHERE workspace = 'acme' AND number = 1", [], |row| row.get(0)).unwrap();
         assert_eq!(closed, "2026-10-19T00:05:00.000Z", "closed once, when it first closed");
     }
 
@@ -1051,7 +1074,11 @@ mod tests {
     fn a_cycles_report_reads_its_work_items_and_what_it_says_of_each() {
         let db = acme();
         roll(&db, 1, "2026-10-19", "2026-11-01", "2026-10-19T00:05:00.000Z");
-        let items = ITEMS.replace("{ITEM_COLUMNS}", ITEM_COLUMNS).replace("{MEMBER}", MEMBER).replace("{PLAN_ORDER}", PLAN_ORDER).replace("{LIMIT}", "200");
+        let items = ITEMS
+            .replace("{ITEM_COLUMNS}", ITEM_COLUMNS)
+            .replace("{MEMBER}", MEMBER)
+            .replace("{PLAN_ORDER}", PLAN_ORDER)
+            .replace("{LIMIT}", "200");
         let numbers: Vec<u32> =
             db.prepare(&items).unwrap().query_map(params!["acme", 1], |row| row.get("number")).unwrap().map(Result::unwrap).collect();
         // Open ones carried out first, in the plan's order, then the closed one.
@@ -1090,7 +1117,13 @@ mod tests {
         for sql in DELETED {
             db.execute(sql, ["initech"]).unwrap();
         }
-        let left: u32 = db.query_row("SELECT (SELECT count(*) FROM cycles) + (SELECT count(*) FROM cycle_carries) + (SELECT count(*) FROM cycle_settings)", [], |row| row.get(0)).unwrap();
+        let left: u32 = db
+            .query_row(
+                "SELECT (SELECT count(*) FROM cycles) + (SELECT count(*) FROM cycle_carries) + (SELECT count(*) FROM cycle_settings)",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(left, 0);
     }
 

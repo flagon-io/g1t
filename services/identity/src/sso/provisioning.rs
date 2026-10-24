@@ -266,7 +266,9 @@ impl Identity {
             .unwrap_or_default();
         let at = Scim { workspace_id: &workspace_id, slug: &slug, connection_id: &connection.id, base: &a.base, plan: plan.as_deref() };
         Ok(match (method.as_str(), segments.as_slice()) {
-            ("GET", ["ServiceProviderConfig"]) => answer(200, Some(scim::service_provider_config("https://docs.g1t.sh/guides/single-sign-on/#scim"))),
+            ("GET", ["ServiceProviderConfig"]) => {
+                answer(200, Some(scim::service_provider_config("https://docs.g1t.sh/guides/single-sign-on/#scim")))
+            }
             ("GET", ["ResourceTypes"]) => answer(200, Some(scim::resource_types(&a.base))),
             ("GET", ["Schemas"]) => answer(200, Some(scim::list(Vec::new(), 0, 1))),
             ("GET", ["Users"]) => self.scim_list(&at, &query).await?,
@@ -435,7 +437,11 @@ impl Identity {
         }
         let key = scim::user_name_key(&user.user_name);
         if self.user_name_taken(at.workspace_id, &key, id).await? {
-            return Ok(Some(scim_error(scim::ScimError::new(409, Some("uniqueness"), format!("{} is provisioned already.", user.user_name)))));
+            return Ok(Some(scim_error(scim::ScimError::new(
+                409,
+                Some("uniqueness"),
+                format!("{} is provisioned already.", user.user_name),
+            ))));
         }
         let linked = match row.user_id.clone() {
             Some(linked) => Some(linked),
@@ -469,7 +475,8 @@ impl Identity {
             return Ok(None);
         }
         if before.active != user.active {
-            let (action, word) = if user.active { ("sso.scim_user_activated", "Activated") } else { ("sso.scim_user_deactivated", "Deactivated") };
+            let (action, word) =
+                if user.active { ("sso.scim_user_activated", "Activated") } else { ("sso.scim_user_deactivated", "Deactivated") };
             self.audit_workspace(&scim_actor(), action, at.slug, Surface::Rest, format!("{word} {}", user.user_name)).await;
         }
         if !user.active

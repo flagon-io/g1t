@@ -18,8 +18,8 @@ use g1t_kit::now_ms;
 use g1t_scan::pack::{ObjectKind, object_id, write_pack};
 use worker::Result;
 
-use crate::public_storage::Operation;
 use crate::catch_up::{Change, Signature, ancestors, commit_object, merge_tree, read_dirs};
+use crate::public_storage::Operation;
 use crate::registry::{can_write, store_key};
 use crate::store::{GitRepo, GitStore, Scope};
 use crate::{Repos, UNVERIFIED, not_found};
@@ -93,9 +93,7 @@ impl<S: GitStore> Repos<S> {
         let dirs: BTreeSet<String> = ancestors(&a.path).map(str::to_owned).collect();
         let read = read_dirs(&git, &head.tree_hash, &dirs).await?;
         let (parent, name) = a.path.rsplit_once('/').unwrap_or(("", a.path.as_str()));
-        let exists = read
-            .get(parent)
-            .is_some_and(|(_, entries)| entries.iter().any(|entry| entry.name == name));
+        let exists = read.get(parent).is_some_and(|(_, entries)| entries.iter().any(|entry| entry.name == name));
         if exists {
             return Ok(Outcome::fail(FailureCode::Conflict, format!("{} already exists on {}.", a.path, repo.default_branch)));
         }
@@ -103,10 +101,7 @@ impl<S: GitStore> Repos<S> {
         let blob = a.content.clone().into_bytes();
         let blob_id = object_id(ObjectKind::Blob, &blob);
         let trees: HashMap<String, Vec<TreeEntry>> = read.into_values().collect();
-        let change = Change {
-            path: a.path.clone(),
-            entry: Some((EntryKind::Blob, blob_id)),
-        };
+        let change = Change { path: a.path.clone(), entry: Some((EntryKind::Blob, blob_id)) };
         let merged = match merge_tree(&head.tree_hash, &trees, &[change]) {
             Ok(merged) => merged,
             Err(why) => {
@@ -125,11 +120,7 @@ impl<S: GitStore> Repos<S> {
         let commit = commit_object(
             &merged.tree,
             &[&head.hash],
-            &Signature {
-                name: &author.name,
-                email: &author.email,
-                seconds: now_ms() / 1000,
-            },
+            &Signature { name: &author.name, email: &author.email, seconds: now_ms() / 1000 },
             message,
         );
         let commit_id = object_id(ObjectKind::Commit, &commit);
@@ -163,10 +154,11 @@ impl<S: GitStore> Repos<S> {
         let access = git.access(Scope::Write).await?;
         // Only if the branch is still not there.
         let pack = write_pack(&objects);
-        let pushed = match self.push_reserved(&repo, Operation::Commit, Some(&a.actor.id), &access, &a.branch, None, &commit_id, pack).await? {
-            Ok(pushed) => pushed,
-            Err(refusal) => return Ok(refusal.outcome()),
-        };
+        let pushed =
+            match self.push_reserved(&repo, Operation::Commit, Some(&a.actor.id), &access, &a.branch, None, &commit_id, pack).await? {
+                Ok(pushed) => pushed,
+                Err(refusal) => return Ok(refusal.outcome()),
+            };
         self.refs_moved(&repo.id).await;
 
         let git_ref = format!("refs/heads/{}", a.branch);
@@ -189,10 +181,7 @@ impl<S: GitStore> Repos<S> {
         entry.result = Some("ok".to_owned());
         self.record_git(entry).await;
         self.publish_push(&repo, &git_ref, None, &commit_id, Some(&a.actor), Some(1)).await?;
-        Ok(Outcome::Ok(CommittedFile {
-            branch: a.branch,
-            commit: commit_id,
-        }))
+        Ok(Outcome::Ok(CommittedFile { branch: a.branch, commit: commit_id }))
     }
 }
 

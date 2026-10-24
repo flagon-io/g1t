@@ -257,7 +257,12 @@ mod tests {
         let change = workspace_change_of(&event("work_item.updated", None, data)).unwrap();
         assert_eq!(
             change,
-            WorkspaceChange { workspace: "acme".into(), kind: "work_item.updated".into(), number: Some(40), at: "2026-10-11T10:00:00Z".into() }
+            WorkspaceChange {
+                workspace: "acme".into(),
+                kind: "work_item.updated".into(),
+                number: Some(40),
+                at: "2026-10-11T10:00:00Z".into()
+            }
         );
         // A comment on it, and a claim (which names it as `item`).
         let comment = json!({ "itemId": "wki_1", "workspace": "acme", "number": 40, "commentId": "cmt_1" });
@@ -277,7 +282,8 @@ mod tests {
             let change = change_of(&event(kind, Some("rep_1"), json!({ "number": 7, "title": "secret plans" }))).unwrap();
             assert_eq!(change.number, Some(7), "{kind}");
         }
-        let checks = change_of(&event("checks.completed", Some("rep_1"), json!({ "number": 4, "commit": "abc", "status": "passed" }))).unwrap();
+        let checks =
+            change_of(&event("checks.completed", Some("rep_1"), json!({ "number": 4, "commit": "abc", "status": "passed" }))).unwrap();
         assert_eq!((checks.number, checks.sha.as_deref()), (Some(4), Some("abc")));
     }
 
@@ -292,7 +298,8 @@ mod tests {
         assert_eq!(run.run.as_deref(), Some("run_9"));
         assert_eq!(run.number, Some(5), "the pull request, not the run's own number");
         assert_eq!(run.sha.as_deref(), Some("def"));
-        let status = change_of(&event("status.created", Some("rep_1"), json!({ "sha": "def", "context": "ci", "state": "pending" }))).unwrap();
+        let status =
+            change_of(&event("status.created", Some("rep_1"), json!({ "sha": "def", "context": "ci", "state": "pending" }))).unwrap();
         assert_eq!(status.sha.as_deref(), Some("def"));
         let check = change_of(&event("check_run.completed", Some("rep_1"), json!({ "checkRun": { "headSha": "fff" } }))).unwrap();
         assert_eq!(check.sha.as_deref(), Some("fff"));
@@ -300,7 +307,9 @@ mod tests {
 
     #[test]
     fn nothing_written_in_the_repository_goes_along() {
-        let change = change_of(&event("work_item.opened", Some("rep_1"), json!({ "number": 1, "title": "Leaked title", "body": "Leaked body" }))).unwrap();
+        let change =
+            change_of(&event("work_item.opened", Some("rep_1"), json!({ "number": 1, "title": "Leaked title", "body": "Leaked body" })))
+                .unwrap();
         let sent = serde_json::to_string(&change).unwrap();
         assert!(!sent.contains("Leaked"));
         assert_eq!(sent, r#"{"repo_id":"rep_1","kind":"work_item.opened","number":1,"at":"2026-10-11T10:00:00Z"}"#);
@@ -313,7 +322,9 @@ mod tests {
         assert!(change_of(&event("pull.opened", None, json!({ "number": 1 }))).is_none());
         // The repository from the data when the event has none.
         assert_eq!(change_of(&event("pull.opened", None, json!({ "repoId": "rep_2", "number": 1 }))).unwrap().repo_id, "rep_2");
-        for kind in ["git.push", "git.deleted", "release.published", "secret_scanning_alert.created", "queue.changed", "deployment_status.created"] {
+        for kind in
+            ["git.push", "git.deleted", "release.published", "secret_scanning_alert.created", "queue.changed", "deployment_status.created"]
+        {
             assert!(is_live(kind), "{kind}");
         }
         for kind in ["git.pushed", "repo.created", "user.deleted", "workspace.renamed"] {
@@ -323,14 +334,24 @@ mod tests {
 
     #[test]
     fn coordination_names_the_work_item_or_pull_request_it_is_about() {
-        for kind in ["work.claimed", "work.claim_expired", "session.started", "dependency.changed", "overlap.detected", "integration.failed", "integration.passed", "decision.recorded"] {
+        for kind in [
+            "work.claimed",
+            "work.claim_expired",
+            "session.started",
+            "dependency.changed",
+            "overlap.detected",
+            "integration.failed",
+            "integration.passed",
+            "decision.recorded",
+        ] {
             let change = change_of(&event(kind, None, json!({ "repoId": "rep_1", "number": 12, "item": 4 }))).unwrap();
             assert_eq!((change.repo_id.as_str(), change.number), ("rep_1", Some(12)), "{kind}");
         }
         // Each recorded step of a session changes no page anyone is watching live.
         assert!(change_of(&event("session.appended", Some("rep_1"), json!({ "number": 12 }))).is_none());
         // Its progress, at most every few seconds, does: the session's page follows it.
-        let progressed = change_of(&event("session.progressed", None, json!({ "repoId": "rep_1", "number": 12, "sessionId": "ses_1" }))).unwrap();
+        let progressed =
+            change_of(&event("session.progressed", None, json!({ "repoId": "rep_1", "number": 12, "sessionId": "ses_1" }))).unwrap();
         assert_eq!((progressed.kind.as_str(), progressed.number), ("session.progressed", Some(12)));
     }
 

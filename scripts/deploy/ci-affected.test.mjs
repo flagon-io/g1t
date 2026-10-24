@@ -83,6 +83,14 @@ test("the desktop job runs for its own files and the build's, and for nothing el
   assert.equal(needs("desktop", ["crates/kit/src/lib.rs", "apps/web/app/root.tsx", "Cargo.lock", "apps/desktopper/x.ts"]), false);
 });
 
+test("the rustfmt job runs for any Rust file and for what decides its formatting", () => {
+  for (const file of ["crates/kit/src/lib.rs", "apps/desktop/src-tauri/src/main.rs", "rustfmt.toml", "rust-toolchain.toml", ".g1t/workflows/ci.yml"]) {
+    assert.equal(needs("rustfmt", ["apps/web/app/root.tsx", file]), true, file);
+  }
+  assert.equal(needs("rustfmt", ["apps/web/app/root.tsx", "Cargo.lock", "crates/kit/Cargo.toml", "docs/rust.md"]), false);
+  assert.equal(needs("rustfmt", []), false);
+});
+
 // contracts <- web, sudo, docs, mobile, runner, og; theme <- web, sudo, docs.
 const NPM = [
   { name: "@g1t/contracts", dir: "packages/contracts", deps: [], scripts: { typecheck: "tsc", test: "node --test" } },

@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 
 use g1t_contracts::identity::UsernameArgs;
-use g1t_contracts::repos::{ReadableArgs, Repo, RepoPath, MAX_READABLE};
+use g1t_contracts::repos::{MAX_READABLE, ReadableArgs, Repo, RepoPath};
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome, Viewer};
 use serde::Deserialize;
@@ -133,15 +133,9 @@ fn page_sql(a: &ByAuthorArgs, params: &mut Params, author: &str, visible: &str, 
     if let Some((after_key, after_id)) = a.before.as_deref().and_then(parse_cursor) {
         let after_key = params.push(after_key);
         let after_id = params.push(after_id);
-        conditions.push(format!(
-            "({key} {beyond} {after_key} OR ({key} = {after_key} AND id {beyond} {after_id}))"
-        ));
+        conditions.push(format!("({key} {beyond} {after_key} OR ({key} = {after_key} AND id {beyond} {after_id}))"));
     }
-    let filter = if conditions.is_empty() {
-        String::new()
-    } else {
-        format!("WHERE {}", conditions.join(" AND "))
-    };
+    let filter = if conditions.is_empty() { String::new() } else { format!("WHERE {}", conditions.join(" AND ")) };
     let limit = params.push(limit + 1);
     format!(
         "SELECT * FROM (
@@ -197,21 +191,14 @@ struct CountsRow {
 
 /// Whether `repo` is the one named `namespace/name`.
 fn is_named(repo: &Repo, name: &str) -> bool {
-    name.split_once('/').is_some_and(|(namespace, name)| {
-        repo.namespace.eq_ignore_ascii_case(namespace) && repo.name.eq_ignore_ascii_case(name)
-    })
+    name.split_once('/')
+        .is_some_and(|(namespace, name)| repo.namespace.eq_ignore_ascii_case(namespace) && repo.name.eq_ignore_ascii_case(name))
 }
 
 impl Work {
     pub(crate) async fn by_author(&self, a: ByAuthorArgs) -> Result<Outcome<Authored>> {
-        let person: Viewer = g1t_kit::call(
-            &self.identity,
-            "user_by_username",
-            &UsernameArgs {
-                username: a.username.trim().to_lowercase(),
-            },
-        )
-        .await?;
+        let person: Viewer =
+            g1t_kit::call(&self.identity, "user_by_username", &UsernameArgs { username: a.username.trim().to_lowercase() }).await?;
         let Some(person) = person else {
             return Ok(Outcome::fail(FailureCode::NotFound, "There is no such account."));
         };
@@ -252,10 +239,7 @@ impl Work {
         let readable: Vec<Repo> = g1t_kit::call(
             &self.repos,
             "readable",
-            &ReadableArgs {
-                ids: touched.iter().map(|row| row.repo_id.clone()).collect(),
-                viewer: a.viewer.clone(),
-            },
+            &ReadableArgs { ids: touched.iter().map(|row| row.repo_id.clone()).collect(), viewer: a.viewer.clone() },
         )
         .await?;
         let by_id: HashMap<&str, &Repo> = readable.iter().map(|repo| (repo.id.as_str(), repo)).collect();
@@ -263,10 +247,7 @@ impl Work {
             .iter()
             .filter_map(|row| {
                 by_id.get(row.repo_id.as_str()).map(|repo| AuthoredRepo {
-                    repo: RepoPath {
-                        namespace: repo.namespace.clone(),
-                        name: repo.name.clone(),
-                    },
+                    repo: RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() },
                     count: row.n,
                 })
             })
@@ -299,11 +280,7 @@ impl Work {
         let (shown, member_list) = match a.repo.as_deref().map(str::trim).filter(|name| !name.is_empty()) {
             Some(name) => (
                 serde_json::to_string(
-                    &readable
-                        .iter()
-                        .filter(|repo| is_named(repo, name))
-                        .map(|repo| repo.id.as_str())
-                        .collect::<Vec<_>>(),
+                    &readable.iter().filter(|repo| is_named(repo, name)).map(|repo| repo.id.as_str()).collect::<Vec<_>>(),
                 )?,
                 "[]".to_owned(),
             ),
@@ -312,13 +289,7 @@ impl Work {
         let limit = a.limit.unwrap_or(AUTHORED_PAGE).clamp(1, AUTHORED_PAGE);
         let mut params = Params(Vec::new());
         let sql = page_sql(&a, &mut params, &person.id, &shown, &member_list, limit);
-        let mut rows = self
-            .db
-            .prepare(sql)
-            .bind(&params.values())?
-            .all()
-            .await?
-            .results::<ItemRow>()?;
+        let mut rows = self.db.prepare(sql).bind(&params.values())?.all().await?.results::<ItemRow>()?;
         let next = if rows.len() > limit as usize {
             rows.truncate(limit as usize);
             rows.last().map(|row| cursor(a.sort, row))
@@ -351,12 +322,7 @@ impl Work {
                 })
             })
             .collect();
-        Ok(Outcome::Ok(Authored {
-            items,
-            next,
-            counts,
-            repos,
-        }))
+        Ok(Outcome::Ok(Authored { items, next, counts, repos }))
     }
 }
 
@@ -428,10 +394,7 @@ mod tests {
     #[test]
     fn ignores_a_cursor_that_is_not_one() {
         let mut params = Params(Vec::new());
-        let a = ByAuthorArgs {
-            before: Some("nonsense".into()),
-            ..args()
-        };
+        let a = ByAuthorArgs { before: Some("nonsense".into()), ..args() };
         let sql = page_sql(&a, &mut params, "usr_1", "[]", "[]", 10);
         assert!(!sql.contains("id < "));
         assert_eq!(parse_cursor("a|b|c"), None);

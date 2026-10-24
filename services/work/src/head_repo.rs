@@ -83,8 +83,7 @@ impl Work {
     /// forks, as `actor` can read them.
     pub(crate) async fn forked_from(&self, repo: &Repo, ancestor_id: &str, actor: &User) -> Result<bool> {
         reaches(repo.parent_id.clone(), ancestor_id, |id| async move {
-            let found: Outcome<Repo> =
-                g1t_kit::call(&self.repos, "get_by_id", &GetByIdArgs { id, viewer: Some(actor.clone()) }).await?;
+            let found: Outcome<Repo> = g1t_kit::call(&self.repos, "get_by_id", &GetByIdArgs { id, viewer: Some(actor.clone()) }).await?;
             Ok(found.into_result().ok().and_then(|repo| repo.parent_id))
         })
         .await
@@ -186,7 +185,9 @@ mod tests {
     #[test]
     fn a_push_moves_the_pull_requests_of_the_branch_it_moved() {
         let db = database();
-        let on = |repo: &str| numbers(&db, &format!("SELECT number FROM pulls WHERE {ON_BRANCH} ORDER BY number"), rusqlite::params![repo, repo, "fix"]);
+        let on = |repo: &str| {
+            numbers(&db, &format!("SELECT number FROM pulls WHERE {ON_BRANCH} ORDER BY number"), rusqlite::params![repo, repo, "fix"])
+        };
         assert_eq!(on("rep_1"), vec![1], "not the fork's branch of the same name");
         assert_eq!(on("rep_2"), vec![2], "a push to the fork moves the pull request into its parent");
         assert!(on("rep_3").is_empty(), "a working copy is moved by its default branch");

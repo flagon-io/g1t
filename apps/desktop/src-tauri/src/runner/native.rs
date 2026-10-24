@@ -207,7 +207,8 @@ fn signed(manifest: &[u8], signature: &str, key: &str) -> Result<Manifest, Fault
 pub fn latest(server: &Url) -> Result<Manifest, Fault> {
     let base = downloads(server);
     let manifest = get(&format!("{base}/latest.json")).map_err(Fault::Failed)?;
-    let signature = get(&format!("{base}/latest.json.sig")).map_err(|why| if why.contains("404") { Fault::Unsigned("the release has no signature".into()) } else { Fault::Failed(why) })?;
+    let signature = get(&format!("{base}/latest.json.sig"))
+        .map_err(|why| if why.contains("404") { Fault::Unsigned("the release has no signature".into()) } else { Fault::Failed(why) })?;
     signed(&manifest, &String::from_utf8_lossy(&signature), RELEASE_KEY)
 }
 
@@ -311,7 +312,10 @@ pub fn sweep(dir: &Path) {
     struct Registered {
         runner: String,
     }
-    let Some(registered) = std::fs::read(dir.join("config.json")).ok().and_then(|bytes| serde_json::from_slice::<Registered>(&bytes).ok()) else { return };
+    let Some(registered) = std::fs::read(dir.join("config.json")).ok().and_then(|bytes| serde_json::from_slice::<Registered>(&bytes).ok())
+    else {
+        return;
+    };
     let label = format!("label=sh.g1t.runner={}", registered.runner);
     for (list, remove) in [
         (vec!["ps", "-aq", "--filter", &label], vec!["rm", "-f", "-v"]),
@@ -337,7 +341,10 @@ pub fn reap(pid: u32) {
             .stderr(Stdio::null())
             .status();
     } else {
-        let named = quiet("ps").args(["-p", &pid, "-o", "comm="]).output().is_ok_and(|out| String::from_utf8_lossy(&out.stdout).trim().ends_with("g1t-runner"));
+        let named = quiet("ps")
+            .args(["-p", &pid, "-o", "comm="])
+            .output()
+            .is_ok_and(|out| String::from_utf8_lossy(&out.stdout).trim().ends_with("g1t-runner"));
         if named {
             let _ = quiet("kill").args(["-TERM", &pid]).status();
         }
@@ -354,7 +361,10 @@ mod tests {
         assert!(newer("0.10.0", "0.9.9"));
         assert!(!newer("0.2.0", "0.2.0"));
         assert_eq!(sha256(b"abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
-        let manifest: Manifest = serde_json::from_str(r#"{"version":"0.2.3","agent_image":null,"files":{"windows-x64":{"name":"g1t-runner-windows-x64.exe","sha256":"ab"}}}"#).unwrap();
+        let manifest: Manifest = serde_json::from_str(
+            r#"{"version":"0.2.3","agent_image":null,"files":{"windows-x64":{"name":"g1t-runner-windows-x64.exe","sha256":"ab"}}}"#,
+        )
+        .unwrap();
         assert_eq!(manifest.files["windows-x64"].name, "g1t-runner-windows-x64.exe");
         assert_eq!(downloads(&Url::parse("https://g1t.sh/").unwrap()), "https://g1t.sh/downloads/runner");
     }
@@ -409,21 +419,25 @@ mod tests {
         assert_eq!(installed(&dir).as_deref(), Some("0.3.2"));
         // The one moved aside goes with the next update, once nothing runs it.
         put(&dir, b"three", "0.3.3").unwrap();
-        let old = std::fs::read_dir(dir.join("bin")).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".old")).count();
+        let old =
+            std::fs::read_dir(dir.join("bin")).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".old")).count();
         assert_eq!(old, 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn a_release_published_again_with_another_build_replaces_the_program() {
-        let manifest: Manifest = serde_json::from_str(&format!(r#"{{"version":"0.3.7","files":{{"{}":{{"name":"g1t-runner","sha256":"aa"}}}}}}"#, platform())).unwrap();
+        let manifest: Manifest =
+            serde_json::from_str(&format!(r#"{{"version":"0.3.7","files":{{"{}":{{"name":"g1t-runner","sha256":"aa"}}}}}}"#, platform()))
+                .unwrap();
         assert!(takes(&manifest, None, || None), "nothing installed");
         assert!(takes(&manifest, Some("0.3.6"), || panic!("a newer version isn't hashed for")));
         assert!(!takes(&manifest, Some("0.3.8"), || Some("bb".into())), "never an older one");
         assert!(takes(&manifest, Some("0.3.7"), || Some("bb".into())), "published again with another build");
         assert!(!takes(&manifest, Some("0.3.7"), || Some("AA".into())), "the same build");
         assert!(!takes(&manifest, Some("0.3.7"), || None), "one that can't be read stays");
-        let elsewhere: Manifest = serde_json::from_str(r#"{"version":"0.3.7","files":{"plan9-x64":{"name":"g1t-runner","sha256":"aa"}}}"#).unwrap();
+        let elsewhere: Manifest =
+            serde_json::from_str(r#"{"version":"0.3.7","files":{"plan9-x64":{"name":"g1t-runner","sha256":"aa"}}}"#).unwrap();
         assert!(!takes(&elsewhere, Some("0.3.7"), || Some("bb".into())), "no build for this platform");
     }
 

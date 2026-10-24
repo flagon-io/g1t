@@ -130,9 +130,9 @@ use serde::{Deserialize, Serialize};
 use super::native::{Availability, MacVm, WsbFound};
 use super::needs::{self, Need, WindowsFacts};
 use super::private::{self, write_private};
-use super::{JobStatus, Options, RunnerStatus, VERSION, config, log};
 use super::sizes::{self, SizeChoice, SizesView};
 use super::update::HostedImage;
+use super::{JobStatus, Options, RunnerStatus, VERSION, config, log};
 use guest::{GuestStatus, Settings};
 
 /// What `status --json`'s shape is.
@@ -363,14 +363,18 @@ pub fn behind(saved: &Saved, manifest: &super::update::Manifest, keys: &[String]
     let made = made_from(saved);
     let sandbox = manifest.sandbox.as_ref();
     let files = match (&made.files, sandbox) {
-        (Some(have), Some(sandbox)) => keys.iter().any(|key| sandbox.files.get(key).is_some_and(|file| have.get(key) != Some(&file.sha256))),
+        (Some(have), Some(sandbox)) => {
+            keys.iter().any(|key| sandbox.files.get(key).is_some_and(|file| have.get(key) != Some(&file.sha256)))
+        }
         // Not known: a sandbox an older launcher made says nothing of them.
         _ => false,
     };
     Behind {
         version: saved.image_version.as_deref().is_none_or(|current| super::update::newer(&manifest.version, current)),
         files,
-        runner_image: sandbox.and_then(|sandbox| sandbox.runner_image.as_deref()).is_some_and(|wanted| made.runner_image.as_deref() != Some(wanted)),
+        runner_image: sandbox
+            .and_then(|sandbox| sandbox.runner_image.as_deref())
+            .is_some_and(|wanted| made.runner_image.as_deref() != Some(wanted)),
         hosted_image: sandbox.and_then(|sandbox| image::hosted_image_for(sandbox, arch)) != saved.release_hosted_image,
     }
 }
@@ -583,7 +587,17 @@ pub fn total_memory_mib() -> Option<u64> {
         unsafe extern "system" {
             fn GlobalMemoryStatusEx(buffer: *mut MemoryStatusEx) -> i32;
         }
-        let mut status = MemoryStatusEx { length: std::mem::size_of::<MemoryStatusEx>() as u32, load: 0, total_phys: 0, avail_phys: 0, total_page: 0, avail_page: 0, total_virtual: 0, avail_virtual: 0, avail_extended: 0 };
+        let mut status = MemoryStatusEx {
+            length: std::mem::size_of::<MemoryStatusEx>() as u32,
+            load: 0,
+            total_phys: 0,
+            avail_phys: 0,
+            total_page: 0,
+            avail_page: 0,
+            total_virtual: 0,
+            avail_virtual: 0,
+            avail_extended: 0,
+        };
         let ok = unsafe { GlobalMemoryStatusEx(&mut status) } != 0;
         ok.then_some(status.total_phys >> 20)
     }
@@ -595,7 +609,15 @@ pub fn total_memory_mib() -> Option<u64> {
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         let meminfo = std::fs::read_to_string("/proc/meminfo").ok()?;
-        meminfo.lines().find_map(|l| l.strip_prefix("MemTotal:"))?.trim().trim_end_matches("kB").trim().parse::<u64>().ok().map(|kb| kb >> 10)
+        meminfo
+            .lines()
+            .find_map(|l| l.strip_prefix("MemTotal:"))?
+            .trim()
+            .trim_end_matches("kB")
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .map(|kb| kb >> 10)
     }
 }
 
@@ -652,7 +674,10 @@ fn native_capability(dir: &Path) -> Option<(&'static str, Availability)> {
             if available.available {
                 // Windows Sandbox is on, but with virtualization off in the firmware no
                 // hypervisor runs, and it would fail only as a job starts.
-                return Some(("windows", if windows.firmware_off() { Availability::needing(vec![Need::Virtualization], "windows") } else { available }));
+                return Some((
+                    "windows",
+                    if windows.firmware_off() { Availability::needing(vec![Need::Virtualization], "windows") } else { available },
+                ));
             }
             let needs = needs::windows_sandbox_needs(&windows, found.feature, found.cli, needs::restart_pending(dir, &windows));
             Some(("windows", if needs.is_empty() { available } else { Availability::needing(needs, "windows") }))
@@ -771,12 +796,25 @@ fn base_name(saved: &Saved) -> String {
 // --- Status -----------------------------------------------------------------------
 
 /// The Linux capability's state from what is known.
-pub fn linux_state(available: bool, exists: bool, running: bool, phase: Option<&str>, guest: Option<&GuestStatus>, error: Option<&str>) -> &'static str {
+pub fn linux_state(
+    available: bool,
+    exists: bool,
+    running: bool,
+    phase: Option<&str>,
+    guest: Option<&GuestStatus>,
+    error: Option<&str>,
+) -> &'static str {
     if let Some(phase) = phase {
         return if phase == "updating" { "updating" } else { "starting" };
     }
     if !exists {
-        return if available && error.is_none() { "absent" } else if error.is_some() { "error" } else { "absent" };
+        return if available && error.is_none() {
+            "absent"
+        } else if error.is_some() {
+            "error"
+        } else {
+            "absent"
+        };
     }
     if !running {
         return if error.is_some() { "error" } else { "stopped" };
@@ -844,7 +882,8 @@ pub fn status(dir: &Path) -> Status {
     let mut capabilities = vec![linux.clone()];
     if let Some((os, found)) = native_capability(dir) {
         let folder = native_dir(dir);
-        let native_status: Option<RunnerStatus> = std::fs::read(super::status_path(&folder)).ok().and_then(|b| serde_json::from_slice(&b).ok());
+        let native_status: Option<RunnerStatus> =
+            std::fs::read(super::status_path(&folder)).ok().and_then(|b| serde_json::from_slice(&b).ok());
         let registered = config::load(&folder).is_ok();
         let alive = native_running(dir);
         let off = saved.is_off(os);
@@ -1046,7 +1085,9 @@ fn set_resources(options: &Options, dir: &Path) -> Result<()> {
         resources.cpus = cpus;
     }
     if let Some(memory) = options.value("memory") {
-        resources.memory_mib = super::exec::mib(memory).filter(|m| *m >= 1024).ok_or_else(|| anyhow!("--memory takes a size of 1g or more, such as 16g, not {memory}"))?;
+        resources.memory_mib = super::exec::mib(memory)
+            .filter(|m| *m >= 1024)
+            .ok_or_else(|| anyhow!("--memory takes a size of 1g or more, such as 16g, not {memory}"))?;
     }
     if options.value("cpus").is_none() && options.value("memory").is_none() {
         return Ok(());
@@ -1098,7 +1139,12 @@ fn host_runner_folders() -> Vec<PathBuf> {
     let data: Vec<PathBuf> = match std::env::consts::OS {
         "windows" => ["LOCALAPPDATA", "APPDATA"].iter().filter_map(|var| std::env::var_os(var)).map(PathBuf::from).collect(),
         "macos" => home.iter().map(|h| h.join("Library").join("Application Support")).collect(),
-        _ => std::env::var_os("XDG_DATA_HOME").filter(|d| !d.is_empty()).map(PathBuf::from).or_else(|| home.as_ref().map(|h| h.join(".local").join("share"))).into_iter().collect(),
+        _ => std::env::var_os("XDG_DATA_HOME")
+            .filter(|d| !d.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| home.as_ref().map(|h| h.join(".local").join("share")))
+            .into_iter()
+            .collect(),
     };
     for data in data {
         folders.push(data.join("sh.g1t.desktop").join("runner").join("host"));
@@ -1329,10 +1375,13 @@ fn up(options: &Options, dir: &Path) -> Result<()> {
         resources.cpus = cpus.parse().ok().filter(|n| *n > 0).ok_or_else(|| anyhow!("--cpus takes a number of CPUs, not {cpus}"))?;
     }
     if let Some(memory) = options.value("memory") {
-        resources.memory_mib = super::exec::mib(memory).filter(|m| *m >= 1024).ok_or_else(|| anyhow!("--memory takes a size of 1g or more, such as 8g, not {memory}"))?;
+        resources.memory_mib = super::exec::mib(memory)
+            .filter(|m| *m >= 1024)
+            .ok_or_else(|| anyhow!("--memory takes a size of 1g or more, such as 8g, not {memory}"))?;
     }
     if let Some(disk) = options.value("disk") {
-        resources.disk_gib = parse_gib(disk).filter(|g| *g >= 16).ok_or_else(|| anyhow!("--disk takes a size of 16g or more, such as 64g, not {disk}"))?;
+        resources.disk_gib =
+            parse_gib(disk).filter(|g| *g >= 16).ok_or_else(|| anyhow!("--disk takes a size of 16g or more, such as 64g, not {disk}"))?;
     }
     saved.resources = resources;
     // Each capability on or off, kept until said otherwise: `--only` turns
@@ -1396,7 +1445,9 @@ fn up(options: &Options, dir: &Path) -> Result<()> {
                 backend.load_image(Path::new(tar))?;
             }
             let Some(runner_image) = saved.runner_image.clone() else {
-                bail!("there is no runner image for the sandbox: this build is not a release, so pass --runner-image or --runner-image-file");
+                bail!(
+                    "there is no runner image for the sandbox: this build is not a release, so pass --runner-image or --runner-image-file"
+                );
             };
             let settings = Settings {
                 url: saved.url.clone(),
@@ -1430,14 +1481,22 @@ fn up(options: &Options, dir: &Path) -> Result<()> {
             Some((os, started))
         }
         // Asked for by name, and not here: why, rather than nothing.
-        Some((os, found)) if only.is_some() => Some((os, Err(anyhow!("{} {}", found.cause.unwrap_or_default(), found.fix.unwrap_or_default()).context(format!("{} jobs can't run here", kind_name(os)))))),
+        Some((os, found)) if only.is_some() => Some((
+            os,
+            Err(anyhow!("{} {}", found.cause.unwrap_or_default(), found.fix.unwrap_or_default())
+                .context(format!("{} jobs can't run here", kind_name(os)))),
+        )),
         _ => None,
     };
     match (linux, native) {
         (None | Some(Ok(())), None | Some((_, Ok(())))) => Ok(()),
-        (Some(Err(linux)), Some((os, Ok(())))) => Err(linux.context(format!("{} jobs are sandboxed and running, but Linux jobs are not", kind_name(os)))),
+        (Some(Err(linux)), Some((os, Ok(())))) => {
+            Err(linux.context(format!("{} jobs are sandboxed and running, but Linux jobs are not", kind_name(os))))
+        }
         (Some(Err(linux)), _) => Err(linux),
-        (Some(Ok(())), Some((os, Err(native)))) => Err(native.context(format!("Linux jobs are sandboxed and running, but {} jobs are not", kind_name(os)))),
+        (Some(Ok(())), Some((os, Err(native)))) => {
+            Err(native.context(format!("Linux jobs are sandboxed and running, but {} jobs are not", kind_name(os))))
+        }
         (None, Some((_, Err(native)))) => Err(native),
     }
 }
@@ -1657,7 +1716,11 @@ mod tests {
 
     #[test]
     fn the_state_says_what_a_person_needs_to_know() {
-        let running = GuestStatus { state: "running".into(), runner: Some(RunnerStatus { state: "idle".into(), ..RunnerStatus::default() }), ..GuestStatus::default() };
+        let running = GuestStatus {
+            state: "running".into(),
+            runner: Some(RunnerStatus { state: "idle".into(), ..RunnerStatus::default() }),
+            ..GuestStatus::default()
+        };
         let unregistered = GuestStatus { state: "running".into(), ..GuestStatus::default() };
         let failed = GuestStatus { state: "error".into(), error: Some("x".into()), ..GuestStatus::default() };
         assert_eq!(linux_state(true, false, false, None, None, None), "absent");
@@ -1766,7 +1829,10 @@ mod tests {
         assert_eq!(behind, Behind { files: true, ..Behind::default() });
         assert!(behind.image());
         // A file of another machine's changing is not this sandbox's update.
-        assert_eq!(super::behind(&saved, &release(RUNNER_21, "bb", Some(HOSTED_21)), &["vm-arm64-disk".to_owned()], "x64"), Behind::default());
+        assert_eq!(
+            super::behind(&saved, &release(RUNNER_21, "bb", Some(HOSTED_21)), &["vm-arm64-disk".to_owned()], "x64"),
+            Behind::default()
+        );
     }
 
     #[test]
@@ -1777,11 +1843,22 @@ mod tests {
         assert_eq!(behind, Behind { hosted_image: true, ..Behind::default() });
         assert!(!behind.image(), "the runner is started again with it; its system stays");
         // Another one, and none again, too.
-        let other = super::behind(&made(&release(RUNNER_21, "aa", Some("g1t.sh/flagon-io/g1t-hosted@sha256:0ld")), "x64"), &release(RUNNER_21, "aa", Some(HOSTED_21)), &keys, "x64");
+        let other = super::behind(
+            &made(&release(RUNNER_21, "aa", Some("g1t.sh/flagon-io/g1t-hosted@sha256:0ld")), "x64"),
+            &release(RUNNER_21, "aa", Some(HOSTED_21)),
+            &keys,
+            "x64",
+        );
         assert!(other.hosted_image);
-        assert!(super::behind(&made(&release(RUNNER_21, "aa", Some(HOSTED_21)), "x64"), &release(RUNNER_21, "aa", None), &keys, "x64").hosted_image);
+        assert!(
+            super::behind(&made(&release(RUNNER_21, "aa", Some(HOSTED_21)), "x64"), &release(RUNNER_21, "aa", None), &keys, "x64")
+                .hosted_image
+        );
         // An arm64 sandbox is given none either way.
-        assert_eq!(super::behind(&made(&release(RUNNER_21, "aa", None), "arm64"), &release(RUNNER_21, "aa", Some(HOSTED_21)), &keys, "arm64"), Behind::default());
+        assert_eq!(
+            super::behind(&made(&release(RUNNER_21, "aa", None), "arm64"), &release(RUNNER_21, "aa", Some(HOSTED_21)), &keys, "arm64"),
+            Behind::default()
+        );
     }
 
     #[test]
@@ -1831,7 +1908,21 @@ mod tests {
             ..Status::default()
         };
         let value = serde_json::to_value(&status).unwrap();
-        for field in ["schema", "state", "backend", "runner_version", "launcher_version", "image_version", "isolation", "job", "error", "resources", "capabilities", "state_dir", "warnings"] {
+        for field in [
+            "schema",
+            "state",
+            "backend",
+            "runner_version",
+            "launcher_version",
+            "image_version",
+            "isolation",
+            "job",
+            "error",
+            "resources",
+            "capabilities",
+            "state_dir",
+            "warnings",
+        ] {
             assert!(value.get(field).is_some(), "{field}");
         }
         for field in ["id", "available", "state", "isolation", "runner_version", "job", "cause", "fix", "turned_off", "needs"] {

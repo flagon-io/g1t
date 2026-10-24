@@ -104,11 +104,8 @@ fn edits_within(base: &[&str], side: &[&str], max: usize) -> bool {
     let at = |k: isize| (k + max as isize + 1) as usize;
     for d in 0..=max as isize {
         for k in (-d..=d).step_by(2) {
-            let mut x = if k == -d || (k != d && reached[at(k - 1)] < reached[at(k + 1)]) {
-                reached[at(k + 1)]
-            } else {
-                reached[at(k - 1)] + 1
-            };
+            let mut x =
+                if k == -d || (k != d && reached[at(k - 1)] < reached[at(k + 1)]) { reached[at(k + 1)] } else { reached[at(k - 1)] + 1 };
             let mut y = (x as isize - k) as usize;
             while x < n && y < m && base[x] == side[y] {
                 x += 1;
@@ -208,7 +205,9 @@ pub(crate) fn plan(ours: &[Changed], theirs: &[Changed]) -> Plan {
     let paths = |changes: &[Changed]| changes.iter().map(|change| change.0.clone()).collect::<Vec<_>>();
     // A file on one side where the other has a directory.
     let ours_paths = paths(ours);
-    if let Some(met) = overlapping(&ours_paths, &paths(theirs)).into_iter().find(|path| !their.contains_key(path.as_str()) || !ours_paths.contains(path)) {
+    if let Some(met) =
+        overlapping(&ours_paths, &paths(theirs)).into_iter().find(|path| !their.contains_key(path.as_str()) || !ours_paths.contains(path))
+    {
         return Plan::Unsupported(format!("{met} is a file on one side and a directory on the other"));
     }
     let mut steps = Vec::new();
@@ -297,14 +296,8 @@ async fn make<R: GitRepo>(git: &R, base: &str, head: &str) -> Result<Made> {
         head_commit.tree_hash.clone()
     } else {
         let line = base_log.iter().map(|commit| commit.hash.clone()).collect();
-        let Some(MergeBase {
-            tree: merge_base_tree,
-            ..
-        }) = merge_base(git, &head_log, git, &base_log, &line).await?
-        else {
-            return Ok(Made::Unsupported(
-                "g1t could not find where the head left the base branch".to_owned(),
-            ));
+        let Some(MergeBase { tree: merge_base_tree, .. }) = merge_base(git, &head_log, git, &base_log, &line).await? else {
+            return Ok(Made::Unsupported("g1t could not find where the head left the base branch".to_owned()));
         };
         let ((ours, ours_cut), (theirs, theirs_cut)) = try_join(
             changed_entries(git, Some(&merge_base_tree), &head_commit.tree_hash),
@@ -672,7 +665,13 @@ mod tests {
         }
 
         /// The files of a tree in `objects` or the store, by path.
-        fn files(&self, tree: &str, written: &HashMap<String, Vec<TreeEntry>>, blobs: &HashMap<String, Vec<u8>>, prefix: &str) -> Vec<(String, String)> {
+        fn files(
+            &self,
+            tree: &str,
+            written: &HashMap<String, Vec<TreeEntry>>,
+            blobs: &HashMap<String, Vec<u8>>,
+            prefix: &str,
+        ) -> Vec<(String, String)> {
             let entries = written.get(tree).or_else(|| self.trees.get(tree)).expect("tree");
             let mut out = Vec::new();
             for entry in entries {
@@ -838,10 +837,7 @@ mod tests {
         let made = block_on(make(&store, "M", "s1")).unwrap();
         assert_eq!(
             merged_files(&store, made, "M", "s1"),
-            [
-                ("home".to_owned(), "a\nPS\n".to_owned()),
-                ("other".to_owned(), "2\n".to_owned())
-            ]
+            [("home".to_owned(), "a\nPS\n".to_owned()), ("other".to_owned(), "2\n".to_owned())]
         );
     }
 

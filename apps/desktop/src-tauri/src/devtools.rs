@@ -84,7 +84,9 @@ pub fn allow(app: &AppHandle, on: bool) {
     let _ = site.with_webview(move |webview| {
         // SAFETY: the controller is the site's, alive while the web view is,
         // and this runs on the thread that owns it.
-        let _ = unsafe { webview.controller().CoreWebView2().and_then(|core| core.Settings()).and_then(|settings| settings.SetAreDevToolsEnabled(on)) };
+        let _ = unsafe {
+            webview.controller().CoreWebView2().and_then(|core| core.Settings()).and_then(|settings| settings.SetAreDevToolsEnabled(on))
+        };
     });
 }
 
@@ -114,6 +116,10 @@ pub fn open(app: &AppHandle) -> Result<(), String> {
 /// Windows it only opens, and the inspector's own window closes it.
 pub fn toggle(app: &AppHandle) -> Result<(), String> {
     let site = site_if_on(app)?;
-    if site.is_devtools_open() { site.close_devtools() } else { site.open_devtools() }
+    if site.is_devtools_open() {
+        site.close_devtools()
+    } else {
+        site.open_devtools()
+    }
     Ok(())
 }

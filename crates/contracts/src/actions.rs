@@ -1168,11 +1168,7 @@ impl InstanceType {
     /// The machine a job on it is charged as (`billed_as`): itself, or
     /// that machine's first row.
     pub fn charged_as(&self) -> InstanceType {
-        if self.billed_as == self.machine {
-            *self
-        } else {
-            machine_named(self.billed_as).unwrap_or(STANDARD_INSTANCE)
-        }
+        if self.billed_as == self.machine { *self } else { machine_named(self.billed_as).unwrap_or(STANDARD_INSTANCE) }
     }
 
     /// Its price as a multiple of the standard machine's.
@@ -1182,10 +1178,7 @@ impl InstanceType {
 
     /// `2 vCPU, 8 GiB, 16 GB`.
     pub fn size(&self) -> String {
-        format!(
-            "{} vCPU, {} GiB, {} GB",
-            self.vcpu, self.memory_gib, self.disk_gb
-        )
+        format!("{} vCPU, {} GiB, {} GB", self.vcpu, self.memory_gib, self.disk_gb)
     }
 }
 
@@ -1275,10 +1268,7 @@ fn running_machines() -> Vec<InstanceType> {
 /// The machines jobs are charged as today, once each, in the catalogue's
 /// order: those billed as themselves. Prices and rates list these.
 pub fn machines() -> Vec<InstanceType> {
-    running_machines()
-        .into_iter()
-        .filter(|m| m.billed_as == m.machine)
-        .collect()
+    running_machines().into_iter().filter(|m| m.billed_as == m.machine).collect()
 }
 
 /// Every machine minutes may be reported under: [`machines`], then those
@@ -1286,22 +1276,14 @@ pub fn machines() -> Vec<InstanceType> {
 /// retired ones. Usage reports list these.
 pub fn billed_machines() -> Vec<InstanceType> {
     let mut all = machines();
-    all.extend(
-        running_machines()
-            .into_iter()
-            .filter(|m| m.billed_as != m.machine),
-    );
+    all.extend(running_machines().into_iter().filter(|m| m.billed_as != m.machine));
     all.extend(RETIRED_MACHINES);
     all
 }
 
 /// A machine by its key (`2-core`), retired ones included, if it is one.
 pub fn machine_named(machine: &str) -> Option<InstanceType> {
-    INSTANCE_TYPES
-        .iter()
-        .chain(RETIRED_MACHINES.iter())
-        .find(|instance| instance.machine == machine)
-        .copied()
+    INSTANCE_TYPES.iter().chain(RETIRED_MACHINES.iter()).find(|instance| instance.machine == machine).copied()
 }
 
 /// The minutes a job on g1t's machines is charged for: its time rounded up
@@ -1329,10 +1311,7 @@ pub fn instance_for(labels: &[String], public: bool) -> InstanceType {
 
 /// An instance type by its label, if it is one.
 pub fn instance_named(label: &str) -> Option<InstanceType> {
-    INSTANCE_TYPES
-        .iter()
-        .find(|instance| instance.label.eq_ignore_ascii_case(label.trim()))
-        .copied()
+    INSTANCE_TYPES.iter().find(|instance| instance.label.eq_ignore_ascii_case(label.trim())).copied()
 }
 
 /// The machine a job that ran with `label` (as the runner reports it) is
@@ -1342,12 +1321,7 @@ pub fn instance_named(label: &str) -> Option<InstanceType> {
 pub fn billed_instance(label: &str) -> Option<InstanceType> {
     instance_named(label)
         .map(|instance| instance.charged_as())
-        .or_else(|| {
-            RETIRED_MACHINES
-                .iter()
-                .find(|instance| instance.label.eq_ignore_ascii_case(label.trim()))
-                .copied()
-        })
+        .or_else(|| RETIRED_MACHINES.iter().find(|instance| instance.label.eq_ignore_ascii_case(label.trim())).copied())
 }
 
 /// GitHub's runner for a label in a repository of one visibility, and the
@@ -1398,18 +1372,8 @@ const fn github(
         label,
         os,
         arch,
-        public: HostedSize {
-            vcpu: public.0,
-            memory_gb: public.1,
-            disk_gb: 14.0,
-            machine: public.2,
-        },
-        private: HostedSize {
-            vcpu: private.0,
-            memory_gb: private.1,
-            disk_gb: 14.0,
-            machine: private.2,
-        },
+        public: HostedSize { vcpu: public.0, memory_gb: public.1, disk_gb: 14.0, machine: public.2 },
+        private: HostedSize { vcpu: private.0, memory_gb: private.1, disk_gb: 14.0, machine: private.2 },
     }
 }
 
@@ -1451,10 +1415,7 @@ pub const GITHUB_HOSTED_LABELS: [GithubLabel; 21] = [
 
 /// A GitHub hosted-runner label, if `label` is one (without regard to case).
 pub fn github_label(label: &str) -> Option<GithubLabel> {
-    GITHUB_HOSTED_LABELS
-        .iter()
-        .find(|github| github.label.eq_ignore_ascii_case(label.trim()))
-        .copied()
+    GITHUB_HOSTED_LABELS.iter().find(|github| github.label.eq_ignore_ascii_case(label.trim())).copied()
 }
 
 /// The first of a job's labels that asks for an OS g1t's hosted machines
@@ -1997,43 +1958,21 @@ mod instance_tests {
     fn runs_on_picks_the_machine() {
         // As on GitHub: ubuntu-latest is 2 vCPU in a private repository, 4
         // in a public one.
-        assert_eq!(
-            instance_for(&labels(&["ubuntu-latest"]), false),
-            STANDARD_INSTANCE
-        );
-        assert_eq!(
-            instance_for(&labels(&["ubuntu-latest"]), true).machine,
-            "4-core"
-        );
+        assert_eq!(instance_for(&labels(&["ubuntu-latest"]), false), STANDARD_INSTANCE);
+        assert_eq!(instance_for(&labels(&["ubuntu-latest"]), true).machine, "4-core");
         assert_eq!(instance_for(&labels(&["Ubuntu-24.04"]), true).vcpu, 4.0);
         assert_eq!(instance_for(&labels(&["ubuntu-24.04"]), false).vcpu, 2.0);
-        assert_eq!(
-            instance_for(&labels(&["ubuntu-24.04-arm"]), true).label,
-            "g1t-4core"
-        );
+        assert_eq!(instance_for(&labels(&["ubuntu-24.04-arm"]), true).label, "g1t-4core");
         // ubuntu-slim is 1 vCPU in either.
         for public in [false, true] {
-            assert_eq!(
-                instance_for(&labels(&["ubuntu-slim"]), public).label,
-                "ubuntu-slim"
-            );
-            assert_eq!(
-                instance_for(&labels(&["Ubuntu-Slim"]), public).machine,
-                "1-core"
-            );
+            assert_eq!(instance_for(&labels(&["ubuntu-slim"]), public).label, "ubuntu-slim");
+            assert_eq!(instance_for(&labels(&["Ubuntu-Slim"]), public).machine, "1-core");
             // Two GitHub labels: the dearer machine.
-            assert_eq!(
-                instance_for(&labels(&["ubuntu-slim", "ubuntu-latest"]), public).machine,
-                if public { "4-core" } else { "2-core" }
-            );
+            assert_eq!(instance_for(&labels(&["ubuntu-slim", "ubuntu-latest"]), public).machine, if public { "4-core" } else { "2-core" });
             // No label, or none g1t knows (the labels g1t had before among
             // them): the standard machine, public or not.
             for unknown in [&[][..], &["linux"], &["g1t-4core"], &["G1T-2Core"]] {
-                assert_eq!(
-                    instance_for(&labels(unknown), public),
-                    STANDARD_INSTANCE,
-                    "{unknown:?}"
-                );
+                assert_eq!(instance_for(&labels(unknown), public), STANDARD_INSTANCE, "{unknown:?}");
             }
         }
         assert_eq!(instance_named("ubuntu-slim").map(|i| i.vcpu), Some(1.0));
@@ -2043,18 +1982,9 @@ mod instance_tests {
         assert_eq!(instance_named("g1t-64core"), None);
         // A job is billed as what its machine is charged as: a public
         // repository's 4-core machine as the standard one.
-        assert_eq!(
-            billed_instance("g1t-4core").map(|i| i.machine),
-            Some("2-core")
-        );
-        assert_eq!(
-            instance_named("g1t-4core").map(|i| i.charged_as()),
-            Some(STANDARD_INSTANCE)
-        );
-        assert_eq!(
-            billed_instance("ubuntu-slim").map(|i| i.machine),
-            Some("1-core")
-        );
+        assert_eq!(billed_instance("g1t-4core").map(|i| i.machine), Some("2-core"));
+        assert_eq!(instance_named("g1t-4core").map(|i| i.charged_as()), Some(STANDARD_INSTANCE));
+        assert_eq!(billed_instance("ubuntu-slim").map(|i| i.machine), Some("1-core"));
         assert_eq!(billed_instance("g1t-2core"), None);
     }
 
@@ -2065,19 +1995,9 @@ mod instance_tests {
         seen.dedup();
         assert_eq!(seen.len(), GITHUB_HOSTED_LABELS.len());
         for github in GITHUB_HOSTED_LABELS {
-            assert!(
-                matches!(github.os, "linux" | "windows" | "macos")
-                    && matches!(github.arch, "x64" | "arm64"),
-                "{}",
-                github.label
-            );
+            assert!(matches!(github.os, "linux" | "windows" | "macos") && matches!(github.arch, "x64" | "arm64"), "{}", github.label);
             // GitHub never gives a public repository less than a private one.
-            assert!(
-                github.public.vcpu >= github.private.vcpu
-                    && github.public.memory_gb >= github.private.memory_gb,
-                "{}",
-                github.label
-            );
+            assert!(github.public.vcpu >= github.private.vcpu && github.public.memory_gb >= github.private.memory_gb, "{}", github.label);
             for public in [false, true] {
                 let size = github.size(public);
                 match size.machine {
@@ -2088,34 +2008,20 @@ mod instance_tests {
                     Some(machine) => {
                         assert_eq!(github.os, "linux", "{}", github.label);
                         let instance = instance_named(machine).unwrap();
-                        assert_eq!(
-                            instance_for(&labels(&[github.label]), public),
-                            instance,
-                            "{} {public}",
-                            github.label
-                        );
+                        assert_eq!(instance_for(&labels(&[github.label]), public), instance, "{} {public}", github.label);
                         assert!(
                             instance.vcpu >= size.vcpu
-                                && (instance.memory_gib * 1.073_741_824 >= size.memory_gb
-                                    || instance.container == "standard-4"),
+                                && (instance.memory_gib * 1.073_741_824 >= size.memory_gb || instance.container == "standard-4"),
                             "{} {public}",
                             github.label
                         );
-                        assert_eq!(
-                            not_hosted_os(&labels(&[github.label])),
-                            None,
-                            "{}",
-                            github.label
-                        );
+                        assert_eq!(not_hosted_os(&labels(&[github.label])), None, "{}", github.label);
                     }
                     // Windows and macOS: no hosted machine; refused unless
                     // the job asks for a self-hosted runner.
                     None => {
                         assert_ne!(github.os, "linux", "{}", github.label);
-                        assert_eq!(
-                            not_hosted_os(&labels(&["ubuntu-latest", github.label])),
-                            Some((github.label.to_owned(), github.os))
-                        );
+                        assert_eq!(not_hosted_os(&labels(&["ubuntu-latest", github.label])), Some((github.label.to_owned(), github.os)));
                     }
                 }
             }
@@ -2128,22 +2034,14 @@ mod instance_tests {
         for instance in INSTANCE_TYPES {
             assert!(
                 instance == STANDARD_INSTANCE
-                    || GITHUB_HOSTED_LABELS.iter().any(|g| {
-                        [g.public.machine, g.private.machine].contains(&Some(instance.label))
-                    }),
+                    || GITHUB_HOSTED_LABELS.iter().any(|g| { [g.public.machine, g.private.machine].contains(&Some(instance.label)) }),
                 "{}",
                 instance.label
             );
         }
         // Images the table does not have yet, or no longer has, by name.
-        assert_eq!(
-            not_hosted_os(&labels(&["windows-2019"])),
-            Some(("windows-2019".to_owned(), "windows"))
-        );
-        assert_eq!(
-            not_hosted_os(&labels(&["macos-13"])),
-            Some(("macos-13".to_owned(), "macos"))
-        );
+        assert_eq!(not_hosted_os(&labels(&["windows-2019"])), Some(("windows-2019".to_owned(), "windows")));
+        assert_eq!(not_hosted_os(&labels(&["macos-13"])), Some(("macos-13".to_owned(), "macos")));
         assert_eq!(not_hosted_os(&labels(&["ubuntu-20.04", "g1t-4core"])), None);
     }
 
@@ -2158,12 +2056,7 @@ mod instance_tests {
             _ => None,
         };
         for instance in INSTANCE_TYPES.iter().chain(RETIRED_MACHINES.iter()) {
-            assert_eq!(
-                named(instance.container),
-                Some((instance.vcpu, instance.memory_gib, instance.disk_gb)),
-                "{}",
-                instance.label
-            );
+            assert_eq!(named(instance.container), Some((instance.vcpu, instance.memory_gib, instance.disk_gb)), "{}", instance.label);
         }
     }
 
@@ -2175,28 +2068,13 @@ mod instance_tests {
         labels.dedup();
         classes.sort_unstable();
         classes.dedup();
-        assert_eq!(
-            (labels.len(), classes.len()),
-            (INSTANCE_TYPES.len(), INSTANCE_TYPES.len())
-        );
+        assert_eq!((labels.len(), classes.len()), (INSTANCE_TYPES.len(), INSTANCE_TYPES.len()));
         // Every row of a machine says the same size and price as its first.
         for instance in INSTANCE_TYPES {
             let first = machine_named(instance.machine).unwrap();
             assert_eq!(
-                (
-                    instance.container,
-                    instance.vcpu,
-                    instance.memory_gib,
-                    instance.disk_gb,
-                    instance.micros_per_minute
-                ),
-                (
-                    first.container,
-                    first.vcpu,
-                    first.memory_gib,
-                    first.disk_gb,
-                    first.micros_per_minute
-                ),
+                (instance.container, instance.vcpu, instance.memory_gib, instance.disk_gb, instance.micros_per_minute),
+                (first.container, first.vcpu, first.memory_gib, first.disk_gb, first.micros_per_minute),
                 "{}",
                 instance.label
             );
@@ -2205,26 +2083,15 @@ mod instance_tests {
         // never reused.
         for retired in RETIRED_MACHINES {
             assert!(
-                !INSTANCE_TYPES.iter().any(|i| i.machine == retired.machine
-                    || i.label == retired.label
-                    || i.class == retired.class),
+                !INSTANCE_TYPES.iter().any(|i| i.machine == retired.machine || i.label == retired.label || i.class == retired.class),
                 "{}",
                 retired.machine
             );
         }
         // Jobs are charged as 2-core or 1-core today; 4-core minutes are
         // still reported (and priced) under their own key.
-        assert_eq!(
-            machines().iter().map(|m| m.machine).collect::<Vec<_>>(),
-            ["2-core", "1-core"]
-        );
-        assert_eq!(
-            billed_machines()
-                .iter()
-                .map(|m| m.machine)
-                .collect::<Vec<_>>(),
-            ["2-core", "1-core", "4-core"]
-        );
+        assert_eq!(machines().iter().map(|m| m.machine).collect::<Vec<_>>(), ["2-core", "1-core"]);
+        assert_eq!(billed_machines().iter().map(|m| m.machine).collect::<Vec<_>>(), ["2-core", "1-core", "4-core"]);
         assert_eq!(STANDARD_INSTANCE.size(), "2 vCPU, 8 GiB, 16 GB");
         assert!((INSTANCE_TYPES[1].price_scale() - 0.75).abs() < 1e-12);
         assert!((INSTANCE_TYPES[2].price_scale() - 1.75).abs() < 1e-12);
@@ -2233,11 +2100,7 @@ mod instance_tests {
             let charged = instance.charged_as();
             assert_eq!(charged.machine, instance.billed_as, "{}", instance.label);
             assert_eq!(charged.billed_as, charged.machine, "{}", instance.label);
-            assert!(
-                charged.micros_per_minute <= instance.micros_per_minute,
-                "{}",
-                instance.label
-            );
+            assert!(charged.micros_per_minute <= instance.micros_per_minute, "{}", instance.label);
         }
     }
 
@@ -2246,9 +2109,8 @@ mod instance_tests {
         // Memory, disk and the Durable Object behind the container (128 MB)
         // for every second, and vCPU as used, at Cloudflare's list prices,
         // in micros a minute.
-        let per_minute = |i: &InstanceType, busy_vcpus: f64| {
-            60.0 * (i.memory_gib * 2.5 + i.disk_gb * 0.07 + 0.125 * 12.5 + busy_vcpus * 20.0)
-        };
+        let per_minute =
+            |i: &InstanceType, busy_vcpus: f64| 60.0 * (i.memory_gib * 2.5 + i.disk_gb * 0.07 + 0.125 * 12.5 + busy_vcpus * 20.0);
         let tenth_of_a_cent = |micros: f64| ((micros / 1_000.0).ceil() * 1_000.0) as i64;
         for instance in billed_machines() {
             let usual = per_minute(&instance, instance.vcpu / 2.0) * 1.2;
@@ -2259,57 +2121,30 @@ mod instance_tests {
                 "{}: {usual} {full}",
                 instance.machine
             );
-            assert!(
-                instance.micros_per_minute as f64 >= full,
-                "{}",
-                instance.machine
-            );
+            assert!(instance.micros_per_minute as f64 >= full, "{}", instance.machine);
         }
         assert_eq!(STANDARD_INSTANCE.micros_per_minute, 4_000);
-        assert_eq!(
-            machine_named("1-core").map(|m| m.micros_per_minute),
-            Some(3_000)
-        );
-        assert_eq!(
-            machine_named("4-core").map(|m| m.micros_per_minute),
-            Some(7_000)
-        );
+        assert_eq!(machine_named("1-core").map(|m| m.micros_per_minute), Some(3_000));
+        assert_eq!(machine_named("4-core").map(|m| m.micros_per_minute), Some(7_000));
     }
 
     #[test]
     fn the_typescript_mirror_has_every_row() {
         let mirror = include_str!("../../../packages/contracts/src/instances.ts");
-        let rows = mirror
-            .lines()
-            .filter(|line| line.trim_start().starts_with("{ label: "))
-            .count();
+        let rows = mirror.lines().filter(|line| line.trim_start().starts_with("{ label: ")).count();
         assert_eq!(rows, INSTANCE_TYPES.len() + RETIRED_MACHINES.len());
         for i in INSTANCE_TYPES.iter().chain(RETIRED_MACHINES.iter()) {
             let row = format!(
                 r#"{{ label: "{}", machine: "{}", sandboxClass: "{}", container: "{}", vcpu: {}, memoryGib: {}, diskGb: {}, microsPerMinute: {}, billedAs: "{}" }}"#,
-                i.label,
-                i.machine,
-                i.class,
-                i.container,
-                i.vcpu,
-                i.memory_gib,
-                i.disk_gb,
-                i.micros_per_minute,
-                i.billed_as
+                i.label, i.machine, i.class, i.container, i.vcpu, i.memory_gib, i.disk_gb, i.micros_per_minute, i.billed_as
             );
             assert!(mirror.contains(&row), "instances.ts has no row\n{row}");
         }
-        let rows = mirror
-            .lines()
-            .filter(|line| line.trim_start().starts_with("{ githubLabel: "))
-            .count();
+        let rows = mirror.lines().filter(|line| line.trim_start().starts_with("{ githubLabel: ")).count();
         assert_eq!(rows, GITHUB_HOSTED_LABELS.len());
         let size = |s: HostedSize| {
             let machine = s.machine.map_or("null".to_owned(), |m| format!("\"{m}\""));
-            format!(
-                "{{ vcpu: {}, memoryGb: {}, diskGb: {}, machine: {machine} }}",
-                s.vcpu, s.memory_gb, s.disk_gb
-            )
+            format!("{{ vcpu: {}, memoryGb: {}, diskGb: {}, machine: {machine} }}", s.vcpu, s.memory_gb, s.disk_gb)
         };
         for g in GITHUB_HOSTED_LABELS {
             let row = format!(

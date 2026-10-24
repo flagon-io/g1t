@@ -54,12 +54,7 @@ fn capped(mut problems: Vec<Problem>) -> Vec<Problem> {
     problems
 }
 
-fn pattern_problems(
-    rule: &PatternRule,
-    commits: &[CommitFacts],
-    what: &str,
-    read: impl Fn(&CommitFacts) -> Option<&str>,
-) -> Vec<Problem> {
+fn pattern_problems(rule: &PatternRule, commits: &[CommitFacts], what: &str, read: impl Fn(&CommitFacts) -> Option<&str>) -> Vec<Problem> {
     let compiled = match text::compile(rule) {
         Ok(compiled) => compiled,
         // Saved rules compile; one that no longer does refuses nothing.
@@ -69,7 +64,9 @@ fn pattern_problems(
     commits
         .iter()
         .filter(|commit| !compiled.allows(read(commit).unwrap_or_default()))
-        .map(|commit| Problem::new(format!("Commit {} has a {what} that does not {}.", short(&commit.sha), compiled.wants()), remedy.clone()))
+        .map(|commit| {
+            Problem::new(format!("Commit {} has a {what} that does not {}.", short(&commit.sha), compiled.wants()), remedy.clone())
+        })
         .collect()
 }
 
@@ -250,8 +247,7 @@ mod tests {
     use super::tests_support::commit;
     use super::*;
     use g1t_contracts::rules::{
-        FileExtensionRule, FilePathRule, MaxFilePathLengthRule, MaxFileSizeRule, MaxFilesChangedRule, NoParameters,
-        PatternOperator,
+        FileExtensionRule, FilePathRule, MaxFilePathLengthRule, MaxFileSizeRule, MaxFilesChangedRule, NoParameters, PatternOperator,
     };
 
     #[test]
@@ -277,7 +273,8 @@ mod tests {
 
     #[test]
     fn message_and_address_patterns_check_every_commit() {
-        let conventional = PatternRule { name: String::new(), operator: PatternOperator::Regex, pattern: "^(feat|fix): ".into(), negate: false };
+        let conventional =
+            PatternRule { name: String::new(), operator: PatternOperator::Regex, pattern: "^(feat|fix): ".into(), negate: false };
         let found = problems(&Rule::CommitMessagePattern(conventional), &[commit("a1", "feat: x", &[]), commit("b2", "stuff", &[])], true);
         assert_eq!(found.len(), 1);
         assert!(found[0].message.starts_with("Commit b2 has a message that does not match"));
@@ -290,10 +287,12 @@ mod tests {
 
     #[test]
     fn restricted_paths_extensions_sizes_and_lengths() {
-        let paths = Rule::FilePathRestriction(FilePathRule { restricted_file_paths: vec![".g1t/workflows/**".into(), "CODEOWNERS".into()] });
+        let paths =
+            Rule::FilePathRestriction(FilePathRule { restricted_file_paths: vec![".g1t/workflows/**".into(), "CODEOWNERS".into()] });
         let change = commit("a", "x", &["src/a.rs", ".g1t/workflows/ci.yml", "docs/CODEOWNERS"]);
         assert_eq!(problems(&paths, std::slice::from_ref(&change), true).len(), 2);
-        let extensions = Rule::FileExtensionRestriction(FileExtensionRule { restricted_file_extensions: vec!["exe".into(), ".ZIP".into()] });
+        let extensions =
+            Rule::FileExtensionRestriction(FileExtensionRule { restricted_file_extensions: vec!["exe".into(), ".ZIP".into()] });
         let binaries = commit("b", "x", &["tool.exe", "a.zip", "README", ".env"]);
         assert_eq!(problems(&extensions, &[binaries], true).len(), 2);
         let mut big = commit("c", "x", &["video.mp4"]);
@@ -313,8 +312,15 @@ mod tests {
         for file in &mut gone.files {
             file.deleted = true;
         }
-        assert_eq!(problems(&Rule::FilePathRestriction(FilePathRule { restricted_file_paths: vec!["CODEOWNERS".into()] }), &[gone.clone()], true).len(), 1);
-        assert!(problems(&Rule::FileExtensionRestriction(FileExtensionRule { restricted_file_extensions: vec!["exe".into()] }), &[gone], true).is_empty());
+        assert_eq!(
+            problems(&Rule::FilePathRestriction(FilePathRule { restricted_file_paths: vec!["CODEOWNERS".into()] }), &[gone.clone()], true)
+                .len(),
+            1
+        );
+        assert!(
+            problems(&Rule::FileExtensionRestriction(FileExtensionRule { restricted_file_extensions: vec!["exe".into()] }), &[gone], true)
+                .is_empty()
+        );
     }
 
     #[test]

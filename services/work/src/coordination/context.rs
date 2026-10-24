@@ -134,7 +134,13 @@ pub(crate) fn suggest_targets(
 /// Who is on a work item of `workspace`, as `viewer` is shown it: the
 /// claims and sessions in repositories they may read (`readable`), each
 /// session as `shown` lets them see it.
-fn shown_people(claims: Vec<Claim>, mut sessions: Vec<Session>, readable: &[String], viewer: &Viewer, workspace: &str) -> (Vec<Claim>, Vec<Session>) {
+fn shown_people(
+    claims: Vec<Claim>,
+    mut sessions: Vec<Session>,
+    readable: &[String],
+    viewer: &Viewer,
+    workspace: &str,
+) -> (Vec<Claim>, Vec<Session>) {
     let may_read = |repo_id: &str| readable.iter().any(|id| id == repo_id);
     let claims = claims.into_iter().filter(|claim| claim.repo_id.as_deref().is_none_or(may_read)).collect();
     sessions.retain(|session| may_read(&session.repo_id));
@@ -174,11 +180,7 @@ impl Work {
         let viewer = a.viewer.as_ref();
         let may_read = |repo_id: &str| readable.iter().any(|repo| repo.id == repo_id);
 
-        let people = try_join3(
-            self.active_claims(&held.item.id),
-            self.work_sessions(&held, &pulls),
-            self.suggestions(&held, viewer),
-        );
+        let people = try_join3(self.active_claims(&held.item.id), self.work_sessions(&held, &pulls), self.suggestions(&held, viewer));
         let dependencies = try_join3(
             self.blockers(viewer, &held.item.workspace, &held.item.blocked_by),
             items::blocked_items(self, &held, viewer),
@@ -335,12 +337,8 @@ impl Work {
     /// Decision records on a work item and its pull requests, newest
     /// first, up to [`DECISIONS`].
     async fn decisions_on(&self, held: &Held, viewer: &Viewer) -> Result<Vec<Decision>> {
-        let args = ListDecisionsArgs {
-            repo: None,
-            workspace: held.item.workspace.clone(),
-            viewer: viewer.clone(),
-            number: held.item.number,
-        };
+        let args =
+            ListDecisionsArgs { repo: None, workspace: held.item.workspace.clone(), viewer: viewer.clone(), number: held.item.number };
         let mut decisions = match self.list_decisions(args).await? {
             Outcome::Ok(decisions) => decisions,
             Outcome::Fail(_) => Vec::new(),
@@ -451,7 +449,8 @@ mod tests {
     fn a_repository_already_linked_is_not_suggested() {
         let candidates = vec![("rep_web".to_owned(), "acme/web".to_owned())];
         for role in LinkRole::ALL {
-            let linked = ItemRepo { repo_id: "rep_web".into(), path: "acme/web".into(), role, legacy_number: None, landed: false, deleted: false };
+            let linked =
+                ItemRepo { repo_id: "rep_web".into(), path: "acme/web".into(), role, legacy_number: None, landed: false, deleted: false };
             let item = item("Fix web", "", &[], vec![linked]);
             assert!(suggest_targets(&item, &candidates, &[], &[]).is_empty(), "{role:?}");
         }

@@ -97,19 +97,41 @@ impl RulesOp {
 
     pub fn description(self) -> &'static str {
         match self {
-            RulesOp::ListRepoRulesets => "List a repository's rulesets: what may happen to its branches and tags, and what a pull request needs before it merges. With include_parents, also its workspace's rulesets that hold in it (level workspace). Each has its enforcement (active, evaluate: a dry run that records what it would have refused, or disabled), target (branch or tag), conditions (ref_name include and exclude patterns: fnmatch, ~DEFAULT_BRANCH, ~ALL), bypass_actors and rules. The one made from branch protection settings has source branch_protection.",
+            RulesOp::ListRepoRulesets => {
+                "List a repository's rulesets: what may happen to its branches and tags, and what a pull request needs before it merges. With include_parents, also its workspace's rulesets that hold in it (level workspace). Each has its enforcement (active, evaluate: a dry run that records what it would have refused, or disabled), target (branch or tag), conditions (ref_name include and exclude patterns: fnmatch, ~DEFAULT_BRANCH, ~ALL), bypass_actors and rules. The one made from branch protection settings has source branch_protection."
+            }
             RulesOp::GetRepoRuleset => "Get one of a repository's rulesets by id (rs_…), or one of its workspace's that holds in it.",
-            RulesOp::CreateRepoRuleset => "Create a repository ruleset: name, enforcement (active, evaluate or disabled; active by default), target (branch or tag), conditions.ref_name (include and exclude patterns), bypass_actors (each a kind: role, team, user, token or g1t, a value, and a mode: always or pull_requests; nobody bypasses unless listed, g1t included) and rules (each a type, its parameters, and applies_to: everyone, agents or people). Rule types: creation, update, deletion, non_fast_forward, required_linear_history, required_signatures, pull_request, required_status_checks, merge_queue, required_deployments, commit_message_pattern, commit_author_email_pattern, committer_email_pattern, branch_name_pattern, tag_name_pattern, file_path_restriction, file_extension_restriction, max_file_size, max_file_path_length, max_files_changed, secret_scanning, path_review, merge_window and agent_auto_merge. Several rulesets stack: every rule of each holds. Takes the Admin role. Returns the ruleset as saved, tidied.",
-            RulesOp::UpdateRepoRuleset => "Change a repository ruleset. Fields left out stay as they are; rules and bypass_actors, when given, replace the whole list. Takes the Admin role.",
+            RulesOp::CreateRepoRuleset => {
+                "Create a repository ruleset: name, enforcement (active, evaluate or disabled; active by default), target (branch or tag), conditions.ref_name (include and exclude patterns), bypass_actors (each a kind: role, team, user, token or g1t, a value, and a mode: always or pull_requests; nobody bypasses unless listed, g1t included) and rules (each a type, its parameters, and applies_to: everyone, agents or people). Rule types: creation, update, deletion, non_fast_forward, required_linear_history, required_signatures, pull_request, required_status_checks, merge_queue, required_deployments, commit_message_pattern, commit_author_email_pattern, committer_email_pattern, branch_name_pattern, tag_name_pattern, file_path_restriction, file_extension_restriction, max_file_size, max_file_path_length, max_files_changed, secret_scanning, path_review, merge_window and agent_auto_merge. Several rulesets stack: every rule of each holds. Takes the Admin role. Returns the ruleset as saved, tidied."
+            }
+            RulesOp::UpdateRepoRuleset => {
+                "Change a repository ruleset. Fields left out stay as they are; rules and bypass_actors, when given, replace the whole list. Takes the Admin role."
+            }
             RulesOp::DeleteRepoRuleset => "Delete a repository ruleset. Its evaluations stay in the log. Takes the Admin role.",
-            RulesOp::GetBranchRules => "Every rule that holds for a branch (or a tag, with target tag) of a repository, from every ruleset that targets it, the repository's and its workspace's: each with its type, parameters and applies_to, and the ruleset_id, ruleset_name, level and enforcement it comes from. Active rules come first, then those of rulesets in evaluate. rulesets lists the rulesets with who may bypass each. A branch name with slashes is URL-encoded in the path.",
-            RulesOp::ListRuleEvaluations => "List how a repository's rulesets judged pushes, merges and other changes to its branches and tags, newest first: the ruleset, the action (push, merge, create_ref, delete_ref, rename_ref or commit), the ref, the actor and whether they are a person, an agent or g1t, the verdict (pass, fail or bypass) and each rule broken with why. A fail of a ruleset in evaluate is what it would have refused. Filter by ruleset_id or verdict, or problems_only; page with before. insights counts the last 30 days by ruleset and by rule. Takes the Write role.",
-            RulesOp::ListWorkspaceRulesets => "List a workspace's own rulesets. Each holds in the repositories its conditions.repository selects: names matching include (fnmatch, or ~ALL) and not exclude, of a visibility (any, public or private), and carrying one of topics when given. Members only.",
-            RulesOp::GetWorkspaceRuleset => "Get one of a workspace's own rulesets by id (rs_…), with its conditions, bypass actors and rules. Members only.",
-            RulesOp::CreateWorkspaceRuleset => "Create a workspace ruleset, as for a repository, plus conditions.repository: which of the workspace's repositories it holds in (include and exclude name patterns, visibility, topics). Owners only.",
-            RulesOp::UpdateWorkspaceRuleset => "Change a workspace ruleset. Fields left out stay as they are; rules and bypass_actors, when given, replace the whole list. Owners only.",
-            RulesOp::DeleteWorkspaceRuleset => "Delete a workspace ruleset: it stops holding in every repository it selected. Its evaluations stay in the log. Owners only.",
-            RulesOp::ListWorkspaceRuleEvaluations => "List how a workspace's rulesets, and its repositories' own, judged changes across its repositories, newest first, with 30 days of insights. Members only.",
+            RulesOp::GetBranchRules => {
+                "Every rule that holds for a branch (or a tag, with target tag) of a repository, from every ruleset that targets it, the repository's and its workspace's: each with its type, parameters and applies_to, and the ruleset_id, ruleset_name, level and enforcement it comes from. Active rules come first, then those of rulesets in evaluate. rulesets lists the rulesets with who may bypass each. A branch name with slashes is URL-encoded in the path."
+            }
+            RulesOp::ListRuleEvaluations => {
+                "List how a repository's rulesets judged pushes, merges and other changes to its branches and tags, newest first: the ruleset, the action (push, merge, create_ref, delete_ref, rename_ref or commit), the ref, the actor and whether they are a person, an agent or g1t, the verdict (pass, fail or bypass) and each rule broken with why. A fail of a ruleset in evaluate is what it would have refused. Filter by ruleset_id or verdict, or problems_only; page with before. insights counts the last 30 days by ruleset and by rule. Takes the Write role."
+            }
+            RulesOp::ListWorkspaceRulesets => {
+                "List a workspace's own rulesets. Each holds in the repositories its conditions.repository selects: names matching include (fnmatch, or ~ALL) and not exclude, of a visibility (any, public or private), and carrying one of topics when given. Members only."
+            }
+            RulesOp::GetWorkspaceRuleset => {
+                "Get one of a workspace's own rulesets by id (rs_…), with its conditions, bypass actors and rules. Members only."
+            }
+            RulesOp::CreateWorkspaceRuleset => {
+                "Create a workspace ruleset, as for a repository, plus conditions.repository: which of the workspace's repositories it holds in (include and exclude name patterns, visibility, topics). Owners only."
+            }
+            RulesOp::UpdateWorkspaceRuleset => {
+                "Change a workspace ruleset. Fields left out stay as they are; rules and bypass_actors, when given, replace the whole list. Owners only."
+            }
+            RulesOp::DeleteWorkspaceRuleset => {
+                "Delete a workspace ruleset: it stops holding in every repository it selected. Its evaluations stay in the log. Owners only."
+            }
+            RulesOp::ListWorkspaceRuleEvaluations => {
+                "List how a workspace's rulesets, and its repositories' own, judged changes across its repositories, newest first, with 30 days of insights. Members only."
+            }
         }
     }
 
@@ -134,7 +156,8 @@ impl RulesOp {
         let spec = |mut properties: Value, workspace_level: bool| {
             properties["ruleset_name"] = json!({ "type": "string", "description": "What people call it, at most 100 characters. A ruleset as exported names it `name`, which is read too." });
             properties["enforcement"] = json!({ "type": "string", "enum": ["active", "evaluate", "disabled"], "description": "active: its rules hold. evaluate: nothing is refused, and what would have been is recorded. disabled: kept, not evaluated. Default active." });
-            properties["target"] = json!({ "type": "string", "enum": ["branch", "tag"], "description": "What its name conditions match. Default branch." });
+            properties["target"] =
+                json!({ "type": "string", "enum": ["branch", "tag"], "description": "What its name conditions match. Default branch." });
             let mut conditions = json!({
                 "ref_name": {
                     "type": "object",
@@ -188,9 +211,12 @@ impl RulesOp {
         };
         let evaluations = |mut properties: Value| {
             properties["ruleset_id"] = json!({ "type": "string", "description": "Only this ruleset's evaluations." });
-            properties["verdict"] = json!({ "type": "string", "enum": ["pass", "fail", "bypass"], "description": "Only evaluations that came out this way." });
-            properties["problems_only"] = json!({ "type": "boolean", "description": "Only evaluations that broke a rule: failed, would have failed, or bypassed." });
-            properties["before"] = json!({ "type": "string", "description": "An evaluation's id (rev_…): only older ones. The page's next." });
+            properties["verdict"] =
+                json!({ "type": "string", "enum": ["pass", "fail", "bypass"], "description": "Only evaluations that came out this way." });
+            properties["problems_only"] =
+                json!({ "type": "boolean", "description": "Only evaluations that broke a rule: failed, would have failed, or bypassed." });
+            properties["before"] =
+                json!({ "type": "string", "description": "An evaluation's id (rev_…): only older ones. The page's next." });
             properties["limit"] = json!({ "type": "integer", "description": "How many, 1 to 100; 30 by default." });
             properties
         };
@@ -321,8 +347,7 @@ pub async fn run(op: RulesOp, services: &Services, viewer: &Viewer, input: &Valu
                 Ok(ruleset) => ruleset,
                 Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
             };
-            call(services, "save_ruleset", &SaveRulesetArgs { actor: actor(), owner, id: Some(current.id), ruleset, from_api: true })
-                .await
+            call(services, "save_ruleset", &SaveRulesetArgs { actor: actor(), owner, id: Some(current.id), ruleset, from_api: true }).await
         }
         RulesOp::DeleteRepoRuleset | RulesOp::DeleteWorkspaceRuleset => {
             let deleted: Outcome<bool> =
@@ -352,7 +377,9 @@ pub async fn run(op: RulesOp, services: &Services, viewer: &Viewer, input: &Valu
                 Some("pass") => Some(Verdict::Pass),
                 Some("fail") => Some(Verdict::Fail),
                 Some("bypass") => Some(Verdict::Bypass),
-                Some(other) => return Ok(Outcome::fail(FailureCode::Invalid, format!("{other} is not a verdict: use pass, fail or bypass."))),
+                Some(other) => {
+                    return Ok(Outcome::fail(FailureCode::Invalid, format!("{other} is not a verdict: use pass, fail or bypass.")));
+                }
             };
             let limit = match &input["limit"] {
                 Value::Number(number) => number.as_u64().and_then(|n| u32::try_from(n).ok()),

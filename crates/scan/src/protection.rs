@@ -6,9 +6,9 @@ use std::collections::HashSet;
 use similar::{ChangeTag, TextDiff};
 
 use crate::custom;
-use crate::secrets::{self, ALLOW_MARKER, Hit};
 #[cfg(test)]
 use crate::secrets::SecretKind;
+use crate::secrets::{self, ALLOW_MARKER, Hit};
 
 /// Files larger than this are not read for secrets.
 pub const MAX_FILE_BYTES: usize = 2 * 1024 * 1024;
@@ -86,13 +86,7 @@ pub fn reason(blocked: &[Blocked]) -> String {
     match blocked {
         [] => "refused".to_owned(),
         [only] => format!("secret found: {}:{} has {}", only.path, only.line, only.label),
-        [first, rest @ ..] => format!(
-            "{} secrets found, first {}:{} ({})",
-            rest.len() + 1,
-            first.path,
-            first.line,
-            first.label
-        ),
+        [first, rest @ ..] => format!("{} secrets found, first {}:{} ({})", rest.len() + 1, first.path, first.line, first.label),
     }
 }
 
@@ -107,11 +101,7 @@ pub fn explain(blocked: &[Blocked]) -> Vec<String> {
         ),
         String::new(),
     ];
-    let width = blocked
-        .iter()
-        .map(|item| item.path.len() + item.line.to_string().len() + 1)
-        .max()
-        .unwrap_or(0);
+    let width = blocked.iter().map(|item| item.path.len() + item.line.to_string().len() + 1).max().unwrap_or(0);
     for item in blocked {
         let place = format!("{}:{}", item.path, item.line);
         lines.push(format!("  {place:<width$}  {}  (commit {})", item.label, short(&item.commit)));

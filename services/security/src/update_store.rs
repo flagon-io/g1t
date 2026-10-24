@@ -212,7 +212,14 @@ impl Store {
         Ok(claimed.is_some())
     }
 
-    pub async fn finish_run(&self, repo_id: &str, entry: &str, next: Option<&str>, result: Option<&str>, error: Option<&str>) -> Result<()> {
+    pub async fn finish_run(
+        &self,
+        repo_id: &str,
+        entry: &str,
+        next: Option<&str>,
+        result: Option<&str>,
+        error: Option<&str>,
+    ) -> Result<()> {
         self.db
             .prepare(
                 "UPDATE update_runs SET running_at = NULL, last_checked_at = ?, next_run_at = ?, last_result = ?, last_error = ?
@@ -315,7 +322,14 @@ impl Store {
         Ok(id)
     }
 
-    pub async fn set_update_pull(&self, id: &str, state: UpdateState, pull: Option<u32>, item: Option<u32>, error: Option<&str>) -> Result<()> {
+    pub async fn set_update_pull(
+        &self,
+        id: &str,
+        state: UpdateState,
+        pull: Option<u32>,
+        item: Option<u32>,
+        error: Option<&str>,
+    ) -> Result<()> {
         self.db
             .prepare("UPDATE update_pulls SET state = ?, pull = ?, item = ?, error = ?, updated_at = ? WHERE id = ?")
             .bind(&[

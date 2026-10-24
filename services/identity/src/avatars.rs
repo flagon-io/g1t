@@ -14,8 +14,8 @@ use base64::engine::general_purpose::STANDARD;
 use g1t_contracts::identity::*;
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role};
 use sha2::{Digest, Sha256};
-use worker::wasm_bindgen::JsValue;
 use worker::Result;
+use worker::wasm_bindgen::JsValue;
 
 use crate::Identity;
 
@@ -54,15 +54,9 @@ pub fn check(image: &str) -> std::result::Result<Checked, &'static str> {
     if image.len() > MAX_AVATAR_BYTES / 3 * 4 + 8 {
         return Err("Use an image of at most 1 MB.");
     }
-    let bytes = STANDARD
-        .decode(image.trim())
-        .map_err(|_| "That upload could not be read.")?;
+    let bytes = STANDARD.decode(image.trim()).map_err(|_| "That upload could not be read.")?;
     let content_type = sniff(&bytes)?;
-    Ok(Checked {
-        key: hex::encode(Sha256::digest(&bytes)),
-        content_type,
-        bytes,
-    })
+    Ok(Checked { key: hex::encode(Sha256::digest(&bytes)), content_type, bytes })
 }
 
 /// Whether a stored avatar key is well formed: 64 lowercase hex digits.
@@ -84,9 +78,7 @@ impl Identity {
         self.env
             .kv("AVATARS")?
             .put_bytes(&checked.key, &checked.bytes)?
-            .metadata(Stored {
-                content_type: checked.content_type,
-            })?
+            .metadata(Stored { content_type: checked.content_type })?
             .execute()
             .await?;
         Ok(checked.key)
@@ -119,13 +111,7 @@ impl Identity {
         struct Row {
             avatar: Option<String>,
         }
-        Ok(self
-            .db
-            .prepare(sql)
-            .bind(&[param.into()])?
-            .first::<Row>(None)
-            .await?
-            .and_then(|row| row.avatar))
+        Ok(self.db.prepare(sql).bind(&[param.into()])?.first::<Row>(None).await?.and_then(|row| row.avatar))
     }
 
     /// Checks and stores `image`, or does nothing for none; the new key.
@@ -143,24 +129,16 @@ impl Identity {
         let slug = a.slug.to_lowercase();
         // Checked here, not only by the page: only an owner, as a person.
         if a.actor.kind != PrincipalKind::User || a.actor.role_in(&slug) != Some(Role::Owner) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only an owner can change a workspace's icon.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can change a workspace's icon."));
         }
-        let previous = self
-            .current_avatar("SELECT avatar FROM workspaces WHERE slug = ?", &slug)
-            .await?;
+        let previous = self.current_avatar("SELECT avatar FROM workspaces WHERE slug = ?", &slug).await?;
         let key = match self.upload(a.image.as_deref()).await? {
             Ok(key) => key,
             Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
         };
         self.db
             .prepare("UPDATE workspaces SET avatar = ? WHERE slug = ?")
-            .bind(&[
-                key.as_deref().map_or(JsValue::NULL, JsValue::from),
-                slug.as_str().into(),
-            ])?
+            .bind(&[key.as_deref().map_or(JsValue::NULL, JsValue::from), slug.as_str().into()])?
             .run()
             .await?;
         if previous != key {
@@ -174,24 +152,16 @@ impl Identity {
 
     pub async fn set_user_avatar(&self, a: SetUserAvatarArgs) -> Result<Outcome<Option<String>>> {
         if a.user.kind != PrincipalKind::User || a.user.id.is_empty() {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only a person can change their own picture.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only a person can change their own picture."));
         }
-        let previous = self
-            .current_avatar("SELECT avatar FROM users WHERE id = ?", &a.user.id)
-            .await?;
+        let previous = self.current_avatar("SELECT avatar FROM users WHERE id = ?", &a.user.id).await?;
         let key = match self.upload(a.image.as_deref()).await? {
             Ok(key) => key,
             Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
         };
         self.db
             .prepare("UPDATE users SET avatar = ? WHERE id = ?")
-            .bind(&[
-                key.as_deref().map_or(JsValue::NULL, JsValue::from),
-                a.user.id.as_str().into(),
-            ])?
+            .bind(&[key.as_deref().map_or(JsValue::NULL, JsValue::from), a.user.id.as_str().into()])?
             .run()
             .await?;
         if previous != key {

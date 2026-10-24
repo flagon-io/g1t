@@ -64,9 +64,7 @@ pub const CODE_THROTTLED: &str = "Too many wrong codes. Wait a few minutes and t
 
 // One account is held to less than one client, which may be an office.
 const _: () = assert!(
-    PASSWORD_ACCOUNT.limit < PASSWORD_CLIENT.limit
-        && RESET_EMAIL.limit < RESET_CLIENT.limit
-        && CODE_ACCOUNT.limit < CODE_CLIENT.limit
+    PASSWORD_ACCOUNT.limit < PASSWORD_CLIENT.limit && RESET_EMAIL.limit < RESET_CLIENT.limit && CODE_ACCOUNT.limit < CODE_CLIENT.limit
 );
 
 /// How long a key with `hits` in its window is locked: not at all below
@@ -163,10 +161,7 @@ impl Identity {
     /// from `client` counts against: the account's, or the name's when no
     /// account has it, and the client's.
     pub fn password_keys(account: &str, client: Option<&str>) -> (String, Option<String>) {
-        (
-            key(PASSWORD_ACCOUNT, account),
-            client.filter(|client| !client.trim().is_empty()).map(|client| key(PASSWORD_CLIENT, client)),
-        )
+        (key(PASSWORD_ACCOUNT, account), client.filter(|client| !client.trim().is_empty()).map(|client| key(PASSWORD_CLIENT, client)))
     }
 
     /// Whether a password check may run now.
@@ -191,14 +186,9 @@ impl Identity {
             && let Some((user_id, username)) = user
             && self.first_notice(account_key).await?
         {
-            self.log_security(user_id, "password_locked", Some(&format!("{} wrong passwords", counted.hits)), None)
+            self.log_security(user_id, "password_locked", Some(&format!("{} wrong passwords", counted.hits)), None).await;
+            self.tell_primary_and_backup(user_id, username, &format!("Password sign-in was paused after {} wrong passwords", counted.hits))
                 .await;
-            self.tell_primary_and_backup(
-                user_id,
-                username,
-                &format!("Password sign-in was paused after {} wrong passwords", counted.hits),
-            )
-            .await;
         }
         Ok(())
     }

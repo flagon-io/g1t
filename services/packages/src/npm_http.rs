@@ -100,7 +100,10 @@ impl Packages {
             Credentials::None => None,
             // The container registry's own tokens are not npm's.
             Credentials::Token(_) | Credentials::Bad => {
-                return error(401, "The token is not right, or has expired. Put a g1t access token in .npmrc: //g1t.sh/-/npm/:_authToken=<token>");
+                return error(
+                    401,
+                    "The token is not right, or has expired. Put a g1t access token in .npmrc: //g1t.sh/-/npm/:_authToken=<token>",
+                );
             }
         };
         match route {
@@ -156,8 +159,10 @@ impl Packages {
             return error(401, "Use a g1t access token as the password: https://g1t.sh/settings/tokens");
         }
         match self.viewer_for(name, password).await? {
-            Some(user) => Ok(Response::from_json(&json!({ "ok": true, "id": format!("org.couchdb.user:{}", user.username), "token": password }))?
-                .with_status(201)),
+            Some(user) => {
+                Ok(Response::from_json(&json!({ "ok": true, "id": format!("org.couchdb.user:{}", user.username), "token": password }))?
+                    .with_status(201))
+            }
             None => error(401, "That token is not right, or has expired."),
         }
     }
@@ -177,7 +182,10 @@ impl Packages {
             return Ok(None);
         }
         if !readable && viewer.is_none() {
-            return Ok(Some(error(401, "Sign in to use this package: put a g1t access token in .npmrc (//g1t.sh/-/npm/:_authToken=<token>).")));
+            return Ok(Some(error(
+                401,
+                "Sign in to use this package: put a g1t access token in .npmrc (//g1t.sh/-/npm/:_authToken=<token>).",
+            )));
         }
         Ok(Some(refused(decision, readable)))
     }
@@ -219,10 +227,7 @@ impl Packages {
         }
         let versions = self.stored_versions(&package).await?;
         let tags = self.tag_pairs(&package, &versions).await?;
-        let abbreviated = request
-            .headers()
-            .get("accept")?
-            .is_some_and(|accept| accept.contains(npm::ABBREVIATED))
+        let abbreviated = request.headers().get("accept")?.is_some_and(|accept| accept.contains(npm::ABBREVIATED))
             && url.query_pairs().all(|(k, _)| k != "write");
         let readme = match (abbreviated, self.db.readme_digest(&package.id).await?.and_then(|d| Digest::parse(&d))) {
             (false, Some(digest)) => match self.db.blob(&digest).await? {
@@ -319,11 +324,7 @@ impl Packages {
             return error(400, format!("The package's name is {}, not {}.", body["name"].as_str().unwrap_or(""), name.full()));
         }
         let attached = body["_attachments"].as_object().is_some_and(|a| !a.is_empty());
-        if attached {
-            self.publish(name, &body, viewer).await
-        } else {
-            self.change(name, &body, viewer).await
-        }
+        if attached { self.publish(name, &body, viewer).await } else { self.change(name, &body, viewer).await }
     }
 
     async fn publish(&self, name: &NpmName, body: &Value, viewer: Option<&User>) -> Result<Response> {
@@ -382,7 +383,10 @@ impl Packages {
             }
         };
         if self.db.version_named(&package.id, &version).await?.is_some() {
-            return error(403, format!("You cannot publish over the previously published version {version}. Bump the version in package.json."));
+            return error(
+                403,
+                format!("You cannot publish over the previously published version {version}. Bump the version in package.json."),
+            );
         }
         if let Some(refused) = self.reserved_refusal(&package, &version).await? {
             return error(403, refused);
@@ -401,9 +405,7 @@ impl Packages {
         if !stored {
             self.store.put(&digest.object_key(), tarball).await?;
         }
-        self.db
-            .keep_blob(&package.id, &digest, size, Some("application/octet-stream"), &digest.object_key(), now)
-            .await?;
+        self.db.keep_blob(&package.id, &digest, size, Some("application/octet-stream"), &digest.object_key(), now).await?;
 
         // The dist-tags that point to this version; `latest` when none.
         let mut tags: Vec<String> = body["dist-tags"]
@@ -456,9 +458,7 @@ impl Packages {
                 if self.db.blob(&digest).await?.is_none() {
                     self.store.put(&digest.object_key(), bytes.clone()).await?;
                 }
-                self.db
-                    .keep_blob(&package.id, &digest, bytes.len() as u64, Some("text/markdown"), &digest.object_key(), now)
-                    .await?;
+                self.db.keep_blob(&package.id, &digest, bytes.len() as u64, Some("text/markdown"), &digest.object_key(), now).await?;
                 Some(digest.to_string())
             };
             self.db.set_readme(&package.id, readme_digest.as_deref(), description, now).await?;
@@ -496,7 +496,11 @@ impl Packages {
         if let Some(late) = removed.iter().find(|row| !npm::may_unpublish(published_ms(row), now, admin)) {
             return error(
                 403,
-                format!("{}@{} was published more than 72 hours ago: unpublishing it needs the Admin role. Deprecate it instead.", name.full(), late.version),
+                format!(
+                    "{}@{} was published more than 72 hours ago: unpublishing it needs the Admin role. Deprecate it instead.",
+                    name.full(),
+                    late.version
+                ),
             );
         }
         for (row, stored) in &versions {
@@ -548,7 +552,11 @@ impl Packages {
         if let Some(late) = versions.iter().find(|row| !npm::may_unpublish(published_ms(row), now, admin)) {
             return error(
                 403,
-                format!("{}@{} was published more than 72 hours ago: unpublishing the package needs the Admin role.", name.full(), late.version),
+                format!(
+                    "{}@{} was published more than 72 hours ago: unpublishing the package needs the Admin role.",
+                    name.full(),
+                    late.version
+                ),
             );
         }
         let caller = Caller::of(viewer);
@@ -570,14 +578,24 @@ impl Packages {
         };
         let admin = self.check(viewer, &package, Action::Delete).await?.0.allowed;
         if !npm::may_unpublish(published_ms(&row), now_ms(), admin) {
-            return error(403, format!("{}@{version} was published more than 72 hours ago: unpublishing it needs the Admin role.", name.full()));
+            return error(
+                403,
+                format!("{}@{version} was published more than 72 hours ago: unpublishing it needs the Admin role.", name.full()),
+            );
         }
         let caller = Caller::of(viewer);
         self.remove_version(&package, &row, &caller).await?;
         ok()
     }
 
-    async fn dist_tags(&self, request: &mut Request, method: Method, name: &NpmName, tag: Option<&str>, viewer: Option<&User>) -> Result<Response> {
+    async fn dist_tags(
+        &self,
+        request: &mut Request,
+        method: Method,
+        name: &NpmName,
+        tag: Option<&str>,
+        viewer: Option<&User>,
+    ) -> Result<Response> {
         let Some(package) = self.npm_package(name).await? else {
             return not_found();
         };

@@ -13,12 +13,12 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value, json};
 
+use crate::checks::ChecksOp;
+use crate::coordination::CoordinationOp;
+use crate::deploy_keys::DeployKeysOp;
 use crate::openapi::document;
 use crate::operations::Op;
-use crate::checks::ChecksOp;
 use crate::rules::RulesOp;
-use crate::deploy_keys::DeployKeysOp;
-use crate::coordination::CoordinationOp;
 
 /// A key as `#[serde(rename_all = "camelCase")]` writes it.
 fn camel_key(key: &str) -> String {
@@ -44,8 +44,7 @@ fn as_services_send(value: &Value) -> Value {
         Value::Object(fields) => {
             let mut out = Map::new();
             for (key, value) in fields {
-                let user_keyed = value.is_object()
-                    && (USER_KEYED.contains(&key.as_str()) || key.starts_with("by_"));
+                let user_keyed = value.is_object() && (USER_KEYED.contains(&key.as_str()) || key.starts_with("by_"));
                 let value = if user_keyed { value.clone() } else { as_services_send(value) };
                 // A `by_…` map keeps its name in the converter's spelling.
                 let key = if key.starts_with("by_") { key.clone() } else { camel_key(key) };
@@ -225,9 +224,7 @@ fn sample(op: Op, example: &Value) -> Value {
         | Op::DeletePullRequestHeadBranch
         | Op::RestorePullRequestHeadBranch
         | Op::RequestReviewers
-        | Op::RemoveRequestedReviewers => {
-            through::<work::Pull>(op, sent)
-        }
+        | Op::RemoveRequestedReviewers => through::<work::Pull>(op, sent),
         Op::UpdatePullRequestBranch => through::<repos::PullBranchUpdate>(op, sent),
         Op::GetPullRequestMergeOptions => through::<work::MergeChoices>(op, sent),
         Op::ListRepoCommitComments | Op::ListCommitComments => through::<Vec<work::CommitComment>>(op, sent),
@@ -237,9 +234,7 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::ListWorkflowRuns => through::<Vec<actions::WorkflowRun>>(op, sent),
         Op::GetWorkflowRun => through::<actions::RunDetail>(op, sent),
         Op::GetJobLogs => through::<actions::JobLog>(op, sent),
-        Op::DispatchWorkflow | Op::CancelWorkflowRun | Op::RerunWorkflowRun => {
-            through::<actions::WorkflowRun>(op, sent)
-        }
+        Op::DispatchWorkflow | Op::CancelWorkflowRun | Op::RerunWorkflowRun => through::<actions::WorkflowRun>(op, sent),
         Op::ListActionsSecrets | Op::ListActionsVariables => through::<Vec<actions::Setting>>(op, sent),
         Op::ListRunners => through::<Vec<g1t_contracts::runners::Runner>>(op, sent),
         Op::ListRunnerGroups => through::<Vec<g1t_contracts::runners::RunnerGroup>>(op, sent),
@@ -304,8 +299,7 @@ fn paths(value: &Value, path: &str, out: &mut Vec<String>) {
             for (key, value) in fields {
                 let here = format!("{path}.{key}");
                 out.push(here.clone());
-                let user_keyed = value.is_object()
-                    && (USER_KEYED.contains(&key.as_str()) || key.starts_with("by_"));
+                let user_keyed = value.is_object() && (USER_KEYED.contains(&key.as_str()) || key.starts_with("by_"));
                 if !user_keyed {
                     paths(value, &here, out);
                 }
@@ -372,18 +366,14 @@ fn every_route_has_a_sample() {
             })
             .collect::<Vec<_>>()
             .join("/");
-        let example = &document["paths"][&path][route.method.to_lowercase()]["responses"]["200"]
-            ["content"]["application/json"]["example"];
+        let example = &document["paths"][&path][route.method.to_lowercase()]["responses"]["200"]["content"]["application/json"]["example"];
         assert!(!example.is_null(), "{} {path}", route.method);
     }
 }
 
 #[test]
 fn errors_and_reports_are_snake_case() {
-    let failure = g1t_contracts::Failure {
-        code: g1t_contracts::FailureCode::NotFound,
-        message: "No such endpoint.".to_owned(),
-    };
+    let failure = g1t_contracts::Failure { code: g1t_contracts::FailureCode::NotFound, message: "No such endpoint.".to_owned() };
     assert!(wire::camel_case_keys(&wire::snake_case(json!({ "error": failure }))).is_empty());
 }
 

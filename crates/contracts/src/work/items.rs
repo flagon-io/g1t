@@ -224,11 +224,7 @@ impl WorkItem {
 
 /// The targets among `repos` that have not landed, by path.
 pub fn missing_targets(repos: &[ItemRepo]) -> Vec<String> {
-    repos
-        .iter()
-        .filter(|repo| repo.role == LinkRole::Target && !repo.landed)
-        .map(|repo| repo.path.clone())
-        .collect()
+    repos.iter().filter(|repo| repo.role == LinkRole::Target && !repo.landed).map(|repo| repo.path.clone()).collect()
 }
 
 /// Whether a work item linked to `repos` is done landing: it has no

@@ -66,12 +66,7 @@ pub struct Guardrails {
 impl Guardrails {
     /// g1t's defaults: a time cap for each kind of run.
     pub fn defaults() -> Self {
-        Guardrails {
-            minutes: RunKind::ALL
-                .into_iter()
-                .map(|kind| (kind.as_str().to_owned(), default_minutes(kind)))
-                .collect(),
-        }
+        Guardrails { minutes: RunKind::ALL.into_iter().map(|kind| (kind.as_str().to_owned(), default_minutes(kind))).collect() }
     }
 
     /// One level laid over what it inherits.
@@ -95,10 +90,7 @@ impl Guardrails {
 
     /// The time cap of a kind of run, in minutes.
     pub fn minutes_for(&self, kind: RunKind) -> u32 {
-        self.minutes
-            .get(kind.as_str())
-            .copied()
-            .unwrap_or_else(|| default_minutes(kind))
+        self.minutes.get(kind.as_str()).copied().unwrap_or_else(|| default_minutes(kind))
     }
 }
 
@@ -146,11 +138,7 @@ pub fn validate(settings: GuardrailSettings) -> Result<GuardrailSettings, String
         }
         minutes.insert(kind, cap);
     }
-    Ok(GuardrailSettings {
-        minutes,
-        updated_by: settings.updated_by,
-        updated_at: settings.updated_at,
-    })
+    Ok(GuardrailSettings { minutes, updated_by: settings.updated_by, updated_at: settings.updated_at })
 }
 
 /// Everything the settings pages show: each level as it was set, what
@@ -172,13 +160,7 @@ impl GuardrailsView {
     pub fn new(workspace: GuardrailSettings, project: Option<GuardrailSettings>) -> Self {
         let inherited = Guardrails::merge(&workspace, None);
         let effective = Guardrails::merge(&workspace, project.as_ref());
-        GuardrailsView {
-            workspace,
-            project,
-            defaults: Guardrails::defaults(),
-            inherited,
-            effective,
-        }
+        GuardrailsView { workspace, project, defaults: Guardrails::defaults(), inherited, effective }
     }
 }
 
@@ -267,14 +249,8 @@ mod tests {
 
     #[test]
     fn a_project_overrides_its_workspace() {
-        let workspace = GuardrailSettings {
-            minutes: BTreeMap::from([("implement".to_owned(), 30), ("review".to_owned(), 20)]),
-            ..level()
-        };
-        let project = GuardrailSettings {
-            minutes: BTreeMap::from([("review".to_owned(), 15)]),
-            ..level()
-        };
+        let workspace = GuardrailSettings { minutes: BTreeMap::from([("implement".to_owned(), 30), ("review".to_owned(), 20)]), ..level() };
+        let project = GuardrailSettings { minutes: BTreeMap::from([("review".to_owned(), 15)]), ..level() };
         let inherited = Guardrails::merge(&workspace, None);
         assert_eq!(inherited.minutes_for(RunKind::Review), 20);
         let effective = Guardrails::merge(&workspace, Some(&project));
@@ -319,26 +295,8 @@ mod tests {
 
     #[test]
     fn validation_refuses_bad_caps() {
-        assert!(
-            validate(GuardrailSettings {
-                minutes: BTreeMap::from([("implement".to_owned(), 0)]),
-                ..level()
-            })
-            .is_err()
-        );
-        assert!(
-            validate(GuardrailSettings {
-                minutes: BTreeMap::from([("lunch".to_owned(), 10)]),
-                ..level()
-            })
-            .is_err()
-        );
-        assert!(
-            validate(GuardrailSettings {
-                minutes: BTreeMap::from([("implement".to_owned(), MAX_MINUTES)]),
-                ..level()
-            })
-            .is_ok()
-        );
+        assert!(validate(GuardrailSettings { minutes: BTreeMap::from([("implement".to_owned(), 0)]), ..level() }).is_err());
+        assert!(validate(GuardrailSettings { minutes: BTreeMap::from([("lunch".to_owned(), 10)]), ..level() }).is_err());
+        assert!(validate(GuardrailSettings { minutes: BTreeMap::from([("implement".to_owned(), MAX_MINUTES)]), ..level() }).is_ok());
     }
 }

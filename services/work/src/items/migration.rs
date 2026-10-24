@@ -43,10 +43,8 @@ const ANNOUNCED_PER_EVENT: u32 = 250;
 
 /// Records a repository (`?1`) as in workspace `?2` at path `?3`,
 /// private (`?4`) or not, and names its links by that path.
-pub(crate) const RECORD_REPO: [&str; 2] = [
-    super::links::REMEMBER_REPO,
-    "UPDATE work_item_repos SET path = ?3 WHERE repo_id = ?1 AND path IS NOT ?3",
-];
+pub(crate) const RECORD_REPO: [&str; 2] =
+    [super::links::REMEMBER_REPO, "UPDATE work_item_repos SET path = ?3 WHERE repo_id = ?1 AND path IS NOT ?3"];
 
 /// The workspace an issue whose repository repos no longer knows was in,
 /// from what else this database kept about that repository (`o.repo_id`).
@@ -296,11 +294,7 @@ struct JobRow {
 impl Work {
     /// `migrate_work_items`, and the cron trigger: see the module's notes.
     pub(crate) async fn migrate_work_items(&self) -> Result<WorkMigration> {
-        let job = self
-            .db
-            .prepare("SELECT cursor, done_at FROM work_jobs WHERE name = 'work_items'")
-            .first::<JobRow>(None)
-            .await?;
+        let job = self.db.prepare("SELECT cursor, done_at FROM work_jobs WHERE name = 'work_items'").first::<JobRow>(None).await?;
         let Some(job) = job else {
             return Ok(WorkMigration { done: true, ..WorkMigration::default() });
         };
@@ -314,8 +308,7 @@ impl Work {
         let mut cursor = job.cursor;
         let mut recorded = 0;
         for _ in 0..PAGES_PER_RUN {
-            let page: CreatorPage =
-                g1t_kit::call(&self.repos, "repo_creators", &AllIdsArgs { after: cursor.clone(), limit: PAGE }).await?;
+            let page: CreatorPage = g1t_kit::call(&self.repos, "repo_creators", &AllIdsArgs { after: cursor.clone(), limit: PAGE }).await?;
             recorded += self.record_page(&page).await?;
             match page.next {
                 Some(next) => {
@@ -352,11 +345,8 @@ impl Work {
         for _ in 0..PAGES_PER_RUN {
             let page: DeletedRepoPage =
                 g1t_kit::call(&self.repos, "deleted_repos", &AllIdsArgs { after: cursor.clone(), limit: PAGE }).await?;
-            let repos: Vec<(String, String, String, bool)> = page
-                .repos
-                .iter()
-                .map(|repo| (repo.id.clone(), repo.namespace.clone(), repo.name.clone(), repo.is_private))
-                .collect();
+            let repos: Vec<(String, String, String, bool)> =
+                page.repos.iter().map(|repo| (repo.id.clone(), repo.namespace.clone(), repo.name.clone(), repo.is_private)).collect();
             recorded += self.record_repos(&repos).await?;
             // Recording one says it is there; these are deleted.
             self.mark_deleted(&page).await?;
@@ -405,11 +395,7 @@ impl Work {
             let done = page.next.is_none();
             self.db
                 .prepare("UPDATE work_jobs SET cursor = ?, done_at = ? WHERE name = ? AND done_at IS NULL")
-                .bind(&[
-                    optional(&page.next),
-                    if done { rfc3339(now_ms()).into() } else { JsValue::NULL },
-                    DELETED_MARKS_JOB.into(),
-                ])?
+                .bind(&[optional(&page.next), if done { rfc3339(now_ms()).into() } else { JsValue::NULL }, DELETED_MARKS_JOB.into()])?
                 .run()
                 .await?;
             if done {
@@ -495,12 +481,7 @@ impl Work {
         let mut statements = Vec::new();
         for (repo, path) in page.repos.iter().zip(&paths) {
             let private = seen.iter().find(|known| known.path.eq_ignore_ascii_case(path)).is_none_or(|known| known.is_private);
-            let binds = [
-                repo.id.as_str().into(),
-                repo.namespace.to_lowercase().into(),
-                path.as_str().into(),
-                u32::from(private).into(),
-            ];
+            let binds = [repo.id.as_str().into(), repo.namespace.to_lowercase().into(), path.as_str().into(), u32::from(private).into()];
             for sql in RECORD_REPO {
                 statements.push(self.db.prepare(sql).bind(&binds[..g1t_kit::rename::parameters(sql)])?);
             }
@@ -564,12 +545,8 @@ impl Work {
         };
         let workspace = created.namespace.to_lowercase();
         let path = format!("{}/{}", created.namespace, created.name);
-        let binds = [
-            created.repo_id.as_str().into(),
-            workspace.as_str().into(),
-            path.as_str().into(),
-            u32::from(created.is_private).into(),
-        ];
+        let binds =
+            [created.repo_id.as_str().into(), workspace.as_str().into(), path.as_str().into(), u32::from(created.is_private).into()];
         let mut statements = RECORD_REPO
             .iter()
             .map(|sql| self.db.prepare(*sql).bind(&binds[..g1t_kit::rename::parameters(sql)]))

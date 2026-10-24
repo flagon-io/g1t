@@ -40,8 +40,8 @@ use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, Viewer, is_valid_
 use g1t_kit::now_ms;
 use worker::Result;
 
-use crate::public_storage::{self, Operation};
 use crate::lifecycle::{VisibilityFacts, visibility_check};
+use crate::public_storage::{self, Operation};
 use crate::registry::{RepoRow, can, can_read, can_write, store_key};
 use crate::store::{GitRepo, GitStore, Scope, locate};
 use crate::{MAX_ANCESTRY, Repos, SOURCE, UNVERIFIED, copy, descends_from, land, lifecycle, not_found, shards};
@@ -59,7 +59,10 @@ type Refusal = (FailureCode, String);
 /// Why `source` may not be forked, if it may not. `None` when it may.
 pub fn fork_refusal(source: &Repo) -> Option<Refusal> {
     if source.fork_of.is_some() {
-        return Some((FailureCode::Invalid, "A pull request's working copy cannot be forked; fork the repository it belongs to.".to_owned()));
+        return Some((
+            FailureCode::Invalid,
+            "A pull request's working copy cannot be forked; fork the repository it belongs to.".to_owned(),
+        ));
     }
     if source.is_private && !source.allow_forking {
         return Some((
@@ -150,7 +153,10 @@ impl<S: GitStore> Repos<S> {
         }
         let path = RepoPath { namespace: namespace.clone(), name };
         if path.namespace == source.namespace && path.name == source.name {
-            return Ok(Outcome::fail(FailureCode::Conflict, "A repository cannot be forked onto itself. Choose another name or workspace."));
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "A repository cannot be forked onto itself. Choose another name or workspace.",
+            ));
         }
         match self.registry.by_path_any(&path).await? {
             Some((_, None)) => {
@@ -214,7 +220,10 @@ impl<S: GitStore> Repos<S> {
         let residency = self.residency_of(&fork.namespace).await?;
         if forks_in_place(&source_namespace, residency, self.placement.eu.as_deref()) {
             if !self.registry.lock_copy(&source, &fork).await? {
-                return Ok(Outcome::fail(FailureCode::Conflict, "This repository is already being copied. Try again after the copy finishes."));
+                return Ok(Outcome::fail(
+                    FailureCode::Conflict,
+                    "This repository is already being copied. Try again after the copy finishes.",
+                ));
             }
             let (measured, pending) = self.registry.copy_size(&source).await?;
             let bytes = measured.saturating_add(pending);
@@ -248,10 +257,7 @@ impl<S: GitStore> Repos<S> {
                     // finish cleanly (public_storage.rs `Refusal::Stalled`);
                     // sudo's Overview and Storage holds show it.
                     self.registry.end_public(&reservation, &message, &[]).await;
-                    worker::console_error!(
-                        "{}",
-                        serde_json::json!({ "copy_lock_kept": source.id, "fork": fork.id, "error": message })
-                    );
+                    worker::console_error!("{}", serde_json::json!({ "copy_lock_kept": source.id, "fork": fork.id, "error": message }));
                 } else {
                     // The store refused, or was never asked: nothing is
                     // copying and nothing was copied.
@@ -310,7 +316,16 @@ impl<S: GitStore> Repos<S> {
                 let head = self.store.open(&store_key(&source)).await?.log(&source.default_branch, 1).await?;
                 match head.first() {
                     Some(head) => {
-                        match land::fast_forward(&from, &to, &fork.default_branch, None, &head.hash, self.public_quota(&fork, Operation::Fork, Some(&a.actor.id))).await? {
+                        match land::fast_forward(
+                            &from,
+                            &to,
+                            &fork.default_branch,
+                            None,
+                            &head.hash,
+                            self.public_quota(&fork, Operation::Fork, Some(&a.actor.id)),
+                        )
+                        .await?
+                        {
                             Ok(moved) => moved,
                             // Refused a reservation: said as a full copy's
                             // refusal is (copy.rs `Problem::Refused`).
@@ -359,11 +374,9 @@ impl<S: GitStore> Repos<S> {
             self.grant_creator(&fork, &a.actor.id).await;
         }
         let surface = a.surface.unwrap_or(Surface::Web);
-        self.record_fork(&a.actor, "repo.forked", surface, &fork, format!("Forked from {}/{}", source.namespace, source.name))
-            .await;
+        self.record_fork(&a.actor, "repo.forked", surface, &fork, format!("Forked from {}/{}", source.namespace, source.name)).await;
         if source.namespace != fork.namespace {
-            self.record_fork(&a.actor, "repo.forked", surface, &source, format!("Forked to {}/{}", fork.namespace, fork.name))
-                .await;
+            self.record_fork(&a.actor, "repo.forked", surface, &source, format!("Forked to {}/{}", fork.namespace, fork.name)).await;
         }
         self.publish(NewEvent {
             kind: "repo.created",
@@ -503,7 +516,15 @@ impl<S: GitStore> Repos<S> {
             }
             let from = parent_git.access(Scope::Read).await?;
             let to = fork_git.access(Scope::Write).await?;
-            let moved = land::fast_forward(&from, &to, &branch, Some(&head.hash), &their_head.hash, self.public_quota(&fork, Operation::Sync, Some(&a.actor.id))).await?;
+            let moved = land::fast_forward(
+                &from,
+                &to,
+                &branch,
+                Some(&head.hash),
+                &their_head.hash,
+                self.public_quota(&fork, Operation::Sync, Some(&a.actor.id)),
+            )
+            .await?;
             self.refs_moved(&fork.id).await;
             let moved = match moved {
                 Ok(moved) => moved,
@@ -512,7 +533,10 @@ impl<S: GitStore> Repos<S> {
                 Err(refusal) => return Ok(refusal.outcome()),
             };
             if moved.is_err() {
-                return Ok(Outcome::fail(FailureCode::Conflict, format!("{branch} moved while it was being synced. Nothing was lost; try again.")));
+                return Ok(Outcome::fail(
+                    FailureCode::Conflict,
+                    format!("{branch} moved while it was being synced. Nothing was lost; try again."),
+                ));
             }
             let git_ref = format!("refs/heads/{branch}");
             self.publish_push(&fork, &git_ref, Some(&head.hash), &their_head.hash, Some(&a.actor), Some(behind)).await?;
@@ -622,10 +646,7 @@ impl<S: GitStore> Repos<S> {
                 "repo.deleted",
                 Surface::Web,
                 &fork,
-                format!(
-                    "Deleted: whoever forked it can no longer read {}/{}; restorable until {purge}",
-                    parent.namespace, parent.name
-                ),
+                format!("Deleted: whoever forked it can no longer read {}/{}; restorable until {purge}", parent.namespace, parent.name),
             )
             .await;
             deleted += 1;

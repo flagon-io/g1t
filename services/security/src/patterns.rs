@@ -72,7 +72,9 @@ impl Security {
                     (None, _) => fail(FailureCode::NotFound, "Workspace not found."),
                     (Some(_), false) => Outcome::Ok(Scope::Workspace(workspace)),
                     (Some(_), true) if manages => Outcome::Ok(Scope::Workspace(workspace)),
-                    (Some(_), true) => fail(FailureCode::Forbidden, "Only an owner or a security manager can change the workspace's custom patterns."),
+                    (Some(_), true) => {
+                        fail(FailureCode::Forbidden, "Only an owner or a security manager can change the workspace's custom patterns.")
+                    }
                 })
             }
         }
@@ -115,7 +117,10 @@ impl Security {
                 _ => return Ok(fail(FailureCode::NotFound, "No such pattern.")),
             }
         } else if self.store.patterns(&namespace, repo_id.as_deref()).await?.len() >= custom::MAX_PATTERNS {
-            return Ok(fail(FailureCode::Invalid, format!("A repository is scanned with at most {} custom patterns.", custom::MAX_PATTERNS)));
+            return Ok(fail(
+                FailureCode::Invalid,
+                format!("A repository is scanned with at most {} custom patterns.", custom::MAX_PATTERNS),
+            ));
         }
         let spec = PatternSpec {
             id: a.id.clone().unwrap_or_default(),
@@ -137,10 +142,7 @@ impl Security {
             Some(id) => self.store.pattern(id).await?.is_some_and(|row| row.state == "published"),
             None => false,
         };
-        let id = self
-            .store
-            .save_pattern(a.id.as_deref(), &namespace, repo_id.as_deref(), &spec, &tests, state, &a.actor.username)
-            .await?;
+        let id = self.store.save_pattern(a.id.as_deref(), &namespace, repo_id.as_deref(), &spec, &tests, state, &a.actor.username).await?;
         // Published, or changed while published: the history is read again
         // for it, a page at a time, as the first scan was.
         if a.publish {
@@ -169,10 +171,7 @@ impl Security {
         let Some(row) = self.store.pattern(&id).await? else {
             return Ok(fail(FailureCode::NotFound, "The pattern was not saved."));
         };
-        let tests = custom::test(&compiled, &tests)
-            .into_iter()
-            .map(|found| found.map(|(start, end)| (start as u32, end as u32)))
-            .collect();
+        let tests = custom::test(&compiled, &tests).into_iter().map(|found| found.map(|(start, end)| (start as u32, end as u32))).collect();
         Ok(Outcome::Ok(SavedPattern { pattern: row.contract(), tests }))
     }
 

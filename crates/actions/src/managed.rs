@@ -220,15 +220,16 @@ pub fn arrange(files: Vec<(String, String)>, installed: Vec<(String, String)>, w
     let mut paths: Vec<String> = Vec::new();
     let mut out: Vec<Arranged> = Vec::new();
     let (required, defaults): (Vec<_>, Vec<_>) = workspace.into_iter().partition(|(_, _, mode)| *mode == Mode::Required);
-    let offer = |path: String, source: String, required: bool, out: &mut Vec<Arranged>, names: &mut Vec<String>, paths: &mut Vec<String>| {
-        let name = listed_name(&path, &source);
-        if names.contains(&name) || paths.contains(&path) {
-            return;
-        }
-        names.push(name);
-        paths.push(path.clone());
-        out.push(Arranged { path, source, required });
-    };
+    let offer =
+        |path: String, source: String, required: bool, out: &mut Vec<Arranged>, names: &mut Vec<String>, paths: &mut Vec<String>| {
+            let name = listed_name(&path, &source);
+            if names.contains(&name) || paths.contains(&path) {
+                return;
+            }
+            names.push(name);
+            paths.push(path.clone());
+            out.push(Arranged { path, source, required });
+        };
     for (path, source, _) in required {
         offer(path, source, true, &mut out, &mut names, &mut paths);
     }
@@ -277,7 +278,9 @@ mod tests {
         let job = &parsed.jobs[0];
         assert_eq!(job.id, "g1t");
         assert!(source.contains("uses: g1t/workflows/.g1t/workflows/deploy.yml@v1"));
-        assert!(source.contains("root-dir: \"apps/web\"") && source.contains("output-dir: \"dist\"") && source.contains("build-command: \"\""));
+        assert!(
+            source.contains("root-dir: \"apps/web\"") && source.contains("output-dir: \"dist\"") && source.contains("build-command: \"\"")
+        );
         assert!(source.contains("branches: [\"main\"]"));
     }
 

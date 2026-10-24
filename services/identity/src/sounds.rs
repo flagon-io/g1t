@@ -117,7 +117,8 @@ impl Identity {
         // Only the cues that differ from their defaults are kept, so a new
         // default later applies to everyone who never chose.
         let defaults = SoundSettings::default();
-        let chosen: BTreeMap<&String, &bool> = next.sound_cues.iter().filter(|(cue, on)| defaults.sound_cues.get(*cue) != Some(on)).collect();
+        let chosen: BTreeMap<&String, &bool> =
+            next.sound_cues.iter().filter(|(cue, on)| defaults.sound_cues.get(*cue) != Some(on)).collect();
         let cues = serde_json::to_string(&chosen)?;
         let row = self
             .db
@@ -169,7 +170,11 @@ mod tests {
     #[test]
     fn a_change_touches_only_what_it_names() {
         let d = SoundSettings::default();
-        let next = apply_change(&d, &SoundSettingsChange { sound_volume: Some(30), sound_cues: Some(cues(&[("sent", true)])), ..Default::default() }).unwrap();
+        let next = apply_change(
+            &d,
+            &SoundSettingsChange { sound_volume: Some(30), sound_cues: Some(cues(&[("sent", true)])), ..Default::default() },
+        )
+        .unwrap();
         assert_eq!(next.sound_volume, 30);
         assert_eq!(next.sound_set, "soft");
         assert_eq!(next.sound_cues.get("sent"), Some(&true));
@@ -188,20 +193,33 @@ mod tests {
         assert!(apply_change(&d, &SoundSettingsChange { sound_cues: Some(cues(&[("call", false)])), ..Default::default() }).is_err());
         assert!(apply_change(&d, &SoundSettingsChange { sound_cues: Some(cues(&[("klaxon", true)])), ..Default::default() }).is_err());
         // A retired cue is left out, not refused.
-        let next = apply_change(&d, &SoundSettingsChange { sound_cues: Some(cues(&[("agent_done", false)])), ..Default::default() }).unwrap();
+        let next =
+            apply_change(&d, &SoundSettingsChange { sound_cues: Some(cues(&[("agent_done", false)])), ..Default::default() }).unwrap();
         assert_eq!(next.sound_cues.get("agent_done"), None);
     }
 
     #[test]
     fn a_row_reads_with_defaults_for_what_it_cannot_say() {
-        let row = Row { sounds_enabled: 0, sound_set: "gone".to_owned(), sound_volume: 400, sound_cues: "not json".to_owned(), desktop_toasts: 1 };
+        let row = Row {
+            sounds_enabled: 0,
+            sound_set: "gone".to_owned(),
+            sound_volume: 400,
+            sound_cues: "not json".to_owned(),
+            desktop_toasts: 1,
+        };
         let s = settings_from(row);
         assert!(!s.sounds_enabled);
         assert_eq!(s.sound_set, "soft");
         assert_eq!(s.sound_volume, 100);
         assert_eq!(s.sound_cues, SoundSettings::default().sound_cues);
         assert!(s.desktop_toasts);
-        let row = Row { sounds_enabled: 1, sound_set: "bright".to_owned(), sound_volume: 20, sound_cues: r#"{"sent":true,"old_cue":true,"agent_done":false}"#.to_owned(), desktop_toasts: 0 };
+        let row = Row {
+            sounds_enabled: 1,
+            sound_set: "bright".to_owned(),
+            sound_volume: 20,
+            sound_cues: r#"{"sent":true,"old_cue":true,"agent_done":false}"#.to_owned(),
+            desktop_toasts: 0,
+        };
         let s = settings_from(row);
         assert_eq!(s.sound_cues.get("sent"), Some(&true));
         assert_eq!(s.sound_cues.get("old_cue"), None);

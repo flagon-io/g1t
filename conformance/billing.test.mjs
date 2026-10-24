@@ -7,7 +7,7 @@ import { test } from "node:test";
 // transaction/retry contracts; Stripe HTTP and Worker execution need staging.
 const source = (name) => readFileSync(new URL(`../services/billing/src/${name}.rs`, import.meta.url), "utf8");
 const constant = (file, name) => {
-  const match = source(file).match(new RegExp(`const ${name}: &str = "([\\s\\S]*?)";`));
+  const match = source(file).match(new RegExp(`const ${name}: &str =\\s*"([\\s\\S]*?)";`));
   assert.ok(match, `${file}::${name}`);
   return match[1];
 };

@@ -46,28 +46,20 @@ impl Work {
         // Its owner (whoever asked g1t for it, or its author) can read both
         // the repository and the pull request's source.
         let viewer = self.owner_viewer(pull).await?;
-        let compared: Outcome<Comparison> =
-            g1t_kit::call(&self.repos, "compare", &pull.comparison(&viewer)).await?;
+        let compared: Outcome<Comparison> = g1t_kit::call(&self.repos, "compare", &pull.comparison(&viewer)).await?;
         let files: Vec<ChangedFile> = match compared {
             Outcome::Ok(comparison) => comparison
                 .files
                 .into_iter()
                 .take(MAX_FILES)
-                .map(|file| ChangedFile {
-                    path: file.path,
-                    additions: file.additions,
-                    deletions: file.deletions,
-                })
+                .map(|file| ChangedFile { path: file.path, additions: file.additions, deletions: file.deletions })
                 .collect(),
             // Nothing pushed yet, or nothing to compare against.
             Outcome::Fail(_) => Vec::new(),
         };
         self.db
             .prepare("UPDATE pulls SET files = ? WHERE id = ?")
-            .bind(&[
-                serde_json::to_string(&files)?.into(),
-                pull.id.as_str().into(),
-            ])?
+            .bind(&[serde_json::to_string(&files)?.into(), pull.id.as_str().into()])?
             .run()
             .await?;
         Ok(files)
@@ -86,27 +78,16 @@ impl Work {
         Ok(others
             .into_iter()
             .filter_map(|other| {
-                let files: Vec<ChangedFile> =
-                    serde_json::from_str(other.files.as_deref().unwrap_or("[]")).ok()?;
-                let paths: Vec<String> = files
-                    .into_iter()
-                    .map(|file| file.path)
-                    .filter(|path| mine.contains(path.as_str()))
-                    .collect();
-                (!paths.is_empty()).then_some(Overlap {
-                    number: other.number,
-                    title: other.title,
-                    item: other.item_number,
-                    paths,
-                })
+                let files: Vec<ChangedFile> = serde_json::from_str(other.files.as_deref().unwrap_or("[]")).ok()?;
+                let paths: Vec<String> = files.into_iter().map(|file| file.path).filter(|path| mine.contains(path.as_str())).collect();
+                (!paths.is_empty()).then_some(Overlap { number: other.number, title: other.title, item: other.item_number, paths })
             })
             .collect())
     }
 
     /// The other pull requests in progress in its repository.
     async fn other_pulls(&self, pull: &Pull) -> Result<Vec<OtherRow>> {
-        self
-            .db
+        self.db
             .prepare(concat!(
                 "SELECT number, title, ",
                 crate::items::sql::item_number!("pulls.item_id"),
@@ -166,23 +147,13 @@ impl Work {
         let Some(pull) = self.pull_by_id(&a.id).await? else {
             return Ok(missing());
         };
-        let repo: Outcome<Repo> = g1t_kit::call(
-            &self.repos,
-            "get_by_id",
-            &GetByIdArgs {
-                id: pull.repo_id.clone(),
-                viewer: a.viewer,
-            },
-        )
-        .await?;
+        let repo: Outcome<Repo> =
+            g1t_kit::call(&self.repos, "get_by_id", &GetByIdArgs { id: pull.repo_id.clone(), viewer: a.viewer }).await?;
         let Outcome::Ok(repo) = repo else {
             return Ok(missing());
         };
         Ok(Outcome::Ok(LocatedPull {
-            repo: RepoPath {
-                namespace: repo.namespace,
-                name: repo.name,
-            },
+            repo: RepoPath { namespace: repo.namespace, name: repo.name },
             number: pull.number,
             title: pull.title,
             status: pull.status,

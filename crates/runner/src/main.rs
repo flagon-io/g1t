@@ -57,17 +57,9 @@ pub(crate) fn env(name: &str) -> Result<String> {
 
 /// Runs git and returns its trimmed output, failing on a non-zero exit.
 pub(crate) fn git(dir: &Path, args: &[&str]) -> Result<String> {
-    let output = Command::new("git")
-        .current_dir(dir)
-        .args(args)
-        .output()
-        .context("could not run git")?;
+    let output = Command::new("git").current_dir(dir).args(args).output().context("could not run git")?;
     if !output.status.success() {
-        bail!(
-            "git {} failed: {}",
-            args.first().unwrap_or(&""),
-            String::from_utf8_lossy(&output.stderr).trim()
-        );
+        bail!("git {} failed: {}", args.first().unwrap_or(&""), String::from_utf8_lossy(&output.stderr).trim());
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }

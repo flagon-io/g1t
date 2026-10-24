@@ -44,9 +44,9 @@ use g1t_contracts::FailureCode;
 use g1t_contracts::Outcome;
 use g1t_contracts::access::Capability;
 use g1t_contracts::actions::{
-    CACHE_MAX_AGE_DAYS, CACHE_MAX_ENTRY_BYTES, CACHE_MICROS_PER_GB_MONTH, CACHE_REPO_QUOTA_FREE_BYTES, CACHE_UNUSED_DAYS,
-    CacheAbortArgs, CacheCommitArgs, CacheCommitted, CacheEntry, CacheHit, CacheList, CacheLookupArgs, CacheReservation,
-    CacheReserveArgs, CacheUploadArgs, CacheUsage, CacheUsageArgs, CachesArgs, DeleteCachesArgs,
+    CACHE_MAX_AGE_DAYS, CACHE_MAX_ENTRY_BYTES, CACHE_MICROS_PER_GB_MONTH, CACHE_REPO_QUOTA_FREE_BYTES, CACHE_UNUSED_DAYS, CacheAbortArgs,
+    CacheCommitArgs, CacheCommitted, CacheEntry, CacheHit, CacheList, CacheLookupArgs, CacheReservation, CacheReserveArgs, CacheUploadArgs,
+    CacheUsage, CacheUsageArgs, CachesArgs, DeleteCachesArgs,
 };
 use g1t_contracts::billing::NotePendingArgs;
 use g1t_contracts::new_id;
@@ -90,7 +90,8 @@ struct EntryRow {
 /// unfinished before `?11`, or was made by a job that is no longer running
 /// (it finished, failed or was cancelled before it saved). Gives the
 /// entry's number, or nothing when the key is taken.
-pub(crate) const RESERVE: &str = "INSERT INTO cache_entries (id, repo_id, namespace, key, object, size, status, created_at, last_used_at, version, scope, job_id)
+pub(crate) const RESERVE: &str =
+    "INSERT INTO cache_entries (id, repo_id, namespace, key, object, size, status, created_at, last_used_at, version, scope, job_id)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', ?7, ?7, ?8, ?9, ?10)
      ON CONFLICT (repo_id, scope, key, version) DO UPDATE SET
        id = ?1, object = ?5, size = ?6, status = 'pending', created_at = ?7, last_used_at = ?7, version = ?8, upload = NULL, job_id = ?10
@@ -392,8 +393,15 @@ impl Actions {
                 .run()
                 .await?;
         }
-        let blob = a.version.as_ref().and_then(|_| self.download_token("cache", &entry.id, &entry.object, crate::runtime::DOWNLOAD_SECONDS));
-        Ok(Outcome::Ok(Some(CacheHit { key: entry.key, object: entry.object, size: entry.size as u64, created_at: entry.created_at, blob })))
+        let blob =
+            a.version.as_ref().and_then(|_| self.download_token("cache", &entry.id, &entry.object, crate::runtime::DOWNLOAD_SECONDS));
+        Ok(Outcome::Ok(Some(CacheHit {
+            key: entry.key,
+            object: entry.object,
+            size: entry.size as u64,
+            created_at: entry.created_at,
+            blob,
+        })))
     }
 
     /// `cache_upload`.
@@ -421,7 +429,12 @@ impl Actions {
                 let (_, scope) = check!(self.cache_job_scope(&a.job, &a.token).await?);
                 self.db
                     .prepare(format!("{columns} WHERE repo_id = ? AND scope = ? AND key = ? AND version = ? AND status = 'pending'"))
-                    .bind(&[scope.repo_id.as_str().into(), scope.save.as_str().into(), key.into(), a.version.clone().unwrap_or_default().into()])?
+                    .bind(&[
+                        scope.repo_id.as_str().into(),
+                        scope.save.as_str().into(),
+                        key.into(),
+                        a.version.clone().unwrap_or_default().into(),
+                    ])?
                     .first::<Pending>(None)
                     .await?
             }
@@ -436,11 +449,22 @@ impl Actions {
         let blob = match &pending.upload {
             Some(upload) => match self.upload_token("cache", &pending.id, &pending.object, upload) {
                 Some(blob) => Some(blob),
-                None => return Ok(fail(FailureCode::Invalid, "The toolkit's storage is not set up here: the actions service has no ACTIONS_KEY.")),
+                None => {
+                    return Ok(fail(
+                        FailureCode::Invalid,
+                        "The toolkit's storage is not set up here: the actions service has no ACTIONS_KEY.",
+                    ));
+                }
             },
             None => None,
         };
-        Ok(Outcome::Ok(CacheReservation { id: pending.id, object: pending.object, number: pending.number as u64, upload: pending.upload, blob }))
+        Ok(Outcome::Ok(CacheReservation {
+            id: pending.id,
+            object: pending.object,
+            number: pending.number as u64,
+            upload: pending.upload,
+            blob,
+        }))
     }
 
     /// `cache_reserve`.
@@ -678,14 +702,13 @@ impl Actions {
     pub async fn delete_caches(&self, a: DeleteCachesArgs) -> Result<Outcome<CacheList>> {
         let repo = check!(self.may(&a.actor, &a.repo, Capability::Run).await?);
         let rows = match (a.id, a.key.as_deref().filter(|k| !k.is_empty())) {
-            (Some(id), _) => {
-                self.db
-                    .prepare(format!("{LISTED} WHERE rowid = ? AND repo_id = ? AND status = 'ready'"))
-                    .bind(&[(id as f64).into(), repo.id.as_str().into()])?
-                    .all()
-                    .await?
-                    .results::<ListedRow>()?
-            }
+            (Some(id), _) => self
+                .db
+                .prepare(format!("{LISTED} WHERE rowid = ? AND repo_id = ? AND status = 'ready'"))
+                .bind(&[(id as f64).into(), repo.id.as_str().into()])?
+                .all()
+                .await?
+                .results::<ListedRow>()?,
             (None, Some(key)) => {
                 let mut filter = "key = ? AND repo_id = ? AND status = 'ready'".to_owned();
                 let mut values: Vec<JsValue> = vec![key.into(), repo.id.as_str().into()];
@@ -693,9 +716,16 @@ impl Actions {
                     filter.push_str(" AND scope = ?");
                     values.push(git_ref.into());
                 }
-                self.db.prepare(format!("{LISTED} WHERE {filter} ORDER BY created_at DESC")).bind(&values)?.all().await?.results::<ListedRow>()?
+                self.db
+                    .prepare(format!("{LISTED} WHERE {filter} ORDER BY created_at DESC"))
+                    .bind(&values)?
+                    .all()
+                    .await?
+                    .results::<ListedRow>()?
             }
-            (None, None) => return Ok(fail(FailureCode::Invalid, "Name the cache entry by its id, or the entries to delete by their key.")),
+            (None, None) => {
+                return Ok(fail(FailureCode::Invalid, "Name the cache entry by its id, or the entries to delete by their key."));
+            }
         };
         if rows.is_empty() {
             return Ok(fail(FailureCode::NotFound, "No cache entry matches."));
@@ -740,12 +770,8 @@ impl Actions {
             id: String,
             object: String,
         }
-        let gone = self
-            .db
-            .prepare("SELECT id, object FROM cache_entries WHERE status = 'expired' LIMIT 500")
-            .all()
-            .await?
-            .results::<Gone>()?;
+        let gone =
+            self.db.prepare("SELECT id, object FROM cache_entries WHERE status = 'expired' LIMIT 500").all().await?.results::<Gone>()?;
         let gone: Vec<(String, String)> = gone.into_iter().map(|g| (g.id, g.object)).collect();
         if self.cache.is_some() && !self.forget_cache(&gone).await? {
             return Ok(());
@@ -1079,7 +1105,8 @@ mod database {
     }
 
     fn entry(db: &Connection, key: &str) -> (String, String, Option<String>) {
-        db.query_row("SELECT id, status, job_id FROM cache_entries WHERE key = ?", [key], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).unwrap()
+        db.query_row("SELECT id, status, job_id FROM cache_entries WHERE key = ?", [key], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
     }
 
     #[test]
@@ -1146,12 +1173,19 @@ mod database {
     fn a_prefix_is_found_through_the_index() {
         let db = database();
         let now = "2026-10-20T10:00:00.000Z";
-        for (id, key) in [("cache_1", "cargo-Linux-abc"), ("cache_2", "cargo_Linux-abc"), ("cache_3", "cargo-Linux-%"), ("cache_4", "sccache/1/ab"), ("cache_5", "cargo-")] {
+        for (id, key) in [
+            ("cache_1", "cargo-Linux-abc"),
+            ("cache_2", "cargo_Linux-abc"),
+            ("cache_3", "cargo-Linux-%"),
+            ("cache_4", "sccache/1/ab"),
+            ("cache_5", "cargo-"),
+        ] {
             reserve(&db, id, key, "job_1", now).unwrap();
         }
         let found = |prefix: &str| -> Vec<String> {
             let (starts, bounds) = key_prefix(prefix);
-            let sql = format!("SELECT key FROM cache_entries WHERE repo_id = 'repo_1' AND scope = 'refs/heads/main' AND {starts} ORDER BY key");
+            let sql =
+                format!("SELECT key FROM cache_entries WHERE repo_id = 'repo_1' AND scope = 'refs/heads/main' AND {starts} ORDER BY key");
             let mut statement = db.prepare(&sql).unwrap();
             statement.query_map(params![bounds[0], bounds[1]], |row| row.get(0)).unwrap().map(Result::unwrap).collect()
         };
@@ -1183,7 +1217,13 @@ mod database {
         for (sql, chunk) in by_ids("DELETE FROM cache_entries WHERE id IN", &ids[..110]) {
             db.execute(&sql, rusqlite::params_from_iter(chunk.iter())).unwrap();
         }
-        let left: Vec<String> = db.prepare("SELECT id FROM cache_entries ORDER BY id").unwrap().query_map([], |row| row.get(0)).unwrap().map(Result::unwrap).collect();
+        let left: Vec<String> = db
+            .prepare("SELECT id FROM cache_entries ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
         assert_eq!(left, ids[110..]);
     }
 }

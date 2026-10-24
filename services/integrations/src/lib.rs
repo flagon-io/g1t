@@ -34,9 +34,9 @@ mod work_migrated;
 use g1t_contracts::events::Event;
 use g1t_contracts::identity::{SlugArgs, Workspace};
 use g1t_contracts::integrations::*;
+use g1t_contracts::repos::PathByIdArgs;
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::repos::PathByIdArgs;
 use g1t_contracts::work::{
     AddCommentArgs, OpenWorkItemArgs, Resolution, State, ViewArgs, WorkItem, WorkItemActionArgs, WorkItemDetail, WorkItemViewArgs,
 };
@@ -136,10 +136,8 @@ pub(crate) fn fail<T>(code: FailureCode, message: impl Into<String>) -> Outcome<
 
 fn repo_path(text: &str) -> Option<RepoPath> {
     let (namespace, name) = text.trim().split_once('/')?;
-    (!namespace.is_empty() && !name.is_empty() && !name.contains('/')).then(|| RepoPath {
-        namespace: namespace.to_lowercase(),
-        name: name.to_owned(),
-    })
+    (!namespace.is_empty() && !name.is_empty() && !name.contains('/'))
+        .then(|| RepoPath { namespace: namespace.to_lowercase(), name: name.to_owned() })
 }
 
 pub(crate) fn https(url: &str) -> bool {
@@ -149,12 +147,7 @@ pub(crate) fn https(url: &str) -> bool {
 /// Checks a connection's settings for its provider, tidying them. The
 /// message says what to fix.
 fn check_config(provider: Provider, workspace: &str, config: &mut ConnectionConfig, secrets: &Secrets) -> std::result::Result<(), String> {
-    config.keys = config
-        .keys
-        .iter()
-        .map(|key| key.trim().to_ascii_uppercase())
-        .filter(|key| !key.is_empty())
-        .collect();
+    config.keys = config.keys.iter().map(|key| key.trim().to_ascii_uppercase()).filter(|key| !key.is_empty()).collect();
     for value in [&mut config.site].into_iter().flatten() {
         *value = value.trim().trim_end_matches('/').to_owned();
         if !https(value) {
@@ -244,10 +237,7 @@ impl Integrations {
         let (Some(sealer), Some(sealed)) = (&self.sealer, &row.secrets) else {
             return Secrets::default();
         };
-        sealer
-            .open(sealed, &row.id)
-            .and_then(|plain| serde_json::from_str(&plain).ok())
-            .unwrap_or_default()
+        sealer.open(sealed, &row.id).and_then(|plain| serde_json::from_str(&plain).ok()).unwrap_or_default()
     }
 
     fn seal(&self, id: &str, secrets: &Secrets) -> Option<String> {
@@ -257,11 +247,7 @@ impl Integrations {
     }
 
     async fn row(&self, id: &str) -> Result<Option<Row>> {
-        self.db
-            .prepare("SELECT * FROM connections WHERE id = ?")
-            .bind(&[id.into()])?
-            .first::<Row>(None)
-            .await
+        self.db.prepare("SELECT * FROM connections WHERE id = ?").bind(&[id.into()])?.first::<Row>(None).await
     }
 
     async fn rows(&self, workspace: &str) -> Result<Vec<Row>> {
@@ -282,10 +268,9 @@ impl Integrations {
     async fn note(&self, id: &str, problem: Option<&str>) -> Result<()> {
         let now = rfc3339(now_ms());
         match problem {
-            None => self
-                .db
-                .prepare("UPDATE connections SET last_used_at = ?, last_error = NULL WHERE id = ?")
-                .bind(&[now.into(), id.into()])?,
+            None => {
+                self.db.prepare("UPDATE connections SET last_used_at = ?, last_error = NULL WHERE id = ?").bind(&[now.into(), id.into()])?
+            }
             Some(problem) => self
                 .db
                 .prepare("UPDATE connections SET last_error = ? WHERE id = ?")
@@ -316,17 +301,8 @@ impl Integrations {
         let Some(path) = repo_path(repo) else {
             return Ok(false);
         };
-        let seen: Outcome<serde_json::Value> = g1t_kit::call(
-            &self.work,
-            "counts",
-            &ViewArgs {
-                repo: path,
-                number: 0,
-                viewer: Some(actor.clone()),
-                after_seq: 0,
-            },
-        )
-        .await?;
+        let seen: Outcome<serde_json::Value> =
+            g1t_kit::call(&self.work, "counts", &ViewArgs { repo: path, number: 0, viewer: Some(actor.clone()), after_seq: 0 }).await?;
         Ok(matches!(seen, Outcome::Ok(_)))
     }
 
@@ -340,10 +316,7 @@ impl Integrations {
         }
         let provider = a.provider;
         let tidy = |value: Option<String>| value.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
-        let mut secrets = Secrets {
-            secret: tidy(a.secret),
-            signing_secret: tidy(a.signing_secret),
-        };
+        let mut secrets = Secrets { secret: tidy(a.secret), signing_secret: tidy(a.signing_secret) };
         // Datadog and plain webhooks sign with a secret g1t makes.
         let made = matches!(provider, Provider::Datadog | Provider::Webhook) && secrets.signing_secret.is_none();
         if made {
@@ -552,11 +525,7 @@ impl Integrations {
         let found: Outcome<WorkItemDetail> = g1t_kit::call(
             &self.work,
             "get_work_item",
-            &WorkItemViewArgs {
-                workspace: workspace.to_owned(),
-                number,
-                viewer: Some(actor.clone()),
-            },
+            &WorkItemViewArgs { workspace: workspace.to_owned(), number, viewer: Some(actor.clone()) },
         )
         .await?;
         Ok(found.into_result().ok().map(|detail| detail.item))
@@ -570,7 +539,16 @@ impl Integrations {
             .await
     }
 
-    async fn insert_link(&self, connection: &Row, external_id: &str, key: &str, title: &str, url: &str, item: &WorkItem, count: u32) -> Result<()> {
+    async fn insert_link(
+        &self,
+        connection: &Row,
+        external_id: &str,
+        key: &str,
+        title: &str,
+        url: &str,
+        item: &WorkItem,
+        count: u32,
+    ) -> Result<()> {
         let now = now_ms();
         self.db
             .prepare(
@@ -605,10 +583,7 @@ impl Integrations {
     /// A request from outside, answered at once. What it asks for is done
     /// by `process`, after the answer has gone.
     async fn receive(&self, a: &ReceiveArgs) -> Result<(Received, Option<(Row, Signal)>)> {
-        let answer = |status: u16, message: &str| Received {
-            status,
-            message: message.to_owned(),
-        };
+        let answer = |status: u16, message: &str| Received { status, message: message.to_owned() };
         let Some(row) = self.row(&a.id).await?.filter(|row| row.provider().receives()) else {
             return Ok((answer(404, "No such connection."), None));
         };
@@ -617,15 +592,13 @@ impl Integrations {
         let signing = secrets.signing_secret.as_deref().unwrap_or_default();
         let authentic = !signing.is_empty()
             && match provider {
-                Provider::Sentry => a
-                    .headers
-                    .get("sentry-hook-signature")
-                    .is_some_and(|signature| crypto::signed(signing, &a.body, signature)),
+                Provider::Sentry => {
+                    a.headers.get("sentry-hook-signature").is_some_and(|signature| crypto::signed(signing, &a.body, signature))
+                }
                 _ => alerts::authentic(&a.headers, &a.body, signing),
             };
         if !authentic {
-            self.record(&row.id, "request", "refused", "It was not signed with the connection's secret.", None)
-                .await?;
+            self.record(&row.id, "request", "refused", "It was not signed with the connection's secret.", None).await?;
             return Ok((answer(401, "The request was not signed with this connection's secret."), None));
         }
         let Ok(payload) = serde_json::from_str::<Value>(&a.body) else {
@@ -634,11 +607,9 @@ impl Integrations {
         };
         let config = row.config();
         let read = match provider {
-            Provider::Sentry => sentry::signal(
-                a.headers.get("sentry-hook-resource").map(String::as_str).unwrap_or_default(),
-                &payload,
-                &config,
-            ),
+            Provider::Sentry => {
+                sentry::signal(a.headers.get("sentry-hook-resource").map(String::as_str).unwrap_or_default(), &payload, &config)
+            }
             _ => alerts::signal(provider.label(), &payload),
         };
         match read {
@@ -727,24 +698,14 @@ impl Integrations {
             let milestone = MILESTONES.iter().rev().find(|m| count >= **m && link.announced < **m).copied();
             self.db
                 .prepare("UPDATE links SET count = ?, announced = ?, last_seen = ? WHERE id = ?")
-                .bind(&[
-                    count.into(),
-                    milestone.unwrap_or(link.announced).into(),
-                    rfc3339(now_ms()).into(),
-                    link.id.as_str().into(),
-                ])?
+                .bind(&[count.into(), milestone.unwrap_or(link.announced).into(), rfc3339(now_ms()).into(), link.id.as_str().into()])?
                 .run()
                 .await?;
             if item.as_ref().is_some_and(|item| item.state == State::Closed) {
                 let _: Outcome<Value> = g1t_kit::call(
                     &self.work,
                     "reopen_work_item",
-                    &WorkItemActionArgs {
-                        actor: actor.clone(),
-                        workspace: workspace.clone(),
-                        number,
-                        reason: None,
-                    },
+                    &WorkItemActionArgs { actor: actor.clone(), workspace: workspace.clone(), number, reason: None },
                 )
                 .await?;
                 self.comment(
@@ -755,11 +716,14 @@ impl Integrations {
                     format!("{system} saw this again after it was closed, so it is open again: [{}]({}).", signal.key, signal.url),
                 )
                 .await?;
-                return Ok(("reopened".into(), format!("It came back after being closed: {}.", signal.title), Some(at(&workspace, number))));
+                return Ok((
+                    "reopened".into(),
+                    format!("It came back after being closed: {}.", signal.title),
+                    Some(at(&workspace, number)),
+                ));
             }
             if let Some(milestone) = milestone {
-                self.comment(&actor, &workspace, None, number, format!("{system} has now seen this {milestone} times or more."))
-                    .await?;
+                self.comment(&actor, &workspace, None, number, format!("{system} has now seen this {milestone} times or more.")).await?;
             }
             return Ok(("updated".into(), format!("Seen again ({count} so far)."), Some(at(&workspace, number))));
         }
@@ -802,8 +766,7 @@ impl Integrations {
             Outcome::Ok(item) => item,
             Outcome::Fail(refused) => return Ok(("refused".into(), refused.message, None)),
         };
-        self.insert_link(row, &signal.external_id, &signal.key, &signal.title, &signal.url, &item, signal.count.unwrap_or(1))
-            .await?;
+        self.insert_link(row, &signal.external_id, &signal.key, &signal.title, &signal.url, &item, signal.count.unwrap_or(1)).await?;
         Ok(("opened".into(), format!("Opened #{}.", item.number), Some(at(&item.workspace, item.number))))
     }
 
@@ -819,11 +782,7 @@ impl Integrations {
                     let Some(token) = self.secrets(row).secret else { continue };
                     match sentry::fetch(&row.config(), &token, id).await? {
                         Ok(Some(item)) => {
-                            return Ok(Ok(Some(Found {
-                                connection: clone_row(row),
-                                item,
-                                external_id: id.clone(),
-                            })));
+                            return Ok(Ok(Some(Found { connection: clone_row(row), item, external_id: id.clone() })));
                         }
                         Ok(None) => {}
                         Err(error) => problem = Some(error),
@@ -855,11 +814,7 @@ impl Integrations {
                     };
                     match fetched {
                         Ok(Some(ticket)) => {
-                            return Ok(Ok(Some(Found {
-                                connection: clone_row(row),
-                                item: ticket.item,
-                                external_id: ticket.external_id,
-                            })));
+                            return Ok(Ok(Some(Found { connection: clone_row(row), item: ticket.item, external_id: ticket.external_id })));
                         }
                         Ok(None) => {}
                         Err(error) => {
@@ -887,10 +842,9 @@ impl Integrations {
         let rows = self.rows(&workspace).await?;
         Ok(match self.find(&rows, &reference).await? {
             Ok(Some(found)) => Outcome::Ok(found.item),
-            Ok(None) => fail(
-                FailureCode::NotFound,
-                format!("None of the {workspace} workspace's integrations knows {}.", a.reference.trim()),
-            ),
+            Ok(None) => {
+                fail(FailureCode::NotFound, format!("None of the {workspace} workspace's integrations knows {}.", a.reference.trim()))
+            }
             Err(problem) => fail(FailureCode::Conflict, problem),
         })
     }
@@ -922,15 +876,13 @@ impl Integrations {
             let Some(number) = link.number else {
                 return Ok(fail(
                     FailureCode::Conflict,
-                    format!("{} was imported already, and its work item is still being moved into the workspace. Try again in a few minutes.", found.item.key),
+                    format!(
+                        "{} was imported already, and its work item is still being moved into the workspace. Try again in a few minutes.",
+                        found.item.key
+                    ),
                 ));
             };
-            return Ok(Outcome::Ok(Imported {
-                workspace: link.workspace,
-                number,
-                item: found.item,
-                created: false,
-            }));
+            return Ok(Outcome::Ok(Imported { workspace: link.workspace, number, item: found.item, created: false }));
         }
         let item = &found.item;
         let system = item.provider.label();
@@ -965,14 +917,8 @@ impl Integrations {
             Outcome::Ok(opened) => opened,
             Outcome::Fail(refused) => return Ok(Outcome::Fail(refused)),
         };
-        self.insert_link(&found.connection, &found.external_id, &item.key, &item.title, &item.url, &opened, 1)
-            .await?;
-        Ok(Outcome::Ok(Imported {
-            workspace: opened.workspace,
-            number: opened.number,
-            item: found.item,
-            created: true,
-        }))
+        self.insert_link(&found.connection, &found.external_id, &item.key, &item.title, &item.url, &opened, 1).await?;
+        Ok(Outcome::Ok(Imported { workspace: opened.workspace, number: opened.number, item: found.item, created: true }))
     }
 
     async fn links(&self, a: LinksArgs) -> Result<Vec<Link>> {
@@ -1030,7 +976,9 @@ impl Integrations {
             }
             "pull.opened" => {
                 let (Some(repo_id), Some(number)) = (event.repo_id.as_deref(), event.data["item"].as_u64()) else { return Ok(None) };
-                let Some(repo): Option<RepoPath> = g1t_kit::call(&self.repos, "path_by_id", &PathByIdArgs { id: repo_id.to_owned() }).await? else {
+                let Some(repo): Option<RepoPath> =
+                    g1t_kit::call(&self.repos, "path_by_id", &PathByIdArgs { id: repo_id.to_owned() }).await?
+                else {
                     return Ok(None);
                 };
                 let workspace = repo.namespace.to_lowercase();
@@ -1042,7 +990,12 @@ impl Integrations {
                     .await?;
                 let path = format!("{}/{}", repo.namespace, repo.name);
                 let pull = &event.data["number"];
-                Ok(Some((found, false, format!("Work on this started in g1t: pull request #{pull} on {path}."), format!("{site}/{path}/pull/{pull}"))))
+                Ok(Some((
+                    found,
+                    false,
+                    format!("Work on this started in g1t: pull request #{pull} on {path}."),
+                    format!("{site}/{path}/pull/{pull}"),
+                )))
             }
             _ => Ok(None),
         }
@@ -1065,11 +1018,7 @@ impl Integrations {
             };
             self.note(&row.id, told.as_ref().err().map(String::as_str)).await?;
             if !closing {
-                self.db
-                    .prepare("UPDATE links SET told_started = 1 WHERE id = ?")
-                    .bind(&[link.id.as_str().into()])?
-                    .run()
-                    .await?;
+                self.db.prepare("UPDATE links SET told_started = 1 WHERE id = ?").bind(&[link.id.as_str().into()])?.run().await?;
             }
         }
         Ok(())
@@ -1202,8 +1151,7 @@ mod config_tests {
 
     #[test]
     fn stored_configs_with_old_model_settings_still_parse() {
-        let config: ConnectionConfig =
-            serde_json::from_str(r#"{"repo":"acme/web","assign":true,"gatewayModels":["*"]}"#).unwrap();
+        let config: ConnectionConfig = serde_json::from_str(r#"{"repo":"acme/web","assign":true,"gatewayModels":["*"]}"#).unwrap();
         assert_eq!(config.repo.as_deref(), Some("acme/web"));
         let written = serde_json::to_string(&config).unwrap();
         assert!(!written.contains("assign") && !written.contains("gatewayModels"));

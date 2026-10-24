@@ -15,10 +15,11 @@ use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry,
 use g1t_contracts::billing::{ComputeKind, RecordSandboxArgs};
 use g1t_contracts::repos::{Repo, RepoPath};
 use g1t_contracts::runners::{
-    self as model, ACTIVITY_LIMIT, CloudJob, DesktopCapability, DesktopDiagnosis, DesktopJob, DesktopRunner, DesktopUpdate, DesktopRunnersArgs, ReportDesktopArgs, HandedOverTask, RunnerActivity, RunnerActivityArgs, StuckJob, StuckJobsArgs, Assignment, CancelTaskArgs, CreateRegistrationTokenArgs, DeleteRunnerGroupArgs, EnqueueTaskArgs, FinishedArgs,
-    ListRunnersArgs, Poll, PollArgs, RegisterArgs, Registered, RegistrationToken, RemoveRunnerArgs, RemoveSelfArgs, RouteArgs, Runner,
-    RunnerAuth, RunnerGroup, RunnerGroupsArgs, RunnerSettings, RunnerSettingsArgs, RunnerWork, RunnersOwner, SetRunnerGroupArgs,
-    SetRunnerSettingsArgs, Wanted,
+    self as model, ACTIVITY_LIMIT, Assignment, CancelTaskArgs, CloudJob, CreateRegistrationTokenArgs, DeleteRunnerGroupArgs,
+    DesktopCapability, DesktopDiagnosis, DesktopJob, DesktopRunner, DesktopRunnersArgs, DesktopUpdate, EnqueueTaskArgs, FinishedArgs,
+    HandedOverTask, ListRunnersArgs, Poll, PollArgs, RegisterArgs, Registered, RegistrationToken, RemoveRunnerArgs, RemoveSelfArgs,
+    ReportDesktopArgs, RouteArgs, Runner, RunnerActivity, RunnerActivityArgs, RunnerAuth, RunnerGroup, RunnerGroupsArgs, RunnerSettings,
+    RunnerSettingsArgs, RunnerWork, RunnersOwner, SetRunnerGroupArgs, SetRunnerSettingsArgs, StuckJob, StuckJobsArgs, Wanted,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, User, new_id};
@@ -67,7 +68,8 @@ const WRAPPING_UP_MS: u64 = 60 * 1000;
 /// logs it as cancelled (Deploy #596's Smoke, 2026-10-23). A job cancelled,
 /// taken from it, or finished longer ago is stopped.
 fn stops_on_poll(job: &JobRow, runner_id: &str, at: u64) -> bool {
-    let finished_here = job.status == "completed" && job.runner_id.as_deref() == Some(runner_id) && job.conclusion.as_deref() != Some("cancelled");
+    let finished_here =
+        job.status == "completed" && job.runner_id.as_deref() == Some(runner_id) && job.conclusion.as_deref() != Some("cancelled");
     let just_now = job
         .finished_at
         .as_deref()
@@ -234,7 +236,8 @@ fn now() -> String {
 /// the runner's id and name, `?4` now, `?5` the job. A job offered to the
 /// runners in place of g1t's machine may be taken by g1t's machine at
 /// once (plan.rs `HOSTED_CLAIM`): only the first finds it still queued.
-pub(crate) const RUNNER_CLAIM: &str = "UPDATE jobs SET status = 'in_progress', token_hash = ?1, first_token_hash = NULL, runner_id = ?2, runner_name = ?3,
+pub(crate) const RUNNER_CLAIM: &str =
+    "UPDATE jobs SET status = 'in_progress', token_hash = ?1, first_token_hash = NULL, runner_id = ?2, runner_name = ?3,
        reason = NULL, started_at = ?4, seen_at = ?4
      WHERE id = ?5 AND status = 'queued' RETURNING id";
 
@@ -257,14 +260,8 @@ fn sized(given: &[model::OfferedSize]) -> String {
 
 fn valid_name(name: &str) -> std::result::Result<String, String> {
     let name = name.trim();
-    let ok = !name.is_empty()
-        && name.len() <= 64
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
-    if ok {
-        Ok(name.to_owned())
-    } else {
-        Err("A runner's name is 1 to 64 letters, digits, `-`, `_` and `.`.".to_owned())
-    }
+    let ok = !name.is_empty() && name.len() <= 64 && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+    if ok { Ok(name.to_owned()) } else { Err("A runner's name is 1 to 64 letters, digits, `-`, `_` and `.`.".to_owned()) }
 }
 
 fn valid_group_name(name: &str) -> std::result::Result<String, String> {
@@ -296,7 +293,8 @@ fn machine_hash(workspace: &str, machine: Option<&str>) -> Option<String> {
 /// person registered it and it is no longer heard from.
 fn takes_over(existing: &RunnerRow, replace: bool, machine_hash: Option<&str>, created_by: Option<&str>, now: u64) -> bool {
     let same_machine = machine_hash.is_some() && existing.machine_hash.as_deref() == machine_hash;
-    let left_behind = existing.machine_hash.is_none() && created_by.is_some() && existing.created_by.as_deref() == created_by && !existing.online(now);
+    let left_behind =
+        existing.machine_hash.is_none() && created_by.is_some() && existing.created_by.as_deref() == created_by && !existing.online(now);
     replace || same_machine || left_behind
 }
 
@@ -315,12 +313,7 @@ fn entry(actor: AuditActor, action: &str, workspace: &str, repo: Option<String>,
         actor,
         action: action.to_owned(),
         surface: Surface::Rest,
-        target: AuditTarget {
-            workspace: workspace.to_owned(),
-            repo,
-            path,
-            ..AuditTarget::default()
-        },
+        target: AuditTarget { workspace: workspace.to_owned(), repo, path, ..AuditTarget::default() },
         outcome: AuditOutcome::Allowed,
         rule: "runner".to_owned(),
         result: Some("ok".to_owned()),
@@ -405,11 +398,7 @@ impl Actions {
     /// A group of the workspace by id or name.
     async fn find_group(&self, workspace: &str, wanted: &str) -> Result<Option<GroupRow>> {
         self.default_group(workspace).await?;
-        Ok(self
-            .group_rows(workspace)
-            .await?
-            .into_iter()
-            .find(|g| g.id == wanted || g.name.eq_ignore_ascii_case(wanted.trim())))
+        Ok(self.group_rows(workspace).await?.into_iter().find(|g| g.id == wanted || g.name.eq_ignore_ascii_case(wanted.trim())))
     }
 
     async fn runner_rows(&self, workspace: &str) -> Result<Vec<RunnerRow>> {
@@ -429,7 +418,8 @@ impl Actions {
     async fn work_of(&self, row: &RunnerRow) -> Result<Option<RunnerWork>> {
         let Some(id) = &row.work_id else { return Ok(None) };
         if row.work_kind.as_deref() == Some("agent") {
-            let task = self.db.prepare("SELECT * FROM runner_tasks WHERE id = ?").bind(&[id.as_str().into()])?.first::<TaskRow>(None).await?;
+            let task =
+                self.db.prepare("SELECT * FROM runner_tasks WHERE id = ?").bind(&[id.as_str().into()])?.first::<TaskRow>(None).await?;
             return Ok(task.filter(|t| t.status == "in_progress").map(|t| RunnerWork {
                 kind: "agent".into(),
                 id: t.id,
@@ -472,11 +462,7 @@ impl Actions {
             name: row.name.clone(),
             workspace: row.workspace.clone(),
             repo: row.repo.clone(),
-            group: row
-                .group_id
-                .as_ref()
-                .and_then(|id| groups.iter().find(|g| &g.id == id))
-                .map(|g| g.name.clone()),
+            group: row.group_id.as_ref().and_then(|id| groups.iter().find(|g| &g.id == id)).map(|g| g.name.clone()),
             labels: row.labels(),
             os: row.os.clone(),
             arch: row.arch.clone(),
@@ -546,7 +532,10 @@ impl Actions {
             .await?
             .map_or(0, |c| c.n);
         if made >= model::MAX_TOKENS_PER_HOUR {
-            return Ok(fail(FailureCode::Conflict, "Too many registration tokens in the last hour. Each lasts an hour and registers any number of runners."));
+            return Ok(fail(
+                FailureCode::Conflict,
+                "Too many registration tokens in the last hour. Each lasts an hour and registers any number of runners.",
+            ));
         }
         let group = match (&place.repo, a.group.as_deref().map(str::trim).filter(|g| !g.is_empty())) {
             (Some(_), Some(_)) => return Ok(fail(FailureCode::Invalid, "A repository's own runners are in no group.")),
@@ -653,12 +642,8 @@ impl Actions {
             return Ok(fail(FailureCode::Forbidden, "Say which staff member is doing it."));
         }
         let workspace = a.workspace.trim().to_lowercase();
-        let rows: Vec<RunnerRow> = self
-            .runner_rows(&workspace)
-            .await?
-            .into_iter()
-            .filter(|row| a.id.as_deref().is_none_or(|id| id == row.id))
-            .collect();
+        let rows: Vec<RunnerRow> =
+            self.runner_rows(&workspace).await?.into_iter().filter(|row| a.id.as_deref().is_none_or(|id| id == row.id)).collect();
         if a.id.is_some() && rows.is_empty() {
             return Ok(fail(FailureCode::NotFound, "There is no such runner."));
         }
@@ -817,7 +802,9 @@ impl Actions {
         }
         self.db
             .batch(vec![
-                self.db.prepare("UPDATE runners SET group_id = ? WHERE group_id = ?").bind(&[default.id.as_str().into(), group.id.as_str().into()])?,
+                self.db
+                    .prepare("UPDATE runners SET group_id = ? WHERE group_id = ?")
+                    .bind(&[default.id.as_str().into(), group.id.as_str().into()])?,
                 self.db.prepare("DELETE FROM runner_groups WHERE id = ?").bind(&[group.id.as_str().into()])?,
             ])
             .await?;
@@ -1061,7 +1048,12 @@ impl Actions {
 
     /// `runner_register`.
     pub async fn runner_register(&self, a: RegisterArgs) -> Result<Outcome<Registered>> {
-        let refused = || fail(FailureCode::Unauthenticated, "That registration token is not valid, or it expired. Make a new one under Settings, Runners.");
+        let refused = || {
+            fail(
+                FailureCode::Unauthenticated,
+                "That registration token is not valid, or it expired. Make a new one under Settings, Runners.",
+            )
+        };
         if !a.token.starts_with(model::REGISTRATION_PREFIX) {
             return Ok(refused());
         }
@@ -1132,7 +1124,9 @@ impl Actions {
                 let elsewhere = if existing.machine_hash.is_some() && machine_hash.is_some() { " from another computer" } else { "" };
                 return Ok(fail(
                     FailureCode::Conflict,
-                    format!("A runner called {name} is already registered here{elsewhere}. Register with --replace to take its place, or choose another --name."),
+                    format!(
+                        "A runner called {name} is already registered here{elsewhere}. Register with --replace to take its place, or choose another --name."
+                    ),
                 ));
             }
             self.forget_runner(existing, &format!("The runner {name} was replaced by a new registration.")).await?;
@@ -1197,10 +1191,7 @@ impl Actions {
         )])
         .await;
         let groups = self.group_rows(&workspace).await?;
-        Ok(Outcome::Ok(Registered {
-            runner: self.runner_view(&row, &groups, at).await?,
-            credential,
-        }))
+        Ok(Outcome::Ok(Registered { runner: self.runner_view(&row, &groups, at).await?, credential }))
     }
 
     /// The runner a call is from, if its credential is that runner's (or
@@ -1251,10 +1242,15 @@ impl Actions {
         let mut cancel = Vec::new();
         let mut active: Option<(String, &'static str)> = None;
         for id in a.running.iter().take(10) {
-            if let Some(job) = self.db.prepare("SELECT * FROM jobs WHERE id = ?").bind(&[id.as_str().into()])?.first::<JobRow>(None).await? {
+            if let Some(job) = self.db.prepare("SELECT * FROM jobs WHERE id = ?").bind(&[id.as_str().into()])?.first::<JobRow>(None).await?
+            {
                 if job.status == "in_progress" && job.runner_id.as_deref() == Some(row.id.as_str()) {
                     if seen_is_stale(job.seen_at.as_deref(), at) {
-                        self.db.prepare("UPDATE jobs SET seen_at = ? WHERE id = ?").bind(&[seen.as_str().into(), id.as_str().into()])?.run().await?;
+                        self.db
+                            .prepare("UPDATE jobs SET seen_at = ? WHERE id = ?")
+                            .bind(&[seen.as_str().into(), id.as_str().into()])?
+                            .run()
+                            .await?;
                     }
                     active = Some((id.clone(), "workflow"));
                 } else if stops_on_poll(&job, &row.id, at) {
@@ -1265,7 +1261,11 @@ impl Actions {
             match self.db.prepare("SELECT * FROM runner_tasks WHERE id = ?").bind(&[id.as_str().into()])?.first::<TaskRow>(None).await? {
                 Some(task) if task.status == "in_progress" && task.runner_id.as_deref() == Some(row.id.as_str()) => {
                     if seen_is_stale(task.seen_at.as_deref(), at) {
-                        self.db.prepare("UPDATE runner_tasks SET seen_at = ? WHERE id = ?").bind(&[seen.as_str().into(), id.as_str().into()])?.run().await?;
+                        self.db
+                            .prepare("UPDATE runner_tasks SET seen_at = ? WHERE id = ?")
+                            .bind(&[seen.as_str().into(), id.as_str().into()])?
+                            .run()
+                            .await?;
                     }
                     active = Some((id.clone(), "agent"));
                 }
@@ -1278,12 +1278,8 @@ impl Actions {
         let work_kind = active.as_ref().map(|(_, kind)| *kind);
         // How it is isolated, as it says now: a runner re-registered or
         // restarted with or without Docker says so on its next poll.
-        let isolation = a
-            .isolation
-            .as_deref()
-            .filter(|level| model::ISOLATIONS.contains(level))
-            .map(str::to_owned)
-            .or_else(|| row.isolation.clone());
+        let isolation =
+            a.isolation.as_deref().filter(|level| model::ISOLATIONS.contains(level)).map(str::to_owned).or_else(|| row.isolation.clone());
         // And what a job on it gets: a runner given more memory says so.
         let said = kept_capacity(a.cpus, a.memory_mib, a.docker, a.hosted_image);
         let cpus = said.cpus.or(row.cpus);
@@ -1416,7 +1412,14 @@ impl Actions {
                     _ => None,
                 };
                 let sizes = runner.sizes();
-                if !model::stands_in_for(runner.capacity(), sizes.as_deref(), runner.isolation.as_deref(), visibility.as_deref(), &machine, job.needs_docker != 0) {
+                if !model::stands_in_for(
+                    runner.capacity(),
+                    sizes.as_deref(),
+                    runner.isolation.as_deref(),
+                    visibility.as_deref(),
+                    &machine,
+                    job.needs_docker != 0,
+                ) {
                     continue;
                 }
                 // Taken for that size: its sandbox is the size's, or what the
@@ -1483,7 +1486,12 @@ impl Actions {
             .await;
             // It says in "Set up job" why it is here and not on g1t's machine.
             if offered {
-                self.note_log(&job.id, 0, &format!("{}\n", model::on_own_runner_note(&runner.name, size.as_ref(), runner.isolation.as_deref()))).await?;
+                self.note_log(
+                    &job.id,
+                    0,
+                    &format!("{}\n", model::on_own_runner_note(&runner.name, size.as_ref(), runner.isolation.as_deref())),
+                )
+                .await?;
             }
             // A job that deploys: its run's deployment is under way.
             self.job_started(&job.id).await?;
@@ -1559,7 +1567,8 @@ impl Actions {
                 .and_then(|text| serde_json::from_str(&text).ok())
                 .unwrap_or_default();
             if env.is_empty() {
-                self.end_task(&TaskRow { status: "in_progress".into(), ..task.clone() }, 1, "The work's environment could not be opened.").await?;
+                self.end_task(&TaskRow { status: "in_progress".into(), ..task.clone() }, 1, "The work's environment could not be opened.")
+                    .await?;
                 continue;
             }
             self.audit(vec![entry(
@@ -1622,9 +1631,9 @@ impl Actions {
         } else {
             None
         };
-        let free = runners
-            .iter()
-            .any(|runner| takes_offered_job(runner, &groups, &job.repo_id, run_repo, &wanted, &machine, job.needs_docker != 0, visibility.as_deref(), at));
+        let free = runners.iter().any(|runner| {
+            takes_offered_job(runner, &groups, &job.repo_id, run_repo, &wanted, &machine, job.needs_docker != 0, visibility.as_deref(), at)
+        });
         if !free || self.limits.free_self_hosted_jobs == 0 {
             return Ok(free);
         }
@@ -1702,15 +1711,20 @@ impl Actions {
         let mut changed = false;
         if let Some(job) = self.db.prepare("SELECT * FROM jobs WHERE id = ?").bind(&[a.id.as_str().into()])?.first::<JobRow>(None).await? {
             if job.runner_id.as_deref() == Some(row.id.as_str()) && job.status == "in_progress" {
-                let why = reason.unwrap_or_else(|| format!("The job's process on {} exited with code {} before it reported how the job went.", row.name, a.exit_code));
+                let why = reason.unwrap_or_else(|| {
+                    format!("The job's process on {} exited with code {} before it reported how the job went.", row.name, a.exit_code)
+                });
                 self.finish_job(&job.id, "failure", Some(&why), None).await?;
                 changed = true;
             }
-        } else if let Some(task) = self.db.prepare("SELECT * FROM runner_tasks WHERE id = ?").bind(&[a.id.as_str().into()])?.first::<TaskRow>(None).await?
+        } else if let Some(task) =
+            self.db.prepare("SELECT * FROM runner_tasks WHERE id = ?").bind(&[a.id.as_str().into()])?.first::<TaskRow>(None).await?
             && task.runner_id.as_deref() == Some(row.id.as_str())
             && task.status == "in_progress"
         {
-            let why = reason.unwrap_or_else(|| if a.exit_code == 0 { String::new() } else { format!("The work exited with code {} on {}.", a.exit_code, row.name) });
+            let why = reason.unwrap_or_else(|| {
+                if a.exit_code == 0 { String::new() } else { format!("The work exited with code {} on {}.", a.exit_code, row.name) }
+            });
             self.end_task(&task, a.exit_code, &why).await?;
             changed = true;
         }
@@ -1749,7 +1763,9 @@ impl Actions {
             .bind(&[runner_id.as_str().into(), job.id.as_str().into()])?
             .run()
             .await?;
-        let (Some(started), Some(finished)) = (job.started_at.as_deref(), job.finished_at.as_deref().map(str::to_owned).or_else(|| Some(now()))) else {
+        let (Some(started), Some(finished)) =
+            (job.started_at.as_deref(), job.finished_at.as_deref().map(str::to_owned).or_else(|| Some(now())))
+        else {
             return Ok(());
         };
         let seconds = match (g1t_contracts::time::parse_rfc3339(started), g1t_contracts::time::parse_rfc3339(&finished)) {
@@ -2067,7 +2083,11 @@ impl Actions {
             .results::<TaskRow>()?;
         for task in tasks {
             let why = if task.status == "queued" {
-                format!("No self-hosted runner with labels {} took it within {} hours.", Wanted::of(&serde_json::from_str::<Vec<String>>(&task.labels).unwrap_or_default(), None).describe(), model::MAX_WAIT_HOURS)
+                format!(
+                    "No self-hosted runner with labels {} took it within {} hours.",
+                    Wanted::of(&serde_json::from_str::<Vec<String>>(&task.labels).unwrap_or_default(), None).describe(),
+                    model::MAX_WAIT_HOURS
+                )
             } else {
                 format!("The self-hosted runner {} stopped answering.", task.runner_name.clone().unwrap_or_default())
             };
@@ -2094,11 +2114,7 @@ impl Actions {
         for row in spent {
             self.forget_runner(&row, "The ephemeral runner finished its job.").await?;
         }
-        self.db
-            .prepare("DELETE FROM runner_registrations WHERE expires_at < ?")
-            .bind(&[before(24 * 60 * 60 * 1000).into()])?
-            .run()
-            .await?;
+        self.db.prepare("DELETE FROM runner_registrations WHERE expires_at < ?").bind(&[before(24 * 60 * 60 * 1000).into()])?.run().await?;
         Ok(())
     }
 }
@@ -2142,7 +2158,14 @@ fn takes_offered_job(
         && runner.repo_id.as_deref().is_none_or(|repo| repo == repo_id)
         && (runner.repo_id.is_some() || group.is_none_or(|g| g.allows(run_repo)))
         && wanted.matches(&runner.labels(), group.map(|g| g.name.as_str()))
-        && model::stands_in_for(runner.capacity(), runner.sizes().as_deref(), runner.isolation.as_deref(), visibility, machine, needs_docker)
+        && model::stands_in_for(
+            runner.capacity(),
+            runner.sizes().as_deref(),
+            runner.isolation.as_deref(),
+            visibility,
+            machine,
+            needs_docker,
+        )
 }
 
 fn group_view(group: &GroupRow, runners: &[RunnerRow]) -> RunnerGroup {
@@ -2278,7 +2301,9 @@ mod tests {
         let groups = [group(&["web"])];
         let wanted = model::hosted_wanted(&["ubuntu-latest".to_owned()]).unwrap();
         let standard = g1t_contracts::actions::STANDARD_INSTANCE;
-        let takes = |row: &RunnerRow, needs_docker: bool| takes_offered_job(row, &groups, "rep_1", "acme/web", &wanted, &standard, needs_docker, None, at);
+        let takes = |row: &RunnerRow, needs_docker: bool| {
+            takes_offered_job(row, &groups, "rep_1", "acme/web", &wanted, &standard, needs_docker, None, at)
+        };
         assert!(takes(&runner, true));
         assert!(!takes(&RunnerRow { work_id: Some("job_2".into()), ..runner.clone() }, false), "busy");
         assert!(!takes(&RunnerRow { last_seen_at: Some(rfc3339(at - 120_000)), ..runner.clone() }, false), "offline");
@@ -2297,7 +2322,10 @@ mod tests {
         assert!(!takes(&sized(r#"[{"size":"1-core"}]"#), false), "not a size it takes");
         assert!(!takes(&sized("[]"), false), "it takes none");
         let elsewhere = [group(&["docs"])];
-        assert!(!takes_offered_job(&runner, &elsewhere, "rep_1", "acme/web", &wanted, &standard, false, None, at), "its group leaves the repository out");
+        assert!(
+            !takes_offered_job(&runner, &elsewhere, "rep_1", "acme/web", &wanted, &standard, false, None, at),
+            "its group leaves the repository out"
+        );
     }
 
     #[test]

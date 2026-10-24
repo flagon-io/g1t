@@ -10,9 +10,7 @@ use sha2::compress256;
 use sha2::digest::generic_array::GenericArray;
 
 const BLOCK: usize = 64;
-const INITIAL: [u32; 8] = [
-    0x6a09_e667, 0xbb67_ae85, 0x3c6e_f372, 0xa54f_f53a, 0x510e_527f, 0x9b05_688c, 0x1f83_d9ab, 0x5be0_cd19,
-];
+const INITIAL: [u32; 8] = [0x6a09_e667, 0xbb67_ae85, 0x3c6e_f372, 0xa54f_f53a, 0x510e_527f, 0x9b05_688c, 0x1f83_d9ab, 0x5be0_cd19];
 
 /// A `sha256:<hex>` digest. Only SHA-256 is accepted: it is what every
 /// client sends.
@@ -22,8 +20,7 @@ pub struct Digest(String);
 impl Digest {
     pub fn parse(text: &str) -> Option<Digest> {
         let hex = text.strip_prefix("sha256:")?;
-        (hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)))
-            .then(|| Digest(text.to_owned()))
+        (hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))).then(|| Digest(text.to_owned()))
     }
 
     pub fn of(bytes: &[u8]) -> Digest {
@@ -71,11 +68,7 @@ impl Default for Sha256 {
 
 impl Sha256 {
     pub fn new() -> Self {
-        Sha256 {
-            state: INITIAL,
-            pending: Vec::with_capacity(BLOCK),
-            length: 0,
-        }
+        Sha256 { state: INITIAL, pending: Vec::with_capacity(BLOCK), length: 0 }
     }
 
     pub fn length(&self) -> u64 {
@@ -139,11 +132,7 @@ impl Sha256 {
         }
         let pending = hex::decode(pending).ok()?;
         let length: u64 = length.parse().ok()?;
-        (pending.len() < BLOCK && length % BLOCK as u64 == pending.len() as u64).then_some(Sha256 {
-            state,
-            pending,
-            length,
-        })
+        (pending.len() < BLOCK && length % BLOCK as u64 == pending.len() as u64).then_some(Sha256 { state, pending, length })
     }
 }
 
@@ -162,10 +151,7 @@ mod tests {
             let bytes: Vec<u8> = (0..length).map(|i| (i * 7 % 251) as u8).collect();
             assert_eq!(Digest::of(&bytes).as_str(), reference(&bytes), "{length}");
         }
-        assert_eq!(
-            Digest::of(b"").as_str(),
-            "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        );
+        assert_eq!(Digest::of(b"").as_str(), "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
     }
 
     #[test]

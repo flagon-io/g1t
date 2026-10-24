@@ -23,10 +23,9 @@ pub fn base_url(provider: AiProvider, config: &AiConfig) -> String {
 /// The header the key goes in; `authorization` means `Bearer <key>`.
 pub fn auth_header(provider: AiProvider, config: &AiConfig) -> String {
     match provider {
-        AiProvider::AnthropicEndpoint | AiProvider::OpenaiEndpoint => config
-            .auth_header
-            .clone()
-            .unwrap_or_else(|| provider.spec().auth_header.to_owned()),
+        AiProvider::AnthropicEndpoint | AiProvider::OpenaiEndpoint => {
+            config.auth_header.clone().unwrap_or_else(|| provider.spec().auth_header.to_owned())
+        }
         _ => provider.spec().auth_header.to_owned(),
     }
 }
@@ -87,10 +86,7 @@ pub async fn test(
     // A proxy may answer messages but not list models: it was reached, but
     // the key could not be checked.
     if answer.status == 404 && matches!(provider, AiProvider::AnthropicEndpoint | AiProvider::OpenaiEndpoint) {
-        return Ok(Ok((
-            "Reached the endpoint. It does not list models, so the key could not be checked.".to_owned(),
-            Vec::new(),
-        )));
+        return Ok(Ok(("Reached the endpoint. It does not list models, so the key could not be checked.".to_owned(), Vec::new())));
     }
     Ok(Err(answer.problem(system)))
 }
@@ -101,10 +97,7 @@ mod tests {
 
     #[test]
     fn each_provider_has_its_address_and_header() {
-        let config = AiConfig {
-            base_url: Some("https://llm.acme.dev/v1/".to_owned()),
-            ..AiConfig::default()
-        };
+        let config = AiConfig { base_url: Some("https://llm.acme.dev/v1/".to_owned()), ..AiConfig::default() };
         assert_eq!(base_url(AiProvider::Openai, &config), "https://api.openai.com/v1");
         assert_eq!(base_url(AiProvider::OpenaiEndpoint, &config), "https://llm.acme.dev/v1");
         assert_eq!(base_url(AiProvider::AnthropicEndpoint, &config), "https://llm.acme.dev");
@@ -112,10 +105,7 @@ mod tests {
         assert_eq!(auth_header(AiProvider::Anthropic, &config), "x-api-key");
         assert_eq!(auth_header(AiProvider::AzureOpenai, &config), "api-key");
         assert_eq!(base_url(AiProvider::Groq, &config), "https://api.groq.com/openai/v1");
-        let azure = AiConfig {
-            base_url: Some("https://acme.openai.azure.com/".to_owned()),
-            ..AiConfig::default()
-        };
+        let azure = AiConfig { base_url: Some("https://acme.openai.azure.com/".to_owned()), ..AiConfig::default() };
         assert_eq!(base_url(AiProvider::AzureOpenai, &azure), "https://acme.openai.azure.com/openai/v1");
     }
 

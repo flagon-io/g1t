@@ -115,14 +115,7 @@ pub struct Progress {
 
 impl Progress {
     pub fn new(id: &str) -> Progress {
-        Progress {
-            id: id.to_owned(),
-            multipart_id: None,
-            parts: Vec::new(),
-            offset: 0,
-            tail: 0,
-            hasher: Sha256::new(),
-        }
+        Progress { id: id.to_owned(), multipart_id: None, parts: Vec::new(), offset: 0, tail: 0, hasher: Sha256::new() }
     }
 }
 
@@ -152,10 +145,7 @@ impl<'a, S: BlobStore> Writer<'a, S> {
         let buffer = if progress.tail > 0 {
             let tail = store.read(&tail_key(&progress.id)).await?.unwrap_or_default();
             if tail.len() as u64 != progress.tail {
-                return Err(worker::Error::RustError(format!(
-                    "upload {} lost its last {} bytes",
-                    progress.id, progress.tail
-                )));
+                return Err(worker::Error::RustError(format!("upload {} lost its last {} bytes", progress.id, progress.tail)));
             }
             tail
         } else {
@@ -163,7 +153,6 @@ impl<'a, S: BlobStore> Writer<'a, S> {
         };
         Ok(Writer { store, progress, buffer, sending: VecDeque::new() })
     }
-
 
     /// Bytes received so far, over every request.
     pub fn received(&self) -> u64 {
@@ -336,10 +325,7 @@ pub struct Cleanup {
 /// says whether one is there whatever the current request did.
 pub fn cleanup(progress: &Progress) -> Cleanup {
     Cleanup {
-        multipart: progress
-            .multipart_id
-            .as_ref()
-            .map(|id| (parts_key(&progress.id), id.clone())),
+        multipart: progress.multipart_id.as_ref().map(|id| (parts_key(&progress.id), id.clone())),
         tail: (progress.tail > 0).then(|| tail_key(&progress.id)),
     }
 }
@@ -525,10 +511,7 @@ mod tests {
         assert_eq!(cleanup(&progress), Cleanup { multipart: None, tail: Some(tail_key("upl_9")) });
         progress.multipart_id = Some("mp".into());
         progress.tail = 0;
-        assert_eq!(
-            cleanup(&progress),
-            Cleanup { multipart: Some((parts_key("upl_9"), "mp".into())), tail: None }
-        );
+        assert_eq!(cleanup(&progress), Cleanup { multipart: Some((parts_key("upl_9"), "mp".into())), tail: None });
     }
 
     #[test]

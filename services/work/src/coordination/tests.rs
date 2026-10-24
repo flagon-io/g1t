@@ -4,12 +4,14 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::links::{
-    BRANCH_SESSIONS, FAMILY, FIRST_PROMPTS, INSERT_LINK, INSERT_OVERLAP, INSERT_TOUCH, PULL_SESSIONS, PullSessionRow, TOUCHED_BY_OTHERS, end_tree_sql,
-    pull_sessions_of, tree_sql,
+    BRANCH_SESSIONS, FAMILY, FIRST_PROMPTS, INSERT_LINK, INSERT_OVERLAP, INSERT_TOUCH, PULL_SESSIONS, PullSessionRow, TOUCHED_BY_OTHERS,
+    end_tree_sql, pull_sessions_of, tree_sql,
 };
-use super::sessions::{INSERT_ENTRY, MOVE_ENTRIES, RENEW_CLAIM, SET_USAGE, harness_session_sql, insert_session_sql, refresh_sql, renewal, resume_sql};
-use super::{after_minutes, expire_claims_sql, time_out_sessions_sql};
+use super::sessions::{
+    INSERT_ENTRY, MOVE_ENTRIES, RENEW_CLAIM, SET_USAGE, harness_session_sql, insert_session_sql, refresh_sql, renewal, resume_sql,
+};
 use super::updates::deliver_sql;
+use super::{after_minutes, expire_claims_sql, time_out_sessions_sql};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::{claim_is_mine, session_overlaps, session_pair, subagent_harness_id};
 use std::collections::HashSet;
@@ -26,8 +28,24 @@ fn start_child(db: &Connection, id: &str, parent: &str, harness_id: &str, agent:
     db.query_row(
         &insert_session_sql(),
         params![
-            id, "rep_1", "wki_4", None::<u32>, "main", "usr_1", "ana", "claude_code", harness_id, None::<String>, None::<String>, at, at,
-            parent, agent, "Find the endpoints", "Find every API endpoint and list them", None::<String>
+            id,
+            "rep_1",
+            "wki_4",
+            None::<u32>,
+            "main",
+            "usr_1",
+            "ana",
+            "claude_code",
+            harness_id,
+            None::<String>,
+            None::<String>,
+            at,
+            at,
+            parent,
+            agent,
+            "Find the endpoints",
+            "Find every API endpoint and list them",
+            None::<String>
         ],
         |row| row.get::<_, String>(0),
     )
@@ -66,27 +84,33 @@ fn claim(db: &Connection, id: &str, session: Option<&str>, actor: &str) -> Strin
         &super::claims::upsert_claim_sql(),
         params![id, "wki_4", "rep_1", session, actor, "ana", "codex", "Working on it", 30, rfc3339(NOW), after_minutes(NOW, 30)],
         |row| row.get(0),
-    ).unwrap()
+    )
+    .unwrap()
 }
 
 #[test]
 fn simultaneous_claims_converge_without_locking_out_other_agents() {
-    let path = std::env::temp_dir().join(format!("g1t-claims-{}-{}.sqlite", std::process::id(),
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    let path = std::env::temp_dir().join(format!(
+        "g1t-claims-{}-{}.sqlite",
+        std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+    ));
     let db = database_at(&path);
     let barrier = std::sync::Arc::new(std::sync::Barrier::new(16));
-    let threads: Vec<_> = (0..16).map(|n| {
-        let path = path.clone();
-        let barrier = barrier.clone();
-        std::thread::spawn(move || {
-            let db = Connection::open(path).unwrap();
-            db.busy_timeout(std::time::Duration::from_secs(10)).unwrap();
-            // Every caller's preliminary read precedes every write.
-            assert_eq!(db.query_row("SELECT COUNT(*) FROM claims", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
-            barrier.wait();
-            claim(&db, &format!("clm_{n}"), Some("ses_a"), "usr_1")
+    let threads: Vec<_> = (0..16)
+        .map(|n| {
+            let path = path.clone();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                let db = Connection::open(path).unwrap();
+                db.busy_timeout(std::time::Duration::from_secs(10)).unwrap();
+                // Every caller's preliminary read precedes every write.
+                assert_eq!(db.query_row("SELECT COUNT(*) FROM claims", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+                barrier.wait();
+                claim(&db, &format!("clm_{n}"), Some("ses_a"), "usr_1")
+            })
         })
-    }).collect();
+        .collect();
     let ids: HashSet<_> = threads.into_iter().map(|t| t.join().unwrap()).collect();
     assert_eq!(ids.len(), 1);
     let first = ids.into_iter().next().unwrap();
@@ -117,8 +141,24 @@ fn start(db: &Connection, id: &str, harness_id: Option<&str>) -> Option<String> 
     db.query_row(
         &insert_session_sql(),
         params![
-            id, "rep_1", "wki_4", None::<u32>, "main", "usr_1", "ana", "claude_code", harness_id, None::<String>, None::<String>, at, at,
-            None::<String>, None::<String>, None::<String>, None::<String>, None::<String>
+            id,
+            "rep_1",
+            "wki_4",
+            None::<u32>,
+            "main",
+            "usr_1",
+            "ana",
+            "claude_code",
+            harness_id,
+            None::<String>,
+            None::<String>,
+            at,
+            at,
+            None::<String>,
+            None::<String>,
+            None::<String>,
+            None::<String>,
+            None::<String>
         ],
         |row| row.get::<_, String>(0),
     )
@@ -129,11 +169,9 @@ fn start(db: &Connection, id: &str, harness_id: Option<&str>) -> Option<String> 
 /// Records an entry the way `record_session_entries` does: the session
 /// number it took, or none when its key was recorded before.
 fn record(db: &Connection, pull: Option<&str>, session: &str, text: &str, key: Option<&str>) -> Option<u32> {
-    db.query_row(INSERT_ENTRY, params![pull, "note", text, None::<String>, None::<String>, rfc3339(NOW), session, key], |row| {
-        row.get(0)
-    })
-    .optional()
-    .unwrap()
+    db.query_row(INSERT_ENTRY, params![pull, "note", text, None::<String>, None::<String>, rfc3339(NOW), session, key], |row| row.get(0))
+        .optional()
+        .unwrap()
 }
 
 fn pull_entries(db: &Connection) -> Vec<(u32, String)> {
@@ -147,9 +185,8 @@ fn starting_a_harness_session_again_returns_the_first() {
     assert_eq!(start(&db, "ses_1", Some("claude-abc")).as_deref(), Some("ses_1"));
     // The hook fired twice: nothing new, and the first is found by its id.
     assert_eq!(start(&db, "ses_2", Some("claude-abc")), None);
-    let found: String = db
-        .query_row(&harness_session_sql(), params!["rep_1", "usr_1", "claude_code", "claude-abc"], |row| row.get(0))
-        .unwrap();
+    let found: String =
+        db.query_row(&harness_session_sql(), params!["rep_1", "usr_1", "claude_code", "claude-abc"], |row| row.get(0)).unwrap();
     assert_eq!(found, "ses_1");
     // Without a harness id every start is a session of its own.
     assert_eq!(start(&db, "ses_3", None).as_deref(), Some("ses_3"));
@@ -179,8 +216,19 @@ fn a_quiet_session_times_out_and_a_heartbeat_brings_it_back() {
         .query_row(
             &resume_sql(),
             params![
-                None::<String>, 9, None::<String>, "abc123", None::<String>, None::<String>, None::<String>, None::<String>,
-                None::<String>, None::<String>, late, "ses_1", None::<String>
+                None::<String>,
+                9,
+                None::<String>,
+                "abc123",
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                late,
+                "ses_1",
+                None::<String>
             ],
             |row| row.get(11),
         )
@@ -196,8 +244,19 @@ fn report_usage(db: &Connection, id: &str, usage: serde_json::Value) -> (Option<
     db.query_row(
         &resume_sql(),
         params![
-            None::<String>, None::<u32>, None::<String>, None::<String>, None::<String>, None::<String>, None::<String>, None::<String>,
-            None::<String>, None::<String>, rfc3339(NOW), id, None::<String>
+            None::<String>,
+            None::<u32>,
+            None::<String>,
+            None::<String>,
+            None::<String>,
+            None::<String>,
+            None::<String>,
+            None::<String>,
+            None::<String>,
+            None::<String>,
+            rfc3339(NOW),
+            id,
+            None::<String>
         ],
         |row| Ok((row.get("cost_usd")?, row.get("usage")?)),
     )
@@ -239,15 +298,25 @@ fn a_subagent_starts_once_and_once_finished_stays_finished() {
     let found: String = db.query_row(&harness_session_sql(), params!["rep_1", "usr_1", "claude_code", child], |row| row.get(0)).unwrap();
     assert_eq!(found, "ses_c1");
     // SubagentStop ended it with its result.
-    db.execute("UPDATE sessions SET state = 'ended', end_reason = 'done', result = 'Found 12 endpoints' WHERE id = 'ses_c1'", [])
-        .unwrap();
+    db.execute("UPDATE sessions SET state = 'ended', end_reason = 'done', result = 'Found 12 endpoints' WHERE id = 'ses_c1'", []).unwrap();
     // A late hook only fills in what it says: it stays ended, its result kept.
     let (state, task, result): (String, String, String) = db
         .query_row(
             &refresh_sql(),
             params![
-                None::<String>, None::<u32>, None::<String>, None::<String>, None::<String>, None::<String>, "List endpoints",
-                None::<String>, None::<String>, None::<String>, rfc3339(NOW), "ses_c1", None::<String>
+                None::<String>,
+                None::<u32>,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                "List endpoints",
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                rfc3339(NOW),
+                "ses_c1",
+                None::<String>
             ],
             |row| Ok((row.get(11)?, row.get(19)?, row.get(21)?)),
         )
@@ -412,11 +481,7 @@ fn entries_are_recorded_once_per_key_and_numbered_in_the_session() {
 fn a_sessions_entries_join_its_pull_request_after_what_it_has() {
     let db = database();
     // Recorded on the pull request the old way.
-    db.execute(
-        "INSERT INTO session_entries (pull_id, seq, kind, text, at) VALUES ('pr_9', 1, 'note', 'legacy', '')",
-        [],
-    )
-    .unwrap();
+    db.execute("INSERT INTO session_entries (pull_id, seq, kind, text, at) VALUES ('pr_9', 1, 'note', 'legacy', '')", []).unwrap();
     start(&db, "ses_1", Some("a"));
     record(&db, None, "ses_1", "before the pull request", Some("k1"));
     record(&db, None, "ses_1", "still before", Some("k2"));
@@ -473,8 +538,12 @@ fn an_untitled_sessions_first_prompt_is_found_by_its_own_numbering() {
     start(&db, "ses_1", Some("claude-1")).unwrap();
     start(&db, "ses_2", Some("claude-2")).unwrap();
     let entry = |session: &str, kind: &str, text: &str| {
-        db.query_row(INSERT_ENTRY, params![None::<String>, kind, text, None::<String>, None::<String>, rfc3339(NOW), session, None::<String>], |_| Ok(()))
-            .unwrap();
+        db.query_row(
+            INSERT_ENTRY,
+            params![None::<String>, kind, text, None::<String>, None::<String>, rfc3339(NOW), session, None::<String>],
+            |_| Ok(()),
+        )
+        .unwrap();
     };
     entry("ses_1", "tool_call", "Bash: ls");
     entry("ses_1", "prompt", "Fix the preview builds that time out");
@@ -492,7 +561,7 @@ fn an_untitled_sessions_first_prompt_is_found_by_its_own_numbering() {
 
 #[test]
 fn inbox_delivery_acknowledgement_and_reconnect_are_session_scoped() {
-    use super::updates::{PENDING, ACK};
+    use super::updates::{ACK, PENDING};
     let db = database();
     start(&db, "ses_a", Some("a"));
     start(&db, "ses_b", Some("b"));
@@ -513,7 +582,7 @@ fn inbox_delivery_acknowledgement_and_reconnect_are_session_scoped() {
     assert!(column(&db, PENDING, ["ses_a"]).is_empty());
     assert_eq!(column(&db, PENDING, ["ses_b"]), ["upd_1"]);
     assert_eq!(column(&db, "SELECT acknowledged_at FROM session_updates WHERE session_id = 'ses_a'", []), ["first"]);
-    db.execute(&deliver_sql("1"), params!["upd_2", "dependency.changed", "{}", rfc3339(NOW+1), REPO, "[]"]).unwrap();
+    db.execute(&deliver_sql("1"), params!["upd_2", "dependency.changed", "{}", rfc3339(NOW + 1), REPO, "[]"]).unwrap();
     // An old acknowledgement cannot swallow a later update.
     db.execute(ACK, params!["retry", "ses_a", "upd_1"]).unwrap();
     assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_2"]);
@@ -521,7 +590,7 @@ fn inbox_delivery_acknowledgement_and_reconnect_are_session_scoped() {
 
 #[test]
 fn inbox_drains_bounded_pages_without_skipping_updates() {
-    use super::updates::{PENDING, ACK};
+    use super::updates::{ACK, PENDING};
     let db = database();
     start(&db, "ses_a", Some("a"));
     for i in 0..105 {
@@ -529,15 +598,20 @@ fn inbox_drains_bounded_pages_without_skipping_updates() {
     }
     let first = column(&db, PENDING, ["ses_a"]);
     assert_eq!(first.len(), 100);
-    for id in first { db.execute(ACK, params!["now", "ses_a", id]).unwrap(); }
+    for id in first {
+        db.execute(ACK, params!["now", "ses_a", id]).unwrap();
+    }
     assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_100", "upd_101", "upd_102", "upd_103", "upd_104"]);
 }
 
 #[test]
 fn pending_updates_and_receipts_survive_database_reopen() {
-    use super::updates::{PENDING, ACK};
-    let path = std::env::temp_dir().join(format!("g1t-updates-{}-{}.sqlite", std::process::id(),
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    use super::updates::{ACK, PENDING};
+    let path = std::env::temp_dir().join(format!(
+        "g1t-updates-{}-{}.sqlite",
+        std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+    ));
     let db = database_at(&path);
     start(&db, "ses_a", Some("a"));
     db.execute(&deliver_sql("1"), params!["upd_1", "overlap.detected", "{}", rfc3339(NOW), REPO, "[]"]).unwrap();
@@ -555,21 +629,26 @@ fn pending_updates_and_receipts_survive_database_reopen() {
 
 #[test]
 fn inbox_targets_session_overlaps_and_excludes_own_lifecycle_events() {
-    use super::updates::{PENDING};
+    use super::updates::PENDING;
     let db = database();
     start(&db, "ses_a", Some("a"));
     start(&db, "ses_b", Some("b"));
-    db.execute(&deliver_sql("1"), params!["upd_overlap", "overlap.detected", r#"{"sessionId":"ses_a","otherSessionId":"ses_b"}"#, rfc3339(NOW), REPO, "[]"]).unwrap();
+    db.execute(
+        &deliver_sql("1"),
+        params!["upd_overlap", "overlap.detected", r#"{"sessionId":"ses_a","otherSessionId":"ses_b"}"#, rfc3339(NOW), REPO, "[]"],
+    )
+    .unwrap();
     assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_overlap"]);
     assert!(column(&db, PENDING, ["ses_b"]).is_empty());
-    db.execute(&deliver_sql("1"), params!["upd_start", "session.started", r#"{"session":{"id":"ses_b"}}"#, rfc3339(NOW+1), REPO, "[]"]).unwrap();
+    db.execute(&deliver_sql("1"), params!["upd_start", "session.started", r#"{"session":{"id":"ses_b"}}"#, rfc3339(NOW + 1), REPO, "[]"])
+        .unwrap();
     assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_overlap", "upd_start"]);
     assert!(column(&db, PENDING, ["ses_b"]).is_empty());
 }
 
 #[test]
 fn a_session_is_not_told_of_its_own_claims_but_others_are() {
-    use super::updates::{PENDING};
+    use super::updates::PENDING;
     let db = database();
     start(&db, "ses_a", Some("a"));
     start(&db, "ses_b", Some("b"));
@@ -577,9 +656,14 @@ fn a_session_is_not_told_of_its_own_claims_but_others_are() {
         db.execute(&deliver_sql("1"), params![id, kind, r#"{"claim":{"sessionId":"ses_a"}}"#, rfc3339(NOW), REPO, "[]"]).unwrap();
     }
     // An expiry happened to the session; it hears of it.
-    db.execute(&deliver_sql("1"), params!["upd_expired", "work.claim_expired", r#"{"claim":{"sessionId":"ses_a"}}"#, rfc3339(NOW + 1), REPO, "[]"]).unwrap();
+    db.execute(
+        &deliver_sql("1"),
+        params!["upd_expired", "work.claim_expired", r#"{"claim":{"sessionId":"ses_a"}}"#, rfc3339(NOW + 1), REPO, "[]"],
+    )
+    .unwrap();
     // A sessionless claim is news to every session.
-    db.execute(&deliver_sql("1"), params!["upd_bare", "work.claimed", r#"{"claim":{"sessionId":null}}"#, rfc3339(NOW + 2), REPO, "[]"]).unwrap();
+    db.execute(&deliver_sql("1"), params!["upd_bare", "work.claimed", r#"{"claim":{"sessionId":null}}"#, rfc3339(NOW + 2), REPO, "[]"])
+        .unwrap();
     assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_expired", "upd_bare"]);
     assert_eq!(column(&db, PENDING, ["ses_b"]), ["upd_claim", "upd_handoff", "upd_release", "upd_expired", "upd_bare"]);
 }
@@ -627,7 +711,8 @@ fn updates_reach_the_sessions_on_their_subject_and_those_not_on_anything_yet() {
     db.execute(&deliver_sql("1"), params!["upd_claim_2", "work.claimed", data.to_string(), rfc3339(NOW), REPO, "[4,14]"]).unwrap();
     assert!(column(&db, PENDING, ["ses_elsewhere"]).is_empty());
     // An event about nothing in particular reaches everyone.
-    db.execute(&deliver_sql("1"), params!["upd_any", "session.started", r#"{"session":{"id":"ses_x"}}"#, rfc3339(NOW + 1), REPO, "[]"]).unwrap();
+    db.execute(&deliver_sql("1"), params!["upd_any", "session.started", r#"{"session":{"id":"ses_x"}}"#, rfc3339(NOW + 1), REPO, "[]"])
+        .unwrap();
     assert_eq!(column(&db, PENDING, ["ses_on9"]), ["upd_any"]);
 }
 
@@ -645,12 +730,28 @@ fn an_update_is_written_only_with_its_change_and_once() {
         let id: String = tx
             .query_row(
                 &upsert_claim_sql(),
-                params![proposed, "wki_4", "rep_1", "ses_a", "usr_1", "ana", "codex", "Scope: api", 30, rfc3339(NOW), after_minutes(NOW, 30)],
+                params![
+                    proposed,
+                    "wki_4",
+                    "rep_1",
+                    "ses_a",
+                    "usr_1",
+                    "ana",
+                    "codex",
+                    "Scope: api",
+                    30,
+                    rfc3339(NOW),
+                    after_minutes(NOW, 30)
+                ],
                 |row| row.get(0),
             )
             .unwrap();
         let update = update_id("work.claimed", &format!("{proposed}:claimed"));
-        tx.execute(&guard, params![update, "work.claimed", r#"{"item":4,"claim":{"sessionId":"ses_a"}}"#, rfc3339(NOW), REPO, "[4]", proposed]).unwrap();
+        tx.execute(
+            &guard,
+            params![update, "work.claimed", r#"{"item":4,"claim":{"sessionId":"ses_a"}}"#, rfc3339(NOW), REPO, "[4]", proposed],
+        )
+        .unwrap();
         tx.commit().unwrap();
         id
     };
@@ -702,7 +803,8 @@ fn a_queue_result_told_twice_reaches_each_session_once() {
     start(&db, "ses_a", Some("a"));
     let id = update_id("integration.failed", "qe_1:att_2:abc123");
     for _ in 0..2 {
-        db.execute(&deliver_sql("1"), params![id, "integration.failed", r#"{"number":14,"item":4}"#, rfc3339(NOW), REPO, "[4,14]"]).unwrap();
+        db.execute(&deliver_sql("1"), params![id, "integration.failed", r#"{"number":14,"item":4}"#, rfc3339(NOW), REPO, "[4,14]"])
+            .unwrap();
     }
     assert_eq!(column(&db, PENDING, ["ses_a"]), [id.clone()]);
     // A later attempt's result is news of its own.
@@ -714,13 +816,16 @@ fn a_queue_result_told_twice_reaches_each_session_once() {
 
 /// A session's title as stored: its text, source and when it is due.
 fn titled(db: &Connection, id: &str) -> (Option<String>, Option<String>, Option<String>) {
-    db.query_row("SELECT title, title_source, title_due_at FROM sessions WHERE id = ?", [id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
-        .unwrap()
+    db.query_row("SELECT title, title_source, title_due_at FROM sessions WHERE id = ?", [id], |row| {
+        Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+    })
+    .unwrap()
 }
 
 /// Records `n` prompts the first of which is for `intent`, at `at`.
 fn prompted(db: &Connection, id: &str, n: u32, intent: Option<&str>, at: u64) {
-    db.execute(&super::titles::prompted_sql(), params![id, n, intent, rfc3339(at), after_minutes(at, super::titles::SETTLE_AFTER_MINUTES)]).unwrap();
+    db.execute(&super::titles::prompted_sql(), params![id, n, intent, rfc3339(at), after_minutes(at, super::titles::SETTLE_AFTER_MINUTES)])
+        .unwrap();
 }
 
 /// A heartbeat giving the title `title` from `source`, at `at`.
@@ -728,8 +833,19 @@ fn heartbeat_titled(db: &Connection, id: &str, title: &str, source: &str, at: u6
     db.query_row(
         &resume_sql(),
         params![
-            None::<String>, None::<u32>, None::<String>, None::<String>, title, None::<String>, None::<String>, None::<String>,
-            None::<String>, None::<String>, rfc3339(at), id, source
+            None::<String>,
+            None::<u32>,
+            None::<String>,
+            None::<String>,
+            title,
+            None::<String>,
+            None::<String>,
+            None::<String>,
+            None::<String>,
+            None::<String>,
+            rfc3339(at),
+            id,
+            source
         ],
         |_| Ok(()),
     )
@@ -744,7 +860,10 @@ fn the_first_prompt_names_a_session_for_now_and_enough_of_them_settle_it() {
     start(&db, "ses_1", Some("a"));
     prompted(&db, "ses_1", 1, Some("This project used to be in syntaqx/g1t"), NOW);
     let due_later = after_minutes(NOW, super::titles::SETTLE_AFTER_MINUTES);
-    assert_eq!(titled(&db, "ses_1"), (Some("This project used to be in syntaqx/g1t".into()), Some("prompt".into()), Some(due_later.clone())));
+    assert_eq!(
+        titled(&db, "ses_1"),
+        (Some("This project used to be in syntaqx/g1t".into()), Some("prompt".into()), Some(due_later.clone()))
+    );
     // A later prompt does not rename it, nor bring it forward yet.
     prompted(&db, "ses_1", 1, Some("Fix the remotes"), NOW + MINUTE);
     assert_eq!(titled(&db, "ses_1").0.as_deref(), Some("This project used to be in syntaqx/g1t"));

@@ -97,7 +97,9 @@ pub fn span(input: &Value, now: u64) -> std::result::Result<(u64, u64), String> 
     let at = |key: &str| -> std::result::Result<Option<u64>, String> {
         match input.get(key).and_then(Value::as_str).map(str::trim).filter(|text| !text.is_empty()) {
             None => Ok(None),
-            Some(text) => parse_rfc3339(text).map(Some).ok_or_else(|| format!("{key} must be an RFC 3339 time, such as 2026-10-12T00:00:00Z.")),
+            Some(text) => {
+                parse_rfc3339(text).map(Some).ok_or_else(|| format!("{key} must be an RFC 3339 time, such as 2026-10-12T00:00:00Z."))
+            }
         }
     };
     let until = at("until")?.unwrap_or(now).min(now);
@@ -478,10 +480,8 @@ pub fn production<'a>(log: &[Commit], deploys: &'a [Deploy]) -> Vec<Option<(&'st
     }
     let same = |sha: &str, hash: &str| !sha.is_empty() && (hash.starts_with(sha) || sha.starts_with(hash));
     // Each deploy at its commit's place in the history.
-    let placed: Vec<(usize, &Deploy)> = deploys
-        .iter()
-        .filter_map(|deploy| log.iter().position(|commit| same(&deploy.sha, &commit.hash)).map(|at| (at, deploy)))
-        .collect();
+    let placed: Vec<(usize, &Deploy)> =
+        deploys.iter().filter_map(|deploy| log.iter().position(|commit| same(&deploy.sha, &commit.hash)).map(|at| (at, deploy))).collect();
     // The nearest deploy at or after a commit in the given state: the one
     // that first carried it.
     let nearest = |index: usize, state: DeployState| {
@@ -651,7 +651,9 @@ pub async fn run(services: &Services, viewer: &Viewer, input: &Value) -> Result<
     // The repositories whose default branch was pushed to, busiest first:
     // their commits say what landed.
     let mut pushed: Vec<(String, usize)> = Vec::new();
-    for event in events.iter().filter(|event| event.kind == "git.push" && event.data.get("defaultBranch").and_then(Value::as_bool) == Some(true)) {
+    for event in
+        events.iter().filter(|event| event.kind == "git.push" && event.data.get("defaultBranch").and_then(Value::as_bool) == Some(true))
+    {
         let Some(id) = event.repo_id.as_deref() else { continue };
         match pushed.iter_mut().find(|(known, _)| known == id) {
             Some((_, count)) => *count += 1,
@@ -776,9 +778,13 @@ mod tests {
             authored_at: at.to_owned(),
         };
         let commits = [
-            commit("aaaaaaaaaaaaaaaa", "Ask reads g1t
+            commit(
+                "aaaaaaaaaaaaaaaa",
+                "Ask reads g1t
 
-The long why.", "2026-10-13T05:00:00Z"),
+The long why.",
+                "2026-10-13T05:00:00Z",
+            ),
             commit("bbbbbbbbbbbbbbbb", "Yesterday's change", "2026-10-12T05:00:00Z"),
         ];
         let since = parse_rfc3339("2026-10-12T06:00:00Z").unwrap();
@@ -846,12 +852,15 @@ The long why.", "2026-10-13T05:00:00Z"),
         ];
         let deploys: Vec<Deploy> = runs.iter().filter_map(|found| run_deploy(site, "flagon-io/g1t", "main", found)).collect();
         assert_eq!(deploys.len(), 3);
-        assert_eq!(deploys[2], Deploy {
-            sha: "cccc0000".into(),
-            state: DeployState::Succeeded,
-            label: "Deploy #311".into(),
-            url: "https://g1t.sh/flagon-io/g1t/actions/runs/run_311".into(),
-        });
+        assert_eq!(
+            deploys[2],
+            Deploy {
+                sha: "cccc0000".into(),
+                state: DeployState::Succeeded,
+                label: "Deploy #311".into(),
+                url: "https://g1t.sh/flagon-io/g1t/actions/runs/run_311".into(),
+            }
+        );
         let owners = HashMap::from([(
             "syntaqx@gmail.com".to_owned(),
             g1t_contracts::accounts::EmailOwner { id: "usr_1".into(), username: "syntaqx".into(), avatar: None },
@@ -896,13 +905,43 @@ The long why.", "2026-10-13T05:00:00Z"),
     fn what_shipped_reads_as_one_list_with_links_and_names() {
         let repos = [repo("rep_1", "web"), repo("rep_2", "api")];
         let events = [
-            event("deployment.succeeded", "rep_1", "2026-10-12T15:00:00Z", "usr_1", json!({ "kind": "production", "project": "web", "commit": "abcdef1234567890", "path": "/acme/web/deployments/dpl_1", "triggeredBy": "ana" })),
-            event("release.published", "rep_2", "2026-10-12T14:00:00Z", "usr_2", json!({ "tagName": "v1.2.0", "release": { "name": "Faster pushes" } })),
+            event(
+                "deployment.succeeded",
+                "rep_1",
+                "2026-10-12T15:00:00Z",
+                "usr_1",
+                json!({ "kind": "production", "project": "web", "commit": "abcdef1234567890", "path": "/acme/web/deployments/dpl_1", "triggeredBy": "ana" }),
+            ),
+            event(
+                "release.published",
+                "rep_2",
+                "2026-10-12T14:00:00Z",
+                "usr_2",
+                json!({ "tagName": "v1.2.0", "release": { "name": "Faster pushes" } }),
+            ),
             event("pull.merged", "rep_1", "2026-10-12T13:00:00Z", "usr_1", json!({ "number": 7, "item": 3 })),
-            event("git.push", "rep_2", "2026-10-12T12:00:00Z", "usr_2", json!({ "ref": "refs/heads/main", "after": "0123456789abcdef", "defaultBranch": true, "commits": 2 })),
+            event(
+                "git.push",
+                "rep_2",
+                "2026-10-12T12:00:00Z",
+                "usr_2",
+                json!({ "ref": "refs/heads/main", "after": "0123456789abcdef", "defaultBranch": true, "commits": 2 }),
+            ),
             event("git.push", "rep_2", "2026-10-12T11:00:00Z", "usr_2", json!({ "ref": "refs/tags/v1.2.0", "after": "0123" })),
-            event("workflow.completed", "rep_1", "2026-10-12T11:30:00Z", "usr_1", json!({ "runId": "run_257", "workflow": "Deploy", "number": 257, "conclusion": "failure", "ref": "refs/heads/main", "sha": "fedcba9876543210" })),
-            event("work_item.closed", "rep_1", "2026-10-12T10:00:00Z", "usr_1", json!({ "workspace": "acme", "number": 3, "title": "Login fails", "reason": "completed", "resolution": { "repo": "acme/web", "pull": 7 } })),
+            event(
+                "workflow.completed",
+                "rep_1",
+                "2026-10-12T11:30:00Z",
+                "usr_1",
+                json!({ "runId": "run_257", "workflow": "Deploy", "number": 257, "conclusion": "failure", "ref": "refs/heads/main", "sha": "fedcba9876543210" }),
+            ),
+            event(
+                "work_item.closed",
+                "rep_1",
+                "2026-10-12T10:00:00Z",
+                "usr_1",
+                json!({ "workspace": "acme", "number": 3, "title": "Login fails", "reason": "completed", "resolution": { "repo": "acme/web", "pull": 7 } }),
+            ),
             // Outside the span, and a repository the caller cannot read.
             event("pull.merged", "rep_1", "2026-10-11T10:00:00Z", "usr_1", json!({ "number": 6 })),
             event("pull.merged", "rep_9", "2026-10-12T10:00:00Z", "usr_1", json!({ "number": 1 })),

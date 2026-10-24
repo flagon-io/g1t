@@ -2,12 +2,12 @@
 
 use std::collections::HashMap;
 
+use g1t_contracts::new_id;
 use g1t_contracts::security::{
-    AlertActivity, DismissReason, NewSecret, ScanState, SecretCounts, SecretFinding, SecretStatus, SecurityUpdate,
-    SeverityCounts, UpdateState, VersionUpdatesState, VulnStatus, Vulnerability,
+    AlertActivity, DismissReason, NewSecret, ScanState, SecretCounts, SecretFinding, SecretStatus, SecurityUpdate, SeverityCounts,
+    UpdateState, VersionUpdatesState, VulnStatus, Vulnerability,
 };
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::new_id;
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::wasm_bindgen::JsValue;
@@ -64,10 +64,7 @@ impl RepoRow {
 
     /// What `.g1t/dependencies.yml` said when it was last read.
     pub fn version_updates(&self) -> VersionUpdatesState {
-        self.version_updates
-            .as_deref()
-            .and_then(|json| serde_json::from_str(json).ok())
-            .unwrap_or_default()
+        self.version_updates.as_deref().and_then(|json| serde_json::from_str(json).ok()).unwrap_or_default()
     }
 }
 
@@ -172,8 +169,10 @@ impl LinkedItem {
 
 /// One of [`WORK_MIGRATED`], ready to run.
 pub fn work_migrated_sql(statement: &str) -> String {
-    format!("{MOVED_ITEMS}
-{statement}")
+    format!(
+        "{MOVED_ITEMS}
+{statement}"
+    )
 }
 
 const SECRET_SELECT: &str =
@@ -182,7 +181,11 @@ const SECRET_SELECT: &str =
 impl From<SecretRow> for SecretFinding {
     fn from(row: SecretRow) -> Self {
         let status = SecretStatus::parse(&row.status).unwrap_or(SecretStatus::Open);
-        let bypass = match (row.bypass_reason.as_deref().and_then(g1t_contracts::security_suite::BypassReason::parse), row.bypassed_by, row.bypassed_at) {
+        let bypass = match (
+            row.bypass_reason.as_deref().and_then(g1t_contracts::security_suite::BypassReason::parse),
+            row.bypassed_by,
+            row.bypassed_at,
+        ) {
             (Some(reason), Some(by), Some(at)) => Some(g1t_contracts::security_suite::Bypass {
                 reason,
                 comment: row.bypass_comment,
@@ -438,11 +441,7 @@ const VULN_JOINS: &str = "LEFT JOIN upgrades u ON u.repo_id = v.repo_id AND u.ec
 
 impl Store {
     pub async fn repo(&self, repo_id: &str) -> Result<Option<RepoRow>> {
-        self.db
-            .prepare("SELECT * FROM repos WHERE repo_id = ?")
-            .bind(&[repo_id.into()])?
-            .first::<RepoRow>(None)
-            .await
+        self.db.prepare("SELECT * FROM repos WHERE repo_id = ?").bind(&[repo_id.into()])?.first::<RepoRow>(None).await
     }
 
     /// The repository at an address, as last recorded.
@@ -465,9 +464,7 @@ impl Store {
             .bind(&[repo_id.into(), namespace.into(), name.into(), now().into()])?
             .run()
             .await?;
-        self.repo(repo_id)
-            .await?
-            .ok_or_else(|| worker::Error::RustError("the repository was not recorded".into()))
+        self.repo(repo_id).await?.ok_or_else(|| worker::Error::RustError("the repository was not recorded".into()))
     }
 
     /// A repository's path changed: transferred or renamed.
@@ -783,12 +780,8 @@ impl Store {
             .all()
             .await?
             .results::<VulnRow>()?;
-        let updates: HashMap<(String, String), UpdateRow> = self
-            .updates(repo_id)
-            .await?
-            .into_iter()
-            .map(|row| ((row.ecosystem.clone(), row.package.clone()), row))
-            .collect();
+        let updates: HashMap<(String, String), UpdateRow> =
+            self.updates(repo_id).await?.into_iter().map(|row| ((row.ecosystem.clone(), row.package.clone()), row)).collect();
         Ok(rows
             .into_iter()
             .map(|row| {
@@ -891,12 +884,11 @@ impl Store {
     pub async fn replace_vulnerabilities(&self, repo_id: &str, found: &[Vulnerability]) -> Result<()> {
         let now_ms = now_ms();
         let now = rfc3339(now_ms);
-        let mut statements = vec![self
-            .db
-            .prepare(
-                "UPDATE vulnerabilities SET status = 'fixed', fixed_at = ? WHERE repo_id = ? AND status IN ('open', 'dismissed')",
-            )
-            .bind(&[now.as_str().into(), repo_id.into()])?];
+        let mut statements = vec![
+            self.db
+                .prepare("UPDATE vulnerabilities SET status = 'fixed', fixed_at = ? WHERE repo_id = ? AND status IN ('open', 'dismissed')")
+                .bind(&[now.as_str().into(), repo_id.into()])?,
+        ];
         for vuln in found {
             statements.push(
                 self.db
@@ -1056,12 +1048,7 @@ impl Store {
     // --- Security updates ---------------------------------------------------
 
     pub async fn updates(&self, repo_id: &str) -> Result<Vec<UpdateRow>> {
-        self.db
-            .prepare("SELECT * FROM updates WHERE repo_id = ?")
-            .bind(&[repo_id.into()])?
-            .all()
-            .await?
-            .results::<UpdateRow>()
+        self.db.prepare("SELECT * FROM updates WHERE repo_id = ?").bind(&[repo_id.into()])?.all().await?.results::<UpdateRow>()
     }
 
     pub async fn update(&self, repo_id: &str, ecosystem: &str, package: &str) -> Result<Option<UpdateRow>> {
@@ -1170,12 +1157,17 @@ impl Store {
 
     // --- Pushes scanned after they landed -----------------------------------
 
-    pub async fn add_push_scan(&self, repo_id: &str, git_ref: &str, head: &str, base: Option<&str>, pusher: Option<&str>) -> Result<String> {
+    pub async fn add_push_scan(
+        &self,
+        repo_id: &str,
+        git_ref: &str,
+        head: &str,
+        base: Option<&str>,
+        pusher: Option<&str>,
+    ) -> Result<String> {
         let id = new_id("psc", now_ms());
         self.db
-            .prepare(
-                "INSERT INTO push_scans (id, repo_id, git_ref, head, base, pusher, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            )
+            .prepare("INSERT INTO push_scans (id, repo_id, git_ref, head, base, pusher, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
             .bind(&[id.as_str().into(), repo_id.into(), git_ref.into(), head.into(), optional(base), optional(pusher), now().into()])?
             .run()
             .await?;
@@ -1183,11 +1175,7 @@ impl Store {
     }
 
     pub async fn push_scan(&self, id: &str) -> Result<Option<PushScanRow>> {
-        self.db
-            .prepare("SELECT * FROM push_scans WHERE id = ?")
-            .bind(&[id.into()])?
-            .first::<PushScanRow>(None)
-            .await
+        self.db.prepare("SELECT * FROM push_scans WHERE id = ?").bind(&[id.into()])?.first::<PushScanRow>(None).await
     }
 
     pub async fn pending_push_scans(&self, limit: u32) -> Result<Vec<PushScanRow>> {
@@ -1243,9 +1231,7 @@ impl Store {
             .bind(&[osv_id.into()])?
             .first::<BodyRow>(None)
             .await?;
-        Ok(row
-            .filter(|row| row.fetched_at.as_str() >= after)
-            .and_then(|row| serde_json::from_str(&row.body).ok()))
+        Ok(row.filter(|row| row.fetched_at.as_str() >= after).and_then(|row| serde_json::from_str(&row.body).ok()))
     }
 
     pub async fn keep_advisory(&self, osv_id: &str, body: &serde_json::Value) -> Result<()> {
@@ -1419,8 +1405,15 @@ mod tests {
     #[test]
     fn only_real_secrets_in_history_are_open() {
         let counts = secret_counts(
-            [("open", false, 2), ("open", true, 3), ("blocked", false, 1), ("blocked", true, 4), ("allowed", true, 5), ("resolved", false, 6)]
-                .into_iter(),
+            [
+                ("open", false, 2),
+                ("open", true, 3),
+                ("blocked", false, 1),
+                ("blocked", true, 4),
+                ("allowed", true, 5),
+                ("resolved", false, 6),
+            ]
+            .into_iter(),
         );
         assert_eq!((counts.open, counts.blocked, counts.test_values, counts.dismissed, counts.fixed), (2, 1, 7, 5, 6));
     }

@@ -50,10 +50,7 @@ async fn answer(services: &Services, viewer: &Viewer, request: &Value) -> Result
     let answer = match request["method"].as_str().unwrap_or_default() {
         "initialize" => {
             let requested = params["protocolVersion"].as_str().unwrap_or_default();
-            let version = SUPPORTED_VERSIONS
-                .into_iter()
-                .find(|version| *version == requested)
-                .unwrap_or(SUPPORTED_VERSIONS[0]);
+            let version = SUPPORTED_VERSIONS.into_iter().find(|version| *version == requested).unwrap_or(SUPPORTED_VERSIONS[0]);
             result(
                 id,
                 json!({
@@ -79,10 +76,7 @@ async fn answer(services: &Services, viewer: &Viewer, request: &Value) -> Result
                 Some(tool) => match crate::tools::resolve(tool, arguments) {
                     Ok(op) => op,
                     Err(problem) => {
-                        return Ok(Some(result(
-                            id,
-                            json!({ "content": [{ "type": "text", "text": problem }], "isError": true }),
-                        )));
+                        return Ok(Some(result(id, json!({ "content": [{ "type": "text", "text": problem }], "isError": true }))));
                     }
                 },
                 // A tool per operation, as the server had before its
@@ -100,16 +94,10 @@ async fn answer(services: &Services, viewer: &Viewer, request: &Value) -> Result
             let (text, failed) = match outcome {
                 // In `snake_case`, as the REST API answers; the protocol's
                 // own envelope keeps MCP's spelling.
-                Outcome::Ok(value) => (
-                    serde_json::to_string_pretty(&g1t_kit::wire::snake_case_keeping(value, op.as_given()))?,
-                    false,
-                ),
+                Outcome::Ok(value) => (serde_json::to_string_pretty(&g1t_kit::wire::snake_case_keeping(value, op.as_given()))?, false),
                 Outcome::Fail(failure) => (failure.message, true),
             };
-            result(
-                id,
-                json!({ "content": [{ "type": "text", "text": text }], "isError": failed }),
-            )
+            result(id, json!({ "content": [{ "type": "text", "text": text }], "isError": failed }))
         }
         method => error(id, -32601, &format!("Method not found: {method}")),
     };
@@ -166,27 +154,17 @@ fn card(addresses: &crate::addresses::Addresses) -> Value {
     });
     // Codex also reads the endpoint itself as protected resource metadata.
     // Keep the public card useful to people and valid for OAuth discovery.
-    if let (Some(card), Value::Object(metadata)) = (
-        card.as_object_mut(),
-        crate::oauth::protected_resource_metadata(addresses),
-    ) {
+    if let (Some(card), Value::Object(metadata)) = (card.as_object_mut(), crate::oauth::protected_resource_metadata(addresses)) {
         card.extend(metadata);
     }
     card
 }
 
-pub async fn handle(
-    mut request: Request,
-    services: &Services,
-    viewer: &Viewer,
-) -> Result<Response> {
+pub async fn handle(mut request: Request, services: &Services, viewer: &Viewer) -> Result<Response> {
     if request.method() != Method::Post {
         // A client asking for a stream of server messages is told there is
         // none. Anyone else, a person with a browser, gets a description.
-        let wants_stream = request
-            .headers()
-            .get("accept")?
-            .is_some_and(|accept| accept.contains("text/event-stream"));
+        let wants_stream = request.headers().get("accept")?.is_some_and(|accept| accept.contains("text/event-stream"));
         if request.method() == Method::Get && !wants_stream {
             return Response::from_json(&card(&services.addresses));
         }
@@ -197,21 +175,12 @@ pub async fn handle(
     // Calls need a signed-in user. Answering 401 with this header is what
     // makes a client open the browser to sign in.
     if viewer.is_none() {
-        let mut response = Response::from_json(&error(
-            &Value::Null,
-            -32001,
-            "Sign in to use the g1t MCP server.",
-        ))?
-        .with_status(401);
-        response
-            .headers_mut()
-            .set("www-authenticate", &services.addresses.mcp_challenge())?;
+        let mut response = Response::from_json(&error(&Value::Null, -32001, "Sign in to use the g1t MCP server."))?.with_status(401);
+        response.headers_mut().set("www-authenticate", &services.addresses.mcp_challenge())?;
         return Ok(response);
     }
     let Ok(body) = request.json::<Value>().await else {
-        return Ok(
-            Response::from_json(&error(&Value::Null, -32700, "Parse error"))?.with_status(400),
-        );
+        return Ok(Response::from_json(&error(&Value::Null, -32700, "Parse error"))?.with_status(400));
     };
     let accepted = || Ok(Response::empty()?.with_status(202));
     match body {
@@ -220,11 +189,7 @@ pub async fn handle(
             for request in &batch {
                 answers.extend(answer(services, viewer, request).await?);
             }
-            if answers.is_empty() {
-                accepted()
-            } else {
-                Response::from_json(&answers)
-            }
+            if answers.is_empty() { accepted() } else { Response::from_json(&answers) }
         }
         single => match answer(services, viewer, &single).await? {
             Some(answer) => Response::from_json(&answer),

@@ -49,11 +49,8 @@ impl Work {
         self.keep_pull_refs(pull).await;
         // A coding agent's commits make it that agent's (cloud_agents.rs).
         self.mark_agent_pull(pull, None).await;
-        let mut data = serde_json::to_value(PullEvent {
-            agent: Some(pull.agent.clone()),
-            base: pull.base.clone(),
-            ..Self::pull_event(pull)
-        })?;
+        let mut data =
+            serde_json::to_value(PullEvent { agent: Some(pull.agent.clone()), base: pull.base.clone(), ..Self::pull_event(pull) })?;
         if let (Some(run), serde_json::Value::Object(map)) = (job_run, &mut data) {
             map.insert(CAUSED_BY_JOB.to_owned(), serde_json::Value::String(run.to_owned()));
         }

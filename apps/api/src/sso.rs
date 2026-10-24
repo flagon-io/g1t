@@ -82,14 +82,30 @@ impl SsoOp {
 
     pub fn description(self) -> &'static str {
         match self {
-            SsoOp::GetSso => "A workspace's single sign-on through its own identity provider: connection (null when it has none: its id, protocol oidc, oauth2 or saml, config with the protocol's fields, has_client_secret, certificates by SHA-256 fingerprint for SAML, allow_join, tested_at and tested_by, when the first person signed in through it), required (whether members must sign in through it), you_linked (whether you have), identities (the people linked: username, subject and email at the provider, linked_at, last_used_at), and service_provider: the addresses to give the provider (redirect_uri for OpenID Connect and OAuth 2.0; entity_id, acs_url and metadata_url for SAML; sign_in_url, where people start). The client secret is never returned. Owners only, as people.",
-            SsoOp::ConfigureSso => "Set up the workspace's single sign-on, or change it; a field left out keeps what is saved for the same protocol. oidc: issuer (read for its discovery document first), client_id, client_secret, scopes (openid email profile by default). oauth2: authorization_url, token_url, userinfo_url, client_id, client_secret, scopes, subject_claim (sub, then id, by default) and email_claim (email). saml: idp_entity_id, idp_sso_url and certificate (the provider's signing certificates, PEM; several while rotating). client_secret and certificate left out keep what is saved. allow_join (false by default) lets anyone the provider signs in join as a member; join_domains limits that to addresses the provider vouches for at those domains. Moving to another provider (protocol, issuer or entity id) unlinks everyone and stops requiring it. Needs a paid plan. Returns what get_sso does. Recorded as sso.created or sso.updated. Owners only, as people.",
-            SsoOp::SetSsoRequired => "Whether members must sign in through the provider: then a member uses the workspace only from a session that did in the last day, and with tokens and keys once linked; held out otherwise, keeping their place. Owners are never held, and outside collaborators are not asked. Requiring it needs a paid plan and you to have signed in through it yourself (you_linked); stopping never does. Recorded as sso.required or sso.not_required. Owners only, as people.",
-            SsoOp::DeleteSso => "Remove the workspace's single sign-on: forgets the provider and who everyone is there, and stops requiring it. Members keep their place. Never needs a plan. Recorded as sso.deleted. Owners only, as people.",
-            SsoOp::ListSsoIdentities => "The people linked to the workspace's provider: username, subject (their id at the provider), email (as the provider gave it, for showing), linked_at and last_used_at. Owners only, as people.",
-            SsoOp::EnableScim => "Turn on SCIM for the workspace's single sign-on, or replace its token: returns token (shown this once; the old one stops working), hint (its last four characters) and scim_url, the SCIM 2.0 base URL to give the identity provider with the token as a bearer token. With SCIM on, only people the provider has assigned (active users) can sign in through single sign-on, and one it deactivates or deletes leaves the workspace at once: membership, roles, link and sessions. Owners are never removed that way. Users only; groups are not kept. Needs single sign-on set up and a paid plan. Recorded as sso.scim_enabled or sso.scim_token_rotated. Owners only, as people.",
-            SsoOp::DisableScim => "Turn off SCIM: the token stops working and the provisioned users are forgotten. Nobody is removed from the workspace, and single sign-on lets people in as before. Recorded as sso.scim_disabled. Owners only, as people.",
-            SsoOp::UnlinkSsoIdentity => "Forget who someone is at the workspace's provider, so they (or another account there) link again on their next sign-in through it; their sessions go through it again. Recorded as sso.identity_unlinked. Owners only, as people.",
+            SsoOp::GetSso => {
+                "A workspace's single sign-on through its own identity provider: connection (null when it has none: its id, protocol oidc, oauth2 or saml, config with the protocol's fields, has_client_secret, certificates by SHA-256 fingerprint for SAML, allow_join, tested_at and tested_by, when the first person signed in through it), required (whether members must sign in through it), you_linked (whether you have), identities (the people linked: username, subject and email at the provider, linked_at, last_used_at), and service_provider: the addresses to give the provider (redirect_uri for OpenID Connect and OAuth 2.0; entity_id, acs_url and metadata_url for SAML; sign_in_url, where people start). The client secret is never returned. Owners only, as people."
+            }
+            SsoOp::ConfigureSso => {
+                "Set up the workspace's single sign-on, or change it; a field left out keeps what is saved for the same protocol. oidc: issuer (read for its discovery document first), client_id, client_secret, scopes (openid email profile by default). oauth2: authorization_url, token_url, userinfo_url, client_id, client_secret, scopes, subject_claim (sub, then id, by default) and email_claim (email). saml: idp_entity_id, idp_sso_url and certificate (the provider's signing certificates, PEM; several while rotating). client_secret and certificate left out keep what is saved. allow_join (false by default) lets anyone the provider signs in join as a member; join_domains limits that to addresses the provider vouches for at those domains. Moving to another provider (protocol, issuer or entity id) unlinks everyone and stops requiring it. Needs a paid plan. Returns what get_sso does. Recorded as sso.created or sso.updated. Owners only, as people."
+            }
+            SsoOp::SetSsoRequired => {
+                "Whether members must sign in through the provider: then a member uses the workspace only from a session that did in the last day, and with tokens and keys once linked; held out otherwise, keeping their place. Owners are never held, and outside collaborators are not asked. Requiring it needs a paid plan and you to have signed in through it yourself (you_linked); stopping never does. Recorded as sso.required or sso.not_required. Owners only, as people."
+            }
+            SsoOp::DeleteSso => {
+                "Remove the workspace's single sign-on: forgets the provider and who everyone is there, and stops requiring it. Members keep their place. Never needs a plan. Recorded as sso.deleted. Owners only, as people."
+            }
+            SsoOp::ListSsoIdentities => {
+                "The people linked to the workspace's provider: username, subject (their id at the provider), email (as the provider gave it, for showing), linked_at and last_used_at. Owners only, as people."
+            }
+            SsoOp::EnableScim => {
+                "Turn on SCIM for the workspace's single sign-on, or replace its token: returns token (shown this once; the old one stops working), hint (its last four characters) and scim_url, the SCIM 2.0 base URL to give the identity provider with the token as a bearer token. With SCIM on, only people the provider has assigned (active users) can sign in through single sign-on, and one it deactivates or deletes leaves the workspace at once: membership, roles, link and sessions. Owners are never removed that way. Users only; groups are not kept. Needs single sign-on set up and a paid plan. Recorded as sso.scim_enabled or sso.scim_token_rotated. Owners only, as people."
+            }
+            SsoOp::DisableScim => {
+                "Turn off SCIM: the token stops working and the provisioned users are forgotten. Nobody is removed from the workspace, and single sign-on lets people in as before. Recorded as sso.scim_disabled. Owners only, as people."
+            }
+            SsoOp::UnlinkSsoIdentity => {
+                "Forget who someone is at the workspace's provider, so they (or another account there) link again on their next sign-in through it; their sessions go through it again. Recorded as sso.identity_unlinked. Owners only, as people."
+            }
         }
     }
 
@@ -102,7 +118,9 @@ impl SsoOp {
     pub fn input(self) -> Value {
         let workspace = json!({ "type": "string", "description": "The workspace's name, e.g. \"acme\"." });
         let (properties, required): (Value, &[&str]) = match self {
-            SsoOp::GetSso | SsoOp::DeleteSso | SsoOp::ListSsoIdentities | SsoOp::EnableScim | SsoOp::DisableScim => (json!({ "workspace": workspace }), &["workspace"]),
+            SsoOp::GetSso | SsoOp::DeleteSso | SsoOp::ListSsoIdentities | SsoOp::EnableScim | SsoOp::DisableScim => {
+                (json!({ "workspace": workspace }), &["workspace"])
+            }
             SsoOp::ConfigureSso => (
                 json!({
                     "workspace": workspace,
@@ -246,7 +264,8 @@ pub async fn run(op: SsoOp, services: &Services, viewer: &Viewer, input: &Value)
     Ok(match op {
         SsoOp::GetSso => settings(g1t_kit::call(identity, "sso_settings", &json!({ "actor": actor, "slug": workspace })).await?),
         SsoOp::ListSsoIdentities => {
-            let found: Outcome<SsoSettings> = g1t_kit::call(identity, "sso_settings", &json!({ "actor": actor, "slug": workspace })).await?;
+            let found: Outcome<SsoSettings> =
+                g1t_kit::call(identity, "sso_settings", &json!({ "actor": actor, "slug": workspace })).await?;
             match found {
                 Outcome::Ok(found) => Outcome::Ok(serde_json::to_value(found.identities).unwrap_or_default()),
                 Outcome::Fail(failure) => Outcome::Fail(failure),
@@ -259,7 +278,8 @@ pub async fn run(op: SsoOp, services: &Services, viewer: &Viewer, input: &Value)
             if input.get("allow_join").is_some_and(|v| !v.is_null()) && flag(input, "allow_join").is_none() {
                 return Ok(Outcome::fail(FailureCode::Invalid, "allow_join is true or false."));
             }
-            let before: Outcome<SsoSettings> = g1t_kit::call(identity, "sso_settings", &json!({ "actor": actor, "slug": workspace })).await?;
+            let before: Outcome<SsoSettings> =
+                g1t_kit::call(identity, "sso_settings", &json!({ "actor": actor, "slug": workspace })).await?;
             let before = match before {
                 Outcome::Ok(before) => before,
                 Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
@@ -309,7 +329,9 @@ pub async fn run(op: SsoOp, services: &Services, viewer: &Viewer, input: &Value)
             let made: Outcome<ScimToken> =
                 g1t_kit::call(identity, "enable_scim", &json!({ "actor": actor, "slug": workspace, "surface": surface })).await?;
             match made {
-                Outcome::Ok(made) => Outcome::Ok(json!({ "token": made.token, "hint": made.hint, "scim_url": scim_url(api, &made.workspace_id) })),
+                Outcome::Ok(made) => {
+                    Outcome::Ok(json!({ "token": made.token, "hint": made.hint, "scim_url": scim_url(api, &made.workspace_id) }))
+                }
                 Outcome::Fail(failure) => Outcome::Fail(failure),
             }
         }
@@ -357,7 +379,9 @@ mod tests {
 
     #[test]
     fn only_the_protocols_fields_are_sent() {
-        let config = config_of(&json!({ "issuer": " https://acme.okta.com ", "client_id": "c", "client_secret": "s", "certificate": "pem", "nonsense": "x", "scopes": "" }));
+        let config = config_of(
+            &json!({ "issuer": " https://acme.okta.com ", "client_id": "c", "client_secret": "s", "certificate": "pem", "nonsense": "x", "scopes": "" }),
+        );
         assert_eq!(config.issuer.as_deref(), Some("https://acme.okta.com"));
         assert_eq!(config.client_id.as_deref(), Some("c"));
         assert_eq!(config.scopes, None);
@@ -369,7 +393,12 @@ mod tests {
         let saved = SsoConnection {
             id: "sso_1".into(),
             protocol: SsoProtocol::Oidc,
-            config: SsoConfig { issuer: Some("https://acme.okta.com".into()), client_id: Some("c".into()), join_domains: vec!["acme.com".into()], ..SsoConfig::default() },
+            config: SsoConfig {
+                issuer: Some("https://acme.okta.com".into()),
+                client_id: Some("c".into()),
+                join_domains: vec!["acme.com".into()],
+                ..SsoConfig::default()
+            },
             has_client_secret: true,
             certificates: vec![],
             allow_join: true,
@@ -387,7 +416,8 @@ mod tests {
         assert_eq!(config.join_domains, vec!["acme.com".to_owned()]);
         assert!(allow_join);
         // Sent empty is changed; another protocol starts afresh.
-        let (config, allow_join) = merged(&json!({ "protocol": "oidc", "join_domains": [], "allow_join": false }), Some(&saved), SsoProtocol::Oidc);
+        let (config, allow_join) =
+            merged(&json!({ "protocol": "oidc", "join_domains": [], "allow_join": false }), Some(&saved), SsoProtocol::Oidc);
         assert!(config.join_domains.is_empty());
         assert!(!allow_join);
         let (config, allow_join) = merged(&json!({ "protocol": "saml" }), Some(&saved), SsoProtocol::Saml);
@@ -397,7 +427,15 @@ mod tests {
 
     #[test]
     fn the_answer_says_where_to_point_the_provider() {
-        let settings = SsoSettings { slug: "acme".into(), workspace_id: "wsp_1".into(), connection: None, required: false, you_linked: false, identities: vec![], scim: None };
+        let settings = SsoSettings {
+            slug: "acme".into(),
+            workspace_id: "wsp_1".into(),
+            connection: None,
+            required: false,
+            you_linked: false,
+            identities: vec![],
+            scim: None,
+        };
         let out = with_addresses(settings, "https://g1t.sh", "https://api.g1t.sh");
         assert_eq!(out["service_provider"]["scim_url"], "https://api.g1t.sh/scim/v2/wsp_1");
         assert_eq!(out["service_provider"]["acs_url"], "https://g1t.sh/auth/sso/wsp_1/saml");

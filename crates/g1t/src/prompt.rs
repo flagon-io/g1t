@@ -35,16 +35,11 @@ pub fn input(label: &str, default: Option<&str>) -> Result<String> {
     err.flush()?;
     drop(err);
     let line = read_line()?;
-    Ok(if line.trim().is_empty() {
-        default.unwrap_or("").to_owned()
-    } else {
-        line.trim().to_owned()
-    })
+    Ok(if line.trim().is_empty() { default.unwrap_or("").to_owned() } else { line.trim().to_owned() })
 }
 
 pub fn secret(label: &str) -> Result<String> {
-    rpassword::prompt_password(format!("? {label} "))
-        .map_err(|e| Error::failed(format!("Could not read it: {e}")))
+    rpassword::prompt_password(format!("? {label} ")).map_err(|e| Error::failed(format!("Could not read it: {e}")))
 }
 
 /// Picks one of `options`, by number.
@@ -69,29 +64,15 @@ pub fn editor(initial: &str) -> Result<String> {
     let editor = ["G1T_EDITOR", "VISUAL", "EDITOR"]
         .iter()
         .find_map(|k| std::env::var(k).ok().filter(|v| !v.trim().is_empty()))
-        .or_else(|| {
-            crate::git::run(&["config", "core.editor"])
-                .ok()
-                .filter(|v| !v.is_empty())
-        })
-        .unwrap_or_else(|| {
-            if cfg!(windows) {
-                "notepad".to_owned()
-            } else {
-                "vi".to_owned()
-            }
-        });
+        .or_else(|| crate::git::run(&["config", "core.editor"]).ok().filter(|v| !v.is_empty()))
+        .unwrap_or_else(|| if cfg!(windows) { "notepad".to_owned() } else { "vi".to_owned() });
     let path = std::env::temp_dir().join(format!("g1t-{}.md", std::process::id()));
     std::fs::write(&path, initial)?;
     let shell_line = format!("{editor} \"{}\"", path.display());
     let status = if cfg!(windows) {
-        std::process::Command::new("cmd")
-            .args(["/C", &shell_line])
-            .status()
+        std::process::Command::new("cmd").args(["/C", &shell_line]).status()
     } else {
-        std::process::Command::new("sh")
-            .args(["-c", &shell_line])
-            .status()
+        std::process::Command::new("sh").args(["-c", &shell_line]).status()
     }
     .map_err(|e| Error::failed(format!("Could not open {editor}: {e}")))?;
     let text = std::fs::read_to_string(&path).unwrap_or_default();
@@ -113,8 +94,7 @@ pub fn body(body: Option<String>, file: Option<&str>, ask: bool) -> Result<Optio
             std::io::Read::read_to_string(&mut std::io::stdin(), &mut s)?;
             s
         } else {
-            std::fs::read_to_string(path)
-                .map_err(|e| Error::failed(format!("Could not read {path}: {e}")))?
+            std::fs::read_to_string(path).map_err(|e| Error::failed(format!("Could not read {path}: {e}")))?
         };
         return Ok(Some(text));
     }
@@ -127,27 +107,15 @@ pub fn body(body: Option<String>, file: Option<&str>, ask: bool) -> Result<Optio
 
 /// Opens `url` in a browser, or prints it when there is none to open.
 pub fn open_browser(url: &str) -> bool {
-    if let Some(browser) = std::env::var("G1T_BROWSER")
-        .ok()
-        .or_else(|| std::env::var("BROWSER").ok())
-        .filter(|b| !b.is_empty())
-    {
-        return std::process::Command::new(browser)
-            .arg(url)
-            .status()
-            .is_ok_and(|s| s.success());
+    if let Some(browser) = std::env::var("G1T_BROWSER").ok().or_else(|| std::env::var("BROWSER").ok()).filter(|b| !b.is_empty()) {
+        return std::process::Command::new(browser).arg(url).status().is_ok_and(|s| s.success());
     }
     let result = if cfg!(windows) {
-        std::process::Command::new("rundll32")
-            .args(["url.dll,FileProtocolHandler", url])
-            .status()
+        std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", url]).status()
     } else if cfg!(target_os = "macos") {
         std::process::Command::new("open").arg(url).status()
     } else {
-        std::process::Command::new("xdg-open")
-            .arg(url)
-            .stderr(std::process::Stdio::null())
-            .status()
+        std::process::Command::new("xdg-open").arg(url).stderr(std::process::Stdio::null()).status()
     };
     result.is_ok_and(|s| s.success())
 }

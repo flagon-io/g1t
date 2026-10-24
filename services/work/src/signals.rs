@@ -155,12 +155,7 @@ fn window(a: &WorkspaceSignalsArgs, now: u64) -> Option<Window> {
         .map(|i| {
             let from = first + i * 7 * DAY_MS;
             let to = from + 7 * DAY_MS;
-            WeekBounds {
-                start: day_of(from),
-                from: rfc3339(from),
-                to: rfc3339(to),
-                cut: rfc3339(to.min(now)),
-            }
+            WeekBounds { start: day_of(from), from: rfc3339(from), to: rfc3339(to), cut: rfc3339(to.min(now)) }
         })
         .collect();
     Some(Window {
@@ -264,20 +259,10 @@ impl Work {
     pub(crate) async fn workspace_signals(&self, a: WorkspaceSignalsArgs) -> Result<WorkspaceSignals> {
         // The web loader batches larger workspaces, as it does for insights.
         let Some(window) = window(&a, g1t_kit::now_ms()) else {
-            return Err(worker::Error::RustError(
-                "Invalid signals range or repository batch".into(),
-            ));
+            return Err(worker::Error::RustError("Invalid signals range or repository batch".into()));
         };
         let viewer = a.viewer.clone();
-        let readable: Vec<Repo> = g1t_kit::call(
-            &self.repos,
-            "readable",
-            &ReadableArgs {
-                ids: a.repo_ids,
-                viewer: a.viewer,
-            },
-        )
-        .await?;
+        let readable: Vec<Repo> = g1t_kit::call(&self.repos, "readable", &ReadableArgs { ids: a.repo_ids, viewer: a.viewer }).await?;
         let ids: Vec<&str> = readable.iter().map(|repo| repo.id.as_str()).collect();
         if ids.is_empty() {
             return Ok(WorkspaceSignals::default());
@@ -293,21 +278,11 @@ impl Work {
                 8,
                 self.db.batch(vec![
                     self.db.prepare(WEEKS).bind(&[ids.clone(), window.weeks.into()])?,
-                    self.db.prepare(DAYS).bind(&[
-                        ids.clone(),
-                        window.days_from.as_str().into(),
-                        window.end.as_str().into(),
-                    ])?,
+                    self.db.prepare(DAYS).bind(&[ids.clone(), window.days_from.as_str().into(), window.end.as_str().into()])?,
                     self.db.prepare(WAITING).bind(&[ids.clone(), workspace.clone()])?,
-                    self.db
-                        .prepare(PULLS)
-                        .bind(&[ids.clone(), workspace.clone(), window.since.as_str().into()])?,
-                    self.db
-                        .prepare(SESSIONS)
-                        .bind(&[ids.clone(), workspace.clone(), window.since.into()])?,
-                    self.db
-                        .prepare(AUTHORS)
-                        .bind(&[ids.clone(), window.recent_from.into(), window.end.into()])?,
+                    self.db.prepare(PULLS).bind(&[ids.clone(), workspace.clone(), window.since.as_str().into()])?,
+                    self.db.prepare(SESSIONS).bind(&[ids.clone(), workspace.clone(), window.since.into()])?,
+                    self.db.prepare(AUTHORS).bind(&[ids.clone(), window.recent_from.into(), window.end.into()])?,
                     self.db.prepare(HARNESSES).bind(&[ids])?,
                     self.db.prepare(MILESTONES).bind(&[workspace])?,
                 ]),
@@ -316,27 +291,17 @@ impl Work {
         let [weeks, days, waiting, pulls, session_spend, authors, harnesses, milestones] = results.as_slice() else {
             return Err(worker::Error::RustError("workspace_signals: missing results".into()));
         };
-        let mut waiting: Vec<WaitingPull> = waiting
-            .results::<WaitingRow>()?
-            .into_iter()
-            .map(WaitingPull::from)
-            .collect();
+        let mut waiting: Vec<WaitingPull> = waiting.results::<WaitingRow>()?.into_iter().map(WaitingPull::from).collect();
         let mut pulls: Vec<SignalPull> = pulls.results::<PullRow>()?.into_iter().map(SignalPull::from).collect();
         let pulls_capped = pulls.len() > PULLS_LIMIT;
         pulls.truncate(PULLS_LIMIT);
         let mut session_spend: Vec<SignalSessionSpend> = session_spend.results::<SignalSessionSpend>()?;
         let session_spend_capped = session_spend.len() > SESSION_SPEND_LIMIT;
         session_spend.truncate(SESSION_SPEND_LIMIT);
-        let authors: Vec<SignalAuthor> = authors
-            .results::<SignalAuthor>()?
-            .into_iter()
-            .filter(|author| is_person(&author.owner_id))
-            .collect();
-        let harnesses: Vec<SignalHarness> = harnesses
-            .results::<SignalHarness>()?
-            .into_iter()
-            .filter(|harness| is_person(&harness.owner_id))
-            .collect();
+        let authors: Vec<SignalAuthor> =
+            authors.results::<SignalAuthor>()?.into_iter().filter(|author| is_person(&author.owner_id)).collect();
+        let harnesses: Vec<SignalHarness> =
+            harnesses.results::<SignalHarness>()?.into_iter().filter(|harness| is_person(&harness.owner_id)).collect();
         let (items, milestones) = if in_workspace {
             let numbers = named_items(&pulls, &waiting, &session_spend);
             let visible = items::visible_numbered(self, &a.workspace, &numbers, viewer.as_ref()).await?;
@@ -367,8 +332,7 @@ impl Work {
         }
         // A blocked work item the viewer may not see is not named.
         for pull in &mut waiting {
-            pull.blocks
-                .retain(|number| items.iter().any(|item| item.number == *number));
+            pull.blocks.retain(|number| items.iter().any(|item| item.number == *number));
         }
         Ok(WorkspaceSignals {
             weeks: weeks.results::<SignalWeek>()?,

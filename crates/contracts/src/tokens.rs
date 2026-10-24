@@ -347,7 +347,8 @@ mod tests {
 
     #[test]
     fn refusals_name_the_rule() {
-        let closed = TokenPolicy { allow_tokens_for_all_workspaces: false, allow_tokens_for_this_workspace: false, ..TokenPolicy::default() };
+        let closed =
+            TokenPolicy { allow_tokens_for_all_workspaces: false, allow_tokens_for_this_workspace: false, ..TokenPolicy::default() };
         assert!(closed.refusal("acme", true, Some(60)).unwrap().contains("made for it"));
         assert!(closed.refusal("acme", false, Some(60)).unwrap().contains("all of a member's workspaces"));
         let capped = TokenPolicy { max_lifetime_days: Some(30), ..TokenPolicy::default() };

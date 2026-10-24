@@ -155,10 +155,7 @@ pub async fn reachable(app: AppHandle, webview: Webview, url: Option<String>) ->
         Some(text) => config::parse(&text).ok_or("That is not a web address.")?,
         None => config::server(&app),
     };
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(6))
-        .build()
-        .map_err(|error| error.to_string())?;
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(6)).build().map_err(|error| error.to_string())?;
     Ok(client.head(target).send().await.is_ok())
 }
 
@@ -336,7 +333,13 @@ pub fn runner_status(app: AppHandle, webview: Webview) -> Result<runner::View, S
 /// they own (the only ones they can add runners to), and the one they are
 /// in. Answers the workspace a registration token is wanted for, if one is.
 #[tauri::command]
-pub fn runner_offer(app: AppHandle, webview: Webview, signed_in: bool, workspaces: Vec<runner::Offered>, current: Option<String>) -> Result<Option<String>, String> {
+pub fn runner_offer(
+    app: AppHandle,
+    webview: Webview,
+    signed_in: bool,
+    workspaces: Vec<runner::Offered>,
+    current: Option<String>,
+) -> Result<Option<String>, String> {
     from_site(&app, &webview)?;
     runner::offer(&app, signed_in, workspaces, current);
     Ok(runner::wanted(&app))
@@ -346,7 +349,14 @@ pub fn runner_offer(app: AppHandle, webview: Webview, signed_in: bool, workspace
 /// for, or says why not: `allowed` is false when the person may not add
 /// runners there. The token goes to the runner and nowhere else.
 #[tauri::command]
-pub fn runner_register(app: AppHandle, webview: Webview, workspace: String, token: Option<String>, allowed: bool, error: Option<String>) -> Result<(), String> {
+pub fn runner_register(
+    app: AppHandle,
+    webview: Webview,
+    workspace: String,
+    token: Option<String>,
+    allowed: bool,
+    error: Option<String>,
+) -> Result<(), String> {
     from_site(&app, &webview)?;
     runner::register(&app, workspace, token, allowed, error);
     Ok(())
@@ -368,7 +378,10 @@ pub fn runner_control(app: AppHandle, webview: Webview, action: String, capabili
 #[tauri::command]
 pub fn runner_sizes(app: AppHandle, webview: Webview, sizes: Option<String>) -> Result<(), String> {
     from_site(&app, &webview).or_else(|_| from_settings_or_runner(&webview))?;
-    if sizes.as_deref().is_some_and(|list| list.len() > 200 || list.chars().any(|c| !(c.is_ascii_alphanumeric() || matches!(c, '-' | ',' | ':' | '.')))) {
+    if sizes
+        .as_deref()
+        .is_some_and(|list| list.len() > 200 || list.chars().any(|c| !(c.is_ascii_alphanumeric() || matches!(c, '-' | ',' | ':' | '.'))))
+    {
         return Err("Those aren't sizes.".into());
     }
     runner::set_sizes(&app, sizes)

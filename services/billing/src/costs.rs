@@ -135,8 +135,7 @@ fn text<'a>(row: &'a Value, keys: &[&str]) -> &'a str {
 }
 
 fn number(row: &Value, keys: &[&str]) -> Option<f64> {
-    keys.iter()
-        .find_map(|k| row[*k].as_f64().or_else(|| row[*k].as_str().and_then(|s| s.trim().parse().ok())))
+    keys.iter().find_map(|k| row[*k].as_f64().or_else(|| row[*k].as_str().and_then(|s| s.trim().parse().ok())))
 }
 
 /// FOCUS's consumed quantity: what was used, in the meter's own units.
@@ -242,10 +241,7 @@ pub(crate) fn next_page(body: &Value, page: u32) -> Option<String> {
 pub(crate) fn aggregate(lines: Vec<CostLine>) -> Vec<CostLine> {
     let mut out: Vec<CostLine> = Vec::new();
     for line in lines {
-        match out
-            .iter_mut()
-            .find(|l| l.day == line.day && l.source == line.source && l.product == line.product && l.meter == line.meter)
-        {
+        match out.iter_mut().find(|l| l.day == line.day && l.source == line.source && l.product == line.product && l.meter == line.meter) {
             Some(existing) => {
                 existing.quantity += line.quantity;
                 existing.cost_usd += line.cost_usd;
@@ -289,10 +285,7 @@ pub(crate) fn lines_from_artifacts(body: &Value) -> std::result::Result<Vec<Cost
     if let Some(errors) = body["errors"].as_array().filter(|e| !e.is_empty()) {
         return Err(format!("Artifacts events failed: {}", Value::Array(errors.clone())));
     }
-    let groups = body["data"]["viewer"]["accounts"][0]["artifactsEventsAdaptiveGroups"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let groups = body["data"]["viewer"]["accounts"][0]["artifactsEventsAdaptiveGroups"].as_array().cloned().unwrap_or_default();
     Ok(aggregate(
         groups
             .iter()
@@ -363,7 +356,9 @@ pub(crate) fn artifacts_by_workspace(body: &Value, owners: &BTreeMap<String, Str
         if day.len() < 10 || !ARTIFACTS_OPERATIONS.contains(&format!("events_{}", slug(kind)).as_str()) {
             continue;
         }
-        let Some(workspace) = g["dimensions"]["repositoryName"].as_str().and_then(|key| workspace_of_store_key(key, owners)) else { continue };
+        let Some(workspace) = g["dimensions"]["repositoryName"].as_str().and_then(|key| workspace_of_store_key(key, owners)) else {
+            continue;
+        };
         *out.entry((day[..10].to_owned(), workspace)).or_default() += g["count"].as_f64().unwrap_or(0.0);
     }
     out.into_iter().map(|((day, workspace), count)| (day, workspace, count)).collect()
@@ -397,9 +392,9 @@ pub(crate) fn days_between(since: &str, until: &str) -> Vec<String> {
     let start = g1t_contracts::time::parse_rfc3339(&format!("{since}T00:00:00Z"));
     let end = g1t_contracts::time::parse_rfc3339(&format!("{until}T00:00:00Z"));
     match (start, end) {
-        (Some(start), Some(end)) if start <= end => (0..=((end - start) / DAY_MS))
-            .map(|n| g1t_contracts::time::rfc3339(start + n * DAY_MS)[..10].to_owned())
-            .collect(),
+        (Some(start), Some(end)) if start <= end => {
+            (0..=((end - start) / DAY_MS)).map(|n| g1t_contracts::time::rfc3339(start + n * DAY_MS)[..10].to_owned()).collect()
+        }
         _ => Vec::new(),
     }
 }
@@ -463,10 +458,7 @@ pub(crate) fn daily_from_cumulative(days: &[String], cumulative: &[BTreeMap<Stri
     let mut out = Vec::new();
     for (index, day) in days.iter().enumerate() {
         let Some(today) = cumulative.get(index) else { break };
-        let next = days
-            .get(index + 1)
-            .filter(|next| next[..7] == day[..7])
-            .and_then(|_| cumulative.get(index + 1));
+        let next = days.get(index + 1).filter(|next| next[..7] == day[..7]).and_then(|_| cumulative.get(index + 1));
         for (workspace, count) in today {
             let later = next.and_then(|n| n.get(workspace)).copied().unwrap_or(0);
             let own = count.saturating_sub(later);
@@ -511,9 +503,7 @@ pub(crate) fn operation_mapping(body: &Value) -> BTreeMap<String, (f64, f64)> {
 /// Raw counts weighted by one column of the mapping: what Cloudflare
 /// should count (`cost`), or what customers are charged for.
 pub(crate) fn weighted(raw: &[(String, f64)], mapping: &BTreeMap<String, (f64, f64)>, cost: bool) -> f64 {
-    raw.iter()
-        .map(|(meter, count)| count * mapping.get(meter).map_or(0.0, |(c, b)| if cost { *c } else { *b }))
-        .sum()
+    raw.iter().map(|(meter, count)| count * mapping.get(meter).map_or(0.0, |(c, b)| if cost { *c } else { *b })).sum()
 }
 
 impl Billing {
@@ -558,7 +548,9 @@ impl Billing {
             .and_then(|(body, pages)| Ok((lines_from_billable(&body)?, read_stats(&body, pages))));
         match read {
             Ok((_, stats)) if stats.rows == 0 && last.is_some() => {
-                problems.push(format!("Cloudflare's billable usage answered no rows for {bill_since} to {until}; what was read before is kept."));
+                problems.push(format!(
+                    "Cloudflare's billable usage answered no rows for {bill_since} to {until}; what was read before is kept."
+                ));
                 self.keep_read(&bill_since, &until, &stats, &fetched_at).await?;
             }
             Ok((mut lines, stats)) => {
@@ -737,7 +729,9 @@ impl Billing {
         if let Ok(body) = g1t_kit::call::<_, Value>(repos, "artifacts_usage", &json!({ "from": since, "to": until })).await {
             let mapping = operation_mapping(&body);
             let mut by: BTreeMap<(String, String), Vec<(String, f64)>> = BTreeMap::new();
-            for (day, workspace, meter, count) in body["rows"].as_array().map(|l| l.iter().filter_map(raw_usage_row).collect::<Vec<_>>()).unwrap_or_default() {
+            for (day, workspace, meter, count) in
+                body["rows"].as_array().map(|l| l.iter().filter_map(raw_usage_row).collect::<Vec<_>>()).unwrap_or_default()
+            {
                 by.entry((day, workspace)).or_default().push((meter, count));
             }
             for ((day, workspace), counts) in by {
@@ -784,7 +778,13 @@ impl Billing {
                             "INSERT INTO own_counts (day, meter, workspace, quantity, fetched_at) VALUES (?1, ?2, ?3, ?4, ?5)
                              ON CONFLICT (day, meter, workspace) DO UPDATE SET quantity = ?4, fetched_at = ?5",
                         )
-                        .bind(&[day.as_str().into(), meter.as_str().into(), workspace.as_str().into(), (*quantity).into(), fetched_at.as_str().into()])?,
+                        .bind(&[
+                            day.as_str().into(),
+                            meter.as_str().into(),
+                            workspace.as_str().into(),
+                            (*quantity).into(),
+                            fetched_at.as_str().into(),
+                        ])?,
                 );
             }
             self.db.batch(statements).await?;
@@ -855,7 +855,10 @@ mod tests {
     fn names_become_products_and_meters() {
         assert_eq!(slug("Workers for Platforms CPU ms (First 60M ms are included)"), "workers_for_platforms_cpu_ms");
         assert_eq!(product_and_meter("D1", "D1 - Rows Read (first 25 billion included)"), ("d1".into(), "d1_rows_read".into()));
-        assert_eq!(product_and_meter("Workers KV", "KV Read Operations (First 10M is included)"), ("workers_kv".into(), "kv_read_operations".into()));
+        assert_eq!(
+            product_and_meter("Workers KV", "KV Read Operations (First 10M is included)"),
+            ("workers_kv".into(), "kv_read_operations".into())
+        );
         assert_eq!(product_and_meter("", "Containers / Container vCPU"), ("containers".into(), "container_vcpu".into()));
         assert_eq!(product_and_meter("Email", ""), ("email".into(), "usage".into()));
     }
@@ -893,11 +896,9 @@ mod tests {
         });
         let line = line_from_focus(&row).unwrap();
         assert_eq!((line.quantity, line.unit.as_str(), line.cost_usd), (11_160_000.0, "ms", 0.0));
-        let body = json!({ "result": [row, { "ServiceName": "x", "ChargePeriodStart": "2026-10-07", "PricingQuantity": 3, "BilledCost": 0.5 }] });
-        assert_eq!(
-            read_stats(&body, 2),
-            ReadStats { rows: 2, pages: 2, consumed_rows: 1, pricing_only_rows: 1, costed_rows: 1 }
-        );
+        let body =
+            json!({ "result": [row, { "ServiceName": "x", "ChargePeriodStart": "2026-10-07", "PricingQuantity": 3, "BilledCost": 0.5 }] });
+        assert_eq!(read_stats(&body, 2), ReadStats { rows: 2, pages: 2, consumed_rows: 1, pricing_only_rows: 1, costed_rows: 1 });
     }
 
     #[test]
@@ -956,11 +957,8 @@ mod tests {
         let owners = BTreeMap::from([("9".to_string(), "Acme".to_string())]);
         assert_eq!(workspace_of_store_key("pulls--9", &owners), Some("acme".into()));
         assert_eq!(workspace_of_store_key("pulls--10", &owners), None);
-        let operations: f64 = lines
-            .iter()
-            .filter(|l| l.day == "2026-10-05" && ARTIFACTS_OPERATIONS.contains(&l.meter.as_str()))
-            .map(|l| l.quantity)
-            .sum();
+        let operations: f64 =
+            lines.iter().filter(|l| l.day == "2026-10-05" && ARTIFACTS_OPERATIONS.contains(&l.meter.as_str())).map(|l| l.quantity).sum();
         assert_eq!(operations, 150.0);
         let failed = json!({ "data": null, "errors": [{ "message": "unknown field" }] });
         assert!(lines_from_artifacts(&failed).is_err());
@@ -1041,7 +1039,8 @@ mod tests {
             own_meter: None,
             drift_percent: 10.0,
         };
-        let rules = vec![rule("workers", "*", "platform"), rule("workers", "workers_for_platforms", "deployments"), rule("artifacts", "*", "git")];
+        let rules =
+            vec![rule("workers", "*", "platform"), rule("workers", "workers_for_platforms", "deployments"), rule("artifacts", "*", "git")];
         assert_eq!(classify(&rules, "workers", "workers_for_platforms_cpu_ms").unwrap().bucket, "deployments");
         assert_eq!(classify(&rules, "workers", "workers_cpu_ms").unwrap().bucket, "platform");
         assert_eq!(classify(&rules, "artifacts", "artifacts_operations").unwrap().bucket, "git");

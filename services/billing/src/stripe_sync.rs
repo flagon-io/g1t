@@ -127,9 +127,9 @@ impl Billing {
             }
             Err(error) => return Err(error),
         };
-        let card = method.filter(|m| m.kind == "card").and_then(|m| {
-            Some(Card { brand: m.brand?, last4: m.last4?, exp_month: m.exp_month?, exp_year: m.exp_year? })
-        });
+        let card = method
+            .filter(|m| m.kind == "card")
+            .and_then(|m| Some(Card { brand: m.brand?, last4: m.last4?, exp_month: m.exp_month?, exp_year: m.exp_year? }));
         self.db
             .prepare(
                 "UPDATE accounts SET card_brand = ?2, card_last4 = ?3, card_exp_month = ?4, card_exp_year = ?5,
@@ -163,11 +163,7 @@ impl Billing {
     /// Forgets the saved card after g1t itself changed it, so the next
     /// read asks Stripe instead of waiting for the event.
     pub(crate) async fn forget_card(&self, workspace: &str) -> Result<()> {
-        self.db
-            .prepare("UPDATE accounts SET card_synced_at = NULL WHERE workspace = ?")
-            .bind(&[workspace.into()])?
-            .run()
-            .await?;
+        self.db.prepare("UPDATE accounts SET card_synced_at = NULL WHERE workspace = ?").bind(&[workspace.into()])?.run().await?;
         Ok(())
     }
 
@@ -211,7 +207,8 @@ impl Billing {
         let mut complete = false;
         let mut after = mark.as_ref().and_then(|m| m.replay_after.clone());
         for _ in 0..MAX_PAGES {
-            let mut query: Vec<(&str, String)> = vec![("limit", "100".to_owned()), ("created[gte]", since.to_string()), ("created[lte]", until.to_string())];
+            let mut query: Vec<(&str, String)> =
+                vec![("limit", "100".to_owned()), ("created[gte]", since.to_string()), ("created[lte]", until.to_string())];
             query.extend(EVENTS.iter().map(|event| ("types[]", (*event).to_owned())));
             if let Some(after) = &after {
                 query.push(("starting_after", after.clone()));
@@ -254,7 +251,9 @@ impl Billing {
                    replay_after = ?4, replay_since = ?5, replay_until = ?6, replay_failed = ?7",
             )
             .bind(&[
-                mode.into(), (through as f64).into(), rfc3339(now_ms()).into(),
+                mode.into(),
+                (through as f64).into(),
+                rfc3339(now_ms()).into(),
                 crate::optional(if complete { None } else { after.as_deref() }),
                 or_null((!complete).then_some(since as f64)),
                 or_null((!complete).then_some(until as f64)),

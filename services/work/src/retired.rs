@@ -10,8 +10,8 @@
 
 use g1t_contracts::events::{BranchRenamed, Event, RepoArchived, RepoDeleted};
 use g1t_contracts::repos::{Repo, RepoStatus, StatusByIdArgs};
-use g1t_contracts::{FailureCode, Outcome};
 use g1t_contracts::time::rfc3339;
+use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
 use serde::{Deserialize, Serialize};
 use worker::Result;
@@ -119,10 +119,9 @@ fn stopping(event: &Event) -> Option<(String, String, String)> {
     let data = event.data.clone();
     match event.kind.as_str() {
         "repo.deleted" => serde_json::from_value::<RepoDeleted>(data).ok().map(|e| (e.repo_id, e.namespace, e.name)),
-        "repo.archived" => serde_json::from_value::<RepoArchived>(data)
-            .ok()
-            .filter(|e| e.archived)
-            .map(|e| (e.repo_id, e.namespace, e.name)),
+        "repo.archived" => {
+            serde_json::from_value::<RepoArchived>(data).ok().filter(|e| e.archived).map(|e| (e.repo_id, e.namespace, e.name))
+        }
         _ => None,
     }
 }
@@ -146,14 +145,7 @@ impl Work {
     /// deleted. When repos cannot say, it is taken as active, and the
     /// repos calls that follow (which hide deleted repositories) decide.
     pub(crate) async fn repo_active(&self, repo_id: &str) -> Result<bool> {
-        let status: Result<RepoStatus> = g1t_kit::call(
-            &self.repos,
-            "status_by_id",
-            &StatusByIdArgs {
-                id: repo_id.to_owned(),
-            },
-        )
-        .await;
+        let status: Result<RepoStatus> = g1t_kit::call(&self.repos, "status_by_id", &StatusByIdArgs { id: repo_id.to_owned() }).await;
         Ok(match status {
             Ok(status) => status.active(),
             Err(error) => {
@@ -184,11 +176,7 @@ impl Work {
     /// restore; a deleted one is marked so in `repo_workspaces`.
     async fn stop_runs_in(&self, repo_id: &str) -> Result<()> {
         let now = rfc3339(now_ms());
-        self.db
-            .prepare(STOP_RUNS)
-            .bind(&[STOPPED_STEP.into(), now.as_str().into(), repo_id.into()])?
-            .run()
-            .await?;
+        self.db.prepare(STOP_RUNS).bind(&[STOPPED_STEP.into(), now.as_str().into(), repo_id.into()])?.run().await?;
         Ok(())
     }
 
@@ -203,11 +191,7 @@ impl Work {
             // Its work items' links say it is deleted, until it is restored or purged.
             if event.kind == "repo.deleted" {
                 let at = rfc3339(now_ms());
-                self.db
-                    .prepare(crate::items::MARK_DELETED)
-                    .bind(&[repo_id.as_str().into(), at.as_str().into()])?
-                    .run()
-                    .await?;
+                self.db.prepare(crate::items::MARK_DELETED).bind(&[repo_id.as_str().into(), at.as_str().into()])?.run().await?;
             }
             return Ok(true);
         }
@@ -221,17 +205,8 @@ impl Work {
         if renamed.from == renamed.to {
             return Ok(true);
         }
-        let names = [
-            renamed.repo_id.as_str().into(),
-            renamed.from.as_str().into(),
-            renamed.to.as_str().into(),
-        ];
-        self.db
-            .batch(vec![
-                self.db.prepare(BRANCH_RENAMED).bind(&names)?,
-                self.db.prepare(BASE_RENAMED).bind(&names)?,
-            ])
-            .await?;
+        let names = [renamed.repo_id.as_str().into(), renamed.from.as_str().into(), renamed.to.as_str().into()];
+        self.db.batch(vec![self.db.prepare(BRANCH_RENAMED).bind(&names)?, self.db.prepare(BASE_RENAMED).bind(&names)?]).await?;
         Ok(true)
     }
 }

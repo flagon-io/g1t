@@ -201,11 +201,7 @@ impl NewAuditEntry {
             action: action.into(),
             surface,
             target,
-            outcome: if decision.allowed {
-                AuditOutcome::Allowed
-            } else {
-                AuditOutcome::Denied
-            },
+            outcome: if decision.allowed { AuditOutcome::Allowed } else { AuditOutcome::Denied },
             rule: decision.rule.clone(),
             result: None,
             message: decision.reason.clone(),
@@ -307,15 +303,9 @@ mod tests {
             acting: Some(Box::new(Acting {
                 credential_id: "tok_9".to_owned(),
                 agent: "g1t".to_owned(),
-                on_behalf_of: Principal {
-                    id: "usr_1".to_owned(),
-                    username: "syntaqx".to_owned(),
-                },
+                on_behalf_of: Principal { id: "usr_1".to_owned(), username: "syntaqx".to_owned() },
                 scope: AgentScope {
-                    repo: RepoPath {
-                        namespace: "acme".to_owned(),
-                        name: "rocket".to_owned(),
-                    },
+                    repo: RepoPath { namespace: "acme".to_owned(), name: "rocket".to_owned() },
                     operations: vec![],
                     run: Some(RunBinding {
                         kind: RunCredentialKind::Implement,
@@ -339,11 +329,7 @@ mod tests {
         assert_eq!(actor.credential_id.as_deref(), Some("tok_9"));
         assert!(actor.records_reads());
 
-        let person = AuditActor::of(&User {
-            id: "usr_1".to_owned(),
-            username: "syntaqx".to_owned(),
-            ..User::default()
-        });
+        let person = AuditActor::of(&User { id: "usr_1".to_owned(), username: "syntaqx".to_owned(), ..User::default() });
         assert_eq!(person.actor_kind, Some(ActorKind::Person));
         assert!(!person.records_reads());
         assert_eq!(person.credential_id, None, "signed in: no token");
@@ -387,10 +373,7 @@ mod tests {
         assert_eq!(json["surface"], "mcp");
         assert!(json.get("actorKind").is_some());
         assert!(json.get("gitRef").is_some());
-        let visibility = serde_json::to_value(AuditVisibility::Projects {
-            username: "ana".to_owned(),
-        })
-        .unwrap();
+        let visibility = serde_json::to_value(AuditVisibility::Projects { username: "ana".to_owned() }).unwrap();
         assert_eq!(visibility["kind"], "projects");
     }
 }

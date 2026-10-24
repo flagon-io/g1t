@@ -55,10 +55,7 @@ struct Client {
 fn client(env: &worker::Env) -> Option<Client> {
     let id = env.var("GITHUB_APP_CLIENT_ID").ok()?.to_string();
     let secret = env.secret("GITHUB_APP_CLIENT_SECRET").ok()?.to_string();
-    (!id.trim().is_empty() && !secret.trim().is_empty()).then(|| Client {
-        id: id.trim().to_owned(),
-        secret: secret.trim().to_owned(),
-    })
+    (!id.trim().is_empty() && !secret.trim().is_empty()).then(|| Client { id: id.trim().to_owned(), secret: secret.trim().to_owned() })
 }
 
 // --- Pure parts, tested below ----------------------------------------------
@@ -183,9 +180,7 @@ pub fn decide(facts: &Facts) -> Decision {
         return match facts.linked_to {
             Some(linked) if linked == asking => Decision::Link(asking.to_owned()),
             Some(_) => Decision::Refuse("That GitHub account is linked to another g1t account."),
-            None if facts.asking_has_other => {
-                Decision::Refuse("Your account is linked to another GitHub account. Unlink it first.")
-            }
+            None if facts.asking_has_other => Decision::Refuse("Your account is linked to another GitHub account. Unlink it first."),
             None => Decision::Link(asking.to_owned()),
         };
     }
@@ -202,11 +197,7 @@ pub fn decide(facts: &Facts) -> Decision {
     if facts.email_taken {
         return Decision::NeedsLink;
     }
-    if facts.suggestion_free {
-        Decision::Create(facts.suggestion.clone())
-    } else {
-        Decision::NeedsUsername(facts.suggestion.clone())
-    }
+    if facts.suggestion_free { Decision::Create(facts.suggestion.clone()) } else { Decision::NeedsUsername(facts.suggestion.clone()) }
 }
 
 /// A person's GitHub user tokens, as kept sealed. Times are milliseconds.
@@ -269,10 +260,7 @@ async fn send(method: Method, url: &str, bearer: Option<&str>, body: Option<Valu
     init.with_method(method).with_headers(headers);
     let mut response = Fetch::Request(Request::new_with_init(url, &init)?).send().await?;
     let text = response.text().await.unwrap_or_default();
-    Ok(Answer {
-        status: response.status_code(),
-        body: serde_json::from_str(&text).unwrap_or(Value::Null),
-    })
+    Ok(Answer { status: response.status_code(), body: serde_json::from_str(&text).unwrap_or(Value::Null) })
 }
 
 /// Trades a code, or a refresh token, for tokens.
@@ -284,10 +272,7 @@ async fn token_request(client: &Client, grant: Value) -> Result<Option<Tokens>> 
     let answer = send(Method::Post, TOKEN_URL, None, Some(body)).await?;
     if answer.status != 200 || answer.body.get("error").is_some() {
         // GitHub answers 200 with an `error`; its description names no secret.
-        worker::console_log!(
-            "github token request refused: {}",
-            answer.body["error"].as_str().unwrap_or("status")
-        );
+        worker::console_log!("github token request refused: {}", answer.body["error"].as_str().unwrap_or("status"));
         return Ok(None);
     }
     Ok(tokens_from(&answer.body, now_ms()))
@@ -320,11 +305,7 @@ async fn read_user(token: &str) -> Result<Option<GithubUser>> {
     };
     let listed = send(Method::Get, &format!("{API}/user/emails"), Some(token), None).await?;
     let emails: Vec<GithubEmail> = serde_json::from_value(listed.body).unwrap_or_default();
-    Ok(Some(GithubUser {
-        id,
-        login: login.to_owned(),
-        emails: verified_emails(&emails),
-    }))
+    Ok(Some(GithubUser { id, login: login.to_owned(), emails: verified_emails(&emails) }))
 }
 
 // --- Rows --------------------------------------------------------------------
@@ -425,10 +406,7 @@ impl Identity {
             .run()
             .await?;
         // Old states that were never used go now and then.
-        self.db
-            .prepare(format!("DELETE FROM github_states WHERE expires_at < {SQL_NOW}"))
-            .run()
-            .await?;
+        self.db.prepare(format!("DELETE FROM github_states WHERE expires_at < {SQL_NOW}")).run().await?;
         Ok(Outcome::Ok(GithubStart {
             authorize_url: authorize_url(&client.id, &a.redirect_uri, &state, &pkce_challenge(&verifier)),
             state,
@@ -444,11 +422,7 @@ impl Identity {
     }
 
     async fn account_of(&self, user_id: &str) -> Result<Option<AccountRow>> {
-        self.db
-            .prepare("SELECT * FROM github_accounts WHERE user_id = ?")
-            .bind(&[user_id.into()])?
-            .first::<AccountRow>(None)
-            .await
+        self.db.prepare("SELECT * FROM github_accounts WHERE user_id = ?").bind(&[user_id.into()])?.first::<AccountRow>(None).await
     }
 
     /// Whether `username` could be registered now.
@@ -556,10 +530,7 @@ impl Identity {
 
     async fn drop_pending(&self, id: &str) -> Result<()> {
         self.db.prepare("DELETE FROM github_pending WHERE id = ?").bind(&[id.into()])?.run().await?;
-        self.db
-            .prepare(format!("DELETE FROM github_pending WHERE expires_at < {SQL_NOW}"))
-            .run()
-            .await?;
+        self.db.prepare(format!("DELETE FROM github_pending WHERE expires_at < {SQL_NOW}")).run().await?;
         Ok(())
     }
 
@@ -705,24 +676,14 @@ impl Identity {
                     // The name was taken a moment ago: the person chooses another.
                     Outcome::Fail(_) => {
                         let pending = self.hold(&github, "username", Some(&username), &tokens, &next, invite).await?;
-                        Outcome::Ok(GithubFinished::NeedsUsername {
-                            pending,
-                            login: github.login,
-                            suggestion: username,
-                            next,
-                        })
+                        Outcome::Ok(GithubFinished::NeedsUsername { pending, login: github.login, suggestion: username, next })
                     }
                 }
             }
             Decision::NeedsUsername(suggestion) => {
                 let invite = state.invite_code.as_deref();
                 let pending = self.hold(&github, "username", Some(&suggestion), &tokens, &next, invite).await?;
-                Outcome::Ok(GithubFinished::NeedsUsername {
-                    pending,
-                    login: github.login,
-                    suggestion,
-                    next,
-                })
+                Outcome::Ok(GithubFinished::NeedsUsername { pending, login: github.login, suggestion, next })
             }
         })
     }
@@ -738,12 +699,7 @@ impl Identity {
         let Some(row) = self.pending_row(&a.pending).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "This GitHub sign-in has expired. Start again."));
         };
-        Ok(Outcome::Ok(GithubPending {
-            login: row.login,
-            kind: row.kind,
-            suggestion: row.suggestion,
-            next: row.next,
-        }))
+        Ok(Outcome::Ok(GithubPending { login: row.login, kind: row.kind, suggestion: row.suggestion, next: row.next }))
     }
 
     pub async fn github_sign_up(&self, a: GithubSignUpArgs) -> Result<Outcome<SignedIn>> {
@@ -764,10 +720,7 @@ impl Identity {
         }
         let tokens = self.open_tokens(row.tokens.as_deref(), &row.id);
         let invite = row.invite_code.as_deref();
-        let user = match self
-            .create_from_github(&username, &row.email, row.github_id, &row.login, tokens.as_ref(), invite)
-            .await?
-        {
+        let user = match self.create_from_github(&username, &row.email, row.github_id, &row.login, tokens.as_ref(), invite).await? {
             Outcome::Ok(user) => user,
             Outcome::Fail(refused) => return Ok(Outcome::Fail(refused)),
         };
@@ -835,11 +788,7 @@ impl Identity {
                 "GitHub is the only way you sign in. Set a password first: sign out and use Forgot your password.",
             ));
         }
-        self.db
-            .prepare("DELETE FROM github_accounts WHERE user_id = ?")
-            .bind(&[a.user.id.as_str().into()])?
-            .run()
-            .await?;
+        self.db.prepare("DELETE FROM github_accounts WHERE user_id = ?").bind(&[a.user.id.as_str().into()])?.run().await?;
         // Best effort: also end g1t's authorization on GitHub's side.
         if let (Some(client), Some(tokens)) = (client(&self.env), self.open_tokens(row.tokens.as_deref(), &bound(&row.user_id))) {
             let _ = revoke_grant(&client, &tokens.access_token).await;
@@ -877,21 +826,14 @@ impl Identity {
         let sealed = self.seal_tokens(&refreshed, &bound(&row.user_id));
         self.db
             .prepare(format!("UPDATE github_accounts SET tokens = ?, updated_at = {SQL_NOW} WHERE user_id = ?"))
-            .bind(&[
-                sealed.as_deref().map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
-                row.user_id.as_str().into(),
-            ])?
+            .bind(&[sealed.as_deref().map_or(worker::wasm_bindgen::JsValue::NULL, Into::into), row.user_id.as_str().into()])?
             .run()
             .await?;
         Ok(Outcome::Ok(refreshed.access_token))
     }
 
     async fn forget_tokens(&self, user_id: &str) -> Result<()> {
-        self.db
-            .prepare("UPDATE github_accounts SET tokens = NULL WHERE user_id = ?")
-            .bind(&[user_id.into()])?
-            .run()
-            .await?;
+        self.db.prepare("UPDATE github_accounts SET tokens = NULL WHERE user_id = ?").bind(&[user_id.into()])?.run().await?;
         Ok(())
     }
 
@@ -951,10 +893,7 @@ impl Identity {
                 actor: AuditActor::of(user),
                 action: action.to_owned(),
                 surface: Surface::Web,
-                target: AuditTarget {
-                    workspace: membership.slug,
-                    ..AuditTarget::default()
-                },
+                target: AuditTarget { workspace: membership.slug, ..AuditTarget::default() },
                 outcome: AuditOutcome::Allowed,
                 rule: "github".to_owned(),
                 result: Some("ok".to_owned()),
@@ -998,10 +937,7 @@ mod tests {
     #[test]
     fn the_challenge_is_rfc_7636s() {
         // RFC 7636, appendix B.
-        assert_eq!(
-            pkce_challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
-            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
-        );
+        assert_eq!(pkce_challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"), "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
         let verifier = new_verifier();
         assert_eq!(verifier.len(), 43);
         assert_ne!(verifier, new_verifier());
@@ -1020,11 +956,7 @@ mod tests {
     }
 
     fn email(address: &str, primary: bool, verified: bool) -> GithubEmail {
-        GithubEmail {
-            email: address.to_owned(),
-            primary,
-            verified,
-        }
+        GithubEmail { email: address.to_owned(), primary, verified }
     }
 
     #[test]

@@ -25,9 +25,9 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::access::{BasePermission, RepoGrant, RepoRole};
 use crate::identity::AgentScope;
 use crate::repos::RepoPath;
-use crate::access::{BasePermission, RepoGrant, RepoRole};
 use crate::{Membership, PrincipalKind, Role, User};
 
 /// What a run does, as far as its credentials are concerned.
@@ -187,10 +187,7 @@ pub struct Principal {
 
 impl From<&User> for Principal {
     fn from(user: &User) -> Self {
-        Principal {
-            id: user.id.clone(),
-            username: user.username.clone(),
-        }
+        Principal { id: user.id.clone(), username: user.username.clone() }
     }
 }
 
@@ -568,12 +565,7 @@ pub fn operations_for(kind: RunCredentialKind, usage: CredentialUse) -> Vec<&'st
     NO_SCOPE
         .iter()
         .copied()
-        .chain(
-            OPERATIONS
-                .iter()
-                .filter(|(_, needed)| held.iter().any(|scope| scope.includes(*needed)))
-                .map(|(name, _)| *name),
-        )
+        .chain(OPERATIONS.iter().filter(|(_, needed)| held.iter().any(|scope| scope.includes(*needed))).map(|(name, _)| *name))
         .filter(|name| !NEVER.contains(name))
         .collect()
 }
@@ -584,10 +576,7 @@ pub fn operations_for(kind: RunCredentialKind, usage: CredentialUse) -> Vec<&'st
 /// bound it more tightly than these scopes say.
 pub fn run_scopes(kind: RunCredentialKind, usage: CredentialUse) -> Vec<crate::scopes::Scope> {
     use crate::scopes::{Scope, normalize, scope_for};
-    let mut scopes: Vec<Scope> = operations_for(kind, usage)
-        .into_iter()
-        .filter_map(scope_for)
-        .collect();
+    let mut scopes: Vec<Scope> = operations_for(kind, usage).into_iter().filter_map(scope_for).collect();
     if usage == CredentialUse::Runner && !kind.retired() {
         scopes.push(Scope::CodeRead);
         if matches!(kind, RunCredentialKind::Bump | RunCredentialKind::Session) {
@@ -616,19 +605,11 @@ pub struct Decision {
 
 impl Decision {
     pub fn allow(rule: impl Into<String>) -> Self {
-        Decision {
-            allowed: true,
-            rule: rule.into(),
-            reason: None,
-        }
+        Decision { allowed: true, rule: rule.into(), reason: None }
     }
 
     pub fn deny(rule: impl Into<String>, reason: impl Into<String>) -> Self {
-        Decision {
-            allowed: false,
-            rule: rule.into(),
-            reason: Some(reason.into()),
-        }
+        Decision { allowed: false, rule: rule.into(), reason: Some(reason.into()) }
     }
 }
 
@@ -665,19 +646,10 @@ pub fn decide_operation(
         );
     }
     if !scope.operations.iter().any(|name| name == operation) {
-        return Decision::deny(
-            "scope:operation",
-            format!("{who} for this run cannot use {operation}."),
-        );
+        return Decision::deny("scope:operation", format!("{who} for this run cannot use {operation}."));
     }
     if needs_repo && !repo.is_some_and(|asked| same_repo(asked, &scope.repo)) {
-        return Decision::deny(
-            "scope:repository",
-            format!(
-                "{who} works in {}/{} only.",
-                scope.repo.namespace, scope.repo.name
-            ),
-        );
+        return Decision::deny("scope:repository", format!("{who} works in {}/{} only.", scope.repo.namespace, scope.repo.name));
     }
     // The intersection: the person it acts for must still be able to work
     // in the repository's workspace, as a member or with a role on its
@@ -686,10 +658,7 @@ pub fn decide_operation(
     if !crate::access::has_access_in(user, &scope.repo.namespace) {
         return Decision::deny(
             "on-behalf-of:membership",
-            format!(
-                "The person this run works for is no longer a member of {}.",
-                scope.repo.namespace
-            ),
+            format!("The person this run works for is no longer a member of {}.", scope.repo.namespace),
         );
     }
     if let Some(run) = &scope.run
@@ -698,13 +667,7 @@ pub fn decide_operation(
         && run.number.is_some()
         && number != run.number
     {
-        return Decision::deny(
-            "scope:pull",
-            format!(
-                "{who} can change pull request #{} only.",
-                run.number.unwrap_or_default()
-            ),
-        );
+        return Decision::deny("scope:pull", format!("{who} can change pull request #{} only.", run.number.unwrap_or_default()));
     }
     Decision::allow(scope_rule(scope))
 }
@@ -721,15 +684,8 @@ pub fn decide_git(scope: &AgentScope, repo: &RepoPath, write: bool) -> Decision 
 /// does the repository: the pull requests it opens get theirs after the
 /// credential is made.
 pub fn decide_git_at(scope: &AgentScope, repo: &RepoPath, source: Option<&RepoPath>, write: bool) -> Decision {
-    let Some(run) = scope
-        .run
-        .as_ref()
-        .filter(|run| run.usage == CredentialUse::Runner)
-    else {
-        return Decision::deny(
-            "git:not-a-run",
-            "A tools token cannot be used with git.",
-        );
+    let Some(run) = scope.run.as_ref().filter(|run| run.usage == CredentialUse::Runner) else {
+        return Decision::deny("git:not-a-run", "A tools token cannot be used with git.");
     };
     let own_copy = run.kind == RunCredentialKind::Session && source.is_some_and(|source| same_repo(source, &scope.repo));
     let pushable = own_copy || run.push.iter().any(|grant| same_repo(&grant.repo, repo));
@@ -737,43 +693,21 @@ pub fn decide_git_at(scope: &AgentScope, repo: &RepoPath, source: Option<&RepoPa
         return if pushable {
             Decision::allow(format!("{}:push", scope_rule(scope)))
         } else {
-            Decision::deny(
-                "git:push",
-                format!(
-                    "A {} run cannot push to {}/{}.",
-                    run.kind.as_str(),
-                    repo.namespace,
-                    repo.name
-                ),
-            )
+            Decision::deny("git:push", format!("A {} run cannot push to {}/{}.", run.kind.as_str(), repo.namespace, repo.name))
         };
     }
-    let readable = pushable
-        || same_repo(&scope.repo, repo)
-        || run.read.iter().any(|path| same_repo(path, repo));
+    let readable = pushable || same_repo(&scope.repo, repo) || run.read.iter().any(|path| same_repo(path, repo));
     if readable {
         Decision::allow(format!("{}:read", scope_rule(scope)))
     } else {
-        Decision::deny(
-            "git:read",
-            format!(
-                "A {} run cannot read {}/{}.",
-                run.kind.as_str(),
-                repo.namespace,
-                repo.name
-            ),
-        )
+        Decision::deny("git:read", format!("A {} run cannot read {}/{}.", run.kind.as_str(), repo.namespace, repo.name))
     }
 }
 
 /// Whether a push to `repo` is limited to certain branches, so that the
 /// refs it moves have to be read and checked with [`decide_refs`].
 pub fn limits_branches(scope: &AgentScope, repo: &RepoPath) -> bool {
-    scope
-        .run
-        .iter()
-        .flat_map(|run| run.push.iter())
-        .any(|grant| same_repo(&grant.repo, repo) && grant.branch.is_some())
+    scope.run.iter().flat_map(|run| run.push.iter()).any(|grant| same_repo(&grant.repo, repo) && grant.branch.is_some())
 }
 
 /// Whether a push to `repo` may move `refs` (full refs, such as
@@ -783,27 +717,14 @@ pub fn decide_refs(scope: &AgentScope, repo: &RepoPath, refs: &[String]) -> Deci
     if !repo_decision.allowed {
         return repo_decision;
     }
-    let grants: Vec<&GitGrant> = scope
-        .run
-        .iter()
-        .flat_map(|run| run.push.iter())
-        .filter(|grant| same_repo(&grant.repo, repo))
-        .collect();
+    let grants: Vec<&GitGrant> = scope.run.iter().flat_map(|run| run.push.iter()).filter(|grant| same_repo(&grant.repo, repo)).collect();
     for git_ref in refs {
         let Some(branch) = git_ref.strip_prefix("refs/heads/") else {
             return Decision::deny("git:ref", format!("A run cannot push {git_ref}."));
         };
-        let allowed = grants
-            .iter()
-            .any(|grant| grant.branch.as_deref().is_none_or(|only| only == branch));
+        let allowed = grants.iter().any(|grant| grant.branch.as_deref().is_none_or(|only| only == branch));
         if !allowed {
-            return Decision::deny(
-                "git:ref",
-                format!(
-                    "A run cannot push to {branch} in {}/{}.",
-                    repo.namespace, repo.name
-                ),
-            );
+            return Decision::deny("git:ref", format!("A run cannot push to {branch} in {}/{}.", repo.namespace, repo.name));
         }
     }
     repo_decision
@@ -849,10 +770,7 @@ pub fn intersect_grants(person: &[RepoGrant], namespace: &str) -> Vec<RepoGrant>
     person
         .iter()
         .filter(|grant| grant.workspace == namespace)
-        .map(|grant| RepoGrant {
-            role: grant.role.min(AGENT_CEILING),
-            ..grant.clone()
-        })
+        .map(|grant| RepoGrant { role: grant.role.min(AGENT_CEILING), ..grant.clone() })
         .collect()
 }
 
@@ -889,10 +807,7 @@ pub fn as_person(user: &User) -> Option<User> {
 /// How an actor is described: "g1t on behalf of syntaqx".
 pub fn describe(user: &User) -> String {
     match &user.acting {
-        Some(acting) => format!(
-            "{} on behalf of {}",
-            acting.agent, acting.on_behalf_of.username
-        ),
+        Some(acting) => format!("{} on behalf of {}", acting.agent, acting.on_behalf_of.username),
         None => user.username.clone(),
     }
 }
@@ -943,10 +858,7 @@ mod tests {
     }
 
     fn path(namespace: &str, name: &str) -> RepoPath {
-        RepoPath {
-            namespace: namespace.to_owned(),
-            name: name.to_owned(),
-        }
+        RepoPath { namespace: namespace.to_owned(), name: name.to_owned() }
     }
 
     /// What a token stored before the hosted agents were retired lists:
@@ -960,7 +872,9 @@ mod tests {
                 _ => vec![],
             },
             CredentialUse::Tools => match kind {
-                K::Implement | K::Revise | K::Answer => vec!["get_work_item", "get_pull_request", "open_work_item", "add_comment", "remember"],
+                K::Implement | K::Revise | K::Answer => {
+                    vec!["get_work_item", "get_pull_request", "open_work_item", "add_comment", "remember"]
+                }
                 K::Review => vec!["get_work_item", "get_pull_request", "add_comment", "review_pull_request"],
                 K::Plan => vec!["get_work_item", "get_pull_request", "open_work_item"],
                 K::Update => vec!["get_work_item", "get_pull_request"],
@@ -983,16 +897,10 @@ mod tests {
                 system: false,
                 read: vec![path("acme", "rocket")],
                 push: match kind {
-                    RunCredentialKind::Implement
-                    | RunCredentialKind::Revise
-                    | RunCredentialKind::Answer => vec![GitGrant {
-                        repo: path("pulls", "pul_7"),
-                        branch: None,
-                    }],
-                    RunCredentialKind::Update => vec![GitGrant {
-                        repo: path("acme", "rocket"),
-                        branch: Some("fix-login".to_owned()),
-                    }],
+                    RunCredentialKind::Implement | RunCredentialKind::Revise | RunCredentialKind::Answer => {
+                        vec![GitGrant { repo: path("pulls", "pul_7"), branch: None }]
+                    }
+                    RunCredentialKind::Update => vec![GitGrant { repo: path("acme", "rocket"), branch: Some("fix-login".to_owned()) }],
                     _ => vec![],
                 },
             }),
@@ -1006,10 +914,7 @@ mod tests {
             display_username: None,
             kind: PrincipalKind::Agent,
             verified: true,
-            workspaces: member_of
-                .iter()
-                .map(|slug| Membership::member(*slug))
-                .collect(),
+            workspaces: member_of.iter().map(|slug| Membership::member(*slug)).collect(),
             avatar: None,
             grants: Vec::new(),
             token: None,
@@ -1017,10 +922,7 @@ mod tests {
             acting: Some(Box::new(Acting {
                 credential_id: "tok_1".to_owned(),
                 agent: "g1t".to_owned(),
-                on_behalf_of: Principal {
-                    id: "usr_1".to_owned(),
-                    username: "syntaqx".to_owned(),
-                },
+                on_behalf_of: Principal { id: "usr_1".to_owned(), username: "syntaqx".to_owned() },
                 scope,
             })),
         }
@@ -1029,14 +931,7 @@ mod tests {
     fn op(kind: RunCredentialKind, usage: CredentialUse, operation: &str) -> Decision {
         let scope = scope(kind, usage);
         let user = agent(&["acme"], scope.clone());
-        decide_operation(
-            &user,
-            &scope,
-            operation,
-            Some(&path("acme", "rocket")),
-            true,
-            Some(7),
-        )
+        decide_operation(&user, &scope, operation, Some(&path("acme", "rocket")), true, Some(7))
     }
 
     use CredentialUse::{Runner, Tools};
@@ -1084,14 +979,7 @@ mod tests {
         let mut wide = scope(K::Implement, Tools);
         wide.operations.push("merge_pull_request".to_owned());
         let user = agent(&["acme"], wide.clone());
-        let decision = decide_operation(
-            &user,
-            &wide,
-            "merge_pull_request",
-            Some(&path("acme", "rocket")),
-            true,
-            Some(7),
-        );
+        let decision = decide_operation(&user, &wide, "merge_pull_request", Some(&path("acme", "rocket")), true, Some(7));
         assert_eq!(decision.rule, "never");
     }
 
@@ -1099,27 +987,13 @@ mod tests {
     fn another_repository_is_refused() {
         let scope = scope(K::Implement, Tools);
         let user = agent(&["acme"], scope.clone());
-        let decision = decide_operation(
-            &user,
-            &scope,
-            "open_work_item",
-            Some(&path("acme", "other")),
-            true,
-            None,
-        );
+        let decision = decide_operation(&user, &scope, "open_work_item", Some(&path("acme", "other")), true, None);
         assert!(!decision.allowed);
         assert_eq!(decision.rule, "scope:repository");
         let decision = decide_operation(&user, &scope, "open_work_item", None, true, None);
         assert_eq!(decision.rule, "scope:repository");
         // The repository's name is matched without regard to case.
-        let decision = decide_operation(
-            &user,
-            &scope,
-            "open_work_item",
-            Some(&path("Acme", "Rocket")),
-            true,
-            None,
-        );
+        let decision = decide_operation(&user, &scope, "open_work_item", Some(&path("Acme", "Rocket")), true, None);
         assert!(decision.allowed);
         assert_eq!(decision.rule, "run:implement/tools");
     }
@@ -1129,14 +1003,7 @@ mod tests {
         let scope = scope(K::Implement, Tools);
         // The person left the workspace: their agent can do nothing there.
         let user = agent(&[], scope.clone());
-        let decision = decide_operation(
-            &user,
-            &scope,
-            "get_work_item",
-            Some(&path("acme", "rocket")),
-            true,
-            Some(1),
-        );
+        let decision = decide_operation(&user, &scope, "get_work_item", Some(&path("acme", "rocket")), true, Some(1));
         assert!(!decision.allowed);
         assert_eq!(decision.rule, "on-behalf-of:membership");
         // And an owner's agent is only ever a member.
@@ -1212,17 +1079,7 @@ mod tests {
         let own = decide_operation(&user, &scope, "record_session", Some(&repo), true, Some(7));
         assert!(own.allowed);
         // Reading another is fine.
-        assert!(
-            decide_operation(
-                &user,
-                &scope,
-                "get_pull_request",
-                Some(&repo),
-                true,
-                Some(8)
-            )
-            .allowed
-        );
+        assert!(decide_operation(&user, &scope, "get_pull_request", Some(&repo), true, Some(8)).allowed);
     }
 
     #[test]
@@ -1241,52 +1098,22 @@ mod tests {
         assert!(!decide_git(&review, &upstream, true).allowed);
         assert!(!decide_git(&review, &fork, true).allowed);
         // A tools token made before run credentials never reaches git.
-        let old = AgentScope {
-            repo: upstream.clone(),
-            operations: vec!["get_work_item".to_owned()],
-            run: None,
-        };
+        let old = AgentScope { repo: upstream.clone(), operations: vec!["get_work_item".to_owned()], run: None };
         assert_eq!(decide_git(&old, &upstream, false).rule, "git:not-a-run");
         // Nor does an agent's tools token.
-        assert_eq!(
-            decide_git(&scope(K::Implement, Tools), &upstream, false).rule,
-            "git:not-a-run"
-        );
+        assert_eq!(decide_git(&scope(K::Implement, Tools), &upstream, false).rule, "git:not-a-run");
     }
 
     #[test]
     fn a_push_moves_only_granted_branches() {
         let update = scope(K::Update, Runner);
         let repo = path("acme", "rocket");
-        let refs = |names: &[&str]| {
-            names
-                .iter()
-                .map(|name| (*name).to_owned())
-                .collect::<Vec<_>>()
-        };
+        let refs = |names: &[&str]| names.iter().map(|name| (*name).to_owned()).collect::<Vec<_>>();
         assert!(decide_refs(&update, &repo, &refs(&["refs/heads/fix-login"])).allowed);
-        assert_eq!(
-            decide_refs(&update, &repo, &refs(&["refs/heads/main"])).rule,
-            "git:ref"
-        );
-        assert_eq!(
-            decide_refs(
-                &update,
-                &repo,
-                &refs(&["refs/heads/fix-login", "refs/tags/v1"])
-            )
-            .rule,
-            "git:ref"
-        );
+        assert_eq!(decide_refs(&update, &repo, &refs(&["refs/heads/main"])).rule, "git:ref");
+        assert_eq!(decide_refs(&update, &repo, &refs(&["refs/heads/fix-login", "refs/tags/v1"])).rule, "git:ref");
         let implement = scope(K::Implement, Runner);
-        assert!(
-            decide_refs(
-                &implement,
-                &path("pulls", "pul_7"),
-                &refs(&["refs/heads/main"])
-            )
-            .allowed
-        );
+        assert!(decide_refs(&implement, &path("pulls", "pul_7"), &refs(&["refs/heads/main"])).allowed);
     }
 
     #[test]
@@ -1305,10 +1132,8 @@ mod tests {
 
     #[test]
     fn scopes_without_a_run_still_parse() {
-        let old: AgentScope = serde_json::from_str(
-            r#"{"repo":{"namespace":"acme","name":"rocket"},"operations":["get_work_item"]}"#,
-        )
-        .unwrap();
+        let old: AgentScope =
+            serde_json::from_str(r#"{"repo":{"namespace":"acme","name":"rocket"},"operations":["get_work_item"]}"#).unwrap();
         assert!(old.run.is_none());
         let written = serde_json::to_string(&scope(K::Review, Tools)).unwrap();
         assert!(written.contains(r#""use":"tools""#));

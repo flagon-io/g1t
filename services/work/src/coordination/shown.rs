@@ -111,8 +111,19 @@ fn clean_value(value: &mut serde_json::Value) {
 
 /// What an update may say of another session that only members see.
 const MEMBERS_ONLY: &[&str] = &[
-    "title", "first_prompt", "prompt", "task", "result", "branch", "head_commit", "harness_session_id", "model", "agent_type", "end_reason",
-    "cost_usd", "costUsd",
+    "title",
+    "first_prompt",
+    "prompt",
+    "task",
+    "result",
+    "branch",
+    "head_commit",
+    "harness_session_id",
+    "model",
+    "agent_type",
+    "end_reason",
+    "cost_usd",
+    "costUsd",
 ];
 
 /// An update's data without what only members see: what other sessions
@@ -178,9 +189,9 @@ pub(crate) fn sessions(sessions: &mut [Session], viewer: &Viewer, namespace: &st
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use g1t_contracts::{Membership, User};
     use g1t_contracts::credentials::Principal;
     use g1t_contracts::work::{Harness, SessionState};
+    use g1t_contracts::{Membership, User};
 
     fn person(id: &str, workspaces: &[&str]) -> Viewer {
         Some(User {
@@ -264,7 +275,8 @@ pub(crate) mod tests {
         assert!(prompt.withheld && prompt.text.is_empty());
         let output = entry(an_entry(SessionEntryKind::ToolResult, "AWS_SECRET=x"), Sight::Member).unwrap();
         assert!(output.withheld);
-        let call = entry(an_entry(SessionEntryKind::ToolCall, "bash: curl -H 'Authorization: Bearer abcdefgh1234'"), Sight::Member).unwrap();
+        let call =
+            entry(an_entry(SessionEntryKind::ToolCall, "bash: curl -H 'Authorization: Bearer abcdefgh1234'"), Sight::Member).unwrap();
         assert!(!call.withheld && !call.text.contains("abcdefgh1234"));
     }
 

@@ -47,13 +47,8 @@ use crate::store::{GitStore, Scope};
 
 /// Where backups are kept: the BACKUPS bucket, or, when BACKUP_STORE is
 /// `s3`, the bucket BACKUP_S3_BUCKET names on the installation's S3 store.
-pub const STORAGE: Config = Config {
-    kind: "BACKUP_STORE",
-    binding: "BACKUPS",
-    r2_signer: None,
-    s3_bucket: "BACKUP_S3_BUCKET",
-    s3_public_endpoint: None,
-};
+pub const STORAGE: Config =
+    Config { kind: "BACKUP_STORE", binding: "BACKUPS", r2_signer: None, s3_bucket: "BACKUP_S3_BUCKET", s3_public_endpoint: None };
 
 /// The meter a backup's clone is counted under: an operation for g1t's own
 /// bill, never for the workspace's (migrations/0013).
@@ -152,10 +147,7 @@ pub fn is_due(c: &Candidate) -> bool {
 pub fn pick_due(candidates: &[Candidate], limit: usize) -> Vec<String> {
     let mut due: Vec<&Candidate> = candidates.iter().filter(|c| is_due(c)).collect();
     due.sort_by(|a, b| {
-        a.backed_up_ms
-            .cmp(&b.backed_up_ms)
-            .then_with(|| a.created_at.cmp(&b.created_at))
-            .then_with(|| a.repo_id.cmp(&b.repo_id))
+        a.backed_up_ms.cmp(&b.backed_up_ms).then_with(|| a.created_at.cmp(&b.created_at)).then_with(|| a.repo_id.cmp(&b.repo_id))
     });
     due.into_iter().take(limit).map(|c| c.repo_id.clone()).collect()
 }
@@ -291,11 +283,7 @@ pub fn plan(manifest: Option<&Manifest>, last_entry: Option<&str>, full_every: u
         return Plan { previous_refs, ..full };
     }
     let prerequisites: BTreeSet<&String> = last.refs.values().collect();
-    Plan {
-        kind: BackupKind::Incremental,
-        prerequisites: prerequisites.into_iter().cloned().collect(),
-        previous_refs,
-    }
+    Plan { kind: BackupKind::Incremental, prerequisites: prerequisites.into_iter().cloned().collect(), previous_refs }
 }
 
 /// `20261006T025300Z`, from milliseconds since the epoch.
@@ -469,10 +457,7 @@ async fn prune(db: &D1Database, blobs: &Store) -> Result<u32> {
             }
         }
         blobs.delete(&key).await?;
-        db.prepare("DELETE FROM repo_backups WHERE repo_id = ?1")
-            .bind(&[row.repo_id.as_str().into()])?
-            .run()
-            .await?;
+        db.prepare("DELETE FROM repo_backups WHERE repo_id = ?1").bind(&[row.repo_id.as_str().into()])?.run().await?;
     }
     Ok(gone.len() as u32)
 }
@@ -548,12 +533,7 @@ pub async fn claim(db: &D1Database, blobs: Option<&Store>, a: &ClaimBackupsArgs,
                    upload_id = NULL, upload_kind = NULL, upload_entry = NULL, prerequisites = NULL
                  WHERE repo_id = ?1 AND status = 'queued' RETURNING repo_id",
             )
-            .bind(&[
-                row.repo_id.as_str().into(),
-                job_id.as_str().into(),
-                g1t_secrets::sha256_hex(&token).into(),
-                n(now),
-            ])?
+            .bind(&[row.repo_id.as_str().into(), job_id.as_str().into(), g1t_secrets::sha256_hex(&token).into(), n(now)])?
             .first::<serde_json::Value>(None)
             .await?;
         if claimed.is_some() {
@@ -570,11 +550,7 @@ async fn job(db: &D1Database, a: &BackupJobArgs) -> Result<Option<JobRow>> {
         .bind(&[a.job_id.as_str().into()])?
         .first::<JobRow>(None)
         .await?;
-    Ok(row.filter(|row| {
-        row.token_hash
-            .as_deref()
-            .is_some_and(|hash| g1t_secrets::same(hash, &g1t_secrets::sha256_hex(&a.token)))
-    }))
+    Ok(row.filter(|row| row.token_hash.as_deref().is_some_and(|hash| g1t_secrets::same(hash, &g1t_secrets::sha256_hex(&a.token)))))
 }
 
 const NO_JOB: &str = "No such backup job, or it is not running.";
@@ -726,10 +702,7 @@ pub async fn complete(registry: &Registry, blobs: &Store, a: &BackupComplete, no
         });
         manifest.store_key = store_key.clone();
         manifest.updated_at = rfc3339(now);
-        manifest.path = registry
-            .by_id(&row.repo_id)
-            .await?
-            .map(|repo| RepoPath { namespace: repo.namespace, name: repo.name });
+        manifest.path = registry.by_id(&row.repo_id).await?.map(|repo| RepoPath { namespace: repo.namespace, name: repo.name });
         blobs.put(&manifest_key(&row.repo_id), manifest.to_bytes()).await?;
         for key in dropped {
             if let Err(error) = blobs.delete(&key).await {
@@ -885,7 +858,11 @@ mod tests {
         let mut manifest = Manifest::new("r1", "acme--rocket");
         manifest.add(entry("e0", BackupKind::Full, &[("HEAD", A), ("refs/heads/main", A)]));
         for index in 0..incrementals {
-            manifest.add(entry(&format!("e{}", index + 1), BackupKind::Incremental, &[("HEAD", A), ("refs/heads/main", A), ("refs/tags/v1", B)]));
+            manifest.add(entry(
+                &format!("e{}", index + 1),
+                BackupKind::Incremental,
+                &[("HEAD", A), ("refs/heads/main", A), ("refs/tags/v1", B)],
+            ));
         }
         manifest
     }

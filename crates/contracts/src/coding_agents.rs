@@ -119,9 +119,7 @@ fn agent_at(address: &str) -> Option<&'static str> {
 /// write "Copilot" as their name. A commit no rule matches is `None`; so is
 /// one only a bot made.
 pub fn agent_mark(message: &str, author_email: Option<&str>) -> Option<AgentMark> {
-    let author = author_email
-        .map(|email| email.trim().to_ascii_lowercase())
-        .filter(|email| !email.is_empty());
+    let author = author_email.map(|email| email.trim().to_ascii_lowercase()).filter(|email| !email.is_empty());
     let mut co_authors: Vec<String> = Vec::new();
     let (mut logs_url, mut claude_session, mut made_with_cursor) = (false, false, false);
     for (key, value) in trailer_lines(message) {
@@ -139,23 +137,12 @@ pub fn agent_mark(message: &str, author_email: Option<&str>) -> Option<AgentMark
             _ => {}
         }
     }
-    made_with_cursor |= message
-        .lines()
-        .any(|line| line.trim().eq_ignore_ascii_case("made with cursor"));
+    made_with_cursor |= message.lines().any(|line| line.trim().eq_ignore_ascii_case("made with cursor"));
     let author_agent = author.as_deref().and_then(agent_at);
     let person_author = author.clone().filter(|address| is_person_address(address));
-    let person_co_author = || {
-        co_authors
-            .iter()
-            .find(|address| is_person_address(address))
-            .cloned()
-    };
+    let person_co_author = || co_authors.iter().find(|address| is_person_address(address)).cloned();
     // An agent as author: the work is whoever it names as co-author.
-    let for_co_author = |agent: &'static str, rule: &str| AgentMark {
-        agent,
-        rule: rule.to_owned(),
-        starter: person_co_author(),
-    };
+    let for_co_author = |agent: &'static str, rule: &str| AgentMark { agent, rule: rule.to_owned(), starter: person_co_author() };
     // A person as author, with an agent's help: theirs.
     let for_author = |agent: &'static str, rule: &str| AgentMark {
         agent,
@@ -163,10 +150,7 @@ pub fn agent_mark(message: &str, author_email: Option<&str>) -> Option<AgentMark
         starter: person_author.clone().or_else(person_co_author),
     };
     if logs_url {
-        return Some(for_co_author(
-            author_agent.unwrap_or("copilot"),
-            "trailer:agent-logs-url",
-        ));
+        return Some(for_co_author(author_agent.unwrap_or("copilot"), "trailer:agent-logs-url"));
     }
     if claude_session {
         return Some(match author_agent {
@@ -218,20 +202,10 @@ mod tests {
     fn copilot_s_commits_count_for_whoever_gave_it_the_task() {
         let message = "Add retries to the client\n\nCo-authored-by: Ada Lovelace <ada@example.com>\n\
                        Agent-Logs-Url: https://github.com/acme/web/sessions/1a2b";
-        assert_eq!(
-            mark(message, COPILOT),
-            found("copilot", "trailer:agent-logs-url", Some("ada@example.com"))
-        );
+        assert_eq!(mark(message, COPILOT), found("copilot", "trailer:agent-logs-url", Some("ada@example.com")));
         // Without the trailer, its address as author still says so.
         let older = "Add retries\n\nCo-authored-by: ada <1+ada@users.noreply.github.com>";
-        assert_eq!(
-            mark(older, COPILOT),
-            found(
-                "copilot",
-                "author:copilot",
-                Some("1+ada@users.noreply.github.com")
-            )
-        );
+        assert_eq!(mark(older, COPILOT), found("copilot", "author:copilot", Some("1+ada@users.noreply.github.com")));
         // Another agent on GitHub's cloud writes the same trailer as itself.
         let claude = "Fix it\n\nCo-authored-by: Ada <ada@example.com>\nAgent-Logs-Url: https://github.com/acme/web/sessions/9";
         assert_eq!(
@@ -244,95 +218,45 @@ mod tests {
     fn cursor_s_agents_count_for_the_person_beside_them() {
         // A cloud agent: Cursor's address as author, the person as co-author.
         let cloud = "Tidy the parser\n\nCo-authored-by: Ada <ada@example.com>";
-        assert_eq!(
-            mark(cloud, "cursoragent@cursor.com"),
-            found("cursor", "author:cursor", Some("ada@example.com"))
-        );
+        assert_eq!(mark(cloud, "cursoragent@cursor.com"), found("cursor", "author:cursor", Some("ada@example.com")));
         // The person as author, Cursor as co-author.
         let beside = "Tidy the parser\n\nCo-authored-by: Cursor <cursoragent@cursor.com>";
-        assert_eq!(
-            mark(beside, "ada@example.com"),
-            found("cursor", "coauthor:cursor", Some("ada@example.com"))
-        );
+        assert_eq!(mark(beside, "ada@example.com"), found("cursor", "coauthor:cursor", Some("ada@example.com")));
         // The editor's and CLI's line, in either spelling.
         assert_eq!(
             mark("Tidy\n\nMade with Cursor", "Ada@Example.com"),
-            found(
-                "cursor",
-                "trailer:made-with-cursor",
-                Some("ada@example.com")
-            )
+            found("cursor", "trailer:made-with-cursor", Some("ada@example.com"))
         );
         assert_eq!(
             mark("Tidy\n\nMade-with: Cursor", "ada@example.com"),
-            found(
-                "cursor",
-                "trailer:made-with-cursor",
-                Some("ada@example.com")
-            )
+            found("cursor", "trailer:made-with-cursor", Some("ada@example.com"))
         );
     }
 
     #[test]
     fn claude_and_devin_are_found_by_their_trailers_and_addresses() {
         let local = "Fix it\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>";
-        assert_eq!(
-            mark(local, "ada@example.com"),
-            found("claude", "coauthor:claude", Some("ada@example.com"))
-        );
+        assert_eq!(mark(local, "ada@example.com"), found("claude", "coauthor:claude", Some("ada@example.com")));
         let cloud = "Fix it\n\nClaude-Session: https://claude.ai/code/session_01abc";
-        assert_eq!(
-            mark(cloud, "ada@example.com"),
-            found("claude", "trailer:claude-session", Some("ada@example.com"))
-        );
+        assert_eq!(mark(cloud, "ada@example.com"), found("claude", "trailer:claude-session", Some("ada@example.com")));
         let devin = "Fix it\n\nCo-authored-by: Ada <ada@example.com>";
-        assert_eq!(
-            mark(devin, DEVIN),
-            found("devin", "author:devin", Some("ada@example.com"))
-        );
+        assert_eq!(mark(devin, DEVIN), found("devin", "author:devin", Some("ada@example.com")));
         let helped = format!("Fix\n\nCo-authored-by: Devin AI <{DEVIN}>");
-        assert_eq!(
-            mark(&helped, "ada@example.com"),
-            found("devin", "coauthor:devin", Some("ada@example.com"))
-        );
+        assert_eq!(mark(&helped, "ada@example.com"), found("devin", "coauthor:devin", Some("ada@example.com")));
     }
 
     #[test]
     fn nothing_is_an_agent_s_on_a_name_alone_or_a_bot_s() {
-        assert_eq!(
-            mark(
-                "Fix it\n\nCo-authored-by: Claude <claude@example.com>",
-                "ada@example.com"
-            ),
-            None
-        );
-        assert_eq!(
-            mark(
-                "Explain the Agent-Logs-Url: trailer in the docs",
-                "ada@example.com"
-            ),
-            None
-        );
-        assert_eq!(
-            mark(
-                "Bump serde",
-                "49699333+dependabot[bot]@users.noreply.github.com"
-            ),
-            None
-        );
+        assert_eq!(mark("Fix it\n\nCo-authored-by: Claude <claude@example.com>", "ada@example.com"), None);
+        assert_eq!(mark("Explain the Agent-Logs-Url: trailer in the docs", "ada@example.com"), None);
+        assert_eq!(mark("Bump serde", "49699333+dependabot[bot]@users.noreply.github.com"), None);
         assert_eq!(mark("Plain change", "ada@example.com"), None);
         assert_eq!(agent_mark("Plain change", None), None);
         // An agent with nobody beside it is still an agent's, for nobody.
-        assert_eq!(
-            mark("Plain change", "cursoragent@cursor.com"),
-            found("cursor", "author:cursor", None)
-        );
+        assert_eq!(mark("Plain change", "cursoragent@cursor.com"), found("cursor", "author:cursor", None));
         // GitHub's own address is nobody's.
         let web = "Fix\n\nCo-authored-by: GitHub <noreply@github.com>\nAgent-Logs-Url: https://github.com/acme/web/sessions/1";
-        assert_eq!(
-            mark(web, COPILOT),
-            found("copilot", "trailer:agent-logs-url", None)
-        );
+        assert_eq!(mark(web, COPILOT), found("copilot", "trailer:agent-logs-url", None));
     }
 
     /// The site's list (packages/contracts/src/coding-agents.ts) has every
@@ -340,7 +264,8 @@ mod tests {
     #[test]
     fn the_typescript_list_is_the_same() {
         let ts = include_str!("../../../packages/contracts/src/coding-agents.ts");
-        let ids: Vec<&str> = ts.match_indices("    id: \"").map(|(at, m)| &ts[at + m.len()..]).map(|rest| &rest[..rest.find('"').unwrap()]).collect();
+        let ids: Vec<&str> =
+            ts.match_indices("    id: \"").map(|(at, m)| &ts[at + m.len()..]).map(|rest| &rest[..rest.find('"').unwrap()]).collect();
         assert_eq!(ids, CODING_AGENTS.iter().map(|a| a.id).collect::<Vec<_>>());
         for agent in CODING_AGENTS {
             let start = ts.find(&format!("    id: \"{}\"", agent.id)).unwrap();

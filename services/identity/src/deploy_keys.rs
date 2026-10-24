@@ -19,8 +19,7 @@
 
 use g1t_contracts::audit::Surface;
 use g1t_contracts::deploy_keys::{
-    self, AddDeployKeyArgs, DeployKey, DeployKeyArgs, DeployKeysArgs, KEY_IN_USE, MAX_PER_REPO, RemoveDeployKeyArgs,
-    SshKeyArgs,
+    self, AddDeployKeyArgs, DeployKey, DeployKeyArgs, DeployKeysArgs, KEY_IN_USE, MAX_PER_REPO, RemoveDeployKeyArgs, SshKeyArgs,
 };
 use g1t_contracts::repos::{PathByIdArgs, Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
@@ -261,11 +260,7 @@ impl Identity {
 
     /// A purged repository's deploy keys go with it.
     pub async fn forget_deploy_keys(&self, repo_id: &str) -> Result<()> {
-        self.db
-            .prepare("DELETE FROM deploy_keys WHERE repo_id = ?")
-            .bind(&[repo_id.into()])?
-            .run()
-            .await?;
+        self.db.prepare("DELETE FROM deploy_keys WHERE repo_id = ?").bind(&[repo_id.into()])?.run().await?;
         Ok(())
     }
 
@@ -299,12 +294,7 @@ impl Identity {
             if a.used && due(person.last_used_at.as_deref()) {
                 self.note_key_use("ssh_keys", &person.key_id).await?;
             }
-            let user = User {
-                id: person.id,
-                username: person.username,
-                verified: person.verified != 0,
-                ..User::default()
-            };
+            let user = User { id: person.id, username: person.username, verified: person.verified != 0, ..User::default() };
             return self.with_workspaces(Some(user)).await;
         }
 

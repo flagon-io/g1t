@@ -7,6 +7,7 @@
 # not. Deploy (deploy.yml) ships what lands on main.
 #
 #   rust        every crate's tests, natively, in six jobs at once
+#   rustfmt     every Rust file is as `cargo fmt` writes it (rustfmt.toml)
 #   typescript  type checks and tests of the apps and TS services, the
 #               deploy and ops scripts, and the deploy manifest
 #   build       the site, sudo and the docs build as they deploy
@@ -207,6 +208,33 @@ jobs:
       - name: sccache's hits and misses
         if: ${{ always() && steps.affected.outputs.crates }}
         run: bash scripts/sccache.sh stats
+
+  # The workspace and the desktop app (outside it, so a run of its own),
+  # each checked as `cargo fmt` would write it. Nothing compiles: a few
+  # seconds. A pull request or queue state that changes no Rust file and
+  # none of rustfmt's (ci-affected.mjs RUSTFMT) passes without running, as
+  # does a push the merge queue landed.
+  rustfmt:
+    name: Rust formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+      - name: Whether this change needs it
+        id: affected
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/deploy/ci-affected.mjs --job rustfmt
+      - name: rustfmt
+        if: ${{ steps.affected.outputs.run == 'true' }}
+        run: rustup component add rustfmt
+      - name: cargo fmt --check
+        if: ${{ steps.affected.outputs.run == 'true' }}
+        run: |
+          cargo fmt --all --check
+          cargo fmt --check --manifest-path apps/desktop/src-tauri/Cargo.toml
 
   typescript:
     name: TypeScript

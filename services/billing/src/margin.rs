@@ -29,8 +29,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use g1t_contracts::billing::*;
-use g1t_contracts::{FailureCode, Outcome, new_id};
 use g1t_contracts::time::rfc3339;
+use g1t_contracts::{FailureCode, Outcome, new_id};
 use g1t_kit::now_ms;
 use serde::{Deserialize, Serialize};
 use worker::wasm_bindgen::JsValue;
@@ -315,9 +315,8 @@ pub(crate) fn fold(
     internal: &BTreeSet<String>,
 ) -> (Vec<ProductDay>, Vec<WorkspaceDay>) {
     let mut days: BTreeMap<(String, String), ProductDay> = BTreeMap::new();
-    let entry = |day: &str, bucket: &str| -> ProductDay {
-        ProductDay { day: day.to_owned(), bucket: bucket.to_owned(), ..ProductDay::default() }
-    };
+    let entry =
+        |day: &str, bucket: &str| -> ProductDay { ProductDay { day: day.to_owned(), bucket: bucket.to_owned(), ..ProductDay::default() } };
     // Which of g1t's own meters count each bucket's units.
     let mut own_meters: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
     for rule in rules {
@@ -404,7 +403,11 @@ pub(crate) fn fold(
         let weights = if OVERHEAD.contains(&bucket.as_str()) || bucket == UNMAPPED {
             active.get(day).cloned()
         } else {
-            weigh(&cf_by).or_else(|| weigh(&own_by)).or_else(|| weigh(&cost_by)).or_else(|| weigh(&value_by)).or_else(|| active.get(day).cloned())
+            weigh(&cf_by)
+                .or_else(|| weigh(&own_by))
+                .or_else(|| weigh(&cost_by))
+                .or_else(|| weigh(&value_by))
+                .or_else(|| active.get(day).cloned())
         };
         for (workspace, micros) in attribute(row.cost(), &weights.unwrap_or_default()) {
             *shares.entry((day.clone(), workspace, bucket.clone())).or_default() += micros;
@@ -462,7 +465,16 @@ pub(crate) fn pending_deltas(snapshots: &[(String, String, String, i64, i64)]) -
         };
         let (cost, charge) = ((cost - before_cost).max(0), (charge - before_charge).max(0));
         if cost > 0 || charge > 0 {
-            out.push(UsageRow { day: day.clone(), workspace: workspace.clone(), key: source.clone(), bucket: None, value: charge, cash: charge, cost, given: Given::default() });
+            out.push(UsageRow {
+                day: day.clone(),
+                workspace: workspace.clone(),
+                key: source.clone(),
+                bucket: None,
+                value: charge,
+                cash: charge,
+                cost,
+                given: Given::default(),
+            });
         }
         previous = Some(snap);
     }
@@ -588,7 +600,14 @@ pub(crate) struct Drift {
 /// them would read as a stale price when nothing changed. Without a list
 /// cost (a meter in the bucket with no list price) the price book is not
 /// checked. A leak is still what Cloudflare billed: money spent.
-pub(crate) fn drifts(bucket: &str, days: &[ProductDay], threshold: f64, counted: bool, min_cost_micros: i64, list_micros: Option<f64>) -> Vec<Drift> {
+pub(crate) fn drifts(
+    bucket: &str,
+    days: &[ProductDay],
+    threshold: f64,
+    counted: bool,
+    min_cost_micros: i64,
+    list_micros: Option<f64>,
+) -> Vec<Drift> {
     // Models: g1t no longer runs agents or sells model access. What their
     // usage cost before is the ledger's own figure, with nothing to set it
     // against.
@@ -605,12 +624,19 @@ pub(crate) fn drifts(bucket: &str, days: &[ProductDay], threshold: f64, counted:
     // counted anything is compared over every day, so it still shows.
     let first_counted = days.iter().filter(|d| d.own_quantity > 0.0).map(|d| d.day.as_str()).min();
     let compared = |d: &&ProductDay| first_counted.is_none_or(|from| d.day.as_str() >= from);
-    let (cf_quantity, own_quantity) = days.iter().filter(compared).fold((0.0, 0.0), |(cf, own), d| (cf + d.cf_quantity, own + d.own_quantity));
+    let (cf_quantity, own_quantity) =
+        days.iter().filter(compared).fold((0.0, 0.0), |(cf, own), d| (cf + d.cf_quantity, own + d.own_quantity));
     let mut out = Vec::new();
     if counted && cf_quantity > 0.0 {
         let delta = delta_percent(own_quantity, cf_quantity);
         if delta.is_some_and(|d| d.abs() > threshold) {
-            out.push(Drift { bucket: bucket.into(), kind: DriftKind::Count, ours: own_quantity, cloudflare: cf_quantity, delta_percent: delta });
+            out.push(Drift {
+                bucket: bucket.into(),
+                kind: DriftKind::Count,
+                ours: own_quantity,
+                cloudflare: cf_quantity,
+                delta_percent: delta,
+            });
         }
     }
     // Its usage at Cloudflare's list prices, before the included amounts.
@@ -784,15 +810,14 @@ pub(crate) fn overall_detail(took: i64, spent: i64, days: usize, floor: f64, wor
             dollars(spent)
         );
     }
-    format!("All of g1t, comped workspaces left out: money in against Cloudflare's bill under {floor:.0}% for {days} days running, as low as {worst:.1}%.")
+    format!(
+        "All of g1t, comped workspaces left out: money in against Cloudflare's bill under {floor:.0}% for {days} days running, as low as {worst:.1}%."
+    )
 }
 
 pub(crate) fn anomalies(rows: &[(String, i64, i64)], factor: f64, floor_micros: i64) -> Vec<(String, i64, i64)> {
-    let mut out: Vec<(String, i64, i64)> = rows
-        .iter()
-        .filter(|(_, cost, revenue)| *cost >= floor_micros && *cost as f64 > *revenue as f64 * factor)
-        .cloned()
-        .collect();
+    let mut out: Vec<(String, i64, i64)> =
+        rows.iter().filter(|(_, cost, revenue)| *cost >= floor_micros && *cost as f64 > *revenue as f64 * factor).cloned().collect();
     out.sort_by(|a, b| (b.1 - b.2).cmp(&(a.1 - a.2)).then(a.0.cmp(&b.0)));
     out
 }
@@ -867,9 +892,7 @@ pub(crate) fn spread(day: &str, micros: i64, days: u64) -> Vec<(String, i64)> {
     let start = g1t_contracts::time::parse_rfc3339(&format!("{}T00:00:00Z", &day[..10.min(day.len())])).unwrap_or(0);
     let each = micros / days as i64;
     let rest = micros % days as i64;
-    (0..days)
-        .map(|n| (rfc3339(start + n * DAY_MS)[..10].to_owned(), each + i64::from((n as i64) < rest)))
-        .collect()
+    (0..days).map(|n| (rfc3339(start + n * DAY_MS)[..10].to_owned(), each + i64::from((n as i64) < rest))).collect()
 }
 
 // ---------------------------------------------------------------------
@@ -899,7 +922,8 @@ pub(crate) async fn email_staff(env: &Env, to: &str, subject: &str, lines: &[Str
 pub(crate) async fn email_staff_page(env: &Env, to: &str, subject: &str, lines: &[String], page: (&str, &str), sender: &str) -> Result<()> {
     let (name, link) = page;
     let text = format!("{}\n\n{name}: {link}\n\nSent by {sender} (COSTS_ALERT_EMAIL).\n", lines.join("\n\n"));
-    let mut html = String::from("<div style=\"font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px 16px;color:#16150f\">");
+    let mut html =
+        String::from("<div style=\"font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px 16px;color:#16150f\">");
     for line in lines {
         html.push_str(&format!("<p style=\"font-size:15px;line-height:1.6\">{}</p>", escape(line)));
     }
@@ -927,7 +951,15 @@ struct AlertRow {
 
 impl From<AlertRow> for MarginAlert {
     fn from(r: AlertRow) -> Self {
-        MarginAlert { id: r.id, kind: r.kind, subject: r.subject, detail: r.detail, since: r.since, opened_at: r.opened_at, emailed_at: r.emailed_at }
+        MarginAlert {
+            id: r.id,
+            kind: r.kind,
+            subject: r.subject,
+            detail: r.detail,
+            since: r.since,
+            opened_at: r.opened_at,
+            emailed_at: r.emailed_at,
+        }
     }
 }
 
@@ -1126,7 +1158,14 @@ impl Billing {
                     Given { free: value, ..Given::default() }
                 } else {
                     // A complimentary allowance is promotional: given, never money in.
-                    Given { free: r.covered.unwrap_or(0), trial: r.trial.unwrap_or(0), pool: r.oss.unwrap_or(0), discount, credit_promotional: r.gift.unwrap_or(0), ..Given::default() }
+                    Given {
+                        free: r.covered.unwrap_or(0),
+                        trial: r.trial.unwrap_or(0),
+                        pool: r.oss.unwrap_or(0),
+                        discount,
+                        credit_promotional: r.gift.unwrap_or(0),
+                        ..Given::default()
+                    }
                 };
                 if r.internal == 1 {
                     internal.insert(r.workspace.clone());
@@ -1179,23 +1218,20 @@ impl Billing {
             .results::<Enrolled>()?;
         let gifted_on = |workspace: &str, day: &str| {
             enrolled.iter().any(|p| {
-                p.workspace == workspace && &p.starts_at[..10.min(p.starts_at.len())] <= day && p.ends_at.as_deref().is_none_or(|e| &e[..10.min(e.len())] >= day)
+                p.workspace == workspace
+                    && &p.starts_at[..10.min(p.starts_at.len())] <= day
+                    && p.ends_at.as_deref().is_none_or(|e| &e[..10.min(e.len())] >= day)
             })
         };
-        out.extend(
-            pending_deltas(&snaps)
-                .into_iter()
-                .filter(|u| u.day.as_str() >= since)
-                .map(|u| {
-                    if internal.contains(&u.workspace) {
-                        comped_meter(u)
-                    } else if gifted_on(&u.workspace, &u.day) {
-                        gifted_meter(u)
-                    } else {
-                        u
-                    }
-                }),
-        );
+        out.extend(pending_deltas(&snaps).into_iter().filter(|u| u.day.as_str() >= since).map(|u| {
+            if internal.contains(&u.workspace) {
+                comped_meter(u)
+            } else if gifted_on(&u.workspace, &u.day) {
+                gifted_meter(u)
+            } else {
+                u
+            }
+        }));
         // The plan's price, spread over the 30 days it pays for, so a month's
         // payment does not read as one very good day and 29 bad ones.
         #[derive(Deserialize)]
@@ -1217,7 +1253,16 @@ impl Billing {
         for p in plans {
             for (day, micros) in spread(&p.day, p.micros.unwrap_or(0), PLAN_DAYS) {
                 if day.as_str() >= since && day.as_str() <= until {
-                    out.push(UsageRow { day, workspace: p.workspace.clone(), key: "plan".into(), bucket: None, value: micros, cash: micros, cost: 0, given: Given::default() });
+                    out.push(UsageRow {
+                        day,
+                        workspace: p.workspace.clone(),
+                        key: "plan".into(),
+                        bucket: None,
+                        value: micros,
+                        cash: micros,
+                        cost: 0,
+                        given: Given::default(),
+                    });
                 }
             }
         }
@@ -1465,7 +1510,10 @@ impl Billing {
                         drift.delta_percent.unwrap_or(0.0)
                     ),
                     DriftKind::Leak if bucket == UNMAPPED => {
-                        format!("Cloudflare charged {} for meters no mapping claims. Map them on Costs & margin.", dollars(drift.cloudflare as i64))
+                        format!(
+                            "Cloudflare charged {} for meters no mapping claims. Map them on Costs & margin.",
+                            dollars(drift.cloudflare as i64)
+                        )
                     }
                     DriftKind::Leak => format!(
                         "{title}: Cloudflare charged {} over the last {DRIFT_DAYS} days and customers were charged nothing for it.",
@@ -1628,12 +1676,7 @@ impl Billing {
             ));
         }
 
-        let open = self
-            .db
-            .prepare("SELECT * FROM margin_alerts WHERE resolved_at IS NULL")
-            .all()
-            .await?
-            .results::<AlertRow>()?;
+        let open = self.db.prepare("SELECT * FROM margin_alerts WHERE resolved_at IS NULL").all().await?.results::<AlertRow>()?;
         let now = now_ms();
         let stamp = rfc3339(now);
         let mut to_email: Vec<String> = Vec::new();
@@ -1661,7 +1704,14 @@ impl Billing {
                     let id = new_id("mal", now);
                     self.db
                         .prepare("INSERT INTO margin_alerts (id, kind, subject, detail, since, opened_at) VALUES (?, ?, ?, ?, ?, ?)")
-                        .bind(&[id.as_str().into(), kind.as_str().into(), subject.as_str().into(), detail.as_str().into(), from.as_str().into(), stamp.as_str().into()])?
+                        .bind(&[
+                            id.as_str().into(),
+                            kind.as_str().into(),
+                            subject.as_str().into(),
+                            detail.as_str().into(),
+                            from.as_str().into(),
+                            stamp.as_str().into(),
+                        ])?
                         .run()
                         .await?;
                     kept.insert(id.clone());
@@ -1996,7 +2046,13 @@ impl Billing {
             .await?
             .results::<Top>()?
             .into_iter()
-            .map(|t| WorkspaceCost { workspace: t.workspace, cost_micros: t.cost.unwrap_or(0), revenue_micros: t.revenue.unwrap_or(0), given_micros: t.given.unwrap_or(0), internal: t.internal == 1 })
+            .map(|t| WorkspaceCost {
+                workspace: t.workspace,
+                cost_micros: t.cost.unwrap_or(0),
+                revenue_micros: t.revenue.unwrap_or(0),
+                given_micros: t.given.unwrap_or(0),
+                internal: t.internal == 1,
+            })
             .collect();
 
         #[derive(Deserialize)]
@@ -2083,7 +2139,9 @@ impl Billing {
         // ledger's model cost (Cloudflare-billed requests are Cloudflare's).
         overall.gateway_cost_micros = self
             .db
-            .prepare("SELECT SUM(cost_usd) AS cost FROM cost_lines WHERE source = ?1 AND day >= ?2 AND day <= ?3 AND substr(meter, 1, 11) <> ?4")
+            .prepare(
+                "SELECT SUM(cost_usd) AS cost FROM cost_lines WHERE source = ?1 AND day >= ?2 AND day <= ?3 AND substr(meter, 1, 11) <> ?4",
+            )
             .bind(&[costs::SOURCE_GATEWAY.into(), since.as_str().into(), until.as_str().into(), costs::GATEWAY_WHOLESALE.into()])?
             .first::<CostSum>(None)
             .await?
@@ -2201,13 +2259,8 @@ impl Billing {
             pricing_only_rows: u32,
             costed_rows: u32,
         }
-        Ok(self
-            .db
-            .prepare("SELECT * FROM cost_reads WHERE source = ?1")
-            .bind(&[SOURCE_BILLABLE.into()])?
-            .first::<Row>(None)
-            .await?
-            .map(|r| BillRead {
+        Ok(self.db.prepare("SELECT * FROM cost_reads WHERE source = ?1").bind(&[SOURCE_BILLABLE.into()])?.first::<Row>(None).await?.map(
+            |r| BillRead {
                 read_at: r.read_at,
                 since: r.since,
                 until: r.until,
@@ -2216,7 +2269,8 @@ impl Billing {
                 consumed_rows: r.consumed_rows,
                 pricing_only_rows: r.pricing_only_rows,
                 costed_rows: r.costed_rows,
-            }))
+            },
+        ))
     }
 }
 
@@ -2277,7 +2331,14 @@ mod tests {
     }
 
     fn rule(product: &str, meter: &str, bucket: &str, own: Option<&str>) -> Rule {
-        Rule { product: product.into(), meter: meter.into(), bucket: bucket.into(), price_meter: None, own_meter: own.map(Into::into), drift_percent: 10.0 }
+        Rule {
+            product: product.into(),
+            meter: meter.into(),
+            bucket: bucket.into(),
+            price_meter: None,
+            own_meter: own.map(Into::into),
+            drift_percent: 10.0,
+        }
     }
 
     fn rules() -> Vec<Rule> {
@@ -2325,7 +2386,10 @@ mod tests {
         let (days, workspaces) = fold(&rules(), &revenue_map(), &lines, &own, &usage, &BTreeSet::new());
         let get = |bucket: &str| days.iter().find(|d| d.bucket == bucket).unwrap();
         let sandboxes = get("sandboxes");
-        assert_eq!((sandboxes.cf_cost_micros, sandboxes.own_cost_micros, sandboxes.value_micros, sandboxes.cash_micros), (2_000_000, 3_000_000, 3_600_000, 2_200_000));
+        assert_eq!(
+            (sandboxes.cf_cost_micros, sandboxes.own_cost_micros, sandboxes.value_micros, sandboxes.cash_micros),
+            (2_000_000, 3_000_000, 3_600_000, 2_200_000)
+        );
         let git = get("git");
         assert_eq!(git.cf_cost_micros, 3_000_000);
         assert_eq!((git.cf_quantity, git.own_quantity), (30_000.0, 10_000.0));
@@ -2336,7 +2400,8 @@ mod tests {
         assert_eq!(get("models").cost(), 100_000);
         // Git's cost shared by g1t's own counts (Cloudflare gave none per
         // workspace here): three quarters to acme.
-        let share = |ws: &str, bucket: &str| workspaces.iter().find(|w| w.workspace == ws && w.bucket == bucket).map(|w| (w.cost, w.revenue));
+        let share =
+            |ws: &str, bucket: &str| workspaces.iter().find(|w| w.workspace == ws && w.bucket == bucket).map(|w| (w.cost, w.revenue));
         assert_eq!(share("acme", "git"), Some((2_250_000, 600_000)));
         assert_eq!(share("beta", "git"), Some((750_000, 0)));
         // Every bucket's cost is shared out exactly.
@@ -2366,7 +2431,8 @@ mod tests {
     #[test]
     fn a_comped_workspaces_month_end_meters_are_given_never_money_in() {
         let snap = |day: &str, cost: i64, charge: i64| (day.to_string(), "flagon-io".to_string(), "cache".to_string(), cost, charge);
-        let rows: Vec<UsageRow> = pending_deltas(&[snap("2026-10-07", 1, 2), snap("2026-10-08", 473, 568)]).into_iter().map(comped_meter).collect();
+        let rows: Vec<UsageRow> =
+            pending_deltas(&[snap("2026-10-07", 1, 2), snap("2026-10-08", 473, 568)]).into_iter().map(comped_meter).collect();
         assert_eq!(rows.iter().map(|r| (r.cash, r.value, r.given.comped)).collect::<Vec<_>>(), vec![(0, 2, 2), (0, 566, 566)]);
         let internal: BTreeSet<String> = ["flagon-io".to_string()].into();
         let (days, workspaces) = fold(&rules(), &revenue_map(), &[], &[], &rows, &internal);
@@ -2389,7 +2455,12 @@ mod tests {
     #[test]
     fn month_end_meters_are_told_by_the_day_from_snapshots() {
         let snap = |day: &str, cost: i64, charge: i64| (day.to_string(), "acme".to_string(), "git".to_string(), cost, charge);
-        let rows = pending_deltas(&[snap("2026-10-30", 100, 120), snap("2026-10-31", 250, 300), snap("2026-11-01", 40, 48), snap("2026-11-02", 40, 48)]);
+        let rows = pending_deltas(&[
+            snap("2026-10-30", 100, 120),
+            snap("2026-10-31", 250, 300),
+            snap("2026-11-01", 40, 48),
+            snap("2026-11-02", 40, 48),
+        ]);
         assert_eq!(
             rows.iter().map(|r| (r.day.as_str(), r.cost, r.value)).collect::<Vec<_>>(),
             vec![("2026-10-30", 100, 120), ("2026-10-31", 150, 180), ("2026-11-01", 40, 48)]
@@ -2418,20 +2489,37 @@ mod tests {
     }
 
     fn day(bucket: &str, cf: i64, own: i64, value: i64, cfq: f64, ownq: f64) -> ProductDay {
-        ProductDay { day: "2026-10-15".into(), bucket: bucket.into(), cf_cost_micros: cf, own_cost_micros: own, value_micros: value, cash_micros: value, cf_quantity: cfq, own_quantity: ownq, given: Given::default() }
+        ProductDay {
+            day: "2026-10-15".into(),
+            bucket: bucket.into(),
+            cf_cost_micros: cf,
+            own_cost_micros: own,
+            value_micros: value,
+            cash_micros: value,
+            cf_quantity: cfq,
+            own_quantity: ownq,
+            given: Given::default(),
+        }
     }
 
     #[test]
     fn counts_more_than_the_threshold_apart_are_drift() {
         // Cloudflare counted 30,000 operations where g1t counted 10,000:
         // binding reads, perhaps. -66.7%.
-        let drift = drifts("git", &[day("git", 3_000_000, 1_500_000, 1_800_000, 30_000.0, 10_000.0)], 10.0, true, 100_000, Some(3_000_000.0));
+        let drift =
+            drifts("git", &[day("git", 3_000_000, 1_500_000, 1_800_000, 30_000.0, 10_000.0)], 10.0, true, 100_000, Some(3_000_000.0));
         assert_eq!(drift.iter().map(|d| d.kind).collect::<Vec<_>>(), vec![DriftKind::Count, DriftKind::Cost]);
         assert!((drift[0].delta_percent.unwrap() + 66.666).abs() < 0.01);
         // 9% apart: within 10%.
-        assert!(drifts("git", &[day("git", 1_000_000, 1_000_000, 1_200_000, 10_000.0, 10_900.0)], 10.0, true, 100_000, Some(1_000_000.0)).is_empty());
+        assert!(
+            drifts("git", &[day("git", 1_000_000, 1_000_000, 1_200_000, 10_000.0, 10_900.0)], 10.0, true, 100_000, Some(1_000_000.0))
+                .is_empty()
+        );
         // Uncounted products have no count drift.
-        assert!(drifts("sandboxes", &[day("sandboxes", 1_000_000, 1_050_000, 1_200_000, 5.0, 0.0)], 10.0, false, 100_000, Some(1_000_000.0)).is_empty());
+        assert!(
+            drifts("sandboxes", &[day("sandboxes", 1_000_000, 1_050_000, 1_200_000, 5.0, 0.0)], 10.0, false, 100_000, Some(1_000_000.0))
+                .is_empty()
+        );
     }
 
     #[test]
@@ -2489,7 +2577,10 @@ mod tests {
         assert!((found[0].delta_percent.unwrap() + 29.4).abs() < 0.1);
         // Nothing billed at all (the whole week inside the included
         // amounts) is checked all the same.
-        assert_eq!(drifts("sandboxes", &[day("sandboxes", 0, 1_200_000, 1_440_000, 0.0, 0.0)], 10.0, false, 100_000, Some(sandboxes)).len(), 1);
+        assert_eq!(
+            drifts("sandboxes", &[day("sandboxes", 0, 1_200_000, 1_440_000, 0.0, 0.0)], 10.0, false, 100_000, Some(sandboxes)).len(),
+            1
+        );
     }
 
     #[test]
@@ -2519,7 +2610,12 @@ mod tests {
     fn a_margin_alert_needs_n_days_in_a_row_under_the_floor() {
         let s = |d: &str, revenue: i64, cost: i64| (d.to_string(), revenue, cost);
         // 5%, 0%, -20%: three days under 10%.
-        let series = vec![s("10-13", 1_200_000, 1_000_000), s("10-14", 1_050_000, 1_000_000), s("10-15", 1_000_000, 1_000_000), s("10-16", 1_000_000, 1_200_000)];
+        let series = vec![
+            s("10-13", 1_200_000, 1_000_000),
+            s("10-14", 1_050_000, 1_000_000),
+            s("10-15", 1_000_000, 1_000_000),
+            s("10-16", 1_000_000, 1_200_000),
+        ];
         let (from, worst) = breach(&series, 10.0, 3, 100_000).unwrap();
         assert_eq!(from, "10-14");
         assert!((worst + 20.0).abs() < 1e-9);
@@ -2544,9 +2640,20 @@ mod tests {
 
     #[test]
     fn counts_are_compared_from_the_day_g1t_started_counting() {
-        let on = |day: &str, cf: f64, own: f64| ProductDay { day: day.into(), bucket: "git".into(), cf_quantity: cf, own_quantity: own, ..ProductDay::default() };
+        let on = |day: &str, cf: f64, own: f64| ProductDay {
+            day: day.into(),
+            bucket: "git".into(),
+            cf_quantity: cf,
+            own_quantity: own,
+            ..ProductDay::default()
+        };
         // Five days of Cloudflare's count before g1t's meter, then two that match.
-        let days = vec![on("2026-10-01", 500.0, 0.0), on("2026-10-05", 300.0, 0.0), on("2026-10-06", 210.0, 231.0), on("2026-10-07", 450.0, 458.0)];
+        let days = vec![
+            on("2026-10-01", 500.0, 0.0),
+            on("2026-10-05", 300.0, 0.0),
+            on("2026-10-06", 210.0, 231.0),
+            on("2026-10-07", 450.0, 458.0),
+        ];
         assert!(drifts("git", &days, 10.0, true, 0, None).iter().all(|d| d.kind != DriftKind::Count));
         // A real gap on the days both counted still shows.
         let days = vec![on("2026-10-01", 500.0, 0.0), on("2026-10-06", 400.0, 231.0), on("2026-10-07", 600.0, 300.0)];
@@ -2595,7 +2702,14 @@ mod tests {
     }
 
     fn draw(kind: CreditKind, reference: &str, task: Option<&str>, at: &str, micros: i64) -> (String, crate::grants::Draw) {
-        let draw = crate::grants::Draw { grant: "crd_a".into(), kind, reference: reference.into(), task: task.map(Into::into), at: at.into(), micros };
+        let draw = crate::grants::Draw {
+            grant: "crd_a".into(),
+            kind,
+            reference: reference.into(),
+            task: task.map(Into::into),
+            at: at.into(),
+            micros,
+        };
         ("acme".to_owned(), draw)
     }
 
@@ -2692,7 +2806,8 @@ mod tests {
 
     #[test]
     fn a_workspace_that_costs_more_than_it_pays_is_flagged() {
-        let rows = vec![("acme".to_string(), 5_000_000, 1_000_000), ("beta".to_string(), 900_000, 0), ("gamma".to_string(), 2_000_000, 3_000_000)];
+        let rows =
+            vec![("acme".to_string(), 5_000_000, 1_000_000), ("beta".to_string(), 900_000, 0), ("gamma".to_string(), 2_000_000, 3_000_000)];
         let found = anomalies(&rows, 1.0, 1_000_000);
         assert_eq!(found, vec![("acme".to_string(), 5_000_000, 1_000_000)]);
         // At twice its revenue as the threshold, $5 against $3 is fine.
@@ -2724,7 +2839,10 @@ mod tests {
             line("2026-10-05", costs::SOURCE_GATEWAY, "ai_gateway_requests", "anthropic_claude_opus_5_5", 1.0, 11.11),
             line("2026-10-05", SOURCE_BILLABLE, "containers", "container_memory", 10.0, 0.30),
         ];
-        let mut usage = vec![usage("2026-10-05", "acme", "implement", 2_988_000, 2_988_000, 2_490_000), usage("2026-10-05", "acme", "sandbox", 120_000, 120_000, 100_000)];
+        let mut usage = vec![
+            usage("2026-10-05", "acme", "implement", 2_988_000, 2_988_000, 2_490_000),
+            usage("2026-10-05", "acme", "sandbox", 120_000, 120_000, 100_000),
+        ];
         if kept {
             // What the reset kept (reset_costs), read back for the day.
             usage.extend(reset_usage(&[
@@ -2799,12 +2917,22 @@ mod tests {
         // Stripe's test mode: valued as before, given as unpaid, no cash.
         let mut rows = vec![
             usage("2026-10-06", "acme", "sandbox", 12_000_000, 12_000_000, 10_000_000),
-            UsageRow { day: "2026-10-06".into(), workspace: "acme".into(), key: "plan".into(), value: 666_667, cash: 666_667, ..UsageRow::default() },
+            UsageRow {
+                day: "2026-10-06".into(),
+                workspace: "acme".into(),
+                key: "plan".into(),
+                value: 666_667,
+                cash: 666_667,
+                ..UsageRow::default()
+            },
         ];
         without_real_money(&mut rows, None);
         assert!(rows.iter().all(|r| r.cash == 0));
         // A comped workspace's charge is given once, as comped.
-        let mut comped = vec![UsageRow { given: Given { comped: 500, ..Given::default() }, ..usage("2026-10-06", "flagon-io", "sandbox", 500, 500, 400) }];
+        let mut comped = vec![UsageRow {
+            given: Given { comped: 500, ..Given::default() },
+            ..usage("2026-10-06", "flagon-io", "sandbox", 500, 500, 400)
+        }];
         without_real_money(&mut comped, None);
         assert_eq!((comped[0].cash, comped[0].given.total()), (0, 500));
         assert_eq!(rows[0].given.unpaid, 12_000_000);
@@ -2850,8 +2978,22 @@ mod tests {
     #[test]
     fn the_cycle_report_projects_as_cloudflare_does() {
         let cycle = crate::cycle::cycle_of("2026-10-09", 28);
-        let meter = |meter: &str, cost: i64, quantity: f64| CycleMeter { meter: meter.into(), cost_micros: cost, quantity, ..CycleMeter::default() };
-        let report = cycle_report(&cycle, 12, vec![meter("container_memory", 92_175, 126_870.0), meter("workers_cpu_ms", 200_000, 39_160_000.0), meter("d1_rows_read", 0, 61_820_000.0)], 30_000_000);
+        let meter = |meter: &str, cost: i64, quantity: f64| CycleMeter {
+            meter: meter.into(),
+            cost_micros: cost,
+            quantity,
+            ..CycleMeter::default()
+        };
+        let report = cycle_report(
+            &cycle,
+            12,
+            vec![
+                meter("container_memory", 92_175, 126_870.0),
+                meter("workers_cpu_ms", 200_000, 39_160_000.0),
+                meter("d1_rows_read", 0, 61_820_000.0),
+            ],
+            30_000_000,
+        );
         assert_eq!((report.start.as_str(), report.end.as_str(), report.days, report.days_elapsed), ("2026-09-28", "2026-10-27", 30, 12));
         assert_eq!(report.usage_micros, 292_175);
         assert_eq!(report.projected_micros, 730_438);

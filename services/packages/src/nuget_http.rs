@@ -128,13 +128,19 @@ impl Packages {
                 json_response(&nuget::service_index(&base), head)
             }
             NugetRoute::Versions { id } if read => self.nuget_versions(workspace, &id, viewer, head).await,
-            NugetRoute::Content { id, version, file } if read => self.nuget_content(workspace, &id, &version, file, viewer, head, ctx).await,
+            NugetRoute::Content { id, version, file } if read => {
+                self.nuget_content(workspace, &id, &version, file, viewer, head, ctx).await
+            }
             NugetRoute::Registration { id } if read => self.nuget_registration(&base, workspace, &id, None, viewer, head).await,
             NugetRoute::Leaf { id, version } if read => self.nuget_registration(&base, workspace, &id, Some(&version), viewer, head).await,
             NugetRoute::Search if read => self.nuget_search(url, &base, workspace, viewer).await,
             NugetRoute::Push if method == Method::Put => self.nuget_push(&mut request, workspace, viewer).await,
-            NugetRoute::Listing { id, version } if method == Method::Delete => self.nuget_listing(workspace, &id, &version, false, viewer).await,
-            NugetRoute::Listing { id, version } if method == Method::Post => self.nuget_listing(workspace, &id, &version, true, viewer).await,
+            NugetRoute::Listing { id, version } if method == Method::Delete => {
+                self.nuget_listing(workspace, &id, &version, false, viewer).await
+            }
+            NugetRoute::Listing { id, version } if method == Method::Post => {
+                self.nuget_listing(workspace, &id, &version, true, viewer).await
+            }
             NugetRoute::SymbolPush if method == Method::Put => self.nuget_symbol_push(&mut request, workspace, viewer).await,
             NugetRoute::Symbol { file, key } if read => self.nuget_symbol(workspace, &file, &key, viewer, head).await,
             _ => error(405, "Not a method this address takes."),
@@ -171,7 +177,12 @@ impl Packages {
     }
 
     /// The package and its versions, oldest first, when the viewer may read it.
-    async fn nuget_readable(&self, workspace: &str, id: &str, viewer: Option<&User>) -> Result<std::result::Result<(PackageRow, Vec<VersionRow>), Response>> {
+    async fn nuget_readable(
+        &self,
+        workspace: &str,
+        id: &str,
+        viewer: Option<&User>,
+    ) -> Result<std::result::Result<(PackageRow, Vec<VersionRow>), Response>> {
         let Some(package) = self.nuget_package(workspace, id).await? else {
             return Ok(Err(self.nuget_absent(workspace, viewer).await?));
         };
@@ -198,7 +209,16 @@ impl Packages {
 
     /// A version's `.nupkg` or `.nuspec`.
     #[allow(clippy::too_many_arguments)]
-    async fn nuget_content(&self, workspace: &str, id: &str, version: &str, file: Content, viewer: Option<&User>, head: bool, ctx: &Context) -> Result<Response> {
+    async fn nuget_content(
+        &self,
+        workspace: &str,
+        id: &str,
+        version: &str,
+        file: Content,
+        viewer: Option<&User>,
+        head: bool,
+        ctx: &Context,
+    ) -> Result<Response> {
         let (package, versions) = match self.nuget_readable(workspace, id, viewer).await? {
             Ok(found) => found,
             Err(refused) => return Ok(refused),
@@ -233,7 +253,15 @@ impl Packages {
     }
 
     /// A package's registration index, or one version's leaf.
-    async fn nuget_registration(&self, base: &str, workspace: &str, id: &str, version: Option<&str>, viewer: Option<&User>, head: bool) -> Result<Response> {
+    async fn nuget_registration(
+        &self,
+        base: &str,
+        workspace: &str,
+        id: &str,
+        version: Option<&str>,
+        viewer: Option<&User>,
+        head: bool,
+    ) -> Result<Response> {
         let (package, versions) = match self.nuget_readable(workspace, id, viewer).await? {
             Ok(found) => found,
             Err(refused) => return Ok(refused),
@@ -242,7 +270,13 @@ impl Packages {
         let listed: Vec<Listed<'_>> = versions
             .iter()
             .zip(&metadata)
-            .map(|(row, metadata)| Listed { version: &row.version, metadata, published: &row.published_at, listed: !row.is_yanked(), downloads: row.downloads })
+            .map(|(row, metadata)| Listed {
+                version: &row.version,
+                metadata,
+                published: &row.published_at,
+                listed: !row.is_yanked(),
+                downloads: row.downloads,
+            })
             .collect();
         match version {
             None => json_response(&nuget::registration(base, &package.name, &listed), head),
@@ -275,10 +309,8 @@ impl Packages {
             if !may {
                 continue;
             }
-            let rows: Vec<&VersionRow> = versions
-                .iter()
-                .filter(|v| v.package_id == package.id && (prerelease || !nuget::is_prerelease(&v.version)))
-                .collect();
+            let rows: Vec<&VersionRow> =
+                versions.iter().filter(|v| v.package_id == package.id && (prerelease || !nuget::is_prerelease(&v.version))).collect();
             let metadata: Vec<Value> = rows.iter().map(|v| v.meta()).collect();
             let matches = q.is_empty()
                 || package.name.to_ascii_lowercase().contains(&q)
@@ -289,7 +321,13 @@ impl Packages {
             let mut listed: Vec<Listed<'_>> = rows
                 .iter()
                 .zip(&metadata)
-                .map(|(row, metadata)| Listed { version: &row.version, metadata, published: &row.published_at, listed: !row.is_yanked(), downloads: row.downloads })
+                .map(|(row, metadata)| Listed {
+                    version: &row.version,
+                    metadata,
+                    published: &row.published_at,
+                    listed: !row.is_yanked(),
+                    downloads: row.downloads,
+                })
                 .collect();
             listed.sort_by(|a, b| nuget::compare(a.version, b.version));
             if let Some(mut result) = nuget::search_result(base, &package.name, &listed) {
@@ -337,7 +375,10 @@ impl Packages {
             return too_large();
         }
         if viewer.is_none() {
-            return error(401, format!("Push with a g1t access token as the API key: dotnet nuget push <file> --api-key <token>. Make one at {TOKENS}."));
+            return error(
+                401,
+                format!("Push with a g1t access token as the API key: dotnet nuget push <file> --api-key <token>. Make one at {TOKENS}."),
+            );
         }
         let nupkg = match nuget::pushed_file(content_type.as_deref(), &body) {
             Ok(file) => file,
@@ -391,7 +432,10 @@ impl Packages {
         };
         let existing = self.db.versions(&package.id, MAX_VERSIONS).await?;
         if let Some(taken) = existing.iter().find(|v| v.version.eq_ignore_ascii_case(&version)) {
-            return error(409, format!("{} {} is already pushed, and a version is pushed once. Bump the version.", package.name, taken.version));
+            return error(
+                409,
+                format!("{} {} is already pushed, and a version is pushed once. Bump the version.", package.name, taken.version),
+            );
         }
         let deleted = self.db.deleted_versions(&package.id, MAX_VERSIONS).await?;
         if let Some(taken) = deleted.iter().find(|v| v.version.eq_ignore_ascii_case(&version))
@@ -410,7 +454,9 @@ impl Packages {
             return error(403, refusal);
         }
         let now = now_ms();
-        for (digest, bytes, media_type) in [(&digest, nupkg, "application/octet-stream"), (&nuspec_digest, read.nuspec_bytes.clone(), "application/xml")] {
+        for (digest, bytes, media_type) in
+            [(&digest, nupkg, "application/octet-stream"), (&nuspec_digest, read.nuspec_bytes.clone(), "application/xml")]
+        {
             let stored = match self.db.blob(digest).await? {
                 Some(blob) => self.store.head(&blob.object_key).await?.is_some(),
                 None => false,
@@ -433,7 +479,12 @@ impl Packages {
                     subject: None,
                     published_by: published_by(&caller),
                     files: vec![
-                        NewFile { name: "nupkg".to_owned(), digest: digest.to_string(), size, media_type: Some("application/octet-stream".to_owned()) },
+                        NewFile {
+                            name: "nupkg".to_owned(),
+                            digest: digest.to_string(),
+                            size,
+                            media_type: Some("application/octet-stream".to_owned()),
+                        },
                         NewFile {
                             name: "nuspec".to_owned(),
                             digest: nuspec_digest.to_string(),
@@ -468,12 +519,8 @@ impl Packages {
             self.db.set_readme(&package.id, readme_digest.as_deref(), spec.description.as_deref(), now).await?;
         }
         self.db.measure(&package.workspace).await?;
-        let event = PackageEvent {
-            version: Some(version.clone()),
-            digest: Some(digest.to_string()),
-            size: Some(size),
-            ..self.event_of(&package)
-        };
+        let event =
+            PackageEvent { version: Some(version.clone()), digest: Some(digest.to_string()), size: Some(size), ..self.event_of(&package) };
         self.announce("package.published", &package, event, &caller).await;
         self.audit(&caller, "package.publish", &package, Some(&format!("{workspace}/{}@{version}", package.name)), None).await;
         error(201, format!("{} {version} was pushed.", package.name))
@@ -497,7 +544,10 @@ impl Packages {
             return too_large();
         }
         if viewer.is_none() {
-            return error(401, format!("Push with a g1t access token as the API key: dotnet nuget push <file> --api-key <token>. Make one at {TOKENS}."));
+            return error(
+                401,
+                format!("Push with a g1t access token as the API key: dotnet nuget push <file> --api-key <token>. Make one at {TOKENS}."),
+            );
         }
         let snupkg = match nuget::pushed_file(content_type.as_deref(), &body) {
             Ok(file) => file,
@@ -511,7 +561,12 @@ impl Packages {
         let Some(version) = nuget::normalize(&spec.version) else {
             return error(400, format!("{} is not a version NuGet reads.", spec.version));
         };
-        let push_first = || error(404, format!("Push {} {version} before its symbols: dotnet nuget push pushes the .snupkg beside a .nupkg after it.", spec.id));
+        let push_first = || {
+            error(
+                404,
+                format!("Push {} {version} before its symbols: dotnet nuget push pushes the .snupkg beside a .nupkg after it.", spec.id),
+            )
+        };
         let Some(package) = self.nuget_package(workspace, &spec.id).await? else {
             return push_first();
         };
@@ -528,7 +583,10 @@ impl Packages {
             if kept.digest == digest.to_string() {
                 return error(201, format!("The symbols of {} {} were pushed.", package.name, row.version));
             }
-            return error(409, format!("{} {} already has symbols, and a version's symbols are pushed once. Bump the version.", package.name, row.version));
+            return error(
+                409,
+                format!("{} {} already has symbols, and a version's symbols are pushed once. Bump the version.", package.name, row.version),
+            );
         }
         let mut files = vec![(Content::Snupkg.file().to_owned(), digest.clone(), snupkg)];
         for pdb in symbols.pdbs {
@@ -562,7 +620,8 @@ impl Packages {
         }
         self.db.measure(&package.workspace).await?;
         let caller = Caller::of(viewer);
-        self.audit(&caller, "package.publish_symbols", &package, Some(&format!("{workspace}/{}@{}", package.name, row.version)), None).await;
+        self.audit(&caller, "package.publish_symbols", &package, Some(&format!("{workspace}/{}@{}", package.name, row.version)), None)
+            .await;
         error(201, format!("The symbols of {} {} were pushed.", package.name, row.version))
     }
 

@@ -146,12 +146,9 @@ pub async fn run(services: &Services, viewer: &Viewer, repo: &RepoPath, input: &
     let path = input["path"].as_str().unwrap_or_default().trim().trim_matches('/').to_owned();
     let full = format!("{}/{}", repo.namespace, repo.name);
     if path.is_empty() {
-        let log: Outcome<Vec<Commit>> = g1t_kit::call(
-            &services.repos,
-            "log",
-            &LogArgs { path: repo.clone(), viewer: viewer.clone(), git_ref, limit: limit(input) },
-        )
-        .await?;
+        let log: Outcome<Vec<Commit>> =
+            g1t_kit::call(&services.repos, "log", &LogArgs { path: repo.clone(), viewer: viewer.clone(), git_ref, limit: limit(input) })
+                .await?;
         let commits = match log {
             Outcome::Ok(commits) => commits,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
@@ -241,10 +238,8 @@ mod tests {
         let all = [&known, &stranger, &ours, &unsigned];
         // Asked about: each real address once, lowercased; never g1t's own.
         assert_eq!(addresses(all), vec!["someone@example.com".to_owned(), "syntaqx@gmail.com".to_owned()]);
-        let owners = HashMap::from([(
-            "syntaqx@gmail.com".to_owned(),
-            EmailOwner { id: "usr_1".into(), username: "syntaqx".into(), avatar: None },
-        )]);
+        let owners =
+            HashMap::from([("syntaqx@gmail.com".to_owned(), EmailOwner { id: "usr_1".into(), username: "syntaqx".into(), avatar: None })]);
         let found = authors(&all, &owners);
         let repo = RepoPath { namespace: "flagon-io".into(), name: "g1t".into() };
         // A known address: the git name and the username, never the address.

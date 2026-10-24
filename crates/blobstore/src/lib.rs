@@ -185,8 +185,5 @@ impl BlobStore for Store {
 
 /// A configuration variable or secret, or the empty string.
 pub fn var(env: &Env, name: &str) -> String {
-    env.var(name)
-        .map(|v| v.to_string())
-        .or_else(|_| env.secret(name).map(|v| v.to_string()))
-        .unwrap_or_default()
+    env.var(name).map(|v| v.to_string()).or_else(|_| env.secret(name).map(|v| v.to_string())).unwrap_or_default()
 }

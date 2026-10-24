@@ -28,11 +28,7 @@ pub fn check_skipped(steps: &[String]) -> std::result::Result<Vec<String>, Strin
             return Err(format!("{} is not a step of Getting started. The steps are {}.", step.trim(), ONBOARDING_STEPS.join(", ")));
         }
     }
-    Ok(ONBOARDING_STEPS
-        .iter()
-        .filter(|step| steps.iter().any(|given| given.trim() == **step))
-        .map(|step| (*step).to_owned())
-        .collect())
+    Ok(ONBOARDING_STEPS.iter().filter(|step| steps.iter().any(|given| given.trim() == **step)).map(|step| (*step).to_owned()).collect())
 }
 
 /// What a change does to `dismissed_at`, as the statement in

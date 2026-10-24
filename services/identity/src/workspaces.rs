@@ -11,9 +11,7 @@ use g1t_contracts::identity::*;
 use g1t_contracts::members::{LeaveWorkspaceArgs, last_owner_refusal};
 use g1t_contracts::teams::TeamCreation;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::{
-    FailureCode, MemberPrivileges, Membership, OrgRole, Outcome, PrincipalKind, Role, User, claimable_namespace, new_id,
-};
+use g1t_contracts::{FailureCode, MemberPrivileges, Membership, OrgRole, Outcome, PrincipalKind, Role, User, claimable_namespace, new_id};
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
@@ -73,26 +71,14 @@ impl From<WorkspaceRow> for Workspace {
             created_at: row.created_at,
             member_count: row.member_count,
             avatar: row.avatar,
-            base_permission: row
-                .base_permission
-                .as_deref()
-                .and_then(BasePermission::parse)
-                .unwrap_or_default(),
-            team_creation: row
-                .team_creation
-                .as_deref()
-                .and_then(TeamCreation::parse)
-                .unwrap_or_default(),
+            base_permission: row.base_permission.as_deref().and_then(BasePermission::parse).unwrap_or_default(),
+            team_creation: row.team_creation.as_deref().and_then(TeamCreation::parse).unwrap_or_default(),
             privileges: MemberPrivileges::from_stored(row.member_privileges.as_deref()),
             two_factor_requirement_enabled: row.require_two_factor.unwrap_or(0) != 0,
             website: row.website,
             email: row.email,
             location: row.location,
-            social_accounts: row
-                .social_accounts
-                .as_deref()
-                .and_then(|stored| serde_json::from_str(stored).ok())
-                .unwrap_or_default(),
+            social_accounts: row.social_accounts.as_deref().and_then(|stored| serde_json::from_str(stored).ok()).unwrap_or_default(),
         }
     }
 }
@@ -159,17 +145,9 @@ fn check_profile(a: &UpdateWorkspaceArgs) -> std::result::Result<ProfileChange, 
             })?),
         },
         email: a.email.as_deref().map(|value| email_field(value, "email")).transpose()?,
-        location: a
-            .location
-            .as_deref()
-            .map(|value| crate::profiles::tidy(value, MAX_PROFILE_LOCATION, "location"))
-            .transpose()?,
+        location: a.location.as_deref().map(|value| crate::profiles::tidy(value, MAX_PROFILE_LOCATION, "location")).transpose()?,
         social_accounts: a.social_accounts.as_deref().map(social_accounts).transpose()?,
-        billing_email: a
-            .billing_email
-            .as_deref()
-            .map(|value| email_field(value, "billing email"))
-            .transpose()?,
+        billing_email: a.billing_email.as_deref().map(|value| email_field(value, "billing email")).transpose()?,
     })
 }
 
@@ -267,16 +245,10 @@ impl Identity {
 
     pub async fn create_workspace(&self, a: CreateWorkspaceArgs) -> Result<Outcome<Workspace>> {
         if a.user.kind != PrincipalKind::User {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "A workspace's access token cannot create workspaces. Sign in as a person.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "A workspace's access token cannot create workspaces. Sign in as a person."));
         }
         if !a.user.verified {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Confirm your email address before creating a workspace.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Confirm your email address before creating a workspace."));
         }
         let Some(slug) = claimable_namespace(&a.slug) else {
             return Ok(Outcome::fail(
@@ -285,10 +257,7 @@ impl Identity {
             ));
         };
         if self.memberships(&a.user.id).await?.len() >= MAX_WORKSPACES_PER_USER {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                "You belong to the maximum number of workspaces.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, "You belong to the maximum number of workspaces."));
         }
         // One free workspace per person (paid.rs): a new one starts free.
         if let Some(refused) = self.second_free_workspace(&a.user.id).await? {
@@ -313,10 +282,7 @@ impl Identity {
             || (self.slug_deleted(&slug).await?
                 && !crate::deletion::may_reclaim(&slug, &a.user.username))
         {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                "That workspace name is taken.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, "That workspace name is taken."));
         }
         let name = match a.name.trim() {
             "" => slug.clone(),
@@ -330,8 +296,7 @@ impl Identity {
     /// agents service's @g1t welcomes them, once. Best effort, after the
     /// membership is written; a failure is logged.
     pub(crate) async fn announce_member_joined(&self, workspace_id: &str, slug: &str, user: &User, role: Role, how: JoinedHow) {
-        self.announce("workspace.member_joined", Some(&user.id), member_joined(workspace_id, slug, user, role, how))
-            .await;
+        self.announce("workspace.member_joined", Some(&user.id), member_joined(workspace_id, slug, user, role, how)).await;
     }
 
     /// A new account's own workspace, named for its username, on the free
@@ -402,11 +367,7 @@ impl Identity {
                         "INSERT INTO workspace_members (workspace_id, user_id, role, created_at)
                          VALUES (?, ?, 'owner', ?)",
                     )
-                    .bind(&[
-                        workspace.id.as_str().into(),
-                        user_id.into(),
-                        workspace.created_at.as_str().into(),
-                    ])?,
+                    .bind(&[workspace.id.as_str().into(), user_id.into(), workspace.created_at.as_str().into()])?,
             ])
             .await?;
         self.forget_deleted(&workspace.slug).await?;
@@ -417,9 +378,7 @@ impl Identity {
     pub async fn get_workspace(&self, a: SlugArgs) -> Result<Option<Workspace>> {
         Ok(self
             .db
-            .prepare(format!(
-                "SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE slug = ? AND deleted_at IS NULL"
-            ))
+            .prepare(format!("SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE slug = ? AND deleted_at IS NULL"))
             .bind(&[a.slug.to_lowercase().into()])?
             .first::<WorkspaceRow>(None)
             .await?
@@ -429,21 +388,13 @@ impl Identity {
     pub async fn update_workspace(&self, a: UpdateWorkspaceArgs) -> Result<Outcome<Workspace>> {
         let slug = a.slug.to_lowercase();
         if a.actor.kind != PrincipalKind::User || a.actor.role_in(&slug) != Some(Role::Owner) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only an owner can change a workspace's details.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can change a workspace's details."));
         }
         let name: String = match a.name.trim() {
             "" => slug.clone(),
             name => name.chars().take(MAX_NAME_LENGTH).collect(),
         };
-        let description: String = a
-            .description
-            .trim()
-            .chars()
-            .take(MAX_DESCRIPTION_LENGTH)
-            .collect();
+        let description: String = a.description.trim().chars().take(MAX_DESCRIPTION_LENGTH).collect();
         let profile = match check_profile(&a) {
             Ok(profile) => profile,
             Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
@@ -452,14 +403,10 @@ impl Identity {
             value.map_or(JsValue::NULL, JsValue::from)
         }
         let mut sql = String::from("UPDATE workspaces SET name = ?, description = ?");
-        let mut values: Vec<JsValue> = vec![
-            name.into(),
-            if description.is_empty() { JsValue::NULL } else { description.into() },
-        ];
+        let mut values: Vec<JsValue> = vec![name.into(), if description.is_empty() { JsValue::NULL } else { description.into() }];
         // Only what was given changes.
-        let social_accounts = profile.social_accounts.map(|accounts| {
-            (!accounts.is_empty()).then(|| serde_json::to_string(&accounts).unwrap_or_default())
-        });
+        let social_accounts =
+            profile.social_accounts.map(|accounts| (!accounts.is_empty()).then(|| serde_json::to_string(&accounts).unwrap_or_default()));
         for (column, value) in [
             ("website", profile.website),
             ("email", profile.email),
@@ -487,10 +434,7 @@ impl Identity {
     pub async fn workspace_billing_email(&self, a: WorkspaceBillingEmailArgs) -> Result<Outcome<Option<String>>> {
         let slug = a.slug.to_lowercase();
         if a.actor.kind != PrincipalKind::User || !a.actor.manages_billing(&slug) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only an owner or a billing manager can see a workspace's billing email.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner or a billing manager can see a workspace's billing email."));
         }
         #[derive(Deserialize)]
         struct Row {
@@ -513,10 +457,7 @@ impl Identity {
     pub async fn list_members(&self, a: ListMembersArgs) -> Result<Outcome<Vec<Member>>> {
         let slug = a.slug.to_lowercase();
         let Some(viewer) = a.viewer.filter(|viewer| viewer.is_member(&slug)) else {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only members can see who is in a workspace.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only members can see who is in a workspace."));
         };
         // Owners see who has two-factor authentication on, as they need to
         // before requiring it.
@@ -544,11 +485,7 @@ impl Identity {
             .all()
             .await?
             .results::<Row>()?;
-        Ok(Outcome::Ok(
-            rows.into_iter()
-                .map(|row| row.member.member(owner.then_some(row.two_factor != 0)))
-                .collect(),
-        ))
+        Ok(Outcome::Ok(rows.into_iter().map(|row| row.member.member(owner.then_some(row.two_factor != 0))).collect()))
     }
 
     /// The ids needed to change a workspace's members, if `actor` owns it
@@ -556,10 +493,7 @@ impl Identity {
     async fn member_target(&self, a: &MemberArgs) -> Result<Outcome<(String, User)>> {
         let slug = a.slug.to_lowercase();
         if a.actor.kind != PrincipalKind::User || a.actor.role_in(&slug) != Some(Role::Owner) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only an owner can change a workspace's members.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can change a workspace's members."));
         }
         let Some(workspace) = self.get_workspace(SlugArgs { slug }).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Workspace not found."));
@@ -572,10 +506,7 @@ impl Identity {
             )
             .await?
         else {
-            return Ok(Outcome::fail(
-                FailureCode::NotFound,
-                "There is no account with that username.",
-            ));
+            return Ok(Outcome::fail(FailureCode::NotFound, "There is no account with that username."));
         };
         Ok(Outcome::Ok((workspace.id, user)))
     }
@@ -622,11 +553,7 @@ impl Identity {
                 "INSERT OR IGNORE INTO workspace_members (workspace_id, user_id, role, created_at)
                  VALUES (?, ?, 'member', ?) RETURNING user_id",
             )
-            .bind(&[
-                workspace_id.into(),
-                user.id.as_str().into(),
-                rfc3339(now_ms()).into(),
-            ])?
+            .bind(&[workspace_id.into(), user.id.as_str().into(), rfc3339(now_ms()).into()])?
             .first::<serde_json::Value>(None)
             .await?
             .is_some();
@@ -646,9 +573,7 @@ impl Identity {
     pub async fn remove_member(&self, a: MemberArgs) -> Result<Outcome<bool>> {
         // Removing yourself is leaving, which anyone may do.
         if a.username.trim().trim_start_matches('@').eq_ignore_ascii_case(&a.actor.username) {
-            return self
-                .leave_workspace(LeaveWorkspaceArgs { user: a.actor, slug: a.slug, surface: a.surface })
-                .await;
+            return self.leave_workspace(LeaveWorkspaceArgs { user: a.actor, slug: a.slug, surface: a.surface }).await;
         }
         let (workspace_id, user) = match self.member_target(&a).await? {
             Outcome::Ok(target) => target,
@@ -695,11 +620,7 @@ mod tests {
 
     #[test]
     fn a_member_joining_names_the_person_the_workspace_their_role_and_the_door() {
-        let ada = User {
-            id: "usr_ada".into(),
-            username: "ada".into(),
-            ..User::default()
-        };
+        let ada = User { id: "usr_ada".into(), username: "ada".into(), ..User::default() };
         let joined = member_joined("wsp_1", "Acme", &ada, Role::Member, JoinedHow::Invitation);
         assert_eq!(joined.workspace_id, "wsp_1");
         assert_eq!(joined.workspace, "acme", "the slug as every service keys it");

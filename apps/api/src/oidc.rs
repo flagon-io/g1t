@@ -316,7 +316,13 @@ mod tests {
 
     #[test]
     fn claims_get_who_issued_them_and_a_short_life() {
-        let claims = full_claims(json!({ "sub": "repo:acme/web:ref:refs/heads/main" }), "https://api.g1t.sh/actions/oidc", "sts.amazonaws.com", "oidc_1", 1_700_000_000);
+        let claims = full_claims(
+            json!({ "sub": "repo:acme/web:ref:refs/heads/main" }),
+            "https://api.g1t.sh/actions/oidc",
+            "sts.amazonaws.com",
+            "oidc_1",
+            1_700_000_000,
+        );
         assert_eq!(claims["iss"], "https://api.g1t.sh/actions/oidc");
         assert_eq!(claims["aud"], "sts.amazonaws.com");
         assert_eq!(claims["exp"].as_u64().unwrap() - claims["iat"].as_u64().unwrap(), LIFETIME_SECONDS);
@@ -383,7 +389,13 @@ mod tests {
             }
         }
         // Sign the token's input with openssl, verify with the JWKS's key.
-        let claims = full_claims(json!({ "sub": "repo:acme/web:environment:prod" }), "https://api.g1t.sh/actions/oidc", "sts.amazonaws.com", "j", 1_700_000_000);
+        let claims = full_claims(
+            json!({ "sub": "repo:acme/web:environment:prod" }),
+            "https://api.g1t.sh/actions/oidc",
+            "sts.amazonaws.com",
+            "j",
+            1_700_000_000,
+        );
         let input = signing_input(&key.kid(), &claims);
         std::fs::write(path("input"), &input).unwrap();
         openssl(&["dgst", "-sha256", "-sign", &path("key.pem"), "-out", &path("sig"), &path("input")]).unwrap();
@@ -404,7 +416,8 @@ mod tests {
         public.extend(der_length(body.len()));
         public.extend(body);
         std::fs::write(path("public.der"), &public).unwrap();
-        let checked = openssl(&["rsa", "-RSAPublicKey_in", "-inform", "DER", "-in", &path("public.der"), "-pubout", "-out", &path("public.pem")]);
+        let checked =
+            openssl(&["rsa", "-RSAPublicKey_in", "-inform", "DER", "-in", &path("public.der"), "-pubout", "-out", &path("public.pem")]);
         assert!(checked.is_some(), "openssl reads the public key built from the JWKS");
         let verified = openssl(&["dgst", "-sha256", "-verify", &path("public.pem"), "-signature", &path("sig"), &path("input")]);
         assert!(verified.is_some(), "the JWKS key verifies the token's signature");

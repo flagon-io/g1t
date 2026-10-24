@@ -4116,13 +4116,8 @@ pub enum CostProvider {
 }
 
 impl CostProvider {
-    pub const ALL: [CostProvider; 5] = [
-        CostProvider::Anthropic,
-        CostProvider::Openai,
-        CostProvider::Cursor,
-        CostProvider::Amp,
-        CostProvider::Devin,
-    ];
+    pub const ALL: [CostProvider; 5] =
+        [CostProvider::Anthropic, CostProvider::Openai, CostProvider::Cursor, CostProvider::Amp, CostProvider::Devin];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -4178,9 +4173,7 @@ impl CostUnit {
     }
 
     pub fn parse(name: &str) -> Option<CostUnit> {
-        [CostUnit::Usd, CostUnit::Credits, CostUnit::Acus]
-            .into_iter()
-            .find(|unit| unit.name().eq_ignore_ascii_case(name))
+        [CostUnit::Usd, CostUnit::Credits, CostUnit::Acus].into_iter().find(|unit| unit.name().eq_ignore_ascii_case(name))
     }
 }
 
@@ -4409,10 +4402,7 @@ mod tests {
 
     #[test]
     fn features_are_named_as_the_site_sends_them() {
-        assert_eq!(
-            serde_json::to_value(Feature::Deployments).unwrap(),
-            serde_json::json!("deployments")
-        );
+        assert_eq!(serde_json::to_value(Feature::Deployments).unwrap(), serde_json::json!("deployments"));
         assert_eq!(Feature::parse("deployments"), Some(Feature::Deployments));
         assert_eq!(serde_json::to_value(Feature::Plan).unwrap(), serde_json::json!("plan"));
         assert_eq!(Feature::parse("plan"), Some(Feature::Plan));
@@ -4460,8 +4450,7 @@ mod tests {
 
     #[test]
     fn a_refusal_carries_its_own_code() {
-        let refused: crate::Outcome<Reservation> =
-            crate::Outcome::fail(crate::FailureCode::OssPoolEmpty, "The open-source pool is spent.");
+        let refused: crate::Outcome<Reservation> = crate::Outcome::fail(crate::FailureCode::OssPoolEmpty, "The open-source pool is spent.");
         let json = serde_json::to_value(&refused).unwrap();
         assert_eq!(json["error"]["code"], "oss_pool_empty");
         assert_eq!(crate::FailureCode::NotPaid.http_status(), 402);

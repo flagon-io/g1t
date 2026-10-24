@@ -10,12 +10,10 @@
 //! breaks; no new ones are made.
 
 use g1t_contracts::credentials::{
-    Acting, BindRunCredentialsArgs, CreateRunCredentialArgs, CredentialUse, Principal, RevokeRunCredentialsArgs,
-    RunBinding, RunCredentialKind, intersect, intersect_grants, operations_for,
+    Acting, BindRunCredentialsArgs, CreateRunCredentialArgs, CredentialUse, Principal, RevokeRunCredentialsArgs, RunBinding,
+    RunCredentialKind, intersect, intersect_grants, operations_for,
 };
-use g1t_contracts::identity::{
-    AGENT_ID, AGENT_NAME, AgentScope, CreateAccessTokenArgs, CreatedAccessToken,
-};
+use g1t_contracts::identity::{AGENT_ID, AGENT_NAME, AgentScope, CreateAccessTokenArgs, CreatedAccessToken};
 use g1t_contracts::time::SQL_NOW;
 use g1t_contracts::{PrincipalKind, User, Viewer};
 use worker::Result;
@@ -49,10 +47,7 @@ fn max_ttl(kind: RunCredentialKind) -> u64 {
 
 /// A SHA-256 in lowercase hex, as tokens are stored.
 fn is_hash(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    value.len() == 64 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 impl Identity {
@@ -82,23 +77,13 @@ impl Identity {
         let Some(person) = person else {
             return Ok(None);
         };
-        let agent = scope
-            .run
-            .as_ref()
-            .map(|run| run.agent.clone())
-            .unwrap_or_else(|| AGENT_NAME.to_owned());
+        let agent = scope.run.as_ref().map(|run| run.agent.clone()).unwrap_or_else(|| AGENT_NAME.to_owned());
         // g1t's own run: the workspace's credential, acting as g1t, so the
         // pull request and working copy g1t opened are its own (run.system).
         let on_behalf_of = if scope.run.as_ref().is_some_and(|run| run.system) {
-            Principal {
-                id: g1t_contracts::system::ID.to_owned(),
-                username: g1t_contracts::system::USERNAME.to_owned(),
-            }
+            Principal { id: g1t_contracts::system::ID.to_owned(), username: g1t_contracts::system::USERNAME.to_owned() }
         } else {
-            Principal {
-                id: person.id,
-                username: person.username,
-            }
+            Principal { id: person.id, username: person.username }
         };
         Ok(Some(User {
             id: AGENT_ID.to_owned(),
@@ -110,34 +95,19 @@ impl Identity {
             // outside collaborator's agent works where they may, and never
             // beyond Write (credentials::AGENT_CEILING).
             grants: intersect_grants(&person.grants, &scope.repo.namespace),
-            acting: Some(Box::new(Acting {
-                credential_id: credential_id.to_owned(),
-                agent,
-                on_behalf_of,
-                scope,
-            })),
+            acting: Some(Box::new(Acting { credential_id: credential_id.to_owned(), agent, on_behalf_of, scope })),
             ..User::default()
         }))
     }
 
-    pub async fn create_run_credential(
-        &self,
-        a: CreateRunCredentialArgs,
-    ) -> Result<CreatedAccessToken> {
+    pub async fn create_run_credential(&self, a: CreateRunCredentialArgs) -> Result<CreatedAccessToken> {
         if !issued_for(a.kind, a.usage) {
-            return Err(worker::Error::RustError(format!(
-                "no run credential is made for {} runs' {}",
-                a.kind.as_str(),
-                a.usage.as_str()
-            )));
+            return Err(worker::Error::RustError(format!("no run credential is made for {} runs' {}", a.kind.as_str(), a.usage.as_str())));
         }
         let agent = AGENT_NAME.to_owned();
         let scope = AgentScope {
             repo: a.repo.clone(),
-            operations: operations_for(a.kind, a.usage)
-                .into_iter()
-                .map(str::to_owned)
-                .collect(),
+            operations: operations_for(a.kind, a.usage).into_iter().map(str::to_owned).collect(),
             run: Some(RunBinding {
                 kind: a.kind,
                 usage: a.usage,
@@ -153,12 +123,7 @@ impl Identity {
         // as a workspace's own token would.
         let on_behalf_of = if a.on_behalf_of.kind == PrincipalKind::System {
             match self.workspace_id_of(&a.repo.namespace).await? {
-                Some(id) => User {
-                    id,
-                    username: a.repo.namespace.to_lowercase(),
-                    kind: PrincipalKind::Workspace,
-                    ..User::default()
-                },
+                Some(id) => User { id, username: a.repo.namespace.to_lowercase(), kind: PrincipalKind::Workspace, ..User::default() },
                 None => return Err(worker::Error::RustError(format!("no workspace {}", a.repo.namespace))),
             }
         } else {
@@ -174,10 +139,7 @@ impl Identity {
                     a.repo.name,
                     a.number.map(|n| format!("#{n}")).unwrap_or_default()
                 ),
-                ttl_seconds: Some(
-                    a.ttl_seconds
-                        .clamp(MIN_RUN_TTL_SECONDS, max_ttl(a.kind)),
-                ),
+                ttl_seconds: Some(a.ttl_seconds.clamp(MIN_RUN_TTL_SECONDS, max_ttl(a.kind))),
                 // A run credential's scope is its run's; see agent_scope.
                 scopes: None,
                 listed: false,
@@ -186,10 +148,7 @@ impl Identity {
             .await?;
         self.db
             .prepare("UPDATE access_tokens SET agent_scope = ? WHERE id = ?")
-            .bind(&[
-                serde_json::to_string(&scope)?.into(),
-                created.info.id.as_str().into(),
-            ])?
+            .bind(&[serde_json::to_string(&scope)?.into(), created.info.id.as_str().into()])?
             .run()
             .await?;
         Ok(created)
@@ -198,12 +157,7 @@ impl Identity {
     /// Ties a sandbox's credentials to the run it recorded. A token
     /// already bound keeps its run.
     pub async fn bind_run_credentials(&self, a: BindRunCredentialsArgs) -> Result<bool> {
-        let hashes: Vec<&String> = a
-            .token_hashes
-            .iter()
-            .filter(|hash| is_hash(hash))
-            .take(MAX_HASHES)
-            .collect();
+        let hashes: Vec<&String> = a.token_hashes.iter().filter(|hash| is_hash(hash)).take(MAX_HASHES).collect();
         if hashes.is_empty() || a.run_id.trim().is_empty() {
             return Ok(false);
         }
@@ -226,19 +180,11 @@ impl Identity {
     /// Ends a sandbox's credentials: they stop working at once. Only run
     /// credentials are touched.
     pub async fn revoke_run_credentials(&self, a: RevokeRunCredentialsArgs) -> Result<bool> {
-        let hashes: Vec<&String> = a
-            .token_hashes
-            .iter()
-            .filter(|hash| is_hash(hash))
-            .take(MAX_HASHES)
-            .collect();
+        let hashes: Vec<&String> = a.token_hashes.iter().filter(|hash| is_hash(hash)).take(MAX_HASHES).collect();
         let mut conditions = Vec::new();
         let mut values: Vec<JsValue> = Vec::new();
         if !hashes.is_empty() {
-            conditions.push(format!(
-                "token_hash IN ({})",
-                vec!["?"; hashes.len()].join(", ")
-            ));
+            conditions.push(format!("token_hash IN ({})", vec!["?"; hashes.len()].join(", ")));
             values.extend(hashes.iter().map(|hash| JsValue::from(hash.as_str())));
         }
         if let Some(run_id) = a.run_id.as_deref().filter(|id| !id.trim().is_empty()) {
@@ -268,11 +214,8 @@ mod tests {
 
     #[test]
     fn credentials_are_made_only_for_sandbox_work_that_is_not_an_agents() {
-        let issued: Vec<&str> = RunCredentialKind::ALL
-            .iter()
-            .filter(|kind| issued_for(**kind, CredentialUse::Runner))
-            .map(|kind| kind.as_str())
-            .collect();
+        let issued: Vec<&str> =
+            RunCredentialKind::ALL.iter().filter(|kind| issued_for(**kind, CredentialUse::Runner)).map(|kind| kind.as_str()).collect();
         assert_eq!(issued, ["checks", "queue", "mergecheck", "deploy", "bump", "session"]);
         // A retired hosted agent's tools token is never made.
         assert!(RunCredentialKind::ALL.iter().all(|kind| !issued_for(*kind, CredentialUse::Tools)));

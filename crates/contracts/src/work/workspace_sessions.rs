@@ -15,7 +15,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{Harness, Pull, PullStatus, QueueView, Session, SessionDetail, SessionState, SESSION_IDLE_MS, SESSION_TIMEOUT_MS};
+use super::{Harness, Pull, PullStatus, QueueView, SESSION_IDLE_MS, SESSION_TIMEOUT_MS, Session, SessionDetail, SessionState};
 use crate::Viewer;
 
 /// What kind of session one in a workspace's list is.
@@ -91,11 +91,7 @@ impl SessionsShown {
 /// timeout reads as ended, as the next sweep of its repository will make
 /// it, so a list across a workspace never shows one as live.
 pub fn settled_state(state: SessionState, last_seen_ms: u64, now_ms: u64) -> SessionState {
-    if state != SessionState::Ended && now_ms.saturating_sub(last_seen_ms) >= SESSION_TIMEOUT_MS {
-        SessionState::Ended
-    } else {
-        state
-    }
+    if state != SessionState::Ended && now_ms.saturating_sub(last_seen_ms) >= SESSION_TIMEOUT_MS { SessionState::Ended } else { state }
 }
 
 /// The state of something heard from at `last_ms` with no state of its own

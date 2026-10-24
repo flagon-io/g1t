@@ -43,33 +43,17 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 impl Error {
     pub fn failed(message: impl Into<String>) -> Error {
-        Error {
-            kind: Kind::Failed,
-            message: message.into(),
-            silent: false,
-        }
+        Error { kind: Kind::Failed, message: message.into(), silent: false }
     }
     pub fn usage(message: impl Into<String>) -> Error {
-        Error {
-            kind: Kind::Usage,
-            message: message.into(),
-            silent: false,
-        }
+        Error { kind: Kind::Usage, message: message.into(), silent: false }
     }
     pub fn auth(message: impl Into<String>) -> Error {
-        Error {
-            kind: Kind::Auth,
-            message: message.into(),
-            silent: false,
-        }
+        Error { kind: Kind::Auth, message: message.into(), silent: false }
     }
     /// Exit with `kind`'s code without another line: the output said why.
     pub fn exit(kind: Kind) -> Error {
-        Error {
-            kind,
-            message: String::new(),
-            silent: true,
-        }
+        Error { kind, message: String::new(), silent: true }
     }
 }
 

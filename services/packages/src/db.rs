@@ -166,18 +166,48 @@ mod newest_tests {
 
     #[test]
     fn the_latest_is_the_highest_stable_version_not_the_last_published() {
-        assert_eq!(newest_version("1.0.0
+        assert_eq!(
+            newest_version(
+                "1.0.0
 3.0.2
 2.0.0
-3.0.0").as_deref(), Some("3.0.2"));
-        assert_eq!(newest_version("v1.10.0
-v1.9.3").as_deref(), Some("v1.10.0"));
-        assert_eq!(newest_version("4.0.0-beta.1
-3.0.2").as_deref(), Some("3.0.2"));
-        assert_eq!(newest_version("4.0.0-beta.1
-4.0.0-alpha").as_deref(), Some("4.0.0-beta.1"));
-        assert_eq!(newest_version("dev-main
-nightly").as_deref(), Some("dev-main"));
+3.0.0"
+            )
+            .as_deref(),
+            Some("3.0.2")
+        );
+        assert_eq!(
+            newest_version(
+                "v1.10.0
+v1.9.3"
+            )
+            .as_deref(),
+            Some("v1.10.0")
+        );
+        assert_eq!(
+            newest_version(
+                "4.0.0-beta.1
+3.0.2"
+            )
+            .as_deref(),
+            Some("3.0.2")
+        );
+        assert_eq!(
+            newest_version(
+                "4.0.0-beta.1
+4.0.0-alpha"
+            )
+            .as_deref(),
+            Some("4.0.0-beta.1")
+        );
+        assert_eq!(
+            newest_version(
+                "dev-main
+nightly"
+            )
+            .as_deref(),
+            Some("dev-main")
+        );
         assert_eq!(newest_version(""), None);
     }
 }
@@ -328,8 +358,7 @@ const PACKAGE_COLUMNS: &str = "id, workspace, ecosystem, name, repo_id, repo_nam
      downloads, workspace_deleted_at, inherit_access, deleted_at, deleted_by";
 /// Workspaces that are deleted, waiting to be purged or restored.
 const DELETED_WORKSPACES: &str = "SELECT workspace FROM packages WHERE workspace_deleted_at IS NOT NULL";
-const VERSION_COLUMNS: &str =
-    "id, package_id, version, digest, size, metadata, subject, published_by, published_at, deprecated, yanked, downloads, deleted_at, deleted_by";
+const VERSION_COLUMNS: &str = "id, package_id, version, digest, size, metadata, subject, published_by, published_at, deprecated, yanked, downloads, deleted_at, deleted_by";
 /// A version that is not deleted: what every registry and listing sees.
 const LIVE: &str = "deleted_at IS NULL";
 
@@ -409,9 +438,7 @@ impl Db {
     }
 
     pub async fn set_yanked(&self, version_id: &str, yanked: bool) -> Result<()> {
-        self.prepare("UPDATE versions SET yanked = ? WHERE id = ?", &[num(u64::from(yanked)), text(version_id)])?
-            .run()
-            .await?;
+        self.prepare("UPDATE versions SET yanked = ? WHERE id = ?", &[num(u64::from(yanked)), text(version_id)])?.run().await?;
         Ok(())
     }
 
@@ -576,9 +603,7 @@ impl Db {
     }
 
     pub async fn blob(&self, digest: &Digest) -> Result<Option<BlobRow>> {
-        self.prepare("SELECT digest, size, media_type, object_key FROM blobs WHERE digest = ?", &[text(digest.as_str())])?
-            .first(None)
-            .await
+        self.prepare("SELECT digest, size, media_type, object_key FROM blobs WHERE digest = ?", &[text(digest.as_str())])?.first(None).await
     }
 
     /// The blob, if this package may serve it.
@@ -594,7 +619,15 @@ impl Db {
 
     /// Records a stored blob, or where it is now, and lets the package
     /// serve it. Either way the blob is marked as just used.
-    pub async fn keep_blob(&self, package_id: &str, digest: &Digest, size: u64, media_type: Option<&str>, key: &str, now_ms: u64) -> Result<()> {
+    pub async fn keep_blob(
+        &self,
+        package_id: &str,
+        digest: &Digest,
+        size: u64,
+        media_type: Option<&str>,
+        key: &str,
+        now_ms: u64,
+    ) -> Result<()> {
         let now = rfc3339(now_ms);
         self.db
             .batch(vec![
@@ -764,7 +797,9 @@ impl Db {
 
     pub async fn versions(&self, package_id: &str, limit: u32) -> Result<Vec<VersionRow>> {
         self.prepare(
-            &format!("SELECT {VERSION_COLUMNS} FROM versions WHERE package_id = ? AND {LIVE} ORDER BY published_at DESC, id DESC LIMIT {limit}"),
+            &format!(
+                "SELECT {VERSION_COLUMNS} FROM versions WHERE package_id = ? AND {LIVE} ORDER BY published_at DESC, id DESC LIMIT {limit}"
+            ),
             &[text(package_id)],
         )?
         .all()
@@ -878,12 +913,9 @@ impl Db {
     }
 
     pub async fn rename_package(&self, package_id: &str, name: &str, now_ms: u64) -> Result<()> {
-        self.prepare(
-            "UPDATE packages SET name = ?, updated_at = ? WHERE id = ?",
-            &[text(name), text(&rfc3339(now_ms)), text(package_id)],
-        )?
-        .run()
-        .await?;
+        self.prepare("UPDATE packages SET name = ?, updated_at = ? WHERE id = ?", &[text(name), text(&rfc3339(now_ms)), text(package_id)])?
+            .run()
+            .await?;
         Ok(())
     }
 
@@ -946,7 +978,10 @@ impl Db {
                      SELECT id, 'dist', ?, ?, 'application/zip' FROM versions WHERE package_id = ? AND digest = ?",
                     &[text(digest.as_str()), num(size), text(package_id), text(commit)],
                 )?,
-                self.prepare("UPDATE versions SET size = ? WHERE package_id = ? AND digest = ?", &[num(size), at[0].clone(), at[1].clone()])?,
+                self.prepare(
+                    "UPDATE versions SET size = ? WHERE package_id = ? AND digest = ?",
+                    &[num(size), at[0].clone(), at[1].clone()],
+                )?,
             ])
             .await?;
         Ok(())
@@ -960,10 +995,8 @@ impl Db {
             after: Option<String>,
             finished_at: Option<String>,
         }
-        let row: Option<Row> = self
-            .prepare("SELECT after, finished_at FROM composer_backfill WHERE key = 'repos'", &[])?
-            .first(None)
-            .await?;
+        let row: Option<Row> =
+            self.prepare("SELECT after, finished_at FROM composer_backfill WHERE key = 'repos'", &[])?.first(None).await?;
         Ok(row.map_or((None, false), |row| (row.after, row.finished_at.is_some())))
     }
 
@@ -1001,9 +1034,7 @@ impl Db {
     }
 
     pub async fn set_deprecated(&self, version_id: &str, message: Option<&str>) -> Result<()> {
-        self.prepare("UPDATE versions SET deprecated = ? WHERE id = ?", &[opt(message), text(version_id)])?
-            .run()
-            .await?;
+        self.prepare("UPDATE versions SET deprecated = ? WHERE id = ?", &[opt(message), text(version_id)])?.run().await?;
         Ok(())
     }
 
@@ -1023,24 +1054,17 @@ impl Db {
         struct Readme {
             readme_digest: Option<String>,
         }
-        let row: Option<Readme> = self
-            .prepare("SELECT readme_digest FROM packages WHERE id = ?", &[text(package_id)])?
-            .first(None)
-            .await?;
+        let row: Option<Readme> = self.prepare("SELECT readme_digest FROM packages WHERE id = ?", &[text(package_id)])?.first(None).await?;
         Ok(row.and_then(|r| r.readme_digest))
     }
 
     pub async fn touch_package(&self, package_id: &str, now_ms: u64) -> Result<()> {
-        self.prepare("UPDATE packages SET updated_at = ? WHERE id = ?", &[text(&rfc3339(now_ms)), text(package_id)])?
-            .run()
-            .await?;
+        self.prepare("UPDATE packages SET updated_at = ? WHERE id = ?", &[text(&rfc3339(now_ms)), text(package_id)])?.run().await?;
         Ok(())
     }
 
     pub async fn delete_tag(&self, package_id: &str, tag: &str) -> Result<()> {
-        self.prepare("DELETE FROM tags WHERE package_id = ? AND tag = ?", &[text(package_id), text(tag)])?
-            .run()
-            .await?;
+        self.prepare("DELETE FROM tags WHERE package_id = ? AND tag = ?", &[text(package_id), text(tag)])?.run().await?;
         Ok(())
     }
 
@@ -1117,7 +1141,10 @@ impl Db {
     /// Whether the workspace is deleted, as its packages say.
     pub async fn workspace_hidden(&self, workspace: &str) -> Result<bool> {
         let row: Option<serde_json::Value> = self
-            .prepare("SELECT 1 AS hidden FROM packages WHERE workspace = ? AND workspace_deleted_at IS NOT NULL LIMIT 1", &[text(workspace)])?
+            .prepare(
+                "SELECT 1 AS hidden FROM packages WHERE workspace = ? AND workspace_deleted_at IS NOT NULL LIMIT 1",
+                &[text(workspace)],
+            )?
             .first(None)
             .await?;
         Ok(row.is_some())
@@ -1260,9 +1287,7 @@ impl Db {
     }
 
     pub async fn checksums(&self, digest: &Digest) -> Result<Option<Checksums>> {
-        self.prepare("SELECT md5, sha1, sha512 FROM checksums WHERE digest = ?", &[text(digest.as_str())])?
-            .first(None)
-            .await
+        self.prepare("SELECT md5, sha1, sha512 FROM checksums WHERE digest = ?", &[text(digest.as_str())])?.first(None).await
     }
 
     /// Every version of a workspace's packages of an ecosystem, oldest
@@ -1296,9 +1321,7 @@ impl Db {
     }
 
     pub async fn package_by_id(&self, package_id: &str) -> Result<Option<PackageRow>> {
-        self.prepare(&format!("SELECT {PACKAGE_COLUMNS} FROM packages WHERE id = ?"), &[text(package_id)])?
-            .first(None)
-            .await
+        self.prepare(&format!("SELECT {PACKAGE_COLUMNS} FROM packages WHERE id = ?"), &[text(package_id)])?.first(None).await
     }
 
     /// The files a workspace's packages of an ecosystem keep under `name`,
@@ -1353,11 +1376,8 @@ impl Db {
         struct Ws {
             workspace: String,
         }
-        let rows: Vec<Ws> = self
-            .prepare("SELECT DISTINCT workspace FROM packages WHERE repo_id = ?", &[text(repo_id)])?
-            .all()
-            .await?
-            .results()?;
+        let rows: Vec<Ws> =
+            self.prepare("SELECT DISTINCT workspace FROM packages WHERE repo_id = ?", &[text(repo_id)])?.all().await?.results()?;
         Ok(rows.into_iter().map(|row| row.workspace).collect())
     }
 
@@ -1374,10 +1394,8 @@ impl Db {
     /// Whether the package has ever had a version that is still kept,
     /// deleted ones included.
     pub async fn has_any_version(&self, package_id: &str) -> Result<bool> {
-        let row: Option<serde_json::Value> = self
-            .prepare("SELECT 1 AS found FROM versions WHERE package_id = ? LIMIT 1", &[text(package_id)])?
-            .first(None)
-            .await?;
+        let row: Option<serde_json::Value> =
+            self.prepare("SELECT 1 AS found FROM versions WHERE package_id = ? LIMIT 1", &[text(package_id)])?.first(None).await?;
         Ok(row.is_some())
     }
 
@@ -1461,7 +1479,9 @@ impl Db {
     /// Packages deleted before `before`, for the purge.
     pub async fn expired_packages(&self, before: &str, limit: u32) -> Result<Vec<PackageRow>> {
         self.prepare(
-            &format!("SELECT {PACKAGE_COLUMNS} FROM packages WHERE deleted_at IS NOT NULL AND deleted_at < ? ORDER BY deleted_at LIMIT {limit}"),
+            &format!(
+                "SELECT {PACKAGE_COLUMNS} FROM packages WHERE deleted_at IS NOT NULL AND deleted_at < ? ORDER BY deleted_at LIMIT {limit}"
+            ),
             &[text(before)],
         )?
         .all()
@@ -1472,7 +1492,9 @@ impl Db {
     /// Versions deleted before `before`, for the purge.
     pub async fn expired_versions(&self, before: &str, limit: u32) -> Result<Vec<VersionRow>> {
         self.prepare(
-            &format!("SELECT {VERSION_COLUMNS} FROM versions WHERE deleted_at IS NOT NULL AND deleted_at < ? ORDER BY deleted_at LIMIT {limit}"),
+            &format!(
+                "SELECT {VERSION_COLUMNS} FROM versions WHERE deleted_at IS NOT NULL AND deleted_at < ? ORDER BY deleted_at LIMIT {limit}"
+            ),
             &[text(before)],
         )?
         .all()
@@ -1569,12 +1591,9 @@ impl Db {
     }
 
     pub async fn remove_actions(&self, package_id: &str, repo_id: &str) -> Result<()> {
-        self.prepare(
-            "DELETE FROM package_actions_access WHERE package_id = ? AND repo_id = ?",
-            &[text(package_id), text(repo_id)],
-        )?
-        .run()
-        .await?;
+        self.prepare("DELETE FROM package_actions_access WHERE package_id = ? AND repo_id = ?", &[text(package_id), text(repo_id)])?
+            .run()
+            .await?;
         Ok(())
     }
 

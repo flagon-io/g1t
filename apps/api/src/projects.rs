@@ -135,9 +135,7 @@ pub async fn run(op: Op, services: &Services, viewer: &Viewer, input: &Value) ->
         let listed: Outcome<Vec<Value>> =
             g1t_kit::call(&services.projects, "list", &json!({ "workspace": workspace, "viewer": viewer })).await?;
         return Ok(match listed {
-            Outcome::Ok(projects) => {
-                Outcome::Ok(Value::Array(projects.iter().map(|project| project_json(project, site)).collect()))
-            }
+            Outcome::Ok(projects) => Outcome::Ok(Value::Array(projects.iter().map(|project| project_json(project, site)).collect())),
             Outcome::Fail(failure) => Outcome::Fail(failure),
         });
     }
@@ -145,14 +143,9 @@ pub async fn run(op: Op, services: &Services, viewer: &Viewer, input: &Value) ->
         return failed(FailureCode::Invalid, "Give the project's slug.");
     };
     match op {
-        Op::GetProject => Ok(one(
-            g1t_kit::call(
-                &services.projects,
-                "get",
-                &json!({ "workspace": workspace, "slug": project, "viewer": viewer }),
-            )
-            .await?,
-        )),
+        Op::GetProject => {
+            Ok(one(g1t_kit::call(&services.projects, "get", &json!({ "workspace": workspace, "slug": project, "viewer": viewer })).await?))
+        }
         Op::UpdateProject => {
             let Some(actor) = viewer else {
                 return failed(FailureCode::Unauthenticated, "This needs a g1t access token.");
@@ -161,14 +154,12 @@ pub async fn run(op: Op, services: &Services, viewer: &Viewer, input: &Value) ->
                 Ok(changes) => changes,
                 Err(message) => return failed(FailureCode::Invalid, &message),
             };
-            Ok(one(
-                g1t_kit::call(
-                    &services.projects,
-                    "update",
-                    &json!({ "actor": actor, "workspace": workspace, "slug": project, "changes": changes }),
-                )
-                .await?,
-            ))
+            Ok(one(g1t_kit::call(
+                &services.projects,
+                "update",
+                &json!({ "actor": actor, "workspace": workspace, "slug": project, "changes": changes }),
+            )
+            .await?))
         }
         _ => failed(FailureCode::Invalid, "Not a project operation."),
     }
@@ -245,7 +236,10 @@ mod tests {
 
     #[test]
     fn null_clears_what_it_can_and_absent_changes_nothing() {
-        let sent = changes(&json!({ "description": null, "homepage": null, "production_url": null, "docs_url": null, "name": null, "kind": null })).unwrap();
+        let sent = changes(
+            &json!({ "description": null, "homepage": null, "production_url": null, "docs_url": null, "name": null, "kind": null }),
+        )
+        .unwrap();
         assert_eq!(sent, json!({ "description": null, "homepage": null, "productionUrl": null, "docsUrl": null }));
         assert_eq!(changes(&json!({})).unwrap(), json!({}));
         assert_eq!(changes(&json!({ "links": [] })).unwrap(), json!({ "links": [] }));

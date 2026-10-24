@@ -114,11 +114,9 @@ pub(crate) fn lead_of(
 ) -> Option<TeamLead> {
     // A lead is a person. One recorded as an agent, from before, is none.
     match (kind?, id?) {
-        ("user", _) => Some(TeamLead::User {
-            username: username?.to_owned(),
-            name: name.map(str::to_owned),
-            avatar: avatar.map(str::to_owned),
-        }),
+        ("user", _) => {
+            Some(TeamLead::User { username: username?.to_owned(), name: name.map(str::to_owned), avatar: avatar.map(str::to_owned) })
+        }
         _ => None,
     }
 }
@@ -126,10 +124,7 @@ pub(crate) fn lead_of(
 /// A channel from its columns, when it has both.
 pub(crate) fn channel_of(id: Option<&str>, name: Option<&str>) -> Option<TeamChannel> {
     match (id, name) {
-        (Some(id), Some(name)) if !id.is_empty() => Some(TeamChannel {
-            id: id.to_owned(),
-            name: name.to_owned(),
-        }),
+        (Some(id), Some(name)) if !id.is_empty() => Some(TeamChannel { id: id.to_owned(), name: name.to_owned() }),
         _ => None,
     }
 }
@@ -140,10 +135,7 @@ impl TeamRow {
     }
 
     pub fn review(&self) -> ReviewAssignment {
-        self.review_assignment
-            .as_deref()
-            .and_then(|json| serde_json::from_str::<ReviewAssignment>(json).ok())
-            .unwrap_or_default()
+        self.review_assignment.as_deref().and_then(|json| serde_json::from_str::<ReviewAssignment>(json).ok()).unwrap_or_default()
     }
 
     fn viewer_role(&self) -> Option<TeamRole> {
@@ -170,10 +162,7 @@ impl TeamRow {
             description: self.description.clone(),
             visibility: self.visibility(),
             parent: match (&self.parent_slug, &self.parent_name) {
-                (Some(slug), Some(name)) => Some(TeamRef {
-                    slug: slug.clone(),
-                    name: name.clone(),
-                }),
+                (Some(slug), Some(name)) => Some(TeamRef { slug: slug.clone(), name: name.clone() }),
                 _ => None,
             },
             notify: self.notify != 0,
@@ -298,12 +287,7 @@ struct RoleRow {
 
 impl Identity {
     pub(crate) async fn team_rows(&self, filter: &str, binds: &[JsValue]) -> Result<Vec<TeamRow>> {
-        self.db
-            .prepare(format!("SELECT {TEAM_COLUMNS} {filter} LIMIT {LIST_LIMIT}"))
-            .bind(binds)?
-            .all()
-            .await?
-            .results::<TeamRow>()
+        self.db.prepare(format!("SELECT {TEAM_COLUMNS} {filter} LIMIT {LIST_LIMIT}")).bind(binds)?.all().await?.results::<TeamRow>()
     }
 
     /// One team of a workspace by slug, with the viewer's place in it.
@@ -386,10 +370,7 @@ impl Identity {
             }
         };
         Ok(Outcome::Ok(
-            rows.iter()
-                .filter(|row| may_see(row.visibility(), owner, row.viewer_role.is_some()))
-                .map(|row| row.shown(owner))
-                .collect(),
+            rows.iter().filter(|row| may_see(row.visibility(), owner, row.viewer_role.is_some())).map(|row| row.shown(owner)).collect(),
         ))
     }
 
@@ -406,14 +387,9 @@ impl Identity {
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
         let viewer_id = a.viewer.as_ref().map(|viewer| viewer.id.as_str());
-        let rows = self
-            .team_rows("WHERE t.parent_id = ?2 ORDER BY lower(t.name)", &[opt(viewer_id), row.id.as_str().into()])
-            .await?;
+        let rows = self.team_rows("WHERE t.parent_id = ?2 ORDER BY lower(t.name)", &[opt(viewer_id), row.id.as_str().into()]).await?;
         Ok(Outcome::Ok(
-            rows.iter()
-                .filter(|row| may_see(row.visibility(), owner, row.viewer_role.is_some()))
-                .map(|row| row.shown(owner))
-                .collect(),
+            rows.iter().filter(|row| may_see(row.visibility(), owner, row.viewer_role.is_some())).map(|row| row.shown(owner)).collect(),
         ))
     }
 
@@ -433,10 +409,7 @@ impl Identity {
             )
             .await?;
         Ok(Outcome::Ok(
-            rows.iter()
-                .filter(|row| may_see(row.visibility(), owner, row.viewer_role.is_some()))
-                .map(|row| row.shown(owner))
-                .collect(),
+            rows.iter().filter(|row| may_see(row.visibility(), owner, row.viewer_role.is_some())).map(|row| row.shown(owner)).collect(),
         ))
     }
 
@@ -534,11 +507,7 @@ impl Identity {
             .bind(&[slug.into()])?
             .first::<Row>(None)
             .await?;
-        Ok(row
-            .and_then(|row| row.team_creation)
-            .as_deref()
-            .and_then(TeamCreation::parse)
-            .unwrap_or_default())
+        Ok(row.and_then(|row| row.team_creation).as_deref().and_then(TeamCreation::parse).unwrap_or_default())
     }
 
     /// `set_team_creation`: who may create the workspace's teams. Owners
@@ -573,11 +542,7 @@ impl Identity {
             "workspace.team_creation_changed",
             &slug,
             a.surface.unwrap_or(Surface::Web),
-            format!(
-                "Changed who may create teams from {} to {}",
-                creation_words(previous),
-                creation_words(a.team_creation)
-            ),
+            format!("Changed who may create teams from {} to {}", creation_words(previous), creation_words(a.team_creation)),
         )
         .await;
         // Members' resolved users carry the setting, for the site's menus.
@@ -706,19 +671,14 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::NotFound, NOT_FOUND));
         };
         let surface = a.surface.unwrap_or(Surface::Web);
-        self.team_event("team.created", &a.actor, row.event(), surface, format!("Created the team {}", row.name))
-            .await;
+        self.team_event("team.created", &a.actor, row.event(), surface, format!("Created the team {}", row.name)).await;
         for (username, role) in std::iter::once((a.actor.username.clone(), TeamRole::Maintainer))
             .chain(people.into_iter().map(|(_, name)| (name, TeamRole::Member)))
         {
             self.team_event(
                 "team.member_added",
                 &a.actor,
-                TeamChanged {
-                    username: Some(username.clone()),
-                    role: Some(role),
-                    ..row.event()
-                },
+                TeamChanged { username: Some(username.clone()), role: Some(role), ..row.event() },
                 surface,
                 format!("Added {username} to {} as a {}", row.name, role.as_str()),
             )
@@ -758,10 +718,7 @@ impl Identity {
                 ));
             }
             if self.team_row(&row.workspace, &wanted, None).await?.is_some() {
-                return Ok(Outcome::fail(
-                    FailureCode::Conflict,
-                    format!("{0} already has a team called @{0}/{wanted}.", row.workspace),
-                ));
+                return Ok(Outcome::fail(FailureCode::Conflict, format!("{0} already has a team called @{0}/{wanted}.", row.workspace)));
             }
             set("slug", wanted.as_str().into(), &mut binds);
             changes.push("slug");
@@ -770,11 +727,7 @@ impl Identity {
         if let Some(description) = &a.description {
             let description: String = description.trim().chars().take(MAX_DESCRIPTION_LENGTH).collect();
             if Some(&description) != row.description.as_ref() {
-                set(
-                    "description",
-                    if description.is_empty() { JsValue::NULL } else { description.into() },
-                    &mut binds,
-                );
+                set("description", if description.is_empty() { JsValue::NULL } else { description.into() }, &mut binds);
                 changes.push("description");
             }
         }
@@ -783,7 +736,8 @@ impl Identity {
         let parent_changes = parent_slug.is_some_and(|parent| Some(parent.to_lowercase()) != row.parent_slug);
         if visibility != row.visibility() {
             if visibility == TeamVisibility::Secret {
-                let has_parent = if parent_changes { parent_slug.is_some_and(|parent| !parent.is_empty()) } else { row.parent_id.is_some() };
+                let has_parent =
+                    if parent_changes { parent_slug.is_some_and(|parent| !parent.is_empty()) } else { row.parent_id.is_some() };
                 if has_parent || row.child_teams_count > 0 {
                     return Ok(Outcome::fail(
                         FailureCode::Invalid,
@@ -797,13 +751,11 @@ impl Identity {
         if parent_changes {
             match parent_slug.filter(|parent| !parent.is_empty()) {
                 Some(parent) => {
-                    let parent = match self
-                        .parent_for(&a.actor, owner, &row.workspace, parent, Some((&row.id, visibility)), visibility)
-                        .await?
-                    {
-                        Outcome::Ok(parent) => parent,
-                        Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
-                    };
+                    let parent =
+                        match self.parent_for(&a.actor, owner, &row.workspace, parent, Some((&row.id, visibility)), visibility).await? {
+                            Outcome::Ok(parent) => parent,
+                            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+                        };
                     set("parent_id", parent.id.as_str().into(), &mut binds);
                 }
                 None => set("parent_id", JsValue::NULL, &mut binds),
@@ -861,7 +813,9 @@ impl Identity {
             if !channel_id.is_empty() && name.is_empty() {
                 return Ok(Outcome::fail(FailureCode::Invalid, "Give the channel's name with its id."));
             }
-            if Some(channel_id) != row.channel_id.as_deref() || (!channel_id.is_empty() && Some(name.as_str()) != row.channel_name.as_deref()) {
+            if Some(channel_id) != row.channel_id.as_deref()
+                || (!channel_id.is_empty() && Some(name.as_str()) != row.channel_name.as_deref())
+            {
                 if channel_id.is_empty() {
                     set("channel_id", JsValue::NULL, &mut binds);
                     set("channel_name", JsValue::NULL, &mut binds);
@@ -875,11 +829,7 @@ impl Identity {
         if !changes.is_empty() {
             set("updated_at", rfc3339(now_ms()).into(), &mut binds);
             binds.push(row.id.as_str().into());
-            self.db
-                .prepare(format!("UPDATE teams SET {} WHERE id = ?{}", sets.join(", "), binds.len()))
-                .bind(&binds)?
-                .run()
-                .await?;
+            self.db.prepare(format!("UPDATE teams SET {} WHERE id = ?{}", sets.join(", "), binds.len())).bind(&binds)?.run().await?;
         }
         let Some(updated) = self.team_row(&row.workspace, &slug, Some(&a.actor.id)).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, NOT_FOUND));
@@ -888,10 +838,7 @@ impl Identity {
             self.team_event(
                 "team.edited",
                 &a.actor,
-                TeamChanged {
-                    changes: changes.iter().map(|change| (*change).to_owned()).collect(),
-                    ..updated.event()
-                },
+                TeamChanged { changes: changes.iter().map(|change| (*change).to_owned()).collect(), ..updated.event() },
                 a.surface.unwrap_or(Surface::Web),
                 format!("Changed the team {}: {}", updated.name, changes.join(", ").replace('_', " ")),
             )
@@ -920,14 +867,8 @@ impl Identity {
                 self.db.prepare("DELETE FROM teams WHERE id = ?").bind(&[id])?,
             ])
             .await?;
-        self.team_event(
-            "team.deleted",
-            &a.actor,
-            row.event(),
-            a.surface.unwrap_or(Surface::Web),
-            format!("Deleted the team {}", row.name),
-        )
-        .await;
+        self.team_event("team.deleted", &a.actor, row.event(), a.surface.unwrap_or(Surface::Web), format!("Deleted the team {}", row.name))
+            .await;
         Ok(Outcome::Ok(true))
     }
 
@@ -977,11 +918,7 @@ impl Identity {
         }
         // Maintainers first, then by name; child teams' people after.
         members.sort_by(|a, b| {
-            a.via
-                .is_some()
-                .cmp(&b.via.is_some())
-                .then_with(|| b.role.cmp(&a.role))
-                .then_with(|| a.username.cmp(&b.username))
+            a.via.is_some().cmp(&b.via.is_some()).then_with(|| b.role.cmp(&a.role)).then_with(|| a.username.cmp(&b.username))
         });
         Ok(Outcome::Ok(members))
     }
@@ -1026,11 +963,7 @@ impl Identity {
                 self.team_event(
                     "team.member_added",
                     &a.actor,
-                    TeamChanged {
-                        username: Some(username.clone()),
-                        role: Some(a.role),
-                        ..row.event()
-                    },
+                    TeamChanged { username: Some(username.clone()), role: Some(a.role), ..row.event() },
                     surface,
                     format!("Added {username} to {} as a {}", row.name, a.role.as_str()),
                 )
@@ -1040,12 +973,7 @@ impl Identity {
                 self.team_event(
                     "team.member_role_changed",
                     &a.actor,
-                    TeamChanged {
-                        username: Some(username.clone()),
-                        role: Some(a.role),
-                        previous_role: Some(previous),
-                        ..row.event()
-                    },
+                    TeamChanged { username: Some(username.clone()), role: Some(a.role), previous_role: Some(previous), ..row.event() },
                     surface,
                     format!("Made {username} a {} of {}", a.role.as_str(), row.name),
                 )
@@ -1109,11 +1037,7 @@ impl Identity {
         self.team_event(
             "team.member_removed",
             &a.actor,
-            TeamChanged {
-                username: Some(username.clone()),
-                previous_role: Some(previous),
-                ..row.event()
-            },
+            TeamChanged { username: Some(username.clone()), previous_role: Some(previous), ..row.event() },
             a.surface.unwrap_or(Surface::Web),
             format!("Removed {username} from {}", row.name),
         )
@@ -1161,24 +1085,19 @@ impl Identity {
         // Only what the viewer can see: owners everything; others what
         // they have a role on.
         if !owner && let Some(viewer) = a.viewer.as_ref() {
-            repos.retain(|repo| {
-                granted(
-                    viewer,
-                    RepoRef {
-                        id: &repo.repo_id,
-                        namespace: &row.workspace,
-                        private: true,
-                    },
-                )
-                .is_some()
-            });
+            repos.retain(|repo| granted(viewer, RepoRef { id: &repo.repo_id, namespace: &row.workspace, private: true }).is_some());
         }
         Ok(Outcome::Ok(repos))
     }
 
     /// The repository at `path`, in the team's workspace, if `actor` may
     /// manage who has access to it.
-    async fn team_repo_target(&self, actor: &User, row: &TeamRow, path: &g1t_contracts::repos::RepoPath) -> Result<Outcome<crate::access::Target>> {
+    async fn team_repo_target(
+        &self,
+        actor: &User,
+        row: &TeamRow,
+        path: &g1t_contracts::repos::RepoPath,
+    ) -> Result<Outcome<crate::access::Target>> {
         let target = match self.manageable(actor, path).await? {
             Outcome::Ok(target) => target,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
@@ -1186,7 +1105,10 @@ impl Identity {
         if target.workspace_id != row.workspace_id {
             return Ok(Outcome::fail(
                 FailureCode::Invalid,
-                format!("A team has roles only on its own workspace's repositories, and {}/{} is not in {}.", target.repo.namespace, target.repo.name, row.workspace),
+                format!(
+                    "A team has roles only on its own workspace's repositories, and {}/{} is not in {}.",
+                    target.repo.namespace, target.repo.name, row.workspace
+                ),
             ));
         }
         Ok(Outcome::Ok(target))
@@ -1344,16 +1266,10 @@ impl Identity {
             if !may_see(visibility, owner, row.mine != 0) {
                 continue;
             }
-            let team = TeamRef {
-                slug: row.slug,
-                name: row.name,
-            };
+            let team = TeamRef { slug: row.slug, name: row.name };
             match people.last_mut().filter(|person| person.username == row.username) {
                 Some(person) => person.teams.push(team),
-                None => people.push(MemberTeams {
-                    username: row.username,
-                    teams: vec![team],
-                }),
+                None => people.push(MemberTeams { username: row.username, teams: vec![team] }),
             }
         }
         Ok(Outcome::Ok(people))
@@ -1371,10 +1287,7 @@ impl Identity {
             if !seen.insert(row.id.clone()) {
                 continue;
             }
-            let person = TeamPerson {
-                id: row.id,
-                username: row.username,
-            };
+            let person = TeamPerson { id: row.id, username: row.username };
             if row.team_id == team_id {
                 own.push(person);
             } else {
@@ -1523,20 +1436,13 @@ impl Identity {
     }
 
     async fn resolve_owner(&self, repo_id: &str, workspace: &str, workspace_id: &str, owner: &Owner) -> Result<ResolvedOwner> {
-        let answer = |check: OwnerCheck, members: Vec<String>, team: Option<String>| ResolvedOwner {
-            owner: owner.clone(),
-            check,
-            members,
-            team,
-        };
+        let answer =
+            |check: OwnerCheck, members: Vec<String>, team: Option<String>| ResolvedOwner { owner: owner.clone(), check, members, team };
         let person = |id: Option<(String, String)>| async move {
             let Some((id, username)) = id else {
                 return Ok::<_, worker::Error>(None);
             };
-            let writes = self
-                .person_role(repo_id, workspace_id, &id)
-                .await?
-                .is_some_and(|role| role >= RepoRole::Write);
+            let writes = self.person_role(repo_id, workspace_id, &id).await?.is_some_and(|role| role >= RepoRole::Write);
             Ok(Some((username, writes)))
         };
         Ok(match owner {
@@ -1633,15 +1539,7 @@ pub fn fold_team_repos(rows: impl IntoIterator<Item = (String, String, RepoRole,
                     *had_depth = depth;
                 }
             }
-            None => repos.push((
-                TeamRepo {
-                    repo,
-                    repo_id,
-                    role,
-                    inherited_from,
-                },
-                depth,
-            )),
+            None => repos.push((TeamRepo { repo, repo_id, role, inherited_from }, depth)),
         }
     }
     let mut repos: Vec<TeamRepo> = repos.into_iter().map(|(repo, _)| repo).collect();

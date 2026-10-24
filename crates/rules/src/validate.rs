@@ -2,8 +2,8 @@
 
 use g1t_contracts::access::RepoRole;
 use g1t_contracts::rules::{
-    ActorKind, AppliesTo, Level, MAX_APPROVALS, MAX_BYPASS_ACTORS, MAX_PATTERN_CHARS, MAX_PATTERNS, MAX_RULES,
-    PatternRule, Rule, RulesetSpec, Target,
+    ActorKind, AppliesTo, Level, MAX_APPROVALS, MAX_BYPASS_ACTORS, MAX_PATTERN_CHARS, MAX_PATTERNS, MAX_RULES, PatternRule, Rule,
+    RulesetSpec, Target,
 };
 use g1t_contracts::time::parse_rfc3339;
 
@@ -48,7 +48,8 @@ fn pattern(rule: &PatternRule, what: &str) -> Result<PatternRule, String> {
 }
 
 fn period(period: &g1t_contracts::rules::Period, what: &str) -> Result<(), String> {
-    let start = parse_rfc3339(&period.start).ok_or_else(|| format!("A {what} needs a start time in RFC 3339, such as 2026-12-20T00:00:00Z."))?;
+    let start =
+        parse_rfc3339(&period.start).ok_or_else(|| format!("A {what} needs a start time in RFC 3339, such as 2026-12-20T00:00:00Z."))?;
     if let Some(end) = &period.end {
         let end = parse_rfc3339(end).ok_or_else(|| format!("A {what}'s end must be an RFC 3339 time."))?;
         if end <= start {
@@ -80,7 +81,9 @@ fn rule(rule: &Rule, target: Target) -> Result<Rule, String> {
             let mut checks = Vec::new();
             for check in &params.checks {
                 let context = check.context.trim();
-                if context.is_empty() || checks.iter().any(|have: &g1t_contracts::rules::RequiredCheck| have.context.eq_ignore_ascii_case(context)) {
+                if context.is_empty()
+                    || checks.iter().any(|have: &g1t_contracts::rules::RequiredCheck| have.context.eq_ignore_ascii_case(context))
+                {
                     continue;
                 }
                 if context.chars().count() > 200 {
@@ -171,11 +174,8 @@ fn rule(rule: &Rule, target: Target) -> Result<Rule, String> {
             if !(1..=MAX_APPROVALS).contains(&params.required_approvals) {
                 return Err(format!("Review for sensitive paths asks for 1 to {MAX_APPROVALS} approvals."));
             }
-            let team = params
-                .team
-                .as_deref()
-                .map(|team| team.trim().trim_start_matches('@').to_lowercase())
-                .filter(|team| !team.is_empty());
+            let team =
+                params.team.as_deref().map(|team| team.trim().trim_start_matches('@').to_lowercase()).filter(|team| !team.is_empty());
             Rule::PathReview(g1t_contracts::rules::PathReviewRule { paths, required_approvals: params.required_approvals, team })
         }
         Rule::MergeWindow(params) => {
@@ -249,12 +249,8 @@ pub fn validate(spec: &RulesetSpec, level: Level) -> Result<RulesetSpec, String>
             let mut repository = spec.conditions.repository.clone().unwrap_or_default();
             repository.include = tidy_list(&repository.include, "repository pattern")?;
             repository.exclude = tidy_list(&repository.exclude, "repository pattern")?;
-            repository.topics = repository
-                .topics
-                .iter()
-                .map(|topic| topic.trim().to_lowercase())
-                .filter(|topic| !topic.is_empty())
-                .collect();
+            repository.topics =
+                repository.topics.iter().map(|topic| topic.trim().to_lowercase()).filter(|topic| !topic.is_empty()).collect();
             if repository.include.is_empty() {
                 return Err("Say which repositories it holds in: a name pattern, or ~ALL.".to_owned());
             }
@@ -308,15 +304,18 @@ pub fn validate(spec: &RulesetSpec, level: Level) -> Result<RulesetSpec, String>
 mod tests {
     use super::*;
     use g1t_contracts::rules::{
-        BypassActor, BypassMode, Conditions, MergeQueueRule, MergeWindowRule, NoParameters, PatternOperator,
-        Period, RefCondition, RuleEntry, StatusChecksRule, WeeklyWindow, Weekday,
+        BypassActor, BypassMode, Conditions, MergeQueueRule, MergeWindowRule, NoParameters, PatternOperator, Period, RefCondition,
+        RuleEntry, StatusChecksRule, Weekday, WeeklyWindow,
     };
 
     fn spec(rules: Vec<Rule>) -> RulesetSpec {
         RulesetSpec {
             name: " Protect main ".into(),
             conditions: Conditions {
-                ref_name: RefCondition { include: vec!["~DEFAULT_BRANCH".into(), " ".into(), "~DEFAULT_BRANCH".into()], exclude: Vec::new() },
+                ref_name: RefCondition {
+                    include: vec!["~DEFAULT_BRANCH".into(), " ".into(), "~DEFAULT_BRANCH".into()],
+                    exclude: Vec::new(),
+                },
                 repository: None,
             },
             rules: rules.into_iter().map(RuleEntry::everyone).collect(),
@@ -370,7 +369,11 @@ mod tests {
             pattern: "(".into(),
             negate: false,
         })]);
-        assert!(validate(&bad_regex, Level::Repository).unwrap_err().starts_with("The commit message rule: The regular expression is not valid"));
+        assert!(
+            validate(&bad_regex, Level::Repository)
+                .unwrap_err()
+                .starts_with("The commit message rule: The regular expression is not valid")
+        );
         let queue = spec(vec![Rule::MergeQueue(MergeQueueRule { max_entries_to_build: 50, ..MergeQueueRule::default() })]);
         assert!(validate(&queue, Level::Repository).is_err());
         let checks = spec(vec![Rule::RequiredStatusChecks(StatusChecksRule::default())]);

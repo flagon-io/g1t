@@ -445,12 +445,15 @@ pub fn run_check_suite(run: &WorkflowRun, jobs: &[Job]) -> CommitCheckSuite {
         .collect();
     let (status, conclusion) = if jobs.is_empty() {
         let completed = run.status == "completed";
-        (if completed { "completed" } else { "queued" }, run.conclusion.as_deref().filter(|_| completed).map(|c| match c {
-            "success" => "success",
-            "skipped" => "skipped",
-            "cancelled" => "cancelled",
-            _ => "failure",
-        }))
+        (
+            if completed { "completed" } else { "queued" },
+            run.conclusion.as_deref().filter(|_| completed).map(|c| match c {
+                "success" => "success",
+                "skipped" => "skipped",
+                "cancelled" => "cancelled",
+                _ => "failure",
+            }),
+        )
     } else {
         suite_state(&states)
     };
@@ -560,7 +563,8 @@ pub fn summarize(check_runs: &[CommitCheckRun], statuses: &[CommitStatus], job_c
         _ => 3,
     };
     checks.sort_by(|a, b| rank(&a.state).cmp(&rank(&b.state)).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
-    let count = |wanted: &[&str]| u32::try_from(checks.iter().filter(|check| wanted.contains(&check.state.as_str())).count()).unwrap_or(u32::MAX);
+    let count =
+        |wanted: &[&str]| u32::try_from(checks.iter().filter(|check| wanted.contains(&check.state.as_str())).count()).unwrap_or(u32::MAX);
     let failed = count(&["failure"]);
     let pending = count(&["pending"]);
     let state = if checks.is_empty() {
@@ -1038,7 +1042,13 @@ mod tests {
             status: "completed".into(),
             conclusion: Some("success".into()),
             steps: vec![],
-            annotations: vec![Annotation { level: "error".into(), message: "boom".into(), title: None, file: Some("src/a.rs".into()), line: Some(4) }],
+            annotations: vec![Annotation {
+                level: "error".into(),
+                message: "boom".into(),
+                title: None,
+                file: Some("src/a.rs".into()),
+                line: Some(4),
+            }],
             reason: None,
             started_at: Some("2026-10-07T00:00:01Z".into()),
             finished_at: Some("2026-10-07T00:00:26Z".into()),
@@ -1064,7 +1074,8 @@ mod tests {
         // from the latest attempt of each workflow only.
         let sha = "b".repeat(40);
         let skipped = Job { id: "job_3".into(), name: "Lint".into(), conclusion: Some("skipped".into()), ..job.clone() };
-        let cancelled = Job { id: "job_4".into(), name: "Build (ubuntu-latest)".into(), conclusion: Some("cancelled".into()), ..job.clone() };
+        let cancelled =
+            Job { id: "job_4".into(), name: "Build (ubuntu-latest)".into(), conclusion: Some("cancelled".into()), ..job.clone() };
         let older = WorkflowRun { id: "run_0".into(), attempt: 0, ..workflow_run.clone() };
         let other = WorkflowRun { sha: "c".repeat(40), ..workflow_run.clone() };
         let statuses = job_statuses(
@@ -1114,7 +1125,10 @@ mod tests {
     fn reporters_are_named_from_the_token() {
         let mut user = User { id: "u".into(), username: "ada".into(), ..User::default() };
         assert_eq!(CheckApp::of(&user, None).slug, "ada");
-        assert_eq!(CheckApp::of(&user, Some(" Vercel Preview ")), CheckApp { slug: "vercel-preview".into(), name: "Vercel Preview".into() });
+        assert_eq!(
+            CheckApp::of(&user, Some(" Vercel Preview ")),
+            CheckApp { slug: "vercel-preview".into(), name: "Vercel Preview".into() }
+        );
         user.token = Some(Box::new(crate::scopes::TokenAccess { name: Some("G1T_TOKEN for acme/web run 4".into()), ..Default::default() }));
         assert_eq!(CheckApp::of(&user, None), CheckApp::actions());
         user.token = Some(Box::new(crate::scopes::TokenAccess { name: Some("Buildkite".into()), ..Default::default() }));
@@ -1134,7 +1148,14 @@ mod tests {
         let annotated = CheckRunInput {
             output: Some(OutputInput {
                 title: Some("1 problem".into()),
-                annotations: vec![CheckAnnotation { path: "a.rs".into(), start_line: 3, end_line: 2, annotation_level: "warning".into(), message: "x".into(), ..Default::default() }],
+                annotations: vec![CheckAnnotation {
+                    path: "a.rs".into(),
+                    start_line: 3,
+                    end_line: 2,
+                    annotation_level: "warning".into(),
+                    message: "x".into(),
+                    ..Default::default()
+                }],
                 ..Default::default()
             }),
             ..ok.clone()

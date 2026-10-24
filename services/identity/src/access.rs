@@ -119,12 +119,7 @@ pub(crate) fn grants_from(result: &worker::D1Result) -> Result<Vec<(RepoGrant, b
         .into_iter()
         .filter_map(|row| {
             Some((
-                RepoGrant {
-                    repo_id: row.repo_id,
-                    workspace: row.workspace,
-                    role: RepoRole::parse(&row.role)?,
-                    team: row.team,
-                },
+                RepoGrant { repo_id: row.repo_id, workspace: row.workspace, role: RepoRole::parse(&row.role)?, team: row.team },
                 row.require_two_factor != 0,
             ))
         })
@@ -247,11 +242,7 @@ pub(crate) struct Named<'a> {
 
 impl<'a> From<&'a Repo> for Named<'a> {
     fn from(repo: &'a Repo) -> Self {
-        Named {
-            id: &repo.id,
-            namespace: &repo.namespace,
-            name: &repo.name,
-        }
+        Named { id: &repo.id, namespace: &repo.namespace, name: &repo.name }
     }
 }
 
@@ -305,15 +296,7 @@ impl Identity {
     /// cannot read it. Asked of repos, which owns visibility.
     pub(crate) async fn repo_for(&self, path: &RepoPath, viewer: &Viewer) -> Result<Option<Repo>> {
         let repos = self.env.service("REPOS")?;
-        let found: Outcome<Repo> = g1t_kit::call(
-            &repos,
-            "get",
-            &GetArgs {
-                path: path.clone(),
-                viewer: viewer.clone(),
-            },
-        )
-        .await?;
+        let found: Outcome<Repo> = g1t_kit::call(&repos, "get", &GetArgs { path: path.clone(), viewer: viewer.clone() }).await?;
         Ok(match found {
             // A pull request's working copy has no access of its own.
             Outcome::Ok(repo) if repo.fork_of.is_none() => Some(repo),
@@ -347,10 +330,7 @@ impl Identity {
             .all()
             .await?
             .results::<Row>()?;
-        Ok(highest_team_roles(
-            rows.into_iter()
-                .filter_map(|row| Some((row.user_id, RepoRole::parse(&row.role)?, row.via))),
-        ))
+        Ok(highest_team_roles(rows.into_iter().filter_map(|row| Some((row.user_id, RepoRole::parse(&row.role)?, row.via)))))
     }
 
     /// The teams with a role of their own on a repository.
@@ -422,10 +402,7 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::NotFound, "Repository not found."));
         };
         if !can(Some(actor), &repo, Capability::ManageAccess) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                needs(Capability::ManageAccess, &full_name(&repo)),
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, needs(Capability::ManageAccess, &full_name(&repo))));
         }
         if !actor.verified {
             return Ok(Outcome::fail(FailureCode::Forbidden, CONFIRM_FIRST));
@@ -464,12 +441,7 @@ impl Identity {
         let direct = row.direct.as_deref().and_then(RepoRole::parse);
         let base_role = workspace_role.and(base.role());
         let team = teams.get(&row.id).cloned();
-        let (role, source) = effective(
-            workspace_role == Some(Role::Owner),
-            base_role,
-            direct,
-            team.as_ref().map(|(role, _)| *role),
-        )?;
+        let (role, source) = effective(workspace_role == Some(Role::Owner), base_role, direct, team.as_ref().map(|(role, _)| *role))?;
         Some(Collaborator {
             username: row.username,
             name: row.name,
@@ -520,10 +492,7 @@ impl Identity {
         let rows = self.people_rows(&repo.id, &workspace_id).await?;
         let team_roles = self.team_roles_on(&repo.id, None).await?;
         let teams = self.teams_on(&repo.id).await?;
-        let mut people: Vec<Collaborator> = rows
-            .into_iter()
-            .filter_map(|row| Self::collaborator(row, base, &team_roles))
-            .collect();
+        let mut people: Vec<Collaborator> = rows.into_iter().filter_map(|row| Self::collaborator(row, base, &team_roles)).collect();
         people.sort_by(|a, b| b.role.cmp(&a.role).then_with(|| a.username.cmp(&b.username)));
         let invitations = if can_manage {
             let now = rfc3339(now_ms());
@@ -535,15 +504,7 @@ impl Identity {
         } else {
             Vec::new()
         };
-        Ok(Outcome::Ok(RepoAccess {
-            repo: full_name(&repo),
-            base_permission: base,
-            people,
-            teams,
-            invitations,
-            viewer_role,
-            can_manage,
-        }))
+        Ok(Outcome::Ok(RepoAccess { repo: full_name(&repo), base_permission: base, people, teams, invitations, viewer_role, can_manage }))
     }
 
     /// `can_read_repo`: see `CanReadRepoArgs`.
@@ -690,10 +651,7 @@ impl Identity {
             },
             Invitee::Email(email) => match self.user_with_verified_email(email).await? {
                 Some(id) => self
-                    .find_public_user(
-                        "SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE id = ?",
-                        &id,
-                    )
+                    .find_public_user("SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE id = ?", &id)
                     .await?
                     .map(|user| (user.id, user.username)),
                 None => None,
@@ -718,9 +676,7 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Forbidden, why));
         }
         if self.is_member_of(&workspace_id, &user_id).await? {
-            let previous = self
-                .put_grant(&repo.id, &workspace_id, &repo.name, &user_id, a.role, Some(&a.actor.id))
-                .await?;
+            let previous = self.put_grant(&repo.id, &workspace_id, &repo.name, &user_id, a.role, Some(&a.actor.id)).await?;
             self.changed(&a.actor, (&repo).into(), &username, Some(a.role), previous, surface).await;
             let Some(collaborator) = self.collaborator_on(&repo, &workspace_id, &user_id).await? else {
                 return Ok(Outcome::fail(FailureCode::NotFound, NO_SUCH_USER));
@@ -745,20 +701,18 @@ impl Identity {
             return Ok(refused);
         }
         let pending = self
-            .pending_invitations(
-                "WHERE ri.repo_id = ? AND ri.invitee_id = ?",
-                &[repo.id.as_str().into(), user_id.as_str().into()],
-            )
+            .pending_invitations("WHERE ri.repo_id = ? AND ri.invitee_id = ?", &[repo.id.as_str().into(), user_id.as_str().into()])
             .await?;
         if !pending.is_empty() {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
-                format!("{username} already has a pending invitation to {}. Change its role, or revoke it to send a new one.", full_name(&repo)),
+                format!(
+                    "{username} already has a pending invitation to {}. Change its role, or revoke it to send a new one.",
+                    full_name(&repo)
+                ),
             ));
         }
-        let id = self
-            .insert_invitation(&repo, &workspace_id, Some(&user_id), None, None, a.role, &a.actor.id, INVITATION_DAYS)
-            .await?;
+        let id = self.insert_invitation(&repo, &workspace_id, Some(&user_id), None, None, a.role, &a.actor.id, INVITATION_DAYS).await?;
         let now = rfc3339(now_ms());
         let Some(row) = self.invitation_by_id(&id).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Invitation not found."));
@@ -786,11 +740,8 @@ impl Identity {
                 worker::console_error!("repository invitation email failed: {error}");
             }
         }
-        self.audit(&a.actor, "repo.invitation_created", (&repo).into(), surface, format!("Invited {username} as {}", a.role.label()))
-            .await;
-        Ok(Outcome::Ok(Added::Invited {
-            invitation: row.shown(&now, true),
-        }))
+        self.audit(&a.actor, "repo.invitation_created", (&repo).into(), surface, format!("Invited {username} as {}", a.role.label())).await;
+        Ok(Outcome::Ok(Added::Invited { invitation: row.shown(&now, true) }))
     }
 
     /// An address without an account: an invite code that makes it and
@@ -804,12 +755,7 @@ impl Identity {
         role: RepoRole,
         surface: Surface,
     ) -> Result<Outcome<Added>> {
-        let pending = self
-            .pending_invitations(
-                "WHERE ri.repo_id = ? AND ri.email = ?",
-                &[repo.id.as_str().into(), email.into()],
-            )
-            .await?;
+        let pending = self.pending_invitations("WHERE ri.repo_id = ? AND ri.email = ?", &[repo.id.as_str().into(), email.into()]).await?;
         if !pending.is_empty() {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
@@ -821,9 +767,7 @@ impl Identity {
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
         let days = self.invite_days();
-        let id = self
-            .insert_invitation(repo, workspace_id, None, Some(email), Some(&invite.id), role, &actor.id, days)
-            .await?;
+        let id = self.insert_invitation(repo, workspace_id, None, Some(email), Some(&invite.id), role, &actor.id, days).await?;
         // The email's link proves the address, as any invite email's does.
         let proof = self.email_proof_for(&invite.id, email);
         if let Some(code) = &invite.code
@@ -851,9 +795,7 @@ impl Identity {
         .await;
         let now = rfc3339(now_ms());
         Ok(match self.invitation_by_id(&id).await? {
-            Some(row) => Outcome::Ok(Added::Invited {
-                invitation: row.shown(&now, true),
-            }),
+            Some(row) => Outcome::Ok(Added::Invited { invitation: row.shown(&now, true) }),
             None => Outcome::fail(FailureCode::NotFound, "Invitation not found."),
         })
     }
@@ -897,11 +839,7 @@ impl Identity {
     }
 
     async fn invitation_by_id(&self, id: &str) -> Result<Option<InvitationRow>> {
-        Ok(self
-            .invitations("WHERE ri.id = ?", &[id.into()])
-            .await?
-            .into_iter()
-            .next())
+        Ok(self.invitations("WHERE ri.id = ?", &[id.into()]).await?.into_iter().next())
     }
 
     fn invite_days(&self) -> u64 {
@@ -923,8 +861,7 @@ impl Identity {
         let surface = a.surface.unwrap_or(Surface::Web);
         match self.direct_role(&repo.id, &user_id).await? {
             Some(previous) => {
-                self.put_grant(&repo.id, &workspace_id, &repo.name, &user_id, a.role, Some(&a.actor.id))
-                    .await?;
+                self.put_grant(&repo.id, &workspace_id, &repo.name, &user_id, a.role, Some(&a.actor.id)).await?;
                 if previous != a.role {
                     self.changed(&a.actor, (&repo).into(), &username, Some(a.role), Some(previous), surface).await;
                 }
@@ -1018,10 +955,7 @@ impl Identity {
         let Some(repo) = self.repo_for(&a.path, &a.viewer).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Repository not found."));
         };
-        let asking_about_self = a
-            .viewer
-            .as_ref()
-            .is_some_and(|viewer| viewer.username.eq_ignore_ascii_case(a.username.trim()));
+        let asking_about_self = a.viewer.as_ref().is_some_and(|viewer| viewer.username.eq_ignore_ascii_case(a.username.trim()));
         if !asking_about_self && !can(a.viewer.as_ref(), &repo, Capability::Push) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
@@ -1036,18 +970,9 @@ impl Identity {
         };
         // Held to the workspace's policy as their requests are.
         let within = self.policy_refusal(&user_id, &repo.namespace).await?.is_none();
-        let place = if within {
-            self.collaborator_on(&repo, &workspace_id, &user_id).await?
-        } else {
-            None
-        };
+        let place = if within { self.collaborator_on(&repo, &workspace_id, &user_id).await? } else { None };
         let role = place.as_ref().map(|place| place.role);
-        Ok(Outcome::Ok(PermissionInfo {
-            username,
-            role,
-            source: place.map(|place| place.source),
-            capabilities: capabilities_of(role),
-        }))
+        Ok(Outcome::Ok(PermissionInfo { username, role, source: place.map(|place| place.source), capabilities: capabilities_of(role) }))
     }
 
     pub async fn my_repo_invitations(&self, a: MyRepoInvitationsArgs) -> Result<Vec<RepoInvitation>> {
@@ -1055,12 +980,7 @@ impl Identity {
             return Ok(Vec::new());
         }
         let now = rfc3339(now_ms());
-        Ok(self
-            .invitations_for(&a.user, None)
-            .await?
-            .iter()
-            .map(|row| row.shown(&now, false))
-            .collect())
+        Ok(self.invitations_for(&a.user, None).await?.iter().map(|row| row.shown(&now, false)).collect())
     }
 
     /// The pending invitations for `user`: sent to them, or to one of
@@ -1082,11 +1002,7 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Forbidden, "Only a person can answer an invitation."));
         }
         let now = rfc3339(now_ms());
-        let row = self
-            .invitations_for(&a.user, Some(&a.id))
-            .await?
-            .into_iter()
-            .next();
+        let row = self.invitations_for(&a.user, Some(&a.id)).await?.into_iter().next();
         let Some(row) = row else {
             return Ok(Outcome::fail(
                 FailureCode::NotFound,
@@ -1136,41 +1052,27 @@ impl Identity {
         // Never lowers a role they already have.
         let current = self.direct_role(&row.repo_id, &user.id).await?;
         let role = current.map_or(role, |current| current.max(role));
-        let previous = self
-            .put_grant(&row.repo_id, &row.workspace_id, &row.repo_name, &user.id, role, row.inviter_id.as_deref())
-            .await?;
-        let repo = Named {
-            id: &row.repo_id,
-            namespace: &row.workspace,
-            name: &row.repo_name,
-        };
+        let previous = self.put_grant(&row.repo_id, &row.workspace_id, &row.repo_name, &user.id, role, row.inviter_id.as_deref()).await?;
+        let repo = Named { id: &row.repo_id, namespace: &row.workspace, name: &row.repo_name };
         self.changed(user, repo, &user.username, Some(role), previous, Surface::Web).await;
         Ok(())
     }
 
     /// The repository an invite code was sent with, for the invite's page
     /// (invites.rs): whatever became of the invitation since.
-    pub(crate) async fn repository_of_code(
-        &self,
-        invite_id: &str,
-    ) -> Result<Option<g1t_contracts::identity::InviteRepository>> {
-        Ok(self
-            .invitations("WHERE ri.invite_id = ?", &[invite_id.into()])
-            .await?
-            .into_iter()
-            .next()
-            .map(|row| g1t_contracts::identity::InviteRepository {
+    pub(crate) async fn repository_of_code(&self, invite_id: &str) -> Result<Option<g1t_contracts::identity::InviteRepository>> {
+        Ok(self.invitations("WHERE ri.invite_id = ?", &[invite_id.into()]).await?.into_iter().next().map(|row| {
+            g1t_contracts::identity::InviteRepository {
                 name: format!("{}/{}", row.workspace, row.repo_name),
                 role: row.role().as_str().to_owned(),
-            }))
+            }
+        }))
     }
 
     /// Accepts the repository invitations sent with an invite code, once
     /// the code made `user`'s account (invites.rs).
     pub(crate) async fn accept_invitations_of_code(&self, invite_id: &str, user: &User) -> Result<()> {
-        let rows = self
-            .pending_invitations("WHERE ri.invite_id = ?", &[invite_id.into()])
-            .await?;
+        let rows = self.pending_invitations("WHERE ri.invite_id = ?", &[invite_id.into()]).await?;
         for row in rows {
             if self.policy_refusal(&user.id, &row.workspace).await?.is_some() {
                 continue;
@@ -1209,11 +1111,7 @@ impl Identity {
         if let Some(invite_id) = &row.invite_id {
             self.revoke_code(invite_id).await?;
         }
-        let who = row
-            .invitee
-            .clone()
-            .or_else(|| row.email.as_deref().map(crate::invites::mask_email))
-            .unwrap_or_default();
+        let who = row.invitee.clone().or_else(|| row.email.as_deref().map(crate::invites::mask_email)).unwrap_or_default();
         self.audit(
             &a.actor,
             "repo.invitation_revoked",
@@ -1228,10 +1126,7 @@ impl Identity {
     pub async fn set_base_permission(&self, a: SetBasePermissionArgs) -> Result<Outcome<BasePermission>> {
         let slug = a.slug.trim().to_lowercase();
         if !crate::security::is_person(&a.actor) || a.actor.role_in(&slug) != Some(Role::Owner) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only an owner can change what members get on every repository.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can change what members get on every repository."));
         }
         if !a.actor.verified {
             return Ok(Outcome::fail(FailureCode::Forbidden, CONFIRM_FIRST));
@@ -1251,11 +1146,7 @@ impl Identity {
                 "workspace.base_permission_changed",
                 &slug,
                 a.surface.unwrap_or(Surface::Web),
-                format!(
-                    "Changed the base permission from {} to {}",
-                    previous.as_str(),
-                    a.base_permission.as_str()
-                ),
+                format!("Changed the base permission from {} to {}", previous.as_str(), a.base_permission.as_str()),
             )
             .await;
             self.announce_workspace(&workspace_id, &slug, Some(&a.actor.id)).await;
@@ -1266,7 +1157,10 @@ impl Identity {
     /// `workspace_residency`: where a workspace keeps its repositories'
     /// git data, for the repos service as it places a new one, and for its
     /// settings page. Null when there is no such workspace.
-    pub async fn workspace_residency(&self, a: g1t_contracts::identity::SlugArgs) -> Result<Option<g1t_contracts::identity::DataResidency>> {
+    pub async fn workspace_residency(
+        &self,
+        a: g1t_contracts::identity::SlugArgs,
+    ) -> Result<Option<g1t_contracts::identity::DataResidency>> {
         #[derive(Deserialize)]
         struct Row {
             #[serde(default)]
@@ -1278,12 +1172,7 @@ impl Identity {
             .bind(&[a.slug.trim().to_lowercase().into()])?
             .first::<Row>(None)
             .await?;
-        Ok(row.map(|row| {
-            row.data_residency
-                .as_deref()
-                .and_then(g1t_contracts::identity::DataResidency::parse)
-                .unwrap_or_default()
-        }))
+        Ok(row.map(|row| row.data_residency.as_deref().and_then(g1t_contracts::identity::DataResidency::parse).unwrap_or_default()))
     }
 
     /// `set_workspace_residency`: owners only. Applies to repositories
@@ -1300,7 +1189,10 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can change where a workspace keeps its data."));
         }
         if !a.actor.verified {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Confirm your email address before changing where the workspace keeps its data."));
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                "Confirm your email address before changing where the workspace keeps its data.",
+            ));
         }
         let Some(previous) = self.workspace_residency(g1t_contracts::identity::SlugArgs { slug: slug.clone() }).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Workspace not found."));
@@ -1362,18 +1254,10 @@ impl Identity {
             let Some(role) = RepoRole::parse(&row.role) else {
                 continue;
             };
-            let repo = CollaboratorRepo {
-                repo: format!("{slug}/{}", row.repo_name),
-                role,
-            };
+            let repo = CollaboratorRepo { repo: format!("{slug}/{}", row.repo_name), role };
             match people.last_mut().filter(|person| person.username == row.username) {
                 Some(person) => person.repos.push(repo),
-                None => people.push(OutsideCollaborator {
-                    username: row.username,
-                    name: row.name,
-                    avatar: row.avatar,
-                    repos: vec![repo],
-                }),
+                None => people.push(OutsideCollaborator { username: row.username, name: row.name, avatar: row.avatar, repos: vec![repo] }),
             }
         }
         Ok(Outcome::Ok(people))
@@ -1382,12 +1266,8 @@ impl Identity {
     pub async fn forget_repo_access(&self, a: ForgetRepoAccessArgs) -> Result<bool> {
         self.db
             .batch(vec![
-                self.db
-                    .prepare("DELETE FROM repo_grants WHERE repo_id = ?")
-                    .bind(&[a.repo_id.as_str().into()])?,
-                self.db
-                    .prepare("DELETE FROM repo_invitations WHERE repo_id = ?")
-                    .bind(&[a.repo_id.as_str().into()])?,
+                self.db.prepare("DELETE FROM repo_grants WHERE repo_id = ?").bind(&[a.repo_id.as_str().into()])?,
+                self.db.prepare("DELETE FROM repo_invitations WHERE repo_id = ?").bind(&[a.repo_id.as_str().into()])?,
             ])
             .await?;
         Ok(true)
@@ -1396,18 +1276,12 @@ impl Identity {
     /// A repository moved or was renamed: its grants and invitations follow
     /// it (deletion.rs, `transfer_repo_scopes`).
     pub(crate) async fn move_repo_access(&self, from: &RepoPath, to: &RepoPath) -> Result<()> {
-        let (Some(from_id), Some(to_id)) = (
-            self.workspace_id_of(&from.namespace).await?,
-            self.workspace_id_of(&to.namespace).await?,
-        ) else {
+        let (Some(from_id), Some(to_id)) = (self.workspace_id_of(&from.namespace).await?, self.workspace_id_of(&to.namespace).await?)
+        else {
             return Ok(());
         };
-        let binds = [
-            JsValue::from(to_id.as_str()),
-            to.name.to_lowercase().into(),
-            from_id.as_str().into(),
-            from.name.to_lowercase().into(),
-        ];
+        let binds =
+            [JsValue::from(to_id.as_str()), to.name.to_lowercase().into(), from_id.as_str().into(), from.name.to_lowercase().into()];
         self.db
             .batch(vec![
                 self.db
@@ -1436,10 +1310,9 @@ impl Identity {
     ) {
         let (kind, message) = match (previous, role) {
             (None, Some(role)) => ("repo.collaborator_added", format!("Gave {username} the {} role", role.label())),
-            (Some(previous), Some(role)) => (
-                "repo.collaborator_role_changed",
-                format!("Changed {username}'s role from {} to {}", previous.label(), role.label()),
-            ),
+            (Some(previous), Some(role)) => {
+                ("repo.collaborator_role_changed", format!("Changed {username}'s role from {} to {}", previous.label(), role.label()))
+            }
             (Some(previous), None) => ("repo.collaborator_removed", format!("Removed {username}'s {} role", previous.label())),
             (None, None) => return,
         };
@@ -1465,13 +1338,7 @@ impl Identity {
             return;
         };
         let publish = Publish {
-            events: vec![NewEvent {
-                kind,
-                source: "identity",
-                repo_id: Some(repo_id.to_owned()),
-                actor: Some(actor.to_owned()),
-                data,
-            }],
+            events: vec![NewEvent { kind, source: "identity", repo_id: Some(repo_id.to_owned()), actor: Some(actor.to_owned()), data }],
         };
         if let Err(error) = g1t_kit::call::<_, serde_json::Value>(&events, "publish", &publish).await {
             worker::console_error!("{kind} not published: {error}");
@@ -1495,19 +1362,14 @@ impl Identity {
             actor: AuditActor::of(actor),
             action: action.to_owned(),
             surface,
-            target: AuditTarget {
-                workspace: workspace.to_lowercase(),
-                repo,
-                ..AuditTarget::default()
-            },
+            target: AuditTarget { workspace: workspace.to_lowercase(), repo, ..AuditTarget::default() },
             outcome: AuditOutcome::Allowed,
             rule: if actor.kind == PrincipalKind::User { "access" } else { "access:token" }.to_owned(),
             result: Some("ok".to_owned()),
             message: Some(message),
             request_id: new_id("req", now_ms()),
         };
-        let recorded: Result<u32> =
-            g1t_kit::call(&events, "audit_record", &RecordAuditArgs { entries: vec![entry] }).await;
+        let recorded: Result<u32> = g1t_kit::call(&events, "audit_record", &RecordAuditArgs { entries: vec![entry] }).await;
         if let Err(error) = recorded {
             worker::console_error!("{action} not recorded: {error}");
         }
@@ -1575,10 +1437,7 @@ mod tests {
 
     #[test]
     fn an_invitation_is_pending_until_answered_revoked_or_expired() {
-        let row = InvitationRow {
-            expires_at: "2026-10-12T00:00:00.000Z".into(),
-            ..InvitationRow::default()
-        };
+        let row = InvitationRow { expires_at: "2026-10-12T00:00:00.000Z".into(), ..InvitationRow::default() };
         let now = "2026-10-05T00:00:00.000Z";
         assert_eq!(invitation_status(&row, now), RepoInvitationStatus::Pending);
         assert_eq!(invitation_status(&row, "2026-10-12T00:00:00.000Z"), RepoInvitationStatus::Expired);

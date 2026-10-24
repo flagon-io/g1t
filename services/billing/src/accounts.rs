@@ -15,9 +15,9 @@
 //! Every change names who made it and is kept in `admin_actions`.
 
 use g1t_contracts::billing::{
-    ADMIN_LOG_ACCOUNTS, AccountDetail, AccountKind, AccountSummary, AdminAccountArgs, AdminAccountsArgs, AdminAction,
-    AdminAttachArgs, AdminCreateEnterpriseArgs, AdminLogArgs, AdminSetAllowancesArgs, AdminSetTermsArgs, Allowances,
-    BillingAccount, LedgerEntry, Terms, TermsKind, WorkspaceFigures,
+    ADMIN_LOG_ACCOUNTS, AccountDetail, AccountKind, AccountSummary, AdminAccountArgs, AdminAccountsArgs, AdminAction, AdminAttachArgs,
+    AdminCreateEnterpriseArgs, AdminLogArgs, AdminSetAllowancesArgs, AdminSetTermsArgs, Allowances, BillingAccount, LedgerEntry, Terms,
+    TermsKind, WorkspaceFigures,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, new_id};
@@ -37,7 +37,8 @@ const LINKED_ACCOUNT: &str = "SELECT a.* FROM account_members m JOIN billing_acc
 const LINKED_MEMBERS: &str = "SELECT o.workspace FROM account_members m JOIN account_members o ON o.account_id = m.account_id
      WHERE m.workspace = ? ORDER BY o.workspace";
 
-pub(crate) const FEE_WAIVER_SUBSCRIPTIONS: &str = "SELECT subscription_id FROM subscriptions WHERE workspace = ? AND status <> 'canceled' LIMIT 1";
+pub(crate) const FEE_WAIVER_SUBSCRIPTIONS: &str =
+    "SELECT subscription_id FROM subscriptions WHERE workspace = ? AND status <> 'canceled' LIMIT 1";
 
 #[derive(Deserialize)]
 struct AccountRow {
@@ -152,7 +153,8 @@ pub(crate) fn admin_log_id(a: &AdminLogArgs) -> std::result::Result<Option<Strin
 }
 
 /// A keyed `admin_log` line: written unless its id is already there.
-pub(crate) const ADMIN_LOG_ONCE: &str = "INSERT INTO admin_actions (id, account, action, detail, by, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+pub(crate) const ADMIN_LOG_ONCE: &str =
+    "INSERT INTO admin_actions (id, account, action, detail, by, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
     ON CONFLICT (id) DO NOTHING";
 
 /// Whether the keyed line is there as this kind of change: none means the
@@ -197,8 +199,14 @@ impl Billing {
     /// sudo cannot promise no charge while Stripe continues charging monthly.
     async fn fee_waiver_conflict(&self, account: &BillingAccount) -> Result<bool> {
         for workspace in &account.workspaces {
-            if self.db.prepare(FEE_WAIVER_SUBSCRIPTIONS)
-                .bind(&[workspace.as_str().into()])?.first::<serde_json::Value>(None).await?.is_some() {
+            if self
+                .db
+                .prepare(FEE_WAIVER_SUBSCRIPTIONS)
+                .bind(&[workspace.as_str().into()])?
+                .first::<serde_json::Value>(None)
+                .await?
+                .is_some()
+            {
                 return Ok(true);
             }
         }
@@ -206,11 +214,7 @@ impl Billing {
     }
 
     async fn account_row(&self, id: &str) -> Result<Option<AccountRow>> {
-        self.db
-            .prepare("SELECT * FROM billing_accounts WHERE id = ?")
-            .bind(&[id.into()])?
-            .first::<AccountRow>(None)
-            .await
+        self.db.prepare("SELECT * FROM billing_accounts WHERE id = ?").bind(&[id.into()])?.first::<AccountRow>(None).await
     }
 
     async fn members(&self, account: &str) -> Result<Vec<String>> {
@@ -341,14 +345,7 @@ impl Billing {
     pub(crate) async fn audit_at(&self, account: &str, action: &str, detail: &str, by: &str, at_ms: u64) -> Result<()> {
         self.db
             .prepare("INSERT INTO admin_actions (id, account, action, detail, by, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-            .bind(&[
-                new_id("adm", at_ms).into(),
-                account.into(),
-                action.into(),
-                detail.into(),
-                by.into(),
-                rfc3339(at_ms).into(),
-            ])?
+            .bind(&[new_id("adm", at_ms).into(), account.into(), action.into(), detail.into(), by.into(), rfc3339(at_ms).into()])?
             .run()
             .await?;
         Ok(())
@@ -476,21 +473,17 @@ impl Billing {
         struct Id {
             id: String,
         }
-        let enterprises = self
-            .db
-            .prepare("SELECT id FROM billing_accounts WHERE kind = 'enterprise'")
-            .all()
-            .await?
-            .results::<Id>()?;
+        let enterprises = self.db.prepare("SELECT id FROM billing_accounts WHERE kind = 'enterprise'").all().await?.results::<Id>()?;
         for Id { id } in enterprises {
             if seen.contains(&id) {
                 continue;
             }
             if let Some(account) = self.find_account(&id).await?
-                && a.query.as_deref().is_none_or(|q| account.name.to_lowercase().contains(&q.to_lowercase())) {
-                    seen.insert(id);
-                    summaries.push(self.summary(account).await?);
-                }
+                && a.query.as_deref().is_none_or(|q| account.name.to_lowercase().contains(&q.to_lowercase()))
+            {
+                seen.insert(id);
+                summaries.push(self.summary(account).await?);
+            }
         }
         summaries.sort_by_key(|x| std::cmp::Reverse(x.limit.exposure_micros));
         Ok(summaries)
@@ -554,8 +547,10 @@ impl Billing {
             return Ok(Outcome::fail(FailureCode::NotFound, "No such account."));
         };
         if a.terms.full_discount() && self.fee_waiver_conflict(&account).await? {
-            return Ok(Outcome::fail(FailureCode::Conflict,
-                "An existing Stripe subscription can still charge its monthly fee. End that subscription before granting a full discount; changing usage terms does not cancel it."));
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "An existing Stripe subscription can still charge its monthly fee. End that subscription before granting a full discount; changing usage terms does not cancel it.",
+            ));
         }
         let now = rfc3339(now_ms());
         // A workspace's own account gets a row the first time its terms change.
@@ -581,8 +576,7 @@ impl Billing {
             ])?
             .run()
             .await?;
-        self.audit(&account.id, "terms", &format!("{} → {}", describe(&account.terms), describe(&a.terms)), &a.by)
-            .await?;
+        self.audit(&account.id, "terms", &format!("{} → {}", describe(&account.terms), describe(&a.terms)), &a.by).await?;
         Ok(Outcome::Ok(self.find_account(&account.id).await?.unwrap_or(account)))
     }
 
@@ -606,8 +600,10 @@ impl Billing {
             return Ok(Outcome::fail(FailureCode::NotFound, "No such account."));
         };
         if a.allowances.plan && self.fee_waiver_conflict(&account).await? {
-            return Ok(Outcome::fail(FailureCode::Conflict,
-                "An existing Stripe subscription can still charge its monthly fee. End that subscription before granting the plan without its price."));
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "An existing Stripe subscription can still charge its monthly fee. End that subscription before granting the plan without its price.",
+            ));
         }
         let now = rfc3339(now_ms());
         let opt = |m: Option<i64>| m.map_or(JsValue::NULL, |m| (m as f64).into());
@@ -703,11 +699,7 @@ impl Billing {
                 self.audit(account, "attach", &format!("{workspace} joined, from {}", before.name), by).await?;
             }
             None => {
-                self.db
-                    .prepare("DELETE FROM account_members WHERE workspace = ?")
-                    .bind(&[workspace.into()])?
-                    .run()
-                    .await?;
+                self.db.prepare("DELETE FROM account_members WHERE workspace = ?").bind(&[workspace.into()])?.run().await?;
                 self.audit(&before.id, "detach", &format!("{workspace} left, back to paying for itself"), by).await?;
             }
         }
@@ -752,8 +744,7 @@ impl Billing {
                 portal_url,
                 login_url: configuration.login_page.and_then(|page| page.url),
                 customer_email,
-                expires_note: "The one-time link works for a short while and only once; the sign-in page does not expire."
-                    .to_owned(),
+                expires_note: "The one-time link works for a short while and only once; the sign-in page does not expire.".to_owned(),
             })
         }
         .await;
@@ -833,7 +824,8 @@ mod tests {
     #[test]
     fn a_keyed_line_has_one_id_however_often_it_is_sent() {
         let keyed = |key: serde_json::Value| {
-            let body = serde_json::json!({ "account": "storage", "action": "storage_released", "detail": "d", "by": "a@g1t.sh", "key": key });
+            let body =
+                serde_json::json!({ "account": "storage", "action": "storage_released", "detail": "d", "by": "a@g1t.sh", "key": key });
             admin_log_id(&serde_json::from_value::<AdminLogArgs>(body).unwrap())
         };
         assert_eq!(keyed(serde_json::json!("srr_01abc")), Ok(Some("admk_srr_01abc".to_owned())));
@@ -854,7 +846,8 @@ mod tests {
         let identity = serde_json::json!({ "workspace": "Acme", "action": "workspace_restored", "detail": "d", "by": "a@g1t.sh" });
         assert_eq!(log(identity).as_deref(), Ok("ws_acme"));
         // As sudo sends a storage hold's release, with the account null.
-        let sudo = serde_json::json!({ "workspace": "acme", "account": null, "action": "storage_released", "detail": "d", "by": "a@g1t.sh" });
+        let sudo =
+            serde_json::json!({ "workspace": "acme", "account": null, "action": "storage_released", "detail": "d", "by": "a@g1t.sh" });
         assert_eq!(log(sudo).as_deref(), Ok("ws_acme"));
     }
 

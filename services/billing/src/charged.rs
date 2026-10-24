@@ -17,8 +17,8 @@
 
 use g1t_contracts::billing::UsageTotals;
 use serde::Deserialize;
-use worker::wasm_bindgen::JsValue;
 use worker::Result;
+use worker::wasm_bindgen::JsValue;
 
 use crate::Billing;
 use crate::credits::with_margin;
@@ -146,12 +146,7 @@ impl Billing {
         let marks = vec!["?"; members.len().max(1)].join(", ");
         let mut args = members.to_vec();
         args.push(month.into());
-        self.db
-            .prepare(pending_sql(&marks))
-            .bind(&args)?
-            .all()
-            .await?
-            .results::<PendingLine>()
+        self.db.prepare(pending_sql(&marks)).bind(&args)?.all().await?.results::<PendingLine>()
     }
 }
 
@@ -171,7 +166,10 @@ mod tests {
         // Matched on the row's own workspace, source and month, so the
         // FROM must stay unaliased.
         assert!(sql.contains("FROM pending_usage\n"));
-        assert!(crate::storage::NET_COST.contains("b.month = pending_usage.month") && crate::storage::NET_COST.contains("b.source = pending_usage.source"));
+        assert!(
+            crate::storage::NET_COST.contains("b.month = pending_usage.month")
+                && crate::storage::NET_COST.contains("b.source = pending_usage.source")
+        );
     }
 
     const MARGIN: u32 = 20;
@@ -272,7 +270,8 @@ mod tests {
 
     #[test]
     fn a_pending_row_reads_whole_micros_and_never_less_than_nothing() {
-        let line = PendingLine { source: "storage".into(), cost_micros: Some(7_499.6), charge_micros: Some(-1.0), ..PendingLine::default() };
+        let line =
+            PendingLine { source: "storage".into(), cost_micros: Some(7_499.6), charge_micros: Some(-1.0), ..PendingLine::default() };
         assert_eq!(line.cost(), 7_500);
         assert_eq!(line.charge(), 0);
         assert_eq!(PendingLine::default().cost(), 0);

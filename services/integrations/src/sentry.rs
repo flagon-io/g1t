@@ -16,23 +16,12 @@ use crate::alerts::{Action, Signal};
 use crate::http::{self, Answer};
 
 fn site(config: &ConnectionConfig) -> String {
-    config
-        .site
-        .as_deref()
-        .unwrap_or("https://sentry.io")
-        .trim_end_matches('/')
-        .to_owned()
+    config.site.as_deref().unwrap_or("https://sentry.io").trim_end_matches('/').to_owned()
 }
 
 async fn call(config: &ConnectionConfig, token: &str, method: Method, path: &str, body: Option<Value>) -> Result<Answer> {
     let auth = format!("Bearer {token}");
-    http::send(
-        method,
-        &format!("{}/api/0{path}", site(config)),
-        &[("authorization", &auth)],
-        body.map(|body| body.to_string()),
-    )
-    .await
+    http::send(method, &format!("{}/api/0{path}", site(config)), &[("authorization", &auth)], body.map(|body| body.to_string())).await
 }
 
 fn text(value: &Value) -> Option<String> {
@@ -45,12 +34,10 @@ fn text(value: &Value) -> Option<String> {
 
 /// The address people open the issue at.
 fn web_url(config: &ConnectionConfig, issue: &Value, id: &str) -> String {
-    text(&issue["web_url"])
-        .or_else(|| text(&issue["permalink"]))
-        .unwrap_or_else(|| match &config.organization {
-            Some(org) => format!("https://{org}.sentry.io/issues/{id}/"),
-            None => format!("{}/issues/{id}/", site(config)),
-        })
+    text(&issue["web_url"]).or_else(|| text(&issue["permalink"])).unwrap_or_else(|| match &config.organization {
+        Some(org) => format!("https://{org}.sentry.io/issues/{id}/"),
+        None => format!("{}/issues/{id}/", site(config)),
+    })
 }
 
 /// What a webhook from Sentry asks for, or why it asks for nothing.
@@ -86,11 +73,7 @@ pub fn signal(resource: &str, payload: &Value, config: &ConnectionConfig) -> std
     if let Some(project) = text(&issue["project"]["slug"]).or_else(|| text(&issue["project"])) {
         body.push(format!("Project `{project}`."));
     }
-    let what = [text(&issue["metadata"]["type"]), text(&issue["metadata"]["value"])]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>()
-        .join(": ");
+    let what = [text(&issue["metadata"]["type"]), text(&issue["metadata"]["value"])].into_iter().flatten().collect::<Vec<_>>().join(": ");
     if !what.is_empty() {
         body.push(format!("> {}", http::shorten(&what, 600).replace('\n', "\n> ")));
     }
@@ -127,10 +110,8 @@ pub fn stack_trace(event: &Value) -> Option<String> {
     let mut lines = Vec::new();
     for value in values {
         let frames = value["stacktrace"]["frames"].as_array().cloned().unwrap_or_default();
-        let in_app: Vec<&Value> = frames
-            .iter()
-            .filter(|frame| frame["inApp"].as_bool().or(frame["in_app"].as_bool()) == Some(true))
-            .collect();
+        let in_app: Vec<&Value> =
+            frames.iter().filter(|frame| frame["inApp"].as_bool().or(frame["in_app"].as_bool()) == Some(true)).collect();
         let shown: Vec<&Value> = if in_app.is_empty() { frames.iter().collect() } else { in_app };
         let skip = shown.len().saturating_sub(12);
         if let Some(kind) = text(&value["type"]) {
@@ -140,10 +121,7 @@ pub fn stack_trace(event: &Value) -> Option<String> {
             let file = text(&frame["filename"]).or_else(|| text(&frame["absPath"])).unwrap_or_else(|| "?".to_owned());
             let line = frame["lineNo"].as_u64().or(frame["lineno"].as_u64());
             let function = text(&frame["function"]).unwrap_or_else(|| "?".to_owned());
-            lines.push(format!(
-                "  {file}{} in {function}",
-                line.map(|line| format!(":{line}")).unwrap_or_default()
-            ));
+            lines.push(format!("  {file}{} in {function}", line.map(|line| format!(":{line}")).unwrap_or_default()));
             // The line itself, for the frame the error was raised in.
             if at + 1 == shown.len()
                 && let Some(code) = frame["context"]
@@ -207,14 +185,8 @@ pub async fn resolve(config: &ConnectionConfig, token: &str, id: &str, note: &st
     let Some(org) = &config.organization else {
         return Ok(Err("The Sentry connection names no organization.".to_owned()));
     };
-    let answer = call(
-        config,
-        token,
-        Method::Put,
-        &format!("/organizations/{org}/issues/{id}/"),
-        Some(json!({ "status": "resolved" })),
-    )
-    .await?;
+    let answer =
+        call(config, token, Method::Put, &format!("/organizations/{org}/issues/{id}/"), Some(json!({ "status": "resolved" }))).await?;
     if !answer.ok() {
         return Ok(Err(answer.problem("Sentry")));
     }
@@ -243,10 +215,7 @@ mod tests {
     use super::*;
 
     fn config() -> ConnectionConfig {
-        ConnectionConfig {
-            organization: Some("acme".to_owned()),
-            ..ConnectionConfig::default()
-        }
+        ConnectionConfig { organization: Some("acme".to_owned()), ..ConnectionConfig::default() }
     }
 
     #[test]

@@ -23,7 +23,10 @@ pub enum Value {
     Float(f64),
     /// Text. `quoted` when it was written in quotes or as a block, which
     /// keeps `"2"` text where a plain `2` is a number.
-    Text { text: String, quoted: bool },
+    Text {
+        text: String,
+        quoted: bool,
+    },
     Seq(Vec<Node>),
     /// In the order written. Keys are text; a duplicate is an error.
     Map(Vec<(Node, Node)>),
@@ -60,10 +63,7 @@ impl Node {
     }
 
     pub fn get(&self, key: &str) -> Option<&Node> {
-        self.as_map()?
-            .iter()
-            .find(|(name, _)| matches!(&name.value, Value::Text { text, .. } if text == key))
-            .map(|(_, value)| value)
+        self.as_map()?.iter().find(|(name, _)| matches!(&name.value, Value::Text { text, .. } if text == key)).map(|(_, value)| value)
     }
 
     /// As JSON, for showing what was read.
@@ -76,9 +76,9 @@ impl Node {
             Value::Float(n) => serde_json::Number::from_f64(*n).map_or(Json::Null, Json::Number),
             Value::Text { text, .. } => Json::String(text.clone()),
             Value::Seq(items) => Json::Array(items.iter().map(Node::to_json).collect()),
-            Value::Map(entries) => Json::Object(
-                entries.iter().map(|(key, value)| (key.scalar().unwrap_or_default(), value.to_json())).collect(),
-            ),
+            Value::Map(entries) => {
+                Json::Object(entries.iter().map(|(key, value)| (key.scalar().unwrap_or_default(), value.to_json())).collect())
+            }
         }
     }
 }
@@ -101,7 +101,8 @@ fn plain(text: String) -> Value {
         _ => {}
     }
     let digits = text.strip_prefix(['-', '+']).unwrap_or(&text);
-    if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit())
+    if !digits.is_empty()
+        && digits.chars().all(|c| c.is_ascii_digit())
         && let Ok(n) = text.parse::<i64>()
     {
         return Value::Int(n);

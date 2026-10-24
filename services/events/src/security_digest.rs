@@ -52,7 +52,14 @@ pub struct Queued {
 }
 
 /// The statement that queues a summary for one person's digest.
-pub fn queue(db: &D1Database, username: &str, path: &RepoPath, summary: &SecuritySummary, event_id: &str, now_ms: u64) -> Result<D1PreparedStatement> {
+pub fn queue(
+    db: &D1Database,
+    username: &str,
+    path: &RepoPath,
+    summary: &SecuritySummary,
+    event_id: &str,
+    now_ms: u64,
+) -> Result<D1PreparedStatement> {
     db.prepare(
         "INSERT OR IGNORE INTO inbox_security_digest
            (id, username, workspace, repo_id, repo, alert_type, event_id, opened, counts, worst, title, link, created_at)
@@ -115,7 +122,13 @@ pub fn digest_text(workspace: &str, rows: &[Queued]) -> (String, String) {
     let mut groups: BTreeMap<(u8, &str), (u32, std::collections::BTreeSet<&str>)> = BTreeMap::new();
     for row in rows {
         let counts: SeverityCounts = serde_json::from_str(&row.counts).unwrap_or_default();
-        for (rank, severity, n) in [(0u8, "critical", counts.critical), (1, "high", counts.high), (2, "medium", counts.medium), (3, "low", counts.low), (4, "", counts.unknown)] {
+        for (rank, severity, n) in [
+            (0u8, "critical", counts.critical),
+            (1, "high", counts.high),
+            (2, "medium", counts.medium),
+            (3, "low", counts.low),
+            (4, "", counts.unknown),
+        ] {
             if n == 0 {
                 continue;
             }
@@ -144,7 +157,8 @@ pub fn digest_text(workspace: &str, rows: &[Queued]) -> (String, String) {
     } else {
         format!("Security digest for {workspace}: {}", parts.join(", "))
     };
-    let mut named: Vec<String> = rows.iter().rev().filter(|row| !row.title.is_empty()).take(5).map(|row| format!("{}: {}", row.repo, row.title)).collect();
+    let mut named: Vec<String> =
+        rows.iter().rev().filter(|row| !row.title.is_empty()).take(5).map(|row| format!("{}: {}", row.repo, row.title)).collect();
     if rows.len() > named.len() && !named.is_empty() {
         named.push(format!("and {} more", rows.iter().filter(|row| !row.title.is_empty()).count().saturating_sub(named.len())));
     }
@@ -236,7 +250,11 @@ pub async fn send_due(db: &D1Database, identity: &Fetcher, notify: Option<&Fetch
             db.batch(statements).await?;
             sent += 1;
             if let Some(notify) = notify {
-                inbox::tell_live(notify, vec![(username.clone(), inbox::live_notification(&event_id, &notice, &link, &now, Some(&thread)))]).await;
+                inbox::tell_live(
+                    notify,
+                    vec![(username.clone(), inbox::live_notification(&event_id, &notice, &link, &now, Some(&thread)))],
+                )
+                .await;
                 inbox::tell_inbox_count(db, notify, &username).await;
             }
             // Emailed as a security alert, to someone who can still read the
@@ -291,9 +309,24 @@ mod tests {
     #[test]
     fn the_digest_counts_what_is_new_worst_first_across_repositories() {
         let rows = vec![
-            row("acme/rocket", "vulnerability", r#"{"critical":0,"high":0,"medium":3,"low":0,"unknown":0}"#, "lodash 4.17.20 in package-lock.json: GHSA-1"),
-            row("acme/probe", "vulnerability", r#"{"critical":0,"high":0,"medium":1,"low":0,"unknown":0}"#, "ms 2.0.0 in package-lock.json: GHSA-2"),
-            row("acme/rocket", "secret_scanning", r#"{"critical":0,"high":0,"medium":0,"low":1,"unknown":0}"#, "An example key in README.md"),
+            row(
+                "acme/rocket",
+                "vulnerability",
+                r#"{"critical":0,"high":0,"medium":3,"low":0,"unknown":0}"#,
+                "lodash 4.17.20 in package-lock.json: GHSA-1",
+            ),
+            row(
+                "acme/probe",
+                "vulnerability",
+                r#"{"critical":0,"high":0,"medium":1,"low":0,"unknown":0}"#,
+                "ms 2.0.0 in package-lock.json: GHSA-2",
+            ),
+            row(
+                "acme/rocket",
+                "secret_scanning",
+                r#"{"critical":0,"high":0,"medium":0,"low":1,"unknown":0}"#,
+                "An example key in README.md",
+            ),
         ];
         let (title, body) = digest_text("acme", &rows);
         assert_eq!(title, "Security digest for acme: 4 new medium vulnerabilities in 2 repositories, 1 new low secret in 1 repository");
@@ -313,7 +346,16 @@ mod tests {
 
     #[test]
     fn a_digest_of_many_names_five_and_counts_the_rest() {
-        let rows: Vec<Queued> = (0..8).map(|n| row(&format!("acme/r{n}"), "code_scanning", r#"{"critical":0,"high":0,"medium":1,"low":0,"unknown":0}"#, &format!("Rule {n}"))).collect();
+        let rows: Vec<Queued> = (0..8)
+            .map(|n| {
+                row(
+                    &format!("acme/r{n}"),
+                    "code_scanning",
+                    r#"{"critical":0,"high":0,"medium":1,"low":0,"unknown":0}"#,
+                    &format!("Rule {n}"),
+                )
+            })
+            .collect();
         let (title, body) = digest_text("acme", &rows);
         assert_eq!(title, "Security digest for acme: 8 new medium code scanning alerts in 8 repositories");
         assert!(body.ends_with("and 3 more"));

@@ -560,9 +560,7 @@ impl Billing {
     pub(crate) async fn proposals(&self) -> Result<Vec<PriceProposal>> {
         Ok(self
             .db
-            .prepare(format!(
-                "{PROPOSAL_SQL} ORDER BY CASE WHEN p.status = 'open' THEN 0 ELSE 1 END, p.created_at DESC LIMIT 40"
-            ))
+            .prepare(format!("{PROPOSAL_SQL} ORDER BY CASE WHEN p.status = 'open' THEN 0 ELSE 1 END, p.created_at DESC LIMIT 40"))
             .all()
             .await?
             .results::<ProposalRow>()?
@@ -634,12 +632,8 @@ impl Billing {
     /// `admin_decide_proposal`: an approved fall applies now; an approved
     /// rise after the notice period.
     pub(crate) async fn admin_decide_proposal(&self, a: AdminDecideProposalArgs) -> Result<Outcome<PriceProposal>> {
-        let found = self
-            .db
-            .prepare(format!("{PROPOSAL_SQL} WHERE p.id = ?"))
-            .bind(&[a.id.as_str().into()])?
-            .first::<ProposalRow>(None)
-            .await?;
+        let found =
+            self.db.prepare(format!("{PROPOSAL_SQL} WHERE p.id = ?")).bind(&[a.id.as_str().into()])?.first::<ProposalRow>(None).await?;
         let Some(found) = found else {
             return Ok(Outcome::fail(FailureCode::NotFound, "No such proposal."));
         };
@@ -670,7 +664,8 @@ impl Billing {
         if approve {
             let settings = self.cost_settings().await?;
             let (current, markup) = self.latest_cost(&found.meter).await?.unwrap_or((found.current_cost_micros, 20));
-            let effective = effective_ms(current, found.proposed_cost_micros, now, settings.notice_days, MONTHLY.contains(&found.meter.as_str()));
+            let effective =
+                effective_ms(current, found.proposed_cost_micros, now, settings.notice_days, MONTHLY.contains(&found.meter.as_str()));
             self.schedule_version(&found.meter, found.proposed_cost_micros, markup, effective, &found.reason, &a.by, Some(&found.id))
                 .await?;
             self.apply_due_versions().await?;
@@ -682,12 +677,8 @@ impl Billing {
             &a.by,
         )
         .await?;
-        let row = self
-            .db
-            .prepare(format!("{PROPOSAL_SQL} WHERE p.id = ?"))
-            .bind(&[a.id.as_str().into()])?
-            .first::<ProposalRow>(None)
-            .await?;
+        let row =
+            self.db.prepare(format!("{PROPOSAL_SQL} WHERE p.id = ?")).bind(&[a.id.as_str().into()])?.first::<ProposalRow>(None).await?;
         Ok(match row {
             Some(row) => Outcome::Ok(row.into()),
             None => Outcome::fail(FailureCode::NotFound, "No such proposal."),
@@ -863,7 +854,11 @@ mod tests {
             created_by: "keeper".into(),
             applied_at: None,
         };
-        let versions = vec![v(1, 150_000.0, "2026-10-05T00:00:00Z"), v(2, 450_000.0, "2026-11-01T00:00:00.000Z"), v(3, 400_000.0, "2026-12-01T00:00:00.000Z")];
+        let versions = vec![
+            v(1, 150_000.0, "2026-10-05T00:00:00Z"),
+            v(2, 450_000.0, "2026-11-01T00:00:00.000Z"),
+            v(3, 400_000.0, "2026-12-01T00:00:00.000Z"),
+        ];
         // October's charges were at version 1, whatever came later.
         assert_eq!(in_force(&versions, "git_operations", "2026-10-31T23:59:59Z").unwrap().version, 1);
         assert_eq!(in_force(&versions, "git_operations", "2026-11-15T00:00:00Z").unwrap().version, 2);
@@ -874,7 +869,11 @@ mod tests {
 
     #[test]
     fn settings_read_with_defaults_and_are_checked() {
-        let s = settings_from(&[("auto_apply".into(), "false".into()), ("notice_days".into(), "30".into()), ("anomaly_factor".into(), "x".into())]);
+        let s = settings_from(&[
+            ("auto_apply".into(), "false".into()),
+            ("notice_days".into(), "30".into()),
+            ("anomaly_factor".into(), "x".into()),
+        ]);
         assert!(!s.auto_apply);
         assert_eq!(s.notice_days, 30);
         assert_eq!(s.anomaly_factor, 1.0);

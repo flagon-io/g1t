@@ -16,9 +16,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use g1t_contracts::events::{
-    ActivityDigest, ActivityDigestArgs, ActorCount, DefaultBranchPushes, DeploymentDigest, Event,
-    FolioDigest, FolioEdited, ItemDigest, MAX_DIGEST_EVENTS, MAX_DIGEST_LISTED, MAX_DIGEST_REPOS,
-    PackageDigest, PullDigest, PushDigest, PushesBy, ReleaseDigest, RepoDigest,
+    ActivityDigest, ActivityDigestArgs, ActorCount, DefaultBranchPushes, DeploymentDigest, Event, FolioDigest, FolioEdited, ItemDigest,
+    MAX_DIGEST_EVENTS, MAX_DIGEST_LISTED, MAX_DIGEST_REPOS, PackageDigest, PullDigest, PushDigest, PushesBy, ReleaseDigest, RepoDigest,
 };
 use g1t_contracts::id_floor;
 use g1t_contracts::time::parse_rfc3339;
@@ -48,18 +47,11 @@ const FOLIO_TYPES: [&str; 2] = ["folio.created", "folio.updated"];
 
 /// Reads the span's events and counts them.
 pub async fn activity_digest(db: &D1Database, a: ActivityDigestArgs) -> Result<ActivityDigest> {
-    let from =
-        parse_rfc3339(&a.from).ok_or_else(|| Error::RustError("from must be RFC 3339".into()))?;
-    let until =
-        parse_rfc3339(&a.until).ok_or_else(|| Error::RustError("until must be RFC 3339".into()))?;
+    let from = parse_rfc3339(&a.from).ok_or_else(|| Error::RustError("from must be RFC 3339".into()))?;
+    let until = parse_rfc3339(&a.until).ok_or_else(|| Error::RustError("until must be RFC 3339".into()))?;
     let (low, high) = (id_floor("evt", from), id_floor("evt", until));
     let mut complete = a.repo_ids.len() <= MAX_DIGEST_REPOS;
-    let repo_ids: Vec<&str> = a
-        .repo_ids
-        .iter()
-        .take(MAX_DIGEST_REPOS)
-        .map(String::as_str)
-        .collect();
+    let repo_ids: Vec<&str> = a.repo_ids.iter().take(MAX_DIGEST_REPOS).map(String::as_str).collect();
     // One past the cap says whether there was more.
     let limit = f64::from(MAX_DIGEST_EVENTS + 1);
     let mut statements = Vec::with_capacity(2);
@@ -100,12 +92,7 @@ pub async fn activity_digest(db: &D1Database, a: ActivityDigestArgs) -> Result<A
             ])?,
         );
     }
-    let mut results = if statements.is_empty() {
-        Vec::new()
-    } else {
-        db.batch(statements).await?
-    }
-    .into_iter();
+    let mut results = if statements.is_empty() { Vec::new() } else { db.batch(statements).await? }.into_iter();
     let mut read = |wanted: bool| -> Result<Option<Vec<Event>>> {
         if !wanted {
             return Ok(None);
@@ -113,11 +100,7 @@ pub async fn activity_digest(db: &D1Database, a: ActivityDigestArgs) -> Result<A
         let Some(result) = results.next() else {
             return Ok(Some(Vec::new()));
         };
-        let mut events: Vec<Event> = result
-            .results::<EventRow>()?
-            .into_iter()
-            .map(Event::from)
-            .collect();
+        let mut events: Vec<Event> = result.results::<EventRow>()?.into_iter().map(Event::from).collect();
         if events.len() > MAX_DIGEST_EVENTS as usize {
             events.truncate(MAX_DIGEST_EVENTS as usize);
             complete = false;
@@ -131,12 +114,7 @@ pub async fn activity_digest(db: &D1Database, a: ActivityDigestArgs) -> Result<A
 
 /// Counts `events` (a repository's, any order) and `folios` (a workspace's
 /// folio events) into the digest. Pure, so it is tested on its own.
-pub fn shape(
-    a: &ActivityDigestArgs,
-    events: &[Event],
-    folios: Option<&[Event]>,
-    complete: bool,
-) -> ActivityDigest {
+pub fn shape(a: &ActivityDigestArgs, events: &[Event], folios: Option<&[Event]>, complete: bool) -> ActivityDigest {
     let mut repos: BTreeMap<&str, Counting> = BTreeMap::new();
     for event in events {
         let Some(repo_id) = event.repo_id.as_deref() else {
@@ -147,10 +125,7 @@ pub fn shape(
     ActivityDigest {
         from: a.from.clone(),
         until: a.until.clone(),
-        repos: repos
-            .into_iter()
-            .map(|(repo_id, counting)| counting.into_digest(repo_id))
-            .collect(),
+        repos: repos.into_iter().map(|(repo_id, counting)| counting.into_digest(repo_id)).collect(),
         folios: folios.map(folio_digest),
         complete,
     }
@@ -187,11 +162,7 @@ impl Tally {
 
     /// Most first, then by actor, so the order never depends on the log's.
     fn into_counts(self) -> Vec<ActorCount> {
-        let mut counts: Vec<ActorCount> = self
-            .0
-            .into_iter()
-            .map(|(actor, count)| ActorCount { actor, count })
-            .collect();
+        let mut counts: Vec<ActorCount> = self.0.into_iter().map(|(actor, count)| ActorCount { actor, count }).collect();
         counts.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.actor.cmp(&b.actor)));
         counts
     }
@@ -215,15 +186,7 @@ impl Pushing {
     }
 
     fn into_by(self) -> Vec<PushesBy> {
-        let mut by: Vec<PushesBy> = self
-            .by
-            .into_iter()
-            .map(|(actor, (count, commits))| PushesBy {
-                actor,
-                count,
-                commits,
-            })
-            .collect();
+        let mut by: Vec<PushesBy> = self.by.into_iter().map(|(actor, (count, commits))| PushesBy { actor, count, commits }).collect();
         by.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.actor.cmp(&b.actor)));
         by
     }
@@ -255,24 +218,16 @@ impl Counting {
         let actor = member_key(event.actor.as_deref());
         match event.kind.as_str() {
             "git.push" => {
-                let Some(branch) = text(data, "ref").and_then(|r| r.strip_prefix("refs/heads/"))
-                else {
+                let Some(branch) = text(data, "ref").and_then(|r| r.strip_prefix("refs/heads/")) else {
                     return;
                 };
                 // A push whose commits were not counted brought at least one.
-                let commits = data
-                    .get("commits")
-                    .and_then(Value::as_u64)
-                    .map_or(1, |n| n.min(u64::from(u32::MAX)) as u32);
+                let commits = data.get("commits").and_then(Value::as_u64).map_or(1, |n| n.min(u64::from(u32::MAX)) as u32);
                 self.branches.insert(branch.to_owned());
                 self.pushes.add(actor.clone(), commits);
                 if data.get("defaultBranch").and_then(Value::as_bool) == Some(true) {
                     self.default_branch.add(actor, commits);
-                    if self
-                        .default_branch_last
-                        .as_deref()
-                        .is_none_or(|last| event.time.as_str() > last)
-                    {
+                    if self.default_branch_last.as_deref().is_none_or(|last| event.time.as_str() > last) {
                         self.default_branch_last = Some(event.time.clone());
                     }
                 }
@@ -290,10 +245,7 @@ impl Counting {
                     Some(id) => format!("agent:{id}"),
                     None => actor,
                 };
-                if data
-                    .get("verdict")
-                    .is_some_and(|verdict| !verdict.is_null())
-                {
+                if data.get("verdict").is_some_and(|verdict| !verdict.is_null()) {
                     self.reviews.add(by);
                 } else {
                     self.comments.add(by);
@@ -308,11 +260,7 @@ impl Counting {
             "deployment.failed" => self.deploys_failed.add(actor),
             "release.published" => self.releases.push(ReleaseDigest {
                 tag: text(data, "tagName").unwrap_or_default().to_owned(),
-                name: data
-                    .get("release")
-                    .and_then(|release| text(release, "name"))
-                    .filter(|name| !name.is_empty())
-                    .map(str::to_owned),
+                name: data.get("release").and_then(|release| text(release, "name")).filter(|name| !name.is_empty()).map(str::to_owned),
                 actor,
                 at: event.time.clone(),
             }),
@@ -329,14 +277,9 @@ impl Counting {
 
     fn into_digest(mut self, repo_id: &str) -> RepoDigest {
         // Newest first, the most recent `MAX_DIGEST_LISTED`.
-        self.releases
-            .sort_by(|a, b| b.at.cmp(&a.at).then_with(|| a.tag.cmp(&b.tag)));
+        self.releases.sort_by(|a, b| b.at.cmp(&a.at).then_with(|| a.tag.cmp(&b.tag)));
         self.releases.truncate(MAX_DIGEST_LISTED);
-        self.packages.sort_by(|a, b| {
-            b.at.cmp(&a.at)
-                .then_with(|| a.name.cmp(&b.name))
-                .then_with(|| a.version.cmp(&b.version))
-        });
+        self.packages.sort_by(|a, b| b.at.cmp(&a.at).then_with(|| a.name.cmp(&b.name)).then_with(|| a.version.cmp(&b.version)));
         self.packages.truncate(MAX_DIGEST_LISTED);
         RepoDigest {
             repo_id: repo_id.to_owned(),
@@ -357,10 +300,7 @@ impl Counting {
                 merged: self.pulls_merged.into_counts(),
                 closed: self.pulls_closed.into_counts(),
             },
-            items: ItemDigest {
-                opened: self.items_opened.into_counts(),
-                closed: self.items_closed.into_counts(),
-            },
+            items: ItemDigest { opened: self.items_opened.into_counts(), closed: self.items_closed.into_counts() },
             reviews: self.reviews.into_counts(),
             comments: self.comments.into_counts(),
             deployments: DeploymentDigest {
@@ -388,15 +328,8 @@ fn folio_digest(events: &[Event]) -> FolioDigest {
                     continue;
                 };
                 let kind = text(data, "kind").unwrap_or("doc").to_owned();
-                let entry = edited
-                    .entry(folio_id)
-                    .or_insert_with(|| (kind, BTreeSet::new()));
-                let authors = data
-                    .get("authors")
-                    .and_then(Value::as_array)
-                    .into_iter()
-                    .flatten()
-                    .filter_map(Value::as_str);
+                let entry = edited.entry(folio_id).or_insert_with(|| (kind, BTreeSet::new()));
+                let authors = data.get("authors").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str);
                 let mut any = false;
                 for author in authors {
                     any = true;
@@ -419,11 +352,7 @@ fn folio_digest(events: &[Event]) -> FolioDigest {
         edited: edited
             .into_iter()
             .take(MAX_DIGEST_LISTED)
-            .map(|(folio_id, (kind, authors))| FolioEdited {
-                folio_id: folio_id.to_owned(),
-                kind,
-                authors: authors.into_iter().collect(),
-            })
+            .map(|(folio_id, (kind, authors))| FolioEdited { folio_id: folio_id.to_owned(), kind, authors: authors.into_iter().collect() })
             .collect(),
     }
 }
@@ -443,13 +372,7 @@ mod tests {
     }
     use serde_json::json;
 
-    fn event(
-        id: &str,
-        kind: &str,
-        repo_id: Option<&str>,
-        actor: Option<&str>,
-        data: Value,
-    ) -> Event {
+    fn event(id: &str, kind: &str, repo_id: Option<&str>, actor: Option<&str>, data: Value) -> Event {
         Event {
             id: id.to_owned(),
             kind: kind.to_owned(),
@@ -520,31 +443,13 @@ mod tests {
         assert_eq!(
             pushes.by,
             vec![
-                PushesBy {
-                    actor: "user:usr_ana".into(),
-                    count: 2,
-                    commits: 9
-                },
-                PushesBy {
-                    actor: "".into(),
-                    count: 1,
-                    commits: 3
-                },
-                PushesBy {
-                    actor: "user:usr_bo".into(),
-                    count: 1,
-                    commits: 1
-                },
+                PushesBy { actor: "user:usr_ana".into(), count: 2, commits: 9 },
+                PushesBy { actor: "".into(), count: 1, commits: 3 },
+                PushesBy { actor: "user:usr_bo".into(), count: 1, commits: 1 },
             ]
         );
-        assert_eq!(
-            (pushes.default_branch.count, pushes.default_branch.commits),
-            (3, 11)
-        );
-        assert_eq!(
-            pushes.default_branch.last_at.as_deref(),
-            Some("2026-10-09T14:00:00.000Z")
-        );
+        assert_eq!((pushes.default_branch.count, pushes.default_branch.commits), (3, 11));
+        assert_eq!(pushes.default_branch.last_at.as_deref(), Some("2026-10-09T14:00:00.000Z"));
         assert!(digest.folios.is_none());
         assert!(digest.complete);
     }
@@ -553,63 +458,15 @@ mod tests {
     fn work_is_counted_per_repository_by_who_did_it() {
         let g1t = Some("usr_g1t_agent");
         let events = vec![
-            event(
-                "evt_1",
-                "pull.opened",
-                Some("rep_1"),
-                Some("usr_ana"),
-                json!({ "number": 1 }),
-            ),
-            event(
-                "evt_2",
-                "pull.opened",
-                Some("rep_1"),
-                g1t,
-                json!({ "number": 2 }),
-            ),
-            event(
-                "evt_3",
-                "pull.merged",
-                Some("rep_1"),
-                Some("usr_ana"),
-                json!({ "number": 2 }),
-            ),
-            event(
-                "evt_4",
-                "pull.closed",
-                Some("rep_2"),
-                Some("usr_bo"),
-                json!({ "number": 3 }),
-            ),
-            event(
-                "evt_5",
-                "work_item.opened",
-                Some("rep_2"),
-                Some("usr_bo"),
-                json!({ "number": 4 }),
-            ),
-            event(
-                "evt_6",
-                "work_item.closed",
-                Some("rep_2"),
-                g1t,
-                json!({ "number": 4 }),
-            ),
+            event("evt_1", "pull.opened", Some("rep_1"), Some("usr_ana"), json!({ "number": 1 })),
+            event("evt_2", "pull.opened", Some("rep_1"), g1t, json!({ "number": 2 })),
+            event("evt_3", "pull.merged", Some("rep_1"), Some("usr_ana"), json!({ "number": 2 })),
+            event("evt_4", "pull.closed", Some("rep_2"), Some("usr_bo"), json!({ "number": 3 })),
+            event("evt_5", "work_item.opened", Some("rep_2"), Some("usr_bo"), json!({ "number": 4 })),
+            event("evt_6", "work_item.closed", Some("rep_2"), g1t, json!({ "number": 4 })),
             // A person's review is a comment with a verdict; g1t's is review.completed.
-            event(
-                "evt_7",
-                "comment.created",
-                Some("rep_1"),
-                Some("usr_bo"),
-                json!({ "number": 1, "verdict": "approve" }),
-            ),
-            event(
-                "evt_8",
-                "review.completed",
-                Some("rep_1"),
-                g1t,
-                json!({ "number": 1, "verdict": "approve" }),
-            ),
+            event("evt_7", "comment.created", Some("rep_1"), Some("usr_bo"), json!({ "number": 1, "verdict": "approve" })),
+            event("evt_8", "review.completed", Some("rep_1"), g1t, json!({ "number": 1, "verdict": "approve" })),
             // A workspace agent's comment as itself is the agent's, not the person's it acted for.
             event(
                 "evt_9",
@@ -618,34 +475,10 @@ mod tests {
                 Some("usr_ana"),
                 json!({ "number": 1, "agent": { "id": "agt_margo", "handle": "margo" } }),
             ),
-            event(
-                "evt_a",
-                "comment.created",
-                Some("rep_1"),
-                Some("usr_ana"),
-                json!({ "number": 1 }),
-            ),
-            event(
-                "evt_b",
-                "deployment.succeeded",
-                Some("rep_1"),
-                Some("usr_ana"),
-                json!({ "kind": "production" }),
-            ),
-            event(
-                "evt_c",
-                "deployment.succeeded",
-                Some("rep_1"),
-                Some("usr_ana"),
-                json!({ "kind": "preview" }),
-            ),
-            event(
-                "evt_d",
-                "deployment.failed",
-                Some("rep_1"),
-                g1t,
-                json!({ "kind": "production" }),
-            ),
+            event("evt_a", "comment.created", Some("rep_1"), Some("usr_ana"), json!({ "number": 1 })),
+            event("evt_b", "deployment.succeeded", Some("rep_1"), Some("usr_ana"), json!({ "kind": "production" })),
+            event("evt_c", "deployment.succeeded", Some("rep_1"), Some("usr_ana"), json!({ "kind": "preview" })),
+            event("evt_d", "deployment.failed", Some("rep_1"), g1t, json!({ "kind": "production" })),
             event(
                 "evt_e",
                 "release.published",
@@ -661,13 +494,7 @@ mod tests {
                 json!({ "ecosystem": "container", "name": "web", "version": "1.2.0" }),
             ),
             // Not counted.
-            event(
-                "evt_g",
-                "pull.updated",
-                Some("rep_1"),
-                Some("usr_ana"),
-                json!({ "number": 1 }),
-            ),
+            event("evt_g", "pull.updated", Some("rep_1"), Some("usr_ana"), json!({ "number": 1 })),
         ];
         let digest = shape(&args(), &events, None, false);
         assert!(!digest.complete);
@@ -676,65 +503,20 @@ mod tests {
         assert_eq!(web.repo_id, "rep_1");
         assert_eq!(
             web.pulls.opened,
-            vec![
-                ActorCount {
-                    actor: "user:usr_ana".into(),
-                    count: 1
-                },
-                ActorCount {
-                    actor: "user:usr_g1t_agent".into(),
-                    count: 1
-                }
-            ]
+            vec![ActorCount { actor: "user:usr_ana".into(), count: 1 }, ActorCount { actor: "user:usr_g1t_agent".into(), count: 1 }]
         );
-        assert_eq!(
-            web.pulls.merged,
-            vec![ActorCount {
-                actor: "user:usr_ana".into(),
-                count: 1
-            }]
-        );
+        assert_eq!(web.pulls.merged, vec![ActorCount { actor: "user:usr_ana".into(), count: 1 }]);
         assert!(web.pulls.closed.is_empty());
         assert_eq!(
             web.reviews,
-            vec![
-                ActorCount {
-                    actor: "user:usr_bo".into(),
-                    count: 1
-                },
-                ActorCount {
-                    actor: "user:usr_g1t_agent".into(),
-                    count: 1
-                }
-            ]
+            vec![ActorCount { actor: "user:usr_bo".into(), count: 1 }, ActorCount { actor: "user:usr_g1t_agent".into(), count: 1 }]
         );
         assert_eq!(
             web.comments,
-            vec![
-                ActorCount {
-                    actor: "agent:agt_margo".into(),
-                    count: 1
-                },
-                ActorCount {
-                    actor: "user:usr_ana".into(),
-                    count: 1
-                }
-            ]
+            vec![ActorCount { actor: "agent:agt_margo".into(), count: 1 }, ActorCount { actor: "user:usr_ana".into(), count: 1 }]
         );
-        assert_eq!(
-            web.deployments.succeeded,
-            vec![ActorCount {
-                actor: "user:usr_ana".into(),
-                count: 2
-            }]
-        );
-        assert_eq!(
-            web.deployments.failed,
-            vec![ActorCount {
-                actor: "user:usr_g1t_agent".into(),
-                count: 1
-            }]
-        );
+        assert_eq!(web.deployments.succeeded, vec![ActorCount { actor: "user:usr_ana".into(), count: 2 }]);
+        assert_eq!(web.deployments.failed, vec![ActorCount { actor: "user:usr_g1t_agent".into(), count: 1 }]);
         assert_eq!(web.deployments.production, 1);
         assert_eq!(
             web.releases,
@@ -748,40 +530,16 @@ mod tests {
         assert_eq!(web.packages[0].name, "web");
         assert_eq!(web.packages[0].actor, "user:usr_bo");
         let api = &digest.repos[1];
-        assert_eq!(
-            api.pulls.closed,
-            vec![ActorCount {
-                actor: "user:usr_bo".into(),
-                count: 1
-            }]
-        );
-        assert_eq!(
-            api.items.opened,
-            vec![ActorCount {
-                actor: "user:usr_bo".into(),
-                count: 1
-            }]
-        );
-        assert_eq!(
-            api.items.closed,
-            vec![ActorCount {
-                actor: "user:usr_g1t_agent".into(),
-                count: 1
-            }]
-        );
+        assert_eq!(api.pulls.closed, vec![ActorCount { actor: "user:usr_bo".into(), count: 1 }]);
+        assert_eq!(api.items.opened, vec![ActorCount { actor: "user:usr_bo".into(), count: 1 }]);
+        assert_eq!(api.items.closed, vec![ActorCount { actor: "user:usr_g1t_agent".into(), count: 1 }]);
         assert_eq!(api.pushes.count, 0);
     }
 
     #[test]
     fn folios_made_and_the_folios_whose_content_changed() {
         let folios = vec![
-            event(
-                "evt_1",
-                "folio.created",
-                None,
-                Some("usr_ana"),
-                json!({ "workspace": "acme", "folioId": "fol_1", "kind": "doc" }),
-            ),
+            event("evt_1", "folio.created", None, Some("usr_ana"), json!({ "workspace": "acme", "folioId": "fol_1", "kind": "doc" })),
             event(
                 "evt_2",
                 "folio.updated",
@@ -807,13 +565,7 @@ mod tests {
         ];
         let digest = shape(&args(), &[], Some(&folios), true);
         let folios = digest.folios.unwrap();
-        assert_eq!(
-            folios.created,
-            vec![ActorCount {
-                actor: "user:usr_ana".into(),
-                count: 1
-            }]
-        );
+        assert_eq!(folios.created, vec![ActorCount { actor: "user:usr_ana".into(), count: 1 }]);
         assert_eq!(folios.edited_count, 2);
         assert_eq!(
             folios.edited,
@@ -821,17 +573,9 @@ mod tests {
                 FolioEdited {
                     folio_id: "fol_1".into(),
                     kind: "doc".into(),
-                    authors: vec![
-                        "agent:agt_margo".into(),
-                        "user:usr_ana".into(),
-                        "user:usr_bo".into()
-                    ]
+                    authors: vec!["agent:agt_margo".into(), "user:usr_ana".into(), "user:usr_bo".into()]
                 },
-                FolioEdited {
-                    folio_id: "fol_2".into(),
-                    kind: "slides".into(),
-                    authors: vec!["user:usr_bo".into()]
-                },
+                FolioEdited { folio_id: "fol_2".into(), kind: "slides".into(), authors: vec!["user:usr_bo".into()] },
             ]
         );
         // A workspace named but quiet still answers for its artifacts.

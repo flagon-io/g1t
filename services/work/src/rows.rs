@@ -3,8 +3,8 @@
 use g1t_contracts::User;
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::work::{
-    AgentRef, AgentVerdict, AgentWork, CheckStatus, Comment, CommentKind, MilestoneRef, Pull, PullStatus, Runtime, SessionEntry, SessionEntryKind,
-    Verdict,
+    AgentRef, AgentVerdict, AgentWork, CheckStatus, Comment, CommentKind, MilestoneRef, Pull, PullStatus, Runtime, SessionEntry,
+    SessionEntryKind, Verdict,
 };
 use serde::Deserialize;
 
@@ -19,12 +19,7 @@ pub(crate) fn user(id: String, username: String) -> User {
     } else {
         g1t_contracts::PrincipalKind::User
     };
-    User {
-        id,
-        username,
-        kind,
-        ..User::default()
-    }
+    User { id, username, kind, ..User::default() }
 }
 
 /// Who asked g1t for the work, as stored beside its author: both columns,
@@ -209,16 +204,10 @@ impl From<PullRow> for Pull {
             agent: row.agent,
             runtime: row.runtime,
             status: row.status,
-            fork: row
-                .fork_namespace
-                .zip(row.fork_name)
-                .map(|(namespace, name)| RepoPath { namespace, name }),
+            fork: row.fork_namespace.zip(row.fork_name).map(|(namespace, name)| RepoPath { namespace, name }),
             fork_repo_id: row.fork_repo_id,
             branch: row.source_branch,
-            head_repo: row
-                .head_namespace
-                .zip(row.head_name)
-                .map(|(namespace, name)| RepoPath { namespace, name }),
+            head_repo: row.head_namespace.zip(row.head_name).map(|(namespace, name)| RepoPath { namespace, name }),
             head_repo_id: row.head_repo_id,
             head_commit: row.head_commit,
             merge_base: row.merge_base,
@@ -226,18 +215,10 @@ impl From<PullRow> for Pull {
             merged_at: row.merged_at,
             superseded_by: row.superseded_by,
             check_status: row.check_status,
-            files: row
-                .files
-                .as_deref()
-                .and_then(|files| serde_json::from_str(files).ok())
-                .unwrap_or_default(),
+            files: row.files.as_deref().and_then(|files| serde_json::from_str(files).ok()).unwrap_or_default(),
             assignees: serde_json::from_str(&row.assignees).unwrap_or_default(),
             reviewers: serde_json::from_str(&row.reviewers).unwrap_or_default(),
-            team_reviewers: row
-                .team_reviewers
-                .as_deref()
-                .and_then(|teams| serde_json::from_str(teams).ok())
-                .unwrap_or_default(),
+            team_reviewers: row.team_reviewers.as_deref().and_then(|teams| serde_json::from_str(teams).ok()).unwrap_or_default(),
             author: user(row.author_id, row.author_name),
             requested_by: requester(row.requested_by_id, row.requested_by_name),
             agent_work: row.agent_rule.zip(row.agent_name).map(|(rule, agent)| AgentWork {
@@ -247,18 +228,12 @@ impl From<PullRow> for Pull {
             }),
             created_at: row.created_at,
             updated_at: row.updated_at,
-            labels: row
-                .labels
-                .as_deref()
-                .and_then(|labels| serde_json::from_str(labels).ok())
-                .unwrap_or_default(),
+            labels: row.labels.as_deref().and_then(|labels| serde_json::from_str(labels).ok()).unwrap_or_default(),
             milestone: milestone_ref(row.milestone, row.milestone_title),
             base: row.base_branch,
             head_pushed_by: row.head_pushed_by,
             head_pushed_at: row.head_pushed_at,
-            merge_method: row
-                .merge_method
-                .and_then(|name| serde_json::from_value(serde_json::Value::String(name)).ok()),
+            merge_method: row.merge_method.and_then(|name| serde_json::from_value(serde_json::Value::String(name)).ok()),
             merge_commit: row.merge_commit,
             auto_merge: row.auto_merge.as_deref().and_then(|json| serde_json::from_str(json).ok()),
             closes: row.closes_numbers.as_deref().and_then(|json| serde_json::from_str(json).ok()).unwrap_or_default(),
@@ -372,15 +347,7 @@ pub struct SessionRow {
 
 impl From<SessionRow> for SessionEntry {
     fn from(row: SessionRow) -> Self {
-        SessionEntry {
-            seq: row.seq,
-            kind: row.kind,
-            text: row.text,
-            tool: row.tool,
-            commit: row.commit,
-            at: row.at,
-            withheld: false,
-        }
+        SessionEntry { seq: row.seq, kind: row.kind, text: row.text, tool: row.tool, commit: row.commit, at: row.at, withheld: false }
     }
 }
 

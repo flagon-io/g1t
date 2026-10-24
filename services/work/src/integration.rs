@@ -47,11 +47,11 @@ use serde_json::json;
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
-use crate::{Work, items};
 use crate::checks::{hash, new_token};
 use crate::decisions::NewDecision;
 use crate::queue::{BRANCH_PREFIX, Built, EntryRow};
 use crate::rows::ValueRow;
+use crate::{Work, items};
 
 /// The most extra combinations built to narrow down one failure.
 pub(crate) const PROBE_BUDGET: u32 = 3;
@@ -130,11 +130,7 @@ impl Failure {
         } else if report.error.is_some() {
             (FailureKind::Build, check("build", "error", None))
         } else {
-            let name = report
-                .results
-                .iter()
-                .find(|result| !result.passed)
-                .map_or("checks", |result| result.command.as_str());
+            let name = report.results.iter().find(|result| !result.passed).map_or("checks", |result| result.command.as_str());
             (FailureKind::Checks, check(name, "failure", None))
         };
         Failure {
@@ -188,22 +184,13 @@ impl Failure {
 }
 
 fn check(name: &str, conclusion: &str, url: Option<String>) -> FailedCheck {
-    FailedCheck {
-        name: name.to_owned(),
-        conclusion: conclusion.to_owned(),
-        url,
-    }
+    FailedCheck { name: name.to_owned(), conclusion: conclusion.to_owned(), url }
 }
 
 /// Whether every entry ahead has passed (or landed, and so left the
 /// queue). `active` is the queue's entries now, as (number, state).
 pub(crate) fn ahead_settled(ahead: &[u32], active: &[(u32, QueueState)]) -> bool {
-    ahead.iter().all(|number| {
-        active
-            .iter()
-            .find(|(n, _)| n == number)
-            .is_none_or(|(_, state)| *state == QueueState::Passed)
-    })
+    ahead.iter().all(|number| active.iter().find(|(n, _)| n == number).is_none_or(|(_, state)| *state == QueueState::Passed))
 }
 
 /// Who answers for a failed combined state, before any extra builds.
@@ -224,11 +211,7 @@ pub(crate) enum Plan {
 /// merged in first. `passed_alone`: its own checks pass on its head.
 pub(crate) fn plan(ahead: &[u32], failure: &Failure, passed_alone: bool) -> Plan {
     if ahead.is_empty() {
-        return if failure.kind == FailureKind::Checks && passed_alone {
-            Plan::BaseMoved
-        } else {
-            Plan::Blame(Vec::new())
-        };
+        return if failure.kind == FailureKind::Checks && passed_alone { Plan::BaseMoved } else { Plan::Blame(Vec::new()) };
     }
     match failure.kind {
         // The build names the entry ahead that changed the same files.
@@ -259,11 +242,7 @@ pub(crate) struct MergedRow {
 pub(crate) fn landed_since(merged: &[MergedRow], history: &[Commit], oldest: Option<&str>) -> Vec<u32> {
     merged
         .iter()
-        .filter(|pull| {
-            pull.head_commit
-                .as_deref()
-                .is_some_and(|commit| !history.iter().any(|known| known.hash == commit))
-        })
+        .filter(|pull| pull.head_commit.as_deref().is_some_and(|commit| !history.iter().any(|known| known.hash == commit)))
         .filter(|pull| match (oldest, pull.merged_at.as_deref()) {
             (Some(oldest), Some(at)) => at >= oldest,
             (Some(_), None) => false,
@@ -286,11 +265,7 @@ pub(crate) fn next_probe(suspects: &[u32], builds: u32) -> Option<Vec<u32>> {
 /// The suspects left once a build with `tested` and the entry `broke` or
 /// passed: those tested when it broke, the others when it passed.
 pub(crate) fn narrow(suspects: &[u32], tested: &[u32], broke: bool) -> Vec<u32> {
-    suspects
-        .iter()
-        .filter(|n| tested.contains(n) == broke)
-        .copied()
-        .collect()
+    suspects.iter().filter(|n| tested.contains(n) == broke).copied().collect()
 }
 
 /// The pull requests in a combination, `#11, #12 and #14`.
@@ -330,7 +305,9 @@ pub(crate) fn pull_note(ahead: &[u32], suspects: &[u32], bisected: bool, landed:
         } else {
             format!("with {} merged in ahead of it", numbers(ahead))
         };
-        return format!("observed a merge queue failure for this change: {what} {on}. No other change has been isolated as the cause. {rejoin}");
+        return format!(
+            "observed a merge queue failure for this change: {what} {on}. No other change has been isolated as the cause. {rejoin}"
+        );
     }
     let narrowed = if bisected && suspects.len() < ahead.len() {
         format!(" (narrowed down from {} by building smaller combinations)", numbers(ahead))
@@ -472,17 +449,15 @@ impl Work {
         for _ in 0..16 {
             let active = self.entries(repo_id, true).await?;
             let states: Vec<(u32, QueueState)> = active.iter().map(|row| (row.number, row.state())).collect();
-            let Some(row) = active
-                .iter()
-                .find(|row| row.held.is_some() && ahead_settled(&row.ahead(), &states))
-            else {
+            let Some(row) = active.iter().find(|row| row.held.is_some() && ahead_settled(&row.ahead(), &states)) else {
                 return Ok(());
             };
             let claimed = self
                 .db
                 .prepare(RESOLVE_HELD)
                 .bind(&[
-                    rfc3339(now_ms()).into(), row.id.as_str().into(),
+                    rfc3339(now_ms()).into(),
+                    row.id.as_str().into(),
                     row.held.as_deref().map_or(JsValue::NULL, JsValue::from),
                     row.attempt_id.as_deref().map_or(JsValue::NULL, JsValue::from),
                 ])?
@@ -549,17 +524,10 @@ impl Work {
             return Ok(Vec::new());
         };
         let viewer = Some(pull.owner().clone());
-        let repo: Outcome<Repo> = g1t_kit::call(
-            &self.repos,
-            "get_by_id",
-            &GetByIdArgs { id: row.repo_id.clone(), viewer: viewer.clone() },
-        )
-        .await?;
+        let repo: Outcome<Repo> =
+            g1t_kit::call(&self.repos, "get_by_id", &GetByIdArgs { id: row.repo_id.clone(), viewer: viewer.clone() }).await?;
         let Outcome::Ok(repo) = repo else { return Ok(Vec::new()) };
-        let path = pull.source_path(&RepoPath {
-            namespace: repo.namespace.clone(),
-            name: repo.name.clone(),
-        });
+        let path = pull.source_path(&RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() });
         let merged = async {
             self.db
                 .prepare(
@@ -584,9 +552,8 @@ impl Work {
         let (merged, history) = futures_util::future::try_join(merged, history).await?;
         let Outcome::Ok(history) = history else { return Ok(Vec::new()) };
         // A history cut short holds only what is newer than its oldest commit.
-        let oldest = (history.len() >= LANDED_HISTORY as usize)
-            .then(|| history.iter().map(|commit| commit.authored_at.as_str()).min())
-            .flatten();
+        let oldest =
+            (history.len() >= LANDED_HISTORY as usize).then(|| history.iter().map(|commit| commit.authored_at.as_str()).min()).flatten();
         Ok(landed_since(&merged, &history, oldest))
     }
 
@@ -610,9 +577,7 @@ impl Work {
             let Some(pull) = self.pull_by_id(&row.pull_id).await? else {
                 return Ok(());
             };
-            return self
-                .integration_failed(row, &pull, &diagnosis.failure, narrowed(&diagnosis), &diagnosis.suspects, &[])
-                .await;
+            return self.integration_failed(row, &pull, &diagnosis.failure, narrowed(&diagnosis), &diagnosis.suspects, &[]).await;
         };
         let now = now_ms();
         self.db
@@ -639,11 +604,7 @@ impl Work {
         let kept = self
             .db
             .prepare("UPDATE queue_entries SET diagnosis = ? WHERE id = ? AND diagnosis IS ? RETURNING id AS value")
-            .bind(&[
-                serde_json::to_string(diagnosis)?.into(),
-                entry_id.into(),
-                before.map_or(JsValue::NULL, JsValue::from),
-            ])?
+            .bind(&[serde_json::to_string(diagnosis)?.into(), entry_id.into(), before.map_or(JsValue::NULL, JsValue::from)])?
             .first::<ValueRow>(None)
             .await?;
         Ok(kept.is_some())
@@ -702,15 +663,8 @@ impl Work {
             self.probe_result(probe, ProbeResult::Stopped, Some("Its failure was already reported.")).await?;
             return Ok(());
         };
-        let repo: Outcome<Repo> = g1t_kit::call(
-            &self.repos,
-            "get_by_id",
-            &GetByIdArgs {
-                id: probe.repo_id.clone(),
-                viewer: Some(actor.clone()),
-            },
-        )
-        .await?;
+        let repo: Outcome<Repo> =
+            g1t_kit::call(&self.repos, "get_by_id", &GetByIdArgs { id: probe.repo_id.clone(), viewer: Some(actor.clone()) }).await?;
         let Outcome::Ok(repo) = crate::retired::unless_archived(repo) else {
             self.probe_result(probe, ProbeResult::Stopped, Some("The repository is archived.")).await?;
             return Ok(());
@@ -727,10 +681,7 @@ impl Work {
             if let Some(other) = self.pull(&repo.id, item.number).await?
                 && other.status == PullStatus::Merged
             {
-                item.source = RepoPath {
-                    namespace: repo.namespace.clone(),
-                    name: repo.name.clone(),
-                };
+                item.source = RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() };
                 item.branch = repo.default_branch.clone();
             }
             if item.branch.is_empty() {
@@ -812,12 +763,10 @@ impl Work {
         let Some(row) = self.entry_by_id(&probe.entry_id).await? else {
             return Ok(Outcome::Ok(QueueState::Removed));
         };
-        let base = row
-            .diagnosis
-            .as_deref()
-            .and_then(|text| serde_json::from_str::<Diagnosis>(text).ok())
-            .map(|diagnosis| diagnosis.base_commit);
-        let accepted = self.db
+        let base =
+            row.diagnosis.as_deref().and_then(|text| serde_json::from_str::<Diagnosis>(text).ok()).map(|diagnosis| diagnosis.base_commit);
+        let accepted = self
+            .db
             .prepare(REPORT_PROBE)
             .bind(&[commit.into(), probe.id.as_str().into(), hash(&a.token).into()])?
             .first::<ValueRow>(None)
@@ -834,8 +783,7 @@ impl Work {
             self.probe_result(&probe, ProbeResult::Stopped, Some("No workflow runs on merge_group events.")).await?;
             return Ok(Outcome::Ok(QueueState::Failed));
         }
-        self.db.prepare(OPEN_PROBE)
-            .bind(&[runs.into(), probe.id.as_str().into(), commit.into()])?.run().await?;
+        self.db.prepare(OPEN_PROBE).bind(&[runs.into(), probe.id.as_str().into(), commit.into()])?.run().await?;
         // A run may have finished while dispatching was fenced.
         self.probe_finished(&probe.repo_id, commit).await?;
         Ok(Outcome::Ok(QueueState::Testing))
@@ -917,8 +865,7 @@ impl Work {
                 let Some(pull) = self.pull_by_id(&row.pull_id).await? else {
                     return Ok(());
                 };
-                self.integration_failed(&row, &pull, &diagnosis.failure, narrowed(&diagnosis), &diagnosis.suspects, &[])
-                    .await
+                self.integration_failed(&row, &pull, &diagnosis.failure, narrowed(&diagnosis), &diagnosis.suspects, &[]).await
             }
             ProbeResult::Broke | ProbeResult::Passed => {
                 diagnosis.observed(&probe.subset(), result == ProbeResult::Broke);
@@ -1063,12 +1010,7 @@ impl Work {
             "session.appended",
             &pull.repo_id,
             None,
-            SessionAppended {
-                pull_id: pull.id.clone(),
-                repo_id: pull.repo_id.clone(),
-                number: pull.number,
-                count: 1,
-            },
+            SessionAppended { pull_id: pull.id.clone(), repo_id: pull.repo_id.clone(), number: pull.number, count: 1 },
         )
         .await
     }
@@ -1105,12 +1047,7 @@ impl Work {
         if pull.status != PullStatus::Open || pull.head_commit.as_deref() != Some(sha) {
             return Ok(());
         }
-        let path: Option<RepoPath> = g1t_kit::call(
-            &self.repos,
-            "path_by_id",
-            &PathByIdArgs { id: pull.repo_id.clone() },
-        )
-        .await?;
+        let path: Option<RepoPath> = g1t_kit::call(&self.repos, "path_by_id", &PathByIdArgs { id: pull.repo_id.clone() }).await?;
         let Some(repo) = path else { return Ok(()) };
         let merged = self
             .merge_pull(PullActionArgs {
@@ -1141,11 +1078,7 @@ impl Work {
     }
 
     async fn entry_by_id(&self, id: &str) -> Result<Option<EntryRow>> {
-        self.db
-            .prepare("SELECT * FROM queue_entries WHERE id = ?")
-            .bind(&[id.into()])?
-            .first::<EntryRow>(None)
-            .await
+        self.db.prepare("SELECT * FROM queue_entries WHERE id = ?").bind(&[id.into()])?.first::<EntryRow>(None).await
     }
 }
 
@@ -1219,8 +1152,15 @@ mod tests {
     }
 
     fn diagnosis(ahead: &[u32]) -> Diagnosis {
-        Diagnosis { base_commit: "base".into(), stack: vec![], suspects: ahead.to_vec(), builds: 0,
-            failure: failure(FailureKind::Checks), done: false, complement: None }
+        Diagnosis {
+            base_commit: "base".into(),
+            stack: vec![],
+            suspects: ahead.to_vec(),
+            builds: 0,
+            failure: failure(FailureKind::Checks),
+            done: false,
+            complement: None,
+        }
     }
 
     #[test]
@@ -1274,7 +1214,10 @@ mod tests {
     fn the_notes_name_the_other_changes_and_the_check() {
         let check = failure(FailureKind::Checks).check;
         let note = pull_note(&[11, 12, 13], &[12], true, &[], &check);
-        assert!(note.starts_with("traced its merge queue failure to how it combines with #12 (narrowed down from #11, #12 and #13"), "{note}");
+        assert!(
+            note.starts_with("traced its merge queue failure to how it combines with #12 (narrowed down from #11, #12 and #13"),
+            "{note}"
+        );
         assert!(note.contains("`CI / merge_group` failed"));
         assert!(note.contains("once #12 has landed"));
         let own = pull_note(&[], &[], false, &[], &check);
@@ -1282,7 +1225,10 @@ mod tests {
         let conflict = pull_note(&[11], &[11], false, &[], &FailedCheck { name: "merge".into(), conclusion: "conflict".into(), url: None });
         assert!(conflict.contains("it did not merge cleanly"), "{conflict}");
         assert!(!conflict.contains("narrowed"));
-        assert_eq!(summary(14, &[11, 12], &[], &check), "#14 failed in the merge queue together with #11 and #12: `CI / merge_group` failed when they were combined.");
+        assert_eq!(
+            summary(14, &[11, 12], &[], &check),
+            "#14 failed in the merge queue together with #11 and #12: `CI / merge_group` failed when they were combined."
+        );
         assert_eq!(numbers(&[]), "");
     }
 
@@ -1305,7 +1251,10 @@ mod tests {
         assert!(!several.contains("the change is the cause"));
         assert!(summary(14, &[], &[7, 5], &check).ends_with("since it branched, #7 and #5 landed and may be what it conflicts with."));
         // No attribution evidence is not proof that the change itself caused it.
-        assert_eq!(summary(14, &[], &[], &check), "#14 failed in the merge queue: `CI / merge_group` failed. No other change has been isolated as the cause.");
+        assert_eq!(
+            summary(14, &[], &[], &check),
+            "#14 failed in the merge queue: `CI / merge_group` failed. No other change has been isolated as the cause."
+        );
     }
 
     fn commit(hash: &str, at: &str) -> Commit {
@@ -1365,9 +1314,12 @@ mod tests {
         assert_eq!(read.check.name, "merge");
         let back = read.report("qen_1");
         assert_eq!((back.conflict_with, back.conflicts.len()), (Some(12), 1));
-        let missing = Failure::of_report(&ReportQueueArgs { conflict_with: None, conflicts: Vec::new(), ..conflict }, Some(&["CI".to_owned()]));
+        let missing =
+            Failure::of_report(&ReportQueueArgs { conflict_with: None, conflicts: Vec::new(), ..conflict }, Some(&["CI".to_owned()]));
         assert_eq!((missing.kind, missing.check.conclusion.as_str()), (FailureKind::Missing, "missing"));
-        let workflows = Failure::of_workflows("abc", &["CI / merge_group".into()], &[], &[], "the workflow failed".into(), |name| Some(format!("https://x/{name}")));
+        let workflows = Failure::of_workflows("abc", &["CI / merge_group".into()], &[], &[], "the workflow failed".into(), |name| {
+            Some(format!("https://x/{name}"))
+        });
         assert_eq!(workflows.kind, FailureKind::Checks);
         assert_eq!(workflows.check.url.as_deref(), Some("https://x/CI / merge_group"));
         let never = Failure::of_workflows("abc", &[], &[], &["CI".into()], "missing".into(), |_| None);

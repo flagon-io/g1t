@@ -97,18 +97,8 @@ const MAX_LOG_CHARS: usize = 20_000;
 /// Directories a static build usually writes to, in the order they are tried.
 const OUTPUT_DIRS: [&str; 6] = ["dist", "build", "out", "public", "_site", ".output/public"];
 /// Bindings a Workers project may declare that are not provisioned yet.
-const UNSUPPORTED_BINDINGS: [&str; 10] = [
-    "kv_namespaces",
-    "d1_databases",
-    "r2_buckets",
-    "durable_objects",
-    "services",
-    "queues",
-    "vectorize",
-    "hyperdrive",
-    "ai",
-    "workflows",
-];
+const UNSUPPORTED_BINDINGS: [&str; 10] =
+    ["kv_namespaces", "d1_databases", "r2_buckets", "durable_objects", "services", "queues", "vectorize", "hyperdrive", "ai", "workflows"];
 
 struct Reporter {
     base: String,
@@ -265,9 +255,7 @@ fn read_wrangler(dir: &Path) -> Result<Option<WranglerConfig>> {
         let path = dir.join(name);
         if path.exists() {
             let text = std::fs::read_to_string(&path)?;
-            return Ok(Some(
-                serde_json::from_str(&strip_jsonc(&text)).with_context(|| format!("could not read {name}"))?,
-            ));
+            return Ok(Some(serde_json::from_str(&strip_jsonc(&text)).with_context(|| format!("could not read {name}"))?));
         }
     }
     let path = dir.join("wrangler.toml");
@@ -382,21 +370,13 @@ fn collect(root: &Path, dir: &Path, skip_project: bool, ignored: &BTreeSet<Strin
             continue;
         }
         let size = entry.metadata()?.len();
-        let relative = path
-            .strip_prefix(root)?
-            .to_string_lossy()
-            .replace('\\', "/");
+        let relative = path.strip_prefix(root)?.to_string_lossy().replace('\\', "/");
         if size > MAX_FILE_BYTES {
             bail!("{relative} is larger than Cloudflare's 25 MiB limit for one file");
         }
         let bytes = std::fs::read(&path)?;
         let digest = hex::encode(Sha256::digest(&bytes));
-        out.push(Asset {
-            path: format!("/{relative}"),
-            hash: digest[..32].to_owned(),
-            size,
-            file: path,
-        });
+        out.push(Asset { path: format!("/{relative}"), hash: digest[..32].to_owned(), size, file: path });
         if out.len() > MAX_FILES {
             bail!("the site has more than {MAX_FILES} files, Cloudflare's limit");
         }
@@ -421,9 +401,7 @@ fn upload_bucket(session: &UploadSession, bucket: &[String], by_hash: &BTreeMap<
     let boundary = format!("g1t-{}", hex::encode(Sha256::digest(bucket.join(",").as_bytes()))[..24].to_owned());
     let mut body: Vec<u8> = Vec::new();
     for hash in bucket {
-        let asset = by_hash
-            .get(hash.as_str())
-            .with_context(|| format!("Cloudflare asked for a file this build does not have ({hash})"))?;
+        let asset = by_hash.get(hash.as_str()).with_context(|| format!("Cloudflare asked for a file this build does not have ({hash})"))?;
         let bytes = std::fs::read(&asset.file)?;
         body.extend_from_slice(
             format!(
@@ -436,7 +414,8 @@ fn upload_bucket(session: &UploadSession, bucket: &[String], by_hash: &BTreeMap<
         body.extend_from_slice(b"\r\n");
     }
     body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
-    let response = crate::http::agent().post(&session.upload_url)
+    let response = crate::http::agent()
+        .post(&session.upload_url)
         .set("authorization", &format!("Bearer {}", session.jwt))
         .set("content-type", &format!("multipart/form-data; boundary={boundary}"))
         .send_bytes(&body);
@@ -461,40 +440,25 @@ struct Module {
 
 /// The bundle `wrangler deploy --dry-run` wrote, main module first.
 fn bundle_modules(main: &str, bundle: &Path) -> Result<(String, Vec<Module>)> {
-    let stem = Path::new(main)
-        .file_stem()
-        .map(|stem| stem.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "index".to_owned());
+    let stem = Path::new(main).file_stem().map(|stem| stem.to_string_lossy().into_owned()).unwrap_or_else(|| "index".to_owned());
     let mut modules = Vec::new();
     let mut files = Vec::new();
     collect_files(bundle, &mut files)?;
     for file in files {
-        let name = file
-            .strip_prefix(bundle)?
-            .to_string_lossy()
-            .replace('\\', "/");
+        let name = file.strip_prefix(bundle)?.to_string_lossy().replace('\\', "/");
         let kind = match name.rsplit('.').next().unwrap_or("") {
             "js" | "mjs" => "application/javascript+module",
             "wasm" => "application/wasm",
             "map" | "md" => continue,
             _ => "text/plain",
         };
-        modules.push(Module {
-            content_base64: STANDARD.encode(std::fs::read(&file)?),
-            content_type: kind.to_owned(),
-            name,
-        });
+        modules.push(Module { content_base64: STANDARD.encode(std::fs::read(&file)?), content_type: kind.to_owned(), name });
     }
     let main_name = modules
         .iter()
         .map(|module| module.name.clone())
         .find(|name| *name == format!("{stem}.js") || *name == format!("{stem}.mjs"))
-        .or_else(|| {
-            modules
-                .iter()
-                .find(|module| module.content_type == "application/javascript+module")
-                .map(|module| module.name.clone())
-        })
+        .or_else(|| modules.iter().find(|module| module.content_type == "application/javascript+module").map(|module| module.name.clone()))
         .context("wrangler wrote no JavaScript module")?;
     Ok((main_name, modules))
 }
@@ -711,9 +675,11 @@ impl Detected {
     /// a container the server g1t wrote a Dockerfile for (`flask`…) or
     /// `dockerfile`.
     pub(crate) fn framework_id(&self) -> Option<&'static str> {
-        self.framework.as_ref().map(|f| f.id).or_else(|| self.node.as_ref().map(|_| "node")).or_else(|| {
-            self.container.as_ref().map(|c| c.generated.as_ref().map_or("dockerfile", |server| server.id))
-        })
+        self.framework
+            .as_ref()
+            .map(|f| f.id)
+            .or_else(|| self.node.as_ref().map(|_| "node"))
+            .or_else(|| self.container.as_ref().map(|c| c.generated.as_ref().map_or("dockerfile", |server| server.id)))
     }
 }
 
@@ -728,7 +694,11 @@ fn as_container(dir: &Path, framework: Option<Framework>, own: Option<String>) -
     let build = match own {
         Some(path) => {
             let text = std::fs::read_to_string(dir.join(&path)).unwrap_or_default();
-            ContainerBuild { port: container::exposed_port(&text).unwrap_or(container::DEFAULT_PORT), dockerfile: Some(path), generated: None }
+            ContainerBuild {
+                port: container::exposed_port(&text).unwrap_or(container::DEFAULT_PORT),
+                dockerfile: Some(path),
+                generated: None,
+            }
         }
         None => {
             let server = match &framework {
@@ -823,7 +793,8 @@ pub(crate) fn detect_as(
                     node_worker::Plan::Blocked(why) => match node_worker::forced(dir) {
                         Some(node) => {
                             let mut found = as_node_worker(dir, node, custom_build);
-                            found.reason = Some(format!("**Build as** is Workers, so it is built as one, though it may not run as one: {why}."));
+                            found.reason =
+                                Some(format!("**Build as** is Workers, so it is built as one, though it may not run as one: {why}."));
                             found
                         }
                         None => return Ok(Detected::nothing(None, site.install, format!("**Build as** is Workers, but {why}."))),
@@ -851,7 +822,11 @@ pub(crate) fn detect_as(
                 if let Some(problem) = site.problem.clone() {
                     let found = as_container(dir, site.framework.clone(), own);
                     return Ok(found.unwrap_or_else(|| {
-                        Detected::nothing(site.framework, site.install, format!("{problem} Or add a `Dockerfile` to run it as a container."))
+                        Detected::nothing(
+                            site.framework,
+                            site.install,
+                            format!("{problem} Or add a `Dockerfile` to run it as a container."),
+                        )
                     }));
                 }
                 return Ok(unused_dockerfile(site, own.as_deref()));
@@ -952,9 +927,7 @@ fn detect_site(dir: &Path, custom_build: Option<&str>, chosen_output: Option<&st
     if let Some(config) = config {
         // A framework built for Workers builds before wrangler bundles what
         // it wrote; any other project's config builds it, as it always has.
-        let pre_build = custom_build
-            .map(str::to_owned)
-            .or_else(|| framework.as_ref().filter(|f| f.workers).and(framework_build));
+        let pre_build = custom_build.map(str::to_owned).or_else(|| framework.as_ref().filter(|f| f.workers).and(framework_build));
         let mut steps: Vec<String> = pre_build.clone().into_iter().collect();
         if config.main.is_some() {
             steps.push(wrangler_build(None, None));
@@ -973,10 +946,7 @@ fn detect_site(dir: &Path, custom_build: Option<&str>, chosen_output: Option<&st
             reason: None,
         });
     }
-    let build = custom_build
-        .map(str::to_owned)
-        .or(framework_build)
-        .or_else(|| has_build_script(dir).then(|| "npm run build".to_owned()));
+    let build = custom_build.map(str::to_owned).or(framework_build).or_else(|| has_build_script(dir).then(|| "npm run build".to_owned()));
     // An adapter's Worker, unless the project chose a folder to serve.
     if !as_static && chosen_output.is_none() && framework.as_ref().is_some_and(|f| f.adapter.is_some()) {
         // Where its files are is known once it has built: the adapter's
@@ -997,24 +967,32 @@ fn detect_site(dir: &Path, custom_build: Option<&str>, chosen_output: Option<&st
     }
     // A command or a folder of the project's own says it knows better, as
     // does **Build as** set to Static site.
-    let problem = framework
-        .as_ref()
-        .and_then(|f| f.problem.clone())
-        .filter(|_| !as_static && custom_build.is_none() && chosen_output.is_none());
+    let problem =
+        framework.as_ref().and_then(|f| f.problem.clone()).filter(|_| !as_static && custom_build.is_none() && chosen_output.is_none());
     if let Some(problem) = problem {
         return Ok(Detected::nothing(framework, install, problem));
     }
-    let output_dir = chosen_output
-        .map(str::to_owned)
-        .or_else(|| framework.as_ref().and_then(|f| f.output.clone()))
-        .or_else(|| find_output(dir));
+    let output_dir =
+        chosen_output.map(str::to_owned).or_else(|| framework.as_ref().and_then(|f| f.output.clone())).or_else(|| find_output(dir));
     // `.` is the project itself: its own files, served as they are.
     let kind = match (&build, output_dir.as_deref()) {
         (None, Some(".")) => "html",
         (None, None) => "none",
         _ => "static",
     };
-    Ok(Detected { kind, framework, install, pre_build: build.clone(), build, output_dir, problem: None, container: None, node: None, fallback: None, reason: None })
+    Ok(Detected {
+        kind,
+        framework,
+        install,
+        pre_build: build.clone(),
+        build,
+        output_dir,
+        problem: None,
+        container: None,
+        node: None,
+        fallback: None,
+        reason: None,
+    })
 }
 
 /// The compatibility date a Worker gets when its config names none.
@@ -1098,11 +1076,7 @@ struct RegistryGrant {
 /// as `docker image inspect` lists them, one a line.
 fn pushed_digest(repo_digests: &str, registry: &str, repository: &str) -> Option<String> {
     let prefix = format!("{registry}/{repository}@sha256:");
-    repo_digests
-        .lines()
-        .map(str::trim)
-        .find(|line| line.starts_with(&prefix) && line.len() == prefix.len() + 64)
-        .map(str::to_owned)
+    repo_digests.lines().map(str::trim).find(|line| line.starts_with(&prefix) && line.len() == prefix.len() + 64).map(str::to_owned)
 }
 
 /// Bytes, as a person reads them: `1.4 GB`.
@@ -1156,14 +1130,20 @@ fn container_build(reporter: &Reporter, log: &mut Log, secrets: &[String], dir: 
         }
         (None, Some(server)) => {
             // Shown whole, so it can be committed and changed.
-            log.line(&format!("This {} project has no Dockerfile, so g1t wrote this one (commit it as `Dockerfile` to change it):", server.name));
+            log.line(&format!(
+                "This {} project has no Dockerfile, so g1t wrote this one (commit it as `Dockerfile` to change it):",
+                server.name
+            ));
             for line in server.dockerfile.lines() {
                 log.line(&format!("    {line}"));
             }
             let path = generated_dockerfile_path();
             std::fs::write(&path, &server.dockerfile)?;
             // BuildKit reads `<Dockerfile>.dockerignore` beside it.
-            std::fs::write(path.with_file_name(format!("{}.dockerignore", path.file_name().unwrap_or_default().to_string_lossy())), container::DOCKERIGNORE)?;
+            std::fs::write(
+                path.with_file_name(format!("{}.dockerignore", path.file_name().unwrap_or_default().to_string_lossy())),
+                container::DOCKERIGNORE,
+            )?;
             path
         }
         (None, None) => bail!("nothing to build the container from"),
@@ -1490,7 +1470,10 @@ fn build(reporter: &Reporter, log: &mut Log, secrets: &[String]) -> Result<Built
             // without its Dockerfile.
             None => match plan.fallback.take() {
                 Some(site) => {
-                    log.line(&format!("Building it as a {} site instead, as it is without its Dockerfile.", if site.kind == "html" { "plain HTML" } else { "static" }));
+                    log.line(&format!(
+                        "Building it as a {} site instead, as it is without its Dockerfile.",
+                        if site.kind == "html" { "plain HTML" } else { "static" }
+                    ));
                     plan = *site;
                 }
                 None => bail!("{CONTAINERS_OFF}"),
@@ -1620,11 +1603,7 @@ fn clones() -> bool {
 /// The checkout the build runs in: the sandbox's clone, or, from a
 /// workflow step, the current directory.
 fn checkout_dir() -> PathBuf {
-    if clones() {
-        PathBuf::from(WORKDIR)
-    } else {
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-    }
+    if clones() { PathBuf::from(WORKDIR) } else { std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")) }
 }
 
 /// Where `wrangler deploy --dry-run` writes the bundle: in a workflow
@@ -1641,11 +1620,7 @@ fn bundle_dir() -> PathBuf {
 /// never above the checkout.
 fn project_dir_in(base: &Path, root: &str) -> PathBuf {
     let root = root.trim().trim_matches('/');
-    if root.is_empty() || root == "." || root.split('/').any(|part| part == "..") {
-        base.to_path_buf()
-    } else {
-        base.join(root)
-    }
+    if root.is_empty() || root == "." || root.split('/').any(|part| part == "..") { base.to_path_buf() } else { base.join(root) }
 }
 
 /// Where the project lives: `ROOT_DIR` in the checkout.
@@ -1720,10 +1695,8 @@ fn deploy(reporter: &Reporter, log: &mut Log, secrets: &[String]) -> Result<Valu
                 finish["worker"][special] = text.into();
             }
         }
-        let manifest: BTreeMap<&str, Value> = assets
-            .iter()
-            .map(|asset| (asset.path.as_str(), json!({ "hash": asset.hash, "size": asset.size })))
-            .collect();
+        let manifest: BTreeMap<&str, Value> =
+            assets.iter().map(|asset| (asset.path.as_str(), json!({ "hash": asset.hash, "size": asset.size }))).collect();
         let answer = reporter.send("session", json!({ "manifest": manifest }))?;
         if answer["ok"] == false {
             bail!("{}", answer["error"]["message"].as_str().unwrap_or("g1t refused the upload"));
@@ -1770,20 +1743,14 @@ g1t-runner detect prints what the build would find, as key=value lines.";
 
 fn run(step_log: bool) -> i32 {
     let reporter = match (env("G1T_API"), env("DEPLOY_ID"), env("DEPLOY_TOKEN")) {
-        (Ok(api), Ok(id), Ok(token)) => Reporter {
-            base: format!("{}/deployments/jobs/{id}", api.trim_end_matches('/')),
-            token,
-        },
+        (Ok(api), Ok(id), Ok(token)) => Reporter { base: format!("{}/deployments/jobs/{id}", api.trim_end_matches('/')), token },
         _ => {
             eprintln!("g1t-runner: G1T_API, DEPLOY_ID and DEPLOY_TOKEN must be set");
             return 2;
         }
     };
-    let mut secrets: Vec<String> = ["G1T_TOKEN", "DEPLOY_TOKEN"]
-        .iter()
-        .filter_map(|name| std::env::var(name).ok())
-        .filter(|secret| !secret.is_empty())
-        .collect();
+    let mut secrets: Vec<String> =
+        ["G1T_TOKEN", "DEPLOY_TOKEN"].iter().filter_map(|name| std::env::var(name).ok()).filter(|secret| !secret.is_empty()).collect();
     // The repository's build secrets never appear in the log.
     if let Ok(Value::Object(build)) = serde_json::from_str::<Value>(&std::env::var("BUILD_SECRETS").unwrap_or_default()) {
         secrets.extend(build.values().filter_map(Value::as_str).filter(|v| v.len() >= 4).map(str::to_owned));
@@ -1811,10 +1778,7 @@ fn run(step_log: bool) -> i32 {
         Err(error) => {
             let message = redact(&format!("{error:#}"), &secrets);
             log.line(&format!("The build failed: {message}"));
-            let sent = reporter.send(
-                "fail",
-                json!({ "message": message, "log": redact(&log.tail(), &secrets), "buildSeconds": seconds }),
-            );
+            let sent = reporter.send("fail", json!({ "message": message, "log": redact(&log.tail(), &secrets), "buildSeconds": seconds }));
             (sent, true)
         }
     };
@@ -1931,14 +1895,19 @@ mod tests {
                 if let Some(end) = text.find("\r\n\r\n") {
                     let length = text[..end]
                         .lines()
-                        .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0)))
+                        .find_map(|l| {
+                            l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                        })
                         .unwrap_or(0);
                     if seen.len() >= end + 4 + length {
                         break;
                     }
                 }
             }
-            let reply = format!("HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len());
+            let reply = format!(
+                "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
             stream.write_all(reply.as_bytes()).unwrap();
         });
         base
@@ -1946,7 +1915,10 @@ mod tests {
 
     #[test]
     fn a_refusal_reaches_the_step_with_its_reason() {
-        let base = answering("409 Conflict", r#"{"ok":false,"error":{"code":"not_enabled","message":"Docker deployments are switched off on this g1t."}}"#);
+        let base = answering(
+            "409 Conflict",
+            r#"{"ok":false,"error":{"code":"not_enabled","message":"Docker deployments are switched off on this g1t."}}"#,
+        );
         let answer = Reporter { base, token: "t".into() }.send("registry", json!({})).unwrap();
         assert_eq!(answer["ok"], false);
         assert_eq!(answer["error"]["code"], "not_enabled");
@@ -1961,10 +1933,9 @@ mod tests {
 
     #[test]
     fn the_upload_session_is_read_in_either_spelling() {
-        for answer in [
-            json!({ "jwt": "j", "buckets": [["a"]], "upload_url": "https://u" }),
-            json!({ "jwt": "j", "uploadUrl": "https://u" }),
-        ] {
+        for answer in
+            [json!({ "jwt": "j", "buckets": [["a"]], "upload_url": "https://u" }), json!({ "jwt": "j", "uploadUrl": "https://u" })]
+        {
             let session: UploadSession = serde_json::from_value(answer).unwrap();
             assert_eq!(session.upload_url, "https://u");
         }
@@ -1984,26 +1955,29 @@ mod tests {
 
     #[test]
     fn unsupported_bindings_are_noticed() {
-        let config: WranglerConfig =
-            serde_json::from_str(r#"{ "main": "a.js", "d1_databases": [{ "binding": "DB" }] }"#).unwrap();
+        let config: WranglerConfig = serde_json::from_str(r#"{ "main": "a.js", "d1_databases": [{ "binding": "DB" }] }"#).unwrap();
         assert!(config.rest.contains_key("d1_databases"));
     }
 
     #[test]
     fn crons_g1t_does_not_run_are_warned_about() {
-        let config: WranglerConfig =
-            serde_json::from_str(r#"{ "main": "a.js", "triggers": { "crons": ["*/5 * * * *", "0 3 * * *"] }, "kv_namespaces": [{ "binding": "KV" }] }"#)
-                .unwrap();
+        let config: WranglerConfig = serde_json::from_str(
+            r#"{ "main": "a.js", "triggers": { "crons": ["*/5 * * * *", "0 3 * * *"] }, "kv_namespaces": [{ "binding": "KV" }] }"#,
+        )
+        .unwrap();
         let warnings = config_warnings(&config);
         assert_eq!(warnings.len(), 2);
         assert!(warnings.iter().any(|w| w.contains("kv_namespaces")));
         assert!(warnings.iter().any(|w| w.contains("triggers.crons") && w.contains("2 schedules")));
         let none: WranglerConfig = serde_json::from_str(r#"{ "main": "a.js", "triggers": { "crons": [] } }"#).unwrap();
         assert!(config_warnings(&none).is_empty());
-        let toml: WranglerConfig = toml::from_str("main = \"a.js\"
+        let toml: WranglerConfig = toml::from_str(
+            "main = \"a.js\"
 [triggers]
 crons = [\"0 * * * *\"]
-").unwrap();
+",
+        )
+        .unwrap();
         assert!(config_warnings(&toml)[0].contains("1 schedule)"));
         // A config a build wrote lists every kind of binding, mostly empty.
         let written: WranglerConfig = serde_json::from_str(
@@ -2146,7 +2120,10 @@ crons = [\"0 * * * *\"]
             Case {
                 name: "vite-react",
                 files: &[
-                    ("package.json", r#"{ "scripts": { "build": "tsc && vite build" }, "dependencies": { "react": "19" }, "devDependencies": { "vite": "7", "@vitejs/plugin-react": "5" } }"#),
+                    (
+                        "package.json",
+                        r#"{ "scripts": { "build": "tsc && vite build" }, "dependencies": { "react": "19" }, "devDependencies": { "vite": "7", "@vitejs/plugin-react": "5" } }"#,
+                    ),
                     ("vite.config.ts", "export default defineConfig({ plugins: [react()], build: { outDir: 'site' } })"),
                 ],
                 framework: Some("vite-react"),
@@ -2155,7 +2132,10 @@ crons = [\"0 * * * *\"]
             },
             Case {
                 name: "vite-vue",
-                files: &[("package.json", r#"{ "scripts": { "build": "vite build" }, "devDependencies": { "vite": "7", "@vitejs/plugin-vue": "6" } }"#)],
+                files: &[(
+                    "package.json",
+                    r#"{ "scripts": { "build": "vite build" }, "devDependencies": { "vite": "7", "@vitejs/plugin-vue": "6" } }"#,
+                )],
                 framework: Some("vite-vue"),
                 output_dir: Some("dist"),
                 ..CASE
@@ -2179,7 +2159,10 @@ crons = [\"0 * * * *\"]
             Case {
                 name: "vite-cloudflare",
                 files: &[
-                    ("package.json", r#"{ "scripts": { "build": "vite build" }, "devDependencies": { "vite": "7", "@cloudflare/vite-plugin": "1" } }"#),
+                    (
+                        "package.json",
+                        r#"{ "scripts": { "build": "vite build" }, "devDependencies": { "vite": "7", "@cloudflare/vite-plugin": "1" } }"#,
+                    ),
                     ("wrangler.jsonc", r#"{ "main": "worker/index.ts" }"#),
                 ],
                 kind: "workers",
@@ -2189,14 +2172,20 @@ crons = [\"0 * * * *\"]
             },
             Case {
                 name: "astro",
-                files: &[("package.json", r#"{ "scripts": { "build": "astro build" }, "dependencies": { "astro": "5" } }"#), ("astro.config.mjs", "export default defineConfig({ site: 'https://x.dev' })")],
+                files: &[
+                    ("package.json", r#"{ "scripts": { "build": "astro build" }, "dependencies": { "astro": "5" } }"#),
+                    ("astro.config.mjs", "export default defineConfig({ site: 'https://x.dev' })"),
+                ],
                 framework: Some("astro"),
                 output_dir: Some("dist"),
                 ..CASE
             },
             Case {
                 name: "astro-server",
-                files: &[("package.json", r#"{ "dependencies": { "astro": "5", "@astrojs/node": "9" } }"#), ("astro.config.mjs", "export default { output: \"server\" }")],
+                files: &[
+                    ("package.json", r#"{ "dependencies": { "astro": "5", "@astrojs/node": "9" } }"#),
+                    ("astro.config.mjs", "export default { output: \"server\" }"),
+                ],
                 kind: "container",
                 framework: Some("astro"),
                 build: Some(GENERATED),
@@ -2204,14 +2193,20 @@ crons = [\"0 * * * *\"]
             },
             Case {
                 name: "astro-cloudflare",
-                files: &[("package.json", r#"{ "scripts": { "build": "astro build" }, "dependencies": { "astro": "5", "@astrojs/cloudflare": "12" } }"#)],
+                files: &[(
+                    "package.json",
+                    r#"{ "scripts": { "build": "astro build" }, "dependencies": { "astro": "5", "@astrojs/cloudflare": "12" } }"#,
+                )],
                 kind: "workers",
                 framework: Some("astro"),
                 ..CASE
             },
             Case {
                 name: "astro-cloudflare-folder",
-                files: &[("package.json", r#"{ "scripts": { "build": "astro build" }, "dependencies": { "astro": "5", "@astrojs/cloudflare": "12" } }"#)],
+                files: &[(
+                    "package.json",
+                    r#"{ "scripts": { "build": "astro build" }, "dependencies": { "astro": "5", "@astrojs/cloudflare": "12" } }"#,
+                )],
                 chosen_output: Some("dist"),
                 framework: Some("astro"),
                 output_dir: Some("dist"),
@@ -2219,14 +2214,20 @@ crons = [\"0 * * * *\"]
             },
             Case {
                 name: "next-export",
-                files: &[("package.json", r#"{ "scripts": { "build": "next build" }, "dependencies": { "next": "16" } }"#), ("next.config.ts", "const config: NextConfig = {\n  output: 'export',\n};")],
+                files: &[
+                    ("package.json", r#"{ "scripts": { "build": "next build" }, "dependencies": { "next": "16" } }"#),
+                    ("next.config.ts", "const config: NextConfig = {\n  output: 'export',\n};"),
+                ],
                 framework: Some("nextjs"),
                 output_dir: Some("out"),
                 ..CASE
             },
             Case {
                 name: "next-server",
-                files: &[("package.json", r#"{ "scripts": { "build": "next build" }, "dependencies": { "next": "16" } }"#), ("next.config.mjs", "export default {}")],
+                files: &[
+                    ("package.json", r#"{ "scripts": { "build": "next build" }, "dependencies": { "next": "16" } }"#),
+                    ("next.config.mjs", "export default {}"),
+                ],
                 kind: "container",
                 framework: Some("nextjs"),
                 build: Some(GENERATED),
@@ -2243,8 +2244,14 @@ crons = [\"0 * * * *\"]
             Case {
                 name: "opennext",
                 files: &[
-                    ("package.json", r#"{ "scripts": { "build": "next build" }, "dependencies": { "next": "16", "@opennextjs/cloudflare": "1" } }"#),
-                    ("wrangler.jsonc", r#"{ "main": ".open-next/worker.js", "assets": { "directory": ".open-next/assets", "binding": "ASSETS" } }"#),
+                    (
+                        "package.json",
+                        r#"{ "scripts": { "build": "next build" }, "dependencies": { "next": "16", "@opennextjs/cloudflare": "1" } }"#,
+                    ),
+                    (
+                        "wrangler.jsonc",
+                        r#"{ "main": ".open-next/worker.js", "assets": { "directory": ".open-next/assets", "binding": "ASSETS" } }"#,
+                    ),
                 ],
                 kind: "workers",
                 framework: Some("nextjs"),
@@ -2264,8 +2271,14 @@ crons = [\"0 * * * *\"]
             Case {
                 name: "sveltekit-static",
                 files: &[
-                    ("package.json", r#"{ "scripts": { "build": "vite build" }, "devDependencies": { "@sveltejs/kit": "2", "@sveltejs/adapter-static": "3", "vite": "7" } }"#),
-                    ("svelte.config.js", "import adapter from '@sveltejs/adapter-static';\nexport default { kit: { adapter: adapter() } };"),
+                    (
+                        "package.json",
+                        r#"{ "scripts": { "build": "vite build" }, "devDependencies": { "@sveltejs/kit": "2", "@sveltejs/adapter-static": "3", "vite": "7" } }"#,
+                    ),
+                    (
+                        "svelte.config.js",
+                        "import adapter from '@sveltejs/adapter-static';\nexport default { kit: { adapter: adapter() } };",
+                    ),
                 ],
                 framework: Some("sveltekit"),
                 output_dir: Some("build"),
@@ -2274,8 +2287,14 @@ crons = [\"0 * * * *\"]
             Case {
                 name: "sveltekit-3-static",
                 files: &[
-                    ("package.json", r#"{ "scripts": { "build": "vite build" }, "devDependencies": { "@sveltejs/kit": "3", "@sveltejs/adapter-static": "4", "@sveltejs/adapter-cloudflare": "8" } }"#),
-                    ("vite.config.js", "import adapter from '@sveltejs/adapter-static';\nexport default defineConfig({ plugins: [sveltekit({ adapter: adapter({ pages: 'www' }) })] });"),
+                    (
+                        "package.json",
+                        r#"{ "scripts": { "build": "vite build" }, "devDependencies": { "@sveltejs/kit": "3", "@sveltejs/adapter-static": "4", "@sveltejs/adapter-cloudflare": "8" } }"#,
+                    ),
+                    (
+                        "vite.config.js",
+                        "import adapter from '@sveltejs/adapter-static';\nexport default defineConfig({ plugins: [sveltekit({ adapter: adapter({ pages: 'www' }) })] });",
+                    ),
                 ],
                 framework: Some("sveltekit"),
                 output_dir: Some("www"),
@@ -2283,14 +2302,20 @@ crons = [\"0 * * * *\"]
             },
             Case {
                 name: "sveltekit-cloudflare",
-                files: &[("package.json", r#"{ "scripts": { "build": "vite build" }, "devDependencies": { "@sveltejs/kit": "2", "@sveltejs/adapter-cloudflare": "7" } }"#)],
+                files: &[(
+                    "package.json",
+                    r#"{ "scripts": { "build": "vite build" }, "devDependencies": { "@sveltejs/kit": "2", "@sveltejs/adapter-cloudflare": "7" } }"#,
+                )],
                 kind: "workers",
                 framework: Some("sveltekit"),
                 ..CASE
             },
             Case {
                 name: "sveltekit-auto",
-                files: &[("package.json", r#"{ "scripts": { "build": "vite build" }, "devDependencies": { "@sveltejs/kit": "2", "@sveltejs/adapter-auto": "6" } }"#)],
+                files: &[(
+                    "package.json",
+                    r#"{ "scripts": { "build": "vite build" }, "devDependencies": { "@sveltejs/kit": "2", "@sveltejs/adapter-auto": "6" } }"#,
+                )],
                 kind: "none",
                 framework: Some("sveltekit"),
                 build: None,
@@ -2299,7 +2324,10 @@ crons = [\"0 * * * *\"]
             },
             Case {
                 name: "nuxt",
-                files: &[("package.json", r#"{ "scripts": { "build": "nuxt build", "generate": "nuxt generate" }, "dependencies": { "nuxt": "4" } }"#)],
+                files: &[(
+                    "package.json",
+                    r#"{ "scripts": { "build": "nuxt build", "generate": "nuxt generate" }, "dependencies": { "nuxt": "4" } }"#,
+                )],
                 framework: Some("nuxt"),
                 build: Some("npm run generate"),
                 output_dir: Some(".output/public"),
@@ -2316,7 +2344,10 @@ crons = [\"0 * * * *\"]
             Case {
                 name: "react-router-spa",
                 files: &[
-                    ("package.json", r#"{ "scripts": { "build": "react-router build" }, "devDependencies": { "@react-router/dev": "7", "vite": "7" } }"#),
+                    (
+                        "package.json",
+                        r#"{ "scripts": { "build": "react-router build" }, "devDependencies": { "@react-router/dev": "7", "vite": "7" } }"#,
+                    ),
                     ("react-router.config.ts", "export default {\n  // Server-side render by default\n  ssr: false,\n} satisfies Config;"),
                 ],
                 framework: Some("react-router"),
@@ -2325,7 +2356,10 @@ crons = [\"0 * * * *\"]
             },
             Case {
                 name: "react-router-ssr",
-                files: &[("package.json", r#"{ "devDependencies": { "@react-router/dev": "7" } }"#), ("react-router.config.ts", "export default { ssr: true }")],
+                files: &[
+                    ("package.json", r#"{ "devDependencies": { "@react-router/dev": "7" } }"#),
+                    ("react-router.config.ts", "export default { ssr: true }"),
+                ],
                 kind: "container",
                 framework: Some("react-router"),
                 build: Some(GENERATED),
@@ -2334,7 +2368,10 @@ crons = [\"0 * * * *\"]
             Case {
                 name: "remix-spa",
                 files: &[
-                    ("package.json", r#"{ "scripts": { "build": "remix vite:build" }, "devDependencies": { "@remix-run/dev": "2", "vite": "5" } }"#),
+                    (
+                        "package.json",
+                        r#"{ "scripts": { "build": "remix vite:build" }, "devDependencies": { "@remix-run/dev": "2", "vite": "5" } }"#,
+                    ),
                     ("vite.config.ts", "export default defineConfig({ plugins: [remix({ ssr: false })] })"),
                 ],
                 framework: Some("remix"),
@@ -2350,7 +2387,10 @@ crons = [\"0 * * * *\"]
             },
             Case {
                 name: "docusaurus",
-                files: &[("package.json", r#"{ "scripts": { "build": "docusaurus build" }, "dependencies": { "@docusaurus/core": "3" } }"#)],
+                files: &[(
+                    "package.json",
+                    r#"{ "scripts": { "build": "docusaurus build" }, "dependencies": { "@docusaurus/core": "3" } }"#,
+                )],
                 framework: Some("docusaurus"),
                 output_dir: Some("build"),
                 ..CASE
@@ -2367,7 +2407,10 @@ crons = [\"0 * * * *\"]
                 name: "angular",
                 files: &[
                     ("package.json", r#"{ "scripts": { "build": "ng build" }, "dependencies": { "@angular/core": "20" } }"#),
-                    ("angular.json", r#"{ "projects": { "shop": { "projectType": "application", "architect": { "build": { "builder": "@angular/build:application", "options": { "outputPath": "dist/shop" } } } } } }"#),
+                    (
+                        "angular.json",
+                        r#"{ "projects": { "shop": { "projectType": "application", "architect": { "build": { "builder": "@angular/build:application", "options": { "outputPath": "dist/shop" } } } } } }"#,
+                    ),
                 ],
                 framework: Some("angular"),
                 output_dir: Some("dist/shop/browser"),
@@ -2377,7 +2420,10 @@ crons = [\"0 * * * *\"]
                 name: "angular-default",
                 files: &[
                     ("package.json", r#"{ "dependencies": { "@angular/core": "20" } }"#),
-                    ("angular.json", r#"{ "projects": { "app": { "projectType": "application", "architect": { "build": { "builder": "@angular/build:application", "options": {} } } } } }"#),
+                    (
+                        "angular.json",
+                        r#"{ "projects": { "app": { "projectType": "application", "architect": { "build": { "builder": "@angular/build:application", "options": {} } } } } }"#,
+                    ),
                 ],
                 framework: Some("angular"),
                 build: Some("npx ng build"),
@@ -2477,10 +2523,12 @@ crons = [\"0 * * * *\"]
         reason: Option<&'static str>,
     }
 
-    const PRECEDENCE: Precedence = Precedence { name: "", files: &[], kind: "static", framework: None, dockerfile: None, fallback: None, reason: None };
+    const PRECEDENCE: Precedence =
+        Precedence { name: "", files: &[], kind: "static", framework: None, dockerfile: None, fallback: None, reason: None };
 
     const EXPRESS: &str = r#"{ "scripts": { "start": "node server.js" }, "dependencies": { "express": "5" } }"#;
-    const EXPRESS_SERVER: &str = "const app = require('express')();\napp.get('/', (req, res) => res.send('hi'));\napp.listen(process.env.PORT || 3000);\n";
+    const EXPRESS_SERVER: &str =
+        "const app = require('express')();\napp.get('/', (req, res) => res.send('hi'));\napp.listen(process.env.PORT || 3000);\n";
     const GO_DOCKERFILE: &str = "FROM golang:1.25 AS build\nCOPY . .\nRUN go build -o /app .\nFROM scratch\nCOPY --from=build /app /app\nEXPOSE 9000\nENTRYPOINT [\"/app\"]\n";
     const NODE_DOCKERFILE: &str = "FROM node:22-slim\nCOPY . .\nRUN npm ci\nENV PORT=3000\nCMD [\"node\", \"server.js\"]\n";
 
@@ -2492,7 +2540,9 @@ crons = [\"0 * * * *\"]
                 name: "vite-dockerfile",
                 files: &[("package.json", r#"{ "devDependencies": { "vite": "7" } }"#), ("Dockerfile", NODE_DOCKERFILE)],
                 framework: Some("vite"),
-                reason: Some("Built as a Vite site; Dockerfile is not used (a container is only the fallback; choose **Build as**: Container to use it)."),
+                reason: Some(
+                    "Built as a Vite site; Dockerfile is not used (a container is only the fallback; choose **Build as**: Container to use it).",
+                ),
                 ..PRECEDENCE
             },
             // A Wrangler config wins over a Dockerfile.
@@ -2550,12 +2600,17 @@ crons = [\"0 * * * *\"]
             Precedence {
                 name: "express-addon",
                 files: &[
-                    ("package.json", r#"{ "scripts": { "start": "node server.js" }, "dependencies": { "express": "5", "better-sqlite3": "12" } }"#),
+                    (
+                        "package.json",
+                        r#"{ "scripts": { "start": "node server.js" }, "dependencies": { "express": "5", "better-sqlite3": "12" } }"#,
+                    ),
                     ("server.js", EXPRESS_SERVER),
                 ],
                 kind: "container",
                 framework: Some("node"),
-                reason: Some("Could not run as a Worker: it depends on `better-sqlite3`, which builds native code a Worker cannot load; deploying as a container."),
+                reason: Some(
+                    "Could not run as a Worker: it depends on `better-sqlite3`, which builds native code a Worker cannot load; deploying as a container.",
+                ),
                 ..PRECEDENCE
             },
             // An Express server with its own Dockerfile: the container.
@@ -2626,9 +2681,11 @@ crons = [\"0 * * * *\"]
 
     #[test]
     fn build_as_overrides_what_is_found() {
-        let detect_with = |dir: &Path, build_as: BuildAs, dockerfile: Option<&str>| detect_as(dir, None, None, build_as, dockerfile).unwrap();
+        let detect_with =
+            |dir: &Path, build_as: BuildAs, dockerfile: Option<&str>| detect_as(dir, None, None, build_as, dockerfile).unwrap();
         // Container uses the Dockerfile a site has beside it.
-        let vite = project("o-vite", &[("package.json", r#"{ "devDependencies": { "vite": "7" } }"#), ("Dockerfile", "FROM nginx\nEXPOSE 80\n")]);
+        let vite =
+            project("o-vite", &[("package.json", r#"{ "devDependencies": { "vite": "7" } }"#), ("Dockerfile", "FROM nginx\nEXPOSE 80\n")]);
         let found = detect_with(&vite, BuildAs::Docker, None);
         assert_eq!((found.kind, found.framework_id()), ("container", Some("vite")));
         let container = found.container.unwrap();
@@ -2656,7 +2713,10 @@ crons = [\"0 * * * *\"]
         // even one g1t thinks cannot run as one.
         let addon = project(
             "o-addon",
-            &[("package.json", r#"{ "scripts": { "start": "node server.js" }, "dependencies": { "express": "5", "sharp": "0.34" } }"#), ("server.js", "")],
+            &[
+                ("package.json", r#"{ "scripts": { "start": "node server.js" }, "dependencies": { "express": "5", "sharp": "0.34" } }"#),
+                ("server.js", ""),
+            ],
         );
         let found = detect_with(&addon, BuildAs::Workers, None);
         assert_eq!((found.kind, found.framework_id()), ("workers", Some("node")));
@@ -2686,14 +2746,19 @@ crons = [\"0 * * * *\"]
     fn a_workers_start_is_judged_by_its_log_and_answer() {
         assert_eq!(judge_start("hello", "[wrangler:info] Ready on http://127.0.0.1:1\n"), Started::Answered);
         let log = "\u{1b}[31m✘ \u{1b}[41;31m[\u{1b}[41;97mERROR\u{1b}[41;31m]\u{1b}[0m \u{1b}[1mservice core:user:g1t-app: Uncaught Error: Top-level await in module is unsettled.\u{1b}[0m\n";
-        assert_eq!(judge_start("", log), Started::Failed("it failed as it started: Uncaught Error: Top-level await in module is unsettled.".to_owned()));
+        assert_eq!(
+            judge_start("", log),
+            Started::Failed("it failed as it started: Uncaught Error: Top-level await in module is unsettled.".to_owned())
+        );
         assert!(matches!(judge_start(node_worker::NO_SERVER, ""), Started::Failed(why) if why.contains("never called `listen()`")));
     }
 
     #[test]
     fn the_pushed_digest_is_the_one_in_the_apps_repository() {
         let digest = "a".repeat(64);
-        let lines = format!("docker.io/x@sha256:{digest}\nregistry.cloudflare.com/acc/other@sha256:{digest}\nregistry.cloudflare.com/acc/g1t-web@sha256:{digest}\n");
+        let lines = format!(
+            "docker.io/x@sha256:{digest}\nregistry.cloudflare.com/acc/other@sha256:{digest}\nregistry.cloudflare.com/acc/g1t-web@sha256:{digest}\n"
+        );
         assert_eq!(
             pushed_digest(&lines, "registry.cloudflare.com", "acc/g1t-web"),
             Some(format!("registry.cloudflare.com/acc/g1t-web@sha256:{digest}"))

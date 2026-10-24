@@ -6,7 +6,7 @@ import { test } from "node:test";
 const source = ["public_storage.rs", "storage_holds.rs"]
   .map((file) => readFileSync(new URL(`../services/repos/src/${file}`, import.meta.url), "utf8"))
   .join("\n");
-const sql = (name) => source.match(new RegExp(`const ${name}: &str = "([\\s\\S]*?)";`))[1];
+const sql = (name) => source.match(new RegExp(`const ${name}: &str =\\s*"([\\s\\S]*?)";`))[1];
 /** The lease, grace and legacy window, as public_storage.rs sets them. */
 const constant = (name) =>
   source

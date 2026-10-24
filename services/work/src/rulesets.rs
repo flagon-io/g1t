@@ -51,10 +51,8 @@ const KEEP_DAYS: u64 = 90;
 const DAY_MS: u64 = 24 * 60 * 60 * 1000;
 
 /// A workspace renamed: its rulesets and their evaluations move with it.
-pub(crate) const RENAMED: &[&str] = &[
-    "UPDATE rulesets SET workspace = ?1 WHERE workspace = ?2",
-    "UPDATE rule_evaluations SET workspace = ?1 WHERE workspace = ?2",
-];
+pub(crate) const RENAMED: &[&str] =
+    &["UPDATE rulesets SET workspace = ?1 WHERE workspace = ?2", "UPDATE rule_evaluations SET workspace = ?1 WHERE workspace = ?2"];
 
 #[derive(Deserialize)]
 pub(crate) struct RulesetRow {
@@ -81,9 +79,7 @@ impl RulesetRow {
         };
         let level = if self.level == "workspace" { Level::Workspace } else { Level::Repository };
         let repository = match (level, repo) {
-            (Level::Repository, Some(repo)) if Some(&repo.id) == self.repo_id.as_ref() => {
-                Some(format!("{}/{}", repo.namespace, repo.name))
-            }
+            (Level::Repository, Some(repo)) if Some(&repo.id) == self.repo_id.as_ref() => Some(format!("{}/{}", repo.namespace, repo.name)),
             _ => None,
         };
         Some(Ruleset {
@@ -392,12 +388,7 @@ impl Work {
         Ok(teams
             .into_iter()
             .map(|team| {
-                let people = team
-                    .members
-                    .iter()
-                    .chain(team.child_members.iter())
-                    .map(|person| person.username.to_lowercase())
-                    .collect();
+                let people = team.members.iter().chain(team.child_members.iter()).map(|person| person.username.to_lowercase()).collect();
                 (format!("{}/{}", team.workspace.to_lowercase(), team.slug.to_lowercase()), people)
             })
             .collect())
@@ -471,10 +462,7 @@ impl Work {
                     .into_iter()
                     .filter(|ruleset| match ruleset.level {
                         Level::Repository => true,
-                        Level::Workspace => {
-                            include_parents
-                                && repo_matches_spec(ruleset, RepoFacts::from(repo))
-                        }
+                        Level::Workspace => include_parents && repo_matches_spec(ruleset, RepoFacts::from(repo)),
                     })
                     .collect())
             }
@@ -610,11 +598,7 @@ impl Work {
             actor: AuditActor::of(actor),
             action: action.to_owned(),
             surface: Surface::Web,
-            target: AuditTarget {
-                workspace: ruleset.workspace.clone(),
-                repo: ruleset.repository.clone(),
-                ..AuditTarget::default()
-            },
+            target: AuditTarget { workspace: ruleset.workspace.clone(), repo: ruleset.repository.clone(), ..AuditTarget::default() },
             outcome: AuditOutcome::Allowed,
             rule: "rulesets".to_owned(),
             result: Some("ok".to_owned()),
@@ -640,10 +624,7 @@ impl Work {
     pub(crate) async fn effective_rules(&self, a: EffectiveRulesArgs) -> Result<Outcome<EffectiveRules>> {
         let repo = check!(self.repo(&a.repo, &a.viewer).await?);
         let name = a.name.trim();
-        let name = name
-            .strip_prefix("refs/heads/")
-            .or_else(|| name.strip_prefix("refs/tags/"))
-            .unwrap_or(name);
+        let name = name.strip_prefix("refs/heads/").or_else(|| name.strip_prefix("refs/tags/")).unwrap_or(name);
         if name.is_empty() {
             return Ok(Outcome::fail(FailureCode::Invalid, "Name a branch or tag."));
         }
@@ -780,10 +761,7 @@ impl Work {
         Ok(Outcome::Ok(EvaluationPage {
             evaluations,
             next: next.flatten(),
-            insights: insights(
-                results[1].results::<CountRow>()?,
-                results[2].results::<RuleCountRow>()?,
-            ),
+            insights: insights(results[1].results::<CountRow>()?, results[2].results::<RuleCountRow>()?),
         }))
     }
 
@@ -856,7 +834,8 @@ impl Work {
             Some(actor) => Some(self.actor_facts(actor, repo, &rulesets).await?),
             None => None,
         };
-        let mut applicable = select::applicable(&rulesets, RepoFacts::from(repo), std::slice::from_ref(&git_ref), who.as_ref(), &repo.namespace);
+        let mut applicable =
+            select::applicable(&rulesets, RepoFacts::from(repo), std::slice::from_ref(&git_ref), who.as_ref(), &repo.namespace);
         if !honor_bypass {
             for ruleset in &mut applicable {
                 ruleset.bypass = None;
@@ -890,12 +869,8 @@ impl Work {
                     (None, None) => self.is_behind(pull).await,
                 }
             },
-            async {
-                if needs_owners { self.code_owners_gap(&owners_settings, pull).await } else { Ok(None) }
-            },
-            async {
-                if teams.is_empty() { Ok(HashMap::new()) } else { self.team_people(&teams, &repo.namespace, &repo.id).await }
-            },
+            async { if needs_owners { self.code_owners_gap(&owners_settings, pull).await } else { Ok(None) } },
+            async { if teams.is_empty() { Ok(HashMap::new()) } else { self.team_people(&teams, &repo.namespace, &repo.id).await } },
             async {
                 if g1t_rules::merge::needs_commits(&applicable, agent) {
                     self.pull_commits(repo, pull, &base).await.map(Some)
@@ -1229,8 +1204,7 @@ fn repo_matches_spec(ruleset: &Ruleset, repo: RepoFacts<'_>) -> bool {
     select::repo_matches(&ruleset.spec.conditions.repository.clone().unwrap_or_default(), repo)
 }
 
-const RULESETS_SQL: &str =
-    "SELECT * FROM rulesets WHERE repo_id = ?1 OR (level = 'workspace' AND workspace = ?2) ORDER BY created_at";
+const RULESETS_SQL: &str = "SELECT * FROM rulesets WHERE repo_id = ?1 OR (level = 'workspace' AND workspace = ?2) ORDER BY created_at";
 const ADOPTED_SQL: &str = "SELECT 1 AS n FROM ruleset_adoptions WHERE repo_id = ?1";
 
 /// The statements prefetch.rs batches for a pull request's page.
@@ -1291,10 +1265,7 @@ fn insights(counts: Vec<CountRow>, rules: Vec<RuleCountRow>) -> Insights {
     }
     by_ruleset.sort_by_key(|one| std::cmp::Reverse(one.blocked + one.would_block + one.bypassed));
     out.by_ruleset = by_ruleset;
-    out.by_rule = rules
-        .into_iter()
-        .filter_map(|row| row.rule.map(|rule| RuleInsight { rule, count: row.n }))
-        .collect();
+    out.by_rule = rules.into_iter().filter_map(|row| row.rule.map(|rule| RuleInsight { rule, count: row.n })).collect();
     out
 }
 

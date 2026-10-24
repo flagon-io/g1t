@@ -13,18 +13,11 @@ pub const MIN_CHUNK: u64 = 5 * MIB;
 /// G count in 1,024s, with or without a trailing `B` or `iB`.
 pub fn parse_size(text: &str) -> Result<u64, String> {
     let text = text.trim();
-    let split = text
-        .find(|c: char| !c.is_ascii_digit() && c != '.')
-        .unwrap_or(text.len());
+    let split = text.find(|c: char| !c.is_ascii_digit() && c != '.').unwrap_or(text.len());
     let (number, unit) = text.split_at(split);
-    let number: f64 = number
-        .parse()
-        .map_err(|_| format!("`{text}` is not a size, like 90MB"))?;
+    let number: f64 = number.parse().map_err(|_| format!("`{text}` is not a size, like 90MB"))?;
     let unit = unit.trim().to_ascii_lowercase();
-    let unit = unit
-        .strip_suffix("ib")
-        .or_else(|| unit.strip_suffix('b'))
-        .unwrap_or(&unit);
+    let unit = unit.strip_suffix("ib").or_else(|| unit.strip_suffix('b')).unwrap_or(&unit);
     let scale = match unit {
         "" => 1,
         "k" => 1024,
@@ -38,14 +31,10 @@ pub fn parse_size(text: &str) -> Result<u64, String> {
 /// Checks a chunk size against the limits.
 pub fn check_chunk(size: u64) -> Result<u64, String> {
     if size > MAX_CHUNK {
-        return Err(format!(
-            "A chunk may be at most 95MiB ({MAX_CHUNK} bytes), to stay under the 100 MB a request may carry."
-        ));
+        return Err(format!("A chunk may be at most 95MiB ({MAX_CHUNK} bytes), to stay under the 100 MB a request may carry."));
     }
     if size < MIN_CHUNK {
-        return Err(format!(
-            "A chunk must be at least 5MiB ({MIN_CHUNK} bytes)."
-        ));
+        return Err(format!("A chunk must be at least 5MiB ({MIN_CHUNK} bytes)."));
     }
     Ok(size)
 }
@@ -78,10 +67,7 @@ pub fn content_range(start: u64, length: u64) -> String {
 /// registry refusing the resent byte.
 pub fn next_offset(range: &str) -> Option<u64> {
     let text = range.trim();
-    let text = text
-        .strip_prefix("bytes=")
-        .or_else(|| text.strip_prefix("bytes "))
-        .unwrap_or(text);
+    let text = text.strip_prefix("bytes=").or_else(|| text.strip_prefix("bytes ")).unwrap_or(text);
     let (start, end) = text.split_once('-')?;
     let (start, end): (u64, u64) = (start.trim().parse().ok()?, end.trim().parse().ok()?);
     if start != 0 {
@@ -133,10 +119,7 @@ mod tests {
     fn a_plan_covers_every_byte_once() {
         let total = 150_000_000 + 4_096;
         let chunks = plan(total, DEFAULT_CHUNK, 0);
-        assert_eq!(
-            chunks,
-            vec![(0, DEFAULT_CHUNK), (DEFAULT_CHUNK, total - DEFAULT_CHUNK)]
-        );
+        assert_eq!(chunks, vec![(0, DEFAULT_CHUNK), (DEFAULT_CHUNK, total - DEFAULT_CHUNK)]);
         assert_eq!(chunks.iter().map(|c| c.1).sum::<u64>(), total);
         assert_eq!(count(total, DEFAULT_CHUNK), 2);
     }
@@ -165,10 +148,7 @@ mod tests {
     #[test]
     fn content_ranges_name_the_first_and_last_byte() {
         assert_eq!(content_range(0, 1024), "0-1023");
-        assert_eq!(
-            content_range(DEFAULT_CHUNK, 10),
-            format!("{}-{}", DEFAULT_CHUNK, DEFAULT_CHUNK + 9)
-        );
+        assert_eq!(content_range(DEFAULT_CHUNK, 10), format!("{}-{}", DEFAULT_CHUNK, DEFAULT_CHUNK + 9));
     }
 
     #[test]

@@ -5,7 +5,8 @@
 use g1t_contracts::about::License;
 
 /// The names a license file goes by, at the root, best first.
-const PREFERRED: &[&str] = &["license", "license.md", "license.txt", "licence", "licence.md", "licence.txt", "copying", "copying.md", "copying.txt", "unlicense"];
+const PREFERRED: &[&str] =
+    &["license", "license.md", "license.txt", "licence", "licence.md", "licence.txt", "copying", "copying.md", "copying.txt", "unlicense"];
 
 /// Whether a root file is a license file: `LICENSE`, `LICENCE.md`,
 /// `COPYING`, `LICENSE-MIT` and the like.
@@ -38,8 +39,18 @@ struct Known {
 /// Most specific first: AGPL and LGPL before GPL, MIT-0 before MIT.
 const KNOWN: &[Known] = &[
     Known { id: "AGPL-3.0", name: "GNU Affero General Public License v3.0", all: &["gnu affero general public license"], none: &[] },
-    Known { id: "LGPL-3.0", name: "GNU Lesser General Public License v3.0", all: &["gnu lesser general public license", "version 3"], none: &[] },
-    Known { id: "LGPL-2.1", name: "GNU Lesser General Public License v2.1", all: &["gnu lesser general public license", "version 2.1"], none: &[] },
+    Known {
+        id: "LGPL-3.0",
+        name: "GNU Lesser General Public License v3.0",
+        all: &["gnu lesser general public license", "version 3"],
+        none: &[],
+    },
+    Known {
+        id: "LGPL-2.1",
+        name: "GNU Lesser General Public License v2.1",
+        all: &["gnu lesser general public license", "version 2.1"],
+        none: &[],
+    },
     Known { id: "GPL-3.0", name: "GNU General Public License v3.0", all: &["gnu general public license", "version 3"], none: &[] },
     Known { id: "GPL-2.0", name: "GNU General Public License v2.0", all: &["gnu general public license", "version 2"], none: &[] },
     Known { id: "Apache-2.0", name: "Apache License 2.0", all: &["apache license", "version 2.0"], none: &[] },
@@ -50,10 +61,25 @@ const KNOWN: &[Known] = &[
     Known { id: "BUSL-1.1", name: "Business Source License 1.1", all: &["business source license"], none: &[] },
     Known { id: "Elastic-2.0", name: "Elastic License 2.0", all: &["elastic license 2.0"], none: &[] },
     Known { id: "SSPL-1.0", name: "Server Side Public License v1", all: &["server side public license"], none: &[] },
-    Known { id: "Unlicense", name: "The Unlicense", all: &["this is free and unencumbered software released into the public domain"], none: &[] },
+    Known {
+        id: "Unlicense",
+        name: "The Unlicense",
+        all: &["this is free and unencumbered software released into the public domain"],
+        none: &[],
+    },
     Known { id: "CC0-1.0", name: "Creative Commons Zero v1.0 Universal", all: &["cc0 1.0 universal"], none: &[] },
-    Known { id: "CC-BY-4.0", name: "Creative Commons Attribution 4.0 International", all: &["attribution 4.0 international"], none: &["sharealike", "noncommercial"] },
-    Known { id: "WTFPL", name: "Do What The F*ck You Want To Public License", all: &["do what the fuck you want to public license"], none: &[] },
+    Known {
+        id: "CC-BY-4.0",
+        name: "Creative Commons Attribution 4.0 International",
+        all: &["attribution 4.0 international"],
+        none: &["sharealike", "noncommercial"],
+    },
+    Known {
+        id: "WTFPL",
+        name: "Do What The F*ck You Want To Public License",
+        all: &["do what the fuck you want to public license"],
+        none: &[],
+    },
     Known {
         id: "MIT-0",
         name: "MIT No Attribution",
@@ -63,13 +89,19 @@ const KNOWN: &[Known] = &[
     Known {
         id: "MIT",
         name: "MIT License",
-        all: &["permission is hereby granted, free of charge, to any person obtaining a copy", "the above copyright notice and this permission notice shall be included"],
+        all: &[
+            "permission is hereby granted, free of charge, to any person obtaining a copy",
+            "the above copyright notice and this permission notice shall be included",
+        ],
         none: &[],
     },
     Known {
         id: "ISC",
         name: "ISC License",
-        all: &["permission to use, copy, modify, and/or distribute this software for any purpose", "the above copyright notice and this permission notice appear in all copies"],
+        all: &[
+            "permission to use, copy, modify, and/or distribute this software for any purpose",
+            "the above copyright notice and this permission notice appear in all copies",
+        ],
         none: &[],
     },
     Known {
@@ -93,7 +125,10 @@ const KNOWN: &[Known] = &[
     Known {
         id: "BSD-3-Clause",
         name: "BSD 3-Clause \"New\" or \"Revised\" License",
-        all: &["redistribution and use in source and binary forms", "may be used to endorse or promote products derived from this software without specific prior written permission"],
+        all: &[
+            "redistribution and use in source and binary forms",
+            "may be used to endorse or promote products derived from this software without specific prior written permission",
+        ],
         none: &[],
     },
     Known {
@@ -102,12 +137,7 @@ const KNOWN: &[Known] = &[
         all: &["redistribution and use in source and binary forms"],
         none: &[],
     },
-    Known {
-        id: "Zlib",
-        name: "zlib License",
-        all: &["altered source versions must be plainly marked as such"],
-        none: &[],
-    },
+    Known { id: "Zlib", name: "zlib License", all: &["altered source versions must be plainly marked as such"], none: &[] },
 ];
 
 /// Lowercase, quotes made plain, and whitespace collapsed to single spaces.
@@ -153,7 +183,10 @@ pub fn detect(path: &str, text: &str) -> License {
         return License { spdx_id: Some(id), name, path: path.to_owned() };
     }
     let normal = normalize(&head);
-    match KNOWN.iter().find(|known| known.all.iter().all(|phrase| normal.contains(phrase)) && !known.none.iter().any(|phrase| normal.contains(phrase))) {
+    match KNOWN
+        .iter()
+        .find(|known| known.all.iter().all(|phrase| normal.contains(phrase)) && !known.none.iter().any(|phrase| normal.contains(phrase)))
+    {
         Some(known) => License { spdx_id: Some(known.id.to_owned()), name: known.name.to_owned(), path: path.to_owned() },
         None => License { spdx_id: None, name: "Other".to_owned(), path: path.to_owned() },
     }
@@ -173,7 +206,10 @@ mod tests {
     fn common_licenses_are_recognized() {
         assert_eq!(id(MIT).as_deref(), Some("MIT"));
         assert_eq!(detect("LICENSE", MIT).name, "MIT License");
-        assert_eq!(id("                                 Apache License\n                           Version 2.0, January 2004\n").as_deref(), Some("Apache-2.0"));
+        assert_eq!(
+            id("                                 Apache License\n                           Version 2.0, January 2004\n").as_deref(),
+            Some("Apache-2.0")
+        );
         assert_eq!(id("GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007").as_deref(), Some("GPL-3.0"));
         assert_eq!(id("GNU GENERAL PUBLIC LICENSE\nVersion 2, June 1991").as_deref(), Some("GPL-2.0"));
         assert_eq!(id("GNU AFFERO GENERAL PUBLIC LICENSE\nVersion 3, 19 November 2007").as_deref(), Some("AGPL-3.0"));

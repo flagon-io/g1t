@@ -985,31 +985,39 @@ fn capability_line(status: &Status, capability: &launcher::Capability, facts: &F
         version: capability.runner_version.clone(),
         update: waiting(&facts.update, id, capability.job.is_some()),
     };
-    let said = |line: &mut CapabilityLine, state: KindState, tone: Tone, cause: Option<String>, fix: Option<String>, actions: Vec<Action>| {
-        line.state = state;
-        line.tone = tone;
-        line.title = match state {
-            KindState::Busy => "Running a job",
-            KindState::Idle => "Waiting for jobs",
-            KindState::Starting => "Starting",
-            KindState::Downloading => "Downloading image",
-            KindState::Updating => "Updating",
-            KindState::Waiting => "Waiting for image",
-            KindState::Stopped => "Stopped",
-            KindState::Unavailable => "Not available",
-            KindState::Problem => "Problem",
-        }
-        .into();
-        line.cause = cause;
-        line.fix = fix;
-        line.actions = actions;
-    };
+    let said =
+        |line: &mut CapabilityLine, state: KindState, tone: Tone, cause: Option<String>, fix: Option<String>, actions: Vec<Action>| {
+            line.state = state;
+            line.tone = tone;
+            line.title = match state {
+                KindState::Busy => "Running a job",
+                KindState::Idle => "Waiting for jobs",
+                KindState::Starting => "Starting",
+                KindState::Downloading => "Downloading image",
+                KindState::Updating => "Updating",
+                KindState::Waiting => "Waiting for image",
+                KindState::Stopped => "Stopped",
+                KindState::Unavailable => "Not available",
+                KindState::Problem => "Problem",
+            }
+            .into();
+            line.cause = cause;
+            line.fix = fix;
+            line.actions = actions;
+        };
     let again = |what: &str| format!("g1t {what} again by itself in a few minutes; Retry {what} now.");
     let starting = facts.starting.iter().any(|kind| kind == id) || matches!(capability.state, State::Starting);
 
     // Stopped by the person: nothing is wrong with it.
     if capability.off() || (!enabled && per_kind) {
-        said(&mut line, KindState::Stopped, Tone::Off, some(format!("You stopped {label} on this computer. They stay stopped until you start them.")), None, vec![]);
+        said(
+            &mut line,
+            KindState::Stopped,
+            Tone::Off,
+            some(format!("You stopped {label} on this computer. They stay stopped until you start them.")),
+            None,
+            vec![],
+        );
         return line;
     }
     // What this computer lacks for it, by name: said plainly, with Set up
@@ -1080,11 +1088,32 @@ fn capability_line(status: &Status, capability: &launcher::Capability, facts: &F
     match capability.state {
         _ if starting || capability.state == State::Updating => match downloading {
             Some(download) => {
-                said(&mut line, KindState::Downloading, Tone::Working, some("Downloading and checking the sandbox's image, once: it takes a few minutes."), None, vec![]);
+                said(
+                    &mut line,
+                    KindState::Downloading,
+                    Tone::Working,
+                    some("Downloading and checking the sandbox's image, once: it takes a few minutes."),
+                    None,
+                    vec![],
+                );
                 line.progress = Some(download.percent);
             }
-            None if capability.state == State::Updating => said(&mut line, KindState::Updating, Tone::Working, some("Taking the newest sandbox image; it takes jobs again when it's done."), None, vec![]),
-            None if capability.state == State::Absent => said(&mut line, KindState::Starting, Tone::Working, some(format!("Registering it with {}.", facts.workspace.as_deref().unwrap_or("your workspace"))), None, vec![]),
+            None if capability.state == State::Updating => said(
+                &mut line,
+                KindState::Updating,
+                Tone::Working,
+                some("Taking the newest sandbox image; it takes jobs again when it's done."),
+                None,
+                vec![],
+            ),
+            None if capability.state == State::Absent => said(
+                &mut line,
+                KindState::Starting,
+                Tone::Working,
+                some(format!("Registering it with {}.", facts.workspace.as_deref().unwrap_or("your workspace"))),
+                None,
+                vec![],
+            ),
             None => said(&mut line, KindState::Starting, Tone::Working, None, None, vec![]),
         },
         State::Running => match &capability.job {
@@ -1093,7 +1122,8 @@ fn capability_line(status: &Status, capability: &launcher::Capability, facts: &F
                 // Every job a runner takes is on the repository's Actions page:
                 // workflow jobs, and the queue, merge check and checks tasks
                 // the runner's wire still calls `agent` work.
-                let link = (!job.repo.is_empty() && !facts.site.is_empty()).then(|| format!("{}/{}/actions", facts.site.trim_end_matches('/'), job.repo));
+                let link = (!job.repo.is_empty() && !facts.site.is_empty())
+                    .then(|| format!("{}/{}/actions", facts.site.trim_end_matches('/'), job.repo));
                 line.job = Some(JobLine { kind: job.kind.clone(), name: job.name.clone(), repo: job.repo.clone(), link });
             }
             None => said(&mut line, KindState::Idle, Tone::Ok, None, None, vec![]),
@@ -1102,15 +1132,36 @@ fn capability_line(status: &Status, capability: &launcher::Capability, facts: &F
         // or is to be registered.
         State::Stopped | State::Absent if facts.live && status.running() => {
             if capability.state == State::Absent {
-                said(&mut line, KindState::Starting, Tone::Working, some(format!("Registering it with {}.", facts.workspace.as_deref().unwrap_or("your workspace"))), None, vec![]);
+                said(
+                    &mut line,
+                    KindState::Starting,
+                    Tone::Working,
+                    some(format!("Registering it with {}.", facts.workspace.as_deref().unwrap_or("your workspace"))),
+                    None,
+                    vec![],
+                );
             } else {
-                said(&mut line, KindState::Problem, Tone::Problem, some("Its runner stopped by itself."), some(again("starts it")), vec![RETRY, VIEW_LOG]);
+                said(
+                    &mut line,
+                    KindState::Problem,
+                    Tone::Problem,
+                    some("Its runner stopped by itself."),
+                    some(again("starts it")),
+                    vec![RETRY, VIEW_LOG],
+                );
                 line.headline = Some("Its runner stopped".into());
             }
         }
         State::Stopped | State::Absent => said(&mut line, KindState::Stopped, Tone::Off, None, None, vec![]),
         State::Error | State::Unknown | State::Starting | State::Updating => {
-            said(&mut line, KindState::Problem, Tone::Problem, capability.cause.clone().or_else(|| status.error.clone()), capability.fix.clone(), vec![RETRY, VIEW_LOG]);
+            said(
+                &mut line,
+                KindState::Problem,
+                Tone::Problem,
+                capability.cause.clone().or_else(|| status.error.clone()),
+                capability.fix.clone(),
+                vec![RETRY, VIEW_LOG],
+            );
         }
     }
     // The person stopped it, and this launcher can't stop one kind alone yet.
@@ -1243,7 +1294,10 @@ mod tests {
         assert_eq!(busy.cause.as_deref(), Some("Running sandboxed for acme on build-box."));
         let crashed = diagnose(Code::Crashed, &Facts { exit_code: Some(101), wait_seconds: Some(30), ..facts() });
         assert_eq!(crashed.title, "Runner stopped (exit code 101)");
-        assert_eq!(crashed.fix.as_deref(), Some("It starts again by itself in 30 seconds. If it keeps stopping, its log says why; Restart starts it now."));
+        assert_eq!(
+            crashed.fix.as_deref(),
+            Some("It starts again by itself in 30 seconds. If it keeps stopping, its log says why; Restart starts it now.")
+        );
         assert_eq!(crashed.actions.iter().map(|a| a.id).collect::<Vec<_>>(), ["restart", "view_log"]);
         assert_eq!(diagnose(Code::NoDocker, &facts()).actions[0].id, "open_docker");
         assert_eq!(closed(&facts()).title, "g1t is closed on build-box");
@@ -1270,7 +1324,12 @@ mod tests {
         assert_eq!(code, Code::NoWsl);
         let diagnosis = diagnose(code, &Facts { detail: Some(cause), sandbox: Some(status), live: true, ..facts() });
         assert_eq!(diagnosis.title, "Not running: WSL isn't installed");
-        assert_eq!(diagnosis.fix.as_deref(), Some("Run `wsl --install --no-distribution` in an admin terminal, then restart Windows. It works on every edition of Windows 11, Home included."));
+        assert_eq!(
+            diagnosis.fix.as_deref(),
+            Some(
+                "Run `wsl --install --no-distribution` in an admin terminal, then restart Windows. It works on every edition of Windows 11, Home included."
+            )
+        );
         assert_eq!(diagnosis.actions[0], COPY_WSL_INSTALL);
         let [linux, windows] = &diagnosis.capabilities[..] else { panic!("{:?}", diagnosis.capabilities) };
         assert_eq!((linux.label.as_str(), linux.title.as_str(), linux.state), ("Linux jobs", "Not available", KindState::Unavailable));
@@ -1296,13 +1355,17 @@ mod tests {
               {"id":"windows","available":false,"state":"absent","turned_off":false,"cause":"Windows Sandbox is not turned on, or this edition of Windows has none (Home does not).","fix":"On Windows 11 Pro…"}]}"#,
         );
         assert_eq!(sandbox_trouble(&status), None);
-        let busy = diagnose(Code::Busy, &Facts { job: status.job().map(launcher::Job::said), sandbox: Some(status), live: true, ..facts() });
+        let busy =
+            diagnose(Code::Busy, &Facts { job: status.job().map(launcher::Job::said), sandbox: Some(status), live: true, ..facts() });
         assert_eq!(busy.title, "Running build (acme/web)");
         assert!(busy.in_capabilities);
         let [linux, windows] = &busy.capabilities[..] else { panic!() };
         assert_eq!((linux.title.as_str(), linux.state, linux.tone), ("Running a job", KindState::Busy, Tone::Working));
         let job = linux.job.as_ref().unwrap();
-        assert_eq!((job.name.as_str(), job.repo.as_str(), job.link.as_deref()), ("build", "acme/web", Some("https://g1t.sh/acme/web/actions")));
+        assert_eq!(
+            (job.name.as_str(), job.repo.as_str(), job.link.as_deref()),
+            ("build", "acme/web", Some("https://g1t.sh/acme/web/actions"))
+        );
         assert!(linux.can_toggle && linux.enabled);
         assert_eq!((windows.title.as_str(), windows.tone, windows.state), ("Not available", Tone::Off, KindState::Unavailable));
         assert_eq!(windows.headline.as_deref(), Some("Windows Sandbox is off"));
@@ -1328,8 +1391,14 @@ mod tests {
         assert_eq!(code, Code::WaitingForImage);
         let whole = diagnose(code, &Facts { detail: Some(cause), ..facts() });
         assert_eq!(whole.title, "Waiting for the sandbox's image");
-        assert_eq!(whole.cause.as_deref(), Some("g1t-runner 0.3.0 is published without the sandbox's images yet, so Linux jobs can't start."));
-        assert_eq!(whole.fix.as_deref(), Some("g1t checks again every few minutes and starts Linux jobs once they're out. There's nothing for you to do."));
+        assert_eq!(
+            whole.cause.as_deref(),
+            Some("g1t-runner 0.3.0 is published without the sandbox's images yet, so Linux jobs can't start.")
+        );
+        assert_eq!(
+            whole.fix.as_deref(),
+            Some("g1t checks again every few minutes and starts Linux jobs once they're out. There's nothing for you to do.")
+        );
         assert_eq!(whole.actions, [CHECK_NOW]);
         assert!(!whole.fix.unwrap().contains("report"));
         // Windows jobs run: the runner waits for jobs, and the Linux card says what it waits for.
@@ -1339,11 +1408,20 @@ mod tests {
         assert_eq!((linux.state, linux.title.as_str(), linux.tone), (KindState::Waiting, "Waiting for image", Tone::Warning));
         assert_eq!(linux.headline.as_deref(), Some("Waiting for the sandbox's image"));
         assert_eq!(windows.state, KindState::Idle);
-        let image = diagnose(Code::ImageFailed, &Facts { detail: Some("the sandbox image wsl-x64.tar.gz's SHA-256 is not the release's; not using it".into()), ..facts() });
+        let image = diagnose(
+            Code::ImageFailed,
+            &Facts { detail: Some("the sandbox image wsl-x64.tar.gz's SHA-256 is not the release's; not using it".into()), ..facts() },
+        );
         assert_eq!(image.title, "Not running: the sandbox's image didn't check out");
-        let fetch = diagnose(Code::ImageFailed, &Facts { detail: Some("could not fetch https://g1t.sh/x: dns error".into()), wait_seconds: Some(60), ..facts() });
+        let fetch = diagnose(
+            Code::ImageFailed,
+            &Facts { detail: Some("could not fetch https://g1t.sh/x: dns error".into()), wait_seconds: Some(60), ..facts() },
+        );
         assert_eq!(fetch.cause.as_deref(), Some("The sandbox's image couldn't be downloaded: could not fetch https://g1t.sh/x: dns error"));
-        assert_eq!(fetch.fix.as_deref(), Some("g1t tries again by itself in 60 seconds. Check that this computer can reach g1t.sh; Retry tries now."));
+        assert_eq!(
+            fetch.fix.as_deref(),
+            Some("g1t tries again by itself in 60 seconds. Check that this computer can reach g1t.sh; Retry tries now.")
+        );
     }
 
     #[test]
@@ -1360,9 +1438,13 @@ mod tests {
         assert_eq!(windows.cause.as_deref(), Some("You stopped Windows jobs on this computer. They stay stopped until you start them."));
         assert!(windows.can_toggle && windows.actions.is_empty());
         // Stopped by itself while Linux jobs run is a problem, with Retry.
-        let died = launcher::parse(&serde_json::to_string(&serde_json::json!({"schema":1,"state":"running","capabilities":[
+        let died = launcher::parse(
+            &serde_json::to_string(&serde_json::json!({"schema":1,"state":"running","capabilities":[
             {"id":"linux","available":true,"state":"running","turned_off":false},
-            {"id":"windows","available":true,"state":"stopped","turned_off":false}]})).unwrap()).unwrap();
+            {"id":"windows","available":true,"state":"stopped","turned_off":false}]}))
+            .unwrap(),
+        )
+        .unwrap();
         let idle = diagnose(Code::Idle, &Facts { sandbox: Some(died.clone()), live: true, ..facts() });
         assert_eq!((idle.capabilities[1].state, idle.capabilities[1].actions[0].id), (KindState::Problem, "retry"));
         // With the whole runner stopped, it is only stopped.
@@ -1375,8 +1457,16 @@ mod tests {
 
     #[test]
     fn a_download_shows_how_far_it_is() {
-        let status = status(r#"{"schema":1,"state":"starting","capabilities":[{"id":"linux","available":true,"state":"starting","turned_off":false},{"id":"windows","available":true,"state":"absent","turned_off":false}]}"#);
-        let facts = Facts { sandbox: Some(status), live: true, starting: vec!["linux".into(), "windows".into()], download: Some(launcher::Download { key: "wsl-x64".into(), percent: 40 }), ..facts() };
+        let status = status(
+            r#"{"schema":1,"state":"starting","capabilities":[{"id":"linux","available":true,"state":"starting","turned_off":false},{"id":"windows","available":true,"state":"absent","turned_off":false}]}"#,
+        );
+        let facts = Facts {
+            sandbox: Some(status),
+            live: true,
+            starting: vec!["linux".into(), "windows".into()],
+            download: Some(launcher::Download { key: "wsl-x64".into(), percent: 40 }),
+            ..facts()
+        };
         let starting = diagnose(Code::Starting, &facts);
         assert!(starting.in_capabilities);
         let [linux, windows] = &starting.capabilities[..] else { panic!() };
@@ -1394,9 +1484,18 @@ mod tests {
             sandbox_trouble(&status(&json.to_string())).unwrap()
         };
         assert_eq!(trouble(true, "WSL could not import the sandbox: Please enable the Virtual Machine Platform Windows feature and ensure virtualization is enabled in the BIOS.").0, Code::NoVirtualization);
-        assert_eq!(trouble(false, "vfkit, which runs the sandbox's VM with Apple's Virtualization framework, is not installed.").0, Code::NoVfkit);
-        assert_eq!(trouble(false, "This machine has neither Sysbox nor KVM, so there is nothing to sandbox the runner with.").0, Code::NoSysbox);
-        assert_eq!(trouble(false, "WSL is set to mirrored networking, in which Linux reaches this computer's own localhost.").0, Code::WslMirrored);
+        assert_eq!(
+            trouble(false, "vfkit, which runs the sandbox's VM with Apple's Virtualization framework, is not installed.").0,
+            Code::NoVfkit
+        );
+        assert_eq!(
+            trouble(false, "This machine has neither Sysbox nor KVM, so there is nothing to sandbox the runner with.").0,
+            Code::NoSysbox
+        );
+        assert_eq!(
+            trouble(false, "WSL is set to mirrored networking, in which Linux reaches this computer's own localhost.").0,
+            Code::WslMirrored
+        );
         assert_eq!(trouble(true, "the sandbox image wsl-x64.tar.gz's SHA-256 is not the release's; not using it").0, Code::ImageFailed);
         assert_eq!(trouble(true, "release 0.3.0 has no sandbox images").0, Code::WaitingForImage);
         // Unknown words: shown as the launcher wrote them, its fix with them.
@@ -1409,7 +1508,10 @@ mod tests {
         assert_eq!(code, Code::SandboxFailed);
         let failed = diagnose(code, &Facts { detail: Some(cause), wait_seconds: Some(60), ..facts() });
         assert_eq!(failed.cause.as_deref(), Some("the sandbox did not start within 600 seconds"));
-        assert_eq!(failed.fix.as_deref(), Some("It starts again by itself in 60 seconds. If it keeps stopping, its log says why; Retry starts it now."));
+        assert_eq!(
+            failed.fix.as_deref(),
+            Some("It starts again by itself in 60 seconds. If it keeps stopping, its log says why; Retry starts it now.")
+        );
         assert_eq!(diagnose(Code::NoVirtualization, &Facts { platform: "macos".into(), ..facts() }).actions[0].id, "retry");
         assert_eq!(diagnose(Code::NoVfkit, &facts()).actions[0].id, "copy_vfkit_install");
     }
@@ -1449,7 +1551,10 @@ mod tests {
         assert_eq!(linux.update.as_deref(), Some("0.3.2 ready, installs after this job"));
         assert_eq!(windows.update.as_deref(), Some("0.3.2 ready, installs in a moment"));
         let line = busy.update.unwrap();
-        assert_eq!((line.checked.as_str(), line.ready.as_deref(), line.checked_at.as_deref()), ("Checked 12 min ago", Some("0.3.2"), Some("2026-10-12T12:00:00Z")));
+        assert_eq!(
+            (line.checked.as_str(), line.ready.as_deref(), line.checked_at.as_deref()),
+            ("Checked 12 min ago", Some("0.3.2"), Some("2026-10-12T12:00:00Z"))
+        );
         // The cards say it, each for its own kind: nothing is said for the whole runner.
         assert_eq!(line.note, None);
         assert_eq!((line.check.id, line.check.label), ("check_updates", "Check for runner updates"));
@@ -1462,7 +1567,8 @@ mod tests {
         assert_eq!(busy.capabilities[1].update, None);
         // In Docker or on this computer there are no cards: the whole runner says it.
         let docker = Update { waiting: vec!["runner".into()], ..update };
-        let busy = diagnose(Code::Busy, &Facts { backend: "in Docker", job: Some("build (acme/web)".into()), update: docker.clone(), ..facts() });
+        let busy =
+            diagnose(Code::Busy, &Facts { backend: "in Docker", job: Some("build (acme/web)".into()), update: docker.clone(), ..facts() });
         assert_eq!(busy.update.unwrap().note.as_deref(), Some("0.3.2 ready, installs after this job"));
         let idle = diagnose(Code::Idle, &Facts { backend: "in Docker", update: docker, ..facts() });
         assert_eq!(idle.update.unwrap().note.as_deref(), Some("0.3.2 ready, installs in a moment"));
@@ -1473,13 +1579,20 @@ mod tests {
     #[test]
     fn a_release_not_signed_by_g1t_is_refused_and_said_so() {
         let detail = Some("the release's signature isn't g1t's".to_owned());
-        let running = diagnose(Code::UpdateRefused, &Facts { detail: detail.clone(), update: Update { installed: Some("0.3.1".into()), ..Update::default() }, ..facts() });
+        let running = diagnose(
+            Code::UpdateRefused,
+            &Facts { detail: detail.clone(), update: Update { installed: Some("0.3.1".into()), ..Update::default() }, ..facts() },
+        );
         assert_eq!(running.title, "Update refused: not signed by g1t");
         assert_eq!(
             running.cause.as_deref(),
-            Some("The newest g1t-runner release from g1t.sh isn't signed with g1t's release key (the release's signature isn't g1t's), so g1t didn't install it.")
+            Some(
+                "The newest g1t-runner release from g1t.sh isn't signed with g1t's release key (the release's signature isn't g1t's), so g1t didn't install it."
+            )
         );
-        assert!(running.fix.as_deref().unwrap().starts_with("The runner keeps running g1t-runner 0.3.1, and g1t checks again within the hour."));
+        assert!(
+            running.fix.as_deref().unwrap().starts_with("The runner keeps running g1t-runner 0.3.1, and g1t checks again within the hour.")
+        );
         assert_eq!(running.actions, [CHECK_AGAIN, REPORT]);
         assert_eq!(running.tone, Tone::Warning);
         // With no runner yet, nothing runs until a signed one downloads.
@@ -1511,7 +1624,10 @@ mod tests {
         assert_eq!(said(Code::Busy, &Facts { sandbox: Some(both), live: true, ..facts() }), (Tone::Working, "Running 2 jobs".into()));
         // Linux jobs run while Windows jobs can't start: running, and wanting a look.
         let one_failing = status(NO_WSL_PRO);
-        assert_eq!(said(Code::Idle, &Facts { sandbox: Some(one_failing), live: true, ..facts() }), (Tone::Warning, "Runner running".into()));
+        assert_eq!(
+            said(Code::Idle, &Facts { sandbox: Some(one_failing), live: true, ..facts() }),
+            (Tone::Warning, "Runner running".into())
+        );
     }
 
     #[test]
@@ -1536,7 +1652,9 @@ mod tests {
         let kind = |id: &str, needs: Option<&[&str]>| match needs {
             None => format!(r#"{{"id":"{id}","available":true,"state":"running","runner_version":"0.3.5","turned_off":false,"needs":[]}}"#),
             // What the launcher says of macOS jobs, which need nothing: they aren't released.
-            Some([]) => format!(r#"{{"id":"{id}","available":false,"state":"absent","turned_off":false,"cause":"Sandboxed macOS jobs are not released yet.","fix":"Run macOS jobs on a runner registered with --no-docker for now.","needs":[]}}"#),
+            Some([]) => format!(
+                r#"{{"id":"{id}","available":false,"state":"absent","turned_off":false,"cause":"Sandboxed macOS jobs are not released yet.","fix":"Run macOS jobs on a runner registered with --no-docker for now.","needs":[]}}"#
+            ),
             Some(needs) => format!(
                 r#"{{"id":"{id}","available":false,"state":"{}","turned_off":false,"cause":"In the launcher's words.","fix":"Its fix.","needs":{}}}"#,
                 if id == "linux" { "error" } else { "absent" },
@@ -1548,14 +1666,24 @@ mod tests {
             kinds.push(kind(id, needs));
         }
         let state = if linux.is_none() { "running" } else { "error" };
-        status(&format!(r#"{{"schema":1,"state":"{state}","backend":"wsl2","launcher_version":"0.3.5","capabilities":[{}]}}"#, kinds.join(",")))
+        status(&format!(
+            r#"{{"schema":1,"state":"{state}","backend":"wsl2","launcher_version":"0.3.5","capabilities":[{}]}}"#,
+            kinds.join(",")
+        ))
     }
 
     /// What the whole runner and each card say, as the app would show it: the code `shown` picks.
     fn shown_for(status: Status, facts: Facts) -> Diagnosis {
-        let code = if status.running() { Code::Idle } else if status.linux_needs().is_empty() { Code::SandboxFailed } else { Code::NeedsSetup };
+        let code = if status.running() {
+            Code::Idle
+        } else if status.linux_needs().is_empty() {
+            Code::SandboxFailed
+        } else {
+            Code::NeedsSetup
+        };
         // As the app fills it in: the needs of each kind that is on.
-        let setup = SetUp { needs: super::super::setup::needs(&status, |kind| !facts.off.iter().any(|off| off == kind)), ..facts.setup.clone() };
+        let setup =
+            SetUp { needs: super::super::setup::needs(&status, |kind| !facts.off.iter().any(|off| off == kind)), ..facts.setup.clone() };
         diagnose(code, &Facts { sandbox: Some(status), live: true, setup, ..facts })
     }
 
@@ -1583,14 +1711,27 @@ mod tests {
         let [linux, windows] = &home.capabilities[..] else { panic!() };
         assert_eq!((linux.title.as_str(), linux.tone, linux.state), ("Needs setting up", Tone::Warning, KindState::Unavailable));
         assert_eq!(linux.headline.as_deref(), Some("WSL isn't installed"));
-        assert_eq!(linux.cause.as_deref(), Some("Linux jobs run in a small Linux VM of their own under WSL 2, which needs Virtual Machine Platform turned on and WSL installed."));
-        assert_eq!(linux.fix.as_deref(), Some("Set up turns on Virtual Machine Platform and installs WSL in one go. Windows asks you to allow it, and to restart after."));
+        assert_eq!(
+            linux.cause.as_deref(),
+            Some(
+                "Linux jobs run in a small Linux VM of their own under WSL 2, which needs Virtual Machine Platform turned on and WSL installed."
+            )
+        );
+        assert_eq!(
+            linux.fix.as_deref(),
+            Some(
+                "Set up turns on Virtual Machine Platform and installs WSL in one go. Windows asks you to allow it, and to restart after."
+            )
+        );
         assert_eq!(ids(&linux.actions), ["set_up", "setup_help"]);
         assert!(SET_UP.waits && SET_UP.confirm.is_none(), "Windows' own prompt asks");
         // Home: no dead end, and no button that can't work.
         assert_eq!((windows.title.as_str(), windows.tone), ("Not available", Tone::Off));
         assert_eq!(windows.headline.as_deref(), Some("Not in Windows Home"));
-        assert_eq!(windows.fix.as_deref(), Some("Linux jobs run here all the same. Windows jobs need Windows 11 Pro, Enterprise or Education."));
+        assert_eq!(
+            windows.fix.as_deref(),
+            Some("Linux jobs run here all the same. Windows jobs need Windows 11 Pro, Enterprise or Education.")
+        );
         assert_eq!(ids(&windows.actions), ["windows_activation"]);
         // The chip asks for the person.
         assert_eq!(chip(&home).label, "Runner needs you");
@@ -1609,9 +1750,18 @@ mod tests {
         // Windows jobs stopped by the person: Set up leaves their feature alone, and says so.
         let linux_only = shown_for(
             needing(Some(&["vm_platform", "wsl"]), Some(("windows", Some(&["windows_sandbox"])))),
-            Facts { setup: SetUp { needs: vec!["vm_platform".into(), "wsl".into()], ..SetUp::default() }, off: vec!["windows".into()], ..facts() },
+            Facts {
+                setup: SetUp { needs: vec!["vm_platform".into(), "wsl".into()], ..SetUp::default() },
+                off: vec!["windows".into()],
+                ..facts()
+            },
         );
-        assert_eq!(linux_only.capabilities[0].fix.as_deref(), Some("Set up turns on Virtual Machine Platform and installs WSL in one go. Windows asks you to allow it, and to restart after."));
+        assert_eq!(
+            linux_only.capabilities[0].fix.as_deref(),
+            Some(
+                "Set up turns on Virtual Machine Platform and installs WSL in one go. Windows asks you to allow it, and to restart after."
+            )
+        );
         // Linux jobs run while Windows Sandbox is off: waiting for jobs, and one card wants a look.
         let linux_runs = shown_for(needing(None, Some(("windows", Some(&["windows_sandbox"])))), facts());
         screen("windows-pro-sandbox-off", &linux_runs);
@@ -1635,7 +1785,8 @@ mod tests {
     #[test]
     fn set_up_shows_while_it_works_then_a_restart_now_or_later() {
         let clean = needing(Some(&["vm_platform", "wsl"]), Some(("windows", Some(&["windows_sandbox"]))));
-        let working = SetUp { running: Some("turns on Virtual Machine Platform and Windows Sandbox and installs WSL".into()), ..SetUp::default() };
+        let working =
+            SetUp { running: Some("turns on Virtual Machine Platform and Windows Sandbox and installs WSL".into()), ..SetUp::default() };
         let setting_up = shown_for(clean.clone(), Facts { setup: working, ..facts() });
         screen("windows-setting-up", &setting_up);
         assert_eq!(setting_up.title, "Not running: setting up");
@@ -1644,7 +1795,12 @@ mod tests {
         for kind in &setting_up.capabilities {
             assert_eq!((kind.title.as_str(), kind.state, kind.tone), ("Setting up", KindState::Starting, Tone::Working));
             assert!(kind.actions.is_empty());
-            assert_eq!(kind.cause.as_deref(), Some("g1t turns on Virtual Machine Platform and Windows Sandbox and installs WSL. Windows asks you to allow it first, and it takes a few minutes."));
+            assert_eq!(
+                kind.cause.as_deref(),
+                Some(
+                    "g1t turns on Virtual Machine Platform and Windows Sandbox and installs WSL. Windows asks you to allow it first, and it takes a few minutes."
+                )
+            );
         }
         let restart = shown_for(needing(Some(&["restart"]), Some(("windows", Some(&["restart"])))), facts());
         screen("windows-restart", &restart);
@@ -1663,7 +1819,10 @@ mod tests {
         let declined = SetUp { failed: Some("you said No to Windows' prompt, so nothing changed.".into()), ..SetUp::default() };
         let again = shown_for(clean, Facts { setup: declined, ..facts() });
         screen("windows-set-up-declined", &again);
-        assert_eq!(again.capabilities[0].cause.as_deref(), Some("Set up didn't finish: you said No to Windows' prompt, so nothing changed."));
+        assert_eq!(
+            again.capabilities[0].cause.as_deref(),
+            Some("Set up didn't finish: you said No to Windows' prompt, so nothing changed.")
+        );
         assert_eq!(ids(&again.capabilities[0].actions), ["set_up", "view_log"]);
     }
 
@@ -1694,14 +1853,22 @@ mod tests {
         let group = shown_for(needing(Some(&["kvm_group"]), None), linux.clone());
         screen("linux-kvm-group", &group);
         assert_eq!(group.title, "Not running: no access to KVM");
-        assert_eq!(group.capabilities[0].fix.as_deref(), Some("Run `sudo usermod -aG kvm $USER` (Copy command), then log out and back in."));
+        assert_eq!(
+            group.capabilities[0].fix.as_deref(),
+            Some("Run `sudo usermod -aG kvm $USER` (Copy command), then log out and back in.")
+        );
         assert_eq!(ids(&group.capabilities[0].actions), ["copy_kvm_group", "retry"]);
         let bare = shown_for(needing(Some(&["kvm_module", "qemu"]), None), linux.clone());
         screen("linux-no-kvm", &bare);
         assert_eq!(bare.title, "Not running: KVM isn't loaded");
         assert_eq!(ids(&bare.capabilities[0].actions), ["copy_kvm_load", "retry"]);
         let qemu = shown_for(needing(Some(&["qemu"]), None), linux.clone());
-        assert_eq!(qemu.capabilities[0].fix.as_deref(), Some("Install it with `sudo apt install qemu-system-x86` (Copy command), then Check now. Or install Sysbox 0.7 or later instead."));
+        assert_eq!(
+            qemu.capabilities[0].fix.as_deref(),
+            Some(
+                "Install it with `sudo apt install qemu-system-x86` (Copy command), then Check now. Or install Sysbox 0.7 or later instead."
+            )
+        );
         let unknown_distro = shown_for(needing(Some(&["qemu"]), None), Facts { qemu_install: None, ..linux.clone() });
         assert_eq!(ids(&unknown_distro.capabilities[0].actions), ["retry", "install_sysbox"]);
         let firmware = shown_for(needing(Some(&["virtualization"]), None), linux);
@@ -1718,7 +1885,20 @@ mod tests {
     #[test]
     fn every_need_has_a_way_forward() {
         let needs = [
-            "restart", "windows_update", "virtualization", "nested_virtualization", "vm_platform", "wsl", "wsl_update", "windows_edition", "windows_sandbox", "kvm_module", "kvm_group", "qemu", "macos_update", "homebrew",
+            "restart",
+            "windows_update",
+            "virtualization",
+            "nested_virtualization",
+            "vm_platform",
+            "wsl",
+            "wsl_update",
+            "windows_edition",
+            "windows_sandbox",
+            "kvm_module",
+            "kvm_group",
+            "qemu",
+            "macos_update",
+            "homebrew",
             "vfkit",
         ];
         for need in needs {

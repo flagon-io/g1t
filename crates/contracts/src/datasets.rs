@@ -478,7 +478,8 @@ mod tests {
     /// The two validators agree on every case in the shared fixtures.
     #[test]
     fn agrees_with_the_typescript_validator_on_the_fixtures() {
-        let fixtures: serde_json::Value = serde_json::from_str(include_str!("../../../packages/contracts/src/datasets.fixtures.json")).unwrap();
+        let fixtures: serde_json::Value =
+            serde_json::from_str(include_str!("../../../packages/contracts/src/datasets.fixtures.json")).unwrap();
         let cases = fixtures["cases"].as_array().unwrap();
         assert!(cases.len() > 20);
         for case in cases {
@@ -505,7 +506,11 @@ mod tests {
             .expect("DATASETS in datasets.ts");
         let quoted = |line: &str, key: &str| -> Vec<String> {
             let start = format!("{key}: [");
-            let list = line.split_once(&start).and_then(|(_, rest)| rest.split_once(']')).map(|(list, _)| list).unwrap_or_else(|| panic!("{key} in {line}"));
+            let list = line
+                .split_once(&start)
+                .and_then(|(_, rest)| rest.split_once(']'))
+                .map(|(list, _)| list)
+                .unwrap_or_else(|| panic!("{key} in {line}"));
             list.split('"').skip(1).step_by(2).map(str::to_owned).collect()
         };
         let lines: Vec<&str> = catalog.lines().filter(|line| line.contains("service:")).collect();
@@ -520,7 +525,12 @@ mod tests {
             assert_eq!(quoted(line, "measures"), spec.measures, "{line}");
             assert_eq!(quoted(line, "rates"), spec.rates, "{line}");
         }
-        for (name, value) in [("DATASET_MAX_ROWS", MAX_ROWS as usize), ("DATASET_MAX_FILTERS", MAX_FILTERS), ("DATASET_MAX_IN_VALUES", MAX_IN_VALUES), ("DATASET_MAX_RANGE_DAYS", MAX_RANGE_DAYS as usize)] {
+        for (name, value) in [
+            ("DATASET_MAX_ROWS", MAX_ROWS as usize),
+            ("DATASET_MAX_FILTERS", MAX_FILTERS),
+            ("DATASET_MAX_IN_VALUES", MAX_IN_VALUES),
+            ("DATASET_MAX_RANGE_DAYS", MAX_RANGE_DAYS as usize),
+        ] {
             assert!(ts.contains(&format!("export const {name} = {value};")), "{name}");
         }
     }
@@ -574,7 +584,18 @@ mod tests {
         assert_eq!(range_time("2026-10-02T05:16:19Z"), Some(1_790_918_179_000));
         assert_eq!(range_time("2026-10-02T05:16:19.5Z"), Some(1_790_918_179_500));
         assert_eq!(range_time("2024-02-29"), crate::time::parse_rfc3339("2024-02-29T00:00:00Z"));
-        for bad in ["2026-02-29", "2026-04-31", "2026-13-01", "2026-10-02T24:00:00Z", "2026-10-02T05:16:19", "2026-10-02T05:16:19+02:00", "26-10-02", "2026-1-02", "today", ""] {
+        for bad in [
+            "2026-02-29",
+            "2026-04-31",
+            "2026-13-01",
+            "2026-10-02T24:00:00Z",
+            "2026-10-02T05:16:19",
+            "2026-10-02T05:16:19+02:00",
+            "26-10-02",
+            "2026-1-02",
+            "today",
+            "",
+        ] {
             assert_eq!(range_time(bad), None, "{bad}");
         }
     }

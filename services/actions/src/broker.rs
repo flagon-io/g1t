@@ -43,8 +43,7 @@ pub(crate) const MIN_VALUE_CHARS: usize = 8;
 pub(crate) const STAND_IN_INSERT: &str =
     "INSERT OR REPLACE INTO brokered_secrets (stand_in, job_id, name, value, hosts, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
 /// A job's stand-ins that still work at `?2`.
-pub(crate) const STAND_INS_OF_JOB: &str =
-    "SELECT stand_in, name, value, hosts FROM brokered_secrets WHERE job_id = ?1 AND expires_at > ?2";
+pub(crate) const STAND_INS_OF_JOB: &str = "SELECT stand_in, name, value, hosts FROM brokered_secrets WHERE job_id = ?1 AND expires_at > ?2";
 /// Stand-ins whose jobs' time is up.
 pub(crate) const STAND_INS_EXPIRED: &str = "DELETE FROM brokered_secrets WHERE expires_at <= ?1";
 
@@ -166,13 +165,8 @@ impl Actions {
     /// A job's stand-ins that still work, opened.
     pub(crate) async fn stand_ins_of(&self, job_id: &str) -> Result<Vec<BrokeredSecret>> {
         let Some(sealer) = &self.sealer else { return Ok(Vec::new()) };
-        let rows = self
-            .db
-            .prepare(STAND_INS_OF_JOB)
-            .bind(&[job_id.into(), (now_ms() as f64).into()])?
-            .all()
-            .await?
-            .results::<StandInRow>()?;
+        let rows =
+            self.db.prepare(STAND_INS_OF_JOB).bind(&[job_id.into(), (now_ms() as f64).into()])?.all().await?.results::<StandInRow>()?;
         Ok(rows
             .into_iter()
             .filter_map(|row| {
@@ -207,18 +201,8 @@ impl Actions {
         let text = stamped(text);
         self.db
             .batch(vec![
-                self.db.prepare(LOG_COUNTED).bind(&[
-                    job_id.into(),
-                    (text.len() as u32).into(),
-                    JsValue::NULL,
-                    JsValue::NULL,
-                ])?,
-                self.db.prepare(LOG_INSERT).bind(&[
-                    job_id.into(),
-                    step.into(),
-                    text.into(),
-                    JsValue::NULL,
-                ])?,
+                self.db.prepare(LOG_COUNTED).bind(&[job_id.into(), (text.len() as u32).into(), JsValue::NULL, JsValue::NULL])?,
+                self.db.prepare(LOG_INSERT).bind(&[job_id.into(), step.into(), text.into(), JsValue::NULL])?,
             ])
             .await?;
         Ok(())
@@ -257,7 +241,10 @@ mod tests {
     use rusqlite::{Connection, params};
     use serde_json::{Map, Value, json};
 
-    use super::{Broker, STAND_IN_INSERT, STAND_INS_EXPIRED, STAND_INS_OF_JOB, StandIn, brokered_note, self_hosted_note, spec_entries, stand_in, substitute};
+    use super::{
+        Broker, STAND_IN_INSERT, STAND_INS_EXPIRED, STAND_INS_OF_JOB, StandIn, brokered_note, self_hosted_note, spec_entries, stand_in,
+        substitute,
+    };
 
     fn broker(name: &str, value: &str, hosts: &[&str]) -> Broker {
         Broker { name: name.into(), value: value.into(), hosts: hosts.iter().map(|h| (*h).to_owned()).collect() }
@@ -304,8 +291,7 @@ mod tests {
 
     #[test]
     fn each_secret_gets_its_own_stand_in_and_longer_values_go_first() {
-        let mut secrets: Map<String, Value> =
-            json!({ "SHORT": "abcdefgh", "LONG": "abcdefgh-and-more" }).as_object().cloned().unwrap();
+        let mut secrets: Map<String, Value> = json!({ "SHORT": "abcdefgh", "LONG": "abcdefgh-and-more" }).as_object().cloned().unwrap();
         let made = substitute(
             &mut secrets,
             &[broker("SHORT", "abcdefgh", &["a.example.com"]), broker("LONG", "abcdefgh-and-more", &["b.example.com"])],

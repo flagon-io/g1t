@@ -234,7 +234,9 @@ pub fn repository_path(uri: &str, roots: &[String]) -> String {
     for root in roots {
         let root = percent_decode(root.strip_prefix("file://").unwrap_or(root));
         let root = root.trim_end_matches('/');
-        if !root.is_empty() && let Some(rest) = path.strip_prefix(root) {
+        if !root.is_empty()
+            && let Some(rest) = path.strip_prefix(root)
+        {
             path = rest.to_owned();
             break;
         }
@@ -312,7 +314,8 @@ pub fn parse(text: &str, category: Option<&str>, checkout: Option<&str>) -> Resu
             roots.extend(bases.values().filter_map(|base| base["uri"].as_str().map(str::to_owned)));
         }
         let driver_rules = Rules::of(driver);
-        let extensions: Vec<Rules> = run["tool"]["extensions"].as_array().map(|list| list.iter().map(Rules::of).collect()).unwrap_or_default();
+        let extensions: Vec<Rules> =
+            run["tool"]["extensions"].as_array().map(|list| list.iter().map(Rules::of).collect()).unwrap_or_default();
         let mut findings = Vec::new();
         let mut dropped = 0usize;
         let mut occurrences: HashMap<(String, String, String), usize> = HashMap::new();
@@ -322,9 +325,10 @@ pub fn parse(text: &str, category: Option<&str>, checkout: Option<&str>) -> Resu
                 continue;
             }
             // Suppressed results (in the source, or accepted) are not alerts.
-            if result["suppressions"].as_array().is_some_and(|list| {
-                list.iter().any(|suppression| suppression["status"].as_str().is_none_or(|status| status == "accepted"))
-            }) {
+            if result["suppressions"]
+                .as_array()
+                .is_some_and(|list| list.iter().any(|suppression| suppression["status"].as_str().is_none_or(|status| status == "accepted")))
+            {
                 continue;
             }
             let rules = match result["rule"]["toolComponent"]["index"].as_u64() {
@@ -371,7 +375,9 @@ pub fn parse(text: &str, category: Option<&str>, checkout: Option<&str>) -> Resu
                         .get("primaryLocationLineHash")
                         .or_else(|| partial.iter().min_by_key(|(key, _)| key.as_str()).map(|(_, value)| value))
                 })
-                .or_else(|| result["fingerprints"].as_object().and_then(|all| all.iter().min_by_key(|(key, _)| key.as_str()).map(|(_, v)| v)))
+                .or_else(|| {
+                    result["fingerprints"].as_object().and_then(|all| all.iter().min_by_key(|(key, _)| key.as_str()).map(|(_, v)| v))
+                })
                 .and_then(Value::as_str)
                 // Some tools fill these with a placeholder ("requires
                 // login"); only a hash-like value names a result.

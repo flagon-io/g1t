@@ -587,11 +587,12 @@ impl PolicyGap {
     pub fn message(&self, slug: &str) -> String {
         match self {
             PolicyGap::VerifiedEmail => format!("{slug} needs members to have a confirmed email address."),
-            PolicyGap::EmailDomain(domains) => format!(
-                "{slug} needs members to have a confirmed address at {}. Add one in your account settings.",
-                domains.join(" or ")
-            ),
-            PolicyGap::TwoFactor => format!("{slug} requires two-factor authentication. Turn it on in your account's security settings to use it again."),
+            PolicyGap::EmailDomain(domains) => {
+                format!("{slug} needs members to have a confirmed address at {}. Add one in your account settings.", domains.join(" or "))
+            }
+            PolicyGap::TwoFactor => {
+                format!("{slug} requires two-factor authentication. Turn it on in your account's security settings to use it again.")
+            }
         }
     }
 }
@@ -611,12 +612,12 @@ impl WorkspacePolicy {
             gaps.push(PolicyGap::VerifiedEmail);
         }
         if !self.allowed_email_domains.is_empty() {
-            let allowed: Vec<String> = self.allowed_email_domains.iter().map(|domain| domain.trim().trim_start_matches('@').to_lowercase()).collect();
-            let has = facts.verified_emails.iter().any(|email| {
-                email
-                    .rsplit_once('@')
-                    .is_some_and(|(_, domain)| allowed.iter().any(|allowed| domain == allowed))
-            });
+            let allowed: Vec<String> =
+                self.allowed_email_domains.iter().map(|domain| domain.trim().trim_start_matches('@').to_lowercase()).collect();
+            let has = facts
+                .verified_emails
+                .iter()
+                .any(|email| email.rsplit_once('@').is_some_and(|(_, domain)| allowed.iter().any(|allowed| domain == allowed)));
             if !has {
                 gaps.push(PolicyGap::EmailDomain(allowed));
             }
@@ -730,10 +731,7 @@ mod tests {
     #[test]
     fn the_otpauth_address_names_the_account_and_issuer() {
         let uri = otpauth_uri("JBSWY3DPEHPK3PXP", "ada lovelace");
-        assert_eq!(
-            uri,
-            "otpauth://totp/g1t:ada%20lovelace?secret=JBSWY3DPEHPK3PXP&issuer=g1t&algorithm=SHA1&digits=6&period=30"
-        );
+        assert_eq!(uri, "otpauth://totp/g1t:ada%20lovelace?secret=JBSWY3DPEHPK3PXP&issuer=g1t&algorithm=SHA1&digits=6&period=30");
     }
 
     #[test]
@@ -754,11 +752,8 @@ mod tests {
 
     #[test]
     fn a_policy_names_everything_an_account_lacks() {
-        let policy = WorkspacePolicy {
-            allowed_email_domains: vec!["@Acme.com".into()],
-            require_verified_email: true,
-            require_two_factor: true,
-        };
+        let policy =
+            WorkspacePolicy { allowed_email_domains: vec!["@Acme.com".into()], require_verified_email: true, require_two_factor: true };
         assert!(!policy.asks_nothing());
         assert_eq!(
             policy.gaps(&SecurityFacts::default()),

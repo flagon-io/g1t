@@ -20,7 +20,9 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::webview::WebviewBuilder;
 use tauri::window::{Color, WindowBuilder};
-use tauri::{AppHandle, Emitter, EventTarget, LogicalPosition, LogicalSize, Manager, Runtime, Webview, WebviewUrl, WebviewWindowBuilder, Window};
+use tauri::{
+    AppHandle, Emitter, EventTarget, LogicalPosition, LogicalSize, Manager, Runtime, Webview, WebviewUrl, WebviewWindowBuilder, Window,
+};
 
 use crate::{WINDOW, config, tray};
 
@@ -90,12 +92,19 @@ pub fn fill(window: &Window, custom: bool, site: WebviewBuilder<tauri::Wry>) -> 
         window.add_child(
             // Never an inspector: the devtools feature gives every web view
             // one unless it is told otherwise (src/devtools.rs).
-            WebviewBuilder::new(BAR, WebviewUrl::App("titlebar.html".into())).background_color(RAIL).on_navigation(config::is_launcher).devtools(false),
+            WebviewBuilder::new(BAR, WebviewUrl::App("titlebar.html".into()))
+                .background_color(RAIL)
+                .on_navigation(config::is_launcher)
+                .devtools(false),
             LogicalPosition::new(0.0, 0.0),
             LogicalSize::new(size.width, HEIGHT),
         )?;
     }
-    window.add_child(site.background_color(RAIL), LogicalPosition::new(0.0, top), LogicalSize::new(size.width, (size.height - top).max(0.0)))?;
+    window.add_child(
+        site.background_color(RAIL),
+        LogicalPosition::new(0.0, top),
+        LogicalSize::new(size.width, (size.height - top).max(0.0)),
+    )?;
     #[cfg(target_os = "linux")]
     if custom {
         pack_bar(window);

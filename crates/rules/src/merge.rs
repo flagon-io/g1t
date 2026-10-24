@@ -9,10 +9,7 @@
 
 use std::collections::HashMap;
 
-use g1t_contracts::rules::{
-    Applicable, Enforcement, InspectedCommits, Integration, MergeMethod, MergeQueueRule, Rule,
-    StatusChecksRule,
-};
+use g1t_contracts::rules::{Applicable, Enforcement, InspectedCommits, Integration, MergeMethod, MergeQueueRule, Rule, StatusChecksRule};
 use g1t_contracts::work::{CommitStatus, RequiredState, Verdict, check_name, required_checks};
 
 use crate::content::{self, Problem};
@@ -92,8 +89,7 @@ pub fn statuses_for(rule: &StatusChecksRule, statuses: &[CommitStatus]) -> Vec<C
         .filter(|status| {
             let name = check_name(&status.context).0;
             rule.checks.iter().all(|check| {
-                !check.context.trim().eq_ignore_ascii_case(name)
-                    || check.integration.is_none_or(|wanted| integration_of(status) == wanted)
+                !check.context.trim().eq_ignore_ascii_case(name) || check.integration.is_none_or(|wanted| integration_of(status) == wanted)
             })
         })
         .cloned()
@@ -125,10 +121,7 @@ fn pull_request_problems(rule: &g1t_contracts::rules::PullRequestRule, facts: &M
     if rule.required_approvals > 0 {
         let others = || facts.reviews.iter().filter(|review| review.reviewer_id != facts.owner_id);
         if others().any(|review| review.verdict == Verdict::RequestChanges) {
-            problems.push(Problem::new(
-                "A reviewer has asked for changes.",
-                "Address the review and ask them to review again.",
-            ));
+            problems.push(Problem::new("A reviewer has asked for changes.", "Address the review and ask them to review again."));
         } else {
             let counted = others()
                 .filter(|review| review.verdict == Verdict::Approve)
@@ -300,11 +293,8 @@ fn rule_problems(rule: &Rule, facts: &MergeFacts<'_>) -> Vec<Problem> {
             None => Vec::new(),
         },
         Rule::PathReview(rule) => {
-            let touched: Vec<&String> = facts
-                .files
-                .iter()
-                .filter(|file| rule.paths.iter().any(|pattern| glob::path_matches(pattern, file)))
-                .collect();
+            let touched: Vec<&String> =
+                facts.files.iter().filter(|file| rule.paths.iter().any(|pattern| glob::path_matches(pattern, file))).collect();
             if touched.is_empty() || rule.required_approvals == 0 {
                 return Vec::new();
             }
@@ -333,7 +323,9 @@ fn rule_problems(rule: &Rule, facts: &MergeFacts<'_>) -> Vec<Problem> {
             )]
         }
         Rule::MergeWindow(rule) => match window::closed(rule, facts.now_ms) {
-            Some(closed) => vec![Problem::new(window::explain(&closed), "Merge when the window opens, or ask someone who may bypass this ruleset.")],
+            Some(closed) => {
+                vec![Problem::new(window::explain(&closed), "Merge when the window opens, or ask someone who may bypass this ruleset.")]
+            }
             None => Vec::new(),
         },
         _ => Vec::new(),
@@ -365,10 +357,9 @@ pub fn judge(rulesets: &[Applicable], default_branch: &str, facts: &MergeFacts<'
 /// commits holds, for whoever made the change.
 pub fn needs_commits(rulesets: &[Applicable], agent_change: bool) -> bool {
     rulesets.iter().any(|ruleset| {
-        ruleset
-            .rules
-            .iter()
-            .any(|entry| entry.applies_to.covers(agent_change) && content::about_content(&entry.rule) && !matches!(entry.rule, Rule::SecretScanning(_)))
+        ruleset.rules.iter().any(|entry| {
+            entry.applies_to.covers(agent_change) && content::about_content(&entry.rule) && !matches!(entry.rule, Rule::SecretScanning(_))
+        })
     })
 }
 
@@ -417,8 +408,7 @@ pub struct Requirements {
 impl Requirements {
     /// Whether the rules let a pull request merge by `method`.
     pub fn allows_method(&self, method: MergeMethod) -> bool {
-        self.allowed_merge_methods.as_ref().is_none_or(|allowed| allowed.contains(&method))
-            && !(self.linear_history && !method.is_linear())
+        self.allowed_merge_methods.as_ref().is_none_or(|allowed| allowed.contains(&method)) && !(self.linear_history && !method.is_linear())
     }
 }
 
@@ -434,12 +424,8 @@ pub fn method_label(method: MergeMethod) -> &'static str {
 
 /// What the active rules hold for, stacked: the most restrictive wins.
 pub fn requirements(rulesets: &[Applicable], git_ref: &str, default_branch: &str, agent_change: bool, files: &[String]) -> Requirements {
-    let mut found = Requirements {
-        count_agent_approvals: true,
-        allow_bypass_on_merge: true,
-        agent_auto_merge: true,
-        ..Requirements::default()
-    };
+    let mut found =
+        Requirements { count_agent_approvals: true, allow_bypass_on_merge: true, agent_auto_merge: true, ..Requirements::default() };
     let mut any_checks = false;
     for ruleset in rulesets
         .iter()
@@ -519,8 +505,8 @@ mod tests {
     use crate::content::tests_support::commit;
     use crate::outcome::{blocking, refused};
     use g1t_contracts::rules::{
-        AppliesTo, BypassMode, DeploymentsRule, Level, MergeWindowRule, NoParameters,
-        PathReviewRule, Period, PullRequestRule, RefCondition, RequiredCheck, RuleEntry, Verdict as Outcome,
+        AppliesTo, BypassMode, DeploymentsRule, Level, MergeWindowRule, NoParameters, PathReviewRule, Period, PullRequestRule,
+        RefCondition, RequiredCheck, RuleEntry, Verdict as Outcome,
     };
 
     fn ruleset(rules: Vec<RuleEntry>) -> Applicable {
@@ -545,7 +531,15 @@ mod tests {
     }
 
     fn status(context: &str, state: &str) -> CommitStatus {
-        CommitStatus { context: context.into(), state: state.into(), description: None, target_url: None, updated_at: String::new(), source: None, check_run_id: None }
+        CommitStatus {
+            context: context.into(),
+            state: state.into(),
+            description: None,
+            target_url: None,
+            updated_at: String::new(),
+            source: None,
+            check_run_id: None,
+        }
     }
 
     fn facts<'a>(reviews: &'a [Review], statuses: &'a [CommitStatus], files: &'a [String]) -> MergeFacts<'a> {
@@ -587,9 +581,8 @@ mod tests {
 
     #[test]
     fn admission_does_not_grant_permission_after_reviews_or_rules_change() {
-        let rules = |count| [ruleset(vec![all(Rule::PullRequest(PullRequestRule {
-            required_approvals: count, ..PullRequestRule::default()
-        }))])];
+        let rules =
+            |count| [ruleset(vec![all(Rule::PullRequest(PullRequestRule { required_approvals: count, ..PullRequestRule::default() }))])];
         let approved = [review("bob", Verdict::Approve, "before")];
         assert!(!refused(&judge(&rules(1), "main", &facts(&approved, &[], &[]))));
         let withdrawn = [review("bob", Verdict::RequestChanges, "after")];
@@ -665,7 +658,10 @@ mod tests {
         // A rebase or fast-forward lands its commits: they are checked.
         for method in [MergeMethod::Rebase, MergeMethod::FastForward] {
             read.method = Some(method);
-            assert_eq!(blocking(&judge(&rules, "main", &read))[0].message, "Commit abcdef1 is a merge commit; this branch keeps a linear history.");
+            assert_eq!(
+                blocking(&judge(&rules, "main", &read))[0].message,
+                "Commit abcdef1 is a merge commit; this branch keeps a linear history."
+            );
         }
     }
 
@@ -688,7 +684,8 @@ mod tests {
         let both = requirements(&[squash_or_rebase, rebase_only], "refs/heads/main", "main", false, &[]);
         assert_eq!(both.allowed_merge_methods, Some(vec![MergeMethod::Rebase]));
         // Linear history rules out merge commits only.
-        let linear = requirements(&[ruleset(vec![all(Rule::RequiredLinearHistory(NoParameters {}))])], "refs/heads/main", "main", false, &[]);
+        let linear =
+            requirements(&[ruleset(vec![all(Rule::RequiredLinearHistory(NoParameters {}))])], "refs/heads/main", "main", false, &[]);
         assert!(linear.linear_history && !linear.allows_method(MergeMethod::Merge));
         assert!(linear.allows_method(MergeMethod::Squash) && linear.allows_method(MergeMethod::FastForward));
     }
@@ -697,7 +694,10 @@ mod tests {
     fn required_checks_pass_fail_wait_and_can_be_bypassed() {
         let checks = |allow: bool| {
             [ruleset(vec![all(Rule::RequiredStatusChecks(StatusChecksRule {
-                checks: vec![RequiredCheck { context: "CI".into(), integration: None }, RequiredCheck { context: "Lint".into(), integration: None }],
+                checks: vec![
+                    RequiredCheck { context: "CI".into(), integration: None },
+                    RequiredCheck { context: "Lint".into(), integration: None },
+                ],
                 allow_bypass_on_merge: allow,
                 ..StatusChecksRule::default()
             }))])]
@@ -851,7 +851,10 @@ mod tests {
             freezes: vec![Period { start: "1970-01-01T00:00:00Z".into(), end: None, reason: "Incident".into() }],
             ..MergeWindowRule::default()
         }))])];
-        assert_eq!(messages(&judge(&rules, "main", &facts(&[], &[], &[]))), vec!["Merging is frozen (Incident) until the freeze is lifted."]);
+        assert_eq!(
+            messages(&judge(&rules, "main", &facts(&[], &[], &[]))),
+            vec!["Merging is frozen (Incident) until the freeze is lifted."]
+        );
     }
 
     #[test]
@@ -875,9 +878,17 @@ mod tests {
             all(Rule::MergeQueue(MergeQueueRule { max_entries_to_build: 8, ..MergeQueueRule::default() })),
         ]);
         let mut b = ruleset(vec![
-            all(Rule::PullRequest(PullRequestRule { required_approvals: 3, count_agent_approvals: false, require_code_owner_review: true, ..PullRequestRule::default() })),
+            all(Rule::PullRequest(PullRequestRule {
+                required_approvals: 3,
+                count_agent_approvals: false,
+                require_code_owner_review: true,
+                ..PullRequestRule::default()
+            })),
             all(Rule::RequiredStatusChecks(StatusChecksRule {
-                checks: vec![RequiredCheck { context: "ci".into(), integration: None }, RequiredCheck { context: "Lint".into(), integration: None }],
+                checks: vec![
+                    RequiredCheck { context: "ci".into(), integration: None },
+                    RequiredCheck { context: "Lint".into(), integration: None },
+                ],
                 strict: true,
                 ..StatusChecksRule::default()
             })),

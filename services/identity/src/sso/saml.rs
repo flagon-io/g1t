@@ -171,7 +171,10 @@ fn check_response(response: Node, assertion: Node, expect: &Expect, response_sig
     if let Some(destination) = response.attribute("Destination")
         && destination != expect.acs_url
     {
-        return Err(format!("The response was sent to {destination}, not this workspace's assertion consumer service ({}).", expect.acs_url));
+        return Err(format!(
+            "The response was sent to {destination}, not this workspace's assertion consumer service ({}).",
+            expect.acs_url
+        ));
     }
     if let Some(issuer) = child(response, ASSERTION, "Issuer")
         && text(issuer) != expect.idp_entity_id
@@ -231,7 +234,9 @@ fn check_response(response: Node, assertion: Node, expect: &Expect, response_sig
 }
 
 fn issuer_mismatch(said: &str, expected: &str) -> String {
-    format!("The response was issued by {said:?}, not the identity provider saved for this workspace ({expected:?}). Check the provider's entity id.")
+    format!(
+        "The response was issued by {said:?}, not the identity provider saved for this workspace ({expected:?}). Check the provider's entity id."
+    )
 }
 
 fn attribute_email(assertion: Node) -> Option<String> {
@@ -247,11 +252,7 @@ fn attribute_email(assertion: Node) -> Option<String> {
 fn parse_time(at: &str) -> Option<u64> {
     let at = at.trim();
     let at = at.strip_suffix("+00:00").or_else(|| at.strip_suffix("-00:00")).unwrap_or(at);
-    if at.ends_with('Z') {
-        parse_rfc3339(at)
-    } else {
-        parse_rfc3339(&format!("{at}Z"))
-    }
+    if at.ends_with('Z') { parse_rfc3339(at) } else { parse_rfc3339(&format!("{at}Z")) }
 }
 
 fn within(not_before: Option<&str>, not_on_or_after: Option<&str>, now: u64) -> Result<(), String> {
@@ -427,7 +428,10 @@ fn verify_signature(input: &str, signature: Node, certificates: &[Vec<u8>]) -> R
                 Some(ENVELOPED) if canonical.is_none() => enveloped = true,
                 Some(EXC_C14N | EXC_C14N_COMMENTS) if canonical.is_none() => canonical = Some(exclusive(transform)?),
                 other => {
-                    return Err(format!("The identity provider's signature uses a transform g1t does not accept ({}).", other.unwrap_or("none")));
+                    return Err(format!(
+                        "The identity provider's signature uses a transform g1t does not accept ({}).",
+                        other.unwrap_or("none")
+                    ));
                 }
             }
         }
@@ -709,9 +713,7 @@ pub fn authn_request_url(sso_url: &str, id: &str, entity_id: &str, acs_url: &str
     if url.scheme() != "https" {
         return None;
     }
-    url.query_pairs_mut()
-        .append_pair("SAMLRequest", &STANDARD.encode(deflated))
-        .append_pair("RelayState", relay_state);
+    url.query_pairs_mut().append_pair("SAMLRequest", &STANDARD.encode(deflated)).append_pair("RelayState", relay_state);
     Some(url.to_string())
 }
 

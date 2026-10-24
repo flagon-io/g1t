@@ -27,12 +27,8 @@ impl DeployKeysOp {
     /// Every one: `Op::ALL` lists each as `Op::DeployKeys(…)`, which a test
     /// checks against this.
     #[cfg(test)]
-    pub const ALL: [DeployKeysOp; 4] = [
-        DeployKeysOp::ListDeployKeys,
-        DeployKeysOp::GetDeployKey,
-        DeployKeysOp::CreateDeployKey,
-        DeployKeysOp::DeleteDeployKey,
-    ];
+    pub const ALL: [DeployKeysOp; 4] =
+        [DeployKeysOp::ListDeployKeys, DeployKeysOp::GetDeployKey, DeployKeysOp::CreateDeployKey, DeployKeysOp::DeleteDeployKey];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -55,10 +51,18 @@ impl DeployKeysOp {
 
     pub fn description(self) -> &'static str {
         match self {
-            DeployKeysOp::ListDeployKeys => "List a repository's deploy keys, oldest first: SSH keys that reach this one repository, for a server or a pipeline. Each has its `id` (`dk_…`), `title`, public `key`, `fingerprint` (`SHA256:…`), `read_only` (false when it may push), `created_at`, `created_by` (who added it) and `last_used_at` (null when it never signed in). Needs the Admin role on the repository; agents' tokens are refused.",
-            DeployKeysOp::GetDeployKey => "Get one of a repository's deploy keys by its `id`, in the shape list_deploy_keys gives. Needs the Admin role on the repository.",
-            DeployKeysOp::CreateDeployKey => "Add a deploy key to a repository: `key`, one line in OpenSSH public key format (ssh-ed25519, ecdsa-sha2-nistp256/384/521 or ssh-rsa), and a `title`. It is read-only unless `read_only` is false, which lets it push, workflow files included. A key registered anywhere already, as a person's SSH key or another deploy key, is refused with `409`: give each machine its own. At most 100 keys a repository. Needs the Admin role on the repository and a confirmed email address; agents' tokens and workspace tokens without Admin are refused. Recorded in the workspace's audit log.",
-            DeployKeysOp::DeleteDeployKey => "Delete one of a repository's deploy keys by its `id`. A machine using it can no longer clone or push. There is no editing a key: to change its title or access, delete it and add it again. Needs the Admin role on the repository. Recorded in the workspace's audit log.",
+            DeployKeysOp::ListDeployKeys => {
+                "List a repository's deploy keys, oldest first: SSH keys that reach this one repository, for a server or a pipeline. Each has its `id` (`dk_…`), `title`, public `key`, `fingerprint` (`SHA256:…`), `read_only` (false when it may push), `created_at`, `created_by` (who added it) and `last_used_at` (null when it never signed in). Needs the Admin role on the repository; agents' tokens are refused."
+            }
+            DeployKeysOp::GetDeployKey => {
+                "Get one of a repository's deploy keys by its `id`, in the shape list_deploy_keys gives. Needs the Admin role on the repository."
+            }
+            DeployKeysOp::CreateDeployKey => {
+                "Add a deploy key to a repository: `key`, one line in OpenSSH public key format (ssh-ed25519, ecdsa-sha2-nistp256/384/521 or ssh-rsa), and a `title`. It is read-only unless `read_only` is false, which lets it push, workflow files included. A key registered anywhere already, as a person's SSH key or another deploy key, is refused with `409`: give each machine its own. At most 100 keys a repository. Needs the Admin role on the repository and a confirmed email address; agents' tokens and workspace tokens without Admin are refused. Recorded in the workspace's audit log."
+            }
+            DeployKeysOp::DeleteDeployKey => {
+                "Delete one of a repository's deploy keys by its `id`. A machine using it can no longer clone or push. There is no editing a key: to change its title or access, delete it and add it again. Needs the Admin role on the repository. Recorded in the workspace's audit log."
+            }
         }
     }
 
@@ -112,12 +116,8 @@ pub async fn run(op: DeployKeysOp, services: &Services, viewer: &Viewer, input: 
     let actor = || viewer.clone().unwrap_or_default();
     let surface = Some(services.audit.surface);
     match op {
-        DeployKeysOp::ListDeployKeys => {
-            g1t_kit::call(identity, "list_deploy_keys", &DeployKeysArgs { viewer: viewer.clone(), path }).await
-        }
-        DeployKeysOp::GetDeployKey => {
-            g1t_kit::call(identity, "get_deploy_key", &DeployKeyArgs { viewer: viewer.clone(), path, id }).await
-        }
+        DeployKeysOp::ListDeployKeys => g1t_kit::call(identity, "list_deploy_keys", &DeployKeysArgs { viewer: viewer.clone(), path }).await,
+        DeployKeysOp::GetDeployKey => g1t_kit::call(identity, "get_deploy_key", &DeployKeyArgs { viewer: viewer.clone(), path, id }).await,
         DeployKeysOp::CreateDeployKey => {
             let key = text(input, "key");
             if key.is_empty() {

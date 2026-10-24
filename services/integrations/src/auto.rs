@@ -32,10 +32,53 @@ pub enum Need {
 /// Words that mean a question needs more than a lookup, as the starts of
 /// words (`summar` is summary and summarize).
 const DEEP: &[&str] = &[
-    "why", "explain", "summar", "recap", "overview", "digest", "report", "ship", "deploy", "releas", "launch", "chang", "happen",
-    "compar", "review", "plan", "propos", "investigat", "debug", "diagnos", "fail", "broke", "break", "error", "regress", "incident",
-    "cause", "health", "progress", "block", "risk", "analy", "implement", "fix", "refactor", "design", "architect", "migrat",
-    "today", "yesterday", "week", "month", "since", "lately", "recent", "history", "timeline",
+    "why",
+    "explain",
+    "summar",
+    "recap",
+    "overview",
+    "digest",
+    "report",
+    "ship",
+    "deploy",
+    "releas",
+    "launch",
+    "chang",
+    "happen",
+    "compar",
+    "review",
+    "plan",
+    "propos",
+    "investigat",
+    "debug",
+    "diagnos",
+    "fail",
+    "broke",
+    "break",
+    "error",
+    "regress",
+    "incident",
+    "cause",
+    "health",
+    "progress",
+    "block",
+    "risk",
+    "analy",
+    "implement",
+    "fix",
+    "refactor",
+    "design",
+    "architect",
+    "migrat",
+    "today",
+    "yesterday",
+    "week",
+    "month",
+    "since",
+    "lately",
+    "recent",
+    "history",
+    "timeline",
 ];
 
 /// A question this long needs more than a lookup, in characters.
@@ -143,13 +186,7 @@ fn dated(id: &str) -> bool {
 /// The best of some models in a tier: the newest version, an alias before a
 /// dated snapshot, then the shortest name, then by name.
 fn best<'a>(models: impl Iterator<Item = &'a String>) -> Option<&'a String> {
-    models.min_by(|a, b| {
-        version(b)
-            .cmp(&version(a))
-            .then(dated(a).cmp(&dated(b)))
-            .then(a.len().cmp(&b.len()))
-            .then(a.cmp(b))
-    })
+    models.min_by(|a, b| version(b).cmp(&version(a)).then(dated(a).cmp(&dated(b))).then(a.len().cmp(&b.len())).then(a.cmp(b)))
 }
 
 /// The model Auto answers with: of `models` (what the provider listed), the
@@ -237,7 +274,8 @@ mod tests {
     fn other_providers_route_by_the_same_words() {
         // OpenAI: mini for lookups, the standard model otherwise; never pro,
         // Codex or ChatGPT's own.
-        let openai = list(&["chatgpt-4o-latest", "gpt-4o", "gpt-4o-mini", "gpt-5", "gpt-5-codex", "gpt-5-mini", "gpt-5-nano", "gpt-5-pro", "o3"]);
+        let openai =
+            list(&["chatgpt-4o-latest", "gpt-4o", "gpt-4o-mini", "gpt-5", "gpt-5-codex", "gpt-5-mini", "gpt-5-nano", "gpt-5-pro", "o3"]);
         assert_eq!(choose(&openai, None, Need::Quick).as_deref(), Some("gpt-5-mini"));
         assert_eq!(choose(&openai, None, Need::Deep).as_deref(), Some("gpt-5"));
         // Gemini: flash, and pro (Gemini's standard tier).

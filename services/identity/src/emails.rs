@@ -86,8 +86,7 @@ struct AccountRow {
     created_at: String,
 }
 
-const ACCOUNT_COLUMNS: &str =
-    "id, username, primary_email_id, backup_email_id, private_email, block_private_pushes, created_at";
+const ACCOUNT_COLUMNS: &str = "id, username, primary_email_id, backup_email_id, private_email, block_private_pushes, created_at";
 
 /// The order addresses are shown in: the primary, confirmed ones, the rest;
 /// oldest first within each.
@@ -101,11 +100,7 @@ fn sorted(mut rows: Vec<EmailRow>, primary: Option<&str>) -> Vec<EmailRow> {
 
 fn states(rows: &[EmailRow], primary: Option<&str>) -> Vec<EmailState> {
     rows.iter()
-        .map(|row| EmailState {
-            email: row.email.clone(),
-            verified: row.verified_at.is_some(),
-            primary: Some(row.id.as_str()) == primary,
-        })
+        .map(|row| EmailState { email: row.email.clone(), verified: row.verified_at.is_some(), primary: Some(row.id.as_str()) == primary })
         .collect()
 }
 
@@ -268,9 +263,7 @@ impl Identity {
                         sql_after(CONFIRM_TTL_SECONDS)
                     ))
                     .bind(&[id.as_str().into(), user_id.into(), row.id.as_str().into(), code_hash.as_str().into()])?,
-                self.db
-                    .prepare(format!("UPDATE user_emails SET sent_at = {SQL_NOW} WHERE id = ?"))
-                    .bind(&[row.id.as_str().into()])?,
+                self.db.prepare(format!("UPDATE user_emails SET sent_at = {SQL_NOW} WHERE id = ?")).bind(&[row.id.as_str().into()])?,
             ])
             .await?;
         email::send_confirmation(&self.env, &row.display, username, confirming, &token, &code).await
@@ -321,10 +314,7 @@ impl Identity {
             return self.emails_view(&a.user.id).await;
         }
         if rows.len() >= MAX_EMAILS {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                format!("An account can have {MAX_EMAILS} addresses. Remove one first."),
-            ));
+            return Ok(Outcome::fail(FailureCode::Invalid, format!("An account can have {MAX_EMAILS} addresses. Remove one first.")));
         }
         if self.user_with_verified_email(&email).await?.is_some() {
             return Ok(Outcome::fail(FailureCode::Conflict, "That address is confirmed on another g1t account."));
@@ -390,7 +380,10 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Conflict, SENT_RECENTLY));
         }
         if !self.allow(CONFIRM_ACCOUNT, &a.user.id).await? {
-            return Ok(Outcome::fail(FailureCode::Conflict, "Too many confirmation emails this hour. Check your inbox, or try again later."));
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "Too many confirmation emails this hour. Check your inbox, or try again later.",
+            ));
         }
         let confirming = if self.account_confirmed(&a.user.id).await? { Confirming::AddedAddress } else { Confirming::NewAccount };
         self.send_confirmation(&a.user.id, &a.user.username, row, confirming).await?;
@@ -467,7 +460,10 @@ impl Identity {
             return self.emails_view(&a.user.id).await;
         }
         if !self.allow(CONFIRM_ACCOUNT, &a.user.id).await? {
-            return Ok(Outcome::fail(FailureCode::Conflict, "Too many confirmation emails this hour. Check your inbox, or try again later."));
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "Too many confirmation emails this hour. Check your inbox, or try again later.",
+            ));
         }
         let now = now_ms();
         let row = EmailRow {
@@ -538,11 +534,7 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Forbidden, PEOPLE_ONLY));
         }
         let account_key = throttle::key(CODE_ACCOUNT, &a.user.id);
-        let client_key = a
-            .client
-            .as_deref()
-            .filter(|client| !client.trim().is_empty())
-            .map(|client| throttle::key(CODE_CLIENT, client));
+        let client_key = a.client.as_deref().filter(|client| !client.trim().is_empty()).map(|client| throttle::key(CODE_CLIENT, client));
         // While either key is locked, no code is even compared.
         let mut locked = self.locked(&account_key).await?;
         if !locked && let Some(client_key) = &client_key {
@@ -643,51 +635,39 @@ impl Identity {
         // has no confirmed primary; then, if that confirmed the account,
         // apply the invite it signed up with.
         let mut statements = vec![
-                self.db
-                    .prepare(format!(
-                        "UPDATE user_emails SET verified_at = {SQL_NOW}
+            self.db
+                .prepare(format!(
+                    "UPDATE user_emails SET verified_at = {SQL_NOW}
                          WHERE id = ?1 AND verified_at IS NULL
                            AND NOT EXISTS (SELECT 1 FROM user_emails WHERE email = ?2 AND verified_at IS NOT NULL)"
-                    ))
-                    .bind(&[id.clone(), address.clone()])?,
-                self.db
-                    .prepare(won(
-                        "UPDATE users SET email = NULL, email_verified_at = NULL, primary_email_id = NULL
+                ))
+                .bind(&[id.clone(), address.clone()])?,
+            self.db
+                .prepare(won("UPDATE users SET email = NULL, email_verified_at = NULL, primary_email_id = NULL
                          WHERE id <> ?3 AND {WON} AND primary_email_id IN (
-                           SELECT id FROM user_emails WHERE email = ?2 AND verified_at IS NULL AND user_id <> ?3)",
-                    ))
-                    .bind(&[id.clone(), address.clone(), user.clone()])?,
-                self.db
-                    .prepare(won(
-                        "UPDATE users SET backup_email_id = NULL
+                           SELECT id FROM user_emails WHERE email = ?2 AND verified_at IS NULL AND user_id <> ?3)"))
+                .bind(&[id.clone(), address.clone(), user.clone()])?,
+            self.db
+                .prepare(won("UPDATE users SET backup_email_id = NULL
                          WHERE id <> ?3 AND {WON} AND backup_email_id IN (
-                           SELECT id FROM user_emails WHERE email = ?2 AND verified_at IS NULL AND user_id <> ?3)",
-                    ))
-                    .bind(&[id.clone(), address.clone(), user.clone()])?,
-                self.db
-                    .prepare(won(
-                        "DELETE FROM user_emails WHERE email = ?2 AND verified_at IS NULL AND user_id <> ?3 AND {WON}",
-                    ))
-                    .bind(&[id.clone(), address.clone(), user.clone()])?,
-                self.db
-                    .prepare(won(
-                        "UPDATE users SET primary_email_id = ?1, email = ?2,
+                           SELECT id FROM user_emails WHERE email = ?2 AND verified_at IS NULL AND user_id <> ?3)"))
+                .bind(&[id.clone(), address.clone(), user.clone()])?,
+            self.db
+                .prepare(won("DELETE FROM user_emails WHERE email = ?2 AND verified_at IS NULL AND user_id <> ?3 AND {WON}"))
+                .bind(&[id.clone(), address.clone(), user.clone()])?,
+            self.db
+                .prepare(won("UPDATE users SET primary_email_id = ?1, email = ?2,
                            email_verified_at = (SELECT verified_at FROM user_emails WHERE id = ?1)
                          WHERE id = ?3 AND {WON} AND (
                            primary_email_id IS NULL OR primary_email_id = ?1
-                           OR NOT EXISTS (SELECT 1 FROM user_emails WHERE id = users.primary_email_id AND verified_at IS NOT NULL))",
-                    ))
-                    .bind(&[id.clone(), address.clone(), user.clone()])?,
+                           OR NOT EXISTS (SELECT 1 FROM user_emails WHERE id = users.primary_email_id AND verified_at IS NOT NULL))"))
+                .bind(&[id.clone(), address.clone(), user.clone()])?,
         ];
         if let (Some(invite), Some(join)) = (&awaiting, &join) {
             statements.extend(self.apply_invite_statements(user_id, invite, join)?);
         }
         self.db.batch(statements).await?;
-        let confirmed = self
-            .email_rows(user_id)
-            .await?
-            .into_iter()
-            .any(|current| current.id == row.id && current.verified_at.is_some());
+        let confirmed = self.email_rows(user_id).await?.into_iter().any(|current| current.id == row.id && current.verified_at.is_some());
         if !confirmed {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
@@ -764,9 +744,7 @@ impl Identity {
                 self.db
                     .prepare("DELETE FROM email_tokens WHERE user_id = ? AND email_id = ?")
                     .bind(&[user_id.into(), row.id.as_str().into()])?,
-                self.db
-                    .prepare("DELETE FROM user_emails WHERE id = ? AND user_id = ?")
-                    .bind(&[row.id.as_str().into(), user_id.into()])?,
+                self.db.prepare("DELETE FROM user_emails WHERE id = ? AND user_id = ?").bind(&[row.id.as_str().into(), user_id.into()])?,
             ])
             .await?;
         Ok(())
@@ -847,10 +825,7 @@ impl Identity {
         if let Some(choice) = &backup {
             self.db
                 .prepare("UPDATE users SET backup_email_id = ? WHERE id = ?")
-                .bind(&[
-                    choice.as_ref().map_or(JsValue::NULL, |row| row.id.as_str().into()),
-                    a.user.id.as_str().into(),
-                ])?
+                .bind(&[choice.as_ref().map_or(JsValue::NULL, |row| row.id.as_str().into()), a.user.id.as_str().into()])?
                 .run()
                 .await?;
             let said = choice.as_ref().map_or("primary only".to_owned(), |row| row.display.clone());
@@ -933,15 +908,7 @@ impl Identity {
 
     async fn announce_email(&self, kind: &'static str, user_id: &str, by_staff: bool) {
         let actor = (!by_staff).then_some(user_id);
-        self.announce(
-            kind,
-            actor,
-            UserEmailChanged {
-                user_id: user_id.to_owned(),
-                by_staff,
-            },
-        )
-        .await;
+        self.announce(kind, actor, UserEmailChanged { user_id: user_id.to_owned(), by_staff }).await;
     }
 
     // --- Signing in and resetting by any confirmed address ---
@@ -1164,9 +1131,7 @@ impl Identity {
         // whether staff could delete it with the account: protected, or
         // billing that cannot settle.
         let deleted = self.deleted_account(&account.id).await?;
-        let deletion = self
-            .account_deletion_facts(&account.id, &account.username, crate::account_deletion::AskBilling::Staff)
-            .await?;
+        let deletion = self.account_deletion_facts(&account.id, &account.username, crate::account_deletion::AskBilling::Staff).await?;
         Ok(Some(AdminUser {
             id: account.id,
             username: account.username,
@@ -1227,8 +1192,7 @@ impl Identity {
         let staff = (a.staff.trim(), reason);
         self.log_security(&user.id, "email_removed", Some(&row.display), Some(staff)).await;
         let removed = row.verified_at.is_some().then_some(row.display.as_str());
-        self.tell_addresses(&user.id, &user.username, &format!("g1t staff removed {} ({reason})", row.display), removed)
-            .await;
+        self.tell_addresses(&user.id, &user.username, &format!("g1t staff removed {} ({reason})", row.display), removed).await;
         self.announce_email("user.email_removed", &user.id, true).await;
         if was_primary {
             self.announce_email("user.primary_email_changed", &user.id, true).await;
@@ -1320,7 +1284,8 @@ mod tests {
 
     #[test]
     fn addresses_are_matched_lowercased_once_each_and_at_most_five_hundred() {
-        let asked = asked_addresses(&[" Ada@Example.com ".into(), "ada@example.com".into(), "not an address".into(), "bo@example.org".into()]);
+        let asked =
+            asked_addresses(&[" Ada@Example.com ".into(), "ada@example.com".into(), "not an address".into(), "bo@example.org".into()]);
         assert_eq!(asked, ["ada@example.com", "bo@example.org"]);
         let many: Vec<String> = (0..600).map(|n| format!("p{n}@example.com")).collect();
         let asked = asked_addresses(&many);

@@ -32,7 +32,12 @@ enum Source {
     Local(PathBuf),
     /// Another repository: on g1t when g1t has it and this one may use
     /// it, otherwise on GitHub.
-    GitHub { owner: String, repo: String, path: String, git_ref: String },
+    GitHub {
+        owner: String,
+        repo: String,
+        path: String,
+        git_ref: String,
+    },
 }
 
 /// Where g1t says an action is, or why it would not say.
@@ -92,12 +97,8 @@ fn is_sha(text: &str) -> bool {
 /// Whether the runner does `name` (lowercased, without its ref) itself
 /// rather than fetching it.
 fn native(name: &str, docker_hosted: bool) -> bool {
-    matches!(
-        name,
-        "actions/upload-artifact"
-            | "actions/upload-artifact/merge"
-            | "actions/download-artifact"
-    ) || (docker_hosted && name == "docker/setup-buildx-action")
+    matches!(name, "actions/upload-artifact" | "actions/upload-artifact/merge" | "actions/download-artifact")
+        || (docker_hosted && name == "docker/setup-buildx-action")
 }
 
 /// The repository and ref of an action `uses` fetches from another
@@ -129,7 +130,10 @@ impl Job {
         }
         command.args(args).env("GIT_TERMINAL_PROMPT", "0");
         let mut commands = Commands::default();
-        matches!(process::run(command, Duration::from_secs(600).min(self.remaining_time()), &mut self.log, &mut commands), Ok(Ended::Exited(0)))
+        matches!(
+            process::run(command, Duration::from_secs(600).min(self.remaining_time()), &mut self.log, &mut commands),
+            Ok(Ended::Exited(0))
+        )
     }
 
     /// A fetch, tried again after a short wait when it fails: a transfer
@@ -231,7 +235,10 @@ impl Job {
         let auth = token.map(|token| format!("AUTHORIZATION: basic {}", STANDARD.encode(format!("x-access-token:{token}"))));
         self.log.line(&format!("Download action repository '{owner}/{repo}@{git_ref}' from g1t"));
         let _ = std::fs::remove_dir_all(dir);
-        if std::fs::create_dir_all(dir).is_err() || !self.git(dir, &["init", "--quiet"], None) || !self.git(dir, &["remote", "add", "origin", &url], None) {
+        if std::fs::create_dir_all(dir).is_err()
+            || !self.git(dir, &["init", "--quiet"], None)
+            || !self.git(dir, &["remote", "add", "origin", &url], None)
+        {
             return None;
         }
         // A branch or tag at its tip; a commit may need the history.
@@ -243,7 +250,8 @@ impl Job {
                 && self.git(dir, &["checkout", "--quiet", "--force", "--detach", git_ref], None)
         };
         if !checked_out {
-            self.log.line(&format!("##[error]Could not fetch {owner}/{repo}@{git_ref} from g1t: is {git_ref} a branch, tag or commit there?"));
+            self.log
+                .line(&format!("##[error]Could not fetch {owner}/{repo}@{git_ref} from g1t: is {git_ref} a branch, tag or commit there?"));
             let _ = std::fs::remove_dir_all(dir);
             return None;
         }
@@ -284,7 +292,10 @@ impl Job {
                     command.arg("--force-local");
                 }
                 let mut commands = Commands::default();
-                matches!(process::run(command, Duration::from_secs(300).min(self.remaining_time()), &mut self.log, &mut commands), Ok(Ended::Exited(0)))
+                matches!(
+                    process::run(command, Duration::from_secs(300).min(self.remaining_time()), &mut self.log, &mut commands),
+                    Ok(Ended::Exited(0))
+                )
             }
             Err(why) => {
                 self.log.line(&format!("g1t could not send it ({why}); fetching it from GitHub."));
@@ -317,7 +328,11 @@ impl Job {
         }
         let _ = std::fs::create_dir_all(&dir);
         let url = format!("https://codeload.github.com/{owner}/{repo}/tar.gz/{}", sha.unwrap_or(git_ref));
-        let script = format!("set -o pipefail; curl -fsSL --retry 3 '{url}' | tar{} -xz -C '{}' --strip-components=1", super::blobs::tar_local(), dir.display());
+        let script = format!(
+            "set -o pipefail; curl -fsSL --retry 3 '{url}' | tar{} -xz -C '{}' --strip-components=1",
+            super::blobs::tar_local(),
+            dir.display()
+        );
         let mut command = Command::new("bash");
         command.args(["-c", &script]);
         let mut commands = Commands::default();
@@ -358,7 +373,8 @@ impl Job {
         let mut ahead: Vec<Option<Prefetch>> = wanted
             .iter()
             .map(|(owner, repo, git_ref)| {
-                (safe(owner) && safe(repo) && safe(git_ref)).then(|| Prefetch::start(self.log.api.clone(), &self.temp, owner, repo, git_ref))
+                (safe(owner) && safe(repo) && safe(git_ref))
+                    .then(|| Prefetch::start(self.log.api.clone(), &self.temp, owner, repo, git_ref))
             })
             .collect();
         let mut ready = true;
@@ -395,10 +411,7 @@ impl Job {
                 command
             }
         };
-        let mut commands = Commands {
-            debug: self.debug,
-            ..Commands::default()
-        };
+        let mut commands = Commands { debug: self.debug, ..Commands::default() };
         let ended = process::run(command, Duration::from_secs(6 * 3600).min(self.deadline_left()), &mut self.log, &mut commands);
         let ok = matches!(ended, Ok(Ended::Exited(0)));
         match ended {
@@ -543,7 +556,11 @@ impl Job {
                 action_path: Some(dir.display().to_string()),
                 env: env.clone(),
             };
-            let mut steps: Vec<Map<String, Value>> = runs.get("steps").and_then(Value::as_array).map(|s| s.iter().filter_map(|s| s.as_object().cloned()).collect()).unwrap_or_default();
+            let mut steps: Vec<Map<String, Value>> = runs
+                .get("steps")
+                .and_then(Value::as_array)
+                .map(|s| s.iter().filter_map(|s| s.as_object().cloned()).collect())
+                .unwrap_or_default();
             super::name_steps(&mut steps);
             let was_failed = self.failed;
             // A composite's steps see their own success, not the job's.
@@ -717,7 +734,8 @@ impl Job {
             self.log.line(&format!("##[error]`{uses}` has no action.yml."));
             return None;
         };
-        let Some(yaml) = std::fs::read_to_string(&manifest).ok().and_then(|text| serde_yaml::from_str::<serde_yaml::Value>(&text).ok()) else {
+        let Some(yaml) = std::fs::read_to_string(&manifest).ok().and_then(|text| serde_yaml::from_str::<serde_yaml::Value>(&text).ok())
+        else {
             self.log.line(&format!("##[error]`{uses}`: its action.yml does not read."));
             return None;
         };
@@ -727,7 +745,13 @@ impl Job {
     /// An action's inputs: what the step gives, else the action's defaults,
     /// read with `contexts`. With `warn`, inputs the action does not declare
     /// are warned of, as GitHub's runner does.
-    fn action_inputs(&mut self, action: &Value, with: &BTreeMap<String, String>, contexts: &Map<String, Value>, warn: bool) -> BTreeMap<String, String> {
+    fn action_inputs(
+        &mut self,
+        action: &Value,
+        with: &BTreeMap<String, String>,
+        contexts: &Map<String, Value>,
+        warn: bool,
+    ) -> BTreeMap<String, String> {
         let mut inputs: BTreeMap<String, String> = BTreeMap::new();
         let mut declared_names = Vec::new();
         if let Some(Value::Object(declared)) = action.get("inputs") {
@@ -898,7 +922,11 @@ mod tests {
                         if let Some((head, body)) = text.split_once("\r\n\r\n") {
                             let length = head
                                 .lines()
-                                .find_map(|line| line.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0)))
+                                .find_map(|line| {
+                                    line.to_ascii_lowercase()
+                                        .strip_prefix("content-length:")
+                                        .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                                })
                                 .unwrap_or(0);
                             if body.len() >= length || n == 0 {
                                 break;
@@ -912,7 +940,11 @@ mod tests {
                     } else {
                         json!({ "source": "github", "archive": true, "sha": "a".repeat(40) }).to_string()
                     };
-                    let _ = write!(stream, "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len());
+                    let _ = write!(
+                        stream,
+                        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
                 });
             }
         });
@@ -920,7 +952,8 @@ mod tests {
         let temp = std::env::temp_dir().join(format!("g1t-prefetch-{}", super::super::rand_id()));
         std::fs::create_dir_all(&temp).unwrap();
         let started = std::time::Instant::now();
-        let ahead: Vec<Prefetch> = ["checkout", "cache", "setup-node"].iter().map(|repo| Prefetch::start(api.clone(), &temp, "actions", repo, "v4")).collect();
+        let ahead: Vec<Prefetch> =
+            ["checkout", "cache", "setup-node"].iter().map(|repo| Prefetch::start(api.clone(), &temp, "actions", repo, "v4")).collect();
         for prefetch in ahead {
             let found = prefetch.found.recv().unwrap().unwrap();
             assert_eq!(found["source"], "github");

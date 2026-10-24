@@ -10,11 +10,11 @@
 //! `g1t_contracts::attachments`.
 
 use base64::Engine;
-use g1t_contracts::attachments::{
-    ATTACHMENT_KEY_PREFIX, ATTACHMENT_TYPES, Attachment, AttachmentMeta, MAX_ATTACHMENT_BYTES, UploadAttachmentArgs,
-    attachment_name, attachment_path, normalize_content_type, sniff_attachment,
-};
 use g1t_contracts::access::Capability;
+use g1t_contracts::attachments::{
+    ATTACHMENT_KEY_PREFIX, ATTACHMENT_TYPES, Attachment, AttachmentMeta, MAX_ATTACHMENT_BYTES, UploadAttachmentArgs, attachment_name,
+    attachment_path, normalize_content_type, sniff_attachment,
+};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
@@ -160,13 +160,7 @@ impl Work {
             ])?
             .run()
             .await?;
-        Ok(Outcome::Ok(Attachment {
-            path: attachment_path(&id),
-            id,
-            name,
-            content_type: content_type.to_owned(),
-            size,
-        }))
+        Ok(Outcome::Ok(Attachment { path: attachment_path(&id), id, name, content_type: content_type.to_owned(), size }))
     }
 }
 
@@ -187,12 +181,8 @@ async fn purge_where(env: &Env, db: &worker::D1Database, condition: &str, value:
     struct Row {
         id: String,
     }
-    let rows: Vec<Row> = db
-        .prepare(format!("SELECT id FROM attachments WHERE {condition}"))
-        .bind(&[value.into()])?
-        .all()
-        .await?
-        .results()?;
+    let rows: Vec<Row> =
+        db.prepare(format!("SELECT id FROM attachments WHERE {condition}")).bind(&[value.into()])?.all().await?.results()?;
     if rows.is_empty() {
         return Ok(());
     }

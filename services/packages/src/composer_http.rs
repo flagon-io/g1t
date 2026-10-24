@@ -60,11 +60,23 @@ fn error(status: u16, message: impl Into<String>) -> Result<Response> {
 /// One of the registry's endpoints, under `/-/composer/<workspace>/`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ComposerRoute {
-    Root { workspace: String },
+    Root {
+        workspace: String,
+    },
     /// `p2/<vendor>/<name>.json`, or `~dev.json` for the branches.
-    Metadata { workspace: String, name: String, dev: bool },
-    Dist { workspace: String, name: String, commit: String },
-    Downloads { workspace: String },
+    Metadata {
+        workspace: String,
+        name: String,
+        dev: bool,
+    },
+    Dist {
+        workspace: String,
+        name: String,
+        commit: String,
+    },
+    Downloads {
+        workspace: String,
+    },
 }
 
 pub fn route(path: &str) -> Option<ComposerRoute> {
@@ -152,7 +164,10 @@ impl Packages {
             Credentials::Viewer(viewer) => viewer,
             Credentials::None => None,
             Credentials::Token(_) | Credentials::Bad => {
-                return error(401, "The username or token is not right. Use a g1t access token: composer config --auth http-basic.g1t.sh <you> <token>");
+                return error(
+                    401,
+                    "The username or token is not right. Use a g1t access token: composer config --auth http-basic.g1t.sh <you> <token>",
+                );
             }
         };
         match route {
@@ -161,10 +176,8 @@ impl Packages {
             ComposerRoute::Dist { workspace, name, commit } => self.composer_dist(&workspace, &name, &commit, viewer.as_ref(), ctx).await,
             ComposerRoute::Downloads { workspace } => {
                 let body: Value = request.json().await.unwrap_or_default();
-                let names: HashSet<&str> = body["downloads"]
-                    .as_array()
-                    .map(|list| list.iter().filter_map(|d| d["name"].as_str()).collect())
-                    .unwrap_or_default();
+                let names: HashSet<&str> =
+                    body["downloads"].as_array().map(|list| list.iter().filter_map(|d| d["name"].as_str()).collect()).unwrap_or_default();
                 for name in names.into_iter().take(50) {
                     if let Some(package) = self.composer_package(&workspace, name).await? {
                         self.count_download(&package.id, ctx);
@@ -195,12 +208,7 @@ impl Packages {
         let rows = self.db.list(workspace, Some(COMPOSER), None, None, 1000).await?;
         let packages: Vec<&PackageRow> = rows.iter().map(|row| &row.package).collect();
         let may = self.may_all(viewer, &packages, Action::Pull).await?;
-        let available: Vec<String> = rows
-            .iter()
-            .zip(may)
-            .filter(|(_, may)| *may)
-            .map(|(row, _)| row.package.name.clone())
-            .collect();
+        let available: Vec<String> = rows.iter().zip(may).filter(|(_, may)| *may).map(|(row, _)| row.package.name.clone()).collect();
         Response::from_json(&composer::root(workspace, &available))
     }
 
@@ -277,11 +285,22 @@ impl Packages {
         let listed: FileList = g1t_kit::call(
             &self.repos,
             "list_files",
-            &ListFilesArgs { repo_id: repo_id.clone(), git_ref: Some(commit.to_owned()), skip_dirs: Vec::new(), limit: MAX_LISTED_FILES, links: false },
+            &ListFilesArgs {
+                repo_id: repo_id.clone(),
+                git_ref: Some(commit.to_owned()),
+                skip_dirs: Vec::new(),
+                limit: MAX_LISTED_FILES,
+                links: false,
+            },
         )
         .await?;
         if listed.truncated {
-            return Ok(Err(error(507, format!("The commit has more than {MAX_LISTED_FILES} files, too many for an archive. Install from source: composer install --prefer-source"))));
+            return Ok(Err(error(
+                507,
+                format!(
+                    "The commit has more than {MAX_LISTED_FILES} files, too many for an archive. Install from source: composer install --prefer-source"
+                ),
+            )));
         }
         let attributes = self.repo_file(&repo_id, commit, ".gitattributes").await?;
         let ignores = attributes.map(|text| composer::export_ignores(&String::from_utf8_lossy(&text))).unwrap_or_default();
@@ -306,7 +325,10 @@ impl Packages {
                 if total > MAX_ARCHIVE_BYTES || (blob.data.is_none() && blob.size > 0) {
                     return Ok(Err(error(
                         507,
-                        format!("The commit is too large for an archive (over {} MB). Install from source: composer install --prefer-source", MAX_ARCHIVE_BYTES / 1_048_576),
+                        format!(
+                            "The commit is too large for an archive (over {} MB). Install from source: composer install --prefer-source",
+                            MAX_ARCHIVE_BYTES / 1_048_576
+                        ),
                     )));
                 }
                 let data = blob.data.as_deref().map(|d| STANDARD.decode(d).unwrap_or_default()).unwrap_or_default();
@@ -330,7 +352,12 @@ impl Packages {
         self.db.keep_blob(&package.id, &digest, size, Some("application/zip"), &digest.object_key(), now).await?;
         self.db.add_dist(&package.id, commit, &digest, size).await?;
         self.db.measure(&package.workspace).await?;
-        Ok(Ok(crate::db::BlobRow { digest: digest.to_string(), size, media_type: Some("application/zip".into()), object_key: digest.object_key() }))
+        Ok(Ok(crate::db::BlobRow {
+            digest: digest.to_string(),
+            size,
+            media_type: Some("application/zip".into()),
+            object_key: digest.object_key(),
+        }))
     }
 
     /// A file of a repository at a commit, if it is there and not large.
@@ -400,7 +427,15 @@ impl Packages {
                     return Ok(false);
                 }
                 self.db
-                    .create_package(&new_id("pkg", now), &workspace, COMPOSER, &name, Some((&repo.id, &repo.name, repo.is_private)), "g1t", now)
+                    .create_package(
+                        &new_id("pkg", now),
+                        &workspace,
+                        COMPOSER,
+                        &name,
+                        Some((&repo.id, &repo.name, repo.is_private)),
+                        "g1t",
+                        now,
+                    )
                     .await?
             }
         };
@@ -447,7 +482,8 @@ impl Packages {
                 .await?;
             changed = true;
             if current.is_none() {
-                let event = PackageEvent { version: Some(version.version.clone()), digest: Some(commit.clone()), ..self.event_of(&package) };
+                let event =
+                    PackageEvent { version: Some(version.version.clone()), digest: Some(commit.clone()), ..self.event_of(&package) };
                 self.announce("package.published", &package, event, &caller).await;
                 self.audit(&caller, "package.publish", &package, Some(&format!("{name}@{}", version.version)), None).await;
             }

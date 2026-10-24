@@ -267,10 +267,7 @@ fn decide_job(token: &TokenAccess, target: &Target<'_>, action: Action) -> Decis
         return scoped;
     }
     match action {
-        _ if action.administers() => Decision::deny(
-            "token:job",
-            "A workflow job's token cannot delete packages or change their settings.",
-        ),
+        _ if action.administers() => Decision::deny("token:job", "A workflow job's token cannot delete packages or change their settings."),
         Action::Push if role < PackageRole::Write => Decision::deny(
             "actions",
             format!("{job} has the Read role on the package {label} in Manage Actions access: an admin of the package can give it Write."),
@@ -341,7 +338,10 @@ pub fn decide(viewer: Option<&User>, target: &Target<'_>, action: Action) -> Dec
     }
 
     if action != Action::Pull && user.kind == PrincipalKind::User && !user.verified {
-        return Decision::deny("unverified", "Confirm your email address first. Check your inbox, or resend the link from the banner on g1t.sh.");
+        return Decision::deny(
+            "unverified",
+            "Confirm your email address first. Check your inbox, or resend the link from the banner on g1t.sh.",
+        );
     }
 
     let (role, rule) = role_of(&user, target);
@@ -364,10 +364,9 @@ pub fn decide(viewer: Option<&User>, target: &Target<'_>, action: Action) -> Dec
             repo.name,
             action.as_str()
         ),
-        (Some(repo), _) if !target.exists => format!(
-            "You need the Write role or higher on {}/{} to push this package.",
-            target.workspace, repo.name
-        ),
+        (Some(repo), _) if !target.exists => {
+            format!("You need the Write role or higher on {}/{} to push this package.", target.workspace, repo.name)
+        }
         (_, action) if action.administers() => format!(
             "You need the Admin role on the package {} to {} it: an owner of {}, or an admin of the package{}, can give it to you.",
             target.label(),
@@ -391,12 +390,7 @@ fn rule_for(target: &Target<'_>) -> &'static str {
 /// Every action `viewer` may take, for the site.
 pub fn permissions(viewer: Option<&User>, target: &Target<'_>) -> PackagePermissions {
     let may = |action| decide(viewer, target, action).allowed;
-    PackagePermissions {
-        pull: may(Action::Pull),
-        push: may(Action::Push),
-        delete: may(Action::Delete),
-        admin: may(Action::Admin),
-    }
+    PackagePermissions { pull: may(Action::Pull), push: may(Action::Push), delete: may(Action::Delete), admin: may(Action::Admin) }
 }
 
 #[cfg(test)]

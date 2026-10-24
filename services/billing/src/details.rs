@@ -20,15 +20,19 @@ use crate::{Billing, members_only};
 /// The languages Stripe writes invoices in, as `preferred_locales` takes
 /// them.
 pub(crate) const LANGUAGES: [&str; 44] = [
-    "bg", "cs", "da", "de", "el", "en", "en-GB", "es", "es-419", "et", "fi", "fil", "fr", "fr-CA", "hr", "hu", "id", "it", "ja",
-    "ko", "lt", "lv", "ms", "mt", "nb", "nl", "pl", "pt", "pt-BR", "ro", "ru", "sk", "sl", "sv", "th", "tr", "vi", "zh",
-    "zh-HK", "zh-TW", "is", "hi", "he", "ar",
+    "bg", "cs", "da", "de", "el", "en", "en-GB", "es", "es-419", "et", "fi", "fil", "fr", "fr-CA", "hr", "hu", "id", "it", "ja", "ko",
+    "lt", "lv", "ms", "mt", "nb", "nl", "pl", "pt", "pt-BR", "ro", "ru", "sk", "sl", "sv", "th", "tr", "vi", "zh", "zh-HK", "zh-TW", "is",
+    "hi", "he", "ar",
 ];
 
 /// What is wrong with details as given, if anything.
 pub(crate) fn details_invalid(a: &SetBillingDetailsArgs) -> Option<&'static str> {
     if let Some(email) = a.email.as_deref().map(str::trim).filter(|e| !e.is_empty())
-        && (email.len() > 254 || !email.contains('@') || email.contains(char::is_whitespace) || email.starts_with('@') || email.ends_with('@'))
+        && (email.len() > 254
+            || !email.contains('@')
+            || email.contains(char::is_whitespace)
+            || email.starts_with('@')
+            || email.ends_with('@'))
     {
         return Some("That is not an email address.");
     }
@@ -68,8 +72,9 @@ pub(crate) async fn replace_tax_id(
     }
     if !value.is_empty() {
         let key = format!("tax_id/{owner}/{kind}/{value}");
-        let added: Result<Value> =
-            stripe.post_idempotent(&format!("/customers/{customer}/tax_ids"), &[("type", kind.to_owned()), ("value", value.to_owned())], &key).await;
+        let added: Result<Value> = stripe
+            .post_idempotent(&format!("/customers/{customer}/tax_ids"), &[("type", kind.to_owned()), ("value", value.to_owned())], &key)
+            .await;
         if let Err(error) = added {
             return Err(crate::stripe::friendly(&error));
         }
@@ -84,7 +89,9 @@ pub(crate) async fn replace_tax_id(
 
 /// What is wrong with an address, if anything.
 pub(crate) fn address_invalid(address: &PostalAddress) -> Option<&'static str> {
-    if !address.country.trim().is_empty() && (address.country.trim().len() != 2 || !address.country.trim().chars().all(|c| c.is_ascii_alphabetic())) {
+    if !address.country.trim().is_empty()
+        && (address.country.trim().len() != 2 || !address.country.trim().chars().all(|c| c.is_ascii_alphabetic()))
+    {
         return Some("The country is two letters, such as US or DE.");
     }
     let parts = [&address.line1, &address.line2, &address.city, &address.state, &address.postal_code];
@@ -203,15 +210,106 @@ pub(crate) fn details_from(customer: &Value) -> BillingDetails {
 /// The kinds of tax ID Stripe takes on a customer (`tax_ids[type]`) in
 /// the API version billing is written for.
 pub(crate) const TAX_ID_TYPES: &[&str] = &[
-    "ad_nrt", "ae_trn", "al_tin", "am_tin", "ao_tin", "ar_cuit", "au_abn", "au_arn", "ba_tin", "bb_tin", "bg_uic", "bh_vat",
-    "bo_tin", "br_cnpj", "br_cpf", "bs_tin", "by_tin", "ca_bn", "ca_gst_hst", "ca_pst_bc", "ca_pst_mb", "ca_pst_sk", "ca_qst",
-    "cd_nif", "ch_uid", "ch_vat", "cl_tin", "cn_tin", "co_nit", "cr_tin", "de_stn", "do_rcn", "ec_ruc", "eg_tin", "es_cif",
-    "eu_oss_vat", "eu_vat", "gb_vat", "ge_vat", "gn_nif", "hk_br", "hr_oib", "hu_tin", "id_npwp", "il_vat", "in_gst", "is_vat",
-    "jp_cn", "jp_rn", "jp_trn", "ke_pin", "kh_tin", "kr_brn", "kz_bin", "li_uid", "li_vat", "ma_vat", "md_vat", "me_pib",
-    "mk_vat", "mr_nif", "mx_rfc", "my_frp", "my_itn", "my_sst", "ng_tin", "no_vat", "no_voec", "np_pan", "nz_gst", "om_vat",
-    "pe_ruc", "ph_tin", "ro_tin", "rs_pib", "ru_inn", "ru_kpp", "sa_vat", "sg_gst", "sg_uen", "si_tin", "sn_ninea", "sr_fin",
-    "sv_nit", "th_vat", "tj_tin", "tr_tin", "tw_vat", "tz_vat", "ua_vat", "ug_tin", "us_ein", "uy_ruc", "uz_tin", "uz_vat",
-    "ve_rif", "vn_tin", "za_vat", "zm_tin", "zw_tin",
+    "ad_nrt",
+    "ae_trn",
+    "al_tin",
+    "am_tin",
+    "ao_tin",
+    "ar_cuit",
+    "au_abn",
+    "au_arn",
+    "ba_tin",
+    "bb_tin",
+    "bg_uic",
+    "bh_vat",
+    "bo_tin",
+    "br_cnpj",
+    "br_cpf",
+    "bs_tin",
+    "by_tin",
+    "ca_bn",
+    "ca_gst_hst",
+    "ca_pst_bc",
+    "ca_pst_mb",
+    "ca_pst_sk",
+    "ca_qst",
+    "cd_nif",
+    "ch_uid",
+    "ch_vat",
+    "cl_tin",
+    "cn_tin",
+    "co_nit",
+    "cr_tin",
+    "de_stn",
+    "do_rcn",
+    "ec_ruc",
+    "eg_tin",
+    "es_cif",
+    "eu_oss_vat",
+    "eu_vat",
+    "gb_vat",
+    "ge_vat",
+    "gn_nif",
+    "hk_br",
+    "hr_oib",
+    "hu_tin",
+    "id_npwp",
+    "il_vat",
+    "in_gst",
+    "is_vat",
+    "jp_cn",
+    "jp_rn",
+    "jp_trn",
+    "ke_pin",
+    "kh_tin",
+    "kr_brn",
+    "kz_bin",
+    "li_uid",
+    "li_vat",
+    "ma_vat",
+    "md_vat",
+    "me_pib",
+    "mk_vat",
+    "mr_nif",
+    "mx_rfc",
+    "my_frp",
+    "my_itn",
+    "my_sst",
+    "ng_tin",
+    "no_vat",
+    "no_voec",
+    "np_pan",
+    "nz_gst",
+    "om_vat",
+    "pe_ruc",
+    "ph_tin",
+    "ro_tin",
+    "rs_pib",
+    "ru_inn",
+    "ru_kpp",
+    "sa_vat",
+    "sg_gst",
+    "sg_uen",
+    "si_tin",
+    "sn_ninea",
+    "sr_fin",
+    "sv_nit",
+    "th_vat",
+    "tj_tin",
+    "tr_tin",
+    "tw_vat",
+    "tz_vat",
+    "ua_vat",
+    "ug_tin",
+    "us_ein",
+    "uy_ruc",
+    "uz_tin",
+    "uz_vat",
+    "ve_rif",
+    "vn_tin",
+    "za_vat",
+    "zm_tin",
+    "zw_tin",
 ];
 
 impl Billing {
@@ -269,7 +367,11 @@ impl Billing {
             // next card saved makes a new one.
             Err(error) if crate::stripe::is_missing(&error) => {
                 self.forget_customer(workspace).await?;
-                Ok(BillingDetails { upcoming, tax_address_needed_at: self.tax_address_needed_at(workspace).await?, ..BillingDetails::default() })
+                Ok(BillingDetails {
+                    upcoming,
+                    tax_address_needed_at: self.tax_address_needed_at(workspace).await?,
+                    ..BillingDetails::default()
+                })
             }
             Err(error) => {
                 worker::console_error!("{workspace}: Stripe's customer could not be read: {error}");
@@ -337,7 +439,10 @@ impl Billing {
     pub(crate) async fn set_billing_details(&self, a: SetBillingDetailsArgs) -> Result<Outcome<BillingDetails>> {
         let workspace = a.workspace.to_lowercase();
         if !a.actor.manages_billing(&workspace) {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner or a billing manager can change the workspace's billing details."));
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                "Only an owner or a billing manager can change the workspace's billing details.",
+            ));
         }
         let Some(stripe) = &self.stripe else {
             return Ok(Outcome::fail(FailureCode::Conflict, "Payments are not set up on this g1t."));
@@ -398,8 +503,13 @@ mod tests {
         assert_eq!(details_invalid(&args()), None);
         assert!(details_invalid(&SetBillingDetailsArgs { email: Some("not an email".into()), ..args() }).is_some());
         assert!(details_invalid(&SetBillingDetailsArgs { language: Some("klingon".into()), ..args() }).is_some());
-        assert!(details_invalid(&SetBillingDetailsArgs { tax_id_type: Some("eu_vat".into()), tax_id: Some(String::new()), ..args() }).is_some());
-        assert_eq!(details_invalid(&SetBillingDetailsArgs { tax_id_type: Some("eu_vat".into()), tax_id: Some("DE123456789".into()), ..args() }), None);
+        assert!(
+            details_invalid(&SetBillingDetailsArgs { tax_id_type: Some("eu_vat".into()), tax_id: Some(String::new()), ..args() }).is_some()
+        );
+        assert_eq!(
+            details_invalid(&SetBillingDetailsArgs { tax_id_type: Some("eu_vat".into()), tax_id: Some("DE123456789".into()), ..args() }),
+            None
+        );
         let address = PostalAddress { country: "Germany".into(), ..PostalAddress::default() };
         assert!(details_invalid(&SetBillingDetailsArgs { address: Some(address), ..args() }).is_some());
     }

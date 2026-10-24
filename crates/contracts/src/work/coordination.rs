@@ -19,8 +19,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{
-    CheckStatus, ItemRepo, Mergeable, NewSessionEntry, Overlap, PullStatus, QueueState, RequiredCheck, SessionEntry, State,
-    WorkItem,
+    CheckStatus, ItemRepo, Mergeable, NewSessionEntry, Overlap, PullStatus, QueueState, RequiredCheck, SessionEntry, State, WorkItem,
 };
 use crate::credentials::Principal;
 use crate::events::Event;
@@ -74,14 +73,8 @@ pub enum Harness {
 }
 
 impl Harness {
-    pub const ALL: [Harness; 6] = [
-        Harness::ClaudeCode,
-        Harness::ClaudeManagedAgents,
-        Harness::Codex,
-        Harness::Cursor,
-        Harness::Copilot,
-        Harness::Other,
-    ];
+    pub const ALL: [Harness; 6] =
+        [Harness::ClaudeCode, Harness::ClaudeManagedAgents, Harness::Codex, Harness::Cursor, Harness::Copilot, Harness::Other];
 
     pub fn as_str(self) -> &'static str {
         match self {
@@ -381,12 +374,10 @@ pub fn tidy_touches(touches: &[NewTouch]) -> Vec<NewTouch> {
     for touch in touches {
         let mut value: String = touch.value.trim().chars().take(MAX_TOUCH_CHARS).collect();
         match touch.kind {
-            TouchKind::Pull | TouchKind::Item => {
-                match value.trim_start_matches('#').parse::<u32>() {
-                    Ok(number) if number > 0 => value = number.to_string(),
-                    _ => continue,
-                }
-            }
+            TouchKind::Pull | TouchKind::Item => match value.trim_start_matches('#').parse::<u32>() {
+                Ok(number) if number > 0 => value = number.to_string(),
+                _ => continue,
+            },
             TouchKind::Commit => {
                 if value.len() < 7 || !value.chars().all(|c| c.is_ascii_hexdigit()) {
                     continue;
@@ -450,7 +441,11 @@ pub fn session_trailers(message: &str) -> Vec<String> {
             continue;
         }
         let id = value.trim();
-        if id.starts_with("ses_") && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') && !found.iter().any(|f| f == id) {
+        if id.starts_with("ses_")
+            && id.len() <= 64
+            && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            && !found.iter().any(|f| f == id)
+        {
             found.push(id.to_owned());
         }
     }
@@ -728,10 +723,9 @@ pub fn definition_of_done(body: &str) -> Vec<String> {
         if !inside {
             continue;
         }
-        let item = trimmed
-            .strip_prefix("- ")
-            .or_else(|| trimmed.strip_prefix("* "))
-            .or_else(|| trimmed.split_once(". ").filter(|(n, _)| n.chars().all(|c| c.is_ascii_digit()) && !n.is_empty()).map(|(_, rest)| rest));
+        let item = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")).or_else(|| {
+            trimmed.split_once(". ").filter(|(n, _)| n.chars().all(|c| c.is_ascii_digit()) && !n.is_empty()).map(|(_, rest)| rest)
+        });
         if let Some(item) = item {
             let item = item.trim_start_matches("[ ] ").trim_start_matches("[x] ").trim_start_matches("[X] ").trim();
             if !item.is_empty() {
@@ -1547,7 +1541,8 @@ mod tests {
 
     #[test]
     fn the_definition_of_done_is_read_from_its_section() {
-        let body = "Make it greet.\n\n## Definition of done\n\n- `npm test` passes.\n- [ ] Docs say so\n1. Works offline\n\n## Notes\n- not this";
+        let body =
+            "Make it greet.\n\n## Definition of done\n\n- `npm test` passes.\n- [ ] Docs say so\n1. Works offline\n\n## Notes\n- not this";
         assert_eq!(definition_of_done(body), ["`npm test` passes.", "Docs say so", "Works offline"]);
         assert!(definition_of_done("No section").is_empty());
     }
@@ -1588,7 +1583,8 @@ mod tests {
 
     #[test]
     fn commits_name_their_sessions_in_trailers() {
-        let message = "Greet in French\n\nCloses #4\n\nG1t-Session: ses_01abc\ng1t-session: ses_01abc\nG1t-Session: nope\nCo-authored-by: x";
+        let message =
+            "Greet in French\n\nCloses #4\n\nG1t-Session: ses_01abc\ng1t-session: ses_01abc\nG1t-Session: nope\nCo-authored-by: x";
         assert_eq!(session_trailers(message), vec!["ses_01abc".to_owned()]);
         assert!(session_trailers("no trailer").is_empty());
     }

@@ -25,10 +25,7 @@ pub struct AuditContext {
 
 impl Default for AuditContext {
     fn default() -> Self {
-        AuditContext {
-            request_id: String::new(),
-            surface: Surface::Rest,
-        }
+        AuditContext { request_id: String::new(), surface: Surface::Rest }
     }
 }
 
@@ -47,10 +44,7 @@ fn repo_path(input: &Value) -> Option<RepoPath> {
     let mut parts = input["repo"].as_str()?.split('/');
     match (parts.next(), parts.next(), parts.next()) {
         (Some(namespace), Some(name), None) if !namespace.is_empty() && !name.is_empty() => {
-            Some(RepoPath {
-                namespace: namespace.to_owned(),
-                name: name.to_owned(),
-            })
+            Some(RepoPath { namespace: namespace.to_owned(), name: name.to_owned() })
         }
         _ => None,
     }
@@ -65,10 +59,7 @@ fn number(input: &Value) -> Option<u32> {
 }
 
 fn some_text(input: &Value, key: &str) -> Option<String> {
-    input[key]
-        .as_str()
-        .filter(|value| !value.is_empty())
-        .map(str::to_owned)
+    input[key].as_str().filter(|value| !value.is_empty()).map(str::to_owned)
 }
 
 /// What an operation named, for its entry.
@@ -79,11 +70,7 @@ pub fn target(user: &User, input: &Value) -> AuditTarget {
         .map(|repo| repo.namespace.clone())
         .or_else(|| some_text(input, "workspace"))
         .or_else(|| some_text(input, "slug"))
-        .or_else(|| {
-            user.acting
-                .as_ref()
-                .map(|acting| acting.scope.repo.namespace.clone())
-        })
+        .or_else(|| user.acting.as_ref().map(|acting| acting.scope.repo.namespace.clone()))
         .unwrap_or_default()
         .to_lowercase();
     AuditTarget {
@@ -113,14 +100,7 @@ pub fn decide(op: Op, services: &Services, viewer: &Viewer, input: &Value) -> Op
     let user = viewer.as_ref()?;
     if user.kind == PrincipalKind::Agent {
         let scope = services.scope.as_ref()?;
-        return Some(decide_operation(
-            user,
-            scope,
-            op.name(),
-            repo_path(input).as_ref(),
-            op.needs_repo(),
-            number(input),
-        ));
+        return Some(decide_operation(user, scope, op.name(), repo_path(input).as_ref(), op.needs_repo(), number(input)));
     }
     token_decision(op, user, input)
 }
@@ -135,9 +115,7 @@ fn token_decision(op: Op, user: &User, input: &Value) -> Option<Decision> {
 /// The scope a refused call lacked, for the error the caller is sent.
 pub fn missing_scope(op: Op, viewer: &Viewer, input: &Value) -> Option<scopes::Scope> {
     let access = viewer.as_ref()?.token.as_deref()?;
-    scopes::needed(op.name(), input)
-        .into_iter()
-        .find(|scope| !access.allows(*scope))
+    scopes::needed(op.name(), input).into_iter().find(|scope| !access.allows(*scope))
 }
 
 /// Whether a decision refuses the call.
@@ -147,12 +125,7 @@ fn refused(decision: &Option<Decision>) -> bool {
 
 /// Runs `op` for `viewer`: enforcing an agent's scope first, and recording
 /// what happened.
-pub async fn run(
-    op: Op,
-    services: &Services,
-    viewer: &Viewer,
-    input: &Value,
-) -> Result<Outcome<Value>> {
+pub async fn run(op: Op, services: &Services, viewer: &Viewer, input: &Value) -> Result<Outcome<Value>> {
     let mut input = std::borrow::Cow::Borrowed(input);
     let mut decision = decide(op, services, viewer, &input);
     // A token or an agent's run that reaches one repository knows it by its
@@ -172,16 +145,10 @@ pub async fn run(
     let input = input.as_ref();
     if let Some(decision) = decision.as_ref().filter(|decision| !decision.allowed) {
         record(op, services, viewer, input, decision, None).await;
-        return Ok(Outcome::fail(
-            FailureCode::Forbidden,
-            decision.reason.as_deref().unwrap_or("Not allowed."),
-        ));
+        return Ok(Outcome::fail(FailureCode::Forbidden, decision.reason.as_deref().unwrap_or("Not allowed.")));
     }
     // A runner's credential acts as the person, within the run's scope.
-    let downstream: Viewer = viewer
-        .as_ref()
-        .and_then(as_person)
-        .or_else(|| viewer.clone());
+    let downstream: Viewer = viewer.as_ref().and_then(as_person).or_else(|| viewer.clone());
     let outcome = op.run(services, &downstream, input).await?;
     let decision = decision.unwrap_or_else(|| match viewer {
         Some(user) => Decision::allow(principal_rule(user)),
@@ -197,14 +164,7 @@ pub async fn run(
 
 /// Appends the entry, if this is something the log keeps. A failure to
 /// record is logged, never passed on to the caller.
-async fn record(
-    op: Op,
-    services: &Services,
-    viewer: &Viewer,
-    input: &Value,
-    decision: &Decision,
-    outcome: Option<&Outcome<Value>>,
-) {
+async fn record(op: Op, services: &Services, viewer: &Viewer, input: &Value, decision: &Decision, outcome: Option<&Outcome<Value>>) {
     let Some(user) = viewer.as_ref() else {
         return;
     };
@@ -216,14 +176,8 @@ async fn record(
     if op.personal() {
         return;
     }
-    let mut entry = NewAuditEntry::new(
-        actor,
-        op.name(),
-        services.audit.surface,
-        target(user, input),
-        decision,
-        services.audit.request_id.clone(),
-    );
+    let mut entry =
+        NewAuditEntry::new(actor, op.name(), services.audit.surface, target(user, input), decision, services.audit.request_id.clone());
     match outcome {
         Some(Outcome::Ok(_)) => entry.result = Some("ok".to_owned()),
         Some(Outcome::Fail(failure)) => {
@@ -232,10 +186,7 @@ async fn record(
                 .and_then(|code| code.as_str().map(str::to_owned))
                 .unwrap_or_else(|| "failed".to_owned());
             // Refused by the service that owns it: still a denial.
-            if matches!(
-                failure.code,
-                FailureCode::Forbidden | FailureCode::Unauthenticated
-            ) {
+            if matches!(failure.code, FailureCode::Forbidden | FailureCode::Unauthenticated) {
                 entry.outcome = g1t_contracts::audit::AuditOutcome::Denied;
                 entry.rule = "service".to_owned();
             }
@@ -244,14 +195,7 @@ async fn record(
         }
         None => entry.result = Some("forbidden".to_owned()),
     }
-    let recorded: Result<u32> = g1t_kit::call(
-        &services.events,
-        "audit_record",
-        &RecordAuditArgs {
-            entries: vec![entry],
-        },
-    )
-    .await;
+    let recorded: Result<u32> = g1t_kit::call(&services.events, "audit_record", &RecordAuditArgs { entries: vec![entry] }).await;
     if let Err(error) = recorded {
         console_error!("audit entry not recorded for {}: {error}", op.name());
     }
@@ -267,23 +211,13 @@ mod tests {
 
     #[test]
     fn the_target_comes_from_the_input() {
-        let person = User {
-            id: "usr_1".to_owned(),
-            username: "syntaqx".to_owned(),
-            ..User::default()
-        };
-        let target = target(
-            &person,
-            &json!({ "repo": "Acme/rocket", "number": "12", "path": "src/a.rs" }),
-        );
+        let person = User { id: "usr_1".to_owned(), username: "syntaqx".to_owned(), ..User::default() };
+        let target = target(&person, &json!({ "repo": "Acme/rocket", "number": "12", "path": "src/a.rs" }));
         assert_eq!(target.workspace, "acme");
         assert_eq!(target.repo.as_deref(), Some("Acme/rocket"));
         assert_eq!(target.number, Some(12));
         assert_eq!(target.path.as_deref(), Some("src/a.rs"));
-        assert_eq!(
-            super::target(&person, &json!({ "workspace": "Ops" })).workspace,
-            "ops"
-        );
+        assert_eq!(super::target(&person, &json!({ "workspace": "Ops" })).workspace, "ops");
     }
 
     fn with_token(scopes: Option<&[Scope]>, legacy: bool) -> User {
@@ -377,10 +311,7 @@ mod tests {
                 agent: "g1t".to_owned(),
                 on_behalf_of: Principal::default(),
                 scope: AgentScope {
-                    repo: RepoPath {
-                        namespace: "acme".to_owned(),
-                        name: "rocket".to_owned(),
-                    },
+                    repo: RepoPath { namespace: "acme".to_owned(), name: "rocket".to_owned() },
                     operations: vec![],
                     run: None,
                 },

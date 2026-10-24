@@ -172,7 +172,8 @@ impl Api {
         let tries = if rotate { 1 } else { SPEC_TRIES };
         let mut attempt = 1;
         let mut spec: Value = loop {
-            let fetched = crate::http::agent().post(&url)
+            let fetched = crate::http::agent()
+                .post(&url)
                 .timeout(Duration::from_secs(60))
                 .send_json(body.clone())
                 .map_err(SpecError::from)
@@ -212,7 +213,8 @@ impl Api {
     pub(crate) fn action(&self, repository: &str, git_ref: &str) -> std::result::Result<Value, (bool, String)> {
         // The first job to use an action at a commit waits while g1t
         // fetches and keeps its archive.
-        let sent = crate::http::agent().post(&format!("{}/actions/jobs/{}/action", self.base, self.job))
+        let sent = crate::http::agent()
+            .post(&format!("{}/actions/jobs/{}/action", self.base, self.job))
             .timeout(Duration::from_secs(120))
             .send_json(json!({ "token": self.token, "report": { "repository": repository, "ref": git_ref } }));
         match sent {
@@ -228,7 +230,8 @@ impl Api {
 
     /// Downloads the archive g1t keeps of `repository` at `sha` to `to`.
     pub(crate) fn action_archive(&self, repository: &str, sha: &str, to: &std::path::Path) -> std::result::Result<u64, String> {
-        let response = crate::http::agent().post(&format!("{}/actions/jobs/{}/archive", self.base, self.job))
+        let response = crate::http::agent()
+            .post(&format!("{}/actions/jobs/{}/archive", self.base, self.job))
             .timeout(Duration::from_secs(300))
             .send_json(json!({ "token": self.token, "report": { "repository": repository, "sha": sha } }))
             .map_err(|error| match error {
@@ -259,7 +262,8 @@ impl Api {
         // A report that cannot be sent is tried a few times, then dropped:
         // the job goes on, and g1t notices a silent job by itself.
         for attempt in 0..3 {
-            let sent = crate::http::agent().post(&format!("{}/actions/jobs/{}", self.base, self.job))
+            let sent = crate::http::agent()
+                .post(&format!("{}/actions/jobs/{}", self.base, self.job))
                 .timeout(Duration::from_secs(30))
                 .send_json(json!({ "token": self.token, "report": report }));
             match sent {
@@ -369,9 +373,7 @@ impl Uploader {
                 self.let_go = true;
                 let step = self.logs.front().map_or(0, |(step, _)| *step);
                 let left: usize = self.logs.drain(..).map(|(_, text)| text.len()).sum();
-                eprintln!(
-                    "g1t-runner: {left} bytes of the job's log did not reach g1t in time and were let go"
-                );
+                eprintln!("g1t-runner: {left} bytes of the job's log did not reach g1t in time and were let go");
                 // What is let go is said in the log itself, where it starts:
                 // one short batch, sent before the conclusion.
                 self.logs.push_back((
@@ -407,14 +409,14 @@ impl Uploader {
         let mut bytes = text.len();
         if self.lost > 0 {
             let lost = std::mem::take(&mut self.lost);
-            text.insert_str(0, &note(&format!("##[warning]{lost} bytes of this job's log before this line could not be sent to g1t and are missing.")));
+            text.insert_str(
+                0,
+                &note(&format!("##[warning]{lost} bytes of this job's log before this line could not be sent to g1t and are missing.")),
+            );
             bytes += lost;
         }
         self.chunk += 1;
-        Some((
-            json!({ "kind": "log", "step": step, "chunk": self.chunk, "text": text }),
-            bytes,
-        ))
+        Some((json!({ "kind": "log", "step": step, "chunk": self.chunk, "text": text }), bytes))
     }
 }
 
@@ -668,7 +670,9 @@ impl Log {
     fn annotation_report(&self, level: &str, message: &str, properties: &serde_json::Map<String, Value>) -> Value {
         let message = self.mask(message);
         let title = properties.get("title").and_then(Value::as_str).map(|title| self.mask(title));
-        let number = |keys: &[&str]| keys.iter().find_map(|key| properties.get(*key).and_then(Value::as_str)).and_then(|n| n.trim().parse::<u32>().ok());
+        let number = |keys: &[&str]| {
+            keys.iter().find_map(|key| properties.get(*key).and_then(Value::as_str)).and_then(|n| n.trim().parse::<u32>().ok())
+        };
         json!({
             "kind": "annotation",
             "level": level,
@@ -688,13 +692,7 @@ impl Log {
         self.done_within(conclusion, outputs, reason, DRAIN_WAIT);
     }
 
-    fn done_within(
-        &mut self,
-        conclusion: &str,
-        outputs: &serde_json::Map<String, Value>,
-        reason: Option<&str>,
-        within: Duration,
-    ) {
+    fn done_within(&mut self, conclusion: &str, outputs: &serde_json::Map<String, Value>, reason: Option<&str>, within: Duration) {
         let outputs = self.withhold_secrets(outputs);
         self.flush();
         let mut done = json!({ "kind": "done", "conclusion": conclusion, "outputs": outputs, "reason": reason });
@@ -747,13 +745,7 @@ pub(crate) fn stamp(at: SystemTime) -> String {
     let seconds = since.as_secs();
     let (days, rest) = (seconds / 86_400, seconds % 86_400);
     let (year, month, day) = civil(days as i64);
-    format!(
-        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}.{:07}Z",
-        rest / 3600,
-        rest % 3600 / 60,
-        rest % 60,
-        since.subsec_nanos() / 100
-    )
+    format!("{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}.{:07}Z", rest / 3600, rest % 3600 / 60, rest % 60, since.subsec_nanos() / 100)
 }
 
 /// The calendar date `days` after 1970-01-01 (Howard Hinnant's
@@ -812,7 +804,9 @@ mod tests {
                     if let Some(end) = text.find("\r\n\r\n") {
                         let length = text[..end]
                             .lines()
-                            .find_map(|line| line.to_ascii_lowercase().strip_prefix("content-length:").map(|n| n.trim().parse::<usize>().unwrap_or(0)))
+                            .find_map(|line| {
+                                line.to_ascii_lowercase().strip_prefix("content-length:").map(|n| n.trim().parse::<usize>().unwrap_or(0))
+                            })
                             .unwrap_or(0);
                         if request.len() >= end + 4 + length {
                             break;
@@ -822,7 +816,10 @@ mod tests {
                 count.fetch_add(1, Ordering::SeqCst);
                 // Cut short: says the whole length, sends half, and hangs up.
                 let sent = if cut { &body[..body.len() / 2] } else { body };
-                let head = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
                 let _ = stream.write_all(head.as_bytes());
                 let _ = stream.write_all(sent.as_bytes());
             }
@@ -856,7 +853,10 @@ mod tests {
         assert!(!SpecError::Status(403).worth_retrying());
         assert!(!SpecError::Status(404).worth_retrying());
         assert!(SpecError::Transport("connection reset".into()).worth_retrying());
-        assert_eq!((spec_backoff(1), spec_backoff(2), spec_backoff(3)), (Duration::from_secs(1), Duration::from_secs(2), Duration::from_secs(4)));
+        assert_eq!(
+            (spec_backoff(1), spec_backoff(2), spec_backoff(3)),
+            (Duration::from_secs(1), Duration::from_secs(2), Duration::from_secs(4))
+        );
     }
 
     #[test]
@@ -956,9 +956,7 @@ mod tests {
 
     /// A g1t that answers each report `{}` after `slow(report)`, until the
     /// job's `done`, and hands back each report as it came.
-    fn slow_server(
-        slow: impl Fn(&Value) -> Duration + Send + 'static,
-    ) -> (String, std::thread::JoinHandle<Vec<Value>>) {
+    fn slow_server(slow: impl Fn(&Value) -> Duration + Send + 'static) -> (String, std::thread::JoinHandle<Vec<Value>>) {
         use std::io::{BufRead, BufReader, Read, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
@@ -984,11 +982,7 @@ mod tests {
                 reader.read_exact(&mut body).unwrap();
                 let report = serde_json::from_slice::<Value>(&body).unwrap()["report"].clone();
                 std::thread::sleep(slow(&report));
-                write!(
-                    reader.get_mut(),
-                    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
-                )
-                .unwrap();
+                write!(reader.get_mut(), "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}").unwrap();
                 let done = report["kind"] == "done";
                 reports.push(report);
                 if done {
@@ -1004,14 +998,7 @@ mod tests {
         // Each report takes 200 ms to answer, as g1t's took a second in
         // Deploy #531, where a 300-line table went a line a second.
         let (base, serving) = slow_server(|_| Duration::from_millis(200));
-        let mut log = Log::new(
-            Api {
-                base,
-                job: "job_1".into(),
-                token: "t".into(),
-            },
-            Vec::new(),
-        );
+        let mut log = Log::new(Api { base, job: "job_1".into(), token: "t".into() }, Vec::new());
         log.steps(&["Build".into()]);
         log.step(1);
         log.step_state(1, "Build", "in_progress", None);
@@ -1026,38 +1013,22 @@ mod tests {
             }
         }
         log.step_state(1, "Build", "completed", Some("success"));
-        assert!(
-            started.elapsed() < Duration::from_millis(200),
-            "the step waited on g1t: {:?}",
-            started.elapsed()
-        );
+        assert!(started.elapsed() < Duration::from_millis(200), "the step waited on g1t: {:?}", started.elapsed());
         log.done("success", &serde_json::Map::new(), None);
         let reports = serving.join().unwrap();
-        let logs: Vec<&Value> = reports
-            .iter()
-            .filter(|report| report["kind"] == "log")
-            .collect();
+        let logs: Vec<&Value> = reports.iter().filter(|report| report["kind"] == "log").collect();
         // Far fewer reports than lines, numbered in order, with every line.
         assert!(logs.len() < 30, "{} log reports for 300 lines", logs.len());
-        let numbers: Vec<u64> = logs
-            .iter()
-            .map(|report| report["chunk"].as_u64().unwrap())
-            .collect();
+        let numbers: Vec<u64> = logs.iter().map(|report| report["chunk"].as_u64().unwrap()).collect();
         assert_eq!(numbers, (1..=logs.len() as u64).collect::<Vec<_>>());
-        let text: String = logs
-            .iter()
-            .map(|report| unstamped(report["text"].as_str().unwrap()))
-            .collect();
+        let text: String = logs.iter().map(|report| unstamped(report["text"].as_str().unwrap())).collect();
         let expected: String = (0..300).map(|n| format!("line {n}\n")).collect();
         assert_eq!(text, expected);
         // The step's end went no later than the last of its log, and the
         // job's conclusion after all of it.
         let at = |find: &dyn Fn(&Value) -> bool| reports.iter().position(find).unwrap();
         let completed = at(&|report| report["kind"] == "step" && report["status"] == "completed");
-        let last_log = reports
-            .iter()
-            .rposition(|report| report["kind"] == "log")
-            .unwrap();
+        let last_log = reports.iter().rposition(|report| report["kind"] == "log").unwrap();
         assert!(completed <= last_log + 1, "{reports:?}");
         assert_eq!(reports.last().unwrap()["kind"], "done");
     }
@@ -1075,14 +1046,7 @@ mod tests {
                 Duration::ZERO
             }
         });
-        let mut log = Log::new(
-            Api {
-                base,
-                job: "job_1".into(),
-                token: "t".into(),
-            },
-            Vec::new(),
-        );
+        let mut log = Log::new(Api { base, job: "job_1".into(), token: "t".into() }, Vec::new());
         log.step(1);
         log.line("one");
         log.flush();
@@ -1090,36 +1054,15 @@ mod tests {
         log.step(2);
         log.line("two");
         let started = Instant::now();
-        log.done_within(
-            "success",
-            &serde_json::Map::new(),
-            None,
-            Duration::from_millis(100),
-        );
-        assert!(
-            started.elapsed() < Duration::from_secs(10),
-            "{:?}",
-            started.elapsed()
-        );
+        log.done_within("success", &serde_json::Map::new(), None, Duration::from_millis(100));
+        assert!(started.elapsed() < Duration::from_secs(10), "{:?}", started.elapsed());
         let reports = serving.join().unwrap();
-        let kinds: Vec<(&str, u64)> = reports
-            .iter()
-            .map(|report| {
-                (
-                    report["kind"].as_str().unwrap(),
-                    report["step"].as_u64().unwrap_or(0),
-                )
-            })
-            .collect();
+        let kinds: Vec<(&str, u64)> =
+            reports.iter().map(|report| (report["kind"].as_str().unwrap(), report["step"].as_u64().unwrap_or(0))).collect();
         // Step 2's log is let go, and its log says so where it starts.
         assert_eq!(kinds, [("log", 1), ("log", 2), ("done", 0)]);
         let note = unstamped(reports[1]["text"].as_str().unwrap());
-        assert!(
-            note.starts_with(
-                "##[warning]33 bytes of this job's log, from here on, did not reach g1t"
-            ),
-            "{note}"
-        );
+        assert!(note.starts_with("##[warning]33 bytes of this job's log, from here on, did not reach g1t"), "{note}");
         assert!(!note.contains("two"), "{note}");
     }
 
@@ -1128,14 +1071,7 @@ mod tests {
         // The first batch fails all three tries (CI #599 asked whether a
         // step's output went this way, unsaid); the next says so.
         let (base, serving) = flaky_server(3, 4);
-        let mut log = Log::new(
-            Api {
-                base,
-                job: "job_1".into(),
-                token: "t".into(),
-            },
-            Vec::new(),
-        );
+        let mut log = Log::new(Api { base, job: "job_1".into(), token: "t".into() }, Vec::new());
         log.step(8);
         log.line("error: could not compile `g1t-repos`");
         log.flush();
@@ -1148,22 +1084,11 @@ mod tests {
             .iter()
             .map(|body| {
                 let report = &body["report"];
-                (
-                    report["step"].as_u64().unwrap(),
-                    report["chunk"].as_u64().unwrap(),
-                    unstamped(report["text"].as_str().unwrap()),
-                )
+                (report["step"].as_u64().unwrap(), report["chunk"].as_u64().unwrap(), unstamped(report["text"].as_str().unwrap()))
             })
             .collect();
         let lost = "error: could not compile `g1t-repos`\n";
-        assert_eq!(
-            sent[..3],
-            [
-                (8, 1, lost.into()),
-                (8, 1, lost.into()),
-                (8, 1, lost.into())
-            ]
-        );
+        assert_eq!(sent[..3], [(8, 1, lost.into()), (8, 1, lost.into()), (8, 1, lost.into())]);
         assert_eq!(
             sent[3],
             (
@@ -1183,21 +1108,8 @@ mod tests {
         // than a batch's second), then its output in a burst as it fails,
         // the error line, its state, and the steps after it, to a g1t that
         // takes a while to answer each log report.
-        let (base, serving) = slow_server(|report| {
-            if report["kind"] == "log" {
-                Duration::from_millis(150)
-            } else {
-                Duration::ZERO
-            }
-        });
-        let mut log = Log::new(
-            Api {
-                base,
-                job: "job_1".into(),
-                token: "t".into(),
-            },
-            Vec::new(),
-        );
+        let (base, serving) = slow_server(|report| if report["kind"] == "log" { Duration::from_millis(150) } else { Duration::ZERO });
+        let mut log = Log::new(Api { base, job: "job_1".into(), token: "t".into() }, Vec::new());
         log.step(8);
         log.step_state(8, "Tests", "in_progress", None);
         log.line("##[group]Run cargo test -p g1t-repos --locked --quiet");
@@ -1217,12 +1129,7 @@ mod tests {
         log.step(12);
         log.step_state(12, "sccache's hits and misses", "in_progress", None);
         log.line("Compile requests 0");
-        log.step_state(
-            12,
-            "sccache's hits and misses",
-            "completed",
-            Some("success"),
-        );
+        log.step_state(12, "sccache's hits and misses", "completed", Some("success"));
         log.done("failure", &serde_json::Map::new(), None);
         let reports = serving.join().unwrap();
         let of = |step: u64| -> String {
@@ -1238,11 +1145,8 @@ mod tests {
         );
         assert_eq!(of(8), expected);
         assert_eq!(of(12), "Compile requests 0\n");
-        let numbers: Vec<u64> = reports
-            .iter()
-            .filter(|report| report["kind"] == "log")
-            .map(|report| report["chunk"].as_u64().unwrap())
-            .collect();
+        let numbers: Vec<u64> =
+            reports.iter().filter(|report| report["kind"] == "log").map(|report| report["chunk"].as_u64().unwrap()).collect();
         assert_eq!(numbers, (1..=numbers.len() as u64).collect::<Vec<_>>());
         assert_eq!(reports.last().unwrap()["kind"], "done");
     }
@@ -1311,8 +1215,10 @@ mod tests {
     #[test]
     fn a_summary_past_its_limit_is_refused_in_the_log() {
         let mut log = log(&[]);
-        log.summary("   
-");
+        log.summary(
+            "   
+",
+        );
         assert!(log.buffer.is_empty(), "an empty summary is not sent");
         log.summary(&"x".repeat(MAX_SUMMARY_BYTES + 1));
         assert!(log.buffer.contains("$GITHUB_STEP_SUMMARY upload aborted"));
@@ -1322,8 +1228,10 @@ mod tests {
     #[test]
     fn annotations_carry_their_columns_and_end() {
         let log = log(&["hidden"]);
-        let properties: serde_json::Map<String, Value> =
-            serde_json::from_value(json!({ "file": "a.rs", "line": "3", "col": "7", "endLine": "4", "endColumn": "2", "title": "t hidden" })).unwrap();
+        let properties: serde_json::Map<String, Value> = serde_json::from_value(
+            json!({ "file": "a.rs", "line": "3", "col": "7", "endLine": "4", "endColumn": "2", "title": "t hidden" }),
+        )
+        .unwrap();
         let report = log.annotation_report("error", "bad hidden", &properties);
         assert_eq!(report["line"], 3);
         assert_eq!(report["column"], 7);

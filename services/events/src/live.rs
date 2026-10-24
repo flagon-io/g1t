@@ -29,11 +29,7 @@ pub(crate) fn changes_for(event: &Event, public: &HashSet<String>) -> Vec<RepoCh
     let origin = event.repo_id.as_deref().filter(|id| !id.is_empty());
     // A work item's origin is the event's own repository, never a
     // `repoId` in its data.
-    let mut changes: Vec<RepoChange> = if linked_to && origin.is_none() {
-        Vec::new()
-    } else {
-        change_of(event).into_iter().collect()
-    };
+    let mut changes: Vec<RepoChange> = if linked_to && origin.is_none() { Vec::new() } else { change_of(event).into_iter().collect() };
     if !origin.is_some_and(|origin| public.contains(origin)) {
         return changes;
     }
@@ -124,7 +120,8 @@ mod tests {
     fn a_public_work_item_changes_every_repository_it_is_linked_to() {
         let data = json!({ "itemId": "wki_1", "workspace": "acme", "number": 40, "repoIds": ["rep_1", "rep_2"] });
         let with_origin = event("work_item.updated", Some("rep_1"), data);
-        let repos: Vec<_> = changes_for(&with_origin, &public(&["rep_1"])).into_iter().map(|change| (change.repo_id, change.number)).collect();
+        let repos: Vec<_> =
+            changes_for(&with_origin, &public(&["rep_1"])).into_iter().map(|change| (change.repo_id, change.number)).collect();
         assert_eq!(repos, vec![("rep_1".to_owned(), Some(40)), ("rep_2".to_owned(), Some(40))]);
         assert_eq!(origins_linked(&[with_origin]), vec!["rep_1".to_owned()]);
         // What changes no page stays quiet.

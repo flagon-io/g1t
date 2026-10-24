@@ -93,28 +93,133 @@ pub(crate) struct Metric {
 use PauseLevel::{Compute, GitEdge, Indexing, Renders, Schedules};
 
 pub(crate) const METRICS: &[Metric] = &[
-    Metric { key: "workers_requests", title: "Workers requests", var: "WORKERS_REQUESTS", default: 20_000_000.0, of: "script", levels: &[Schedules, Indexing, Renders] },
-    Metric { key: "workers_cpu_ms", title: "Workers CPU (ms)", var: "WORKERS_CPU_MS", default: 100_000_000.0, of: "script", levels: &[Schedules, Indexing, Renders] },
-    Metric { key: "d1_rows_read", title: "D1 rows read", var: "D1_ROWS_READ", default: 2_000_000_000.0, of: "D1 database id", levels: &[Schedules, Indexing] },
-    Metric { key: "d1_rows_written", title: "D1 rows written", var: "D1_ROWS_WRITTEN", default: 5_000_000.0, of: "D1 database id", levels: &[Schedules, Indexing] },
-    Metric { key: "queue_operations", title: "Queue operations", var: "QUEUE_OPERATIONS", default: 5_000_000.0, of: "queue id", levels: &[Schedules, Indexing] },
-    Metric { key: "do_requests", title: "Durable Object requests", var: "DO_REQUESTS", default: 20_000_000.0, of: "script", levels: &[Compute, Schedules] },
-    Metric { key: "do_rows_written", title: "Durable Object rows written", var: "DO_ROWS_WRITTEN", default: 5_000_000.0, of: "Durable Object namespace id", levels: &[Compute, Schedules] },
-    Metric { key: "do_storage_write_units", title: "Durable Object storage writes", var: "DO_STORAGE_WRITE_UNITS", default: 5_000_000.0, of: "Durable Object namespace id", levels: &[Compute, Schedules] },
-    Metric { key: "do_active_seconds", title: "Durable Object active seconds", var: "DO_ACTIVE_SECONDS", default: 3_000_000.0, of: "Durable Object namespace id", levels: &[Compute, Schedules] },
-    Metric { key: "kv_reads", title: "KV reads", var: "KV_READS", default: 10_000_000.0, of: "KV namespace id", levels: &[Indexing, Renders] },
-    Metric { key: "kv_writes", title: "KV writes", var: "KV_WRITES", default: 200_000.0, of: "KV namespace id", levels: &[Indexing, Renders] },
-    Metric { key: "kv_deletes", title: "KV deletes", var: "KV_DELETES", default: 200_000.0, of: "KV namespace id", levels: &[Indexing, Renders] },
+    Metric {
+        key: "workers_requests",
+        title: "Workers requests",
+        var: "WORKERS_REQUESTS",
+        default: 20_000_000.0,
+        of: "script",
+        levels: &[Schedules, Indexing, Renders],
+    },
+    Metric {
+        key: "workers_cpu_ms",
+        title: "Workers CPU (ms)",
+        var: "WORKERS_CPU_MS",
+        default: 100_000_000.0,
+        of: "script",
+        levels: &[Schedules, Indexing, Renders],
+    },
+    Metric {
+        key: "d1_rows_read",
+        title: "D1 rows read",
+        var: "D1_ROWS_READ",
+        default: 2_000_000_000.0,
+        of: "D1 database id",
+        levels: &[Schedules, Indexing],
+    },
+    Metric {
+        key: "d1_rows_written",
+        title: "D1 rows written",
+        var: "D1_ROWS_WRITTEN",
+        default: 5_000_000.0,
+        of: "D1 database id",
+        levels: &[Schedules, Indexing],
+    },
+    Metric {
+        key: "queue_operations",
+        title: "Queue operations",
+        var: "QUEUE_OPERATIONS",
+        default: 5_000_000.0,
+        of: "queue id",
+        levels: &[Schedules, Indexing],
+    },
+    Metric {
+        key: "do_requests",
+        title: "Durable Object requests",
+        var: "DO_REQUESTS",
+        default: 20_000_000.0,
+        of: "script",
+        levels: &[Compute, Schedules],
+    },
+    Metric {
+        key: "do_rows_written",
+        title: "Durable Object rows written",
+        var: "DO_ROWS_WRITTEN",
+        default: 5_000_000.0,
+        of: "Durable Object namespace id",
+        levels: &[Compute, Schedules],
+    },
+    Metric {
+        key: "do_storage_write_units",
+        title: "Durable Object storage writes",
+        var: "DO_STORAGE_WRITE_UNITS",
+        default: 5_000_000.0,
+        of: "Durable Object namespace id",
+        levels: &[Compute, Schedules],
+    },
+    Metric {
+        key: "do_active_seconds",
+        title: "Durable Object active seconds",
+        var: "DO_ACTIVE_SECONDS",
+        default: 3_000_000.0,
+        of: "Durable Object namespace id",
+        levels: &[Compute, Schedules],
+    },
+    Metric {
+        key: "kv_reads",
+        title: "KV reads",
+        var: "KV_READS",
+        default: 10_000_000.0,
+        of: "KV namespace id",
+        levels: &[Indexing, Renders],
+    },
+    Metric {
+        key: "kv_writes",
+        title: "KV writes",
+        var: "KV_WRITES",
+        default: 200_000.0,
+        of: "KV namespace id",
+        levels: &[Indexing, Renders],
+    },
+    Metric {
+        key: "kv_deletes",
+        title: "KV deletes",
+        var: "KV_DELETES",
+        default: 200_000.0,
+        of: "KV namespace id",
+        levels: &[Indexing, Renders],
+    },
     Metric { key: "kv_lists", title: "KV lists", var: "KV_LISTS", default: 200_000.0, of: "KV namespace id", levels: &[Indexing, Renders] },
-    Metric { key: "artifacts_events", title: "Artifacts events", var: "ARTIFACTS_EVENTS", default: 1_000_000.0, of: "repository", levels: &[Compute, Schedules] },
+    Metric {
+        key: "artifacts_events",
+        title: "Artifacts events",
+        var: "ARTIFACTS_EVENTS",
+        default: 1_000_000.0,
+        of: "repository",
+        levels: &[Compute, Schedules],
+    },
     // Containers bill memory while awake ($0.009 a GiB-hour) and the CPU
     // they use ($0.072 a vCPU-hour): 400 GiB-hours, about $3.60, is about
     // the largest runner class at its max_instances for the whole hour (50
     // standard sandboxes hold 400 GiB, 30 4-core ones 360 GiB), and
     // 180,000 CPU-seconds is 50 vCPU busy all hour, half the standard
     // class's.
-    Metric { key: "container_memory_gib_hours", title: "Containers memory (GiB-hours)", var: "CONTAINER_MEMORY_GIB_HOURS", default: 400.0, of: "container application id", levels: &[Compute, Schedules, GitEdge] },
-    Metric { key: "container_cpu_seconds", title: "Containers CPU (seconds)", var: "CONTAINER_CPU_SECONDS", default: 180_000.0, of: "container application id", levels: &[Compute, Schedules, GitEdge] },
+    Metric {
+        key: "container_memory_gib_hours",
+        title: "Containers memory (GiB-hours)",
+        var: "CONTAINER_MEMORY_GIB_HOURS",
+        default: 400.0,
+        of: "container application id",
+        levels: &[Compute, Schedules, GitEdge],
+    },
+    Metric {
+        key: "container_cpu_seconds",
+        title: "Containers CPU (seconds)",
+        var: "CONTAINER_CPU_SECONDS",
+        default: 180_000.0,
+        of: "container application id",
+        levels: &[Compute, Schedules, GitEdge],
+    },
 ];
 
 pub(crate) fn metric(key: &str) -> Option<&'static Metric> {
@@ -383,7 +488,10 @@ impl Billing {
         // What the latest run could not see.
         let latest = self.watch_runs(1).await?.into_iter().next();
         let blind = latest.as_ref().map_or(vec![], |(_, failed, _)| {
-            failed.iter().map(|(key, error)| BlindQuery { key: key.clone(), dataset: dataset_of(key).to_owned(), error: error.clone() }).collect()
+            failed
+                .iter()
+                .map(|(key, error)| BlindQuery { key: key.clone(), dataset: dataset_of(key).to_owned(), error: error.clone() })
+                .collect()
         });
         Ok(PlatformGuard {
             blind,
@@ -420,16 +528,76 @@ pub(crate) struct Query {
 /// GraphQL refuses does not take the others with it. Field names as
 /// Cloudflare documents them; a refused one is logged and skipped.
 pub(crate) const QUERIES: &[Query] = &[
-    Query { key: "workers", dataset: "workersInvocationsAdaptive", select: "sum { requests }", dimensions: "scriptName", hour_filter: "datetime" },
-    Query { key: "workers_cpu", dataset: "workersInvocationsAdaptive", select: "sum { cpuTimeUs }", dimensions: "scriptName", hour_filter: "datetime" },
-    Query { key: "d1", dataset: "d1AnalyticsAdaptiveGroups", select: "sum { rowsRead rowsWritten }", dimensions: "databaseId", hour_filter: "datetimeHour" },
-    Query { key: "queues", dataset: "queueMessageOperationsAdaptiveGroups", select: "sum { billableOperations }", dimensions: "queueId", hour_filter: "datetime" },
-    Query { key: "do_invocations", dataset: "durableObjectsInvocationsAdaptiveGroups", select: "sum { requests }", dimensions: "scriptName", hour_filter: "datetime" },
-    Query { key: "do_periodic", dataset: "durableObjectsPeriodicGroups", select: "sum { activeTime storageWriteUnits }", dimensions: "namespaceId", hour_filter: "datetime" },
-    Query { key: "do_sql", dataset: "durableObjectsPeriodicGroups", select: "sum { rowsWritten }", dimensions: "namespaceId", hour_filter: "datetime" },
-    Query { key: "kv", dataset: "kvOperationsAdaptiveGroups", select: "sum { requests }", dimensions: "namespaceId actionType", hour_filter: "datetime" },
-    Query { key: "artifacts", dataset: "artifactsEventsAdaptiveGroups", select: "count", dimensions: "repositoryName", hour_filter: "datetime" },
-    Query { key: "containers", dataset: "containersUsageAdaptiveGroups", select: "sum { allocatedMemory cpuTimeSec }", dimensions: "applicationId", hour_filter: "datetime" },
+    Query {
+        key: "workers",
+        dataset: "workersInvocationsAdaptive",
+        select: "sum { requests }",
+        dimensions: "scriptName",
+        hour_filter: "datetime",
+    },
+    Query {
+        key: "workers_cpu",
+        dataset: "workersInvocationsAdaptive",
+        select: "sum { cpuTimeUs }",
+        dimensions: "scriptName",
+        hour_filter: "datetime",
+    },
+    Query {
+        key: "d1",
+        dataset: "d1AnalyticsAdaptiveGroups",
+        select: "sum { rowsRead rowsWritten }",
+        dimensions: "databaseId",
+        hour_filter: "datetimeHour",
+    },
+    Query {
+        key: "queues",
+        dataset: "queueMessageOperationsAdaptiveGroups",
+        select: "sum { billableOperations }",
+        dimensions: "queueId",
+        hour_filter: "datetime",
+    },
+    Query {
+        key: "do_invocations",
+        dataset: "durableObjectsInvocationsAdaptiveGroups",
+        select: "sum { requests }",
+        dimensions: "scriptName",
+        hour_filter: "datetime",
+    },
+    Query {
+        key: "do_periodic",
+        dataset: "durableObjectsPeriodicGroups",
+        select: "sum { activeTime storageWriteUnits }",
+        dimensions: "namespaceId",
+        hour_filter: "datetime",
+    },
+    Query {
+        key: "do_sql",
+        dataset: "durableObjectsPeriodicGroups",
+        select: "sum { rowsWritten }",
+        dimensions: "namespaceId",
+        hour_filter: "datetime",
+    },
+    Query {
+        key: "kv",
+        dataset: "kvOperationsAdaptiveGroups",
+        select: "sum { requests }",
+        dimensions: "namespaceId actionType",
+        hour_filter: "datetime",
+    },
+    Query {
+        key: "artifacts",
+        dataset: "artifactsEventsAdaptiveGroups",
+        select: "count",
+        dimensions: "repositoryName",
+        hour_filter: "datetime",
+    },
+    Query {
+        key: "containers",
+        dataset: "containersUsageAdaptiveGroups",
+        select: "sum { allocatedMemory cpuTimeSec }",
+        dimensions: "applicationId",
+        hour_filter: "datetime",
+    },
 ];
 
 /// A window to read: one hour (`Time` bounds) or days (`Date` bounds).
@@ -653,11 +821,7 @@ pub(crate) fn describe(breach: &Breach, hour: &str, top: Option<(&str, f64)>) ->
     let of = m.map_or("source", |m| m.of);
     let what = match breach.rule {
         "spike" => format!("more than its spike line of {} (the last week's usual hour times PLATFORM_SPIKE_FACTOR)", amount(breach.limit)),
-        _ => format!(
-            "over its hourly threshold of {} (PLATFORM_HOURLY_{})",
-            amount(breach.limit),
-            m.map_or("?", |m| m.var)
-        ),
+        _ => format!("over its hourly threshold of {} (PLATFORM_HOURLY_{})", amount(breach.limit), m.map_or("?", |m| m.var)),
     };
     let mut text = format!("{title}: {} in the hour from {hour}, {what}.", amount(breach.value));
     if let Some((name, value)) = top {
@@ -855,11 +1019,24 @@ impl Billing {
         lines.push(
             "Ids are Cloudflare's: `node scripts/ops/platform-usage.mjs` names them and shows the last 24 hours. To pause or resume a level: sudo, Costs & margin, Platform pause. Thresholds: PLATFORM_HOURLY_* in services/billing/wrangler.jsonc. See https://docs.g1t.sh/guides/deploy-to-cloudflare/#spend-guardrails.".to_owned(),
         );
-        match crate::margin::email_staff_page(&self.env, alert_to, &subject, &lines, ("Platform pause", "https://sudo.g1t.sh/costs#platform"), "g1t-billing's usage watcher").await {
+        match crate::margin::email_staff_page(
+            &self.env,
+            alert_to,
+            &subject,
+            &lines,
+            ("Platform pause", "https://sudo.g1t.sh/costs#platform"),
+            "g1t-billing's usage watcher",
+        )
+        .await
+        {
             Ok(()) => {
                 let at = rfc3339(now_ms());
                 for id in ids {
-                    self.db.prepare("UPDATE platform_alerts SET emailed_at = ? WHERE id = ?").bind(&[at.as_str().into(), id.as_str().into()])?.run().await?;
+                    self.db
+                        .prepare("UPDATE platform_alerts SET emailed_at = ? WHERE id = ?")
+                        .bind(&[at.as_str().into(), id.as_str().into()])?
+                        .run()
+                        .await?;
                 }
             }
             Err(error) => worker::console_error!("could not email the platform usage breach: {error}"),
@@ -913,7 +1090,8 @@ pub(crate) fn blind_for_long(runs: &[(BTreeMap<String, String>, bool)]) -> Vec<S
         return vec![];
     }
     let recent = &runs[..BLIND_RUNS];
-    let mut out: Vec<String> = recent[0].0.keys().filter(|key| recent.iter().all(|(failed, _)| failed.contains_key(*key))).cloned().collect();
+    let mut out: Vec<String> =
+        recent[0].0.keys().filter(|key| recent.iter().all(|(failed, _)| failed.contains_key(*key))).cloned().collect();
     if recent.iter().all(|(_, empty)| *empty) {
         out.push(ALL_EMPTY.to_owned());
     }
@@ -945,7 +1123,9 @@ impl Billing {
                          ON CONFLICT (hour) DO UPDATE SET read_at = ?2, failed = ?3, empty = ?4",
                     )
                     .bind(&[hour.into(), read_at.into(), failed.as_str().into(), i32::from(sight.empty()).into()])?,
-                self.db.prepare("DELETE FROM platform_watch_runs WHERE hour < ?").bind(&[rfc3339(now_ms().saturating_sub(14 * 24 * HOUR_MS)).into()])?,
+                self.db
+                    .prepare("DELETE FROM platform_watch_runs WHERE hour < ?")
+                    .bind(&[rfc3339(now_ms().saturating_sub(14 * 24 * HOUR_MS)).into()])?,
             ])
             .await?;
         let runs = self.watch_runs(BLIND_RUNS as u32).await?;
@@ -989,8 +1169,18 @@ impl Billing {
         lines.push(
             "Check with `node scripts/ops/platform-usage.mjs` and a token: every dataset should report rows, and it exits non-zero naming any that errored. A renamed field is fixed in QUERIES in services/billing/src/platform.rs. See https://docs.g1t.sh/guides/deploy-to-cloudflare/#spend-guardrails.".to_owned(),
         );
-        let subject = format!("g1t: the platform usage watcher is blind on {}", due.iter().map(|k| k.as_str()).collect::<Vec<_>>().join(", "));
-        match crate::margin::email_staff_page(&self.env, &self.caps.alert_to, &subject, &lines, ("Platform pause", "https://sudo.g1t.sh/costs#platform"), "g1t-billing's usage watcher").await {
+        let subject =
+            format!("g1t: the platform usage watcher is blind on {}", due.iter().map(|k| k.as_str()).collect::<Vec<_>>().join(", "));
+        match crate::margin::email_staff_page(
+            &self.env,
+            &self.caps.alert_to,
+            &subject,
+            &lines,
+            ("Platform pause", "https://sudo.g1t.sh/costs#platform"),
+            "g1t-billing's usage watcher",
+        )
+        .await
+        {
             Ok(()) => {
                 let at = rfc3339(now_ms());
                 let mut writes = vec![];
@@ -1119,8 +1309,13 @@ mod tests {
         let d1 = QUERIES.iter().find(|q| q.key == "d1").unwrap();
         let hour = query_body("acct", d1, &last_hour(1_791_465_420_000));
         let text = hour["query"].as_str().unwrap();
-        assert!(text.contains("rows: d1AnalyticsAdaptiveGroups(limit: 10000, filter: { datetimeHour_geq: $since, datetimeHour_lt: $until })"), "{text}");
-        assert!(text.contains("$since: Time!") && text.contains("sum { rowsRead rowsWritten }") && text.contains("dimensions { databaseId }"));
+        assert!(
+            text.contains("rows: d1AnalyticsAdaptiveGroups(limit: 10000, filter: { datetimeHour_geq: $since, datetimeHour_lt: $until })"),
+            "{text}"
+        );
+        assert!(
+            text.contains("$since: Time!") && text.contains("sum { rowsRead rowsWritten }") && text.contains("dimensions { databaseId }")
+        );
         assert_eq!(hour["variables"]["since"], "2026-10-08T12:00:00Z");
         let month = query_body("acct", d1, &month_so_far(1_791_465_420_000));
         let text = month["query"].as_str().unwrap();
@@ -1147,8 +1342,16 @@ mod tests {
             ])),
         )
         .unwrap();
-        let d1 = counted(query("d1"), &answer(json!([{ "sum": { "rowsRead": 10.0, "rowsWritten": 2.0 }, "dimensions": { "databaseId": "db1" } }]))).unwrap();
-        let cpu = counted(query("workers_cpu"), &answer(json!([{ "sum": { "cpuTimeUs": 5_000_000 }, "dimensions": { "scriptName": "g1t-web" } }]))).unwrap();
+        let d1 = counted(
+            query("d1"),
+            &answer(json!([{ "sum": { "rowsRead": 10.0, "rowsWritten": 2.0 }, "dimensions": { "databaseId": "db1" } }])),
+        )
+        .unwrap();
+        let cpu = counted(
+            query("workers_cpu"),
+            &answer(json!([{ "sum": { "cpuTimeUs": 5_000_000 }, "dimensions": { "scriptName": "g1t-web" } }])),
+        )
+        .unwrap();
         let refused = counted(query("do_sql"), &json!({ "data": null, "errors": [{ "message": "unknown field rowsWritten" }] }));
         assert!(refused.unwrap_err().contains("unknown field rowsWritten"));
         assert!(counted(query("queues"), &json!({ "data": { "viewer": { "accounts": [] } } })).is_err());
@@ -1179,7 +1382,10 @@ mod tests {
         // The month so far is read by date, as for the other datasets.
         let month = query_body("acct", query("containers"), &month_so_far(1_791_465_420_000));
         let text = month["query"].as_str().unwrap();
-        assert!(text.contains("rows: containersUsageAdaptiveGroups(limit: 10000, filter: { date_geq: $since, date_leq: $until })"), "{text}");
+        assert!(
+            text.contains("rows: containersUsageAdaptiveGroups(limit: 10000, filter: { date_geq: $since, date_leq: $until })"),
+            "{text}"
+        );
     }
 
     #[test]
@@ -1241,7 +1447,9 @@ mod tests {
         assert_eq!(PauseLevel::parse(" indexing "), Some(Indexing));
         assert_eq!(PauseLevel::parse("git_edge"), Some(GitEdge));
         // No reservation waits on the git edge: pausing it refuses nobody.
-        for kind in [ComputeKind::Agent, ComputeKind::Check, ComputeKind::Workflow, ComputeKind::Queue, ComputeKind::Deploy, ComputeKind::Embedding] {
+        for kind in
+            [ComputeKind::Agent, ComputeKind::Check, ComputeKind::Workflow, ComputeKind::Queue, ComputeKind::Deploy, ComputeKind::Embedding]
+        {
             assert_ne!(level_for(kind), GitEdge);
         }
         assert_eq!(PauseLevel::parse("everything"), None);

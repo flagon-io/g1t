@@ -107,10 +107,7 @@ fn paged(mut sql: Sql, page: Page) -> Sql {
 
 /// How many rows `select` returns, stopping at one past [`COUNT_CAP`].
 pub fn count(select: &Sql) -> Sql {
-    Sql {
-        text: format!("SELECT count(*) AS n FROM ({} LIMIT {})", select.text, COUNT_CAP + 1),
-        params: select.params.clone(),
-    }
+    Sql { text: format!("SELECT count(*) AS n FROM ({} LIMIT {})", select.text, COUNT_CAP + 1), params: select.params.clone() }
 }
 
 /// The words of a query as one lowercase string, for an exact-name boost.
@@ -144,10 +141,7 @@ fn repos_select(query: &Query, reader: &Reader) -> (Sql, bool) {
             )
         }
         None => (
-            Sql {
-                text: format!("SELECT {REPO_COLUMNS}, NULL AS readme FROM repos r WHERE {}", filters.text()),
-                params: filters.params,
-            },
+            Sql { text: format!("SELECT {REPO_COLUMNS}, NULL AS readme FROM repos r WHERE {}", filters.text()), params: filters.params },
             false,
         ),
     }
@@ -479,10 +473,7 @@ mod tests {
     use super::*;
 
     fn reader(workspaces: &[&str]) -> Reader {
-        Reader::of(&Some(User {
-            workspaces: workspaces.iter().map(|w| Membership::member(*w)).collect(),
-            ..User::default()
-        }))
+        Reader::of(&Some(User { workspaces: workspaces.iter().map(|w| Membership::member(*w)).collect(), ..User::default() }))
     }
 
     const PAGE: Page = Page { limit: 20, offset: 0 };

@@ -37,10 +37,7 @@ async fn main() -> Result<()> {
     // The rsa crate's private-key operations are not constant-time
     // (RUSTSEC-2023-0071, the Marvin attack), and the host key signs every
     // handshake. Clients' RSA keys are only verified, which is not affected.
-    anyhow::ensure!(
-        !host_key.algorithm().is_rsa(),
-        "SSH_HOST_KEY is an RSA key: use an ed25519 or ECDSA one"
-    );
+    anyhow::ensure!(!host_key.algorithm().is_rsa(), "SSH_HOST_KEY is an RSA key: use an ed25519 or ECDSA one");
     let api = Arc::new(Api::new(
         std::env::var("G1T_API").unwrap_or_else(|_| "https://g1t.sh".into()),
         std::env::var("INTERNAL_SECRET").context("INTERNAL_SECRET is not set")?,
@@ -81,12 +78,7 @@ async fn run_session<S>(config: Arc<Config>, api: Arc<Api>, stream: S)
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    let handler = Connection {
-        api,
-        user: None,
-        git_protocol: None,
-        channels: HashMap::new(),
-    };
+    let handler = Connection { api, user: None, git_protocol: None, channels: HashMap::new() };
     let result = match russh::server::run_stream(config, stream, handler).await {
         Ok(session) => session.await,
         Err(error) => Err(error),
@@ -179,13 +171,7 @@ impl Handler for Connection {
         Ok(())
     }
 
-    async fn env_request(
-        &mut self,
-        channel: ChannelId,
-        name: &str,
-        value: &str,
-        session: &mut Session,
-    ) -> Result<()> {
+    async fn env_request(&mut self, channel: ChannelId, name: &str, value: &str, session: &mut Session) -> Result<()> {
         if name == "GIT_PROTOCOL" {
             self.git_protocol = Some(value.to_owned());
         }
@@ -198,10 +184,8 @@ impl Handler for Connection {
             return Ok(session.channel_failure(id)?);
         };
         session.channel_success(id)?;
-        let greeting = format!(
-            "Hi {}! You've successfully authenticated, but g1t does not provide shell access.\r\n",
-            user.greeting_name()
-        );
+        let greeting =
+            format!("Hi {}! You've successfully authenticated, but g1t does not provide shell access.\r\n", user.greeting_name());
         tokio::spawn(async move {
             let _ = channel.data(greeting.as_bytes()).await;
             finish(channel, 1).await;
@@ -209,29 +193,20 @@ impl Handler for Connection {
         Ok(())
     }
 
-    async fn exec_request(
-        &mut self,
-        id: ChannelId,
-        command: &[u8],
-        session: &mut Session,
-    ) -> Result<()> {
+    async fn exec_request(&mut self, id: ChannelId, command: &[u8], session: &mut Session) -> Result<()> {
         let (Some(user), Some(channel)) = (self.user.clone(), self.channels.remove(&id)) else {
             return Ok(session.channel_failure(id)?);
         };
         session.channel_success(id)?;
 
         let command = String::from_utf8_lossy(command).into_owned();
-        let protocol_v2 = self
-            .git_protocol
-            .as_deref()
-            .is_some_and(|value| value.split(':').any(|part| part == "version=2"));
+        let protocol_v2 = self.git_protocol.as_deref().is_some_and(|value| value.split(':').any(|part| part == "version=2"));
         let api = self.api.clone();
         tokio::spawn(async move {
             let (mut read_half, write_half) = channel.split();
             let mut reader = BufReader::new(read_half.make_reader());
             let mut writer = write_half.make_writer();
-            let result =
-                run_git(&api, &user, &command, protocol_v2, &mut reader, &mut writer).await;
+            let result = run_git(&api, &user, &command, protocol_v2, &mut reader, &mut writer).await;
             let status = match result {
                 Ok(()) => 0,
                 Err(error) => {
@@ -269,22 +244,13 @@ fn parse_command(command: &str) -> Option<(Service, &str, &str)> {
     (!owner.is_empty() && !repo.is_empty() && !repo.contains('/')).then_some((service, owner, repo))
 }
 
-async fn run_git<R, W>(
-    api: &Api,
-    user: &User,
-    command: &str,
-    protocol_v2: bool,
-    reader: &mut R,
-    writer: &mut W,
-) -> Result<()>
+async fn run_git<R, W>(api: &Api, user: &User, command: &str, protocol_v2: bool, reader: &mut R, writer: &mut W) -> Result<()>
 where
     R: tokio::io::AsyncBufRead + Unpin,
     W: AsyncWrite + Unpin,
 {
     let Some((service, owner, repo)) = parse_command(command) else {
-        writer
-            .write_all(&git::error_pkt("g1t only supports git over SSH"))
-            .await?;
+        writer.write_all(&git::error_pkt("g1t only supports git over SSH")).await?;
         return Ok(());
     };
     match api.access(user, owner, repo, service).await? {

@@ -4,8 +4,7 @@
 //! migration 0048.
 
 use g1t_contracts::identity::{
-    ASK_TOKEN_NAME, ASK_TOKEN_PURPOSE, ASK_TOKEN_TTL_SECONDS, AskToken, CreateAskTokenArgs, RevokeAskTokenArgs,
-    ask_token_scopes,
+    ASK_TOKEN_NAME, ASK_TOKEN_PURPOSE, ASK_TOKEN_TTL_SECONDS, AskToken, CreateAskTokenArgs, RevokeAskTokenArgs, ask_token_scopes,
 };
 use g1t_contracts::scopes::RepositorySelection;
 use g1t_contracts::time::SQL_NOW;
@@ -33,9 +32,7 @@ impl Identity {
         let Some(workspace_id) = self.workspace_id_of(&slug).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Workspace not found."));
         };
-        let created = self
-            .mint(Owner::User(&a.actor.id), ASK_TOKEN_NAME, Some(ASK_TOKEN_TTL_SECONDS), &ask_grant(), false)
-            .await?;
+        let created = self.mint(Owner::User(&a.actor.id), ASK_TOKEN_NAME, Some(ASK_TOKEN_TTL_SECONDS), &ask_grant(), false).await?;
         // Made for the workspace alone, active, and marked as Ask's.
         self.db
             .prepare(

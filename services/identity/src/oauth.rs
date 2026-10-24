@@ -9,14 +9,14 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use g1t_contracts::identity::*;
-use g1t_contracts::time::{SQL_NOW, rfc3339, sql_after};
 use g1t_contracts::scopes::FULL_ACCESS;
+use g1t_contracts::time::{SQL_NOW, rfc3339, sql_after};
 use g1t_contracts::{FailureCode, Outcome, User, new_id};
-use worker::wasm_bindgen::JsValue;
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use worker::Result;
+use worker::wasm_bindgen::JsValue;
 
 use crate::tokens::{Grant, stored_scopes};
 use crate::{Identity, crypto};
@@ -70,14 +70,7 @@ fn invalid_grant<T>(message: &str) -> Outcome<T> {
 
 fn grant(row: GrantListRow) -> OAuthGrant {
     let (scopes, legacy) = stored_scopes(row.scopes.as_deref());
-    OAuthGrant {
-        id: row.id,
-        client_name: row.client_name,
-        created_at: row.created_at,
-        last_used_at: row.last_used_at,
-        scopes,
-        legacy,
-    }
+    OAuthGrant { id: row.id, client_name: row.client_name, created_at: row.created_at, last_used_at: row.last_used_at, scopes, legacy }
 }
 
 impl Identity {
@@ -123,9 +116,7 @@ impl Identity {
             .first::<CodeRow>(None)
             .await?;
         let Some(row) = row else {
-            return Ok(invalid_grant(
-                "That code is not valid, has expired, or was already used.",
-            ));
+            return Ok(invalid_grant("That code is not valid, has expired, or was already used."));
         };
         if row.client_id != a.client_id || row.redirect_uri != a.redirect_uri {
             return Ok(invalid_grant("That code was issued to a different client."));
@@ -159,15 +150,7 @@ impl Identity {
         {
             self.audit_account(&person, "oauth_grant.created", &format!("Authorized the application {}", row.client_name)).await;
         }
-        Ok(Outcome::Ok(
-            self.issue_oauth_tokens(
-                &grant_id,
-                &row.user_id,
-                &row.client_name,
-                row.scopes.as_deref(),
-            )
-            .await?,
-        ))
+        Ok(Outcome::Ok(self.issue_oauth_tokens(&grant_id, &row.user_id, &row.client_name, row.scopes.as_deref()).await?))
     }
 
     /// Trades a refresh token for new tokens. The refresh token and the
@@ -184,46 +167,23 @@ impl Identity {
             .first::<GrantRow>(None)
             .await?;
         let Some(row) = row.filter(|row| row.client_id == a.client_id) else {
-            return Ok(invalid_grant(
-                "That refresh token is not valid or has expired. Sign in again.",
-            ));
+            return Ok(invalid_grant("That refresh token is not valid or has expired. Sign in again."));
         };
         if let Some(previous) = &row.access_token_id {
-            self.db
-                .prepare("DELETE FROM access_tokens WHERE id = ?")
-                .bind(&[previous.as_str().into()])?
-                .run()
-                .await?;
+            self.db.prepare("DELETE FROM access_tokens WHERE id = ?").bind(&[previous.as_str().into()])?.run().await?;
         }
         // A refreshed token keeps what the grant allows now.
-        Ok(Outcome::Ok(
-            self.issue_oauth_tokens(
-                &row.id,
-                &row.user_id,
-                &row.client_name,
-                row.scopes.as_deref(),
-            )
-            .await?,
-        ))
+        Ok(Outcome::Ok(self.issue_oauth_tokens(&row.id, &row.user_id, &row.client_name, row.scopes.as_deref()).await?))
     }
 
     /// A new access token and refresh token for a grant.
     /// `scopes` is the grant's column: a grant made before scopes (null)
     /// keeps full access.
-    async fn issue_oauth_tokens(
-        &self,
-        grant_id: &str,
-        user_id: &str,
-        client_name: &str,
-        scopes: Option<&str>,
-    ) -> Result<OAuthTokens> {
+    async fn issue_oauth_tokens(&self, grant_id: &str, user_id: &str, client_name: &str, scopes: Option<&str>) -> Result<OAuthTokens> {
         let (scopes, _) = stored_scopes(scopes);
         let access = self
             .create_access_token(CreateAccessTokenArgs {
-                user: User {
-                    id: user_id.to_owned(),
-                    ..User::default()
-                },
+                user: User { id: user_id.to_owned(), ..User::default() },
                 name: client_name.to_owned(),
                 ttl_seconds: Some(ACCESS_TTL_SECONDS),
                 scopes: scopes.clone(),
@@ -240,11 +200,7 @@ impl Identity {
                  WHERE id = ?",
                 sql_after(REFRESH_TTL_SECONDS)
             ))
-            .bind(&[
-                crypto::sha256_hex(&refresh_token).into(),
-                access.info.id.into(),
-                grant_id.into(),
-            ])?
+            .bind(&[crypto::sha256_hex(&refresh_token).into(), access.info.id.into(), grant_id.into()])?
             .run()
             .await?;
         Ok(OAuthTokens {
@@ -281,11 +237,7 @@ impl Identity {
                  WHERE id = ? AND user_id = ? AND expires_at > {SQL_NOW}
                  RETURNING id, client_name, created_at, last_used_at, scopes"
             ))
-            .bind(&[
-                scopes.as_str().into(),
-                a.id.as_str().into(),
-                a.user.id.as_str().into(),
-            ])?
+            .bind(&[scopes.as_str().into(), a.id.as_str().into(), a.user.id.as_str().into()])?
             .first::<GrantListRow>(None)
             .await?;
         let Some(row) = row else {

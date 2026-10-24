@@ -153,13 +153,8 @@ pub fn sole_owner_refusal(workspaces: &[SoleOwnedWorkspace]) -> Option<String> {
     let slugs: Vec<&str> = workspaces.iter().map(|workspace| workspace.slug.as_str()).collect();
     match slugs.as_slice() {
         [] => None,
-        [one] => Some(format!(
-            "You are the only owner of {one}. Make someone else an owner of it, or delete it, first."
-        )),
-        many => Some(format!(
-            "You are the only owner of {}. Make someone else an owner of each, or delete them, first.",
-            list(many)
-        )),
+        [one] => Some(format!("You are the only owner of {one}. Make someone else an owner of it, or delete it, first.")),
+        many => Some(format!("You are the only owner of {}. Make someone else an owner of each, or delete them, first.", list(many))),
     }
 }
 
@@ -295,8 +290,7 @@ mod tests {
 
     #[test]
     fn older_records_and_requests_read_without_the_new_fields() {
-        let old: AccountWent =
-            serde_json::from_str(r#"{"workspaces":1,"teams":0,"repositories":0,"tokens":0,"sshKeys":0}"#).unwrap();
+        let old: AccountWent = serde_json::from_str(r#"{"workspaces":1,"teams":0,"repositories":0,"tokens":0,"sshKeys":0}"#).unwrap();
         assert!(old.deleted_workspaces.is_empty());
         let args: AdminDeleteAccountArgs =
             serde_json::from_str(r#"{"username":"ada","reason":"r","staff":"s","withSoleWorkspaces":true}"#).unwrap();
@@ -337,12 +331,8 @@ mod tests {
 
     #[test]
     fn protection_comes_before_ownership() {
-        let deletion = AccountDeletion {
-            username: "g1t".into(),
-            sole_owner_of: vec![sole("acme")],
-            protected: true,
-            ..AccountDeletion::default()
-        };
+        let deletion =
+            AccountDeletion { username: "g1t".into(), sole_owner_of: vec![sole("acme")], protected: true, ..AccountDeletion::default() };
         assert_eq!(deletion.reason().unwrap(), "g1t is protected and can never be deleted.");
         assert!(deletion.blocked());
         let free = AccountDeletion { username: "ada".into(), ..AccountDeletion::default() };

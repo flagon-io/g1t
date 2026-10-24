@@ -144,10 +144,10 @@ fn the_job_numbers_each_workspace_after_everything_it_used_oldest_first() {
         ]
     );
     assert_eq!(numbers(&db, "SELECT id, number FROM work_items WHERE workspace = 'globex'"), [("iss_site1".to_owned(), Some(3))]);
-    assert_eq!(numbers(&db, "SELECT workspace, last FROM work_counters ORDER BY workspace"), [
-        ("acme".to_owned(), Some(10)),
-        ("globex".to_owned(), Some(3)),
-    ]);
+    assert_eq!(
+        numbers(&db, "SELECT workspace, last FROM work_counters ORDER BY workspace"),
+        [("acme".to_owned(), Some(10)), ("globex".to_owned(), Some(3)),]
+    );
     // The per-repository counters are emptied; the job is done, and running
     // its last step again changes nothing.
     assert!(strings(&db, "SELECT repo_id FROM counters").is_empty());
@@ -233,10 +233,10 @@ fn a_repository_left_out_of_the_job_keeps_what_it_had_until_it_is_recorded() {
     assert_eq!(numbers(&db, "SELECT workspace, last FROM work_counters WHERE workspace = 'acme'"), [("acme".to_owned(), Some(88))]);
     assert!(strings(&db, "SELECT repo_id FROM counters").is_empty());
     // Earlier milestones were not touched.
-    assert_eq!(numbers(&db, "SELECT id, milestone FROM work_items WHERE milestone IS NOT NULL ORDER BY id"), [
-        ("iss_api2".to_owned(), Some(1)),
-        ("iss_web5".to_owned(), Some(2)),
-    ]);
+    assert_eq!(
+        numbers(&db, "SELECT id, milestone FROM work_items WHERE milestone IS NOT NULL ORDER BY id"),
+        [("iss_api2".to_owned(), Some(1)), ("iss_web5".to_owned(), Some(2)),]
+    );
     // Run again, nothing changes.
     place(&db, "2026-10-19T00:00:00Z", true);
     assert_eq!(strings(&db, "SELECT title FROM milestones WHERE workspace = 'acme'").len(), 3);
@@ -269,21 +269,19 @@ fn the_job_for_deleted_repositories_repairs_what_the_first_left() {
     assert_eq!(strings(&db, "SELECT DISTINCT path FROM work_item_repos WHERE repo_id = 'rep_hello'"), ["acme/hello"]);
     assert_eq!(strings(&db, "SELECT workspace || ' ' || private FROM repo_workspaces WHERE repo_id = 'rep_hello'"), ["acme 0"]);
     // Its labels are acme's (bug was already, with its own color).
-    assert_eq!(strings(&db, "SELECT name || ' ' || color FROM labels WHERE workspace = 'acme' ORDER BY name"), [
-        "bug 0e8a16",
-        "ci ededed",
-        "docs 0075ca",
-        "webhook ededed"
-    ]);
+    assert_eq!(
+        strings(&db, "SELECT name || ' ' || color FROM labels WHERE workspace = 'acme' ORDER BY name"),
+        ["bug 0e8a16", "ci ededed", "docs 0075ca", "webhook ededed"]
+    );
     // Its old numbers are below acme's floor; the sequence, past them
     // already, stays where it is.
     assert_eq!(numbers(&db, "SELECT workspace, floor FROM work_counters WHERE workspace = 'acme'"), [("acme".to_owned(), Some(88))]);
     assert_eq!(numbers(&db, "SELECT workspace, last FROM work_counters WHERE workspace = 'acme'"), [("acme".to_owned(), Some(156))]);
     // The work items keep their numbers; run again, nothing changes.
-    assert_eq!(numbers(&db, "SELECT id, number FROM work_items WHERE id LIKE 'iss_hello%' ORDER BY id"), [
-        ("iss_hello1".to_owned(), Some(11)),
-        ("iss_hello88".to_owned(), Some(12)),
-    ]);
+    assert_eq!(
+        numbers(&db, "SELECT id, number FROM work_items WHERE id LIKE 'iss_hello%' ORDER BY id"),
+        [("iss_hello1".to_owned(), Some(11)), ("iss_hello88".to_owned(), Some(12)),]
+    );
     place(&db, "2026-10-19T00:00:00Z", true);
     assert_eq!(strings(&db, "SELECT name FROM labels WHERE workspace = 'acme'").len(), 4);
     assert_eq!(strings(&db, "SELECT created_at FROM labels WHERE name = 'ci'"), ["2026-10-18T00:00:00Z"]);
@@ -359,10 +357,10 @@ fn a_reference_is_a_pull_request_here_then_an_old_issue_then_the_workspace() {
     // number is any of its repositories', and names none of them: api's
     // #3 and web's #2 could be another's.
     assert_eq!(reference(&db, None, "acme", 9), Some(Named::Item("iss_api2".into())));
-    assert_eq!(numbers(&db, "SELECT workspace, floor FROM work_counters ORDER BY workspace"), [
-        ("acme".to_owned(), Some(5)),
-        ("globex".to_owned(), Some(2)),
-    ]);
+    assert_eq!(
+        numbers(&db, "SELECT workspace, floor FROM work_counters ORDER BY workspace"),
+        [("acme".to_owned(), Some(5)), ("globex".to_owned(), Some(2)),]
+    );
     assert_eq!(reference(&db, None, "acme", 3), None);
     assert_eq!(reference(&db, None, "acme", 2), None);
     assert_eq!(reference(&db, None, "acme", 42), None);
@@ -449,7 +447,10 @@ fn unlinking_the_last_target_left_to_land_closes_what_landed_everywhere_else() {
     let db = database();
     two_targets(&db);
     let close = |item: &str| -> bool {
-        db.query_row(super::links::CLOSE_IF_LANDED, params![item, "2026-10-18"], |row| row.get::<_, String>(0)).optional().unwrap().is_some()
+        db.query_row(super::links::CLOSE_IF_LANDED, params![item, "2026-10-18"], |row| row.get::<_, String>(0))
+            .optional()
+            .unwrap()
+            .is_some()
     };
     // Nothing landed yet: unlinking targets does not close it.
     db.execute("DELETE FROM work_item_repos WHERE item_id = 'wki_2' AND role = 'target'", []).unwrap();

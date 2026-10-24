@@ -29,11 +29,7 @@ pub struct Host {
 
 impl Host {
     pub fn hosted() -> Host {
-        Host {
-            name: DEFAULT_HOST.to_owned(),
-            site: "https://g1t.sh".to_owned(),
-            api: "https://api.g1t.sh".to_owned(),
-        }
+        Host { name: DEFAULT_HOST.to_owned(), site: "https://g1t.sh".to_owned(), api: "https://api.g1t.sh".to_owned() }
     }
 }
 
@@ -44,9 +40,7 @@ pub fn parse_hostname(input: &str) -> Result<(String, String)> {
     let (scheme, rest) = match input.split_once("://") {
         Some((scheme @ ("http" | "https"), rest)) => (scheme, rest),
         Some((scheme, _)) => {
-            return Err(Error::usage(format!(
-                "`{scheme}://` is not a g1t address: use https://."
-            )));
+            return Err(Error::usage(format!("`{scheme}://` is not a g1t address: use https://.")));
         }
         None => ("https", input),
     };
@@ -61,24 +55,14 @@ pub fn parse_hostname(input: &str) -> Result<(String, String)> {
 pub fn resolve(config: &Config, hostname: Option<&str>) -> Result<Host> {
     let wanted = match hostname {
         Some(h) if !h.trim().is_empty() => h.to_owned(),
-        _ => match std::env::var("G1T_HOST")
-            .ok()
-            .filter(|h| !h.trim().is_empty())
-        {
+        _ => match std::env::var("G1T_HOST").ok().filter(|h| !h.trim().is_empty()) {
             Some(h) => h,
-            None => config
-                .default_host
-                .clone()
-                .unwrap_or_else(|| DEFAULT_HOST.to_owned()),
+            None => config.default_host.clone().unwrap_or_else(|| DEFAULT_HOST.to_owned()),
         },
     };
     let (name, site) = parse_hostname(&wanted)?;
     let mut host = match config.host(&name) {
-        Some(h) => Host {
-            name,
-            site: h.site.clone(),
-            api: h.api.clone(),
-        },
+        Some(h) => Host { name, site: h.site.clone(), api: h.api.clone() },
         None if name == DEFAULT_HOST => Host::hosted(),
         // Not signed in to it: guess the API's address the way g1t is set
         // up (api.<host>); `auth login` asks the host instead.
@@ -87,10 +71,7 @@ pub fn resolve(config: &Config, hostname: Option<&str>) -> Result<Host> {
             Host { name, site, api }
         }
     };
-    if let Some(api) = std::env::var("G1T_API_URL")
-        .ok()
-        .filter(|a| !a.trim().is_empty())
-    {
+    if let Some(api) = std::env::var("G1T_API_URL").ok().filter(|a| !a.trim().is_empty()) {
         host.api = api.trim_end_matches('/').to_owned();
     }
     Ok(host)
@@ -102,23 +83,17 @@ pub fn discover(name: &str, site: &str) -> Result<Host> {
         return Ok(Host::hosted());
     }
     let url = format!("{site}/.well-known/g1t.json");
-    let text = crate::http::agent().get(&url)
+    let text = crate::http::agent()
+        .get(&url)
         .timeout(std::time::Duration::from_secs(15))
         .call()
         .map_err(|e| Error::failed(format!("{name} did not say where its API is ({url}): {e}")))?
         .into_string()
         .map_err(|e| Error::failed(format!("Could not read {url}: {e}")))?;
-    let found: Value = serde_json::from_str(&text)
-        .map_err(|e| Error::failed(format!("{url} is not g1t's: {e}")))?;
-    let api = found["api"]
-        .as_str()
-        .ok_or_else(|| Error::failed(format!("{url} names no API.")))?;
+    let found: Value = serde_json::from_str(&text).map_err(|e| Error::failed(format!("{url} is not g1t's: {e}")))?;
+    let api = found["api"].as_str().ok_or_else(|| Error::failed(format!("{url} names no API.")))?;
     let site_said = found["site"].as_str().unwrap_or(site);
-    Ok(Host {
-        name: name.to_owned(),
-        site: site_said.trim_end_matches('/').to_owned(),
-        api: api.trim_end_matches('/').to_owned(),
-    })
+    Ok(Host { name: name.to_owned(), site: site_said.trim_end_matches('/').to_owned(), api: api.trim_end_matches('/').to_owned() })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -147,14 +122,7 @@ pub struct Token {
 }
 
 fn keyring_enabled() -> bool {
-    !matches!(
-        std::env::var("G1T_KEYRING")
-            .ok()
-            .as_deref()
-            .map(str::to_lowercase)
-            .as_deref(),
-        Some("off" | "0" | "false" | "no")
-    )
+    !matches!(std::env::var("G1T_KEYRING").ok().as_deref().map(str::to_lowercase).as_deref(), Some("off" | "0" | "false" | "no"))
 }
 
 fn service(host: &str) -> String {
@@ -193,16 +161,9 @@ fn keyring_delete(host: &str, user: &str) {
 /// The token for `host`, and the account it is for when known.
 pub fn token(config: &Config, host: &str, user: Option<&str>) -> Option<Token> {
     if user.is_none()
-        && let Some(value) = std::env::var("G1T_TOKEN")
-            .ok()
-            .map(|t| t.trim().to_owned())
-            .filter(|t| !t.is_empty())
+        && let Some(value) = std::env::var("G1T_TOKEN").ok().map(|t| t.trim().to_owned()).filter(|t| !t.is_empty())
     {
-        return Some(Token {
-            value,
-            source: Source::Env,
-            user: None,
-        });
+        return Some(Token { value, source: Source::Env, user: None });
     }
     let entry = config.host(host)?;
     let user = user.map(str::to_owned).or_else(|| entry.user.clone())?;
@@ -210,48 +171,25 @@ pub fn token(config: &Config, host: &str, user: Option<&str>) -> Option<Token> {
 }
 
 fn stored_token(host: &str, user: &str, entry: Option<&UserConfig>) -> Option<Token> {
-    if let Some(value) = entry
-        .and_then(|u| u.token.clone())
-        .filter(|t| !t.is_empty())
-    {
-        return Some(Token {
-            value,
-            source: Source::File,
-            user: Some(user.to_owned()),
-        });
+    if let Some(value) = entry.and_then(|u| u.token.clone()).filter(|t| !t.is_empty()) {
+        return Some(Token { value, source: Source::File, user: Some(user.to_owned()) });
     }
-    keyring_get(host, user).map(|value| Token {
-        value,
-        source: Source::Keyring,
-        user: Some(user.to_owned()),
-    })
+    keyring_get(host, user).map(|value| Token { value, source: Source::Keyring, user: Some(user.to_owned()) })
 }
 
 /// Keeps `token` for `user` on `host` and makes that account the active one.
 /// Returns where it went.
 pub fn store(config: &mut Config, host: &Host, user: &str, token: &str, insecure: bool) -> Source {
-    let source = if !insecure && keyring_set(&host.name, user, token).is_ok() {
-        Source::Keyring
-    } else {
-        Source::File
-    };
-    let entry = config
-        .hosts
-        .entry(host.name.clone())
-        .or_insert_with(|| HostConfig {
-            site: host.site.clone(),
-            api: host.api.clone(),
-            ..HostConfig::default()
-        });
+    let source = if !insecure && keyring_set(&host.name, user, token).is_ok() { Source::Keyring } else { Source::File };
+    let entry = config.hosts.entry(host.name.clone()).or_insert_with(|| HostConfig {
+        site: host.site.clone(),
+        api: host.api.clone(),
+        ..HostConfig::default()
+    });
     entry.site = host.site.clone();
     entry.api = host.api.clone();
     entry.user = Some(user.to_owned());
-    entry.users.insert(
-        user.to_owned(),
-        UserConfig {
-            token: (source == Source::File).then(|| token.to_owned()),
-        },
-    );
+    entry.users.insert(user.to_owned(), UserConfig { token: (source == Source::File).then(|| token.to_owned()) });
     if config.default_host.is_none() {
         config.default_host = Some(host.name.clone());
     }
@@ -281,17 +219,7 @@ pub fn accounts(config: &Config, host: &str) -> Vec<(String, Option<Token>, bool
     let Some(entry) = config.host(host) else {
         return Vec::new();
     };
-    entry
-        .users
-        .iter()
-        .map(|(user, u)| {
-            (
-                user.clone(),
-                stored_token(host, user, Some(u)),
-                entry.user.as_deref() == Some(user),
-            )
-        })
-        .collect()
+    entry.users.iter().map(|(user, u)| (user.clone(), stored_token(host, user, Some(u)), entry.user.as_deref() == Some(user))).collect()
 }
 
 /// The token `g1t push` signs in to a registry with, when one is stored for
@@ -310,18 +238,9 @@ mod tests {
 
     #[test]
     fn hostnames_take_any_form() {
-        assert_eq!(
-            parse_hostname("g1t.sh").unwrap(),
-            ("g1t.sh".into(), "https://g1t.sh".into())
-        );
-        assert_eq!(
-            parse_hostname("https://Git.Example.com/").unwrap(),
-            ("git.example.com".into(), "https://git.example.com".into())
-        );
-        assert_eq!(
-            parse_hostname("http://localhost:8787").unwrap(),
-            ("localhost:8787".into(), "http://localhost:8787".into())
-        );
+        assert_eq!(parse_hostname("g1t.sh").unwrap(), ("g1t.sh".into(), "https://g1t.sh".into()));
+        assert_eq!(parse_hostname("https://Git.Example.com/").unwrap(), ("git.example.com".into(), "https://git.example.com".into()));
+        assert_eq!(parse_hostname("http://localhost:8787").unwrap(), ("localhost:8787".into(), "http://localhost:8787".into()));
         assert!(parse_hostname("ssh://g1t.sh").is_err());
         assert!(parse_hostname("").is_err());
     }
@@ -332,18 +251,10 @@ mod tests {
         unsafe { std::env::set_var("G1T_KEYRING", "off") };
         let mut config = Config::default();
         let host = Host::hosted();
-        assert_eq!(
-            store(&mut config, &host, "ana", "g1t_a", false),
-            Source::File
-        );
+        assert_eq!(store(&mut config, &host, "ana", "g1t_a", false), Source::File);
         store(&mut config, &host, "bo", "g1t_b", true);
         assert_eq!(config.host("g1t.sh").unwrap().user.as_deref(), Some("bo"));
-        let t = stored_token(
-            "g1t.sh",
-            "ana",
-            config.host("g1t.sh").unwrap().users.get("ana"),
-        )
-        .unwrap();
+        let t = stored_token("g1t.sh", "ana", config.host("g1t.sh").unwrap().users.get("ana")).unwrap();
         assert_eq!((t.value.as_str(), t.source), ("g1t_a", Source::File));
         forget(&mut config, "g1t.sh", "bo");
         assert_eq!(config.host("g1t.sh").unwrap().user.as_deref(), Some("ana"));

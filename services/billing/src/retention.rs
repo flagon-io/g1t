@@ -72,10 +72,7 @@ mod tests {
         assert_eq!(invalid_days(&plans, None), None);
         assert_eq!(invalid_days(&plans, Some(1)), None);
         assert_eq!(invalid_days(&plans, Some(400)), None);
-        assert_eq!(
-            invalid_days(&plans, Some(0)).as_deref(),
-            Some("Audit log days is between 1 and 400, or empty for the plan's.")
-        );
+        assert_eq!(invalid_days(&plans, Some(0)).as_deref(), Some("Audit log days is between 1 and 400, or empty for the plan's."));
         assert!(invalid_days(&plans, Some(401)).is_some());
     }
 }

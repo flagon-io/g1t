@@ -93,12 +93,8 @@ struct Reader<'a, R: GitRepo> {
 impl<'a, R: GitRepo> Reader<'a, R> {
     /// Reads the trees not read yet, all at once.
     async fn read_trees(&mut self, hashes: Vec<String>) -> Result<()> {
-        let wanted: Vec<String> = hashes
-            .into_iter()
-            .filter(|hash| !self.trees.contains_key(hash))
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
+        let wanted: Vec<String> =
+            hashes.into_iter().filter(|hash| !self.trees.contains_key(hash)).collect::<HashSet<_>>().into_iter().collect();
         self.reads += wanted.len() as u32;
         let found = futures_util::future::join_all(wanted.iter().map(|hash| self.repo.read_tree(hash))).await;
         for (hash, tree) in wanted.into_iter().zip(found) {
@@ -214,23 +210,12 @@ fn carried(old: &Text, new: &Text) -> Vec<Option<usize>> {
 /// missing or not text. The walk stops before more than `max_reads` reads of
 /// the store, or once `out_of_time` says so (asked between read-aheads,
 /// after the first).
-pub async fn blame<R: GitRepo>(
-    repo: &R,
-    head: &str,
-    path: &str,
-    out_of_time: &dyn Fn() -> bool,
-    max_reads: u32,
-) -> Result<Option<Blamed>> {
+pub async fn blame<R: GitRepo>(repo: &R, head: &str, path: &str, out_of_time: &dyn Fn() -> bool, max_reads: u32) -> Result<Option<Blamed>> {
     let history = repo.log(head, MAX_COMMITS).await?;
     let Some(first) = history.first() else {
         return Ok(None);
     };
-    let mut reader = Reader {
-        repo,
-        trees: HashMap::new(),
-        texts: HashMap::new(),
-        reads: 1,
-    };
+    let mut reader = Reader { repo, trees: HashMap::new(), texts: HashMap::new(), reads: 1 };
     // The first read-ahead also finds the file at the head.
     let first_window = &history[..history.len().min(READ_AHEAD + 1)];
     reader.read_ahead(first_window, path).await?;
@@ -303,14 +288,10 @@ pub async fn blame<R: GitRepo>(
                     continue;
                 };
                 let map = carried(&parent_text, here);
-                let (moved, kept): (Vec<_>, Vec<_>) = unexplained
-                    .into_iter()
-                    .partition(|(here, _)| map.get(*here).copied().flatten().is_some());
+                let (moved, kept): (Vec<_>, Vec<_>) =
+                    unexplained.into_iter().partition(|(here, _)| map.get(*here).copied().flatten().is_some());
                 unexplained = kept;
-                moved
-                    .into_iter()
-                    .map(|(here, final_line)| (map[here].unwrap_or(here), final_line))
-                    .collect()
+                moved.into_iter().map(|(here, final_line)| (map[here].unwrap_or(here), final_line)).collect()
             };
             if !handed.is_empty() {
                 pending.entry(parent_hash.clone()).or_default().extend(handed);
@@ -350,15 +331,7 @@ pub async fn blame<R: GitRepo>(
             commits.push((*commit).clone());
         }
     }
-    Ok(Some(Blamed {
-        blame: Blame {
-            head: first.hash.clone(),
-            ranges,
-            commits,
-            partial,
-        },
-        cut_short,
-    }))
+    Ok(Some(Blamed { blame: Blame { head: first.hash.clone(), ranges, commits, partial }, cut_short }))
 }
 
 #[cfg(test)]
@@ -493,10 +466,7 @@ mod tests {
         let blamed = run(blame(&fake, "main", "src/f.txt", &|| false, MAX_READS)).unwrap().unwrap();
         assert!(!blamed.cut_short && !blamed.blame.partial);
         assert_eq!(blamed.blame.head, "c4");
-        assert_eq!(
-            owners(&blamed.blame),
-            (0..5).map(|n| (n + 1, n + 1, format!("c{n}"))).collect::<Vec<_>>()
-        );
+        assert_eq!(owners(&blamed.blame), (0..5).map(|n| (n + 1, n + 1, format!("c{n}"))).collect::<Vec<_>>());
         assert_eq!(blamed.blame.commits.len(), 5);
     }
 

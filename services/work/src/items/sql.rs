@@ -72,9 +72,7 @@ pub(crate) fn user_deleted() -> Vec<String> {
     use g1t_contracts::account_deletion::{GHOST_ID, GHOST_USERNAME};
     vec![
         format!("UPDATE work_items SET author_id = '{GHOST_ID}', author_name = '{GHOST_USERNAME}' WHERE author_id = ?1"),
-        format!(
-            "UPDATE work_items SET requested_by_id = '{GHOST_ID}', requested_by_name = '{GHOST_USERNAME}' WHERE requested_by_id = ?1"
-        ),
+        format!("UPDATE work_items SET requested_by_id = '{GHOST_ID}', requested_by_name = '{GHOST_USERNAME}' WHERE requested_by_id = ?1"),
         "UPDATE work_items SET assignees = (SELECT json_group_array(value) FROM json_each(work_items.assignees) WHERE value <> ?2)
              WHERE ?1 IS NOT NULL AND json_valid(assignees) AND EXISTS (SELECT 1 FROM json_each(work_items.assignees) WHERE value = ?2)"
             .to_owned(),

@@ -82,10 +82,7 @@ pub fn check_parent(number: u32, parent: u32, ancestors: &[u32]) -> Result<(), S
         return Err(format!("#{number} cannot be its own sub-item."));
     }
     if let Some(at) = ancestors.iter().position(|ancestor| *ancestor == number) {
-        let chain: Vec<String> = std::iter::once(parent)
-            .chain(ancestors[..=at].iter().copied())
-            .map(|n| format!("#{n}"))
-            .collect();
+        let chain: Vec<String> = std::iter::once(parent).chain(ancestors[..=at].iter().copied()).map(|n| format!("#{n}")).collect();
         return Err(format!(
             "#{parent} is already under #{number} ({}, each a sub-item of the next), so #{number} cannot be its sub-item.",
             chain.join(" → ")
@@ -101,10 +98,7 @@ mod tests {
     #[test]
     fn a_parent_is_refused_when_it_would_make_a_cycle() {
         assert_eq!(check_parent(5, 3, &[1]), Ok(()));
-        assert_eq!(
-            check_parent(5, 5, &[]),
-            Err("#5 cannot be its own sub-item.".to_owned())
-        );
+        assert_eq!(check_parent(5, 5, &[]), Err("#5 cannot be its own sub-item.".to_owned()));
         assert_eq!(
             check_parent(5, 3, &[4, 5, 9]),
             Err("#3 is already under #5 (#3 → #4 → #5, each a sub-item of the next), so #5 cannot be its sub-item.".to_owned())

@@ -109,8 +109,8 @@ pub enum Refused {
 }
 
 fn reference(descriptor: Descriptor, role: String) -> Result<Reference, Refused> {
-    let digest = Digest::parse(&descriptor.digest)
-        .ok_or_else(|| Refused::Invalid(format!("{} is not a sha256 digest.", descriptor.digest)))?;
+    let digest =
+        Digest::parse(&descriptor.digest).ok_or_else(|| Refused::Invalid(format!("{} is not a sha256 digest.", descriptor.digest)))?;
     Ok(Reference { digest, size: descriptor.size, media_type: descriptor.media_type, role })
 }
 
@@ -182,7 +182,6 @@ pub fn parse(bytes: &[u8], content_type: Option<&str>) -> Result<Manifest, Refus
     }
     Ok(manifest)
 }
-
 
 #[cfg(test)]
 mod tests {

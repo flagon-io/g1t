@@ -89,12 +89,8 @@ pub async fn run(op: Op, services: &Services, viewer: &Viewer, input: &Value) ->
     };
     match op {
         Op::ListPinnedProjects => {
-            let shortcuts: Value = g1t_kit::call(
-                &services.projects,
-                "shortcuts",
-                &json!({ "workspace": workspace, "viewer": viewer }),
-            )
-            .await?;
+            let shortcuts: Value =
+                g1t_kit::call(&services.projects, "shortcuts", &json!({ "workspace": workspace, "viewer": viewer })).await?;
             let pinned = shortcuts["pinned"].as_array().cloned().unwrap_or_default();
             Ok(Outcome::Ok(pins_json(&pinned, site)))
         }
@@ -114,12 +110,8 @@ pub async fn run(op: Op, services: &Services, viewer: &Viewer, input: &Value) ->
                 return failed(FailureCode::Invalid, "Give projects: every pinned project's slug, in the order you want them.");
             };
             changed(
-                g1t_kit::call(
-                    &services.projects,
-                    "reorder_pins",
-                    &json!({ "actor": user, "workspace": workspace, "slugs": order }),
-                )
-                .await?,
+                g1t_kit::call(&services.projects, "reorder_pins", &json!({ "actor": user, "workspace": workspace, "slugs": order }))
+                    .await?,
             )
         }
         _ => failed(FailureCode::Invalid, "Not a pin operation."),

@@ -38,9 +38,10 @@ mod namespaces;
 mod network;
 mod pack_cache;
 mod pack_limits;
+mod public_storage;
 mod push_checks;
-mod push_feedback;
 mod push_commits;
+mod push_feedback;
 mod pushed;
 mod refs;
 mod refs_cache;
@@ -58,14 +59,13 @@ mod storage_holds;
 mod store;
 mod test_merge;
 mod transfer;
-mod public_storage;
 mod workflow_gate;
 
-use g1t_contracts::events::{
-    Event, GitDeleted, GitPush, NewEvent, Publish, RepoCreated, RepoForked, RepoUpdated, WorkspaceDeleted,
-    WorkspaceDeleting, WorkspaceRenamed, WorkspaceRestored,
-};
 use g1t_contracts::access::{self, Capability};
+use g1t_contracts::events::{
+    Event, GitDeleted, GitPush, NewEvent, Publish, RepoCreated, RepoForked, RepoUpdated, WorkspaceDeleted, WorkspaceDeleting,
+    WorkspaceRenamed, WorkspaceRestored,
+};
 use g1t_contracts::repos::*;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, User, Viewer, is_valid_repo_name, new_id};
@@ -74,10 +74,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use serde::Serialize;
-use worker::{
-    Context, Env, Fetcher, MessageBatch, MessageExt, Method, Request, Response, Result, ScheduleContext, ScheduledEvent,
-    event,
-};
+use worker::{Context, Env, Fetcher, MessageBatch, MessageExt, Method, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
 
 use registry::{Registry, can_read, can_write, store_key};
 use store::{ArtifactsStore, GitRepo, GitStore, Scope};
@@ -137,10 +134,7 @@ fn text_of(bytes: Vec<u8>) -> Option<String> {
 }
 
 fn is_readme(name: &str) -> bool {
-    matches!(
-        name.to_lowercase().as_str(),
-        "readme" | "readme.md" | "readme.markdown" | "readme.txt"
-    )
+    matches!(name.to_lowercase().as_str(), "readme" | "readme.md" | "readme.markdown" | "readme.txt")
 }
 
 /// Whether `ancestor` is reachable from the newest commit in `history`.
@@ -149,16 +143,9 @@ fn is_readme(name: &str) -> bool {
 /// that merged the target branch in has the target's head on a second
 /// parent, so the walk follows every parent.
 async fn descends_from<R: GitRepo>(repo: &R, history: &[Commit], ancestor: &str) -> Result<bool> {
-    let known: HashMap<&str, &[String]> = history
-        .iter()
-        .map(|commit| (commit.hash.as_str(), commit.parents.as_slice()))
-        .collect();
+    let known: HashMap<&str, &[String]> = history.iter().map(|commit| (commit.hash.as_str(), commit.parents.as_slice())).collect();
     let mut seen = HashSet::new();
-    let mut queue: Vec<String> = history
-        .first()
-        .map(|c| c.hash.clone())
-        .into_iter()
-        .collect();
+    let mut queue: Vec<String> = history.first().map(|c| c.hash.clone()).into_iter().collect();
     while let Some(hash) = queue.pop() {
         if hash == ancestor {
             return Ok(true);
@@ -249,14 +236,7 @@ impl<S: GitStore> Repos<S> {
     }
 
     pub(crate) async fn publish<T: Serialize>(&self, event: NewEvent<T>) -> Result<()> {
-        g1t_kit::call(
-            &self.events,
-            "publish",
-            &Publish {
-                events: vec![event],
-            },
-        )
-        .await
+        g1t_kit::call(&self.events, "publish", &Publish { events: vec![event] }).await
     }
 
     /// Whether the viewer may read `repo`. A pull request's fork of a
@@ -270,11 +250,7 @@ impl<S: GitStore> Repos<S> {
         let Some(source_id) = &repo.fork_of else {
             return Ok(false);
         };
-        Ok(self
-            .registry
-            .by_id(source_id)
-            .await?
-            .is_some_and(|source| can_read(&source, viewer)))
+        Ok(self.registry.by_id(source_id).await?.is_some_and(|source| can_read(&source, viewer)))
     }
 
     /// `repo`, if there is one and the viewer may read it.
@@ -287,8 +263,7 @@ impl<S: GitStore> Repos<S> {
 
     /// Resolves a repo the viewer may read; private repos look missing.
     pub(crate) async fn readable(&self, path: &RepoPath, viewer: &Viewer) -> Result<Option<Repo>> {
-        self.visible(self.registry.by_path(path).await?, viewer)
-            .await
+        self.visible(self.registry.by_path(path).await?, viewer).await
     }
 
     async fn get(&self, a: GetArgs) -> Result<Outcome<Repo>> {
@@ -388,18 +363,8 @@ impl<S: GitStore> Repos<S> {
             None => repo.topics.clone(),
         };
         let allow_forking = a.allow_forking.unwrap_or(repo.allow_forking);
-        self.registry
-            .update(&repo.id, protected, &topics, website.as_deref(), allow_forking, max_ref_updates)
-            .await?;
-        let updated = Repo {
-            is_private,
-            protected,
-            topics,
-            website,
-            allow_forking,
-            max_ref_updates,
-            ..repo
-        };
+        self.registry.update(&repo.id, protected, &topics, website.as_deref(), allow_forking, max_ref_updates).await?;
+        let updated = Repo { is_private, protected, topics, website, allow_forking, max_ref_updates, ..repo };
         // Whether the default branch takes only pull requests is now its
         // branch protection ruleset's to say (work's rulesets.rs).
         if let (Some(protected), Some(work)) = (a.protected, &self.work) {
@@ -504,10 +469,7 @@ impl<S: GitStore> Repos<S> {
         };
         let git = self.store.open(&store_key(&repo)).await?;
         let access = git.access(Scope::Read).await?;
-        let refs = refs::heads_and_tags(refs::all(&access).await?)
-            .into_iter()
-            .map(|(name, commit)| GitRefEntry { name, commit })
-            .collect();
+        let refs = refs::heads_and_tags(refs::all(&access).await?).into_iter().map(|(name, commit)| GitRefEntry { name, commit }).collect();
         Ok(Some(RepoRefs { repo, refs }))
     }
 
@@ -557,23 +519,14 @@ impl<S: GitStore> Repos<S> {
         }
         let name = a.name.trim().to_lowercase();
         if !is_valid_repo_name(&name) {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                "Use letters, digits, dots, hyphens and underscores only.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Invalid, "Use letters, digits, dots, hyphens and underscores only."));
         }
         let namespace = a.namespace.trim().to_lowercase();
         if namespace.is_empty() {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                "Say which workspace to create the repository in.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Invalid, "Say which workspace to create the repository in."));
         }
         let Some(role) = a.owner.role_in(&namespace) else {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "You are not a member of that workspace.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "You are not a member of that workspace."));
         };
         // Who may create which: the workspace's member privileges. A
         // workspace's own token acts as an owner would.
@@ -584,10 +537,7 @@ impl<S: GitStore> Repos<S> {
         let path = RepoPath { namespace, name };
         match self.registry.by_path_any(&path).await? {
             Some((_, None)) => {
-                return Ok(Outcome::fail(
-                    FailureCode::Conflict,
-                    "That workspace already has a repository with that name.",
-                ));
+                return Ok(Outcome::fail(FailureCode::Conflict, "That workspace already has a repository with that name."));
             }
             Some((_, Some(_))) => {
                 return Ok(Outcome::fail(
@@ -616,12 +566,7 @@ impl<S: GitStore> Repos<S> {
         // An import is fetched before anything is created, so that an
         // address that does not work leaves nothing behind.
         let mut imported = None;
-        if let Some(url) = a
-            .import_url
-            .as_deref()
-            .map(str::trim)
-            .filter(|url| !url.is_empty() && credentialed.is_none())
-        {
+        if let Some(url) = a.import_url.as_deref().map(str::trim).filter(|url| !url.is_empty() && credentialed.is_none()) {
             let Some(url) = import::clean_url(url) else {
                 return Ok(Outcome::fail(
                     FailureCode::Invalid,
@@ -662,36 +607,24 @@ impl<S: GitStore> Repos<S> {
             Ok(namespace) => namespace,
             Err(unplaced) => return Ok(Outcome::fail(FailureCode::Conflict, unplaced.message())),
         };
-        self.registry
-            .claim_store_key(&repo, namespace.as_deref(), &self.store.default_namespace())
-            .await?;
-        self.store
-            .create(&store_key(&repo), None, &repo.default_branch)
-            .await?;
+        self.registry.claim_store_key(&repo, namespace.as_deref(), &self.store.default_namespace()).await?;
+        self.store.create(&store_key(&repo), None, &repo.default_branch).await?;
         self.registry.insert(&repo).await?;
         // A repository that was transferred away from this path stops
         // redirecting here.
-        self.registry
-            .drop_redirect(&RepoPath {
-                namespace: repo.namespace.clone(),
-                name: repo.name.clone(),
-            })
-            .await?;
+        self.registry.drop_redirect(&RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() }).await?;
         // Every branch and tag the import made, announced as pushes.
         let mut pushed: Vec<(String, String)> = Vec::new();
         // A public repository, read with no credential: every branch and
         // tag is copied too, the default branch the one its HEAD names.
         if let Some((_, url)) = imported {
-            let access = self
-                .store
-                .open(&store_key(&repo))
-                .await?
-                .access(Scope::Write)
-                .await?;
+            let access = self.store.open(&store_key(&repo)).await?.access(Scope::Write).await?;
             let target = copy::Endpoint::bearer(&access.remote, &access.token);
             let held = std::cell::RefCell::new(None);
-            let copied = copy::copy(&copy::Endpoint::anonymous(&url), &target,
-                |bytes| self.hold_into(&held, &repo, bytes, public_storage::Operation::Import, Some(&a.owner.id))).await;
+            let copied = copy::copy(&copy::Endpoint::anonymous(&url), &target, |bytes| {
+                self.hold_into(&held, &repo, bytes, public_storage::Operation::Import, Some(&a.owner.id))
+            })
+            .await;
             let held = held.into_inner();
             let copied = match copied {
                 Ok(copied) => copied,
@@ -724,16 +657,13 @@ impl<S: GitStore> Repos<S> {
             }
         }
         if let Some((source, _)) = credentialed {
-            let access = self
-                .store
-                .open(&store_key(&repo))
-                .await?
-                .access(Scope::Write)
-                .await?;
+            let access = self.store.open(&store_key(&repo)).await?.access(Scope::Write).await?;
             let target = copy::Endpoint::bearer(&access.remote, &access.token);
             let held = std::cell::RefCell::new(None);
-            let copied = copy::copy(&source, &target,
-                |bytes| self.hold_into(&held, &repo, bytes, public_storage::Operation::Import, Some(&a.owner.id))).await;
+            let copied = copy::copy(&source, &target, |bytes| {
+                self.hold_into(&held, &repo, bytes, public_storage::Operation::Import, Some(&a.owner.id))
+            })
+            .await;
             let held = held.into_inner();
             let copied = match copied {
                 Ok(copied) => copied,
@@ -819,12 +749,8 @@ impl<S: GitStore> Repos<S> {
         let Some(identity) = &self.identity else {
             return Ok(shards::Residency::Anywhere);
         };
-        let residency: Option<g1t_contracts::identity::DataResidency> = g1t_kit::call(
-            identity,
-            "workspace_residency",
-            &g1t_contracts::identity::SlugArgs { slug: workspace.to_owned() },
-        )
-        .await?;
+        let residency: Option<g1t_contracts::identity::DataResidency> =
+            g1t_kit::call(identity, "workspace_residency", &g1t_contracts::identity::SlugArgs { slug: workspace.to_owned() }).await?;
         Ok(match residency {
             Some(g1t_contracts::identity::DataResidency::Eu) => shards::Residency::Eu,
             _ => shards::Residency::Anywhere,
@@ -845,7 +771,8 @@ impl<S: GitStore> Repos<S> {
             writable: &|namespace| self.store.writable(namespace),
             breaker_open: &|namespace| resilience::open_now(namespace, now),
         };
-        let (held, recent) = futures_util::future::join(namespaces::held(&self.registry.db), namespaces::recent(&self.registry.db, now)).await;
+        let (held, recent) =
+            futures_util::future::join(namespaces::held(&self.registry.db), namespaces::recent(&self.registry.db, now)).await;
         Ok(namespaces::standings(&config, &held?, &recent?))
     }
 
@@ -895,37 +822,21 @@ impl<S: GitStore> Repos<S> {
             return Ok(not_found());
         };
         let git = self.read_git(&repo).await?;
-        let git_ref = a
-            .git_ref
-            .clone()
-            .unwrap_or_else(|| repo.default_branch.clone());
+        let git_ref = a.git_ref.clone().unwrap_or_else(|| repo.default_branch.clone());
 
         let Some(head) = git.log(&git_ref, 1).await?.into_iter().next() else {
             // An unknown ref is an error; a repo with no commits is just empty.
             if a.git_ref.is_some() {
-                return Ok(Outcome::fail(
-                    FailureCode::NotFound,
-                    "No such branch, tag or commit.",
-                ));
+                return Ok(Outcome::fail(FailureCode::NotFound, "No such branch, tag or commit."));
             }
-            return Ok(Outcome::Ok(TreeView {
-                repo,
-                git_ref,
-                path: a.tree_path,
-                head: None,
-                entries: Vec::new(),
-                readme: None,
-            }));
+            return Ok(Outcome::Ok(TreeView { repo, git_ref, path: a.tree_path, head: None, entries: Vec::new(), readme: None }));
         };
 
         let no_directory = || Outcome::fail(FailureCode::NotFound, "No such directory.");
         let mut entries = git.read_tree(&head.tree_hash).await?;
         for segment in a.tree_path.split('/').filter(|segment| !segment.is_empty()) {
-            let next = entries.as_ref().and_then(|entries| {
-                entries
-                    .iter()
-                    .find(|entry| entry.name == segment && entry.kind == EntryKind::Tree)
-            });
+            let next =
+                entries.as_ref().and_then(|entries| entries.iter().find(|entry| entry.name == segment && entry.kind == EntryKind::Tree));
             let Some(next) = next else {
                 return Ok(no_directory());
             };
@@ -935,30 +846,14 @@ impl<S: GitStore> Repos<S> {
             return Ok(no_directory());
         };
         // Directories first, then by name.
-        entries.sort_by(|a, b| {
-            (b.kind == EntryKind::Tree)
-                .cmp(&(a.kind == EntryKind::Tree))
-                .then_with(|| a.name.cmp(&b.name))
-        });
+        entries.sort_by(|a, b| (b.kind == EntryKind::Tree).cmp(&(a.kind == EntryKind::Tree)).then_with(|| a.name.cmp(&b.name)));
 
-        let readme_entry = entries
-            .iter()
-            .find(|entry| entry.kind == EntryKind::Blob && is_readme(&entry.name));
+        let readme_entry = entries.iter().find(|entry| entry.kind == EntryKind::Blob && is_readme(&entry.name));
         let readme = match readme_entry {
-            Some(entry) => git.read_blob(&entry.hash).await?.map(|bytes| Readme {
-                name: entry.name.clone(),
-                text: text_of(bytes),
-            }),
+            Some(entry) => git.read_blob(&entry.hash).await?.map(|bytes| Readme { name: entry.name.clone(), text: text_of(bytes) }),
             None => None,
         };
-        Ok(Outcome::Ok(TreeView {
-            repo,
-            git_ref,
-            path: a.tree_path,
-            head: Some(head),
-            entries,
-            readme,
-        }))
+        Ok(Outcome::Ok(TreeView { repo, git_ref, path: a.tree_path, head: Some(head), entries, readme }))
     }
 
     async fn blob(&self, a: BlobArgs) -> Result<Outcome<BlobView>> {
@@ -975,13 +870,7 @@ impl<S: GitStore> Repos<S> {
         let Some(bytes) = bytes else {
             return Ok(Outcome::fail(FailureCode::NotFound, "No such file."));
         };
-        Ok(Outcome::Ok(BlobView {
-            repo,
-            git_ref,
-            path: a.file_path,
-            size: bytes.len() as u64,
-            text: text_of(bytes),
-        }))
+        Ok(Outcome::Ok(BlobView { repo, git_ref, path: a.file_path, size: bytes.len() as u64, text: text_of(bytes) }))
     }
 
     async fn blame(&self, a: BlameArgs) -> Result<Outcome<Blame>> {
@@ -1048,7 +937,8 @@ impl<S: GitStore> Repos<S> {
         let budget = a.budget_ms.unwrap_or(PATH_LOG_WALK_MS);
         let out_of_time = move || worker::Date::now().as_millis().saturating_sub(started) > budget;
         let limit = a.limit.clamp(1, 100) as usize;
-        let (commits, complete) = last_commits::path_log(&git, &head.hash, &a.file_path, limit, &out_of_time, last_commits::MAX_READS).await?;
+        let (commits, complete) =
+            last_commits::path_log(&git, &head.hash, &a.file_path, limit, &out_of_time, last_commits::MAX_READS).await?;
         Ok(Outcome::Ok(g1t_contracts::repos::PathLog { commits, complete }))
     }
 
@@ -1162,8 +1052,7 @@ impl<S: GitStore> Repos<S> {
             .iter()
             .zip(kept)
             .map(|(head, kept)| {
-                kept.or_else(|| fresh.get(head).cloned())
-                    .unwrap_or_else(|| BranchDrift { head: head.clone(), commit: None, drift: None })
+                kept.or_else(|| fresh.get(head).cloned()).unwrap_or_else(|| BranchDrift { head: head.clone(), commit: None, drift: None })
             })
             .collect();
         Ok(Outcome::Ok(BranchDrifts { base: base.ok().and_then(|log| log.into_iter().next()), branches }))
@@ -1256,9 +1145,7 @@ impl<S: GitStore> Repos<S> {
     /// branch into its own.
     pub(crate) async fn pull_target(&self, source: &Repo, target_id: Option<&str>) -> Result<Option<Repo>> {
         match target_id.filter(|id| *id != source.id) {
-            Some(id) if source.fork_of.as_deref() == Some(id) || self.forked_from(source, id).await? => {
-                self.registry.by_id(id).await
-            }
+            Some(id) if source.fork_of.as_deref() == Some(id) || self.forked_from(source, id).await? => self.registry.by_id(id).await,
             Some(_) => Ok(None),
             None => match &source.fork_of {
                 Some(id) => self.registry.by_id(id).await,
@@ -1279,14 +1166,7 @@ impl<S: GitStore> Repos<S> {
         };
         let branch = a.branch.unwrap_or_else(|| target.default_branch.clone());
         let target_branch = a.target_branch.unwrap_or_else(|| target.default_branch.clone());
-        let target_head = self
-            .read_git(&target)
-            .await?
-            .log(&target_branch, 1)
-            .await?
-            .into_iter()
-            .next()
-            .map(|commit| commit.hash);
+        let target_head = self.read_git(&target).await?.log(&target_branch, 1).await?.into_iter().next().map(|commit| commit.hash);
         let Some(target_head) = target_head else {
             return Ok(false);
         };
@@ -1315,24 +1195,15 @@ impl<S: GitStore> Repos<S> {
         let target_git = self.read_git(&target).await?;
         // The target's side is the same for every pull request into it, and
         // worked out once per head (coalesce.rs).
-        let (history, side) = futures_util::future::try_join(
-            source_git.log(&branch, MAX_ANCESTRY),
-            self.target_side(&target, &target_git, &target_branch),
-        )
-        .await?;
+        let (history, side) =
+            futures_util::future::try_join(source_git.log(&branch, MAX_ANCESTRY), self.target_side(&target, &target_git, &target_branch))
+                .await?;
         let target_history = &side.history;
         let (Some(head), Some(base)) = (history.first(), target_history.first()) else {
             return Ok(None);
         };
         let behind = !descends_from(&source_git, &history, &base.hash).await?;
-        let found = merge_base::merge_base(
-            &source_git,
-            &history,
-            &target_git,
-            target_history,
-            &side.shared,
-        )
-        .await?;
+        let found = merge_base::merge_base(&source_git, &history, &target_git, target_history, &side.shared).await?;
         let mut divergence = Divergence {
             head: head.hash.clone(),
             base: base.hash.clone(),
@@ -1345,8 +1216,7 @@ impl<S: GitStore> Repos<S> {
             divergence.truncated = true;
             return Ok(Some(divergence));
         };
-        let (ours, truncated_ours) =
-            diff::changed_paths(&source_git, Some(&merge_base_tree), &head.tree_hash).await?;
+        let (ours, truncated_ours) = diff::changed_paths(&source_git, Some(&merge_base_tree), &head.tree_hash).await?;
         divergence.ours = ours;
         divergence.truncated = truncated_ours;
         if behind {
@@ -1372,8 +1242,7 @@ impl<S: GitStore> Repos<S> {
     /// object cache keeps for good.
     async fn target_side<R: GitRepo>(&self, target: &Repo, git: &R, branch: &str) -> Result<Rc<coalesce::TargetSide>> {
         let now = now_ms();
-        let key = refs_cache::usable(registry::refs_state(&target.id), now)
-            .map(|version| (target.id.clone(), branch.to_owned(), version));
+        let key = refs_cache::usable(registry::refs_state(&target.id), now).map(|version| (target.id.clone(), branch.to_owned(), version));
         if let Some(key) = &key
             && let Some(side) = TARGETS.with(|memo| memo.borrow().get(key, now))
         {
@@ -1396,20 +1265,12 @@ impl<S: GitStore> Repos<S> {
         };
         let branch = if a.branch.is_empty() { &repo.default_branch } else { &a.branch };
         let git = self.read_git(&repo).await?;
-        Ok(git
-            .log(branch, 1)
-            .await?
-            .into_iter()
-            .next()
-            .map(|commit| commit.hash))
+        Ok(git.log(branch, 1).await?.into_iter().next().map(|commit| commit.hash))
     }
 
     async fn delete_branch(&self, a: DeleteBranchArgs) -> Result<Outcome<bool>> {
         if !deletable_branch(&a.branch, a.head.as_deref()) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only branches g1t made for itself can be deleted this way.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only branches g1t made for itself can be deleted this way."));
         }
         let Some(repo) = self.registry.by_id(&a.repo_id).await? else {
             return Ok(not_found());
@@ -1423,13 +1284,7 @@ impl<S: GitStore> Repos<S> {
         };
         self.live(&repo).await?;
         let git = self.store.open(&store_key(&repo)).await?;
-        let Some(old) = git
-            .branches()
-            .await?
-            .into_iter()
-            .find(|branch| branch.name == a.branch)
-            .map(|branch| branch.hash)
-        else {
+        let Some(old) = git.branches().await?.into_iter().find(|branch| branch.name == a.branch).map(|branch| branch.hash) else {
             return Ok(Outcome::Ok(false));
         };
         // Moved since the caller looked: someone else's commits are on it.
@@ -1440,22 +1295,14 @@ impl<S: GitStore> Repos<S> {
         let deleted = land::delete_ref(&access, &a.branch, &old).await?;
         self.refs_moved(&repo.id).await;
         if let Err(reason) = deleted {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                format!("{} could not be deleted: {reason}", a.branch),
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, format!("{} could not be deleted: {reason}", a.branch)));
         }
         Ok(Outcome::Ok(true))
     }
 
     async fn fork_for_pull(&self, a: ForkArgs) -> Result<Outcome<Repo>> {
         let viewer = Some(a.actor.clone());
-        let Some(source) = self
-            .registry
-            .by_id(&a.source_id)
-            .await?
-            .filter(|repo| can_read(repo, &viewer))
-        else {
+        let Some(source) = self.registry.by_id(&a.source_id).await?.filter(|repo| can_read(repo, &viewer)) else {
             return Ok(not_found());
         };
         if let Some((code, message)) = lifecycle::read_only_refusal(&source) {
@@ -1490,25 +1337,15 @@ impl<S: GitStore> Repos<S> {
         // Artifacts forks within a namespace: the copy goes where its
         // repository is.
         let (namespace, _) = store::locate(&store_key(&source));
-        self.registry
-            .claim_store_key(&fork, Some(&namespace), &self.store.default_namespace())
-            .await?;
-        self.store
-            .open(&store_key(&source))
-            .await?
-            .fork(&store_key(&fork), true)
-            .await?;
+        self.registry.claim_store_key(&fork, Some(&namespace), &self.store.default_namespace()).await?;
+        self.store.open(&store_key(&source)).await?.fork(&store_key(&fork), true).await?;
         self.registry.insert(&fork).await?;
         self.publish(NewEvent {
             kind: "repo.forked",
             source: SOURCE,
             repo_id: Some(source.id.clone()),
             actor: Some(a.actor.id),
-            data: RepoForked {
-                repo_id: fork.id.clone(),
-                source_repo_id: source.id,
-                pull_id: Some(a.pull_id),
-            },
+            data: RepoForked { repo_id: fork.id.clone(), source_repo_id: source.id, pull_id: Some(a.pull_id) },
         })
         .await?;
         Ok(Outcome::Ok(fork))
@@ -1521,8 +1358,10 @@ impl<S: GitStore> Repos<S> {
                 self.live(&repo).await?;
                 let write = a.service == GitService::ReceivePack;
                 if write {
-                    return Ok(Outcome::fail(FailureCode::Forbidden,
-                        "Push through g1t's HTTPS remote so the public storage limit can be enforced."));
+                    return Ok(Outcome::fail(
+                        FailureCode::Forbidden,
+                        "Push through g1t's HTTPS remote so the public storage limit can be enforced.",
+                    ));
                 }
                 if write {
                     // A push with this credential would not pass through
@@ -1547,18 +1386,8 @@ impl<S: GitStore> Repos<S> {
     /// use `service` on it: fetch from it, or push to it. A push to a path
     /// with nothing there makes the repository, in a workspace the pusher
     /// belongs to.
-    async fn authorize_git(
-        &self,
-        path: &RepoPath,
-        viewer: &Viewer,
-        service: GitService,
-        found: Option<Repo>,
-    ) -> Result<Outcome<Repo>> {
-        let mut a = GitAccessArgs {
-            path: path.clone(),
-            viewer: viewer.clone(),
-            service,
-        };
+    async fn authorize_git(&self, path: &RepoPath, viewer: &Viewer, service: GitService, found: Option<Repo>) -> Result<Outcome<Repo>> {
+        let mut a = GitAccessArgs { path: path.clone(), viewer: viewer.clone(), service };
         let write = a.service == GitService::ReceivePack;
         // An access token: pushing needs code:write, reading a private
         // repository code:read. A public repository reads as it would for
@@ -1570,11 +1399,9 @@ impl<S: GitStore> Repos<S> {
             // repository's pull requests, where their heads are.
             let name = format!("{}/{}", path.namespace, path.name);
             let source = match found.as_ref().and_then(|repo| repo.fork_of.as_deref()) {
-                Some(source_id) if g1t_contracts::scopes::decide_repo(&access, &name).is_some() => self
-                    .registry
-                    .by_id(source_id)
-                    .await?
-                    .map(|source| format!("{}/{}", source.namespace, source.name)),
+                Some(source_id) if g1t_contracts::scopes::decide_repo(&access, &name).is_some() => {
+                    self.registry.by_id(source_id).await?.map(|source| format!("{}/{}", source.namespace, source.name))
+                }
                 _ => None,
             };
             let public = found.as_ref().is_some_and(|repo| !repo.is_private);
@@ -1595,10 +1422,7 @@ impl<S: GitStore> Repos<S> {
         // A run's token works through the API only: its sandbox has its
         // own way to push, to its own pull request.
         if a.viewer.as_ref().is_some_and(|user| user.kind == PrincipalKind::Agent) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "A run's token cannot be used with git this way.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "A run's token cannot be used with git this way."));
         }
         if let (true, Some(user)) = (write, &a.viewer)
             && !user.verified
@@ -1607,11 +1431,7 @@ impl<S: GitStore> Repos<S> {
         }
         let repo = match found {
             Some(repo) => {
-                let allowed = if write {
-                    can_write(&repo, &a.viewer)
-                } else {
-                    self.may_read(&repo, &a.viewer).await?
-                };
+                let allowed = if write { can_write(&repo, &a.viewer) } else { self.may_read(&repo, &a.viewer).await? };
                 if !allowed {
                     return Ok(denied());
                 }
@@ -1636,10 +1456,7 @@ impl<S: GitStore> Repos<S> {
             }
             None => {
                 // Push to create, in a workspace the pusher belongs to.
-                let owner = a
-                    .viewer
-                    .as_ref()
-                    .filter(|user| write && user.is_member(&a.path.namespace.to_lowercase()));
+                let owner = a.viewer.as_ref().filter(|user| write && user.is_member(&a.path.namespace.to_lowercase()));
                 let Some(owner) = owner else {
                     return Ok(denied());
                 };
@@ -1695,19 +1512,13 @@ impl<S: GitStore> Repos<S> {
         let from_fork = source.id != target.id;
         let source_branch = match a.branch.clone() {
             Some(name) if !from_fork && name == *branch => {
-                return Ok(Outcome::fail(
-                    FailureCode::Invalid,
-                    format!("{branch} cannot be merged into itself."),
-                ));
+                return Ok(Outcome::fail(FailureCode::Invalid, format!("{branch} cannot be merged into itself.")));
             }
             Some(name) => name,
             // A working copy holds the change on the branch it merges into.
             None if source.fork_of.is_some() => branch.clone(),
             None => {
-                return Ok(Outcome::fail(
-                    FailureCode::Invalid,
-                    "Say which branch to merge.",
-                ));
+                return Ok(Outcome::fail(FailureCode::Invalid, "Say which branch to merge."));
             }
         };
 
@@ -1716,33 +1527,23 @@ impl<S: GitStore> Repos<S> {
         let target_git = self.store.open(&store_key(&target)).await?;
         let history = source_git.log(&source_branch, MAX_ANCESTRY).await?;
         let Some(new) = history.first().map(|commit| commit.hash.clone()) else {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                "This pull request has no commits to merge.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, "This pull request has no commits to merge."));
         };
         let Some(new) = land::checked_commit(&new, a.expected_commit.as_deref()) else {
-            return Ok(Outcome::fail(FailureCode::Conflict, "The source branch changed after it was checked. Test it again before landing."));
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "The source branch changed after it was checked. Test it again before landing.",
+            ));
         };
         // Every method but fast-forward makes commits (merge_methods.rs).
         let method = a.method.unwrap_or(g1t_contracts::rules::MergeMethod::FastForward);
         if method != g1t_contracts::rules::MergeMethod::FastForward {
             return self.land_by(method, &a, &target, &source_git, &target_git, branch, &history, new, from_fork).await;
         }
-        let old = target_git
-            .log(branch, 1)
-            .await?
-            .into_iter()
-            .next()
-            .map(|commit| commit.hash);
+        let old = target_git.log(branch, 1).await?.into_iter().next().map(|commit| commit.hash);
 
         if old.as_deref() == Some(new.as_str()) {
-            return Ok(Outcome::Ok(Landed {
-                commit: new,
-                previous: None,
-                method,
-                rebased: Vec::new(),
-            }));
+            return Ok(Outcome::Ok(Landed { commit: new, previous: None, method, rebased: Vec::new() }));
         }
         if a.expected_commit.is_some() && old.is_some() {
             // A prior attempt may have published this exact commit and stopped
@@ -1762,19 +1563,22 @@ impl<S: GitStore> Repos<S> {
             } else {
                 format!("Merge {branch} into {source_branch}, push, and merge again.")
             };
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                format!("{branch} has moved since this pull request was opened. {remedy}"),
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, format!("{branch} has moved since this pull request was opened. {remedy}")));
         }
 
         // For a branch the objects are already in the target; sending them
         // again is harmless and keeps one way of moving a ref.
         let source_access = source_git.access(Scope::Read).await?;
         let target_access = target_git.access(Scope::Write).await?;
-        let pushed =
-            land::fast_forward(&source_access, &target_access, branch, old.as_deref(), &new, self.public_quota(&target, public_storage::Operation::Land, Some(&a.actor.id)))
-                .await?;
+        let pushed = land::fast_forward(
+            &source_access,
+            &target_access,
+            branch,
+            old.as_deref(),
+            &new,
+            self.public_quota(&target, public_storage::Operation::Land, Some(&a.actor.id)),
+        )
+        .await?;
         self.refs_moved(&target.id).await;
         let pushed = match pushed {
             Ok(pushed) => pushed,
@@ -1784,18 +1588,10 @@ impl<S: GitStore> Repos<S> {
         };
         if let Err(reason) = pushed {
             // Most often another pull request landed between the check and the push.
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                format!("{branch} could not be updated: {reason}"),
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, format!("{branch} could not be updated: {reason}")));
         }
         self.publish_landing(&target, branch, old.as_deref(), &new, &a, None).await?;
-        Ok(Outcome::Ok(Landed {
-            commit: new,
-            previous: old,
-            method,
-            rebased: Vec::new(),
-        }))
+        Ok(Outcome::Ok(Landed { commit: new, previous: old, method, rebased: Vec::new() }))
     }
 
     async fn compare(&self, a: CompareArgs) -> Result<Outcome<Comparison>> {
@@ -1808,9 +1604,7 @@ impl<S: GitStore> Repos<S> {
             // well (`refs/pull/<n>/head`), compared with it, from a base it
             // holds. Nothing else of the fork is read this way.
             None => match (found, a.target_id.as_deref(), a.head.as_deref()) {
-                (Some(fork), Some(target_id), Some(head))
-                    if is_commit_hash(head) && a.base.as_deref().is_none_or(is_commit_hash) =>
-                {
+                (Some(fork), Some(target_id), Some(head)) if is_commit_hash(head) && a.base.as_deref().is_none_or(is_commit_hash) => {
                     match self.visible(self.registry.by_id(target_id).await?, &a.viewer).await? {
                         Some(target) if self.forked_from(&fork, target_id).await? => {
                             let target_git = self.read_git(&target).await?;
@@ -1839,10 +1633,7 @@ impl<S: GitStore> Repos<S> {
         let depth = if a.base.is_some() || is_commit_hash(head_ref) { 1 } else { MAX_ANCESTRY };
         let history = git.log(head_ref, depth).await?;
         let Some(head) = history.first() else {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                "There are no commits to compare.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, "There are no commits to compare."));
         };
 
         // Where the head's history meets the default branch of `against`,
@@ -1851,23 +1642,16 @@ impl<S: GitStore> Repos<S> {
             let against_git = self.read_git(against).await?;
             let branch = base_branch.as_deref().unwrap_or(&against.default_branch);
             let against_history = against_git.log(branch, MAX_ANCESTRY).await?;
-            let shared: HashSet<String> = against_history
-                .iter()
-                .map(|commit| commit.hash.clone())
-                .collect();
-            let found =
-                merge_base::merge_base(&git, &history, &against_git, &against_history, &shared)
-                    .await?;
+            let shared: HashSet<String> = against_history.iter().map(|commit| commit.hash.clone()).collect();
+            let found = merge_base::merge_base(&git, &history, &against_git, &against_history, &shared).await?;
             Ok(found.map(|found| found.hash))
         };
         // A fork's branch, compared from the repository it would merge into.
         let target = match a.target_id.as_deref().filter(|id| a.base.is_none() && *id != repo.id) {
-            Some(id) if self.forked_from(&repo, id).await? => {
-                match self.visible(self.registry.by_id(id).await?, &a.viewer).await? {
-                    Some(target) => Some(target),
-                    None => return Ok(not_found()),
-                }
-            }
+            Some(id) if self.forked_from(&repo, id).await? => match self.visible(self.registry.by_id(id).await?, &a.viewer).await? {
+                Some(target) => Some(target),
+                None => return Ok(not_found()),
+            },
             Some(_) => return Ok(not_found()),
             None => None,
         };
@@ -1883,31 +1667,18 @@ impl<S: GitStore> Repos<S> {
             // A branch, with the point where it left the default branch.
             // A single commit, with its first parent.
             (None, None) if is_commit_hash(head_ref) => head.parents.first().cloned(),
-            (None, None) if head_ref != base_branch.as_deref().unwrap_or(&repo.default_branch) => {
-                shared_with(&repo).await?
-            }
+            (None, None) if head_ref != base_branch.as_deref().unwrap_or(&repo.default_branch) => shared_with(&repo).await?,
             (None, None) => head.parents.first().cloned(),
         };
         let base_tree = match &base {
-            Some(base) => git
-                .log(base, 1)
-                .await?
-                .into_iter()
-                .next()
-                .map(|commit| commit.tree_hash),
+            Some(base) => git.log(base, 1).await?.into_iter().next().map(|commit| commit.tree_hash),
             None => None,
         };
         // Only a few files of it, when asked: how the files a large
         // comparison lists without their lines are read, as a page reaches them.
         let only = a.paths.as_deref().map(|paths| &paths[..paths.len().min(MAX_COMPARED_PATHS)]);
-        let (files, truncated) =
-            diff::compare_trees(&git, base_tree.as_deref(), &head.tree_hash, only).await?;
-        Ok(Outcome::Ok(Comparison {
-            base,
-            head: head.hash.clone(),
-            files,
-            truncated,
-        }))
+        let (files, truncated) = diff::compare_trees(&git, base_tree.as_deref(), &head.tree_hash, only).await?;
+        Ok(Outcome::Ok(Comparison { base, head: head.hash.clone(), files, truncated }))
     }
 
     /// Reports that `git_ref` of `repo` (a full ref) now points to `after`,
@@ -1982,8 +1753,7 @@ impl<S: GitStore> Repos<S> {
                 git_ref: git_ref.to_owned(),
                 before: before.map(str::to_owned),
                 after: after.to_owned(),
-                default_branch: git_ref.strip_prefix("refs/heads/")
-                    == Some(repo.default_branch.as_str()),
+                default_branch: git_ref.strip_prefix("refs/heads/") == Some(repo.default_branch.as_str()),
                 unscanned,
                 caused_by_job,
                 commits,
@@ -2029,15 +1799,8 @@ impl<S: GitStore> Repos<S> {
         // The repository and the caller's credentials, at once. A fetch may
         // go by the row as read a moment ago, for the same clone's next
         // request; a push always reads it. Anonymous callers cost nothing.
-        let lookup = async {
-            if write {
-                self.registry.by_path(&git.path).await
-            } else {
-                self.registry.by_path_recent(&git.path).await
-            }
-        };
-        let (found, viewer) =
-            futures_util::future::join(lookup, git_http::viewer(&request, &identity)).await;
+        let lookup = async { if write { self.registry.by_path(&git.path).await } else { self.registry.by_path_recent(&git.path).await } };
+        let (found, viewer) = futures_util::future::join(lookup, git_http::viewer(&request, &identity)).await;
         let mut found = found?;
         timing.mark("repo");
         // A workspace alias staff set (identity's aliases.rs: `g1t` for
@@ -2049,11 +1812,7 @@ impl<S: GitStore> Repos<S> {
             None => git_http::aliased(git, &identity).await?,
         };
         if let Some(aliased) = &aliased {
-            found = if write {
-                self.registry.by_path(&aliased.path).await?
-            } else {
-                self.registry.by_path_recent(&aliased.path).await?
-            };
+            found = if write { self.registry.by_path(&aliased.path).await? } else { self.registry.by_path_recent(&aliased.path).await? };
             timing.mark("alias");
         }
         let git = aliased.as_ref().unwrap_or(git);
@@ -2063,11 +1822,8 @@ impl<S: GitStore> Repos<S> {
             // A repository transferred to another workspace: the same, to
             // its new path. Fetches and pushes both follow either.
             let url = request.url()?;
-            let (renamed, moved) = futures_util::future::join(
-                git_http::renamed(&url, &identity),
-                self.registry.resolve_moved(&git.path),
-            )
-            .await;
+            let (renamed, moved) =
+                futures_util::future::join(git_http::renamed(&url, &identity), self.registry.resolve_moved(&git.path)).await;
             timing.mark("moved");
             if let Some(location) = renamed? {
                 return git_http::moved(&location, get);
@@ -2083,10 +1839,7 @@ impl<S: GitStore> Repos<S> {
         // nothing with git until they do: told so, not asked to sign in.
         if viewer.as_ref().is_some_and(g1t_contracts::User::awaits_confirmation) {
             let site = request.url()?.origin().ascii_serialization();
-            return git_http::refuse(Outcome::<()>::fail(
-                FailureCode::Forbidden,
-                g1t_contracts::accounts::confirm_email_first(&site),
-            ));
+            return git_http::refuse(Outcome::<()>::fail(FailureCode::Forbidden, g1t_contracts::accounts::confirm_email_first(&site)));
         }
         // A run credential is checked against its grants, then acts as the
         // person it works for. See run_access.rs.
@@ -2094,12 +1847,7 @@ impl<S: GitStore> Repos<S> {
             run_access::Admitted::Go { request, viewer, entry } => (request, viewer, entry),
             run_access::Admitted::Refused(response) => return Ok(response),
         };
-        let mut after = AfterGit {
-            audit,
-            status: 0,
-            message: None,
-            push: None,
-        };
+        let mut after = AfterGit { audit, status: 0, message: None, push: None };
         let repo = match self.authorize_git(&git.path, &viewer, git.service, found).await? {
             Outcome::Ok(repo) => repo,
             refused => {
@@ -2136,9 +1884,7 @@ impl<S: GitStore> Repos<S> {
         let kept_key = refs_cache::kind(git, get, protocol, body.as_deref())
             .filter(|_| !fallback)
             .zip(refs_cache::usable(registry::refs_state(&repo.id), now_ms()))
-            .map(|(kind, version)| {
-                refs_cache::Key::new(&repo.id, version, default_branch.as_deref(), protocol, &kind)
-            });
+            .map(|(kind, version)| refs_cache::Key::new(&repo.id, version, default_branch.as_deref(), protocol, &kind));
         // A fresh clone's pack may have been kept too: see pack_cache.rs.
         // By the request alone when it names commits by id; under the same
         // refs version when it names refs, so never across a change to them.
@@ -2264,12 +2010,7 @@ impl<S: GitStore> Repos<S> {
         // What a push may bring (pack_limits.rs): the repository's size is
         // its own and its pull requests' working copies'.
         let mut limits = if let Some(held) = held {
-            git_http::PushLimits {
-                held,
-                repo_limit: self.repo_limit,
-                large: self.large_pushes,
-                ..git_http::PushLimits::default()
-            }
+            git_http::PushLimits { held, repo_limit: self.repo_limit, large: self.large_pushes, ..git_http::PushLimits::default() }
         } else {
             git_http::PushLimits::default()
         };
@@ -2277,13 +2018,17 @@ impl<S: GitStore> Repos<S> {
         // No Content-Length is required: chunked pushes reserve the platform
         // body limit. The body walker independently enforces this allowance.
         let public_reserved = if pushing {
-            let requested = request.headers().get("content-length")?
+            let requested = request
+                .headers()
+                .get("content-length")?
                 .and_then(|v| v.parse::<u64>().ok())
                 .unwrap_or(pack_limits::PLATFORM_BODY_LIMIT_BYTES)
                 .min(pack_limits::PLATFORM_BODY_LIMIT_BYTES);
             let pusher = viewer.as_ref().map(|viewer| viewer.id.as_str());
-            let reservation = match self.registry
-                .reserve_public(&repo, requested, self.free_public_bytes, public_storage::Operation::Push, pusher).await?
+            let reservation = match self
+                .registry
+                .reserve_public(&repo, requested, self.free_public_bytes, public_storage::Operation::Push, pusher)
+                .await?
             {
                 Ok(reservation) => reservation,
                 // Taken between the push's first request and this one.
@@ -2291,8 +2036,11 @@ impl<S: GitStore> Repos<S> {
                     return git_ops::copy_locked_response(&repo.namespace, &repo.name, refusal);
                 }
                 Err(_) => {
-                    return git_ops::public_storage_full_response(&repo.namespace,
-                        self.registry.public_bytes(&repo.namespace).await?, self.free_public_bytes);
+                    return git_ops::public_storage_full_response(
+                        &repo.namespace,
+                        self.registry.public_bytes(&repo.namespace).await?,
+                        self.free_public_bytes,
+                    );
                 }
             };
             limits.repo_limit = limits.repo_limit.min(limits.held.saturating_add(requested));
@@ -2300,7 +2048,9 @@ impl<S: GitStore> Repos<S> {
             // refuses it whole and nothing of it arrives after.
             limits.deadline_ms = Some(reservation.lease_until_ms);
             Some(reservation)
-        } else { None };
+        } else {
+            None
+        };
         // The store's credential, when the store is asked: kept for the git
         // edge too, which catches up with the store using it.
         let mut store_access = None;
@@ -2322,17 +2072,7 @@ impl<S: GitStore> Repos<S> {
                     access
                 }
             };
-            let mut outcome = git_http::forward(
-                request,
-                body,
-                git,
-                &access,
-                checks,
-                default_branch.as_deref(),
-                limits,
-                timing,
-            )
-            .await?;
+            let mut outcome = git_http::forward(request, body, git, &access, checks, default_branch.as_deref(), limits, timing).await?;
             let turned_down = matches!(
                 &outcome,
                 git_http::Push::Forwarded(forwarded) if matches!(forwarded.response.status_code(), 401 | 403)
@@ -2364,44 +2104,43 @@ impl<S: GitStore> Repos<S> {
             let (repo_id, head) = (repo.id.clone(), repo.default_branch.clone());
             ctx.wait_until(async move { edge.sync(&repo_id, version, &access, &head, false).await });
         }
-        let forwarded =
-            match outcome {
-                git_http::Push::Forwarded(forwarded) => forwarded,
-                git_http::Push::Refused(response) => {
-                    if let Some(reserved) = &public_reserved { self.registry.release_public(reserved).await?; }
-                    after.ended(403, Some("The push was declined by rules.".to_owned()));
-                    after.spawn(env, ctx);
-                    return Ok(response);
+        let forwarded = match outcome {
+            git_http::Push::Forwarded(forwarded) => forwarded,
+            git_http::Push::Refused(response) => {
+                if let Some(reserved) = &public_reserved {
+                    self.registry.release_public(reserved).await?;
                 }
-                git_http::Push::Blocked(response) => {
-                    if let Some(reserved) = &public_reserved { self.registry.release_public(reserved).await?; }
-                    after.ended(403, Some("The push adds a secret.".to_owned()));
-                    after.spawn(env, ctx);
-                    return Ok(response);
+                after.ended(403, Some("The push was declined by rules.".to_owned()));
+                after.spawn(env, ctx);
+                return Ok(response);
+            }
+            git_http::Push::Blocked(response) => {
+                if let Some(reserved) = &public_reserved {
+                    self.registry.release_public(reserved).await?;
                 }
-                git_http::Push::Declined(response, reason) => {
-                    // Refused before the store was asked, or cut short so
-                    // the store refused it whole: nothing of it is kept.
-                    if let Some(reserved) = &public_reserved { self.registry.release_public(reserved).await?; }
-                    after.ended(403, Some(format!("The push was declined: {reason}.")));
-                    after.spawn(env, ctx);
-                    return Ok(response);
+                after.ended(403, Some("The push adds a secret.".to_owned()));
+                after.spawn(env, ctx);
+                return Ok(response);
+            }
+            git_http::Push::Declined(response, reason) => {
+                // Refused before the store was asked, or cut short so
+                // the store refused it whole: nothing of it is kept.
+                if let Some(reserved) = &public_reserved {
+                    self.registry.release_public(reserved).await?;
                 }
-            };
+                after.ended(403, Some(format!("The push was declined: {reason}.")));
+                after.spawn(env, ctx);
+                return Ok(response);
+            }
+        };
         if forwarded.from_store {
-            let received = forwarded
-                .response
-                .headers()
-                .get("content-length")?
-                .and_then(|length| length.parse().ok())
-                .unwrap_or(0);
+            let received = forwarded.response.headers().get("content-length")?.and_then(|length| length.parse().ok()).unwrap_or(0);
             meters::record(call.meter(), &key, forwarded.sent, received);
         }
         timing.mark("store");
         let mut response = forwarded.response;
         let status = response.status_code();
-        let asked: Vec<(String, String)> =
-            forwarded.pushed.iter().map(|pushed| (pushed.git_ref.clone(), pushed.after.clone())).collect();
+        let asked: Vec<(String, String)> = forwarded.pushed.iter().map(|pushed| (pushed.git_ref.clone(), pushed.after.clone())).collect();
         // A push: the store has moved its refs once it has answered in
         // full, so the answer is read before its reservation is settled
         // (the report says whether the store took it) and before the change
@@ -2581,14 +2320,8 @@ impl<S: GitStore> Repos<S> {
         if git.service == GitService::ReceivePack && git.endpoint == "info/refs" && repo.is_private {
             let free = git_ops::free_private_bytes(env);
             let held = self.registry.private_bytes(&namespace).await.unwrap_or(0);
-            if git_ops::storage_full(held, free)
-                && git_ops::is_free(env.service("BILLING").ok().as_ref(), &namespace).await
-            {
-                return Ok(Some((
-                    git_ops::storage_full_response(&namespace, held, free)?,
-                    403,
-                    "Free private storage is full.",
-                )));
+            if git_ops::storage_full(held, free) && git_ops::is_free(env.service("BILLING").ok().as_ref(), &namespace).await {
+                return Ok(Some((git_ops::storage_full_response(&namespace, held, free)?, 403, "Free private storage is full.")));
             }
         }
         if git.service == GitService::ReceivePack && !repo.is_private {
@@ -2596,11 +2329,7 @@ impl<S: GitStore> Repos<S> {
             if free > 0 {
                 let held = self.registry.public_bytes(&namespace).await?;
                 if git_ops::public_storage_full(held, free) {
-                    return Ok(Some((
-                        git_ops::public_storage_full_response(&namespace, held, free)?,
-                        403,
-                        "Free public storage is full.",
-                    )));
+                    return Ok(Some((git_ops::public_storage_full_response(&namespace, held, free)?, 403, "Free public storage is full.")));
                 }
             }
         }
@@ -2684,17 +2413,7 @@ impl<S: GitStore> Repos<S> {
 
     /// What a push changed, recorded once git has its answer.
     async fn record_push(&self, push: PushDone) -> Result<()> {
-        let PushDone {
-            repo,
-            pushed,
-            deleted,
-            pack_bytes,
-            actor,
-            unscanned,
-            caused_by_job,
-            credit,
-            agent,
-        } = push;
+        let PushDone { repo, pushed, deleted, pack_bytes, actor, unscanned, caused_by_job, credit, agent } = push;
         // What the push stored, for billing's storage meter. A failure only
         // leaves the count short.
         if pack_bytes > 0
@@ -2714,12 +2433,7 @@ impl<S: GitStore> Repos<S> {
         let stored = self.store.open(&store_key(&repo)).await?;
         let announced = announced_refs(&pushed, &repo.default_branch);
         if announced.len() < pushed.len() {
-            worker::console_log!(
-                "push to {}: {} of {} refs announced",
-                repo.name,
-                announced.len(),
-                pushed.len()
-            );
+            worker::console_log!("push to {}: {} of {} refs announced", repo.name, announced.len(), pushed.len());
         }
         // Where the store has the pushed tags, and an annotated tag's commit,
         // from its ref advertisement: Artifacts logs nothing for an annotated
@@ -2752,8 +2466,7 @@ impl<S: GitStore> Repos<S> {
             };
             if let (Some(commits), Some(user_id), Some(branch)) = (commits, credit.as_deref(), pushed.branch())
                 && push_commits::counts(branch, &repo.default_branch)
-                && let Err(error) =
-                    push_commits::record(&self.registry.db, user_id, &repo.id, &rfc3339(now_ms())[..10], commits).await
+                && let Err(error) = push_commits::record(&self.registry.db, user_id, &repo.id, &rfc3339(now_ms())[..10], commits).await
             {
                 worker::console_error!("commits pushed to {} not credited: {error}", repo.name);
             }
@@ -2788,8 +2501,7 @@ const MAX_PUSH_BRANCH_EVENTS: usize = 1000;
 /// The refs of a push that are announced with a `git.push` event each.
 /// Every ref is stored whatever this says; only the events are capped.
 fn announced_refs<'a>(pushed: &'a [git_http::Pushed], default_branch: &str) -> Vec<&'a git_http::Pushed> {
-    let (branches, tags): (Vec<&git_http::Pushed>, Vec<&git_http::Pushed>) =
-        pushed.iter().partition(|pushed| pushed.branch().is_some());
+    let (branches, tags): (Vec<&git_http::Pushed>, Vec<&git_http::Pushed>) = pushed.iter().partition(|pushed| pushed.branch().is_some());
     let mut announced = if branches.len() > MAX_PUSH_BRANCH_EVENTS {
         branches.into_iter().filter(|pushed| pushed.branch() == Some(default_branch)).collect()
     } else {
@@ -3013,263 +2725,260 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
     repos.registry.db = db.into();
     let body: serde_json::Value = request.json().await?;
 
-    let answered = async { match method.as_str() {
-        "get" => reply(&repos.get(args(body)?).await?),
-        "get_by_id" => reply(&repos.get_by_id(args(body)?).await?),
-        "readable" => {
-            let a: ReadableArgs = args(body)?;
-            reply(&repos.registry.readable(&a.ids, &a.viewer).await?)
-        }
-        // Work's contribution calendar: the commits a person pushed each
-        // day, in repositories the viewer may read (push_commits.rs).
-        "commit_days" => {
-            let a: g1t_contracts::repos::CommitDaysArgs = args(body)?;
-            reply(&push_commits::days(&repos.registry, &a.user_id, &a.since, &a.viewer).await?)
-        }
-        "public_namespaces" => {
-            let a: PublicNamespacesArgs = args(body)?;
-            reply(&repos.registry.public_namespaces(&a.owner_id).await?)
-        }
-        "path_by_id" => {
-            let a: PathByIdArgs = args(body)?;
-            reply(
-                &repos
-                    .registry
-                    .by_id(&a.id)
-                    .await?
-                    .filter(|repo| repo.fork_of.is_none())
-                    .map(|repo| RepoPath {
-                        namespace: repo.namespace,
-                        name: repo.name,
-                    }),
-            )
-        }
-        "list" => {
-            let a: ListArgs = args(body)?;
-            reply(
-                &repos
-                    .registry
-                    .list(
-                        &a.viewer,
-                        a.query.as_deref(),
-                        a.namespace.as_deref(),
-                        a.member_only,
+    let answered = async {
+        match method.as_str() {
+            "get" => reply(&repos.get(args(body)?).await?),
+            "get_by_id" => reply(&repos.get_by_id(args(body)?).await?),
+            "readable" => {
+                let a: ReadableArgs = args(body)?;
+                reply(&repos.registry.readable(&a.ids, &a.viewer).await?)
+            }
+            // Work's contribution calendar: the commits a person pushed each
+            // day, in repositories the viewer may read (push_commits.rs).
+            "commit_days" => {
+                let a: g1t_contracts::repos::CommitDaysArgs = args(body)?;
+                reply(&push_commits::days(&repos.registry, &a.user_id, &a.since, &a.viewer).await?)
+            }
+            "public_namespaces" => {
+                let a: PublicNamespacesArgs = args(body)?;
+                reply(&repos.registry.public_namespaces(&a.owner_id).await?)
+            }
+            "path_by_id" => {
+                let a: PathByIdArgs = args(body)?;
+                reply(
+                    &repos
+                        .registry
+                        .by_id(&a.id)
+                        .await?
+                        .filter(|repo| repo.fork_of.is_none())
+                        .map(|repo| RepoPath { namespace: repo.namespace, name: repo.name }),
+                )
+            }
+            "list" => {
+                let a: ListArgs = args(body)?;
+                reply(&repos.registry.list(&a.viewer, a.query.as_deref(), a.namespace.as_deref(), a.member_only).await?)
+            }
+            "create" => reply(&repos.create(args(body)?).await?),
+            "transfer" => reply(&repos.transfer(args(body)?).await?),
+            // A repository's lifecycle: see lifecycle.rs.
+            "delete" => reply(&repos.delete(args(body)?).await?),
+            "deleted" => reply(&repos.deleted(args(body)?).await?),
+            "restore" => reply(&repos.restore(args(body)?).await?),
+            "purge" => reply(&repos.purge(args(body)?).await?),
+            "purge_due" => reply(&repos.purge_due(args(body)?).await?),
+            "rename" => reply(&repos.rename(args(body)?).await?),
+            "archive" => reply(&repos.archive(args(body)?).await?),
+            "set_visibility" => reply(&repos.set_visibility(args(body)?).await?),
+            "set_default_branch" => reply(&repos.set_default_branch(args(body)?).await?),
+            "rename_branch" => reply(&repos.rename_branch(args(body)?).await?),
+            "create_branch" => reply(&repos.create_branch(args(body)?).await?),
+            "remove_branch" => reply(&repos.remove_branch(args(body)?).await?),
+            "resolve_branch" => reply(&repos.resolve_branch(args(body)?).await?),
+            "status_by_id" => reply(&repos.status_by_id(args(body)?).await?),
+            "resolve_path" => {
+                let a: ResolvePathArgs = args(body)?;
+                reply(&repos.registry.resolve_moved(&a.path).await?)
+            }
+            "namespace_count" => {
+                let a: NamespaceCountArgs = args(body)?;
+                reply(&repos.registry.count_in(&a.namespace).await?)
+            }
+            "update" => reply(&repos.update(args(body)?).await?),
+            "tree" => reply(&repos.tree(args(body)?).await?),
+            "blob" => reply(&repos.blob(args(body)?).await?),
+            "log" => reply(&repos.log(args(body)?).await?),
+            "blame" => reply(&repos.blame(args(body)?).await?),
+            "fork_for_pull" => reply(&repos.fork_for_pull(args(body)?).await?),
+            // Forks people make into their workspaces: see network.rs.
+            "fork" => reply(&repos.fork(args(body)?).await?),
+            "forks" => reply(&repos.forks(args(body)?).await?),
+            "sync_fork" => reply(&repos.sync_fork(args(body)?).await?),
+            "detach_fork" => reply(&repos.detach_fork(args(body)?).await?),
+            "git_access" => reply(&repos.git_access(args(body)?).await?),
+            "branches" => reply(&repos.branches(args(body)?).await?),
+            "last_commits" => reply(&repos.last_commits(args(body)?).await?),
+            "path_log" => reply(&repos.path_log(args(body)?).await?),
+            "branch_drift" => reply(&repos.branch_drift(args(body)?).await?),
+            "tags" => reply(&repos.tags(args(body)?).await?),
+            // The About: what the Files page shows beside the files (about.rs).
+            // What is kept behind the head is worked out again after the answer.
+            "about" => {
+                let (answer, refresh) = repos.about(args(body)?).await?;
+                about::refresh_later(&env, &ctx, refresh);
+                reply(&answer)
+            }
+            "languages" => {
+                let (answer, refresh) = repos.languages(args(body)?).await?;
+                about::refresh_later(&env, &ctx, refresh);
+                reply(&answer)
+            }
+            "contributors" => {
+                let (answer, refresh) = repos.contributors(args(body)?).await?;
+                about::refresh_later(&env, &ctx, refresh);
+                reply(&answer)
+            }
+            "license" => {
+                let (answer, refresh) = repos.license(args(body)?).await?;
+                about::refresh_later(&env, &ctx, refresh);
+                reply(&answer)
+            }
+            "stars" => reply(&repos.stars(args(body)?).await?),
+            "star" => reply(&repos.star(args(body)?).await?),
+            "stargazers" => reply(&repos.stargazers(args(body)?).await?),
+            "starred" => reply(&repos.starred(args(body)?).await?),
+            "releases" => reply(&repos.releases(args(body)?).await?),
+            "release" => reply(&repos.release(args(body)?).await?),
+            "create_release" => reply(&repos.create_release(args(body)?).await?),
+            "update_release" => reply(&repos.update_release(args(body)?).await?),
+            "delete_release" => reply(&repos.delete_release(args(body)?).await?),
+            "head" => reply(&repos.head(args(body)?).await?),
+            "behind" => reply(&repos.behind(args(body)?).await?),
+            "divergence" => reply(&repos.divergence(args(body)?).await?),
+            "land" => reply(&repos.land(args(body)?).await?),
+            // Services only: what a push brought into a branch (pushed.rs).
+            "pushed" => reply(&repos.pushed(args(body)?).await?),
+            "build_queue_step" => reply(&repos.build_queue_step(args(body)?).await?),
+            "update_pull_branch" => reply(&repos.update_pull_branch(args(body)?).await?),
+            // Services only: a pull request's test merge commit (test_merge.rs).
+            "pull_merge_ref" => reply(&repos.pull_merge_ref(args(body)?).await?),
+            "delete_branch" => reply(&repos.delete_branch(args(body)?).await?),
+            "commit_file" => reply(&repos.commit_file(args(body)?).await?),
+            "compare" => reply(&repos.compare(args(body)?).await?),
+            // Services only: a pull request's commits, as rules look at them (rules.rs).
+            "inspect_commits" => reply(&repos.inspect_commits(args(body)?).await?),
+            "scan_history" => reply(&repos.scan_history(args(body)?).await?),
+            "find_lockfiles" => reply(&repos.find_lockfiles(args(body)?).await?),
+            "match_pattern" => reply(&repos.match_pattern(args(body)?).await?),
+            "check_secret" => reply(&repos.check_secret(args(body)?).await?),
+            "list_files" => reply(&repos.list_files(args(body)?).await?),
+            // The API's tarball and zipball links, and the site opening them (archive_links.rs).
+            "archive_link" => {
+                let sealer = env.secret("REPOS_KEY").ok().and_then(|key| g1t_secrets::Sealer::new(&key.to_string()));
+                reply(&repos.archive_link(args(body)?, sealer.as_ref()).await?)
+            }
+            "open_archive_token" => {
+                let sealer = env.secret("REPOS_KEY").ok().and_then(|key| g1t_secrets::Sealer::new(&key.to_string()));
+                reply(&repos.open_archive_token(args(body)?, sealer.as_ref()).await?)
+            }
+            "changed_files" => reply(&repos.changed_files(args(body)?).await?),
+            "read_blobs" => reply(&repos.read_blobs(args(body)?).await?),
+            // Services only: what the Composer registry builds packages from.
+            "refs" => reply(&repos.refs_of(args(body)?).await?),
+            "raw_file" => reply(&repos.raw_file(args(body)?).await?),
+            "raw_blobs" => reply(&repos.raw_blobs(args(body)?).await?),
+            "visibility" => {
+                let a: g1t_contracts::repos::VisibilityArgs = args(body)?;
+                reply(&repos.registry.visibility(&a.paths).await?)
+            }
+            "storage" => reply(&repos.registry.storage().await?),
+            "git_operations" => {
+                let a: GitOperationsArgs = args(body)?;
+                reply(
+                    &git_ops::totals(
+                        &repos.registry.db,
+                        &a.month,
+                        a.since.as_deref(),
+                        a.namespace.as_deref().map(str::to_lowercase).as_deref(),
                     )
                     .await?,
-            )
-        }
-        "create" => reply(&repos.create(args(body)?).await?),
-        "transfer" => reply(&repos.transfer(args(body)?).await?),
-        // A repository's lifecycle: see lifecycle.rs.
-        "delete" => reply(&repos.delete(args(body)?).await?),
-        "deleted" => reply(&repos.deleted(args(body)?).await?),
-        "restore" => reply(&repos.restore(args(body)?).await?),
-        "purge" => reply(&repos.purge(args(body)?).await?),
-        "purge_due" => reply(&repos.purge_due(args(body)?).await?),
-        "rename" => reply(&repos.rename(args(body)?).await?),
-        "archive" => reply(&repos.archive(args(body)?).await?),
-        "set_visibility" => reply(&repos.set_visibility(args(body)?).await?),
-        "set_default_branch" => reply(&repos.set_default_branch(args(body)?).await?),
-        "rename_branch" => reply(&repos.rename_branch(args(body)?).await?),
-        "create_branch" => reply(&repos.create_branch(args(body)?).await?),
-        "remove_branch" => reply(&repos.remove_branch(args(body)?).await?),
-        "resolve_branch" => reply(&repos.resolve_branch(args(body)?).await?),
-        "status_by_id" => reply(&repos.status_by_id(args(body)?).await?),
-        "resolve_path" => {
-            let a: ResolvePathArgs = args(body)?;
-            reply(&repos.registry.resolve_moved(&a.path).await?)
-        }
-        "namespace_count" => {
-            let a: NamespaceCountArgs = args(body)?;
-            reply(&repos.registry.count_in(&a.namespace).await?)
-        }
-        "update" => reply(&repos.update(args(body)?).await?),
-        "tree" => reply(&repos.tree(args(body)?).await?),
-        "blob" => reply(&repos.blob(args(body)?).await?),
-        "log" => reply(&repos.log(args(body)?).await?),
-        "blame" => reply(&repos.blame(args(body)?).await?),
-        "fork_for_pull" => reply(&repos.fork_for_pull(args(body)?).await?),
-        // Forks people make into their workspaces: see network.rs.
-        "fork" => reply(&repos.fork(args(body)?).await?),
-        "forks" => reply(&repos.forks(args(body)?).await?),
-        "sync_fork" => reply(&repos.sync_fork(args(body)?).await?),
-        "detach_fork" => reply(&repos.detach_fork(args(body)?).await?),
-        "git_access" => reply(&repos.git_access(args(body)?).await?),
-        "branches" => reply(&repos.branches(args(body)?).await?),
-        "last_commits" => reply(&repos.last_commits(args(body)?).await?),
-        "path_log" => reply(&repos.path_log(args(body)?).await?),
-        "branch_drift" => reply(&repos.branch_drift(args(body)?).await?),
-        "tags" => reply(&repos.tags(args(body)?).await?),
-        // The About: what the Files page shows beside the files (about.rs).
-        // What is kept behind the head is worked out again after the answer.
-        "about" => {
-            let (answer, refresh) = repos.about(args(body)?).await?;
-            about::refresh_later(&env, &ctx, refresh);
-            reply(&answer)
-        }
-        "languages" => {
-            let (answer, refresh) = repos.languages(args(body)?).await?;
-            about::refresh_later(&env, &ctx, refresh);
-            reply(&answer)
-        }
-        "contributors" => {
-            let (answer, refresh) = repos.contributors(args(body)?).await?;
-            about::refresh_later(&env, &ctx, refresh);
-            reply(&answer)
-        }
-        "license" => {
-            let (answer, refresh) = repos.license(args(body)?).await?;
-            about::refresh_later(&env, &ctx, refresh);
-            reply(&answer)
-        }
-        "stars" => reply(&repos.stars(args(body)?).await?),
-        "star" => reply(&repos.star(args(body)?).await?),
-        "stargazers" => reply(&repos.stargazers(args(body)?).await?),
-        "starred" => reply(&repos.starred(args(body)?).await?),
-        "releases" => reply(&repos.releases(args(body)?).await?),
-        "release" => reply(&repos.release(args(body)?).await?),
-        "create_release" => reply(&repos.create_release(args(body)?).await?),
-        "update_release" => reply(&repos.update_release(args(body)?).await?),
-        "delete_release" => reply(&repos.delete_release(args(body)?).await?),
-        "head" => reply(&repos.head(args(body)?).await?),
-        "behind" => reply(&repos.behind(args(body)?).await?),
-        "divergence" => reply(&repos.divergence(args(body)?).await?),
-        "land" => reply(&repos.land(args(body)?).await?),
-        // Services only: what a push brought into a branch (pushed.rs).
-        "pushed" => reply(&repos.pushed(args(body)?).await?),
-        "build_queue_step" => reply(&repos.build_queue_step(args(body)?).await?),
-        "update_pull_branch" => reply(&repos.update_pull_branch(args(body)?).await?),
-        // Services only: a pull request's test merge commit (test_merge.rs).
-        "pull_merge_ref" => reply(&repos.pull_merge_ref(args(body)?).await?),
-        "delete_branch" => reply(&repos.delete_branch(args(body)?).await?),
-        "commit_file" => reply(&repos.commit_file(args(body)?).await?),
-        "compare" => reply(&repos.compare(args(body)?).await?),
-        // Services only: a pull request's commits, as rules look at them (rules.rs).
-        "inspect_commits" => reply(&repos.inspect_commits(args(body)?).await?),
-        "scan_history" => reply(&repos.scan_history(args(body)?).await?),
-        "find_lockfiles" => reply(&repos.find_lockfiles(args(body)?).await?),
-        "match_pattern" => reply(&repos.match_pattern(args(body)?).await?),
-        "check_secret" => reply(&repos.check_secret(args(body)?).await?),
-        "list_files" => reply(&repos.list_files(args(body)?).await?),
-        // The API's tarball and zipball links, and the site opening them (archive_links.rs).
-        "archive_link" => {
-            let sealer = env.secret("REPOS_KEY").ok().and_then(|key| g1t_secrets::Sealer::new(&key.to_string()));
-            reply(&repos.archive_link(args(body)?, sealer.as_ref()).await?)
-        }
-        "open_archive_token" => {
-            let sealer = env.secret("REPOS_KEY").ok().and_then(|key| g1t_secrets::Sealer::new(&key.to_string()));
-            reply(&repos.open_archive_token(args(body)?, sealer.as_ref()).await?)
-        }
-        "changed_files" => reply(&repos.changed_files(args(body)?).await?),
-        "read_blobs" => reply(&repos.read_blobs(args(body)?).await?),
-        // Services only: what the Composer registry builds packages from.
-        "refs" => reply(&repos.refs_of(args(body)?).await?),
-        "raw_file" => reply(&repos.raw_file(args(body)?).await?),
-        "raw_blobs" => reply(&repos.raw_blobs(args(body)?).await?),
-        "visibility" => {
-            let a: g1t_contracts::repos::VisibilityArgs = args(body)?;
-            reply(&repos.registry.visibility(&a.paths).await?)
-        }
-        "storage" => reply(&repos.registry.storage().await?),
-        "git_operations" => {
-            let a: GitOperationsArgs = args(body)?;
-            reply(&git_ops::totals(&repos.registry.db, &a.month, a.since.as_deref(), a.namespace.as_deref().map(str::to_lowercase).as_deref()).await?)
-        }
-        // Identity, once: who created each repository (members.rs there).
-        "repo_creators" => {
-            let a: AllIdsArgs = args(body)?;
-            let limit = a.limit.clamp(1, 500);
-            let repos = repos.registry.creators_after(a.after.as_deref(), limit).await?;
-            let next = (repos.len() == limit as usize).then(|| repos.last().map(|repo| repo.id.clone())).flatten();
-            reply(&CreatorPage { repos, next })
-        }
-        // Work, once: where deleted repositories' work items came from.
-        "deleted_repos" => {
-            let a: AllIdsArgs = args(body)?;
-            let limit = a.limit.clamp(1, 500);
-            let repos = repos.registry.deleted_after(a.after.as_deref(), limit).await?;
-            let next = (repos.len() == limit as usize).then(|| repos.last().map(|repo| repo.id.clone())).flatten();
-            reply(&g1t_contracts::repos::DeletedRepoPage { repos, next })
-        }
-        "all_ids" => {
-            let a: AllIdsArgs = args(body)?;
-            let limit = a.limit.clamp(1, 500);
-            let ids = repos.registry.ids_after(a.after.as_deref(), limit).await?;
-            let next = (ids.len() == limit as usize).then(|| ids.last().cloned()).flatten();
-            reply(&IdPage { ids, next })
-        }
-        // The raw meters of the git store, for reconciling with Cloudflare
-        // (meters.rs, scripts/ops/gitstore-usage.mjs).
-        "artifacts_usage" => {
-            let a: meters::UsageArgs = args(body)?;
-            reply(&meters::usage(&repos.registry.db, &a).await?)
-        }
-        "operation_mapping" => reply(&meters::read_mapping(&repos.registry.db).await?),
-        // Billing: the workspace each pull request's working copy is counted
-        // for, so Cloudflare's own count of `pulls--<id>` shares out too.
-        "pull_owners" => {
-            #[derive(serde::Deserialize)]
-            struct PullOwnersArgs {
-                pulls: Vec<String>,
+                )
             }
-            let a: PullOwnersArgs = args(body)?;
-            let pulls: Vec<String> = a.pulls.into_iter().take(500).collect();
-            reply(&serde_json::json!({ "owners": meters::pull_owners(&repos.registry.db, &pulls).await? }))
-        }
-        // Services only: which meters are operations, changed without a deploy.
-        "set_operation_mapping" => {
-            let row: meters::MappingRow = args(body)?;
-            meters::set_mapping(&repos.registry.db, &row, &rfc3339(now_ms())).await?;
-            reply(&meters::read_mapping(&repos.registry.db).await?)
-        }
-        // Backups (backups.rs): the runner's sweep claims queued ones, and
-        // each sandbox, through the API, asks for its job and says how it went.
-        "claim_backups" => {
-            let a: g1t_contracts::backups::ClaimBackupsArgs = args(body)?;
-            let blobs = backups::storage(&env);
-            reply(&backups::claim(&repos.registry.db, blobs.as_ref(), &a, now_ms()).await?)
-        }
-        "backup_spec" => match backups::storage(&env) {
-            Some(blobs) => {
-                let a: g1t_contracts::backups::BackupJobArgs = args(body)?;
-                let every = backups::Settings::from_env(&env).full_every;
-                reply(&backups::spec(&repos.registry, &blobs, &repos.store, &a, every, now_ms()).await?)
+            // Identity, once: who created each repository (members.rs there).
+            "repo_creators" => {
+                let a: AllIdsArgs = args(body)?;
+                let limit = a.limit.clamp(1, 500);
+                let repos = repos.registry.creators_after(a.after.as_deref(), limit).await?;
+                let next = (repos.len() == limit as usize).then(|| repos.last().map(|repo| repo.id.clone())).flatten();
+                reply(&CreatorPage { repos, next })
             }
-            None => reply(&backups_off::<bool>()),
-        },
-        "backup_complete" => match backups::storage(&env) {
-            Some(blobs) => reply(&backups::complete(&repos.registry, &blobs, &args(body)?, now_ms()).await?),
-            None => reply(&backups_off::<bool>()),
-        },
-        "backup_fail" => match backups::storage(&env) {
-            Some(blobs) => reply(&backups::fail(&repos.registry.db, &blobs, &args(body)?).await?),
-            None => reply(&backups_off::<bool>()),
-        },
-        // How the git store has been answering, for the status page.
-        "store_health" => {
-            let a: meters::HealthArgs = args(body)?;
-            reply(&meters::health(&repos.registry.db, &a).await?)
+            // Work, once: where deleted repositories' work items came from.
+            "deleted_repos" => {
+                let a: AllIdsArgs = args(body)?;
+                let limit = a.limit.clamp(1, 500);
+                let repos = repos.registry.deleted_after(a.after.as_deref(), limit).await?;
+                let next = (repos.len() == limit as usize).then(|| repos.last().map(|repo| repo.id.clone())).flatten();
+                reply(&g1t_contracts::repos::DeletedRepoPage { repos, next })
+            }
+            "all_ids" => {
+                let a: AllIdsArgs = args(body)?;
+                let limit = a.limit.clamp(1, 500);
+                let ids = repos.registry.ids_after(a.after.as_deref(), limit).await?;
+                let next = (ids.len() == limit as usize).then(|| ids.last().cloned()).flatten();
+                reply(&IdPage { ids, next })
+            }
+            // The raw meters of the git store, for reconciling with Cloudflare
+            // (meters.rs, scripts/ops/gitstore-usage.mjs).
+            "artifacts_usage" => {
+                let a: meters::UsageArgs = args(body)?;
+                reply(&meters::usage(&repos.registry.db, &a).await?)
+            }
+            "operation_mapping" => reply(&meters::read_mapping(&repos.registry.db).await?),
+            // Billing: the workspace each pull request's working copy is counted
+            // for, so Cloudflare's own count of `pulls--<id>` shares out too.
+            "pull_owners" => {
+                #[derive(serde::Deserialize)]
+                struct PullOwnersArgs {
+                    pulls: Vec<String>,
+                }
+                let a: PullOwnersArgs = args(body)?;
+                let pulls: Vec<String> = a.pulls.into_iter().take(500).collect();
+                reply(&serde_json::json!({ "owners": meters::pull_owners(&repos.registry.db, &pulls).await? }))
+            }
+            // Services only: which meters are operations, changed without a deploy.
+            "set_operation_mapping" => {
+                let row: meters::MappingRow = args(body)?;
+                meters::set_mapping(&repos.registry.db, &row, &rfc3339(now_ms())).await?;
+                reply(&meters::read_mapping(&repos.registry.db).await?)
+            }
+            // Backups (backups.rs): the runner's sweep claims queued ones, and
+            // each sandbox, through the API, asks for its job and says how it went.
+            "claim_backups" => {
+                let a: g1t_contracts::backups::ClaimBackupsArgs = args(body)?;
+                let blobs = backups::storage(&env);
+                reply(&backups::claim(&repos.registry.db, blobs.as_ref(), &a, now_ms()).await?)
+            }
+            "backup_spec" => match backups::storage(&env) {
+                Some(blobs) => {
+                    let a: g1t_contracts::backups::BackupJobArgs = args(body)?;
+                    let every = backups::Settings::from_env(&env).full_every;
+                    reply(&backups::spec(&repos.registry, &blobs, &repos.store, &a, every, now_ms()).await?)
+                }
+                None => reply(&backups_off::<bool>()),
+            },
+            "backup_complete" => match backups::storage(&env) {
+                Some(blobs) => reply(&backups::complete(&repos.registry, &blobs, &args(body)?, now_ms()).await?),
+                None => reply(&backups_off::<bool>()),
+            },
+            "backup_fail" => match backups::storage(&env) {
+                Some(blobs) => reply(&backups::fail(&repos.registry.db, &blobs, &args(body)?).await?),
+                None => reply(&backups_off::<bool>()),
+            },
+            // How the git store has been answering, for the status page.
+            "store_health" => {
+                let a: meters::HealthArgs = args(body)?;
+                reply(&meters::health(&repos.registry.db, &a).await?)
+            }
+            // Where repositories may be kept, for a workspace's settings.
+            "storage_options" => reply(&repos.storage_options()),
+            // Services and operators only: how each namespace stands, and
+            // moving a repository between them (namespaces.rs, moves.rs).
+            "namespaces" => reply(&repos.standings().await?),
+            "move_repository" => reply(&repos.move_repository(args(body)?).await?),
+            // Staff only, from sudo: public storage holds that outlived their
+            // write, released only when provably abandoned (storage_holds.rs),
+            // and what the store holds against what g1t counted.
+            "admin_storage_holds" => reply(&repos.admin_storage_holds(args(body)?).await?),
+            "admin_inspect_storage_hold" => reply(&repos.admin_inspect_storage_hold(args(body)?).await?),
+            "admin_release_storage_hold" => reply(&repos.admin_release_storage_hold(args(body)?).await?),
+            "admin_storage_recoveries" => reply(&repos.admin_storage_recoveries(args(body)?).await?),
+            "admin_storage_drift" => reply(&repos.admin_storage_drift(args(body)?).await?),
+            "repository_moves" => {
+                let a: moves::ListMovesArgs = args(body)?;
+                reply(&repos.registry.moves(a.limit.unwrap_or(50)).await?)
+            }
+            _ => Response::error("Unknown method", 404),
         }
-        // Where repositories may be kept, for a workspace's settings.
-        "storage_options" => reply(&repos.storage_options()),
-        // Services and operators only: how each namespace stands, and
-        // moving a repository between them (namespaces.rs, moves.rs).
-        "namespaces" => reply(&repos.standings().await?),
-        "move_repository" => reply(&repos.move_repository(args(body)?).await?),
-        // Staff only, from sudo: public storage holds that outlived their
-        // write, released only when provably abandoned (storage_holds.rs),
-        // and what the store holds against what g1t counted.
-        "admin_storage_holds" => reply(&repos.admin_storage_holds(args(body)?).await?),
-        "admin_inspect_storage_hold" => reply(&repos.admin_inspect_storage_hold(args(body)?).await?),
-        "admin_release_storage_hold" => reply(&repos.admin_release_storage_hold(args(body)?).await?),
-        "admin_storage_recoveries" => reply(&repos.admin_storage_recoveries(args(body)?).await?),
-        "admin_storage_drift" => reply(&repos.admin_storage_drift(args(body)?).await?),
-        "repository_moves" => {
-            let a: moves::ListMovesArgs = args(body)?;
-            reply(&repos.registry.moves(a.limit.unwrap_or(50)).await?)
-        }
-        _ => Response::error("Unknown method", 404),
-    } }
+    }
     .await;
     // The git store is busy: said in words, with when to try again.
     let answered = match answered {
@@ -3449,21 +3158,10 @@ async fn handle_event(event: &Event, env: &Env, registry: &Registry, identity: &
         worker::console_error!("workspace.renamed {} could not be read", event.id);
         return Ok(());
     };
-    let names: HashMap<String, String> = g1t_kit::call(
-        identity,
-        "usernames",
-        &g1t_contracts::identity::UsernamesArgs {
-            ids: vec![renamed.workspace_id.clone()],
-        },
-    )
-    .await?;
-    let current = names
-        .get(&renamed.workspace_id)
-        .cloned()
-        .unwrap_or_else(|| renamed.to.clone());
-    let left = registry
-        .rename_namespace(&renamed.stale_slugs(&current), &current)
-        .await?;
+    let names: HashMap<String, String> =
+        g1t_kit::call(identity, "usernames", &g1t_contracts::identity::UsernamesArgs { ids: vec![renamed.workspace_id.clone()] }).await?;
+    let current = names.get(&renamed.workspace_id).cloned().unwrap_or_else(|| renamed.to.clone());
+    let left = registry.rename_namespace(&renamed.stale_slugs(&current), &current).await?;
     if left > 0 {
         worker::console_error!(
             "{left} repositories stayed under {} or {}: {current} already has repositories of the same names",
@@ -3587,10 +3285,8 @@ mod announced_refs_tests {
     fn past_the_branch_cap_only_the_default_branch_is_announced() {
         let at_cap: Vec<_> = (0..MAX_PUSH_BRANCH_EVENTS).map(|n| pushed(format!("refs/heads/b{n}"))).collect();
         assert_eq!(announced_refs(&at_cap, "main").len(), MAX_PUSH_BRANCH_EVENTS);
-        let over: Vec<_> = (0..=MAX_PUSH_BRANCH_EVENTS)
-            .map(|n| pushed(format!("refs/heads/b{n}")))
-            .chain([pushed("refs/heads/main".into())])
-            .collect();
+        let over: Vec<_> =
+            (0..=MAX_PUSH_BRANCH_EVENTS).map(|n| pushed(format!("refs/heads/b{n}"))).chain([pushed("refs/heads/main".into())]).collect();
         assert_eq!(refs(announced_refs(&over, "main")), ["refs/heads/main"]);
         assert!(announced_refs(&over, "trunk").is_empty());
     }
@@ -3608,7 +3304,10 @@ mod push_about_tests {
         .unwrap();
         PushDone {
             repo,
-            pushed: refs.iter().map(|git_ref| git_http::Pushed { git_ref: (*git_ref).into(), before: None, after: "abc".into(), peeled: None }).collect(),
+            pushed: refs
+                .iter()
+                .map(|git_ref| git_http::Pushed { git_ref: (*git_ref).into(), before: None, after: "abc".into(), peeled: None })
+                .collect(),
             deleted: Vec::new(),
             pack_bytes: 0,
             actor: None,

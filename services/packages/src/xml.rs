@@ -113,9 +113,10 @@ pub fn parse(text: &str) -> Result<Element, String> {
             break;
         };
         if open > 0
-            && let Some(top) = stack.last_mut() {
-                top.text.push_str(&unescape(&rest[..open]));
-            }
+            && let Some(top) = stack.last_mut()
+        {
+            top.text.push_str(&unescape(&rest[..open]));
+        }
         rest = &rest[open..];
         let skip = |rest: &str, end: &str| rest.find(end).map(|at| at + end.len()).ok_or_else(|| "The XML ends early.".to_owned());
         if rest.starts_with("<?") {
