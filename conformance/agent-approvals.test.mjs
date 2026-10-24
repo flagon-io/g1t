@@ -7,7 +7,7 @@ import { test } from "node:test";
 // for approval (services/integrations/src/agent_sessions.rs), run on SQLite
 // against its migrations.
 const source = readFileSync(new URL("../services/integrations/src/agent_sessions.rs", import.meta.url), "utf8");
-const sql = (name) => source.match(new RegExp(`const ${name}: &str = "([\\s\\S]*?)";`))[1];
+const sql = (name) => source.match(new RegExp(`const ${name}: &str =\\s*"([\\s\\S]*?)";`))[1];
 
 function database() {
   const db = new DatabaseSync(":memory:");

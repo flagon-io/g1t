@@ -450,11 +450,7 @@ pub fn waitlist_summary(new: &[Requested], waiting: u32) -> (String, Letter) {
         1 => "Someone asked for access to g1t.".to_owned(),
         n => format!("{n} people asked for access to g1t since the last summary."),
     };
-    let in_all = if waiting as usize > new.len() {
-        format!(" {waiting} requests are waiting in all.")
-    } else {
-        String::new()
-    };
+    let in_all = if waiting as usize > new.len() { format!(" {waiting} requests are waiting in all.") } else { String::new() };
     let mut quotes: Vec<(String, String)> = new
         .iter()
         .take(SUMMARY_LISTS)
@@ -543,10 +539,7 @@ mod tests {
         let many: Vec<Requested> = (0..25).map(|n| Requested { email: format!("p{n}@example.com"), about: None }).collect();
         let (subject, letter) = waitlist_summary(&many, 40);
         assert_eq!(subject, "25 new g1t access requests");
-        assert_eq!(
-            letter.paragraphs[0],
-            "25 people asked for access to g1t since the last summary. 40 requests are waiting in all."
-        );
+        assert_eq!(letter.paragraphs[0], "25 people asked for access to g1t since the last summary. 40 requests are waiting in all.");
         assert_eq!(letter.quotes.len(), SUMMARY_LISTS + 1);
         assert_eq!(letter.quotes[0].1, "(They did not say what they will build.)");
         assert!(letter.quotes.last().unwrap().1.starts_with("5 more"));
