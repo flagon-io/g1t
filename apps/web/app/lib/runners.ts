@@ -14,7 +14,7 @@
  *   name sandbox time by the second, and agent sandbox time);
  *   self-hosted runner time is the workspace's own, at $0.
  */
-import type { AgentRun, MeterLine, OfferedSize, RunnerActivity, UsageReport } from "@g1t/contracts";
+import type { AgentRun, MeterLine, OfferedSize, Runner, RunnerActivity, UsageReport } from "@g1t/contracts";
 import { machineSize, machines, sizesSaid } from "@g1t/contracts/instances";
 
 /** One thing running in one of g1t's sandboxes. */
@@ -175,4 +175,25 @@ export function perMinute(micros: number): string {
 export function sizesLine(sizes: OfferedSize[] | null | undefined): string | null {
   if (!sizes) return null;
   return sizes.length === 0 ? "Takes none of g1t's sizes" : `Takes ${sizesSaid(sizes)}`;
+}
+
+/**
+ * Whether a runner that takes some of g1t's sizes runs those jobs in g1t's machine image, for its
+ * row, with why. Null when it doesn't matter: a runner that takes none of them, or is too old to say
+ * its sizes.
+ */
+export function hostedImageLine(runner: Pick<Runner, "sizes" | "hostedImage">): { text: string; about: string; ready: boolean } | null {
+  if (!runner.sizes?.length) return null;
+  return runner.hostedImage
+    ? {
+        text: "In g1t's machine image",
+        about: "Jobs that ask for one of g1t's machines run here in the same image they get there: Node, Python, Go, Rust and the rest.",
+        ready: true,
+      }
+    : {
+        text: "Without g1t's machine image",
+        about:
+          "It takes none of the jobs that ask for g1t's machines until g1t's machine image is on it. An x64 runner on g1t-runner 0.3.7 or later pulls it by itself, once.",
+        ready: false,
+      };
 }

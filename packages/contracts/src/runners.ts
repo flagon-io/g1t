@@ -54,6 +54,11 @@ export type Runner = {
    * takes those jobs by `cpus` and `memoryMib`.
    */
   sizes?: OfferedSize[] | null;
+  /**
+   * Whether it runs jobs asking for a hosted label in g1t's machine image, as it last said: true once
+   * the image is on it. Null for a runner from before runners said (before 0.3.7), which takes none.
+   */
+  hostedImage?: boolean | null;
 };
 
 /**
