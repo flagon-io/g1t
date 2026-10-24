@@ -1,0 +1,4 @@
+# Wide lines, like the code was written before rustfmt ran; this kept the
+# one-time formatting diff smallest (#353). Stable options only.
+max_width = 140
+use_small_heuristics = "Max"
