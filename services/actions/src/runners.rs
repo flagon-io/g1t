@@ -499,6 +499,7 @@ impl Actions {
             memory_mib: row.memory_mib,
             docker: row.docker.map(|docker| docker != 0),
             sizes: row.sizes(),
+            hosted_image: row.hosted_image.map(|image| image != 0),
         })
     }
 
