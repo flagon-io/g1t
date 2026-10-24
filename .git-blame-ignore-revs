@@ -1,0 +1,5 @@
+# Commits that only reformat; `git blame` skips them with
+# `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
+
+# cargo fmt the whole repository (#353)
+8a750bc56ce7d5b2d86b18fa57c8d3f02e13fd26

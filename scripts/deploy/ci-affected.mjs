@@ -6,7 +6,7 @@
 // own whatever changed.
 //
 //   node scripts/deploy/ci-affected.mjs -p <crate>...
-//   node scripts/deploy/ci-affected.mjs --job desktop|build
+//   node scripts/deploy/ci-affected.mjs --job desktop|rustfmt|build
 //   node scripts/deploy/ci-affected.mjs --tested
 //   node scripts/deploy/ci-affected.mjs --npm
 //
@@ -139,6 +139,12 @@ export const DESKTOP = [
 ];
 
 /**
+ * The rustfmt job's files besides every `.rs` file: what decides how
+ * rustfmt formats (its config and the toolchain), and this workflow's own.
+ */
+export const RUSTFMT = ["rustfmt.toml", ".rustfmt.toml", "rust-toolchain", "rust-toolchain.toml", ".g1t/workflows/ci.yml", "scripts/deploy/ci-affected.mjs"];
+
+/**
  * The npm workspaces the build job builds (`deploy.mjs build --only
  * web,sudo,docs`), and the deploy tool's own files it builds them with.
  */
@@ -147,13 +153,15 @@ export const BUILD_TOOL = ["scripts/deploy.mjs", "scripts/deploy/", "scripts/bui
 
 /**
  * CI's other jobs a pull request may pass without running, and whether a
- * change to `files` needs each: `desktop` its own files (DESKTOP), `build`
+ * change to `files` needs each: `desktop` its own files (DESKTOP), `rustfmt`
+ * any Rust file or its own (RUSTFMT), `build`
  * (the site, sudo and the docs) a change that reaches one of their npm
  * workspaces (npmAffected, through `npm`, the workspace graph) or the
  * deploy tool that builds them.
  */
 export const JOBS = {
   desktop: (files) => files.some((file) => DESKTOP.some((entry) => under(file, entry))),
+  rustfmt: (files) => files.some((file) => file.endsWith(".rs") || RUSTFMT.includes(file)),
   build: (files, npm) => {
     if (files.some((file) => BUILD_TOOL.some((entry) => under(file, entry)))) return true;
     const reached = npmAffected(npm, files);
