@@ -1,40 +1,41 @@
 {
-  "name": "g1t-monorepo",
-  "private": true,
-  "type": "module",
-  "engines": {
-    "node": ">=24"
-  },
-  "workspaces": [
-    "apps/*",
-    "services/*",
-    "packages/*"
-  ],
-  "scripts": {
-    "format": "prettier --write",
-    "format:check": "prettier --check",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "deploy": "npm run deploy -w @g1t/web",
-    "test:deploy": "node --test \"scripts/deploy/*.test.mjs\"",
-    "test:ops": "node --test \"scripts/ops/*.test.mjs\"",
-    "test:conformance": "node --test \"conformance/*.test.mjs\"",
-    "test:agent-readiness": "npm run build -w @g1t/docs && node --test \"scripts/agent-resources.test.mjs\" \"scripts/mcp-readiness.test.mjs\"",
-    "test:release": "node --test \"scripts/cli-homebrew.test.mjs\" \"scripts/desktop-release.test.mjs\" \"scripts/mobile-release.test.mjs\" \"scripts/cli-release.test.mjs\" \"scripts/plugins-release.test.mjs\" \"scripts/runner-release.test.mjs\" \"scripts/hosted-image.test.mjs\""
-  },
-  "devDependencies": {
-    "prettier": "3.6.2",
-    "typescript": "^5.9.3",
-    "wrangler": "^4.146.0"
-  },
-  "overrides": {
-    "basic-ftp": "^6.2.1",
-    "fflate": "^0.7.5",
-    "katex": "^0.19.0",
-    "postcss-selector-parser": "^7.1.6",
-    "query-string": "^9.5.1",
-    "sharp": "^0.35.5",
-    "xcode": {
-      "uuid": "^11.1.1"
+    "name": "g1t-monorepo",
+    "private": true,
+    "type": "module",
+    "engines": {
+        "node": ">=24"
+    },
+    "workspaces": [
+        "apps/*",
+        "services/*",
+        "packages/*"
+    ],
+    "scripts": {
+        "format": "prettier --write",
+        "format:check": "prettier --check",
+        "typecheck": "npm run typecheck --workspaces --if-present",
+        "deploy": "npm run deploy -w @g1t/web",
+        "test:deploy": "node --test \"scripts/deploy/*.test.mjs\"",
+        "test:ops": "node --test \"scripts/ops/*.test.mjs\"",
+        "test:conformance": "node --test \"conformance/*.test.mjs\"",
+        "test:agent-readiness": "npm run build -w @g1t/docs && node --test \"scripts/agent-resources.test.mjs\" \"scripts/mcp-readiness.test.mjs\"",
+        "test:release": "node --test \"scripts/cli-homebrew.test.mjs\" \"scripts/desktop-release.test.mjs\" \"scripts/mobile-release.test.mjs\" \"scripts/cli-release.test.mjs\" \"scripts/plugins-release.test.mjs\" \"scripts/runner-release.test.mjs\" \"scripts/hosted-image.test.mjs\""
+    },
+    "devDependencies": {
+        "prettier": "3.6.2",
+        "typescript": "^5.9.3",
+        "wrangler": "^4.146.0"
+    },
+    "overrides": {
+        "basic-ftp": "^6.2.1",
+        "fflate": "^0.7.5",
+        "katex": "^0.19.0",
+        "postcss-selector-parser": "^7.1.6",
+        "query-string": "^9.5.1",
+        "sharp": "^0.35.5",
+        "xcode": {
+            "uuid": "^11.1.1"
+        },
+        "undici": "8.12.2"
     }
-  }
 }
