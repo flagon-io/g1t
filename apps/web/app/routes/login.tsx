@@ -7,6 +7,7 @@ import { ContinueWithGithub, GithubMark, OrDivider } from "../components/github"
 import { PENDING_COOKIE, TWO_FACTOR_COOKIE, TWO_FACTOR_SECONDS, cookie, readCookie } from "../lib/github";
 import { githubSignIn, githubSignInEnabled } from "../lib/github.server";
 import { ErrorText, Field, Input, SubmitButton } from "../components/ui";
+import { useSignUpCopy } from "../lib/registration";
 import { identity } from "../lib/services.server";
 import { assertSameOrigin, getViewer, nextPath, clientOf, startSession } from "../lib/session.server";
 
@@ -49,6 +50,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Login({ loaderData, actionData }: Route.ComponentProps) {
+  const signUp = useSignUpCopy();
   const registerUrl = loaderData.next === "/" ? "/register" : `/register?next=${encodeURIComponent(loaderData.next)}`;
   return (
     <AuthCard
@@ -58,7 +60,7 @@ export default function Login({ loaderData, actionData }: Route.ComponentProps) 
         <>
           New to g1t?{" "}
           <Link to={registerUrl} className="text-fg underline underline-offset-4">
-            Create an account
+            {signUp.primary === "Sign up" ? "Create an account" : signUp.primary}
           </Link>
         </>
       }

@@ -191,7 +191,7 @@ export default function Invites({ loaderData, actionData }: Route.ComponentProps
     <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
       <PageHeader
         title="Invites"
-        description="Every invite, newest first: invitations into a workspace or onto a repository, and invites to g1t that people send their friends with Invite a friend. Anyone may register; an invite is never needed. Find one here to revoke it, for instance one sent to an address that did not ask for it."
+        description="Every invite, newest first: invitations into a workspace or onto a repository, and invites to g1t that people send their friends with Invite a friend. While g1t.sh is in private preview, a new account needs one; people without one ask on Access requests. Find one here to revoke it, for instance one sent to an address that did not ask for it."
       />
       <div className="mt-5 space-y-3 empty:hidden">
         {done && <Notice tone="ok">{granted ? `${done} @${granted.who} has ${granted.left} invites left.` : done}</Notice>}

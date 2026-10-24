@@ -663,6 +663,15 @@ impl Identity {
         if bound_elsewhere && matches!(decision, Decision::Create(_) | Decision::NeedsUsername(_)) {
             return Ok(Outcome::fail(FailureCode::Conflict, INVITE_FOR_ANOTHER_ADDRESS));
         }
+        // In private preview a new account needs an invite: said now, before
+        // the person chooses a username for an account they cannot make. A
+        // code that turns out not to admit them is refused by create_account.
+        if state.invite_code.is_none()
+            && self.invites_required().await?
+            && matches!(decision, Decision::Create(_) | Decision::NeedsUsername(_))
+        {
+            return Ok(Outcome::fail(FailureCode::Forbidden, crate::invites::PREVIEW_ONLY));
+        }
         Ok(match decision {
             Decision::Refuse(reason) => Outcome::fail(FailureCode::Conflict, reason),
             Decision::Link(user_id) => {
@@ -691,6 +700,8 @@ impl Identity {
                 let invite = state.invite_code.as_deref();
                 match self.create_from_github(&username, &email, github.id, &github.login, Some(&tokens), invite).await? {
                     Outcome::Ok(user) => self.signed_in(user, true, next).await?,
+                    // No account without an invite, whatever the name.
+                    Outcome::Fail(failure) if failure.code == FailureCode::Forbidden => Outcome::Fail(failure),
                     // The name was taken a moment ago: the person chooses another.
                     Outcome::Fail(_) => {
                         let pending = self.hold(&github, "username", Some(&username), &tokens, &next, invite).await?;

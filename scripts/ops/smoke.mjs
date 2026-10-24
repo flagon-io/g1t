@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // After a deploy: the ways in for someone new still work. The pages a
-// visitor lands on load, and the sign-up form reaches identity and
+// visitor lands on load, and the Request access form reaches identity and
 // answers. It writes nothing: the form is sent an address identity
-// refuses before it keeps or counts anything, so no account is made and
-// the sign-up rate limit is not used up.
+// refuses before it keeps or counts anything, so nothing goes on the
+// waitlist and its rate limit is not used up. The pages pass in private
+// preview (g1t.sh) and with registration open alike.
 //
 //   node scripts/ops/smoke.mjs                      # https://g1t.sh
 //   node scripts/ops/smoke.mjs --site http://localhost:5173
@@ -15,18 +16,18 @@ import { pathToFileURL } from "node:url";
 
 /** The checks, in order. `body` is the page's text with tags removed. */
 export const CHECKS = [
-  { name: "Landing page", path: "/", expect: ["Sign up", "Get started"] },
+  { name: "Landing page", path: "/", expect: ["Get started"], expectOne: ["Request access", "Sign up"] },
   { name: "Sign in", path: "/login", expect: ["Sign in"] },
-  { name: "Sign up", path: "/register", expect: ["Create your account", "Create account"] },
+  { name: "Sign up", path: "/register", expect: [], expectOne: ["Request access", "Create account"] },
   { name: "Pricing", path: "/pricing", expect: ["Pricing"] },
   {
-    name: "Sign up refuses a bad form",
+    name: "Request access refuses a bad form",
     path: "/register",
     // Not an address and no Turnstile answer, so nothing is written or
     // counted: with Turnstile on, the site refuses it first (no person
     // solved the check); with it off, identity answers "Enter a valid
-    // email address." before its sign-up rate limit.
-    form: { username: "smoke-test", email: "smoke-test-not-an-address", password: "not-a-real-password" },
+    // email address." before its rate limit.
+    form: { intent: "request-access", email: "smoke-test-not-an-address", about: "" },
     status: 422,
     expect: [],
     expectOne: ["We could not tell that a person sent this form.", "Enter a valid email address."],

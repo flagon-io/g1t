@@ -352,10 +352,13 @@ pub struct CreatedAccessToken {
 /// `register`: creates an account and signs it in.
 /// Returns `Outcome<SignedIn>`.
 ///
-/// Anyone may register. `invite_code` is optional: an invitation sent to
-/// an address without an account (`invite_member`, or a repository
-/// invitation) carries one, and using it applies the invitation once the
-/// address is confirmed.
+/// While registration is open, anyone may register, and `invite_code` is
+/// optional: an invitation sent to an address without an account
+/// (`invite_member`, a repository invitation, Invite a friend, or staff
+/// approving a request on the waitlist) carries one, and using it applies
+/// the invitation once the address is confirmed. While g1t is in private
+/// preview ([`RegistrationMode::Invite`]), a new account needs such a code,
+/// for its own address; without one, people ask with `request_access`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RegisterArgs {
     pub username: String,
@@ -1856,6 +1859,158 @@ pub struct AdminRevokeInviteArgs {
     pub id: String,
     pub staff: String,
 }
+
+// --- Private preview and the waitlist ---
+//
+// Whether anyone may make an account (`open`) or only someone with an
+// invite (`invite`, g1t.sh's private preview) is a switch staff flip in
+// sudo (`admin_set_registration`), kept in identity's database; until
+// anyone has, identity's `REGISTRATION_MODE` var says, and unset is open,
+// as a self-hosted g1t has it. Without an
+// invite, people ask for access: one waitlist entry per address, which
+// staff approve (an invite emailed to the address) or dismiss in sudo.
+// Staff hear about new requests by email (`WAITLIST_NOTIFY_EMAIL`). See
+// services/identity/src/waitlist.rs.
+
+/// Whether anyone may make an account, or only someone with an invite.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RegistrationMode {
+    #[default]
+    Open,
+    Invite,
+}
+
+impl RegistrationMode {
+    /// `invite` (any case, trimmed) is invite-only; anything else is open.
+    pub fn parse(text: Option<&str>) -> RegistrationMode {
+        match text.map(|text| text.trim().to_ascii_lowercase()).as_deref() {
+            Some("invite") => RegistrationMode::Invite,
+            _ => RegistrationMode::Open,
+        }
+    }
+}
+
+// `registration` takes `{}` and returns `RegistrationMode`.
+
+/// Registration as staff see it: the mode in force, and who set it.
+/// Returned by `admin_registration` (takes `{}`) and
+/// `admin_set_registration`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegistrationSetting {
+    pub mode: RegistrationMode,
+    /// What `REGISTRATION_MODE` says: the mode while nobody has set one.
+    pub default_mode: RegistrationMode,
+    /// The staff member who set it; None while the default is in force.
+    pub set_by: Option<String>,
+    /// RFC 3339.
+    pub set_at: Option<String>,
+}
+
+/// `admin_set_registration`: staff open registration or close it to
+/// invites only, at once and without a deploy (the site asks again within
+/// a minute). Recorded in sudo's audit log. Returns `RegistrationSetting`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminSetRegistrationArgs {
+    pub mode: RegistrationMode,
+    /// The staff member, by email.
+    pub staff: String,
+}
+
+/// `request_access`: someone without an invite asks for one. Kept on the
+/// waitlist, one entry per address; asking again updates it. Answers the
+/// same way whether or not the address is already on it, or has an
+/// account. Returns `Outcome<bool>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct RequestAccessArgs {
+    pub email: String,
+    /// What they will build, if they said.
+    #[serde(default)]
+    pub about: String,
+    /// Who is asking, such as the visitor's IP address, for rate limits.
+    #[serde(default)]
+    pub client: Option<String>,
+}
+
+/// The most characters `RequestAccessArgs::about` keeps.
+pub const MAX_WAITLIST_ABOUT: usize = 1000;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WaitlistStatus {
+    Waiting,
+    Invited,
+    Dismissed,
+}
+
+impl WaitlistStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            WaitlistStatus::Waiting => "waiting",
+            WaitlistStatus::Invited => "invited",
+            WaitlistStatus::Dismissed => "dismissed",
+        }
+    }
+}
+
+/// Someone who asked for access.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WaitlistEntry {
+    pub id: String,
+    pub email: String,
+    pub about: Option<String>,
+    pub status: WaitlistStatus,
+    pub invite_id: Option<String>,
+    pub decided_by: Option<String>,
+    /// RFC 3339.
+    pub decided_at: Option<String>,
+    /// What staff wrote when approving; it went in the invite email.
+    #[serde(default)]
+    pub note: Option<String>,
+    /// The account made with the invite, once it was used.
+    #[serde(default)]
+    pub joined_as: Option<String>,
+    /// When they first asked. RFC 3339.
+    pub created_at: String,
+    /// When they last asked. RFC 3339.
+    pub updated_at: String,
+}
+
+/// `admin_waitlist`: the waitlist, oldest waiting first for `waiting`,
+/// otherwise newest first, at most [`ADMIN_INVITES_LIMIT`]. Returns
+/// `Vec<WaitlistEntry>`.
+///
+/// `admin_waitlist_pending` takes `{}` and returns the number of requests
+/// still waiting, for sudo's navigation.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminWaitlistArgs {
+    /// Part of an email address or of what they said.
+    #[serde(default)]
+    pub query: Option<String>,
+    /// Null: every status.
+    #[serde(default)]
+    pub status: Option<WaitlistStatus>,
+}
+
+/// `admin_decide_waitlist`: approving makes an invite to g1t bound to the
+/// address, charged to nobody, and emails it, with `note` if given;
+/// dismissing only marks the entry, and tells nobody. Returns
+/// `Outcome<WaitlistEntry>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminDecideWaitlistArgs {
+    pub id: String,
+    pub approve: bool,
+    /// The staff member, by email.
+    pub staff: String,
+    /// A line for the invite email, up to [`MAX_WAITLIST_NOTE`] characters.
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+/// The most characters an approval's note keeps.
+pub const MAX_WAITLIST_NOTE: usize = 500;
 
 // --- Suspension and blocked email domains, staff only ---
 //

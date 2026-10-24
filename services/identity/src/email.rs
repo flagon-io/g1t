@@ -433,6 +433,90 @@ pub fn repo_invite_wording(from: &str, repo: &str, role: &str, new_account: bool
     (subject, intro)
 }
 
+/// Where staff decide on access requests.
+pub const SUDO_WAITLIST: &str = "https://sudo.g1t.sh/waitlist";
+
+/// The one confirmation someone gets after asking for access.
+pub fn waitlist_confirmation(site: &str) -> (String, Letter) {
+    (
+        "You're on the list for g1t".to_owned(),
+        Letter {
+            paragraphs: vec![
+                "Thanks for asking to try g1t. You're on the list, and we'll email you an invite at this address when there's a place for you.".to_owned(),
+                "g1t is in private preview while we let people in a few at a time, so we can't say exactly when that will be. Someone already on g1t can also invite you sooner.".to_owned(),
+            ],
+            quotes: Vec::new(),
+            code: None,
+            action: None,
+            footer: format!("You're getting this because this address asked for access at {}/register. If that wasn't you, ignore this message; nothing more is sent unless you're invited.", bare(site)),
+        },
+    )
+}
+
+pub async fn send_waitlist_confirmation(env: &Env, to: &str) -> Result<()> {
+    let (subject, letter) = waitlist_confirmation(&site(env));
+    send(env, to, &subject, &letter).await
+}
+
+/// One access request, as a staff summary lists it.
+pub struct Requested {
+    pub email: String,
+    pub about: Option<String>,
+}
+
+/// The most requests one summary lists; the rest are counted.
+pub const SUMMARY_LISTS: usize = 20;
+
+/// The summary staff get of new access requests: every one since the last
+/// summary, and how many are waiting in all.
+pub fn waitlist_summary(new: &[Requested], waiting: u32) -> (String, Letter) {
+    let subject = match new {
+        [one] => format!("g1t access request from {}", one.email),
+        _ => format!("{} new g1t access requests", new.len()),
+    };
+    let asked = match new.len() {
+        1 => "Someone asked for access to g1t.".to_owned(),
+        n => format!("{n} people asked for access to g1t since the last summary."),
+    };
+    let in_all = if waiting as usize > new.len() {
+        format!(" {waiting} requests are waiting in all.")
+    } else {
+        String::new()
+    };
+    let mut quotes: Vec<(String, String)> = new
+        .iter()
+        .take(SUMMARY_LISTS)
+        .map(|request| {
+            (
+                request.email.clone(),
+                request
+                    .about
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|about| !about.is_empty())
+                    .unwrap_or("(They did not say what they will build.)")
+                    .to_owned(),
+            )
+        })
+        .collect();
+    if new.len() > SUMMARY_LISTS {
+        quotes.push(("And more".to_owned(), format!("{} more requests are on the waitlist.", new.len() - SUMMARY_LISTS)));
+    }
+    let letter = Letter {
+        paragraphs: vec![format!("{asked}{in_all}")],
+        quotes,
+        code: None,
+        action: Some(("Review access requests".to_owned(), SUDO_WAITLIST.to_owned())),
+        footer: "Sent to WAITLIST_NOTIFY_EMAIL at most once every 15 minutes. A request that arrives in between is in the next summary, and every request is in sudo straight away.".to_owned(),
+    };
+    (subject, letter)
+}
+
+pub async fn send_waitlist_summary(env: &Env, to: &str, new: &[Requested], waiting: u32) -> Result<()> {
+    let (subject, letter) = waitlist_summary(new, waiting);
+    send(env, to, &subject, &letter).await
+}
+
 /// The subject and first line of an invite email.
 pub fn invite_wording(from: Option<&str>, workspace: Option<&str>, joins_existing_account: bool) -> (String, String) {
     let who = from.unwrap_or("The g1t team");
@@ -460,6 +544,39 @@ pub fn invite_wording(from: Option<&str>, workspace: Option<&str>, joins_existin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_waitlist_confirmation_promises_no_date() {
+        let (subject, letter) = waitlist_confirmation(SITE);
+        assert_eq!(subject, "You're on the list for g1t");
+        let (text, _) = render(&letter, SITE);
+        assert!(text.contains("g1t.sh/register"));
+        assert!(text.contains("we'll email you an invite"));
+        assert!(text.contains("can't say exactly when"));
+        assert!(letter.action.is_none());
+    }
+
+    #[test]
+    fn staff_summaries_list_each_request_and_link_to_sudo() {
+        let one = [Requested { email: "ada@example.com".into(), about: Some("A compiler <for> fun".into()) }];
+        let (subject, letter) = waitlist_summary(&one, 1);
+        assert_eq!(subject, "g1t access request from ada@example.com");
+        assert_eq!(letter.paragraphs, vec!["Someone asked for access to g1t."]);
+        assert_eq!(letter.action.as_ref().unwrap().1, SUDO_WAITLIST);
+        let (_, html) = render(&letter, SITE);
+        assert!(html.contains("A compiler &lt;for&gt; fun"));
+
+        let many: Vec<Requested> = (0..25).map(|n| Requested { email: format!("p{n}@example.com"), about: None }).collect();
+        let (subject, letter) = waitlist_summary(&many, 40);
+        assert_eq!(subject, "25 new g1t access requests");
+        assert_eq!(
+            letter.paragraphs[0],
+            "25 people asked for access to g1t since the last summary. 40 requests are waiting in all."
+        );
+        assert_eq!(letter.quotes.len(), SUMMARY_LISTS + 1);
+        assert_eq!(letter.quotes[0].1, "(They did not say what they will build.)");
+        assert!(letter.quotes.last().unwrap().1.starts_with("5 more"));
+    }
 
     #[test]
     fn html_is_escaped() {

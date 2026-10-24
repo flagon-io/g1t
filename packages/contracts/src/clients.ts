@@ -149,6 +149,8 @@ export function identityClient(service: ServiceBinding): IdentityApi {
       }),
     revokeInvite: (user, id) => call("revoke_invite", { user, id }),
     resendInvite: (user, id) => call("resend_invite", { user, id }),
+    registration: () => call("registration", {}),
+    requestAccess: (email, about, client) => call("request_access", { email, about, client: client ?? null }),
     checkInvite: (code, client, options = {}) =>
       call("check_invite", {
         code,
@@ -309,6 +311,11 @@ export function identityAdminClient(service: ServiceBinding): IdentityAdminApi {
     workspaces: (query) => call("admin_workspaces", { query: query ?? null }),
     workspace: (slug) => call("admin_workspace", { slug }),
     sso: (slug) => call("admin_sso", { slug }),
+    waitlist: (query, status) => call("admin_waitlist", { query: query ?? null, status: status ?? null }),
+    waitlistPending: () => call("admin_waitlist_pending", {}),
+    registration: () => call("admin_registration", {}),
+    setRegistration: (mode, staff) => call("admin_set_registration", { mode, staff }),
+    decideWaitlist: (id, approve, staff, note) => call("admin_decide_waitlist", { id, approve, staff, note: note ?? null }),
     invites: (query, options = {}) => call("admin_invites", { query: query ?? null, to_g1t: options.toG1t ?? false }),
     grantInvites: (username, amount, note, staff) => call("admin_grant_invites", { username, amount, note, staff }),
     revokeInvite: (id, staff) => call("admin_revoke_invite", { id, staff }),

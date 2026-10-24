@@ -42,6 +42,7 @@ import { shortCache } from "./lib/cache.server";
 import { changesShell } from "./lib/shell-changes";
 import { getViewer, viewerMiddleware } from "./lib/session.server";
 import { shortcutOf, workspaceProjects } from "./lib/workspace-projects.server";
+import { registrationMode } from "./lib/registration.server";
 import { addresses } from "./lib/addresses.server";
 import { orElse, part } from "./lib/partial";
 import { RELOADED_KEY, RELOAD_GIVE_UP_MS, clientNavigated, reloadFixes, reloadedBefore } from "./lib/stale-build";
@@ -98,7 +99,9 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
   const cookies = request.headers.get("cookie");
   const chosen = readCookie(cookies, WORKSPACE_COOKIE);
   const dock = readCookie(cookies, DOCK_COOKIE);
-  const [shell, sounds] = await Promise.all([
+  // Whether sign-up takes an invite (g1t.sh's private preview): sign-up
+  // buttons say Request access then. Cached per isolate.
+  const [shell, mode, sounds] = await Promise.all([
     // An account still confirming its address sees only the pages that
     // allows (lib/confirm-gate.ts), in the visitor's frame.
     user && !awaitsConfirmation(user)
@@ -109,6 +112,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
           return bareShell(user, params, chosen);
         })
       : visitorShell(params, context),
+    registrationMode(),
     // Their chat sounds, with the page, so the first live event already
     // respects them (lib/sounds.ts); the defaults when identity is slow.
     user && !awaitsConfirmation(user) ? identity.soundSettings(user).catch(() => null) : Promise.resolve(null),
@@ -145,6 +149,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
     developer: readDeveloperMode(readCookie(cookies, DEVELOPER_COOKIE)),
     // What they hear when chat moves (components/notifications/sounds.tsx).
     sounds,
+    inviteOnly: mode === "invite",
     addresses: addresses(),
   };
 }

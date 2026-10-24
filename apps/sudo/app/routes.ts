@@ -13,6 +13,7 @@ export default [
   route("users/:username", "routes/user.tsx"),
   route("enterprises", "routes/enterprises.tsx"),
   route("invites", "routes/invites.tsx"),
+  route("waitlist", "routes/waitlist.tsx"),
   route("aliases", "routes/aliases.tsx"),
   route("enterprises/new", "routes/new-enterprise.tsx"),
   route("enterprises/:id", "routes/enterprise.tsx"),

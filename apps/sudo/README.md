@@ -184,16 +184,38 @@ roadmap.
   out again; what it wrote shows as `ghost`. Both go in sudo's audit log
   (`account_restored`, `account_purged`), naming the staff member. There
   is no API route for deleting an account; only the site and sudo can.
-- **Invites** (`/invites`): anyone may register on g1t.sh, so there is
-  no waitlist or shared link to manage, and an invite is never needed.
-  The page lists every invite code: those sent with an invitation into a
-  workspace or onto a repository, and invites to g1t that people send
-  their friends with Invite a friend (20 each), on their own tab.
+- **Access requests** (`/waitlist`, under Customers): at the top, the
+  **sign-up switch**: open to everyone, or invite only (private preview),
+  with who last flipped it and when. One button flips it
+  (`admin_set_registration`, kept in identity's `identity_settings`): no
+  deploy, the site follows within a minute, and the change goes in the
+  audit log under flagon-io (`registration_changed`). Until anyone has
+  flipped it, identity's `REGISTRATION_MODE` var says (`invite` on
+  g1t.sh). In private preview a new account, with a password or through
+  GitHub, needs an invite for its own address. People without one ask on
+  the sign-up page, saying what they
+  will build, and wait here: Waiting (oldest first, with its count in the
+  sidebar), Invited, Dismissed or All, searchable by address or what they
+  said (`admin_waitlist`, `admin_waitlist_pending`). **Approve and
+  invite** makes an invite to g1t bound to the address, charged to nobody,
+  and emails it with an optional note (up to 500 characters);
+  **Dismiss** only marks the request and tells nobody
+  (`admin_decide_waitlist`). Each decided row says who decided and when,
+  the note sent, and **Joined as @them** once the invite made an account.
+  Staff hear about new requests by email at identity's
+  `WAITLIST_NOTIFY_EMAIL`, at most one summary every 15 minutes, covering
+  every request since the last. While sign-up is open, the waitlist
+  stays as it is and nothing new waits here.
+- **Invites** (`/invites`): every invite code: those sent with an
+  invitation into a workspace or onto a repository, those approved from
+  Access requests, and invites to g1t that people send their friends with
+  Invite a friend (20 each), on their own tab. In private preview each is
+  a way in.
   Searchable by a code's start, an email or a username; a pending one can
   be revoked (`admin_invites`, `admin_revoke_invite`). The Invites to g1t
   tab also grants a person more of them, or takes some back, with why
-  (`admin_grant_invites`, kept in `invite_grants`). The old waitlist and
-  shared links stay in identity's database, untouched.
+  (`admin_grant_invites`, kept in `invite_grants`). The old shared links
+  stay in identity's database, untouched.
 - **Aliases** (`/aliases`, under Customers): names that lead to a
   workspace, set by staff only; there is no way for a customer to make
   one, and nothing user-facing mentions them. `g1t`, the product's name,

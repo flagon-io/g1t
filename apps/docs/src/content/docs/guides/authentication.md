@@ -5,11 +5,19 @@ description: Creating an account, invitations, email addresses, confirming them,
 
 ## Creating an account
 
-Anyone can make an account at [g1t.sh/register](https://g1t.sh/register),
-with an email address and a password or with **Continue with GitHub**. No
-invite is needed. If someone invited you into a workspace or onto a
-repository, open the link in their invitation instead: it signs you up and
+g1t.sh is in **private preview**: a new account needs an invite. Open the
+link in your invite email, from a friend on g1t, an invitation into a
+workspace or onto a repository, or g1t itself, and make your account there,
+with an email address and a password or with **Continue with GitHub**. It
 takes you to what you were invited to (see [invites](#invites)).
+
+Without an invite, [g1t.sh/register](https://g1t.sh/register) asks for
+access: leave your email address, and what you will build if you like, and
+g1t emails you an invite when there is a place for you. Asking again with
+the same address only updates your request.
+
+A self-hosted g1t lets anyone register, unless identity's
+`REGISTRATION_MODE` is `invite` (see [self-hosting](/guides/self-hosting/)).
 
 Usernames are letters, digits and single hyphens, 1 to 39 characters, not
 starting or ending with a hyphen. They keep the case you type: choose
@@ -64,9 +72,10 @@ your GitHub account, and makes a g1t account the first time. Link or
 unlink GitHub in [Settings → GitHub](https://g1t.sh/settings/github). See
 [GitHub](/guides/github/#sign-in-with-github).
 
-Making an account with GitHub needs no invite. If a friend invited you,
-you can still start from the link in their email: when GitHub has
-confirmed the same address, the account is made with it.
+In the private preview, making an account with GitHub needs an invite like
+any other: start from the link in your invite email. When GitHub has
+confirmed the same address, the account is made with it. A GitHub account
+new to g1t without an invite is turned away, and asked to request access.
 
 With [two-factor authentication](#two-factor-authentication) on, signing in
 with GitHub asks for a code from your app as well.
@@ -137,8 +146,8 @@ Passkeys are not supported yet; they are next.
 
 ## Invites
 
-Anyone can sign up without an invite. Invites are how people already on
-g1t bring someone in:
+While g1t.sh is in private preview, an invite is how a new account is made.
+Invites are how people already on g1t bring someone in:
 
 - [Invite a friend](#invite-a-friend): anyone on g1t invites someone to
   g1t by email address, with no workspace attached;
