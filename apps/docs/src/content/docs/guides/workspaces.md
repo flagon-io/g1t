@@ -452,9 +452,9 @@ Whoever creates a workspace is its owner. Nobody is added to a workspace
 without saying yes: an owner invites people, and each person accepts or
 declines.
 
-Anyone can make a g1t account without an invite, so to bring someone in
-you invite them to the workspace; someone without an account signs up from
-the invitation. To tell a friend about g1t without adding them to a
+To bring someone in, you invite them to the workspace; someone without an
+account signs up from the invitation, which is their way in while g1t.sh is
+in private preview. To tell a friend about g1t without adding them to a
 workspace, use [Invite a friend](/guides/authentication/#invite-a-friend)
 in your account menu instead.
 

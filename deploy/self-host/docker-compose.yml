@@ -51,8 +51,13 @@ services:
       GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
       GITHUB_APP_WEBHOOK_SECRET: ${GITHUB_APP_WEBHOOK_SECRET:-}
       # How many friends each person may invite by email (20 when empty;
-      # 0 turns it off). Anyone may register with or without one.
+      # 0 turns it off).
       INVITES_PER_USER: ${INVITES_PER_USER:-}
+      # open: anyone may register. invite: a new account needs an invite
+      # for its address, as on g1t.sh's private preview, and everyone else
+      # asks for access; WAITLIST_NOTIFY_EMAIL hears about their requests.
+      REGISTRATION_MODE: ${REGISTRATION_MODE:-open}
+      WAITLIST_NOTIFY_EMAIL: ${WAITLIST_NOTIFY_EMAIL:-}
       # Packages' files (container images and the rest), in RustFS below or
       # any S3-compatible store. S3_PUBLIC_ENDPOINT, when clients can reach
       # the store, sends large downloads there directly.

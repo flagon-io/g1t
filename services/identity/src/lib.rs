@@ -841,7 +841,8 @@ impl Identity {
 }
 
 /// Every 15 minutes: deleted workspaces and accounts past their restore
-/// window are purged (deletion.rs, account_deletion.rs).
+/// window are purged (deletion.rs, account_deletion.rs), and staff hear of
+/// access requests still untold.
 #[event(scheduled)]
 async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     let Ok(db) = env.d1("DB") else { return };
@@ -855,6 +856,11 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     }
     if let Err(error) = identity.run_purge_jobs().await {
         worker::console_error!("purge jobs: {error}");
+    }
+    // Access requests that came in since the last summary to staff, when no
+    // later request sent them (invites/waitlist.rs).
+    if let Err(error) = identity.notify_staff_of_requests().await {
+        worker::console_error!("waitlist summary: {error}");
     }
     // Once: creators of repositories made before they got Admin (members.rs).
     if let Err(error) = identity.backfill_creator_grants().await {
@@ -1074,6 +1080,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "revoke_invite" => reply(&identity.revoke_invite(args(body)?).await?),
         "resend_invite" => reply(&identity.resend_invite(args(body)?).await?),
         "check_invite" => reply(&identity.check_invite(args(body)?).await?),
+        // The private preview and its waitlist; see invites/waitlist.rs.
+        "registration" => reply(&identity.registration_mode().await?),
+        "request_access" => reply(&identity.request_access(args(body)?).await?),
         "accept_invite" => reply(&identity.accept_invite(args(body)?).await?),
         "invite_member" => reply(&identity.invite_member(args(body)?).await?),
         "list_invitations" => reply(&identity.list_invitations(args(body)?).await?),
@@ -1132,6 +1141,11 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_workspace" => reply(&identity.admin_workspace(args(body)?).await?),
         "admin_sso" => reply(&identity.admin_sso(args(body)?).await?),
         "admin_invites" => reply(&identity.admin_invites(args(body)?).await?),
+        "admin_waitlist" => reply(&identity.admin_waitlist(args(body)?).await?),
+        "admin_waitlist_pending" => reply(&identity.admin_waitlist_pending().await?),
+        "admin_registration" => reply(&identity.admin_registration().await?),
+        "admin_set_registration" => reply(&identity.admin_set_registration(args(body)?).await?),
+        "admin_decide_waitlist" => reply(&identity.admin_decide_waitlist(args(body)?).await?),
         "admin_revoke_invite" => reply(&identity.admin_revoke_invite(args(body)?).await?),
         "admin_grant_invites" => reply(&identity.admin_grant_invites(args(body)?).await?),
         // Suspending accounts and workspaces, blocking email domains; see suspension.rs.

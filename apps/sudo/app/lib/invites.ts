@@ -1,9 +1,10 @@
 /**
  * The Invites page: every invite, to find and revoke one, with invites to
  * g1t from Invite a friend on their own tab, and more of those for a
- * person. Anyone may register, so there is no waitlist and no shared link
- * to manage; an invite is never needed to sign up. No Workers imports, so
- * it can be tested under Node. Identity checks everything again.
+ * person. While g1t.sh is in private preview a new account needs one of
+ * these; people without one ask on the sign-up page and wait on Access
+ * requests (routes/waitlist.tsx). No Workers imports, so it can be tested
+ * under Node. Identity checks everything again.
  */
 
 /** The page's tabs: every invite, or only invites to g1t (Invite a friend). */

@@ -39,6 +39,9 @@ use crate::{Identity, crypto};
 
 mod friends;
 mod invitations;
+mod waitlist;
+
+pub use waitlist::PREVIEW_ONLY;
 
 /// Crockford base32, as ids use: no i, l, o or u.
 const ALPHABET: &[u8; 32] = b"0123456789abcdefghjkmnpqrstvwxyz";
@@ -670,8 +673,10 @@ impl Identity {
     }
 
     /// Makes an account: the only place one is made. `invite_code` is
-    /// optional; a good one admitting `email` is spent in the same
-    /// transaction as the account is made, and anything else is ignored.
+    /// optional while registration is open, and required in private
+    /// preview (waitlist.rs); a good one admitting `email` is spent in the
+    /// same transaction as the account is made, and anything else is
+    /// ignored.
     /// What the invite gives (a workspace invitation, repository
     /// invitations) is applied once the address is confirmed: at once for
     /// an address GitHub has confirmed or one proven by the invite email's
@@ -686,6 +691,11 @@ impl Identity {
             }
             None => None,
         };
+        // In private preview, only an invite for this address makes an
+        // account (waitlist.rs).
+        if invite.is_none() && self.invites_required().await? {
+            return Ok(Outcome::fail(FailureCode::Forbidden, PREVIEW_ONLY));
+        }
 
         // An address GitHub has confirmed starts confirmed, and so does the
         // address an invite was emailed to, when the link followed was the
@@ -728,8 +738,12 @@ impl Identity {
         let exists =
             self.db.prepare("SELECT id FROM users WHERE id = ?").bind(&[user.id.as_str().into()])?.first::<Id>(None).await?.is_some();
         if !exists {
-            // Another sign-up spent the code first: the account is made
-            // without it, and confirms its address like any other.
+            // Another sign-up spent the code first. In private preview that
+            // leaves no way in; otherwise the account is made without it,
+            // and confirms its address like any other.
+            if self.invites_required().await? {
+                return Ok(Outcome::fail(FailureCode::Forbidden, PREVIEW_ONLY));
+            }
             let user = User { verified: new.verified, ..user.clone() };
             let verified_at = if user.verified { SQL_NOW } else { "NULL" };
             let made = self
@@ -768,6 +782,15 @@ impl Identity {
             }
             None => user,
         };
+        // An account made with an address still waiting for access answers
+        // that request (waitlist.rs).
+        if let Some(email) = self.email_of(&user.id).await? {
+            let by = match &invite {
+                Some(row) => waitlist::invited_by(row.inviter.as_deref(), row.staff.as_deref()),
+                None => format!("@{} (signed up)", user.username),
+            };
+            self.settle_waitlist(&email, invite.as_ref().map(|row| row.id.as_str()), &by).await?;
+        }
         // Nobody is left without a workspace: one of its own, unless its
         // invite brings it into one (invitations.rs).
         self.give_own_workspace(&user, invite.as_ref()).await;
@@ -1012,6 +1035,12 @@ impl Identity {
             },
         )
         .await;
+        // An invite to make an account answers that address's request for
+        // access, if it is waiting (waitlist.rs): no approval needed.
+        if let (Some(email), "account") = (draft.email, draft.kind) {
+            let by = waitlist::invited_by(draft.inviter.map(|user| user.username.as_str()), draft.staff);
+            self.settle_waitlist(email, Some(&id), &by).await?;
+        }
         let Some(row) = self.invite_by_id(&id).await? else {
             return Ok(None);
         };

@@ -59,7 +59,17 @@
   // PROTECTED_ACCOUNTS: accounts nobody can ever delete, by the person or
   // staff, as comma-separated usernames or user ids. g1t, g1t-agent and
   // ghost are protected whatever this says (src/account_deletion.rs).
+  //
+  // REGISTRATION_MODE: the default for whether sign-up is open or takes an
+  // invite (`invite`: g1t.sh's private preview, where everyone else asks
+  // for access). Staff flip it in sudo, on Access requests, with no
+  // deploy; this applies only until they have (src/invites/waitlist.rs).
+  //
+  // WAITLIST_NOTIFY_EMAIL: who hears about new access requests, at most
+  // once every 15 minutes. Empty for nobody.
   "vars": {
+    "REGISTRATION_MODE": "invite",
+    "WAITLIST_NOTIFY_EMAIL": "syntaqx@gmail.com",
     "PROTECTED_WORKSPACES": "flagon-io",
     "PROTECTED_ACCOUNTS": "",
     "GITHUB_APP_CLIENT_ID": "Iv23liZS94alfjIUn1eW",

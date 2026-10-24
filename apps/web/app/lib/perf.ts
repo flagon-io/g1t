@@ -136,7 +136,7 @@ const READS = new Set(
     "compare counts deleted deliveries domains entitlements explore features git_access has_feature " +
     "invoices ledger limit limit_requests links log logs managed_pulls my_repo_invitations " +
     "outside_collaborators overview path_by_id prices profile profile_workspaces public_namespaces " +
-    "read_session readable repo_access resolve resolve_branch resolve_path resolve_slug " +
+    "read_session readable registration repo_access resolve resolve_branch resolve_path resolve_slug " +
     "routes run runner_activity runner_groups runner_settings runners runs search usage_report settings " +
     "statement statement_entries status status_by_id suggest tree usage usage_meters user_by_username " +
     "user_for_session user_for_access_token usernames workflows workspace workspace_invites " +

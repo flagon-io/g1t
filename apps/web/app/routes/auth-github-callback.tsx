@@ -7,6 +7,7 @@ import { PENDING_COOKIE, STATE_COOKIE, TWO_FACTOR_COOKIE, TWO_FACTOR_SECONDS, co
 import { githubSignIn } from "../lib/github.server";
 import { page } from "../lib/meta";
 import { safeNext } from "../lib/next";
+import { useSignUpCopy } from "../lib/registration";
 import { startSession } from "../lib/session.server";
 
 export function meta(args: Route.MetaArgs) {
@@ -61,14 +62,23 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 export default function GithubCallback({ loaderData }: Route.ComponentProps) {
   const error = loaderData?.error;
+  // A GitHub account new to g1t is turned away in private preview, with
+  // identity's reason: the way in is asking for access.
+  const signUp = useSignUpCopy();
   return (
     <AuthCard
       title="Signing in with GitHub"
       subtitle="That did not work"
       footer={
-        <Link to="/login" className="text-fg underline underline-offset-4">
-          Sign in another way
-        </Link>
+        <>
+          <Link to="/login" className="text-fg underline underline-offset-4">
+            Sign in another way
+          </Link>
+          {" · "}
+          <Link to="/register" className="text-fg underline underline-offset-4">
+            {signUp.primary}
+          </Link>
+        </>
       }
     >
       <p className="text-sm text-danger" role="alert">

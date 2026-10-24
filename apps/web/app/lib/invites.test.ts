@@ -87,8 +87,14 @@ test("the Members page filters by role, two-factor, team and words", () => {
   assert.deepEqual(names("?role=owner&team=web"), []);
 });
 
-test("everyone is offered a plain sign-up", () => {
+test("open registration offers a plain sign-up", () => {
   assert.deepEqual(signUpCopy(), { primary: "Sign up", secondary: null });
+  assert.deepEqual(signUpCopy(false), { primary: "Sign up", secondary: null });
+});
+
+test("in private preview the sign-up buttons ask for access", () => {
+  assert.equal(signUpCopy(true).primary, "Request access");
+  assert.match(signUpCopy(true).secondary ?? "", /invite email/);
 });
 
 test("an invite link is on g1t.sh unless told otherwise", () => {

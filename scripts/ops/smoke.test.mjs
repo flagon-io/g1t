@@ -21,10 +21,11 @@ test("a phrase only inside a script does not count", () => {
   assert.equal(verdict(check, 200, `<script>"Create account"</script>`), 'missing "Create account"');
 });
 
-test("the sign-up check sends an address identity refuses before writing or counting", () => {
+test("the Request access check sends an address identity refuses before writing or counting", () => {
   const signUp = CHECKS.find((check) => check.form);
   assert.ok(signUp);
   assert.equal(signUp.path, "/register");
+  assert.equal(signUp.form.intent, "request-access");
   assert.ok(!signUp.form.email.includes("@"), "never a real-looking address, so nothing is kept");
   assert.equal(signUp.status, 422);
   assert.ok(!("cf-turnstile-response" in signUp.form), "never answers the person check");

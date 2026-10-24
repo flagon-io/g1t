@@ -10,6 +10,7 @@ import { PENDING_COOKIE, cookie, readCookie } from "../lib/github";
 import { githubSignIn } from "../lib/github.server";
 import { page } from "../lib/meta";
 import { safeNext } from "../lib/next";
+import { useSignUpCopy } from "../lib/registration";
 import { assertSameOrigin, startSession } from "../lib/session.server";
 
 export function meta(args: Route.MetaArgs) {
@@ -35,13 +36,16 @@ export async function action({ request }: Route.ActionArgs) {
   // Where to go afterwards, read before the pending sign-in is used up.
   const found = await githubSignIn.pending(pending).catch(() => null);
   const result = await githubSignIn.signUp(pending, String(form.get("username") ?? ""));
-  if (!result.ok) return { error: result.error.message };
+  // Refused (in private preview, an account needs an invite): the page
+  // says why and points at Request access.
+  if (!result.ok) return { error: result.error.message, refused: result.error.code === "forbidden" };
   const headers = new Headers({ "set-cookie": startSession(result.value.sessionToken) });
   headers.append("set-cookie", cookie(PENDING_COOKIE, "", 0));
   throw redirect(safeNext(found?.ok ? found.value.next : "/"), { headers });
 }
 
 export default function GithubUsername({ loaderData, actionData }: Route.ComponentProps) {
+  const signUp = useSignUpCopy();
   return (
     <AuthCard
       title="Create your account"
@@ -72,6 +76,13 @@ export default function GithubUsername({ loaderData, actionData }: Route.Compone
           />
         </Field>
         <ErrorText>{actionData?.error}</ErrorText>
+        {actionData?.refused && (
+          <p className="text-sm">
+            <Link to="/register" className="text-fg underline underline-offset-4">
+              {signUp.primary}
+            </Link>
+          </p>
+        )}
         <div className="pt-2 *:w-full">
           <SubmitButton pending="Creating account…">Create account</SubmitButton>
         </div>
