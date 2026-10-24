@@ -13,8 +13,8 @@
 //! See `g1t_contracts::guardrails` for the rules and how levels merge.
 
 use g1t_contracts::access::{self, Capability};
-use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface};
 use g1t_contracts::agents::RunStatus;
+use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface};
 use g1t_contracts::guardrails::*;
 use g1t_contracts::repos::{Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
@@ -46,9 +46,8 @@ pub(crate) const DELETED: &[&str] = &[
 /// A repository transferred: its own guardrails follow it to the new
 /// workspace (see `g1t_kit::transfer`; `?3` the workspace now, `?4` the one
 /// before, `?5` the repository's id).
-pub(crate) const TRANSFERRED: &[&str] = &[
-    "UPDATE guardrails SET workspace = ?3 WHERE scope <> 'workspace' AND scope_key = ?5 AND workspace = ?4",
-];
+pub(crate) const TRANSFERRED: &[&str] =
+    &["UPDATE guardrails SET workspace = ?3 WHERE scope <> 'workspace' AND scope_key = ?5 AND workspace = ?4"];
 
 #[derive(Deserialize)]
 struct SettingsRow {
@@ -117,10 +116,7 @@ impl Work {
         let workspace = a.workspace.to_lowercase();
         let member = a.viewer.as_ref().is_some_and(|viewer| viewer.is_member(&workspace));
         if !member && a.repo.is_none() {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Guardrails are for members of the workspace.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Guardrails are for members of the workspace."));
         }
         let repo = match &a.repo {
             Some(path) => match self.guarded_repo(path, &a.viewer, &workspace).await? {
@@ -131,15 +127,8 @@ impl Work {
         };
         // Members see them; so does anyone else who may change the
         // project's, such as an outside collaborator with Admin.
-        if !member
-            && !repo
-                .as_ref()
-                .is_some_and(|repo| access::can(a.viewer.as_ref(), repo, Capability::ManageProtection))
-        {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Guardrails are for members of the workspace.",
-            ));
+        if !member && !repo.as_ref().is_some_and(|repo| access::can(a.viewer.as_ref(), repo, Capability::ManageProtection)) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Guardrails are for members of the workspace."));
         }
         Ok(Outcome::Ok(self.guardrails_view(&workspace, repo.as_ref()).await?))
     }
@@ -163,10 +152,7 @@ impl Work {
             };
         if !allowed {
             let message = match &repo {
-                Some(repo) => access::needs(
-                    Capability::ManageProtection,
-                    &format!("{}/{}", repo.namespace, repo.name),
-                ),
+                Some(repo) => access::needs(Capability::ManageProtection, &format!("{}/{}", repo.namespace, repo.name)),
                 None => "Only owners of the workspace can change its guardrails.".to_owned(),
             };
             return Ok(Outcome::fail(FailureCode::Forbidden, message));
@@ -261,8 +247,7 @@ impl Work {
         let Some(id) = id else {
             return Ok(a.repo.clone());
         };
-        let current: Option<RepoPath> =
-            g1t_kit::call(&self.repos, "path_by_id", &g1t_contracts::repos::PathByIdArgs { id }).await?;
+        let current: Option<RepoPath> = g1t_kit::call(&self.repos, "path_by_id", &g1t_contracts::repos::PathByIdArgs { id }).await?;
         Ok(current.unwrap_or_else(|| a.repo.clone()))
     }
 
@@ -297,9 +282,7 @@ impl Work {
             .bind(&[
                 halt.as_str().into(),
                 said.as_str().into(),
-                cost_usd
-                    .filter(|cost| cost.is_finite() && *cost >= 0.0)
-                    .map_or(JsValue::NULL, JsValue::from),
+                cost_usd.filter(|cost| cost.is_finite() && *cost >= 0.0).map_or(JsValue::NULL, JsValue::from),
                 now.as_str().into(),
                 run_id.into(),
             ])?
@@ -342,8 +325,7 @@ fn guardrails_change(before: &GuardrailSettings, after: &GuardrailSettings) -> S
 /// The pull request id of a pull request's working copy
 /// (`pulls/<pull id>`, made by repos `fork_for_pull`), if `path` is one.
 fn working_copy_of(path: &RepoPath) -> Option<String> {
-    (path.namespace.eq_ignore_ascii_case(WORKING_COPIES) && !path.name.is_empty())
-        .then(|| path.name.to_lowercase())
+    (path.namespace.eq_ignore_ascii_case(WORKING_COPIES) && !path.name.is_empty()).then(|| path.name.to_lowercase())
 }
 
 /// Where repos keeps every pull request's working copy.
@@ -352,14 +334,7 @@ const WORKING_COPIES: &str = "pulls";
 /// A principal that can read any repository of `workspace`, for the
 /// runner's lookups.
 fn member_of_service(workspace: &str) -> Viewer {
-    member_of(
-        &User {
-            id: "svc_runner".to_owned(),
-            username: "g1t".to_owned(),
-            ..User::default()
-        },
-        workspace,
-    )
+    member_of(&User { id: "svc_runner".to_owned(), username: "g1t".to_owned(), ..User::default() }, workspace)
 }
 
 #[cfg(test)]
@@ -367,18 +342,12 @@ mod tests {
     use super::*;
 
     fn path(namespace: &str, name: &str) -> RepoPath {
-        RepoPath {
-            namespace: namespace.to_owned(),
-            name: name.to_owned(),
-        }
+        RepoPath { namespace: namespace.to_owned(), name: name.to_owned() }
     }
 
     #[test]
     fn a_working_copy_names_its_pull_request() {
-        assert_eq!(
-            working_copy_of(&path("pulls", "pr_01m45bd1b2e359sayh78w977kv")).as_deref(),
-            Some("pr_01m45bd1b2e359sayh78w977kv")
-        );
+        assert_eq!(working_copy_of(&path("pulls", "pr_01m45bd1b2e359sayh78w977kv")).as_deref(), Some("pr_01m45bd1b2e359sayh78w977kv"));
         assert_eq!(working_copy_of(&path("Pulls", "PR_7")).as_deref(), Some("pr_7"));
         assert_eq!(working_copy_of(&path("flagon-io", "automation-lab")), None);
         assert_eq!(working_copy_of(&path("pulls", "")), None);
@@ -386,13 +355,10 @@ mod tests {
 
     #[test]
     fn run_guardrails_take_an_optional_repo_id() {
-        let old: RunGuardrailsArgs =
-            serde_json::from_str(r#"{"repo":{"namespace":"pulls","name":"pr_1"}}"#).unwrap();
+        let old: RunGuardrailsArgs = serde_json::from_str(r#"{"repo":{"namespace":"pulls","name":"pr_1"}}"#).unwrap();
         assert!(old.repo_id.is_none());
-        let by_id: RunGuardrailsArgs = serde_json::from_str(
-            r#"{"repo":{"namespace":"syntaqx","name":"automation-lab"},"repo_id":"rep_1"}"#,
-        )
-        .unwrap();
+        let by_id: RunGuardrailsArgs =
+            serde_json::from_str(r#"{"repo":{"namespace":"syntaqx","name":"automation-lab"},"repo_id":"rep_1"}"#).unwrap();
         assert_eq!(by_id.repo_id.as_deref(), Some("rep_1"));
     }
 
@@ -432,11 +398,8 @@ mod tests {
 
     #[test]
     fn a_corrupt_level_reads_as_inheriting_everything() {
-        let row = SettingsRow {
-            settings: "not json".to_owned(),
-            updated_by: "ada".to_owned(),
-            updated_at: "2026-10-04T00:00:00Z".to_owned(),
-        };
+        let row =
+            SettingsRow { settings: "not json".to_owned(), updated_by: "ada".to_owned(), updated_at: "2026-10-04T00:00:00Z".to_owned() };
         let settings = GuardrailSettings::from(row);
         assert!(settings.minutes.is_empty());
     }

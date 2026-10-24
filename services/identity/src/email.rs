@@ -103,10 +103,7 @@ pub fn render(letter: &Letter, site: &str) -> (String, String) {
     }
     text.push_str(&letter.footer);
     text.push('\n');
-    html.push_str(&format!(
-        "<p style=\"font-size:13px;line-height:1.6;color:#6e6a5e\">{}</p></div>",
-        escape(&letter.footer)
-    ));
+    html.push_str(&format!("<p style=\"font-size:13px;line-height:1.6;color:#6e6a5e\">{}</p></div>", escape(&letter.footer)));
     (text, html)
 }
 
@@ -114,28 +111,14 @@ pub fn render(letter: &Letter, site: &str) -> (String, String) {
 pub async fn send(env: &Env, to: &str, subject: &str, letter: &Letter) -> Result<()> {
     let (text, html) = render(letter, &site(env));
     let from = from(env);
-    let message = Message {
-        to,
-        from: &from,
-        subject,
-        text,
-        html,
-    };
+    let message = Message { to, from: &from, subject, text, html };
     let binding = js::binding(env, "EMAIL")?;
     js::call(&binding, "send", &[js::to_js(&message)?]).await?;
     Ok(())
 }
 
 /// A short message with one link to follow.
-pub async fn send_link(
-    env: &Env,
-    to: &str,
-    subject: &str,
-    intro: &str,
-    action: &str,
-    link: &str,
-    footer: &str,
-) -> Result<()> {
+pub async fn send_link(env: &Env, to: &str, subject: &str, intro: &str, action: &str, link: &str, footer: &str) -> Result<()> {
     let letter = Letter {
         paragraphs: vec![intro.to_owned()],
         quotes: Vec::new(),
@@ -195,9 +178,7 @@ pub fn confirmation_letter(confirming: Confirming, username: &str, code: &str, l
             then: "Or skip the code and confirm with this link instead. Either one works; you need only one.".to_owned(),
         }),
         action: Some(("Confirm email".to_owned(), link.to_owned())),
-        footer: format!(
-            "The code and the link work for {minutes} minutes, and only once. Asking for a new email ends them both. {ignore}"
-        ),
+        footer: format!("The code and the link work for {minutes} minutes, and only once. Asking for a new email ends them both. {ignore}"),
     };
     (format!("{code} is your g1t confirmation code"), letter)
 }
@@ -224,10 +205,7 @@ pub async fn send_password_reset(env: &Env, to: &str, username: &str, token: &st
 
 /// What a security notice says: one sentence about what changed.
 pub fn security_wording(username: &str, change: &str) -> (String, String) {
-    (
-        format!("Security notice for your g1t account {username}"),
-        format!("{change}. This is about your g1t account {username}."),
-    )
+    (format!("Security notice for your g1t account {username}"), format!("{change}. This is about your g1t account {username}."))
 }
 
 /// Tells an account's addresses that something about its security changed.
@@ -271,9 +249,7 @@ pub async fn send_account_deleted(env: &Env, to: &str, username: &str, by_staff:
         &intro,
         "Contact support",
         &format!("{}/support", site(env)),
-        &format!(
-            "If you did not mean to delete it, or did not delete it, write to support within {days} days and g1t can restore it."
-        ),
+        &format!("If you did not mean to delete it, or did not delete it, write to support within {days} days and g1t can restore it."),
     )
     .await
 }
@@ -400,11 +376,7 @@ fn notified_because(reason: g1t_contracts::inbox::Reason) -> &'static str {
 pub fn notification_letter(a: &g1t_contracts::inbox::NotifyByEmailArgs, site: &str) -> Letter {
     let path = if a.path.starts_with('/') { a.path.clone() } else { format!("/{}", a.path) };
     Letter {
-        paragraphs: [a.subject.trim(), a.intro.trim()]
-            .into_iter()
-            .filter(|line| !line.is_empty())
-            .map(str::to_owned)
-            .collect(),
+        paragraphs: [a.subject.trim(), a.intro.trim()].into_iter().filter(|line| !line.is_empty()).map(str::to_owned).collect(),
         quotes: a.quote.iter().cloned().collect(),
         code: None,
         action: Some(("Open on g1t".to_owned(), format!("{site}{path}"))),
@@ -452,7 +424,9 @@ pub fn invite_wording(from: Option<&str>, workspace: Option<&str>, joins_existin
                 Some(from) => format!("{from} invited you to g1t"),
                 None => "Your invite to g1t".to_owned(),
             },
-            format!("{who} invited you to g1t, where people and agents ship software together. The link opens sign-up with this address filled in and confirmed, so you can start in a minute. It does not add you to anyone's workspace: your account starts with a workspace of its own."),
+            format!(
+                "{who} invited you to g1t, where people and agents ship software together. The link opens sign-up with this address filled in and confirmed, so you can start in a minute. It does not add you to anyone's workspace: your account starts with a workspace of its own."
+            ),
         ),
     }
 }
@@ -463,10 +437,7 @@ mod tests {
 
     #[test]
     fn html_is_escaped() {
-        assert_eq!(
-            escape("<a href=\"x\">Tom & Jerry's</a>"),
-            "&lt;a href=&quot;x&quot;&gt;Tom &amp; Jerry&#39;s&lt;/a&gt;"
-        );
+        assert_eq!(escape("<a href=\"x\">Tom & Jerry's</a>"), "&lt;a href=&quot;x&quot;&gt;Tom &amp; Jerry&#39;s&lt;/a&gt;");
         assert_eq!(escape("https://g1t.sh/verify?token=ab12"), "https://g1t.sh/verify?token=ab12");
     }
 
@@ -588,31 +559,40 @@ mod tests {
             let (_, html) = render(letter, SITE);
             std::fs::write(
                 format!("{dir}/{name}.html"),
-                format!("<!doctype html><meta charset=utf-8><title>{}</title><body style=\"margin:0;background:#fff\">{html}", escape(subject)),
+                format!(
+                    "<!doctype html><meta charset=utf-8><title>{}</title><body style=\"margin:0;background:#fff\">{html}",
+                    escape(subject)
+                ),
             )
             .unwrap();
         };
-        let (subject, letter) = invite_letter(&InviteEmail {
-            to: "margaret@example.com",
-            from: Some("Chase Pierce"),
-            workspace: Some("Flagon, Inc."),
-            joins_existing_account: false,
-            code: "g1t-k7m2-q9xd-4hpw-abcd-0123-4567-89ef-ghjk",
-            proof: None,
-            days: 30,
-            note: None,
-        }, SITE);
+        let (subject, letter) = invite_letter(
+            &InviteEmail {
+                to: "margaret@example.com",
+                from: Some("Chase Pierce"),
+                workspace: Some("Flagon, Inc."),
+                joins_existing_account: false,
+                code: "g1t-k7m2-q9xd-4hpw-abcd-0123-4567-89ef-ghjk",
+                proof: None,
+                days: 30,
+                note: None,
+            },
+            SITE,
+        );
         page("workspace-invite", &subject, &letter);
-        let (subject, letter) = invite_letter(&InviteEmail {
-            to: "ada@example.com",
-            from: None,
-            workspace: None,
-            joins_existing_account: false,
-            code: "g1t-k7m2-q9xd-4hpw-abcd-0123-4567-89ef-ghjk",
-            proof: None,
-            days: 30,
-            note: Some("We would love to see the compiler."),
-        }, SITE);
+        let (subject, letter) = invite_letter(
+            &InviteEmail {
+                to: "ada@example.com",
+                from: None,
+                workspace: None,
+                joins_existing_account: false,
+                code: "g1t-k7m2-q9xd-4hpw-abcd-0123-4567-89ef-ghjk",
+                proof: None,
+                days: 30,
+                note: Some("We would love to see the compiler."),
+            },
+            SITE,
+        );
         page("staff-invite", &subject, &letter);
         let (subject, letter) =
             confirmation_letter(Confirming::NewAccount, "ada", "482913", "https://g1t.sh/verify?token=4f9c2a7e0b13d5c8");

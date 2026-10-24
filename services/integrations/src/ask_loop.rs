@@ -14,11 +14,11 @@
 use std::collections::VecDeque;
 
 use futures_util::StreamExt;
-use g1t_contracts::identity::RevokeAskTokenArgs;
 use g1t_contracts::ai::{
-    ASK_MAX_TOOL_CALLS, ASK_MAX_TOOL_RESULT_CHARS, ASK_MAX_TOOL_ROUNDS, ASK_MAX_TOOL_SECONDS, ASK_MAX_TOOL_TOTAL_CHARS,
-    AskEvent, AskMessage, AskToolStatus, AiConfig, AiProvider,
+    ASK_MAX_TOOL_CALLS, ASK_MAX_TOOL_RESULT_CHARS, ASK_MAX_TOOL_ROUNDS, ASK_MAX_TOOL_SECONDS, ASK_MAX_TOOL_TOTAL_CHARS, AiConfig,
+    AiProvider, AskEvent, AskMessage, AskToolStatus,
 };
+use g1t_contracts::identity::RevokeAskTokenArgs;
 use serde_json::Value;
 use worker::{ByteStream, Fetcher, Method};
 
@@ -28,7 +28,8 @@ use crate::http;
 
 /// What the model is told when a call is not run because the answer used
 /// what it may.
-const SPENT: &str = "Not run: this answer has used the tool calls it may make. Answer now with what you have read, and say what you could not check.";
+const SPENT: &str =
+    "Not run: this answer has used the tool calls it may make. Answer now with what you have read, and say what you could not check.";
 
 /// What the model is told once a session is proposed.
 const PROPOSED: &str = "Proposed. The person now sees a card under your answer to start this session on their workspace's Anthropic account or copy a Claude Code command for it; nothing has started. Don't ask them to confirm in words: say in a sentence what the session will do.";
@@ -117,9 +118,16 @@ pub struct Answering {
 }
 
 enum Phase {
-    Streaming { upstream: ByteStream, round: Round },
+    Streaming {
+        upstream: ByteStream,
+        round: Round,
+    },
     /// The model asked for tools: their `running` lines have gone; run them.
-    Calling { text: String, calls: Vec<Call>, ids: Vec<String> },
+    Calling {
+        text: String,
+        calls: Vec<Call>,
+        ids: Vec<String>,
+    },
     /// Ask the provider again, with the round's results.
     Asking,
     Finished,
@@ -338,7 +346,13 @@ impl Answering {
                     (AskEvent::Tool { link: Some(link), label, .. }, true) => Some((link.clone(), label.clone())),
                     _ => None,
                 };
-                self.sources.read(&self.site, &call.name, &call.input, &text, direct.as_ref().map(|(url, title)| (url.as_str(), title.as_str())));
+                self.sources.read(
+                    &self.site,
+                    &call.name,
+                    &call.input,
+                    &text,
+                    direct.as_ref().map(|(url, title)| (url.as_str(), title.as_str())),
+                );
             }
             self.out.push_back(ask::line(&event));
             // What the model is given: trimmed to fit, within what the

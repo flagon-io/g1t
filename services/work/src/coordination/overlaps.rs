@@ -60,11 +60,11 @@ impl Work {
         let mut statements = Vec::new();
         for other in &cleared {
             let (low, high) = pair(pull.number, *other);
-            statements.push(
-                self.db
-                    .prepare("DELETE FROM overlap_pairs WHERE repo_id = ? AND low = ? AND high = ?")
-                    .bind(&[pull.repo_id.as_str().into(), low.into(), high.into()])?,
-            );
+            statements.push(self.db.prepare("DELETE FROM overlap_pairs WHERE repo_id = ? AND low = ? AND high = ?").bind(&[
+                pull.repo_id.as_str().into(),
+                low.into(),
+                high.into(),
+            ])?);
         }
         // Each pair is noticed, and each side told, in one change.
         let guard = "EXISTS (SELECT 1 FROM overlap_pairs WHERE repo_id = ?7 AND low = ?8 AND high = ?9 AND noticed_at = ?10)";

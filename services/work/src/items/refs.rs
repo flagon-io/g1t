@@ -161,12 +161,9 @@ impl Work {
                     }
                 }
                 Named::PullThere(repo_id) => {
-                    let readable: Vec<Repo> = g1t_kit::call(
-                        &self.repos,
-                        "readable",
-                        &ReadableArgs { ids: vec![repo_id.clone()], viewer: a.viewer.clone() },
-                    )
-                    .await?;
+                    let readable: Vec<Repo> =
+                        g1t_kit::call(&self.repos, "readable", &ReadableArgs { ids: vec![repo_id.clone()], viewer: a.viewer.clone() })
+                            .await?;
                     return Ok(match readable.first() {
                         Some(other) => RefTarget::Pull { repo: path_of(other), number: a.number },
                         None => RefTarget::None,
@@ -282,11 +279,8 @@ impl Work {
         let found = |id: &String| held.iter().find(|held| held.item.id == *id);
         // Its own work item first, whoever may see it: the pull request
         // was made for it.
-        let mut closing: Vec<(String, u32)> = own
-            .map(str::to_owned)
-            .into_iter()
-            .filter_map(|id| found(&id).map(|held| (id, held.item.number)))
-            .collect();
+        let mut closing: Vec<(String, u32)> =
+            own.map(str::to_owned).into_iter().filter_map(|id| found(&id).map(|held| (id, held.item.number))).collect();
         for id in &closes {
             if let Some(held) = found(id).filter(|held| admits(held, who, true))
                 && !closing.iter().any(|(known, _)| known == id)

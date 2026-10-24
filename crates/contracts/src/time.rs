@@ -22,16 +22,11 @@ pub fn rfc3339(ms: u64) -> String {
     let z = days as i64 + 719_468;
     let era = z.div_euclid(146_097);
     let day_of_era = z.rem_euclid(146_097);
-    let year_of_era =
-        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let year_of_era = (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
     let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
     let shifted_month = (5 * day_of_year + 2) / 153;
     let day = day_of_year - (153 * shifted_month + 2) / 5 + 1;
-    let month = if shifted_month < 10 {
-        shifted_month + 3
-    } else {
-        shifted_month - 9
-    };
+    let month = if shifted_month < 10 { shifted_month + 3 } else { shifted_month - 9 };
     let year = year_of_era + era * 400 + i64::from(month <= 2);
 
     format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z")
@@ -90,10 +85,7 @@ mod tests {
 
     #[test]
     fn later_times_sort_later_as_text() {
-        let times: Vec<String> = [0, 999, 1000, 86_399_999, 86_400_000, 1_790_918_179_123]
-            .into_iter()
-            .map(rfc3339)
-            .collect();
+        let times: Vec<String> = [0, 999, 1000, 86_399_999, 86_400_000, 1_790_918_179_123].into_iter().map(rfc3339).collect();
         assert!(times.windows(2).all(|pair| pair[0] < pair[1]));
     }
 }

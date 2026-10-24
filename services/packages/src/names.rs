@@ -82,14 +82,9 @@ pub fn parse_name(full: &str) -> Result<ImageName, String> {
         return Err(format!("{workspace} is not a workspace's name."));
     }
     if name.split('/').any(|part| !valid_component(part)) {
-        return Err(format!(
-            "{full} is not a valid image name: lowercase letters and digits, separated by `.`, `_`, `__`, `-` or `/`."
-        ));
+        return Err(format!("{full} is not a valid image name: lowercase letters and digits, separated by `.`, `_`, `__`, `-` or `/`."));
     }
-    Ok(ImageName {
-        workspace: workspace.to_owned(),
-        name: name.to_owned(),
-    })
+    Ok(ImageName { workspace: workspace.to_owned(), name: name.to_owned() })
 }
 
 /// A tag's shape: a letter, digit or `_`, then up to 127 of those, `.` and `-`.
@@ -98,9 +93,7 @@ pub fn valid_tag(tag: &str) -> bool {
     !bytes.is_empty()
         && bytes.len() <= MAX_TAG
         && (bytes[0].is_ascii_alphanumeric() || bytes[0] == b'_')
-        && bytes
-            .iter()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'))
+        && bytes.iter().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'))
 }
 
 /// What a manifest is asked for by.
@@ -129,13 +122,29 @@ pub enum Route {
     Base,
     /// `/v2/token`: a bearer token for the scopes asked for.
     Token,
-    Manifest { name: String, reference: String },
-    Blob { name: String, digest: String },
+    Manifest {
+        name: String,
+        reference: String,
+    },
+    Blob {
+        name: String,
+        digest: String,
+    },
     /// `/v2/<name>/blobs/uploads/`: starting an upload.
-    Uploads { name: String },
-    Upload { name: String, id: String },
-    Tags { name: String },
-    Referrers { name: String, digest: String },
+    Uploads {
+        name: String,
+    },
+    Upload {
+        name: String,
+        id: String,
+    },
+    Tags {
+        name: String,
+    },
+    Referrers {
+        name: String,
+        digest: String,
+    },
 }
 
 /// Which endpoint a path is, if it is one.
@@ -222,20 +231,11 @@ mod tests {
         assert_eq!(route("/v2/"), Some(Route::Base));
         assert_eq!(route("/v2"), Some(Route::Base));
         assert_eq!(route("/v2/token"), Some(Route::Token));
-        assert_eq!(
-            route("/v2/acme/web/manifests/latest"),
-            Some(Route::Manifest { name: "acme/web".into(), reference: "latest".into() })
-        );
-        assert_eq!(
-            route("/v2/acme/web/blobs/sha256:abc"),
-            Some(Route::Blob { name: "acme/web".into(), digest: "sha256:abc".into() })
-        );
+        assert_eq!(route("/v2/acme/web/manifests/latest"), Some(Route::Manifest { name: "acme/web".into(), reference: "latest".into() }));
+        assert_eq!(route("/v2/acme/web/blobs/sha256:abc"), Some(Route::Blob { name: "acme/web".into(), digest: "sha256:abc".into() }));
         assert_eq!(route("/v2/acme/web/blobs/uploads/"), Some(Route::Uploads { name: "acme/web".into() }));
         assert_eq!(route("/v2/acme/web/blobs/uploads"), Some(Route::Uploads { name: "acme/web".into() }));
-        assert_eq!(
-            route("/v2/acme/web/blobs/uploads/upl_1"),
-            Some(Route::Upload { name: "acme/web".into(), id: "upl_1".into() })
-        );
+        assert_eq!(route("/v2/acme/web/blobs/uploads/upl_1"), Some(Route::Upload { name: "acme/web".into(), id: "upl_1".into() }));
         assert_eq!(route("/v2/acme/a/b/tags/list"), Some(Route::Tags { name: "acme/a/b".into() }));
         assert_eq!(
             route("/v2/acme/web/referrers/sha256:abc"),

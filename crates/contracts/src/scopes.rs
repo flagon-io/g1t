@@ -376,10 +376,7 @@ impl Scope {
 
     pub fn resource(self) -> Resource {
         let name = self.as_str().split_once(':').map_or("", |(resource, _)| resource);
-        Resource::ALL
-            .into_iter()
-            .find(|resource| resource.as_str() == name)
-            .unwrap_or(Resource::Account)
+        Resource::ALL.into_iter().find(|resource| resource.as_str() == name).unwrap_or(Resource::Account)
     }
 
     pub fn level(self) -> Level {
@@ -408,14 +405,24 @@ impl Scope {
     /// What it lets a token do, in plain words.
     pub fn describe(self) -> &'static str {
         match self {
-            Scope::RepoRead => "See repositories, their settings, timelines, releases, languages, contributors and security alerts, and search",
+            Scope::RepoRead => {
+                "See repositories, their settings, timelines, releases, languages, contributors and security alerts, and search"
+            }
             Scope::RepoCreate => "Create repositories, and nothing that changes or deletes one",
-            Scope::RepoWrite => "Create repositories, create, rename and delete branches, change how pull requests merge and publish releases",
-            Scope::RepoAdmin => "Rename, archive, transfer, delete or change who can see a repository, change its rulesets, and dismiss security alerts",
+            Scope::RepoWrite => {
+                "Create repositories, create, rename and delete branches, change how pull requests merge and publish releases"
+            }
+            Scope::RepoAdmin => {
+                "Rename, archive, transfer, delete or change who can see a repository, change its rulesets, and dismiss security alerts"
+            }
             Scope::CodeRead => "Clone and fetch private repositories with git",
             Scope::CodeWrite => "Push commits with git",
-            Scope::SecurityRead => "See secret scanning, code scanning and vulnerability alerts, custom patterns, the dependency graph and SBOM, and security settings",
-            Scope::SecurityWrite => "Dismiss and reopen alerts, bypass push protection, review bypass requests, manage custom patterns, upload SARIF and change security settings",
+            Scope::SecurityRead => {
+                "See secret scanning, code scanning and vulnerability alerts, custom patterns, the dependency graph and SBOM, and security settings"
+            }
+            Scope::SecurityWrite => {
+                "Dismiss and reopen alerts, bypass push protection, review bypass requests, manage custom patterns, upload SARIF and change security settings"
+            }
             Scope::PackagesRead => "Pull container images and install private packages",
             Scope::PackagesWrite => "Push container images and publish packages",
             Scope::PackagesDelete => "Delete and restore packages and their versions",
@@ -426,13 +433,19 @@ impl Scope {
             Scope::AgentsRun => "Retired: put g1t's own agents to work. Grants nothing now",
             Scope::WorkflowsRead => "Read workflows, runs and logs",
             Scope::WorkflowsWrite => "Run, cancel, rerun and turn workflows on or off",
-            Scope::WorkflowFilesWrite => "Add, change and delete workflow files under .g1t/workflows and .github/workflows, with git or the API",
+            Scope::WorkflowFilesWrite => {
+                "Add, change and delete workflow files under .g1t/workflows and .github/workflows, with git or the API"
+            }
             Scope::ChecksRead => "Read commits' statuses, check runs, check suites and annotations",
             Scope::ChecksWrite => "Report statuses and check runs on commits, and ask for checks to run again",
             Scope::DeploymentsRead => "See deployments, their statuses and environments",
             Scope::DeploymentsWrite => "Report deployments and their statuses, from any CI",
-            Scope::ObservabilityRead => "See projects' requests, logs, traces, errors and metrics, and their observability settings, ingest tokens and exports",
-            Scope::ObservabilityWrite => "Resolve and ignore errors, and change projects' observability settings, ingest tokens and exports",
+            Scope::ObservabilityRead => {
+                "See projects' requests, logs, traces, errors and metrics, and their observability settings, ingest tokens and exports"
+            }
+            Scope::ObservabilityWrite => {
+                "Resolve and ignore errors, and change projects' observability settings, ingest tokens and exports"
+            }
             Scope::MemoryRead => "Retired: recall project and workspace memory. Grants nothing now",
             Scope::MemoryWrite => "Retired: save project and workspace memory. Grants nothing now",
             Scope::AccountRead => "Read your email addresses, invites, invitations, pinned projects and stars",
@@ -442,7 +455,9 @@ impl Scope {
             Scope::ChatRead => "Read the conversations you are in: channels, direct messages, threads and reactions, live",
             Scope::ChatWrite => "Send, edit and delete your messages, react, mark conversations read, and answer cards in chat",
             Scope::WorkspaceRead => "Read workspace settings, invites, integrations, AI providers, teams and rulesets",
-            Scope::WorkspaceAdmin => "Create and delete workspaces, invite members, connect integrations, add AI providers and choose what Ask answers with, create, change and delete teams, and change the workspace's rulesets",
+            Scope::WorkspaceAdmin => {
+                "Create and delete workspaces, invite members, connect integrations, add AI providers and choose what Ask answers with, create, change and delete teams, and change the workspace's rulesets"
+            }
             Scope::BillingRead => "See a workspace's usage, budget and invoices",
             Scope::BillingWrite => "Change a workspace's budget",
             Scope::AccessRead => "See who has access to repositories",
@@ -489,11 +504,8 @@ impl<'de> Deserialize<'de> for Scope {
 /// spaces or commas. Unknown names are left out, so a client asking for a
 /// scope from a newer version gets the rest.
 pub fn parse_scopes(text: &str) -> Vec<Scope> {
-    let mut scopes: Vec<Scope> = text
-        .split(|c: char| c.is_whitespace() || c == ',')
-        .filter_map(Scope::parse)
-        .filter(|scope| scope.offered())
-        .collect();
+    let mut scopes: Vec<Scope> =
+        text.split(|c: char| c.is_whitespace() || c == ',').filter_map(Scope::parse).filter(|scope| scope.offered()).collect();
     normalize(&mut scopes);
     scopes
 }
@@ -537,7 +549,9 @@ impl Resource {
     pub fn group(self) -> ResourceGroup {
         match self {
             Resource::Account | Resource::Notifications | Resource::Chat => ResourceGroup::Account,
-            Resource::Workspace | Resource::Billing | Resource::Runners | Resource::Models | Resource::Artifacts => ResourceGroup::Workspace,
+            Resource::Workspace | Resource::Billing | Resource::Runners | Resource::Models | Resource::Artifacts => {
+                ResourceGroup::Workspace
+            }
             _ => ResourceGroup::Repository,
         }
     }
@@ -582,10 +596,7 @@ pub fn everything() -> Vec<Scope> {
 /// Scopes as permissions: each resource held, by name, at its highest
 /// level held.
 pub fn permissions_of(scopes: &[Scope]) -> std::collections::BTreeMap<String, String> {
-    top_scopes(scopes)
-        .into_iter()
-        .map(|scope| (scope.resource().as_str().to_owned(), scope.level().as_str().to_owned()))
-        .collect()
+    top_scopes(scopes).into_iter().map(|scope| (scope.resource().as_str().to_owned(), scope.level().as_str().to_owned())).collect()
 }
 
 /// Permissions as asked for (`{"work": "write"}`, `none` or empty left
@@ -651,11 +662,8 @@ impl Preset {
     pub fn scopes(self) -> Option<Vec<Scope>> {
         // Chat is not in any: a person's conversations go to an application
         // only when it asks for them by name.
-        let reads = || {
-            Scope::ALL
-                .into_iter()
-                .filter(|scope| scope.level() == Level::Read && scope.offered() && scope.resource() != Resource::Chat)
-        };
+        let reads =
+            || Scope::ALL.into_iter().filter(|scope| scope.level() == Level::Read && scope.offered() && scope.resource() != Resource::Chat);
         match self {
             Preset::ReadOnly => Some(reads().collect()),
             Preset::Agent => {
@@ -667,13 +675,7 @@ impl Preset {
                 // And starting a repository for what it builds, which changes
                 // nothing already there: `repo:write` would let it change
                 // merge settings and delete branches and releases.
-                scopes.extend([
-                    Scope::RepoCreate,
-                    Scope::CodeWrite,
-                    Scope::WorkWrite,
-                    Scope::PullRequestsWrite,
-                    Scope::NotificationsWrite,
-                ]);
+                scopes.extend([Scope::RepoCreate, Scope::CodeWrite, Scope::WorkWrite, Scope::PullRequestsWrite, Scope::NotificationsWrite]);
                 normalize(&mut scopes);
                 Some(scopes)
             }
@@ -837,9 +839,10 @@ pub const WORKFLOW_DIRS: [&str; 2] = [".g1t/workflows/", ".github/workflows/"];
 /// Whether `path` is a workflow file, or a file in one's directory.
 pub fn is_workflow_file(path: &str) -> bool {
     let path = path.trim_start_matches('/');
-    WORKFLOW_DIRS.iter().any(|dir| {
-        path.len() >= dir.len() && path.is_char_boundary(dir.len()) && path[..dir.len()].eq_ignore_ascii_case(dir)
-    }) || WORKFLOW_DIRS.iter().any(|dir| path.eq_ignore_ascii_case(dir.trim_end_matches('/')))
+    WORKFLOW_DIRS
+        .iter()
+        .any(|dir| path.len() >= dir.len() && path.is_char_boundary(dir.len()) && path[..dir.len()].eq_ignore_ascii_case(dir))
+        || WORKFLOW_DIRS.iter().any(|dir| path.eq_ignore_ascii_case(dir.trim_end_matches('/')))
 }
 
 /// Whether a token may add, change or delete the files at `paths`: a
@@ -856,10 +859,7 @@ pub fn decide_workflow_files<'a>(access: Option<&TokenAccess>, paths: impl IntoI
     } else {
         format!("it needs the {} scope", Scope::WorkflowFilesWrite.as_str())
     };
-    Some(Decision::deny(
-        "token:workflows",
-        format!("This access token cannot change the workflow file {path}: {why}."),
-    ))
+    Some(Decision::deny("token:workflows", format!("This access token cannot change the workflow file {path}: {why}.")))
 }
 
 /// The workflow job a token was made for.
@@ -894,9 +894,7 @@ impl TokenAccess {
 
     /// The scopes it holds, or `None` for full access.
     pub fn granted(&self) -> Option<Vec<Scope>> {
-        self.scopes
-            .as_ref()
-            .map(|scopes| scopes.iter().filter_map(|scope| Scope::parse(scope)).collect())
+        self.scopes.as_ref().map(|scopes| scopes.iter().filter_map(|scope| Scope::parse(scope)).collect())
     }
 
     pub fn allows(&self, needed: Scope) -> bool {
@@ -920,10 +918,7 @@ impl TokenAccess {
     /// or for some of this one's repositories.
     pub fn covers_workspace(&self, namespace: &str) -> bool {
         self.repo.is_none()
-            && self
-                .reach
-                .as_ref()
-                .is_none_or(|reach| reach.owned_by(namespace) && reach.repositories == RepositorySelection::All)
+            && self.reach.as_ref().is_none_or(|reach| reach.owned_by(namespace) && reach.repositories == RepositorySelection::All)
     }
 }
 
@@ -1468,10 +1463,7 @@ pub const NO_SCOPE: &[&str] = &["whoami"];
 /// The scope `operation` needs. `None` for one in [`NO_SCOPE`]; an
 /// operation in neither list needs full access.
 pub fn scope_for(operation: &str) -> Option<Scope> {
-    OPERATIONS
-        .iter()
-        .find(|(name, _)| *name == operation)
-        .map(|(_, scope)| *scope)
+    OPERATIONS.iter().find(|(name, _)| *name == operation).map(|(_, scope)| *scope)
 }
 
 /// What a token needs for `operation` with this input beyond its own
@@ -1489,7 +1481,9 @@ pub fn extra_scopes(operation: &str, input: &serde_json::Value) -> Vec<Scope> {
     {
         extra.push(Scope::WorkflowsWrite);
     }
-    if operation == "update_repo" && ["private", "default_branch", "allow_forking", "max_ref_updates"].iter().any(|key| input.get(*key).is_some_and(|v| !v.is_null())) {
+    if operation == "update_repo"
+        && ["private", "default_branch", "allow_forking", "max_ref_updates"].iter().any(|key| input.get(*key).is_some_and(|v| !v.is_null()))
+    {
         extra.push(Scope::RepoAdmin);
     }
     extra
@@ -1497,10 +1491,7 @@ pub fn extra_scopes(operation: &str, input: &serde_json::Value) -> Vec<Scope> {
 
 /// The scopes a call needs, its own first.
 pub fn needed(operation: &str, input: &serde_json::Value) -> Vec<Scope> {
-    scope_for(operation)
-        .into_iter()
-        .chain(extra_scopes(operation, input))
-        .collect()
+    scope_for(operation).into_iter().chain(extra_scopes(operation, input)).collect()
 }
 
 /// Whether `access` may use `operation` with `input`. The person's (or
@@ -1528,7 +1519,10 @@ pub fn decide(access: &TokenAccess, operation: &str, input: &serde_json::Value) 
                 return Decision::deny("token:repository", format!("{} {only}: it cannot reach {repo}.", one_repository(access)));
             }
             None => {
-                return Decision::deny("token:repository", format!("{} {only}, and {operation} is not about one repository.", one_repository(access)));
+                return Decision::deny(
+                    "token:repository",
+                    format!("{} {only}, and {operation} is not about one repository.", one_repository(access)),
+                );
             }
         }
     }
@@ -1564,10 +1558,13 @@ pub fn decide(access: &TokenAccess, operation: &str, input: &serde_json::Value) 
         // Forking only reads its source; where the fork goes is judged above.
         let changes = operation != "fork_repo" && needed(operation, input).iter().any(|scope| scope.level() != Level::Read);
         if changes && !reach.owned_by(namespace) {
-            let made_for = reach.workspace.as_deref().map_or_else(|| "your account only".to_owned(), |workspace| format!("the workspace {workspace}"));
+            let made_for =
+                reach.workspace.as_deref().map_or_else(|| "your account only".to_owned(), |workspace| format!("the workspace {workspace}"));
             return Decision::deny(
                 "token:resource-owner",
-                format!("This access token is made for {made_for}: elsewhere it can only read public repositories, and {repo} is not in its reach."),
+                format!(
+                    "This access token is made for {made_for}: elsewhere it can only read public repositories, and {repo} is not in its reach."
+                ),
             );
         }
     }
@@ -1577,10 +1574,7 @@ pub fn decide(access: &TokenAccess, operation: &str, input: &serde_json::Value) 
             return Decision::deny("token:scope", format!("This access token cannot use {operation}: it needs full access."));
         }
         if let Some(missing) = needed(operation, input).into_iter().find(|scope| !access.allows(*scope)) {
-            return Decision::deny(
-                "token:scope",
-                format!("This access token needs the {} scope to use {operation}.", missing.as_str()),
-            );
+            return Decision::deny("token:scope", format!("This access token needs the {} scope to use {operation}.", missing.as_str()));
         }
     }
     Decision::allow(rule)
@@ -1620,7 +1614,11 @@ pub fn decide_git(access: &TokenAccess, write: bool, public: bool) -> Decision {
         }
         return Decision::deny(
             "token:scope",
-            format!("This access token needs the {} scope to {} with git.", needed.as_str(), if write { "push" } else { "clone or fetch a private repository" }),
+            format!(
+                "This access token needs the {} scope to {} with git.",
+                needed.as_str(),
+                if write { "push" } else { "clone or fetch a private repository" }
+            ),
         );
     }
     Decision::allow(if access.legacy { "token:legacy" } else { "token:scope" })
@@ -1636,10 +1634,7 @@ pub fn decide_packages(access: &TokenAccess, level: Level, public: bool) -> Deci
         Level::Create | Level::Write | Level::Run => (Scope::PackagesWrite, "push or publish packages"),
     };
     if !access.allows(needed) && !(level == Level::Read && public) {
-        return Decision::deny(
-            "token:scope",
-            format!("This access token needs the {} scope to {doing}.", needed.as_str()),
-        );
+        return Decision::deny("token:scope", format!("This access token needs the {} scope to {doing}.", needed.as_str()));
     }
     Decision::allow(if access.legacy { "token:legacy" } else { "token:scope" })
 }
@@ -1694,10 +1689,7 @@ mod tests {
 
     #[test]
     fn scopes_are_parsed_from_oauth_text_leaving_out_unknown_ones() {
-        assert_eq!(
-            parse_scopes("work:write repo:read,bogus:thing work:write"),
-            vec![Scope::RepoRead, Scope::WorkWrite]
-        );
+        assert_eq!(parse_scopes("work:write repo:read,bogus:thing work:write"), vec![Scope::RepoRead, Scope::WorkWrite]);
         assert_eq!(scopes_text(&[Scope::RepoRead, Scope::WorkWrite]), "repo:read work:write");
     }
 
@@ -1898,10 +1890,17 @@ mod tests {
 
     #[test]
     fn workflow_files_need_their_own_scope() {
-        for path in [".g1t/workflows/ci.yml", ".github/workflows/deploy.yaml", "/.github/workflows/x.yml", ".GitHub/Workflows/ci.yml", ".github/workflows"] {
+        for path in [
+            ".g1t/workflows/ci.yml",
+            ".github/workflows/deploy.yaml",
+            "/.github/workflows/x.yml",
+            ".GitHub/Workflows/ci.yml",
+            ".github/workflows",
+        ] {
             assert!(is_workflow_file(path), "{path}");
         }
-        for path in ["README.md", ".github/CODEOWNERS", ".github/workflowsx/ci.yml", "docs/.github/workflows/ci.yml", ".g1t/actions/ci.yml"] {
+        for path in ["README.md", ".github/CODEOWNERS", ".github/workflowsx/ci.yml", "docs/.github/workflows/ci.yml", ".g1t/actions/ci.yml"]
+        {
             assert!(!is_workflow_file(path), "{path}");
         }
         let code = token(&[Scope::CodeWrite]);
@@ -1937,7 +1936,8 @@ mod tests {
         let mine = TokenAccess { reach: Some(TokenReach::default()), ..token(&[Scope::WorkWrite]) };
         assert!(decide(&mine, "open_work_item", &json!({ "repo": "acme/web" })).reason.unwrap().contains("your account"));
         assert!(fine.covers_repo("rep_1", "acme") && !fine.covers_repo("rep_1", "globex"));
-        let selected = TokenReach { workspace: Some("acme".into()), repositories: RepositorySelection::Selected, repo_ids: vec!["rep_1".into()] };
+        let selected =
+            TokenReach { workspace: Some("acme".into()), repositories: RepositorySelection::Selected, repo_ids: vec!["rep_1".into()] };
         assert!(selected.covers("rep_1", "ACME") && !selected.covers("rep_2", "acme"));
         let public = TokenReach { repositories: RepositorySelection::Public, ..selected.clone() };
         assert!(!public.covers("rep_1", "acme") && public.owned_by("acme"));
@@ -1972,7 +1972,10 @@ mod tests {
     #[test]
     fn permissions_are_scopes_read_per_resource() {
         let asked: std::collections::BTreeMap<String, String> =
-            [("work", "write"), ("repo", "read"), ("code", "none"), ("packages", "delete")].iter().map(|(a, b)| ((*a).to_owned(), (*b).to_owned())).collect();
+            [("work", "write"), ("repo", "read"), ("code", "none"), ("packages", "delete")]
+                .iter()
+                .map(|(a, b)| ((*a).to_owned(), (*b).to_owned()))
+                .collect();
         let scopes = resolve_permissions(&asked, true).unwrap();
         assert_eq!(scopes, vec![Scope::RepoRead, Scope::PackagesDelete, Scope::WorkWrite]);
         let back = permissions_of(&scopes);
@@ -2129,12 +2132,16 @@ mod tests {
         let names = |table: &str| -> Vec<String> {
             section(table)
                 .lines()
-                .filter_map(|line| line.split_once("scope: \"").and_then(|(_, rest)| rest.split_once('"')).map(|(scope, _)| scope.to_owned()))
+                .filter_map(|line| {
+                    line.split_once("scope: \"").and_then(|(_, rest)| rest.split_once('"')).map(|(scope, _)| scope.to_owned())
+                })
                 .collect()
         };
         // Offered scopes in `SCOPES`, retired ones in `RETIRED_SCOPES`, the
         // rest in `UPCOMING_SCOPES`.
-        let listed = |keep: fn(&Scope) -> bool| -> Vec<String> { Scope::ALL.iter().filter(|scope| keep(scope)).map(|scope| scope.as_str().to_owned()).collect() };
+        let listed = |keep: fn(&Scope) -> bool| -> Vec<String> {
+            Scope::ALL.iter().filter(|scope| keep(scope)).map(|scope| scope.as_str().to_owned()).collect()
+        };
         assert_eq!(names("export const SCOPES = ["), listed(|scope| scope.offered()));
         assert_eq!(names("export const UPCOMING_SCOPES"), listed(|scope| !scope.offered() && !scope.resource().retired()));
         assert_eq!(names("export const RETIRED_SCOPES"), listed(|scope| scope.resource().retired()));
@@ -2145,22 +2152,14 @@ mod tests {
                 Some((quoted.next()?.to_owned(), quoted.next()?.to_owned()))
             })
             .collect();
-        let expected: Vec<(String, String)> = OPERATIONS
-            .iter()
-            .map(|(name, scope)| ((*name).to_owned(), scope.as_str().to_owned()))
-            .collect();
+        let expected: Vec<(String, String)> =
+            OPERATIONS.iter().map(|(name, scope)| ((*name).to_owned(), scope.as_str().to_owned())).collect();
         assert_eq!(operations, expected);
         for preset in Preset::ALL {
             let list = section(&format!("{}: [", preset.as_str()));
-            let mirrored: Vec<&str> = list
-                .split(',')
-                .map(|item| item.trim().trim_matches('"'))
-                .filter(|item| !item.is_empty())
-                .collect();
-            let expected: Vec<&str> = preset
-                .scopes()
-                .map(|scopes| scopes.iter().map(|scope| scope.as_str()).collect())
-                .unwrap_or_else(|| vec!["*"]);
+            let mirrored: Vec<&str> = list.split(',').map(|item| item.trim().trim_matches('"')).filter(|item| !item.is_empty()).collect();
+            let expected: Vec<&str> =
+                preset.scopes().map(|scopes| scopes.iter().map(|scope| scope.as_str()).collect()).unwrap_or_else(|| vec!["*"]);
             assert_eq!(mirrored, expected, "{}", preset.as_str());
         }
         // Each resource with its group, in the same order: offered ones in
@@ -2174,8 +2173,12 @@ mod tests {
         for (table, keep) in tables {
             let resources = ts
                 .split_once(table)
-                .and_then(|(_, rest)| rest.split_once("
-];"))
+                .and_then(|(_, rest)| {
+                    rest.split_once(
+                        "
+];",
+                    )
+                })
                 .map(|(table, _)| table)
                 .unwrap_or_else(|| panic!("{table} in scopes.ts"));
             let rows: Vec<&str> = resources.lines().filter(|line| line.trim_start().starts_with("{ resource:")).collect();

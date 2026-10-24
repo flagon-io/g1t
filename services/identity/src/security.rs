@@ -34,11 +34,10 @@
 //! workspace is named in [`User::held`] with why, for the site's notice.
 //! The membership itself stays: turning two-factor on brings it back.
 
-use g1t_contracts::accounts::{
-    RECENT_AUTH_SECONDS, Reauth, ReauthenticateArgs, SECURITY_LOG_LIMIT, SecurityEvent, SecurityFacts,
-    WorkspacePolicy, is_recent,
-};
 use g1t_contracts::access::RepoGrant;
+use g1t_contracts::accounts::{
+    RECENT_AUTH_SECONDS, Reauth, ReauthenticateArgs, SECURITY_LOG_LIMIT, SecurityEvent, SecurityFacts, WorkspacePolicy, is_recent,
+};
 use g1t_contracts::identity::UserArgs;
 use g1t_contracts::members::PolicyHold;
 use g1t_contracts::time::{SQL_NOW, rfc3339};
@@ -53,7 +52,8 @@ use crate::{Identity, crypto};
 /// What a person sees when a change needs them to prove it is them.
 pub const REAUTH: &str = "Enter your password to make this change.";
 pub const WRONG_PASSWORD: &str = "That password is not right.";
-pub const PEOPLE_ONLY: &str = "Only you can change your email addresses, signed in as yourself; never with an agent's or a workspace's token.";
+pub const PEOPLE_ONLY: &str =
+    "Only you can change your email addresses, signed in as yourself; never with an agent's or a workspace's token.";
 
 /// What [`Identity::proof`] found.
 #[derive(Debug, PartialEq, Eq)]
@@ -129,9 +129,8 @@ impl Identity {
                 .bind(&[user_id.into()])?
                 .first::<Hash>(None)
                 .await?;
-            let right = hash
-                .as_ref()
-                .is_some_and(|row| !row.password_hash.is_empty() && crypto::verify_password(password, &row.password_hash));
+            let right =
+                hash.as_ref().is_some_and(|row| !row.password_hash.is_empty() && crypto::verify_password(password, &row.password_hash));
             if !right {
                 let owner = hash.as_ref().map(|row| (user_id, row.username.as_str()));
                 self.password_failed(&account_key, client_key.as_deref(), owner).await?;
@@ -152,9 +151,7 @@ impl Identity {
         }
         let row = self
             .db
-            .prepare(format!(
-                "SELECT authenticated_at FROM sessions WHERE id = ? AND user_id = ? AND expires_at > {SQL_NOW}"
-            ))
+            .prepare(format!("SELECT authenticated_at FROM sessions WHERE id = ? AND user_id = ? AND expires_at > {SQL_NOW}"))
             .bind(&[session.as_str().into(), user_id.into()])?
             .first::<Authenticated>(None)
             .await?;
@@ -186,11 +183,7 @@ impl Identity {
         let Some(owner) = owner else {
             return Ok(Outcome::fail(FailureCode::Unauthenticated, "Sign in again."));
         };
-        let reauth = Reauth {
-            session_token: Some(a.session_token),
-            password: Some(a.password),
-            client: a.client,
-        };
+        let reauth = Reauth { session_token: Some(a.session_token), password: Some(a.password), client: a.client };
         Ok(match self.proof(&owner.user_id, &reauth).await? {
             Proof::Given => Outcome::Ok(true),
             other => other.refusal().unwrap_or(Outcome::Ok(true)),
@@ -266,10 +259,7 @@ impl Identity {
 
     /// What an account can show a policy.
     async fn security_facts(&self, user_id: &str) -> Result<SecurityFacts> {
-        Ok(SecurityFacts {
-            verified_emails: self.verified_emails(user_id).await?,
-            two_factor: self.two_factor_enabled(user_id).await?,
-        })
+        Ok(SecurityFacts { verified_emails: self.verified_emails(user_id).await?, two_factor: self.two_factor_enabled(user_id).await? })
     }
 
     /// Why `user_id` may not join or use the workspace `slug`, or `None`.
@@ -314,11 +304,7 @@ pub fn policy_of(require_two_factor: bool) -> WorkspacePolicy {
 
 /// Keeps the memberships and grants whose policy `facts` meets. `facts`
 /// is only needed, and only read, when some workspace asks something.
-pub fn apply_policies(
-    facts: Option<&SecurityFacts>,
-    memberships: Vec<(Membership, bool)>,
-    grants: Vec<(RepoGrant, bool)>,
-) -> WithinPolicy {
+pub fn apply_policies(facts: Option<&SecurityFacts>, memberships: Vec<(Membership, bool)>, grants: Vec<(RepoGrant, bool)>) -> WithinPolicy {
     let mut within = WithinPolicy::default();
     let gap = |slug: &str, required: bool| -> Option<PolicyHold> {
         let facts = facts?;
@@ -384,11 +370,7 @@ mod tests {
         assert!(within.held.iter().all(|hold| hold.gap == "two_factor" && hold.reason.contains("two-factor")));
         // Turned on: everything is back.
         let with = SecurityFacts { two_factor: true, ..without };
-        let within = apply_policies(
-            Some(&with),
-            vec![(membership("acme"), true)],
-            vec![(grant("rep_1", "initech"), true)],
-        );
+        let within = apply_policies(Some(&with), vec![(membership("acme"), true)], vec![(grant("rep_1", "initech"), true)]);
         assert_eq!(within.memberships.len(), 1);
         assert_eq!(within.grants.len(), 1);
         assert!(within.held.is_empty());

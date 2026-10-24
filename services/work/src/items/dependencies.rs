@@ -147,11 +147,7 @@ impl Work {
             .all()
             .await?
             .results()?;
-        Ok(numbers
-            .iter()
-            .filter(|number| Some(**number) != cleared && open.iter().any(|row| row.number == **number))
-            .copied()
-            .collect())
+        Ok(numbers.iter().filter(|number| Some(**number) != cleared && open.iter().any(|row| row.number == **number)).copied().collect())
     }
 
     /// The open work items `held` blocks.

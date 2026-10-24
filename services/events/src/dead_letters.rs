@@ -148,11 +148,8 @@ mod tests {
         insert("m4", None, "2026-10-22T22:38:00.000Z");
         insert("m5", Some("git.push"), "2026-10-22T20:00:00.000Z");
         let mut statement = db.prepare(COUNT).unwrap();
-        let counted: Vec<(String, u32)> = statement
-            .query_map(["2026-10-22T22:00:00.000Z"], |row| Ok((row.get(0)?, row.get(1)?)))
-            .unwrap()
-            .map(Result::unwrap)
-            .collect();
+        let counted: Vec<(String, u32)> =
+            statement.query_map(["2026-10-22T22:00:00.000Z"], |row| Ok((row.get(0)?, row.get(1)?))).unwrap().map(Result::unwrap).collect();
         assert_eq!(counted, [("git.push".to_owned(), 2), ("comment.created".to_owned(), 1), ("unknown".to_owned(), 1)]);
         assert_eq!(db.execute(PURGE, ["2026-10-22T21:00:00.000Z"]).unwrap(), 1);
     }

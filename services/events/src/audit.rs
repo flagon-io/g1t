@@ -4,10 +4,7 @@
 //! which moves the workspace's rows to its new slug, as every service does
 //! with what it keeps under a slug.
 
-use g1t_contracts::audit::{
-    AuditEntry, AuditPage, AuditVisibility, ListAuditArgs, MAX_AUDIT_PAGE, NewAuditEntry,
-    RecordAuditArgs,
-};
+use g1t_contracts::audit::{AuditEntry, AuditPage, AuditVisibility, ListAuditArgs, MAX_AUDIT_PAGE, NewAuditEntry, RecordAuditArgs};
 use g1t_contracts::billing::{AuditRetention, AuditRetentionArgs};
 use g1t_contracts::events::{Event, WorkspaceRenamed};
 use g1t_contracts::new_id;
@@ -23,9 +20,7 @@ const MAX_BATCH: usize = 50;
 const MAX_TEXT: usize = 500;
 
 fn text(value: &Option<String>) -> JsValue {
-    value
-        .as_deref()
-        .map_or(JsValue::NULL, |value| JsValue::from(clip(value)))
+    value.as_deref().map_or(JsValue::NULL, |value| JsValue::from(clip(value)))
 }
 
 fn clip(value: &str) -> String {
@@ -84,11 +79,7 @@ impl Row {
             "requestId": self.request_id,
         }))
         .ok()?;
-        Some(AuditEntry {
-            id: self.id,
-            time: self.time,
-            entry,
-        })
+        Some(AuditEntry { id: self.id, time: self.time, entry })
     }
 }
 
@@ -125,10 +116,7 @@ pub async fn record(db: &D1Database, a: RecordAuditArgs) -> Result<u32> {
                 text(&entry.actor.run_kind),
                 text(&entry.actor.credential_id),
                 clip(&entry.action).into(),
-                serde_json::to_value(entry.surface)?
-                    .as_str()
-                    .unwrap_or("rest")
-                    .into(),
+                serde_json::to_value(entry.surface)?.as_str().unwrap_or("rest").into(),
                 text(&entry.target.repo),
                 entry.target.number.map_or(JsValue::NULL, JsValue::from),
                 text(&entry.target.git_ref),
@@ -201,16 +189,10 @@ fn filter(a: &ListAuditArgs) -> Filter {
     let mut f = Filter::default();
     f.add("workspace = ?", [a.workspace.to_lowercase().into()]);
     if let AuditVisibility::Projects { username } = &a.visibility {
-        f.add(
-            "(repo IS NOT NULL OR actor = ? OR on_behalf_of = ?)",
-            [username.as_str().into(), username.as_str().into()],
-        );
+        f.add("(repo IS NOT NULL OR actor = ? OR on_behalf_of = ?)", [username.as_str().into(), username.as_str().into()]);
     }
     if let Some(actor) = a.actor.as_deref().filter(|v| !v.is_empty()) {
-        f.add(
-            "(actor = ? OR on_behalf_of = ?)",
-            [actor.into(), actor.into()],
-        );
+        f.add("(actor = ? OR on_behalf_of = ?)", [actor.into(), actor.into()]);
     }
     if let Some(agent) = a.agent.as_deref().filter(|v| !v.is_empty()) {
         f.add("agent = ?", [agent.into()]);
@@ -233,10 +215,7 @@ fn filter(a: &ListAuditArgs) -> Filter {
     if !a.run_ids.is_empty() {
         let ids: Vec<&String> = a.run_ids.iter().take(50).collect();
         let marks = vec!["?"; ids.len()].join(", ");
-        f.add(
-            &format!("run_id IN ({marks})"),
-            ids.into_iter().map(|id| Param::from(id.as_str())),
-        );
+        f.add(&format!("run_id IN ({marks})"), ids.into_iter().map(|id| Param::from(id.as_str())));
     }
     if let Some(since) = a.since.as_deref().filter(|v| !v.is_empty()) {
         f.add("time >= ?", [since.into()]);
@@ -258,23 +237,14 @@ pub async fn list(db: &D1Database, a: ListAuditArgs) -> Result<AuditPage> {
     let mut values: Vec<JsValue> = values.iter().map(JsValue::from).collect();
     values.push((limit + 1).into());
     let rows = db
-        .prepare(format!(
-            "SELECT * FROM audit_entries WHERE {} ORDER BY id DESC LIMIT ?",
-            conditions.join(" AND ")
-        ))
+        .prepare(format!("SELECT * FROM audit_entries WHERE {} ORDER BY id DESC LIMIT ?", conditions.join(" AND ")))
         .bind(&values)?
         .all()
         .await?
         .results::<Row>()?;
     let more = rows.len() > limit as usize;
-    let entries: Vec<AuditEntry> = rows
-        .into_iter()
-        .take(limit as usize)
-        .filter_map(Row::into_entry)
-        .collect();
-    let next = more
-        .then(|| entries.last().map(|entry| entry.id.clone()))
-        .flatten();
+    let entries: Vec<AuditEntry> = rows.into_iter().take(limit as usize).filter_map(Row::into_entry).collect();
+    let next = more.then(|| entries.last().map(|entry| entry.id.clone())).flatten();
     Ok(AuditPage { entries, next })
 }
 
@@ -303,12 +273,7 @@ pub fn keep_from(now_ms: u64, keep_days: u32) -> String {
 /// held between the shortest and the longest any workspace keeps: fewer
 /// than the shortest would not be looked for, and more than the longest
 /// are deleted anyway.
-pub fn cutoffs(
-    now_ms: u64,
-    retention: &[AuditRetention],
-    min_days: u32,
-    max_days: u32,
-) -> Vec<(String, String)> {
+pub fn cutoffs(now_ms: u64, retention: &[AuditRetention], min_days: u32, max_days: u32) -> Vec<(String, String)> {
     retention
         .iter()
         .map(|r| {
@@ -341,12 +306,7 @@ pub async fn purge(db: &D1Database, before: &str, rounds: u32) -> Result<u32> {
 }
 
 /// Removes one workspace's entries older than `before`, the same way.
-async fn purge_workspace(
-    db: &D1Database,
-    workspace: &str,
-    before: &str,
-    rounds: u32,
-) -> Result<u32> {
+async fn purge_workspace(db: &D1Database, workspace: &str, before: &str, rounds: u32) -> Result<u32> {
     let mut removed = 0;
     for _ in 0..rounds {
         let result = db
@@ -371,12 +331,7 @@ async fn purge_workspace(
 /// (workspace, time) rather than reading every row, which a DISTINCT over
 /// the rows older than a week would: a workspace on the plan always has
 /// weeks of them.
-async fn workspaces_past(
-    db: &D1Database,
-    after: &str,
-    before: &str,
-    limit: u32,
-) -> Result<Vec<String>> {
+async fn workspaces_past(db: &D1Database, after: &str, before: &str, limit: u32) -> Result<Vec<String>> {
     #[derive(Deserialize)]
     struct Found {
         workspace: String,
@@ -407,13 +362,7 @@ async fn workspaces_past(
 /// `WORKSPACES_PER_RUN` workspaces after where the last run stopped. Their
 /// days come from billing; if it cannot be reached, nothing is removed and
 /// the next run tries the same workspaces again. Returns how many went.
-pub async fn purge_by_plan(
-    db: &D1Database,
-    billing: &Fetcher,
-    now_ms: u64,
-    min_days: u32,
-    max_days: u32,
-) -> Result<u32> {
+pub async fn purge_by_plan(db: &D1Database, billing: &Fetcher, now_ms: u64, min_days: u32, max_days: u32) -> Result<u32> {
     #[derive(Deserialize)]
     struct Cursor {
         after: String,
@@ -423,17 +372,13 @@ pub async fn purge_by_plan(
         .first::<Cursor>(None)
         .await?
         .map_or_else(String::new, |cursor| cursor.after);
-    let found =
-        workspaces_past(db, &after, &keep_from(now_ms, min_days), WORKSPACES_PER_RUN).await?;
+    let found = workspaces_past(db, &after, &keep_from(now_ms, min_days), WORKSPACES_PER_RUN).await?;
     // Every workspace's days are asked for before anything is removed, so a
     // billing that cannot be reached removes nothing at all.
     let mut retention: Vec<AuditRetention> = Vec::with_capacity(found.len());
     for chunk in found.chunks(ASK_AT_ONCE) {
-        let args = AuditRetentionArgs {
-            workspaces: chunk.to_vec(),
-        };
-        let answered: Vec<AuditRetention> =
-            g1t_kit::call(billing, "audit_retention", &args).await?;
+        let args = AuditRetentionArgs { workspaces: chunk.to_vec() };
+        let answered: Vec<AuditRetention> = g1t_kit::call(billing, "audit_retention", &args).await?;
         retention.extend(answered);
     }
     let mut removed = 0;
@@ -441,11 +386,7 @@ pub async fn purge_by_plan(
         removed += purge_workspace(db, &workspace, &before, 4).await?;
     }
     // A short page means the end was reached: the next run starts over.
-    let next = if found.len() < WORKSPACES_PER_RUN as usize {
-        String::new()
-    } else {
-        found.last().cloned().unwrap_or_default()
-    };
+    let next = if found.len() < WORKSPACES_PER_RUN as usize { String::new() } else { found.last().cloned().unwrap_or_default() };
     db.prepare(
         "INSERT INTO audit_purge_cursor (id, after) VALUES (1, ?1)
          ON CONFLICT (id) DO UPDATE SET after = ?1",
@@ -458,10 +399,7 @@ pub async fn purge_by_plan(
 
 /// Moves a renamed workspace's rows to its new slug.
 pub async fn follow_renames(db: &D1Database, events: &[Event]) -> Result<()> {
-    for event in events
-        .iter()
-        .filter(|event| event.kind == "workspace.renamed")
-    {
+    for event in events.iter().filter(|event| event.kind == "workspace.renamed") {
         let Ok(renamed) = serde_json::from_value::<WorkspaceRenamed>(event.data.clone()) else {
             continue;
         };
@@ -474,14 +412,8 @@ pub async fn follow_renames(db: &D1Database, events: &[Event]) -> Result<()> {
                 "UPDATE audit_entries SET repo = ? || substr(repo, length(?) + 1)
                  WHERE workspace = ? AND repo LIKE ? || '/%'",
             )
-            .bind(&[
-                to.as_str().into(),
-                from.as_str().into(),
-                from.as_str().into(),
-                from.as_str().into(),
-            ])?,
-            db.prepare("UPDATE audit_entries SET workspace = ? WHERE workspace = ?")
-                .bind(&[to.as_str().into(), from.as_str().into()])?,
+            .bind(&[to.as_str().into(), from.as_str().into(), from.as_str().into(), from.as_str().into()])?,
+            db.prepare("UPDATE audit_entries SET workspace = ? WHERE workspace = ?").bind(&[to.as_str().into(), from.as_str().into()])?,
         ])
         .await?;
     }
@@ -506,17 +438,8 @@ mod tests {
     fn each_workspace_is_cut_off_at_its_own_days() {
         // 2026-10-05T00:00:00Z.
         let now = 1_791_158_400_000;
-        let kept = |workspace: &str, days: u32| AuditRetention {
-            workspace: workspace.into(),
-            days,
-        };
-        let retention = [
-            kept("free", 7),
-            kept("plan", 90),
-            kept("longer", 365),
-            kept("shorter", 1),
-            kept("past-the-most", 1_000),
-        ];
+        let kept = |workspace: &str, days: u32| AuditRetention { workspace: workspace.into(), days };
+        let retention = [kept("free", 7), kept("plan", 90), kept("longer", 365), kept("shorter", 1), kept("past-the-most", 1_000)];
         let expected = [
             ("free", "2026-09-28T00:00:00.000Z"),
             ("plan", "2026-07-07T00:00:00.000Z"),
@@ -526,10 +449,7 @@ mod tests {
             // More than the most are deleted by the ceiling anyway.
             ("past-the-most", "2025-08-31T00:00:00.000Z"),
         ];
-        let expected: Vec<(String, String)> = expected
-            .iter()
-            .map(|(w, t)| ((*w).to_owned(), (*t).to_owned()))
-            .collect();
+        let expected: Vec<(String, String)> = expected.iter().map(|(w, t)| ((*w).to_owned(), (*t).to_owned())).collect();
         assert_eq!(cutoffs(now, &retention, 7, 400), expected);
     }
 
@@ -562,9 +482,7 @@ mod tests {
     #[test]
     fn a_member_sees_projects_and_their_own() {
         let mut a = args();
-        a.visibility = AuditVisibility::Projects {
-            username: "ana".to_owned(),
-        };
+        a.visibility = AuditVisibility::Projects { username: "ana".to_owned() };
         let f = filter(&a);
         assert!(f.conditions[1].contains("repo IS NOT NULL"));
         assert_eq!(f.values.len(), 3);

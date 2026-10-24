@@ -240,7 +240,8 @@ impl Edge {
             Ok(Ok(response)) => Some(response),
             Ok(Err(head)) => {
                 // What it sent, so the log says why (the edge's own log is not kept).
-                let shown: String = head.iter().take(160).map(|&byte| if byte.is_ascii_graphic() || byte == b' ' { byte as char } else { '.' }).collect();
+                let shown: String =
+                    head.iter().take(160).map(|&byte| if byte.is_ascii_graphic() || byte == b' ' { byte as char } else { '.' }).collect();
                 worker::console_warn!(
                     "git edge for {repo_id} answered a fetch with nothing it could use: {} bytes before it ended or went wrong (content-length {}): {shown}",
                     head.len(),
@@ -372,11 +373,7 @@ mod tests {
     }
 
     fn git(endpoint: &'static str, service: GitService) -> GitRequest {
-        GitRequest {
-            path: g1t_contracts::repos::RepoPath { namespace: "acme".into(), name: "rocket".into() },
-            endpoint,
-            service,
-        }
+        GitRequest { path: g1t_contracts::repos::RepoPath { namespace: "acme".into(), name: "rocket".into() }, endpoint, service }
     }
 
     #[test]

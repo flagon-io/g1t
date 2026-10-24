@@ -3,12 +3,12 @@
 
 use g1t_actions::workflow::{self, Severity};
 use g1t_contracts::access::Capability;
-use g1t_contracts::checks::{ActionsChecksArgs, MAX_COMMITS};
 use g1t_contracts::actions::{
     Annotation, Job, JobLog, JobLogText, JobLogTextArgs, JobSummary, LogChunk, LogsArgs, MAX_RUN_LOG_BYTES, RunArgs, RunAttempt, RunDetail,
-    RunLogsArgs, RunsArgs, SetWorkflowEnabledArgs, StepState, StepSummary, SummariesArgs, Workflow, WorkflowArgs, WorkflowDetail, WorkflowNote, WorkflowRun,
-    WorkflowsArgs,
+    RunLogsArgs, RunsArgs, SetWorkflowEnabledArgs, StepState, StepSummary, SummariesArgs, Workflow, WorkflowArgs, WorkflowDetail,
+    WorkflowNote, WorkflowRun, WorkflowsArgs,
 };
+use g1t_contracts::checks::{ActionsChecksArgs, MAX_COMMITS};
 use g1t_contracts::{FailureCode, Outcome};
 use serde::Deserialize;
 use worker::Result;
@@ -229,7 +229,10 @@ impl Actions {
             .await?
             .results::<WorkflowRow>()?;
         let Some(row) = pick_workflow(&rows, &a.workflow) else {
-            return Ok(fail(FailureCode::NotFound, format!("There is no workflow {} in {}/{}.", a.workflow.trim(), repo.namespace, repo.name)));
+            return Ok(fail(
+                FailureCode::NotFound,
+                format!("There is no workflow {} in {}/{}.", a.workflow.trim(), repo.namespace, repo.name),
+            ));
         };
         let workflow = self.summary(row).await?;
         let (git_ref, source) = match a.git_ref.as_deref().map(str::trim).filter(|r| !r.is_empty()) {
@@ -307,7 +310,9 @@ impl Actions {
     async fn attempts_of(&self, run: &RunRow) -> Result<Vec<RunAttempt>> {
         let mut attempts: Vec<RunAttempt> = self
             .db
-            .prepare("SELECT attempt, conclusion, actor, debug, started_at, finished_at FROM run_attempts WHERE run_id = ? ORDER BY attempt")
+            .prepare(
+                "SELECT attempt, conclusion, actor, debug, started_at, finished_at FROM run_attempts WHERE run_id = ? ORDER BY attempt",
+            )
             .bind(&[run.id.as_str().into()])?
             .all()
             .await?
@@ -347,7 +352,8 @@ impl Actions {
                     .await?
                     .into_iter()
                     .map(|row| {
-                        let environment_url = row.environment.as_ref().and_then(|_| crate::plan::deploys_to(run, &row)).and_then(|env| env.url);
+                        let environment_url =
+                            row.environment.as_ref().and_then(|_| crate::plan::deploys_to(run, &row)).and_then(|env| env.url);
                         Job { environment_url, ..job_view(row) }
                     })
                     .collect();
@@ -603,7 +609,10 @@ impl Actions {
         if !a.enabled && self.required_here(&repo, &row.path).await? {
             return Ok(fail(
                 FailureCode::Forbidden,
-                format!("{} is required by {}: only its owners can change where it runs, under its Settings, Actions.", row.name, repo.namespace),
+                format!(
+                    "{} is required by {}: only its owners can change where it runs, under its Settings, Actions.",
+                    row.name, repo.namespace
+                ),
             ));
         }
         let state = if a.enabled { "active" } else { "disabled" };
@@ -683,11 +692,7 @@ const CHECK_RUNS_LIMIT: u32 = 200;
 /// A job queued for a runner, or waiting for the jobs it needs, leaves a
 /// run that has started `in_progress`: it is still going.
 fn shown_status<'a>(status: &str, mut jobs: impl Iterator<Item = &'a str>) -> String {
-    if matches!(status, "queued" | "in_progress") && jobs.any(|job| job == "pending") {
-        "waiting".to_owned()
-    } else {
-        status.to_owned()
-    }
+    if matches!(status, "queued" | "in_progress") && jobs.any(|job| job == "pending") { "waiting".to_owned() } else { status.to_owned() }
 }
 
 #[cfg(test)]

@@ -61,7 +61,11 @@ pub const KVM_GROUP: &str = "sudo usermod -aG kvm $USER";
 /// machine (`x86_64`, `aarch64`): None where it isn't known.
 pub fn qemu_install(os_release: &str, arch: &str) -> Option<String> {
     let field = |name: &str| {
-        os_release.lines().find_map(|line| line.strip_prefix(name).and_then(|rest| rest.strip_prefix('='))).map(|value| value.trim_matches('"').to_ascii_lowercase()).unwrap_or_default()
+        os_release
+            .lines()
+            .find_map(|line| line.strip_prefix(name).and_then(|rest| rest.strip_prefix('=')))
+            .map(|value| value.trim_matches('"').to_ascii_lowercase())
+            .unwrap_or_default()
     };
     let family = format!("{} {}", field("ID"), field("ID_LIKE"));
     let is = |name: &str| family.split_whitespace().any(|id| id == name);
@@ -217,7 +221,10 @@ impl Status {
         }
         let (Some(made), Some(release)) = (&self.made_from, release) else { return false };
         let runner = release.runner_image.as_deref().is_some_and(|wanted| made.runner_image.as_deref() != Some(wanted));
-        let files = made.files.as_ref().is_some_and(|files| files.iter().any(|(kind, sha)| release.files.get(kind).is_some_and(|file| &file.sha256 != sha)));
+        let files = made
+            .files
+            .as_ref()
+            .is_some_and(|files| files.iter().any(|(kind, sha)| release.files.get(kind).is_some_and(|file| &file.sha256 != sha)));
         let hosted = release.hosted_image(arch) != made.hosted_image.as_deref().filter(|image| !image.trim().is_empty());
         runner || files || hosted
     }
@@ -506,7 +513,9 @@ fn run_done(binary: &Path, args: Vec<OsString>) -> Result<(Status, bool), String
     let printed = String::from_utf8_lossy(&out.stdout);
     match parse(&printed) {
         Ok(status) => Ok((status, out.status.success())),
-        Err(_) if !out.status.success() && !out.stderr.is_empty() => Err(String::from_utf8_lossy(&out.stderr).trim().trim_start_matches("g1t-runner: ").to_owned()),
+        Err(_) if !out.status.success() && !out.stderr.is_empty() => {
+            Err(String::from_utf8_lossy(&out.stderr).trim().trim_start_matches("g1t-runner: ").to_owned())
+        }
         Err(why) => Err(why),
     }
 }
@@ -605,7 +614,15 @@ pub fn why(text: &str) -> Why {
         Why::Unregistered
     } else if has("has no sandbox image") {
         Why::NoImages
-    } else if has("sandbox image") || has("sandbox's images") || has("no sandbox images") || has("sha-256") || has("signature") || has("release key") || has("could not fetch") || has("broke off") {
+    } else if has("sandbox image")
+        || has("sandbox's images")
+        || has("no sandbox images")
+        || has("sha-256")
+        || has("signature")
+        || has("release key")
+        || has("could not fetch")
+        || has("broke off")
+    {
         Why::Image
     } else if has("windows sandbox is not turned on") {
         Why::WindowsSandboxOff
@@ -687,7 +704,8 @@ mod tests {
 
     #[test]
     fn a_status_is_read_from_after_the_log() {
-        let printed = format!("2026-10-12T08:00:00Z Downloading the sandbox image wsl-x64.\n2026-10-12T08:03:00Z {{not json}}\n{RUNNING}\n");
+        let printed =
+            format!("2026-10-12T08:00:00Z Downloading the sandbox image wsl-x64.\n2026-10-12T08:03:00Z {{not json}}\n{RUNNING}\n");
         let status = parse(&printed).unwrap();
         assert_eq!(status.state, State::Running);
         assert_eq!(status.backend.as_deref(), Some("wsl2"));
@@ -704,7 +722,10 @@ mod tests {
     /// Release 0.3.7 as it was published the third time (flagon-io#476).
     fn release_21(runner: &str, wsl: &str, hosted: Option<&str>) -> native::SandboxRelease {
         let hosted = hosted.map_or(String::new(), |image| format!(r#","hosted_images":{{"x64":{{"image":"{image}"}}}}"#));
-        serde_json::from_str(&format!(r#"{{"runner_image":"{runner}","files":{{"wsl-x64":{{"name":"w.tar.gz","sha256":"{wsl}"}}}}{hosted}}}"#)).unwrap()
+        serde_json::from_str(&format!(
+            r#"{{"runner_image":"{runner}","files":{{"wsl-x64":{{"name":"w.tar.gz","sha256":"{wsl}"}}}}{hosted}}}"#
+        ))
+        .unwrap()
     }
 
     #[test]
@@ -718,9 +739,15 @@ mod tests {
         assert!(!status.image_behind("0.3.7", Some(&same), "x64"), "everything the same: up to date");
         assert!(status.image_behind("0.3.8", Some(&same), "x64"), "a newer version");
         assert!(!status.image_behind("0.3.6", Some(&same), "x64"), "an older one");
-        assert!(status.image_behind("0.3.7", Some(&release_21("g1t.sh/flagon-io/g1t-runner@sha256:5f0a2833", "aa", Some(hosted))), "x64"), "another runner's image");
+        assert!(
+            status.image_behind("0.3.7", Some(&release_21("g1t.sh/flagon-io/g1t-runner@sha256:5f0a2833", "aa", Some(hosted))), "x64"),
+            "another runner's image"
+        );
         assert!(status.image_behind("0.3.7", Some(&release_21(runner, "bb", Some(hosted))), "x64"), "another image file");
-        assert!(status.image_behind("0.3.7", Some(&release_21(runner, "aa", Some("g1t.sh/flagon-io/g1t-hosted@sha256:0"))), "x64"), "another machine image");
+        assert!(
+            status.image_behind("0.3.7", Some(&release_21(runner, "aa", Some("g1t.sh/flagon-io/g1t-hosted@sha256:0"))), "x64"),
+            "another machine image"
+        );
         assert!(status.image_behind("0.3.7", Some(&release_21(runner, "aa", None)), "x64"), "no machine image any more");
         assert!(!status.image_behind("0.3.7", None, "x64"), "a release without the sandbox's images");
 
@@ -752,7 +779,8 @@ mod tests {
     fn what_is_not_a_status_is_said_so() {
         assert!(parse("g1t-runner: unknown command sandbox\n").unwrap_err().contains("older than its sandbox launcher"));
         assert!(parse(&ABSENT.replace("\"schema\": 1", "\"schema\": 2")).unwrap_err().contains("schema 2"));
-        let unknown = parse(&ABSENT.replace("\"state\": \"absent\",\n  \"backend\"", "\"state\": \"hibernating\",\n  \"backend\"")).unwrap();
+        let unknown =
+            parse(&ABSENT.replace("\"state\": \"absent\",\n  \"backend\"", "\"state\": \"hibernating\",\n  \"backend\"")).unwrap();
         assert_eq!(unknown.state, State::Unknown);
         assert!(starts_status("{") && !starts_status("  \"schema\": 1,"));
     }
@@ -779,7 +807,10 @@ mod tests {
     fn the_launchers_sentences_are_told_apart() {
         for (text, expected) in [
             ("WSL is set to mirrored networking, in which Linux reaches this computer's own localhost.", Why::WslMirrored),
-            ("WSL could not import the sandbox: Please enable the Virtual Machine Platform Windows feature and ensure virtualization is enabled in the BIOS.", Why::NoVirtualization),
+            (
+                "WSL could not import the sandbox: Please enable the Virtual Machine Platform Windows feature and ensure virtualization is enabled in the BIOS.",
+                Why::NoVirtualization,
+            ),
             ("vfkit, which runs the sandbox's VM with Apple's Virtualization framework, is not installed.", Why::NoVfkit),
             ("This machine has neither Sysbox nor KVM, so there is nothing to sandbox the runner with.", Why::NoSysboxOrKvm),
             ("the sandbox image wsl-x64.tar.gz's SHA-256 is not the release's; not using it", Why::Image),
@@ -828,12 +859,24 @@ mod tests {
 
     #[test]
     fn a_download_says_how_far_it_is() {
-        assert_eq!(download("2026-10-12T08:00:00Z Fetching the sandbox's wsl-x64 image (612 MB)"), Some(Download { key: "wsl-x64".into(), percent: 0 }));
-        assert_eq!(download("2026-10-12T08:01:00Z Fetching the sandbox's wsl-x64 image: 40% of 612 MB"), Some(Download { key: "wsl-x64".into(), percent: 40 }));
+        assert_eq!(
+            download("2026-10-12T08:00:00Z Fetching the sandbox's wsl-x64 image (612 MB)"),
+            Some(Download { key: "wsl-x64".into(), percent: 0 })
+        );
+        assert_eq!(
+            download("2026-10-12T08:01:00Z Fetching the sandbox's wsl-x64 image: 40% of 612 MB"),
+            Some(Download { key: "wsl-x64".into(), percent: 40 })
+        );
         assert_eq!(download("2026-10-12T08:01:00Z Took build (acme/web)"), None);
         assert_eq!(missing_images("release 0.3.0 has no sandbox images"), Some(("0.3.0".into(), None)));
-        assert_eq!(missing_images("Windows jobs are sandboxed and running, but Linux jobs are not: release 0.3.0 has no sandbox images"), Some(("0.3.0".into(), None)));
-        assert_eq!(missing_images("release 0.4.0 has no sandbox image vm-arm64-disk for this machine"), Some(("0.4.0".into(), Some("vm-arm64-disk".into()))));
+        assert_eq!(
+            missing_images("Windows jobs are sandboxed and running, but Linux jobs are not: release 0.3.0 has no sandbox images"),
+            Some(("0.3.0".into(), None))
+        );
+        assert_eq!(
+            missing_images("release 0.4.0 has no sandbox image vm-arm64-disk for this machine"),
+            Some(("0.4.0".into(), Some("vm-arm64-disk".into())))
+        );
         assert_eq!(missing_images("could not fetch"), None);
     }
 
@@ -841,7 +884,8 @@ mod tests {
     fn the_commands_are_the_launchers() {
         let dir = PathBuf::from("data").join("runner").join(FOLDER);
         let text = |args: Vec<OsString>| args.iter().map(|a| a.to_string_lossy().into_owned()).collect::<Vec<_>>();
-        let first = Up { url: "https://g1t.sh", name: "build-box", labels: "desktop", token: Some("g1trt_secret"), only: vec!["linux", "windows"] };
+        let first =
+            Up { url: "https://g1t.sh", name: "build-box", labels: "desktop", token: Some("g1trt_secret"), only: vec!["linux", "windows"] };
         let up = text(up_args(&dir, &first));
         assert_eq!(&up[..4], ["sandbox", "up", "--json", "--state-dir"]);
         assert_eq!(up[4], dir.to_string_lossy());

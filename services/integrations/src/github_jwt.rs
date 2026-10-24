@@ -15,9 +15,7 @@ use worker::{Error, Result};
 
 /// `AlgorithmIdentifier` for rsaEncryption (1.2.840.113549.1.1.1) with
 /// NULL parameters, DER-encoded.
-const RSA_ALGORITHM: [u8; 15] = [
-    0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00,
-];
+const RSA_ALGORITHM: [u8; 15] = [0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00];
 
 /// A DER length.
 fn der_length(length: usize) -> Vec<u8> {
@@ -59,9 +57,7 @@ pub fn private_key_der(pem: &str) -> std::result::Result<Vec<u8>, String> {
         .flat_map(|line| line.chars())
         .filter(|character| !character.is_whitespace())
         .collect();
-    let der = STANDARD
-        .decode(body)
-        .map_err(|_| "GITHUB_APP_PRIVATE_KEY is not valid base64.".to_owned())?;
+    let der = STANDARD.decode(body).map_err(|_| "GITHUB_APP_PRIVATE_KEY is not valid base64.".to_owned())?;
     Ok(if pkcs1 { pkcs1_to_pkcs8(&der) } else { der })
 }
 
@@ -75,11 +71,7 @@ pub fn signing_input(issuer: &str, now_seconds: u64) -> String {
         "exp": now_seconds + 9 * 60,
         "iss": issuer,
     });
-    format!(
-        "{}.{}",
-        URL_SAFE_NO_PAD.encode(header.to_string()),
-        URL_SAFE_NO_PAD.encode(claims.to_string())
-    )
+    format!("{}.{}", URL_SAFE_NO_PAD.encode(header.to_string()), URL_SAFE_NO_PAD.encode(claims.to_string()))
 }
 
 /// RSASSA-PKCS1-v1_5 with SHA-256, by WebCrypto.
@@ -87,13 +79,9 @@ async fn sign_rs256(pkcs8: &[u8], data: &[u8]) -> Result<Vec<u8>> {
     let subtle = js::get(&js::get(&js_sys::global(), "crypto"), "subtle");
     let algorithm = js::to_js(&json!({ "name": "RSASSA-PKCS1-v1_5", "hash": "SHA-256" }))?;
     let usages = js::to_js(&json!(["sign"]))?;
-    let key = js::call(
-        &subtle,
-        "importKey",
-        &["pkcs8".into(), Uint8Array::from(pkcs8).into(), algorithm.clone(), false.into(), usages],
-    )
-    .await
-    .map_err(|thrown| Error::RustError(format!("GITHUB_APP_PRIVATE_KEY could not be used: {thrown}")))?;
+    let key = js::call(&subtle, "importKey", &["pkcs8".into(), Uint8Array::from(pkcs8).into(), algorithm.clone(), false.into(), usages])
+        .await
+        .map_err(|thrown| Error::RustError(format!("GITHUB_APP_PRIVATE_KEY could not be used: {thrown}")))?;
     let signature = js::call(&subtle, "sign", &[algorithm, key, Uint8Array::from(data).into()]).await?;
     Ok(Uint8Array::new(&signature).to_vec())
 }
@@ -151,7 +139,8 @@ mod tests {
     #[test]
     fn either_pem_form_is_read() {
         let body = STANDARD.encode([0x30, 0x03, 0x02, 0x01, 0x00]);
-        let pkcs1 = format!("{}\n{body}\n{}\n", concat!("-----BEGIN RSA ", "PRIVATE KEY-----"), concat!("-----END RSA ", "PRIVATE KEY-----"));
+        let pkcs1 =
+            format!("{}\n{body}\n{}\n", concat!("-----BEGIN RSA ", "PRIVATE KEY-----"), concat!("-----END RSA ", "PRIVATE KEY-----"));
         assert_eq!(private_key_der(&pkcs1).unwrap(), pkcs1_to_pkcs8(&[0x30, 0x03, 0x02, 0x01, 0x00]));
         // Pasted into a secret with escaped line breaks.
         assert_eq!(private_key_der(&pkcs1.replace('\n', "\\n")).unwrap(), private_key_der(&pkcs1).unwrap());

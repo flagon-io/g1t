@@ -22,9 +22,7 @@ impl Sealer {
     /// From the service's key: 64 hex characters.
     pub fn new(key_hex: &str) -> Option<Sealer> {
         let key = hex::decode(key_hex.trim()).ok()?;
-        (key.len() == 32).then(|| Sealer {
-            cipher: Aes256Gcm::new_from_slice(&key).expect("a 32-byte key"),
-        })
+        (key.len() == 32).then(|| Sealer { cipher: Aes256Gcm::new_from_slice(&key).expect("a 32-byte key") })
     }
 
     pub fn seal(&self, plaintext: &str, bound_to: &str) -> String {
@@ -32,13 +30,7 @@ impl Sealer {
         getrandom::getrandom(&mut nonce).expect("no source of randomness");
         let sealed = self
             .cipher
-            .encrypt(
-                Nonce::from_slice(&nonce),
-                Payload {
-                    msg: plaintext.as_bytes(),
-                    aad: bound_to.as_bytes(),
-                },
-            )
+            .encrypt(Nonce::from_slice(&nonce), Payload { msg: plaintext.as_bytes(), aad: bound_to.as_bytes() })
             .expect("encrypting cannot fail");
         let mut out = nonce.to_vec();
         out.extend(sealed);
@@ -52,13 +44,7 @@ impl Sealer {
         getrandom::getrandom(&mut nonce).expect("no source of randomness");
         let sealed = self
             .cipher
-            .encrypt(
-                Nonce::from_slice(&nonce),
-                Payload {
-                    msg: plaintext,
-                    aad: bound_to.as_bytes(),
-                },
-            )
+            .encrypt(Nonce::from_slice(&nonce), Payload { msg: plaintext, aad: bound_to.as_bytes() })
             .expect("encrypting cannot fail");
         let mut out = VERSION.as_bytes().to_vec();
         out.extend(nonce);
@@ -74,15 +60,7 @@ impl Sealer {
             return None;
         }
         let (nonce, ciphertext) = bytes.split_at(12);
-        self.cipher
-            .decrypt(
-                Nonce::from_slice(nonce),
-                Payload {
-                    msg: ciphertext,
-                    aad: bound_to.as_bytes(),
-                },
-            )
-            .ok()
+        self.cipher.decrypt(Nonce::from_slice(nonce), Payload { msg: ciphertext, aad: bound_to.as_bytes() }).ok()
     }
 
     /// `None` when it was sealed under another key or for another row.
@@ -92,16 +70,7 @@ impl Sealer {
             return None;
         }
         let (nonce, ciphertext) = bytes.split_at(12);
-        let plain = self
-            .cipher
-            .decrypt(
-                Nonce::from_slice(nonce),
-                Payload {
-                    msg: ciphertext,
-                    aad: bound_to.as_bytes(),
-                },
-            )
-            .ok()?;
+        let plain = self.cipher.decrypt(Nonce::from_slice(nonce), Payload { msg: ciphertext, aad: bound_to.as_bytes() }).ok()?;
         String::from_utf8(plain).ok()
     }
 }

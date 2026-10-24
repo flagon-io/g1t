@@ -75,7 +75,9 @@ pub(crate) fn default_message(method: MergeMethod, settings: &RepoSettings, fact
         MergeMethod::Merge => Some(match settings.merge_commit_message {
             CommitMessageDefault::PullTitle => (numbered, String::new()),
             CommitMessageDefault::PullTitleAndDescription => (numbered, description),
-            CommitMessageDefault::Custom => custom(settings.merge_commit_template.as_deref(), facts).unwrap_or_else(|| merge_default(facts)),
+            CommitMessageDefault::Custom => {
+                custom(settings.merge_commit_template.as_deref(), facts).unwrap_or_else(|| merge_default(facts))
+            }
             // Listing commits is for squashes; settings refuse it here.
             CommitMessageDefault::Default | CommitMessageDefault::PullTitleAndCommits => merge_default(facts),
         }),
@@ -84,9 +86,17 @@ pub(crate) fn default_message(method: MergeMethod, settings: &RepoSettings, fact
             CommitMessageDefault::PullTitleAndDescription => (numbered, description),
             CommitMessageDefault::PullTitleAndCommits => (
                 numbered,
-                facts.commits.iter().map(|commit| commit.message.trim()).filter(|message| !message.is_empty()).collect::<Vec<_>>().join("\n\n"),
+                facts
+                    .commits
+                    .iter()
+                    .map(|commit| commit.message.trim())
+                    .filter(|message| !message.is_empty())
+                    .collect::<Vec<_>>()
+                    .join("\n\n"),
             ),
-            CommitMessageDefault::Custom => custom(settings.squash_commit_template.as_deref(), facts).unwrap_or_else(|| squash_default(facts)),
+            CommitMessageDefault::Custom => {
+                custom(settings.squash_commit_template.as_deref(), facts).unwrap_or_else(|| squash_default(facts))
+            }
             CommitMessageDefault::Default => squash_default(facts),
         }),
     }
@@ -94,10 +104,7 @@ pub(crate) fn default_message(method: MergeMethod, settings: &RepoSettings, fact
 
 /// "Merge pull request #12 from owner/branch", and its title below.
 fn merge_default(facts: &MessageFacts<'_>) -> (String, String) {
-    (
-        format!("Merge pull request #{} from {}/{}", facts.number, facts.head_owner, facts.branch),
-        facts.title.trim().to_owned(),
-    )
+    (format!("Merge pull request #{} from {}/{}", facts.number, facts.head_owner, facts.branch), facts.title.trim().to_owned())
 }
 
 /// Its title and number; below, its commits' subjects when it has more
@@ -316,10 +323,18 @@ mod tests {
         assert!(needs_commits(MergeMethod::Squash, &settings));
         // A value holding a placeholder is not filled in again.
         let tricky = MessageFacts { title: "{body}", ..facts(&[], &[]) };
-        let echo = RepoSettings { merge_commit_message: CommitMessageDefault::Custom, merge_commit_template: Some("{title}".into()), ..RepoSettings::default() };
+        let echo = RepoSettings {
+            merge_commit_message: CommitMessageDefault::Custom,
+            merge_commit_template: Some("{title}".into()),
+            ..RepoSettings::default()
+        };
         assert_eq!(message(MergeMethod::Merge, &echo, &tricky).0, "{body}");
         // A template that fills in nothing falls back to the default.
-        let empty = RepoSettings { merge_commit_message: CommitMessageDefault::Custom, merge_commit_template: Some("{body}".into()), ..RepoSettings::default() };
+        let empty = RepoSettings {
+            merge_commit_message: CommitMessageDefault::Custom,
+            merge_commit_template: Some("{body}".into()),
+            ..RepoSettings::default()
+        };
         let blank = MessageFacts { body: "", ..facts(&[], &[]) };
         assert_eq!(message(MergeMethod::Merge, &empty, &blank).0, "Merge pull request #12 from ana/forks");
         assert!(!needs_commits(MergeMethod::Merge, &echo));

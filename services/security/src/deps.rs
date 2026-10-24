@@ -7,8 +7,8 @@ use std::collections::{BTreeSet, HashMap};
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::repos::{BlobArgs, BlobView};
 use g1t_contracts::security::{AlertState, FindLockfilesArgs, Lockfiles, VersionUpdatesState, VulnStatus, Vulnerability};
-use g1t_contracts::updates::DEPENDABOT_PATHS;
 use g1t_contracts::time::rfc3339;
+use g1t_contracts::updates::DEPENDABOT_PATHS;
 use g1t_contracts::work::{AddCommentArgs, WorkItem, WorkItemDetail, WorkItemViewArgs};
 use g1t_contracts::{Outcome, User};
 use g1t_kit::now_ms;
@@ -87,12 +87,8 @@ pub(crate) struct Located {
 /// Every package the lockfiles resolve. A directory with a `go.mod` is read
 /// from it rather than from its `go.sum`, which lists versions not built.
 fn packages(files: &Lockfiles) -> Vec<Located> {
-    let go_mods: BTreeSet<&str> = files
-        .files
-        .iter()
-        .filter(|file| file.path.ends_with("go.mod"))
-        .map(|file| file.path.trim_end_matches("go.mod"))
-        .collect();
+    let go_mods: BTreeSet<&str> =
+        files.files.iter().filter(|file| file.path.ends_with("go.mod")).map(|file| file.path.trim_end_matches("go.mod")).collect();
     let mut located = Vec::new();
     for file in &files.files {
         let Some(lockfile) = Lockfile::for_path(&file.path) else { continue };
@@ -125,9 +121,7 @@ impl Security {
                 });
                 calls += 1;
                 if let Some(page) = osv_call(Method::Post, "https://api.osv.dev/v1/query", Some(&query)).await? {
-                    found[index].extend(
-                        page["vulns"].as_array().into_iter().flatten().filter_map(|v| v["id"].as_str().map(str::to_owned)),
-                    );
+                    found[index].extend(page["vulns"].as_array().into_iter().flatten().filter_map(|v| v["id"].as_str().map(str::to_owned)));
                 }
             }
             ids.extend(found);
@@ -176,7 +170,8 @@ impl Security {
     /// `.g1t/dependencies.yml`. Returns what went wrong, for the Security
     /// page, if anything did.
     pub async fn scan_dependencies(&self, repo: &RepoRow) -> Result<Option<String>> {
-        let files: Lockfiles = g1t_kit::call(&self.repos, "find_lockfiles", &FindLockfilesArgs { repo_id: repo.repo_id.clone(), git_ref: None }).await?;
+        let files: Lockfiles =
+            g1t_kit::call(&self.repos, "find_lockfiles", &FindLockfilesArgs { repo_id: repo.repo_id.clone(), git_ref: None }).await?;
         let paths: Vec<String> = files.files.iter().map(|file| file.path.clone()).collect();
         let located = packages(&files);
         let unique: Vec<Package> = located.iter().map(|l| l.package.clone()).collect::<BTreeSet<_>>().into_iter().collect();
@@ -201,9 +196,7 @@ impl Security {
             Ok(result) => result,
             Err(error) => {
                 let problem = format!("The dependencies could not be checked: {error}");
-                self.store
-                    .set_dependencies_scanned(&repo.repo_id, files.commit.as_deref(), &paths, Some(&problem))
-                    .await?;
+                self.store.set_dependencies_scanned(&repo.repo_id, files.commit.as_deref(), &paths, Some(&problem)).await?;
                 return Ok(Some(problem));
             }
         };

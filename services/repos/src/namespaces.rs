@@ -118,15 +118,15 @@ pub fn standings(config: &Configured<'_>, held: &[Held], recent: &[Recent]) -> V
         .bound
         .iter()
         .map(|namespace| {
-            let holds = held
-                .iter()
-                .filter(|row| (if row.ns.is_empty() { config.default } else { row.ns.as_str() }) == namespace)
-                .fold(Held::default(), |sum, row| Held {
+            let holds = held.iter().filter(|row| (if row.ns.is_empty() { config.default } else { row.ns.as_str() }) == namespace).fold(
+                Held::default(),
+                |sum, row| Held {
                     ns: String::new(),
                     repos: sum.repos + row.repos,
                     forks: sum.forks + row.forks,
                     stored_bytes: sum.stored_bytes + row.stored_bytes,
-                });
+                },
+            );
             let health = recent.iter().find(|row| row.store == *namespace).cloned().unwrap_or_default();
             let peak = health.peak.max(0.0) as u64;
             Standing {
@@ -190,9 +190,9 @@ thread_local! {
 
 /// Loads for placing, kept a minute in this isolate.
 pub async fn loads(db: &D1Database, config: &Configured<'_>, now: u64) -> Result<Vec<Load>> {
-    if let Some(loads) = LOADS.with(|kept| {
-        kept.borrow().as_ref().filter(|(at, _)| now.saturating_sub(*at) < LOADS_TTL_MS).map(|(_, loads)| loads.clone())
-    }) {
+    if let Some(loads) =
+        LOADS.with(|kept| kept.borrow().as_ref().filter(|(at, _)| now.saturating_sub(*at) < LOADS_TTL_MS).map(|(_, loads)| loads.clone()))
+    {
         return Ok(loads);
     }
     let (held, recent) = futures_util::future::join(held(db), recent(db, now)).await;
@@ -226,7 +226,15 @@ mod tests {
             Held { ns: "g1t-us-1".into(), repos: 5.0, forks: 1.0, stored_bytes: 7.0 },
         ];
         let recent = vec![
-            Recent { store: "g1t".into(), peak: 6_000.0, calls: 50_000.0, errors: 3.0, recent_calls: 100.0, recent_errors: 1.0, ..Recent::default() },
+            Recent {
+                store: "g1t".into(),
+                peak: 6_000.0,
+                calls: 50_000.0,
+                errors: 3.0,
+                recent_calls: 100.0,
+                recent_errors: 1.0,
+                ..Recent::default()
+            },
             Recent { store: "g1t-us-1".into(), peak: 10.0, calls: 20.0, recent_calls: 8.0, recent_errors: 2.0, ..Recent::default() },
             // The fallback's own health is not the namespace's.
             Recent { store: "g1t-us-1@fallback".into(), recent_calls: 50.0, recent_errors: 50.0, ..Recent::default() },

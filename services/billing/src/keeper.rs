@@ -47,11 +47,7 @@ impl Keeper {
         let var = |name: &str| env.var(name).map(|v| v.to_string()).unwrap_or_default();
         let secret = |name: &str| env.secret(name).ok().map(|v| v.to_string()).filter(|v| !v.is_empty());
         let token = secret("CLOUDFLARE_USAGE_TOKEN");
-        Keeper {
-            billing_token: secret("CLOUDFLARE_BILLING_TOKEN").or_else(|| token.clone()),
-            token,
-            account: var("CLOUDFLARE_ACCOUNT_ID"),
-        }
+        Keeper { billing_token: secret("CLOUDFLARE_BILLING_TOKEN").or_else(|| token.clone()), token, account: var("CLOUDFLARE_ACCOUNT_ID") }
     }
 
     async fn send(&self, method: Method, url: &str, body: Option<Value>) -> Result<Value> {
@@ -133,10 +129,7 @@ impl Keeper {
                 Some(json!({ "query": query, "variables": { "account": self.account, "since": since, "until": until } })),
             )
             .await?;
-        let groups = body["data"]["viewer"]["accounts"][0]["containersUsageAdaptiveGroups"]
-            .as_array()
-            .cloned()
-            .unwrap_or_default();
+        let groups = body["data"]["viewer"]["accounts"][0]["containersUsageAdaptiveGroups"].as_array().cloned().unwrap_or_default();
         Ok(groups.iter().fold(ContainerUsage::default(), |total, g| ContainerUsage {
             cpu_seconds: total.cpu_seconds + g["sum"]["cpuTimeSec"].as_f64().unwrap_or(0.0),
             memory_byte_seconds: total.memory_byte_seconds + g["sum"]["allocatedMemory"].as_f64().unwrap_or(0.0),
@@ -250,7 +243,10 @@ pub(crate) fn base_scale(memory_gib: f64, disk_gb: f64) -> f64 {
 /// CPU than memory and disk, and an idle job still holds those.
 pub(crate) fn busy_scale(instance: &InstanceType) -> f64 {
     let busy = |i: &InstanceType| {
-        i.memory_gib * LIST_MEMORY_GIB_SECOND + i.disk_gb * LIST_DISK_GB_SECOND + i.vcpu * LIST_VCPU_SECOND + SANDBOX_DO_GB * LIST_DO_GB_SECOND
+        i.memory_gib * LIST_MEMORY_GIB_SECOND
+            + i.disk_gb * LIST_DISK_GB_SECOND
+            + i.vcpu * LIST_VCPU_SECOND
+            + SANDBOX_DO_GB * LIST_DO_GB_SECOND
     };
     (busy(instance) / busy(&STANDARD_INSTANCE)).max(base_scale(instance.memory_gib, instance.disk_gb))
 }
@@ -285,11 +281,7 @@ pub(crate) fn run_cost(seconds: i64, cpu_seconds: f64, base_per_second: f64, per
 /// reads as a lower price when nothing changed. None without a list cost;
 /// the published rates stand in.
 pub(crate) fn billed_rate(rows: &[&UsageRow]) -> Option<f64> {
-    let mut rates: Vec<f64> = rows
-        .iter()
-        .filter(|r| r.list_cost > 0.0 && r.quantity > 0.0)
-        .map(|r| r.list_cost / r.quantity)
-        .collect();
+    let mut rates: Vec<f64> = rows.iter().filter(|r| r.list_cost > 0.0 && r.quantity > 0.0).map(|r| r.list_cost / r.quantity).collect();
     if rates.is_empty() {
         return None;
     }
@@ -315,9 +307,7 @@ impl UsageRow {
     fn from_value(row: &Value) -> Option<Self> {
         let text = |keys: &[&str]| keys.iter().find_map(|k| row[*k].as_str()).unwrap_or_default().to_owned();
         let number = |keys: &[&str]| {
-            keys.iter()
-                .find_map(|k| row[*k].as_f64().or_else(|| row[*k].as_str().and_then(|s| s.parse().ok())))
-                .unwrap_or(0.0)
+            keys.iter().find_map(|k| row[*k].as_f64().or_else(|| row[*k].as_str().and_then(|s| s.parse().ok()))).unwrap_or(0.0)
         };
         let service = text(&["ServiceName", "service_name", "service"]);
         if service.is_empty() {
@@ -368,13 +358,7 @@ impl Billing {
         // read, not one query per meter (status.g1t.sh times this call).
         let (prices, changes, coming) = futures_util::future::join3(
             async { self.db.prepare("SELECT * FROM prices ORDER BY rowid").all().await?.results::<PriceRow>() },
-            async {
-                self.db
-                    .prepare("SELECT * FROM price_changes ORDER BY created_at DESC LIMIT 20")
-                    .all()
-                    .await?
-                    .results::<ChangeRow>()
-            },
+            async { self.db.prepare("SELECT * FROM price_changes ORDER BY created_at DESC LIMIT 20").all().await?.results::<ChangeRow>() },
             // Changes still to come first, so a rise is seen before it is charged.
             self.coming_changes(),
         )
@@ -385,10 +369,8 @@ impl Billing {
         let prices: Vec<PriceRow> = prices.into_iter().filter(|row| !crate::pricing::retired(&row.meter)).collect();
         let changes: Vec<ChangeRow> = changes.into_iter().filter(|row| !crate::pricing::retired(&row.meter)).collect();
         let coming: Vec<PriceChange> = coming.into_iter().filter(|change| !crate::pricing::retired(&change.meter)).collect();
-        let book: std::collections::BTreeMap<&str, f64> = prices
-            .iter()
-            .map(|row| (row.meter.as_str(), Price::price_for(row.cost_micros, row.markup_percent)))
-            .collect();
+        let book: std::collections::BTreeMap<&str, f64> =
+            prices.iter().map(|row| (row.meter.as_str(), Price::price_for(row.cost_micros, row.markup_percent))).collect();
         // Each monthly price is all of it, before tax: no card fee on top.
         let plans: Vec<_> = g1t_contracts::billing::Feature::ALL
             .iter()
@@ -446,12 +428,7 @@ impl Billing {
 
     /// Whether the costs have never been checked against Cloudflare's bill.
     pub(crate) async fn never_checked(&self) -> Result<bool> {
-        Ok(self
-            .db
-            .prepare("SELECT meter FROM prices WHERE checked_at IS NOT NULL LIMIT 1")
-            .first::<Value>(None)
-            .await?
-            .is_none())
+        Ok(self.db.prepare("SELECT meter FROM prices WHERE checked_at IS NOT NULL LIMIT 1").first::<Value>(None).await?.is_none())
     }
 
     /// A meter's cost and price per unit, from the book.
@@ -561,11 +538,7 @@ impl Billing {
                 self.measure(meter, rate * 1e6 * MICROS_PER_DOLLAR as f64, &reason).await?;
             }
         }
-        self.db
-            .prepare("UPDATE prices SET checked_at = ?")
-            .bind(&[now.as_str().into()])?
-            .run()
-            .await?;
+        self.db.prepare("UPDATE prices SET checked_at = ?").bind(&[now.as_str().into()])?.run().await?;
         Ok(())
     }
 

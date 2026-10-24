@@ -153,11 +153,7 @@ pub fn judge(changes: &[Change], findings: &BTreeMap<String, Vec<Finding>>, poli
                         .collect(),
                     None => Vec::new(),
                 };
-                let denied = change
-                    .dependency
-                    .license
-                    .as_deref()
-                    .is_some_and(|license| denied_license(license, &policy.deny_licenses));
+                let denied = change.dependency.license.as_deref().is_some_and(|license| denied_license(license, &policy.deny_licenses));
                 added.push(Reviewed { dependency: change.dependency.clone(), findings: found, failing, denied_license: denied });
             }
         }
@@ -331,7 +327,10 @@ mod tests {
         assert!(!verdict.passed);
         assert_eq!(verdict.headline(), "Adds 1 vulnerable package");
         let summary = verdict.summary(&strict);
-        assert!(summary.contains("**Failed.**") && summary.contains("**[GHSA-35jh-r3h4-6jhm](https://osv.dev/vulnerability/GHSA-35jh-r3h4-6jhm) high**"));
+        assert!(
+            summary.contains("**Failed.**")
+                && summary.contains("**[GHSA-35jh-r3h4-6jhm](https://osv.dev/vulnerability/GHSA-35jh-r3h4-6jhm) high**")
+        );
         assert!(summary.contains("| Removed | `lodash` | 4.17.21 |"));
         // Critical only: a high finding is shown but passes.
         let lenient = Policy { fail_on: Some(Severity::Critical), deny_licenses: Vec::new() };

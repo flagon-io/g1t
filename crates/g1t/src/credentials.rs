@@ -21,37 +21,24 @@ const USERNAME: &str = "g1t";
 pub fn find(host: &str, token_stdin: bool) -> Result<Credentials, String> {
     if token_stdin {
         let mut token = String::new();
-        std::io::stdin()
-            .read_to_string(&mut token)
-            .map_err(|e| format!("Could not read the token from stdin: {e}"))?;
-        return token_credentials(token.trim())
-            .ok_or_else(|| "--token-stdin read an empty token.".to_owned());
+        std::io::stdin().read_to_string(&mut token).map_err(|e| format!("Could not read the token from stdin: {e}"))?;
+        return token_credentials(token.trim()).ok_or_else(|| "--token-stdin read an empty token.".to_owned());
     }
-    if let Some(credentials) = std::env::var("G1T_TOKEN")
-        .ok()
-        .and_then(|t| token_credentials(t.trim()))
-    {
+    if let Some(credentials) = std::env::var("G1T_TOKEN").ok().and_then(|t| token_credentials(t.trim())) {
         return Ok(credentials);
     }
-    if let Some(credentials) =
-        crate::auth::registry_token(host).and_then(|t| token_credentials(t.trim()))
-    {
+    if let Some(credentials) = crate::auth::registry_token(host).and_then(|t| token_credentials(t.trim())) {
         return Ok(credentials);
     }
     let config = docker_config_path().and_then(|path| std::fs::read_to_string(path).ok());
     if let Some(found) = config.and_then(|config| from_docker_config(&config, host, &run_helper)) {
         return Ok(found);
     }
-    Err(format!(
-        "No token for {host}. Sign in with `g1t auth login`, set G1T_TOKEN, or pass one with --token-stdin."
-    ))
+    Err(format!("No token for {host}. Sign in with `g1t auth login`, set G1T_TOKEN, or pass one with --token-stdin."))
 }
 
 fn token_credentials(token: &str) -> Option<Credentials> {
-    (!token.is_empty()).then(|| Credentials {
-        username: USERNAME.to_owned(),
-        secret: token.to_owned(),
-    })
+    (!token.is_empty()).then(|| Credentials { username: USERNAME.to_owned(), secret: token.to_owned() })
 }
 
 fn docker_config_path() -> Option<PathBuf> {
@@ -65,52 +52,30 @@ fn docker_config_path() -> Option<PathBuf> {
 /// Looks `host` up in a docker `config.json` the way docker does: its own
 /// credential helper first, then the credential store, then a plain `auth`.
 /// `helper` runs `docker-credential-<name> get`.
-pub fn from_docker_config(
-    config: &str,
-    host: &str,
-    helper: &dyn Fn(&str, &str) -> Option<Credentials>,
-) -> Option<Credentials> {
+pub fn from_docker_config(config: &str, host: &str, helper: &dyn Fn(&str, &str) -> Option<Credentials>) -> Option<Credentials> {
     let config: Value = serde_json::from_str(config).ok()?;
     let servers = [host.to_owned(), format!("https://{host}")];
-    if let Some(name) = config
-        .get("credHelpers")
-        .and_then(|h| h.get(host))
-        .and_then(Value::as_str)
-    {
+    if let Some(name) = config.get("credHelpers").and_then(|h| h.get(host)).and_then(Value::as_str) {
         return servers.iter().find_map(|server| helper(name, server));
     }
-    if let Some(name) = config
-        .get("credsStore")
-        .and_then(Value::as_str)
-        .filter(|n| !n.is_empty())
+    if let Some(name) = config.get("credsStore").and_then(Value::as_str).filter(|n| !n.is_empty())
         && let Some(found) = servers.iter().find_map(|server| helper(name, server))
     {
         return Some(found);
     }
     let auths = config.get("auths")?.as_object()?;
-    auths
-        .iter()
-        .find(|(key, _)| server_host(key) == host)
-        .and_then(|(_, entry)| {
-            let auth = entry.get("auth")?.as_str()?;
-            let decoded = base64::engine::general_purpose::STANDARD
-                .decode(auth.trim())
-                .ok()?;
-            let decoded = String::from_utf8(decoded).ok()?;
-            let (username, secret) = decoded.split_once(':')?;
-            (!secret.is_empty()).then(|| Credentials {
-                username: username.to_owned(),
-                secret: secret.to_owned(),
-            })
-        })
+    auths.iter().find(|(key, _)| server_host(key) == host).and_then(|(_, entry)| {
+        let auth = entry.get("auth")?.as_str()?;
+        let decoded = base64::engine::general_purpose::STANDARD.decode(auth.trim()).ok()?;
+        let decoded = String::from_utf8(decoded).ok()?;
+        let (username, secret) = decoded.split_once(':')?;
+        (!secret.is_empty()).then(|| Credentials { username: username.to_owned(), secret: secret.to_owned() })
+    })
 }
 
 /// `https://g1t.sh/v2/` and `g1t.sh` are the same server.
 fn server_host(key: &str) -> &str {
-    let key = key
-        .strip_prefix("https://")
-        .or_else(|| key.strip_prefix("http://"))
-        .unwrap_or(key);
+    let key = key.strip_prefix("https://").or_else(|| key.strip_prefix("http://")).unwrap_or(key);
     key.split('/').next().unwrap_or(key)
 }
 
@@ -134,11 +99,7 @@ fn run_helper(name: &str, server: &str) -> Option<Credentials> {
 pub fn parse_helper_output(stdout: &[u8]) -> Option<Credentials> {
     let found: Value = serde_json::from_slice(stdout).ok()?;
     let secret = found.get("Secret")?.as_str()?.to_owned();
-    let username = found
-        .get("Username")
-        .and_then(Value::as_str)
-        .unwrap_or(USERNAME)
-        .to_owned();
+    let username = found.get("Username").and_then(Value::as_str).unwrap_or(USERNAME).to_owned();
     (!secret.is_empty()).then_some(Credentials { username, secret })
 }
 
@@ -152,33 +113,21 @@ mod tests {
     }
 
     fn creds(user: &str, secret: &str) -> Credentials {
-        Credentials {
-            username: user.into(),
-            secret: secret.into(),
-        }
+        Credentials { username: user.into(), secret: secret.into() }
     }
 
     #[test]
     fn a_plain_auth_entry_is_decoded() {
         // "syntaqx:g1t_secret"
         let config = r#"{"auths":{"g1t.sh":{"auth":"c3ludGFxeDpnMXRfc2VjcmV0"}}}"#;
-        assert_eq!(
-            from_docker_config(config, "g1t.sh", &no_helper),
-            Some(creds("syntaqx", "g1t_secret"))
-        );
+        assert_eq!(from_docker_config(config, "g1t.sh", &no_helper), Some(creds("syntaqx", "g1t_secret")));
     }
 
     #[test]
     fn auth_keys_may_be_urls() {
         let config = r#"{"auths":{"https://g1t.sh/v2/":{"auth":"c3ludGFxeDpnMXRfc2VjcmV0"}}}"#;
-        assert_eq!(
-            from_docker_config(config, "g1t.sh", &no_helper),
-            Some(creds("syntaqx", "g1t_secret"))
-        );
-        assert_eq!(
-            from_docker_config(config, "other.example", &no_helper),
-            None
-        );
+        assert_eq!(from_docker_config(config, "g1t.sh", &no_helper), Some(creds("syntaqx", "g1t_secret")));
+        assert_eq!(from_docker_config(config, "other.example", &no_helper), None);
     }
 
     #[test]
@@ -189,39 +138,26 @@ mod tests {
             asked.borrow_mut().push(format!("{name} {server}"));
             (server == "g1t.sh").then(|| creds("syntaqx", "from-store"))
         };
-        assert_eq!(
-            from_docker_config(config, "g1t.sh", &helper),
-            Some(creds("syntaqx", "from-store"))
-        );
+        assert_eq!(from_docker_config(config, "g1t.sh", &helper), Some(creds("syntaqx", "from-store")));
         assert_eq!(asked.borrow().as_slice(), ["desktop g1t.sh"]);
     }
 
     #[test]
     fn a_credential_store_without_the_host_falls_back_to_auths() {
-        let config =
-            r#"{"auths":{"g1t.sh":{"auth":"c3ludGFxeDpnMXRfc2VjcmV0"}},"credsStore":"desktop"}"#;
-        assert_eq!(
-            from_docker_config(config, "g1t.sh", &no_helper),
-            Some(creds("syntaqx", "g1t_secret"))
-        );
+        let config = r#"{"auths":{"g1t.sh":{"auth":"c3ludGFxeDpnMXRfc2VjcmV0"}},"credsStore":"desktop"}"#;
+        assert_eq!(from_docker_config(config, "g1t.sh", &no_helper), Some(creds("syntaqx", "g1t_secret")));
     }
 
     #[test]
     fn a_host_helper_comes_before_the_store() {
         let config = r#"{"credsStore":"desktop","credHelpers":{"g1t.sh":"g1t"}}"#;
         let helper = |name: &str, _: &str| (name == "g1t").then(|| creds("u", "from-helper"));
-        assert_eq!(
-            from_docker_config(config, "g1t.sh", &helper),
-            Some(creds("u", "from-helper"))
-        );
+        assert_eq!(from_docker_config(config, "g1t.sh", &helper), Some(creds("u", "from-helper")));
     }
 
     #[test]
     fn nothing_stored_is_none() {
-        assert_eq!(
-            from_docker_config(r#"{"auths":{}}"#, "g1t.sh", &no_helper),
-            None
-        );
+        assert_eq!(from_docker_config(r#"{"auths":{}}"#, "g1t.sh", &no_helper), None);
         assert_eq!(from_docker_config("not json", "g1t.sh", &no_helper), None);
     }
 

@@ -29,8 +29,8 @@ use worker::wasm_bindgen::JsValue;
 use crate::Work;
 use crate::prefetch::Slot;
 use crate::reviews::{AGENT_ID, AGENT_NAME};
-use crate::statuses::{self, WorkflowFacts};
 use crate::rows::ValueRow;
+use crate::statuses::{self, WorkflowFacts};
 
 /// How long a claimed step is waited for before it may be taken again.
 const CATCH_UP_MINUTES: u64 = 30;
@@ -49,10 +49,7 @@ pub(crate) const REPOS_WRITE_WITHIN: std::time::Duration = std::time::Duration::
 
 /// What a merge says when the repository service did not answer in time.
 pub(crate) fn repository_unreachable<T>() -> Outcome<T> {
-    Outcome::fail(
-        FailureCode::Unavailable,
-        "g1t couldn't reach the repository to merge this. Try again in a moment.",
-    )
+    Outcome::fail(FailureCode::Unavailable, "g1t couldn't reach the repository to merge this. Try again in a moment.")
 }
 
 /// What becomes of a merge that was brought up to date, by the checks the
@@ -153,11 +150,7 @@ pub(crate) fn from_someone_else(pull: &Pull, reviewer: &str) -> bool {
 }
 
 fn at(stage: Stage, detail: impl Into<String>, revisions: u32) -> Lifecycle {
-    Lifecycle {
-        stage,
-        detail: detail.into(),
-        revisions,
-    }
+    Lifecycle { stage, detail: detail.into(), revisions }
 }
 
 /// Everything the next step depends on.
@@ -227,10 +220,7 @@ fn decide(facts: Facts) -> (Lifecycle, Next) {
         }
         Some("merge") => return wait(Stage::Ready, "Merging."),
         Some(WAITING_FOR_CHECKS) => {
-            return wait(
-                Stage::Checking,
-                "Brought up to date. It lands once the required checks pass on that commit.",
-            );
+            return wait(Stage::Checking, "Brought up to date. It lands once the required checks pass on that commit.");
         }
         _ => {}
     }
@@ -256,10 +246,7 @@ fn decide(facts: Facts) -> (Lifecycle, Next) {
         );
     }
     if !facts.workflows.pending.is_empty() {
-        return wait(
-            Stage::Checking,
-            &format!("Waiting for {} to finish.", statuses::list(&facts.workflows.pending)),
-        );
+        return wait(Stage::Checking, &format!("Waiting for {} to finish.", statuses::list(&facts.workflows.pending)));
     }
     let expected = facts.workflows.expected();
     if !expected.is_empty() {
@@ -288,14 +275,7 @@ fn decide(facts: Facts) -> (Lifecycle, Next) {
         return wait(Stage::NeedsYou, missing);
     }
     if facts.auto_merge {
-        return (
-            at(
-                Stage::Ready,
-                "Everything this repository asks for is met. Merging, as its settings say.",
-                revisions,
-            ),
-            Next::Merge,
-        );
+        return (at(Stage::Ready, "Everything this repository asks for is met. Merging, as its settings say.", revisions), Next::Merge);
     }
     wait(
         Stage::Ready,
@@ -311,12 +291,7 @@ impl Work {
     /// Where a pull request stands and whether g1t merges it, remembered
     /// so lists can show it without working it out again. `None` for one
     /// g1t is not seeing through.
-    pub(crate) async fn assess(
-        &self,
-        pull: &Pull,
-        _item: &Option<WorkItem>,
-        behind: bool,
-    ) -> Result<Option<(Lifecycle, Next)>> {
+    pub(crate) async fn assess(&self, pull: &Pull, _item: &Option<WorkItem>, behind: bool) -> Result<Option<(Lifecycle, Next)>> {
         let assessed = self.assess_now(pull, behind).await?;
         if let Some((lifecycle, _)) = &assessed
             && !self.remembered_as(&pull.id, lifecycle)?
@@ -332,11 +307,9 @@ impl Work {
         let Some(found) = self.prefetched_pull(pull_id) else {
             return Ok(false);
         };
-        Ok(found
-            .first::<crate::rows::Snapshot>(Slot::Pull)?
-            .is_some_and(|stored| {
-                stored.stage == Some(lifecycle.stage) && stored.stage_detail.as_deref() == Some(lifecycle.detail.as_str())
-            }))
+        Ok(found.first::<crate::rows::Snapshot>(Slot::Pull)?.is_some_and(|stored| {
+            stored.stage == Some(lifecycle.stage) && stored.stage_detail.as_deref() == Some(lifecycle.detail.as_str())
+        }))
     }
 
     /// Forgets where a repository's open pull requests stand, after its
@@ -356,11 +329,7 @@ impl Work {
         let stage = serde_json::to_value(lifecycle.stage)?;
         self.db
             .prepare("UPDATE pulls SET stage = ?, stage_detail = ? WHERE id = ?")
-            .bind(&[
-                stage.as_str().unwrap_or_default().into(),
-                lifecycle.detail.as_str().into(),
-                pull_id.into(),
-            ])?
+            .bind(&[stage.as_str().unwrap_or_default().into(), lifecycle.detail.as_str().into(), pull_id.into()])?
             .run()
             .await?;
         Ok(())
@@ -410,9 +379,7 @@ impl Work {
             Some(repo) => Some(self.merge_gate_seen(&repo, pull, Some(&User::system(&repo.namespace)), behind).await?),
             None => None,
         };
-        let rules_allow_auto_merge = gate
-            .as_ref()
-            .is_none_or(|gate| g1t_rules::merge::auto_merge_refusal(&gate.requirements).is_none());
+        let rules_allow_auto_merge = gate.as_ref().is_none_or(|gate| g1t_rules::merge::auto_merge_refusal(&gate.requirements).is_none());
         let (lifecycle, next) = decide(Facts {
             draft: pull.status == PullStatus::Draft,
             stalled: progress.stalled,
@@ -443,11 +410,9 @@ impl Work {
             created_at: String,
         }
         let rows = match self.prefetched_pull(&pull.id) {
-            Some(found) => found
-                .rows::<Verdicts>(Slot::Verdicts)?
-                .into_iter()
-                .filter(|row| from_someone_else(pull, &row.author_id))
-                .collect(),
+            Some(found) => {
+                found.rows::<Verdicts>(Slot::Verdicts)?.into_iter().filter(|row| from_someone_else(pull, &row.author_id)).collect()
+            }
             None => self
                 .db
                 .prepare(
@@ -456,12 +421,7 @@ impl Work {
                        AND author_id != ? AND author_id != ?
                      ORDER BY id",
                 )
-                .bind(&[
-                    pull.repo_id.as_str().into(),
-                    pull.number.into(),
-                    pull.owner().id.as_str().into(),
-                    AGENT_ID.into(),
-                ])?
+                .bind(&[pull.repo_id.as_str().into(), pull.number.into(), pull.owner().id.as_str().into(), AGENT_ID.into()])?
                 .all()
                 .await?
                 .results::<Verdicts>()?,
@@ -491,12 +451,7 @@ impl Work {
                    AND (working_until IS NULL OR working_until < ?1)
                  RETURNING id AS value",
             )
-            .bind(&[
-                rfc3339(now).into(),
-                step.into(),
-                rfc3339(now + minutes * 60 * 1000).into(),
-                pull_id.into(),
-            ])?
+            .bind(&[rfc3339(now).into(), step.into(), rfc3339(now + minutes * 60 * 1000).into(), pull_id.into()])?
             .first::<ValueRow>(None)
             .await?
             .is_some())
@@ -528,15 +483,7 @@ impl Work {
         // As a member: a private repository would look missing otherwise,
         // and the pull request would never move.
         let viewer: Viewer = self.owner_viewer(&pull).await?;
-        let repo: Outcome<Repo> = g1t_kit::call(
-            &self.repos,
-            "get_by_id",
-            &GetByIdArgs {
-                id: pull.repo_id.clone(),
-                viewer,
-            },
-        )
-        .await?;
+        let repo: Outcome<Repo> = g1t_kit::call(&self.repos, "get_by_id", &GetByIdArgs { id: pull.repo_id.clone(), viewer }).await?;
         let Outcome::Ok(repo) = crate::retired::unless_archived(repo) else {
             return Ok(Advance::None);
         };
@@ -568,10 +515,7 @@ impl Work {
         let merged = self
             .merge_pull(PullActionArgs {
                 actor,
-                repo: RepoPath {
-                    namespace: repo.namespace.clone(),
-                    name: repo.name.clone(),
-                },
+                repo: RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() },
                 number: pull.number,
                 summary: String::new(),
                 keep_item_open: false,
@@ -626,12 +570,7 @@ impl Work {
         ignore_checks: bool,
     ) -> Result<()> {
         let now = now_ms();
-        let request = serde_json::to_string(&LandRequest {
-            actor: actor.clone(),
-            keep_item_open,
-            delete_branch,
-            ignore_checks,
-        })?;
+        let request = serde_json::to_string(&LandRequest { actor: actor.clone(), keep_item_open, delete_branch, ignore_checks })?;
         self.db
             .prepare(
                 "UPDATE pulls
@@ -639,21 +578,10 @@ impl Work {
                      working_on = 'catch_up', working_until = ?
                  WHERE id = ?",
             )
-            .bind(&[
-                request.into(),
-                rfc3339(now).into(),
-                rfc3339(now + CATCH_UP_MINUTES * 60 * 1000).into(),
-                pull.id.as_str().into(),
-            ])?
+            .bind(&[request.into(), rfc3339(now).into(), rfc3339(now + CATCH_UP_MINUTES * 60 * 1000).into(), pull.id.as_str().into()])?
             .run()
             .await?;
-        self.publish(
-            "pull.merge_requested",
-            &pull.repo_id,
-            actor,
-            Self::pull_event(pull),
-        )
-        .await
+        self.publish("pull.merge_requested", &pull.repo_id, actor, Self::pull_event(pull)).await
     }
 
     /// The merge waiting on a pull request, if one was asked for recently
@@ -665,15 +593,9 @@ impl Work {
             .filter(|row| {
                 // Waiting for checks on the caught-up commit stands longer
                 // than waiting for the push.
-                let minutes = if row.working_on.as_deref() == Some(WAITING_FOR_CHECKS) {
-                    CHECKS_MINUTES
-                } else {
-                    CATCH_UP_MINUTES
-                };
+                let minutes = if row.working_on.as_deref() == Some(WAITING_FOR_CHECKS) { CHECKS_MINUTES } else { CATCH_UP_MINUTES };
                 let oldest = rfc3339(now.saturating_sub(minutes * 60 * 1000));
-                row.land_requested_at
-                    .as_deref()
-                    .is_some_and(|at| at >= oldest.as_str())
+                row.land_requested_at.as_deref().is_some_and(|at| at >= oldest.as_str())
             })
             .and_then(|row| row.land_requested)
             .and_then(|request| serde_json::from_str(&request).ok()))
@@ -737,11 +659,7 @@ impl Work {
                  WHERE id = ?3 AND land_requested IS NOT NULL AND status = 'open'
                    AND (working_on IS NULL OR working_on <> 'checks')",
             )
-            .bind(&[
-                rfc3339(now + CHECKS_MINUTES * 60 * 1000).into(),
-                rfc3339(now).into(),
-                pull_id.into(),
-            ])?
+            .bind(&[rfc3339(now + CHECKS_MINUTES * 60 * 1000).into(), rfc3339(now).into(), pull_id.into()])?
             .run()
             .await?;
         Ok(())
@@ -774,15 +692,8 @@ impl Work {
         if pull.status != PullStatus::Open {
             return self.forget_landing(pull_id).await;
         }
-        let repo: Outcome<Repo> = g1t_kit::call(
-            &self.repos,
-            "get_by_id",
-            &GetByIdArgs {
-                id: pull.repo_id.clone(),
-                viewer: Some(request.actor.clone()),
-            },
-        )
-        .await?;
+        let repo: Outcome<Repo> =
+            g1t_kit::call(&self.repos, "get_by_id", &GetByIdArgs { id: pull.repo_id.clone(), viewer: Some(request.actor.clone()) }).await?;
         let Outcome::Ok(repo) = crate::retired::unless_archived(repo) else {
             return self.forget_landing(pull_id).await;
         };
@@ -791,20 +702,13 @@ impl Work {
         } else {
             let settings = self.settings_on(&repo, &pull).await?;
             let statuses = self.statuses(&pull.repo_id, pull.head_commit.as_deref()).await?;
-            let facts = self
-                .workflow_facts(&pull.repo_id, pull.head_commit.as_deref(), &statuses, &settings.required_checks)
-                .await?;
+            let facts = self.workflow_facts(&pull.repo_id, pull.head_commit.as_deref(), &statuses, &settings.required_checks).await?;
             landing_step(&facts)
         };
         match step {
             Landing::Wait => return self.wait_for_checks(pull_id).await,
             Landing::Stall(reason) => {
-                self.stall(StallArgs {
-                    pull_id: pull.id,
-                    reason,
-                    by: None,
-                })
-                .await?;
+                self.stall(StallArgs { pull_id: pull.id, reason, by: None }).await?;
                 return Ok(());
             }
             Landing::Now => {}
@@ -816,10 +720,7 @@ impl Work {
         let merged = self
             .merge_pull(PullActionArgs {
                 actor: request.actor,
-                repo: RepoPath {
-                    namespace: repo.namespace,
-                    name: repo.name,
-                },
+                repo: RepoPath { namespace: repo.namespace, name: repo.name },
                 number: pull.number,
                 summary: String::new(),
                 keep_item_open: request.keep_item_open,
@@ -837,10 +738,7 @@ impl Work {
         if let Outcome::Fail(failure) = merged {
             self.stall(StallArgs {
                 pull_id: pull.id,
-                reason: format!(
-                    "It was brought up to date but could not be merged: {}",
-                    failure.message
-                ),
+                reason: format!("It was brought up to date but could not be merged: {}", failure.message),
                 by: None,
             })
             .await?;
@@ -874,10 +772,7 @@ impl Work {
                 "pull.stalled",
                 &pull.repo_id,
                 a.by.clone(),
-                g1t_contracts::events::PullEvent {
-                    detail: Some(a.reason.trim().to_owned()),
-                    ..Self::pull_event(&pull)
-                },
+                g1t_contracts::events::PullEvent { detail: Some(a.reason.trim().to_owned()), ..Self::pull_event(&pull) },
             )
             .await?;
         }
@@ -918,10 +813,7 @@ impl Work {
                    AND (?1 IS NULL OR repo_id = ?1)
                  ORDER BY updated_at DESC LIMIT ?2",
             )
-            .bind(&[
-                a.repo_id.map_or(JsValue::NULL, JsValue::from),
-                MANAGED_PAGE.into(),
-            ])?
+            .bind(&[a.repo_id.map_or(JsValue::NULL, JsValue::from), MANAGED_PAGE.into()])?
             .all()
             .await?
             .results::<ValueRow>()?;
@@ -1008,11 +900,8 @@ mod tests {
 
     #[test]
     fn approvals_the_repository_wants_are_waited_for() {
-        let short = Facts {
-            approvals_missing: Some("This repository requires 1 approving review.".to_owned()),
-            auto_merge: true,
-            ..facts()
-        };
+        let short =
+            Facts { approvals_missing: Some("This repository requires 1 approving review.".to_owned()), auto_merge: true, ..facts() };
         let (lifecycle, next) = decide(short);
         assert_eq!(lifecycle.stage, Stage::NeedsYou);
         assert_eq!(lifecycle.detail, "This repository requires 1 approving review.");
@@ -1061,17 +950,11 @@ mod tests {
         assert_eq!(landing_step(&checks(&[("CI / pull_request", "pending")], &["CI"])), Landing::Wait);
         assert_eq!(landing_step(&checks(&[("CI / pull_request", "success")], &["CI"])), Landing::Now);
         // Every required one, not just the first to report.
-        assert_eq!(
-            landing_step(&checks(&[("CI / pull_request", "success")], &["CI", "Deploy"])),
-            Landing::Wait
-        );
+        assert_eq!(landing_step(&checks(&[("CI / pull_request", "success")], &["CI", "Deploy"])), Landing::Wait);
         // Nothing required: it lands at once, whatever else runs or failed.
         assert_eq!(landing_step(&checks(&[], &[])), Landing::Now);
         assert_eq!(landing_step(&checks(&[("Lint / pull_request", "failure")], &[])), Landing::Now);
-        assert_eq!(
-            landing_step(&checks(&[("CI / pull_request", "success"), ("Lint / pull_request", "failure")], &["CI"])),
-            Landing::Now
-        );
+        assert_eq!(landing_step(&checks(&[("CI / pull_request", "success"), ("Lint / pull_request", "failure")], &["CI"])), Landing::Now);
         // A required one that failed stops it, saying which.
         let Landing::Stall(reason) = landing_step(&checks(&[("CI / pull_request", "failure")], &["CI"])) else {
             panic!("a failing required check must stop it");
@@ -1080,9 +963,7 @@ mod tests {
             reason,
             "It was brought up to date, but the required check CI failed on that commit, so it was not merged. Push a fix, then merge again."
         );
-        let Landing::Stall(reason) =
-            landing_step(&checks(&[("CI / push", "error"), ("Deploy", "failure")], &["CI", "Deploy"]))
-        else {
+        let Landing::Stall(reason) = landing_step(&checks(&[("CI / push", "error"), ("Deploy", "failure")], &["CI", "Deploy"])) else {
             panic!("failing required checks must stop it");
         };
         assert!(reason.contains("required checks CI and Deploy failed"), "{reason}");
@@ -1125,10 +1006,7 @@ mod tests {
 
     #[test]
     fn drafts_steps_under_way_and_stops_wait() {
-        assert_eq!(
-            outcome(Facts { working_on: Some(WAITING_FOR_CHECKS.into()), auto_merge: true, ..facts() }),
-            (Stage::Checking, "wait")
-        );
+        assert_eq!(outcome(Facts { working_on: Some(WAITING_FOR_CHECKS.into()), auto_merge: true, ..facts() }), (Stage::Checking, "wait"));
         assert_eq!(outcome(Facts { draft: true, ..facts() }), (Stage::Working, "wait"));
         assert_eq!(outcome(Facts { working_on: Some("catch_up".into()), auto_merge: true, ..facts() }), (Stage::CatchingUp, "wait"));
         assert_eq!(outcome(Facts { working_on: Some("merge".into()), auto_merge: true, ..facts() }), (Stage::Ready, "wait"));

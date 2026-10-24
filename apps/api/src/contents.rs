@@ -161,7 +161,8 @@ mod tests {
 
     #[test]
     fn a_file_is_its_text_and_where_it_is() {
-        let view = BlobView { repo: repo(), git_ref: "main".into(), path: "CONTRIBUTING.md".into(), size: 12, text: Some("npm test\n".into()) };
+        let view =
+            BlobView { repo: repo(), git_ref: "main".into(), path: "CONTRIBUTING.md".into(), size: 12, text: Some("npm test\n".into()) };
         let shown = file("https://g1t.sh/", &view);
         assert_eq!(shown["type"], "file");
         assert_eq!(shown["text"], "npm test\n");
@@ -194,7 +195,10 @@ mod tests {
             readme: Some(Readme { name: "README.md".into(), text: Some("# Web".into()) }),
         };
         let shown = directory("https://g1t.sh", &view);
-        assert_eq!(shown["entries"], json!([{ "name": "src", "path": "src", "type": "dir" }, { "name": "README.md", "path": "README.md", "type": "file" }]));
+        assert_eq!(
+            shown["entries"],
+            json!([{ "name": "src", "path": "src", "type": "dir" }, { "name": "README.md", "path": "README.md", "type": "file" }])
+        );
         assert_eq!(shown["readme"]["text"], "# Web");
         assert_eq!(shown["html_url"], "https://g1t.sh/acme/web");
         let nested = directory("https://g1t.sh", &TreeView { path: "src".into(), readme: None, ..view });

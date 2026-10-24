@@ -82,7 +82,8 @@ pub fn obtain(site: &str, manifest: &update::Manifest, keys: &[String], images: 
     std::fs::create_dir_all(&dir).with_context(|| format!("could not make {}", dir.display()))?;
     let (mut files, mut hashes) = (BTreeMap::new(), BTreeMap::new());
     for key in keys {
-        let file = sandbox.files.get(key).ok_or_else(|| anyhow!("release {} has no sandbox image {key} for this machine", manifest.version))?;
+        let file =
+            sandbox.files.get(key).ok_or_else(|| anyhow!("release {} has no sandbox image {key} for this machine", manifest.version))?;
         let path = dir.join(safe_name(&file.name)?);
         if !(path.exists() && sha256_file(&path)? == file.sha256) {
             progress(&format!("Fetching the sandbox's {key} image ({} MB)", file.size.div_ceil(1_000_000)));
@@ -93,7 +94,13 @@ pub fn obtain(site: &str, manifest: &update::Manifest, keys: &[String], images: 
         files.insert(key.clone(), path);
         hashes.insert(key.clone(), file.sha256.clone());
     }
-    Ok(Local { version: manifest.version.clone(), files, hashes, runner_image: sandbox.runner_image.clone(), hosted_image: hosted_image(sandbox) })
+    Ok(Local {
+        version: manifest.version.clone(),
+        files,
+        hashes,
+        runner_image: sandbox.runner_image.clone(),
+        hosted_image: hosted_image(sandbox),
+    })
 }
 
 /// How far a download is, as a log line the desktop app reads for its
@@ -114,7 +121,11 @@ fn safe_name(name: &str) -> Result<&str> {
 /// once its SHA-256 is the manifest's. Says how far it is at each tenth
 /// (`progress`, in percent), when the manifest gives the file's size.
 fn download_checked(url: &str, path: &Path, want: &SandboxFile, progress: &dyn Fn(u64)) -> Result<()> {
-    let response = crate::http::agent().get(url).timeout(std::time::Duration::from_secs(3600)).call().map_err(|e| anyhow!("could not fetch {url}: {e}"))?;
+    let response = crate::http::agent()
+        .get(url)
+        .timeout(std::time::Duration::from_secs(3600))
+        .call()
+        .map_err(|e| anyhow!("could not fetch {url}: {e}"))?;
     let part = path.with_extension("part");
     let mut out = std::fs::File::create(&part).with_context(|| format!("could not write {}", part.display()))?;
     let mut reader = response.into_reader();
@@ -228,7 +239,8 @@ mod tests {
         let x64 = hosted_image_for(&sandbox, "x64").unwrap();
         assert_eq!((x64.image.as_str(), x64.size), ("g1t.sh/flagon-io/g1t-hosted@sha256:d5", Some(5_636_544_756)));
         assert_eq!(hosted_image_for(&sandbox, "arm64"), None, "an arm64 sandbox can't run it, so it isn't given it");
-        let older: update::Manifest = serde_json::from_str(r#"{"version":"0.3.6","files":{},"sandbox":{"runner_image":"r@sha256:1","files":{}}}"#).unwrap();
+        let older: update::Manifest =
+            serde_json::from_str(r#"{"version":"0.3.6","files":{},"sandbox":{"runner_image":"r@sha256:1","files":{}}}"#).unwrap();
         assert_eq!(hosted_image_for(&older.sandbox.unwrap(), "x64"), None, "a release from before it names none");
     }
 

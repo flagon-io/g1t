@@ -68,7 +68,11 @@ pub fn secret_event(repo: &RepoRow, secret: &SecretFinding) -> SecurityEvent {
 /// or a security manager of its workspace, or one of its admins.
 fn reviews_bypasses(user: &User, repo: &RepoRow) -> bool {
     user.manages_security(&repo.namespace)
-        || access::can(Some(user), access::RepoRef { id: &repo.repo_id, namespace: &repo.namespace, private: true }, Capability::ManageSecurity)
+        || access::can(
+            Some(user),
+            access::RepoRef { id: &repo.repo_id, namespace: &repo.namespace, private: true },
+            Capability::ManageSecurity,
+        )
 }
 
 impl Security {
@@ -79,7 +83,14 @@ impl Security {
     /// With history alerts off for the repository, what the history scan
     /// (and a push too large to scan first) finds is recorded and shown,
     /// but tells nobody; push protection goes on refusing pushes.
-    pub(crate) async fn secrets_found(&self, repo: &RepoRow, secrets: &[NewSecret], source: &str, fresh: &[String], pusher: Option<&str>) -> Result<()> {
+    pub(crate) async fn secrets_found(
+        &self,
+        repo: &RepoRow,
+        secrets: &[NewSecret],
+        source: &str,
+        fresh: &[String],
+        pusher: Option<&str>,
+    ) -> Result<()> {
         self.store.note_found(&repo.repo_id, secrets, source).await?;
         if fresh.is_empty() {
             return Ok(());
@@ -153,19 +164,20 @@ impl Security {
             if let Some(pending) = self.store.pending_request(&secret.id, &a.actor.username).await? {
                 return Ok(Outcome::Ok(BypassResult { secret, request: Some(pending.contract()) }));
             }
-            let id = self
-                .store
-                .add_request(&repo.repo_id, &repo.namespace, &secret.id, &a.actor.username, a.reason, comment.as_deref())
-                .await?;
+            let id =
+                self.store.add_request(&repo.repo_id, &repo.namespace, &secret.id, &a.actor.username, a.reason, comment.as_deref()).await?;
             self.store
-                .record(&repo.repo_id, &[Activity {
-                    alert_id: &secret.id,
-                    action: "bypass_requested",
-                    actor: Some(&a.actor.username),
-                    reason: None,
-                    comment: Some(a.reason.label()),
-                    number: None,
-                }])
+                .record(
+                    &repo.repo_id,
+                    &[Activity {
+                        alert_id: &secret.id,
+                        action: "bypass_requested",
+                        actor: Some(&a.actor.username),
+                        reason: None,
+                        comment: Some(a.reason.label()),
+                        number: None,
+                    }],
+                )
                 .await?;
             let request = self.store.request(&id).await?.map(|row| row.contract());
             let reviewers = self.bypass_reviewers(&repo).await;
@@ -217,14 +229,17 @@ impl Security {
     ) -> Result<()> {
         self.store.bypass(&repo.repo_id, &secret.id, reason, comment, &by.username, approved_by).await?;
         self.store
-            .record(&repo.repo_id, &[Activity {
-                alert_id: &secret.id,
-                action: "bypassed",
-                actor: Some(&by.username),
-                reason: reason.dismissal(),
-                comment: Some(comment.unwrap_or(reason.label())),
-                number: None,
-            }])
+            .record(
+                &repo.repo_id,
+                &[Activity {
+                    alert_id: &secret.id,
+                    action: "bypassed",
+                    actor: Some(&by.username),
+                    reason: reason.dismissal(),
+                    comment: Some(comment.unwrap_or(reason.label())),
+                    number: None,
+                }],
+            )
             .await?;
         self.audit(
             by,
@@ -241,9 +256,16 @@ impl Security {
         )
         .await;
         if let Some(dismissal) = reason.dismissal() {
-            let event = SecurityEvent { reason: Some(dismissal.as_str().to_owned()), state: "dismissed".to_owned(), ..secret_event(repo, secret) };
+            let event =
+                SecurityEvent { reason: Some(dismissal.as_str().to_owned()), state: "dismissed".to_owned(), ..secret_event(repo, secret) };
             self.alert_event(AlertType::SecretScanning, "dismissed", repo, event, Some(by.id.clone())).await;
-            self.summarize(repo, AlertType::SecretScanning, Changed { scan: "change", dismissed: 1, ..Changed::default() }, Some(by.id.clone())).await?;
+            self.summarize(
+                repo,
+                AlertType::SecretScanning,
+                Changed { scan: "change", dismissed: 1, ..Changed::default() },
+                Some(by.id.clone()),
+            )
+            .await?;
         }
         Ok(())
     }
@@ -265,7 +287,11 @@ impl Security {
         for row in self.store.requests(&workspace, repo_id.as_deref(), a.state.as_deref()).await? {
             // Reviewers see every request; anyone else their own.
             let reviewer = owner
-                || access::can(Some(viewer), access::RepoRef { id: &row.repo_id, namespace: &workspace, private: true }, Capability::ManageSecurity);
+                || access::can(
+                    Some(viewer),
+                    access::RepoRef { id: &row.repo_id, namespace: &workspace, private: true },
+                    Capability::ManageSecurity,
+                );
             if reviewer || row.requester.eq_ignore_ascii_case(&viewer.username) {
                 shown.push(row.contract());
             }
@@ -316,18 +342,21 @@ impl Security {
         }
         if let Some(secret) = &secret {
             self.store
-                .record(&repo.repo_id, &[Activity {
-                    alert_id: &secret.id,
-                    action: match state {
-                        "approved" => "bypass_approved",
-                        "denied" => "bypass_denied",
-                        _ => "bypass_cancelled",
-                    },
-                    actor: Some(&a.actor.username),
-                    reason: None,
-                    comment: comment.as_deref(),
-                    number: None,
-                }])
+                .record(
+                    &repo.repo_id,
+                    &[Activity {
+                        alert_id: &secret.id,
+                        action: match state {
+                            "approved" => "bypass_approved",
+                            "denied" => "bypass_denied",
+                            _ => "bypass_cancelled",
+                        },
+                        actor: Some(&a.actor.username),
+                        reason: None,
+                        comment: comment.as_deref(),
+                        number: None,
+                    }],
+                )
                 .await?;
             if state != "cancelled" {
                 let event = SecurityEvent {
@@ -392,7 +421,10 @@ impl Security {
             return SecretValidity { validity: "unsupported".to_owned(), detail: None };
         }
         if secret.status == SecretStatus::Blocked {
-            return SecretValidity { validity: "unknown".to_owned(), detail: Some("it never landed, so it cannot be read again".to_owned()) };
+            return SecretValidity {
+                validity: "unknown".to_owned(),
+                detail: Some("it never landed, so it cannot be read again".to_owned()),
+            };
         }
         let fingerprint = match self.store.fingerprint_of(&repo.repo_id, &secret.id).await {
             Ok(Some(fingerprint)) => fingerprint,

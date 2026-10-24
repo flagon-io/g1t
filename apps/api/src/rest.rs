@@ -3,23 +3,23 @@
 use serde_json::{Map, Value};
 
 use crate::about::AboutOp;
-use crate::run_artifacts::ArtifactsOp;
-use crate::caches::CachesOp;
 use crate::archives::ArchiveOp;
+use crate::caches::CachesOp;
+use crate::checks::ChecksOp;
+use crate::coordination::CoordinationOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::deployments::DeploymentsOp;
-use crate::telemetry::TelemetryOp;
-use crate::packages::PackagesOp;
 use crate::folios::FoliosOp;
-use crate::coordination::CoordinationOp;
-use crate::protection::ProtectionOp;
-use crate::token_policy::TokenOp;
-use crate::sso::SsoOp;
 use crate::onboarding::OnboardingOp;
 use crate::operations::Op;
-use crate::checks::ChecksOp;
+use crate::packages::PackagesOp;
+use crate::protection::ProtectionOp;
 use crate::rules::RulesOp;
+use crate::run_artifacts::ArtifactsOp;
 use crate::security::SecurityOp;
+use crate::sso::SsoOp;
+use crate::telemetry::TelemetryOp;
+use crate::token_policy::TokenOp;
 
 pub struct Route {
     pub method: &'static str,
@@ -30,18 +30,8 @@ pub struct Route {
     pub query: &'static [(&'static str, &'static str)],
 }
 
-const fn route(
-    method: &'static str,
-    path: &'static str,
-    op: Op,
-    query: &'static [(&'static str, &'static str)],
-) -> Route {
-    Route {
-        method,
-        path,
-        op,
-        query,
-    }
+const fn route(method: &'static str, path: &'static str, op: Op, query: &'static [(&'static str, &'static str)]) -> Route {
+    Route { method, path, op, query }
 }
 
 pub const ROUTES: &[Route] = &[
@@ -90,12 +80,7 @@ pub const ROUTES: &[Route] = &[
     route("POST", "/repos/:owner/:name/collaborators", Op::AddCollaborator, &[]),
     route("PATCH", "/repos/:owner/:name/collaborators/:username", Op::UpdateCollaborator, &[]),
     route("DELETE", "/repos/:owner/:name/collaborators/:username", Op::RemoveCollaborator, &[]),
-    route(
-        "GET",
-        "/repos/:owner/:name/collaborators/:username/permission",
-        Op::GetCollaboratorPermission,
-        &[],
-    ),
+    route("GET", "/repos/:owner/:name/collaborators/:username/permission", Op::GetCollaboratorPermission, &[]),
     route("GET", "/repos/:owner/:name/invitations", Op::ListRepoInvitations, &[]),
     route("DELETE", "/repos/:owner/:name/invitations/:id", Op::RevokeRepoInvitation, &[]),
     route("GET", "/user/repository_invitations", Op::ListMyRepoInvitations, &[]),
@@ -106,7 +91,22 @@ pub const ROUTES: &[Route] = &[
     route("DELETE", "/repos/:owner/:name/keys/:id", Op::DeployKeys(DeployKeysOp::DeleteDeployKey), &[]),
     // Your notifications: threads, marking them, and what you subscribe
     // to and watch. GitHub's addresses, with g1t's saved and snoozed.
-    route("GET", "/notifications", Op::ListNotifications, &[("all", "all"), ("participating", "participating"), ("view", "view"), ("reason", "reason"), ("severity", "severity"), ("since", "since"), ("before", "before"), ("cursor", "cursor"), ("per_page", "per_page")]),
+    route(
+        "GET",
+        "/notifications",
+        Op::ListNotifications,
+        &[
+            ("all", "all"),
+            ("participating", "participating"),
+            ("view", "view"),
+            ("reason", "reason"),
+            ("severity", "severity"),
+            ("since", "since"),
+            ("before", "before"),
+            ("cursor", "cursor"),
+            ("per_page", "per_page"),
+        ],
+    ),
     route("PUT", "/notifications", Op::MarkNotificationsRead, &[]),
     route("GET", "/notifications/threads/:id", Op::GetNotificationThread, &[]),
     route("PATCH", "/notifications/threads/:id", Op::MarkThreadRead, &[]),
@@ -118,7 +118,22 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/notifications/threads/:id/subscription", Op::GetThreadSubscription, &[]),
     route("PUT", "/notifications/threads/:id/subscription", Op::SetThreadSubscription, &[]),
     route("DELETE", "/notifications/threads/:id/subscription", Op::DeleteThreadSubscription, &[]),
-    route("GET", "/repos/:owner/:name/notifications", Op::ListNotifications, &[("all", "all"), ("participating", "participating"), ("view", "view"), ("reason", "reason"), ("severity", "severity"), ("since", "since"), ("before", "before"), ("cursor", "cursor"), ("per_page", "per_page")]),
+    route(
+        "GET",
+        "/repos/:owner/:name/notifications",
+        Op::ListNotifications,
+        &[
+            ("all", "all"),
+            ("participating", "participating"),
+            ("view", "view"),
+            ("reason", "reason"),
+            ("severity", "severity"),
+            ("since", "since"),
+            ("before", "before"),
+            ("cursor", "cursor"),
+            ("per_page", "per_page"),
+        ],
+    ),
     route("PUT", "/repos/:owner/:name/notifications", Op::MarkNotificationsRead, &[]),
     route("GET", "/repos/:owner/:name/subscription", Op::GetRepoSubscription, &[]),
     route("PUT", "/repos/:owner/:name/subscription", Op::SetRepoSubscription, &[]),
@@ -191,7 +206,14 @@ pub const ROUTES: &[Route] = &[
         "GET",
         "/workspaces/:workspace/projects/:project/observability/overview",
         Op::Telemetry(TelemetryOp::GetOverview),
-        &[("from", "from"), ("to", "to"), ("environment", "environment"), ("service", "service"), ("deployment_id", "deployment_id"), ("step", "step")],
+        &[
+            ("from", "from"),
+            ("to", "to"),
+            ("environment", "environment"),
+            ("service", "service"),
+            ("deployment_id", "deployment_id"),
+            ("step", "step"),
+        ],
     ),
     route(
         "GET",
@@ -254,13 +276,26 @@ pub const ROUTES: &[Route] = &[
         Op::Telemetry(TelemetryOp::ListErrors),
         &[("state", "state"), ("environment", "environment"), ("service", "service"), ("from", "from"), ("to", "to")],
     ),
-    route("PATCH", "/workspaces/:workspace/projects/:project/observability/errors/:fingerprint", Op::Telemetry(TelemetryOp::UpdateError), &[]),
+    route(
+        "PATCH",
+        "/workspaces/:workspace/projects/:project/observability/errors/:fingerprint",
+        Op::Telemetry(TelemetryOp::UpdateError),
+        &[],
+    ),
     route("GET", "/workspaces/:workspace/projects/:project/observability/metrics", Op::Telemetry(TelemetryOp::ListMetrics), &[]),
     route(
         "GET",
         "/workspaces/:workspace/projects/:project/observability/metrics/:metric",
         Op::Telemetry(TelemetryOp::GetMetric),
-        &[("from", "from"), ("to", "to"), ("aggregate", "aggregate"), ("group_by", "group_by"), ("step", "step"), ("service", "service"), ("environment", "environment")],
+        &[
+            ("from", "from"),
+            ("to", "to"),
+            ("aggregate", "aggregate"),
+            ("group_by", "group_by"),
+            ("step", "step"),
+            ("service", "service"),
+            ("environment", "environment"),
+        ],
     ),
     route("GET", "/workspaces/:workspace/projects/:project/observability/settings", Op::Telemetry(TelemetryOp::GetSettings), &[]),
     route("PATCH", "/workspaces/:workspace/projects/:project/observability/settings", Op::Telemetry(TelemetryOp::UpdateSettings), &[]),
@@ -273,36 +308,21 @@ pub const ROUTES: &[Route] = &[
     route("DELETE", "/workspaces/:workspace/projects/:project/observability/exports/:id", Op::Telemetry(TelemetryOp::DeleteExport), &[]),
     route("GET", "/workspaces/:workspace/projects/:project/observability/usage", Op::Telemetry(TelemetryOp::GetUsage), &[]),
     route("PUT", "/workspaces/:workspace/base_permission", Op::SetBasePermission, &[]),
-    route(
-        "GET",
-        "/workspaces/:workspace/outside_collaborators",
-        Op::ListOutsideCollaborators,
-        &[],
-    ),
+    route("GET", "/workspaces/:workspace/outside_collaborators", Op::ListOutsideCollaborators, &[]),
     // Teams: a workspace's groups of members, with roles on repositories.
     route("GET", "/workspaces/:workspace/teams", Op::ListTeams, &[("q", "query")]),
     route("POST", "/workspaces/:workspace/teams", Op::CreateTeam, &[]),
     route("GET", "/workspaces/:workspace/teams/:team", Op::GetTeam, &[]),
     route("PATCH", "/workspaces/:workspace/teams/:team", Op::UpdateTeam, &[]),
     route("DELETE", "/workspaces/:workspace/teams/:team", Op::DeleteTeam, &[]),
-    route(
-        "GET",
-        "/workspaces/:workspace/teams/:team/members",
-        Op::ListTeamMembers,
-        &[("include_child_teams", "include_child_teams")],
-    ),
+    route("GET", "/workspaces/:workspace/teams/:team/members", Op::ListTeamMembers, &[("include_child_teams", "include_child_teams")]),
     route("PUT", "/workspaces/:workspace/teams/:team/members/:username", Op::SetTeamMember, &[]),
     route("DELETE", "/workspaces/:workspace/teams/:team/members/:username", Op::RemoveTeamMember, &[]),
     route("GET", "/workspaces/:workspace/teams/:team/teams", Op::ListChildTeams, &[]),
     route("GET", "/workspaces/:workspace/teams/:team/repos", Op::ListTeamRepos, &[]),
     route("PUT", "/workspaces/:workspace/teams/:team/repos/:repo", Op::SetTeamRepo, &[]),
     route("DELETE", "/workspaces/:workspace/teams/:team/repos/:repo", Op::RemoveTeamRepo, &[]),
-    route(
-        "PUT",
-        "/workspaces/:workspace/teams/:team/review_assignment",
-        Op::SetTeamReviewAssignment,
-        &[],
-    ),
+    route("PUT", "/workspaces/:workspace/teams/:team/review_assignment", Op::SetTeamReviewAssignment, &[]),
     route("GET", "/workspaces/:workspace/members/:username/teams", Op::ListUserTeams, &[]),
     // A workspace's billing: usage, budget and invoices.
     route(
@@ -318,24 +338,34 @@ pub const ROUTES: &[Route] = &[
     // Code owners: the CODEOWNERS file, checked.
     route("GET", "/repos/:owner/:name/codeowners/errors", Op::GetCodeownersErrors, &[("ref", "ref")]),
     // Security alerts: secrets and vulnerable dependencies.
-    route(
-        "GET",
-        "/repos/:owner/:name/security/alerts",
-        Op::ListSecurityAlerts,
-        &[("state", "state"), ("kind", "kind")],
-    ),
+    route("GET", "/repos/:owner/:name/security/alerts", Op::ListSecurityAlerts, &[("state", "state"), ("kind", "kind")]),
     route("POST", "/repos/:owner/:name/security/alerts/:id/dismiss", Op::DismissSecurityAlert, &[]),
     route("POST", "/repos/:owner/:name/security/alerts/:id/reopen", Op::ReopenSecurityAlert, &[]),
     // The security suite: secret scanning, code scanning, vulnerability
     // alerts and the supply chain, at the common addresses.
-    route("GET", "/repos/:owner/:name/secret-scanning/alerts", Op::Security(SecurityOp::ListSecretAlerts), &[("state", "state"), ("secret_type", "secret_type"), ("validity", "validity"), ("bypassed", "bypassed")]),
-    route("GET", "/workspaces/:workspace/secret-scanning/alerts", Op::Security(SecurityOp::ListSecretAlerts), &[("state", "state"), ("secret_type", "secret_type"), ("validity", "validity"), ("bypassed", "bypassed")]),
+    route(
+        "GET",
+        "/repos/:owner/:name/secret-scanning/alerts",
+        Op::Security(SecurityOp::ListSecretAlerts),
+        &[("state", "state"), ("secret_type", "secret_type"), ("validity", "validity"), ("bypassed", "bypassed")],
+    ),
+    route(
+        "GET",
+        "/workspaces/:workspace/secret-scanning/alerts",
+        Op::Security(SecurityOp::ListSecretAlerts),
+        &[("state", "state"), ("secret_type", "secret_type"), ("validity", "validity"), ("bypassed", "bypassed")],
+    ),
     route("GET", "/repos/:owner/:name/secret-scanning/alerts/:id", Op::Security(SecurityOp::GetSecretAlert), &[]),
     route("PATCH", "/repos/:owner/:name/secret-scanning/alerts/:id", Op::Security(SecurityOp::UpdateSecretAlert), &[]),
     route("GET", "/repos/:owner/:name/secret-scanning/alerts/:id/locations", Op::Security(SecurityOp::ListSecretLocations), &[]),
     route("POST", "/repos/:owner/:name/secret-scanning/alerts/:id/bypass", Op::Security(SecurityOp::BypassPushProtection), &[]),
     route("POST", "/repos/:owner/:name/secret-scanning/alerts/:id/validity", Op::Security(SecurityOp::CheckSecretValidity), &[]),
-    route("GET", "/workspaces/:workspace/secret-scanning/bypass-requests", Op::Security(SecurityOp::ListBypassRequests), &[("state", "state"), ("repo", "repo")]),
+    route(
+        "GET",
+        "/workspaces/:workspace/secret-scanning/bypass-requests",
+        Op::Security(SecurityOp::ListBypassRequests),
+        &[("state", "state"), ("repo", "repo")],
+    ),
     route("PATCH", "/workspaces/:workspace/secret-scanning/bypass-requests/:id", Op::Security(SecurityOp::ReviewBypassRequest), &[]),
     route("POST", "/repos/:owner/:name/secret-scanning/custom-patterns/dry-run", Op::Security(SecurityOp::DryRunCustomPattern), &[]),
     route("POST", "/workspaces/:workspace/secret-scanning/custom-patterns/dry-run", Op::Security(SecurityOp::DryRunCustomPattern), &[]),
@@ -347,15 +377,35 @@ pub const ROUTES: &[Route] = &[
     route("PATCH", "/workspaces/:workspace/secret-scanning/custom-patterns/:id", Op::Security(SecurityOp::UpdateCustomPattern), &[]),
     route("DELETE", "/repos/:owner/:name/secret-scanning/custom-patterns/:id", Op::Security(SecurityOp::DeleteCustomPattern), &[]),
     route("DELETE", "/workspaces/:workspace/secret-scanning/custom-patterns/:id", Op::Security(SecurityOp::DeleteCustomPattern), &[]),
-    route("GET", "/repos/:owner/:name/code-scanning/alerts", Op::Security(SecurityOp::ListCodeAlerts), &[("state", "state"), ("severity", "severity"), ("tool", "tool"), ("rule_id", "rule_id")]),
-    route("GET", "/workspaces/:workspace/code-scanning/alerts", Op::Security(SecurityOp::ListCodeAlerts), &[("state", "state"), ("severity", "severity"), ("tool", "tool"), ("rule_id", "rule_id")]),
+    route(
+        "GET",
+        "/repos/:owner/:name/code-scanning/alerts",
+        Op::Security(SecurityOp::ListCodeAlerts),
+        &[("state", "state"), ("severity", "severity"), ("tool", "tool"), ("rule_id", "rule_id")],
+    ),
+    route(
+        "GET",
+        "/workspaces/:workspace/code-scanning/alerts",
+        Op::Security(SecurityOp::ListCodeAlerts),
+        &[("state", "state"), ("severity", "severity"), ("tool", "tool"), ("rule_id", "rule_id")],
+    ),
     route("GET", "/repos/:owner/:name/code-scanning/alerts/:number", Op::Security(SecurityOp::GetCodeAlert), &[]),
     route("PATCH", "/repos/:owner/:name/code-scanning/alerts/:number", Op::Security(SecurityOp::UpdateCodeAlert), &[]),
     route("GET", "/repos/:owner/:name/code-scanning/analyses", Op::Security(SecurityOp::ListAnalyses), &[]),
     route("POST", "/repos/:owner/:name/code-scanning/sarifs", Op::Security(SecurityOp::UploadSarif), &[]),
     route("GET", "/repos/:owner/:name/code-scanning/sarifs/:id", Op::Security(SecurityOp::GetSarifUpload), &[]),
-    route("GET", "/repos/:owner/:name/vulnerability-alerts", Op::Security(SecurityOp::ListVulnerabilityAlerts), &[("state", "state"), ("severity", "severity"), ("ecosystem", "ecosystem"), ("package", "package")]),
-    route("GET", "/workspaces/:workspace/vulnerability-alerts", Op::Security(SecurityOp::ListVulnerabilityAlerts), &[("state", "state"), ("severity", "severity"), ("ecosystem", "ecosystem"), ("package", "package")]),
+    route(
+        "GET",
+        "/repos/:owner/:name/vulnerability-alerts",
+        Op::Security(SecurityOp::ListVulnerabilityAlerts),
+        &[("state", "state"), ("severity", "severity"), ("ecosystem", "ecosystem"), ("package", "package")],
+    ),
+    route(
+        "GET",
+        "/workspaces/:workspace/vulnerability-alerts",
+        Op::Security(SecurityOp::ListVulnerabilityAlerts),
+        &[("state", "state"), ("severity", "severity"), ("ecosystem", "ecosystem"), ("package", "package")],
+    ),
     route("GET", "/repos/:owner/:name/vulnerability-alerts/:id", Op::Security(SecurityOp::GetVulnerabilityAlert), &[]),
     route("PATCH", "/repos/:owner/:name/vulnerability-alerts/:id", Op::Security(SecurityOp::UpdateVulnerabilityAlert), &[]),
     route("GET", "/repos/:owner/:name/dependency-graph", Op::Security(SecurityOp::GetDependencyGraph), &[]),
@@ -377,12 +427,7 @@ pub const ROUTES: &[Route] = &[
     route("POST", "/repos/:owner/:name/security/reports", Op::Security(SecurityOp::ReportVulnerability), &[]),
     route("PATCH", "/repos/:owner/:name/security/reports/:id", Op::Security(SecurityOp::ReviewReport), &[]),
     route("GET", "/repos", Op::ListRepos, &[("q", "query")]),
-    route(
-        "GET",
-        "/search",
-        Op::Search,
-        &[("q", "query"), ("type", "type"), ("page", "page"), ("per_page", "per_page")],
-    ),
+    route("GET", "/search", Op::Search, &[("q", "query"), ("type", "type"), ("page", "page"), ("per_page", "per_page")]),
     route("POST", "/repos", Op::CreateRepo, &[]),
     route("GET", "/repos/:owner/:name", Op::GetRepo, &[]),
     // A file's text or a directory's entries: `path` and `ref` in the query.
@@ -399,43 +444,18 @@ pub const ROUTES: &[Route] = &[
     route("POST", "/repos/:owner/:name/merge-upstream", Op::SyncFork, &[]),
     route("POST", "/repos/:owner/:name/detach", Op::DetachFork, &[]),
     route("DELETE", "/repos/:owner/:name", Op::DeleteRepo, &[]),
-    route(
-        "GET",
-        "/workspaces/:workspace/repos/deleted",
-        Op::ListDeletedRepos,
-        &[],
-    ),
+    route("GET", "/workspaces/:workspace/repos/deleted", Op::ListDeletedRepos, &[]),
     route("POST", "/repos/:owner/:name/restore", Op::RestoreRepo, &[]),
     route("POST", "/repos/:owner/:name/purge", Op::PurgeRepo, &[]),
     route("POST", "/repos/:owner/:name/rename", Op::RenameRepo, &[]),
     route("POST", "/repos/:owner/:name/archive", Op::ArchiveRepo, &[]),
     route("POST", "/repos/:owner/:name/unarchive", Op::UnarchiveRepo, &[]),
-    route(
-        "POST",
-        "/repos/:owner/:name/visibility",
-        Op::SetRepoVisibility,
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/branches/:branch/rename",
-        Op::RenameBranch,
-        &[],
-    ),
+    route("POST", "/repos/:owner/:name/visibility", Op::SetRepoVisibility, &[]),
+    route("POST", "/repos/:owner/:name/branches/:branch/rename", Op::RenameBranch, &[]),
     route("POST", "/repos/:owner/:name/branches", Op::CreateBranch, &[]),
     route("DELETE", "/repos/:owner/:name/branches/:branch", Op::DeleteBranch, &[("head", "head")]),
-    route(
-        "GET",
-        "/repos/:owner/:name/settings",
-        Op::GetRepoSettings,
-        &[],
-    ),
-    route(
-        "PATCH",
-        "/repos/:owner/:name/settings",
-        Op::UpdateRepoSettings,
-        &[],
-    ),
+    route("GET", "/repos/:owner/:name/settings", Op::GetRepoSettings, &[]),
+    route("PATCH", "/repos/:owner/:name/settings", Op::UpdateRepoSettings, &[]),
     route("GET", "/repos/:owner/:name/check-names", Op::ListCheckNames, &[]),
     // Checks: GitHub's addresses for statuses, check runs and check suites.
     route("POST", "/repos/:owner/:name/statuses/:sha", Op::Checks(ChecksOp::CreateCommitStatus), &[]),
@@ -472,7 +492,13 @@ pub const ROUTES: &[Route] = &[
         "GET",
         "/repos/:owner/:name/rules/evaluations",
         Op::Rules(RulesOp::ListRuleEvaluations),
-        &[("ruleset_id", "ruleset_id"), ("verdict", "verdict"), ("problems_only", "problems_only"), ("before", "before"), ("limit", "limit")],
+        &[
+            ("ruleset_id", "ruleset_id"),
+            ("verdict", "verdict"),
+            ("problems_only", "problems_only"),
+            ("before", "before"),
+            ("limit", "limit"),
+        ],
     ),
     route("GET", "/workspaces/:workspace/rulesets", Op::Rules(RulesOp::ListWorkspaceRulesets), &[]),
     route("POST", "/workspaces/:workspace/rulesets", Op::Rules(RulesOp::CreateWorkspaceRuleset), &[]),
@@ -483,14 +509,30 @@ pub const ROUTES: &[Route] = &[
         "GET",
         "/workspaces/:workspace/rules/evaluations",
         Op::Rules(RulesOp::ListWorkspaceRuleEvaluations),
-        &[("ruleset_id", "ruleset_id"), ("verdict", "verdict"), ("problems_only", "problems_only"), ("before", "before"), ("limit", "limit")],
+        &[
+            ("ruleset_id", "ruleset_id"),
+            ("verdict", "verdict"),
+            ("problems_only", "problems_only"),
+            ("before", "before"),
+            ("limit", "limit"),
+        ],
     ),
     // Deployments wherever they run, their statuses, and environments.
     route(
         "GET",
         "/repos/:owner/:name/deployments",
         Op::Deployments(DeploymentsOp::ListDeployments),
-        &[("environment", "environment"), ("ref", "ref"), ("sha", "sha"), ("task", "task"), ("state", "state"), ("source", "source"), ("creator", "creator"), ("page", "page"), ("per_page", "per_page")],
+        &[
+            ("environment", "environment"),
+            ("ref", "ref"),
+            ("sha", "sha"),
+            ("task", "task"),
+            ("state", "state"),
+            ("source", "source"),
+            ("creator", "creator"),
+            ("page", "page"),
+            ("per_page", "per_page"),
+        ],
     ),
     route("POST", "/repos/:owner/:name/deployments", Op::Deployments(DeploymentsOp::CreateDeployment), &[]),
     // A g1t Actions job opening a g1t.page build it runs itself.
@@ -503,18 +545,8 @@ pub const ROUTES: &[Route] = &[
     // Environments' protection rules, and the runs they hold.
     route("PUT", "/repos/:owner/:name/environments/:environment", Op::Protection(ProtectionOp::UpdateEnvironment), &[]),
     route("DELETE", "/repos/:owner/:name/environments/:environment", Op::Protection(ProtectionOp::DeleteEnvironment), &[]),
-    route(
-        "GET",
-        "/repos/:owner/:name/actions/runs/:id/pending_deployments",
-        Op::Protection(ProtectionOp::GetPendingDeployments),
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/actions/runs/:id/pending_deployments",
-        Op::Protection(ProtectionOp::ReviewPendingDeployments),
-        &[],
-    ),
+    route("GET", "/repos/:owner/:name/actions/runs/:id/pending_deployments", Op::Protection(ProtectionOp::GetPendingDeployments), &[]),
+    route("POST", "/repos/:owner/:name/actions/runs/:id/pending_deployments", Op::Protection(ProtectionOp::ReviewPendingDeployments), &[]),
     route("POST", "/repos/:owner/:name/actions/runs/:id/approve", Op::Protection(ProtectionOp::ApproveWorkflowRun), &[]),
     route("GET", "/repos/:owner/:name/actions/permissions/workflow", Op::Protection(ProtectionOp::GetWorkflowPermissions), &[]),
     route("PUT", "/repos/:owner/:name/actions/permissions/workflow", Op::Protection(ProtectionOp::SetWorkflowPermissions), &[]),
@@ -535,30 +567,10 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/repos/:owner/:name/actions/permissions", Op::Protection(ProtectionOp::GetActionsPermissions), &[]),
     route("PUT", "/repos/:owner/:name/actions/permissions", Op::Protection(ProtectionOp::SetActionsPermissions), &[]),
     route("POST", "/repos/:owner/:name/dispatches", Op::Protection(ProtectionOp::CreateRepositoryDispatch), &[]),
-    route(
-        "GET",
-        "/workspaces/:workspace/actions/permissions/workflow",
-        Op::Protection(ProtectionOp::GetWorkspaceWorkflowPermissions),
-        &[],
-    ),
-    route(
-        "PUT",
-        "/workspaces/:workspace/actions/permissions/workflow",
-        Op::Protection(ProtectionOp::SetWorkspaceWorkflowPermissions),
-        &[],
-    ),
-    route(
-        "GET",
-        "/workspaces/:workspace/actions/managed-workflows",
-        Op::Protection(ProtectionOp::ListWorkspaceManagedWorkflows),
-        &[],
-    ),
-    route(
-        "POST",
-        "/workspaces/:workspace/actions/managed-workflows",
-        Op::Protection(ProtectionOp::CreateWorkspaceManagedWorkflow),
-        &[],
-    ),
+    route("GET", "/workspaces/:workspace/actions/permissions/workflow", Op::Protection(ProtectionOp::GetWorkspaceWorkflowPermissions), &[]),
+    route("PUT", "/workspaces/:workspace/actions/permissions/workflow", Op::Protection(ProtectionOp::SetWorkspaceWorkflowPermissions), &[]),
+    route("GET", "/workspaces/:workspace/actions/managed-workflows", Op::Protection(ProtectionOp::ListWorkspaceManagedWorkflows), &[]),
+    route("POST", "/workspaces/:workspace/actions/managed-workflows", Op::Protection(ProtectionOp::CreateWorkspaceManagedWorkflow), &[]),
     route(
         "PATCH",
         "/workspaces/:workspace/actions/managed-workflows/:workflow",
@@ -669,7 +681,12 @@ pub const ROUTES: &[Route] = &[
     route("POST", "/workspaces/:workspace/work/:number/attachments", Op::UploadWorkItemAttachment, &[]),
     route("GET", "/workspaces/:workspace/work/:number/decisions", Op::ListWorkItemDecisions, &[]),
     // The work items linked to a repository: its Work tab. Read only.
-    route("GET", "/repos/:owner/:name/work", Op::ListRepoWorkItems, &[("state", "state"), ("label", "label"), ("milestone", "milestone"), ("assignee", "assignee"), ("role", "role")]),
+    route(
+        "GET",
+        "/repos/:owner/:name/work",
+        Op::ListRepoWorkItems,
+        &[("state", "state"), ("label", "label"), ("milestone", "milestone"), ("assignee", "assignee"), ("role", "role")],
+    ),
     // What `#N` names, read in a repository or a workspace: how an old
     // link to a repository's issue finds the work item it became.
     route("GET", "/repos/:owner/:name/refs/:number", Op::ResolveRef, &[]),
@@ -715,298 +732,166 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/repos/:owner/:name/sessions/:id", Op::Coordination(CoordinationOp::GetSession), &[("after", "after")]),
     route("PATCH", "/repos/:owner/:name/sessions/:id", Op::Coordination(CoordinationOp::UpdateSession), &[]),
     route("POST", "/repos/:owner/:name/sessions/:id/end", Op::Coordination(CoordinationOp::EndSession), &[]),
-    route(
-        "POST",
-        "/repos/:owner/:name/sessions/:id/entries",
-        Op::Coordination(CoordinationOp::RecordSessionEntries),
-        &[],
-    ),
-    route(
-        "GET",
-        "/repos/:owner/:name/context",
-        Op::GetContext,
-        &[("reference", "reference")],
-    ),
-    route(
-        "GET",
-        "/workspaces/:workspace/integrations",
-        Op::ListIntegrations,
-        &[],
-    ),
-    route(
-        "POST",
-        "/workspaces/:workspace/integrations",
-        Op::ConnectIntegration,
-        &[],
-    ),
-    route(
-        "GET",
-        "/repos/:owner/:name/hooks",
-        Op::ListWebhooks,
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/hooks",
-        Op::CreateWebhook,
-        &[],
-    ),
-    route(
-        "PATCH",
-        "/repos/:owner/:name/hooks/:id",
-        Op::UpdateWebhook,
-        &[],
-    ),
-    route(
-        "DELETE",
-        "/repos/:owner/:name/hooks/:id",
-        Op::DeleteWebhook,
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/hooks/:id/pings",
-        Op::PingWebhook,
-        &[],
-    ),
-    route(
-        "GET",
-        "/repos/:owner/:name/hooks/:id/deliveries",
-        Op::ListWebhookDeliveries,
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/hooks/:id/deliveries/:delivery/redeliver",
-        Op::RedeliverWebhook,
-        &[],
-    ),
-    route(
-        "GET",
-        "/workspaces/:workspace/hooks",
-        Op::ListWebhooks,
-        &[],
-    ),
-    route(
-        "POST",
-        "/workspaces/:workspace/hooks",
-        Op::CreateWebhook,
-        &[],
-    ),
-    route(
-        "PATCH",
-        "/workspaces/:workspace/hooks/:id",
-        Op::UpdateWebhook,
-        &[],
-    ),
-    route(
-        "DELETE",
-        "/workspaces/:workspace/hooks/:id",
-        Op::DeleteWebhook,
-        &[],
-    ),
-    route(
-        "POST",
-        "/workspaces/:workspace/hooks/:id/pings",
-        Op::PingWebhook,
-        &[],
-    ),
-    route(
-        "GET",
-        "/workspaces/:workspace/hooks/:id/deliveries",
-        Op::ListWebhookDeliveries,
-        &[],
-    ),
-    route(
-        "POST",
-        "/workspaces/:workspace/hooks/:id/deliveries/:delivery/redeliver",
-        Op::RedeliverWebhook,
-        &[],
-    ),
-    route(
-        "PATCH",
-        "/workspaces/:workspace/integrations/:id",
-        Op::UpdateIntegration,
-        &[],
-    ),
-    route(
-        "DELETE",
-        "/workspaces/:workspace/integrations/:id",
-        Op::DisconnectIntegration,
-        &[],
-    ),
-    route(
-        "POST",
-        "/workspaces/:workspace/integrations/:id/test",
-        Op::TestIntegration,
-        &[],
-    ),
-    route(
-        "GET",
-        "/workspaces/:workspace/ai/providers",
-        Op::ListAiProviders,
-        &[],
-    ),
-    route(
-        "POST",
-        "/workspaces/:workspace/ai/providers",
-        Op::AddAiProvider,
-        &[],
-    ),
-    route(
-        "PATCH",
-        "/workspaces/:workspace/ai/providers/:id",
-        Op::UpdateAiProvider,
-        &[],
-    ),
-    route(
-        "DELETE",
-        "/workspaces/:workspace/ai/providers/:id",
-        Op::RemoveAiProvider,
-        &[],
-    ),
-    route(
-        "POST",
-        "/workspaces/:workspace/ai/providers/:id/test",
-        Op::TestAiProvider,
-        &[],
-    ),
-    route(
-        "GET",
-        "/workspaces/:workspace/ai/ask",
-        Op::GetAskSettings,
-        &[],
-    ),
-    route(
-        "PUT",
-        "/workspaces/:workspace/ai/ask",
-        Op::SetAskSettings,
-        &[],
-    ),
-    route(
-        "GET",
-        "/repos/:owner/:name/actions/workflows",
-        Op::ListWorkflows,
-        &[],
-    ),
-    route(
-        "GET",
-        "/repos/:owner/:name/actions/workflows/:workflow",
-        Op::GetWorkflow,
-        &[("ref", "ref")],
-    ),
+    route("POST", "/repos/:owner/:name/sessions/:id/entries", Op::Coordination(CoordinationOp::RecordSessionEntries), &[]),
+    route("GET", "/repos/:owner/:name/context", Op::GetContext, &[("reference", "reference")]),
+    route("GET", "/workspaces/:workspace/integrations", Op::ListIntegrations, &[]),
+    route("POST", "/workspaces/:workspace/integrations", Op::ConnectIntegration, &[]),
+    route("GET", "/repos/:owner/:name/hooks", Op::ListWebhooks, &[]),
+    route("POST", "/repos/:owner/:name/hooks", Op::CreateWebhook, &[]),
+    route("PATCH", "/repos/:owner/:name/hooks/:id", Op::UpdateWebhook, &[]),
+    route("DELETE", "/repos/:owner/:name/hooks/:id", Op::DeleteWebhook, &[]),
+    route("POST", "/repos/:owner/:name/hooks/:id/pings", Op::PingWebhook, &[]),
+    route("GET", "/repos/:owner/:name/hooks/:id/deliveries", Op::ListWebhookDeliveries, &[]),
+    route("POST", "/repos/:owner/:name/hooks/:id/deliveries/:delivery/redeliver", Op::RedeliverWebhook, &[]),
+    route("GET", "/workspaces/:workspace/hooks", Op::ListWebhooks, &[]),
+    route("POST", "/workspaces/:workspace/hooks", Op::CreateWebhook, &[]),
+    route("PATCH", "/workspaces/:workspace/hooks/:id", Op::UpdateWebhook, &[]),
+    route("DELETE", "/workspaces/:workspace/hooks/:id", Op::DeleteWebhook, &[]),
+    route("POST", "/workspaces/:workspace/hooks/:id/pings", Op::PingWebhook, &[]),
+    route("GET", "/workspaces/:workspace/hooks/:id/deliveries", Op::ListWebhookDeliveries, &[]),
+    route("POST", "/workspaces/:workspace/hooks/:id/deliveries/:delivery/redeliver", Op::RedeliverWebhook, &[]),
+    route("PATCH", "/workspaces/:workspace/integrations/:id", Op::UpdateIntegration, &[]),
+    route("DELETE", "/workspaces/:workspace/integrations/:id", Op::DisconnectIntegration, &[]),
+    route("POST", "/workspaces/:workspace/integrations/:id/test", Op::TestIntegration, &[]),
+    route("GET", "/workspaces/:workspace/ai/providers", Op::ListAiProviders, &[]),
+    route("POST", "/workspaces/:workspace/ai/providers", Op::AddAiProvider, &[]),
+    route("PATCH", "/workspaces/:workspace/ai/providers/:id", Op::UpdateAiProvider, &[]),
+    route("DELETE", "/workspaces/:workspace/ai/providers/:id", Op::RemoveAiProvider, &[]),
+    route("POST", "/workspaces/:workspace/ai/providers/:id/test", Op::TestAiProvider, &[]),
+    route("GET", "/workspaces/:workspace/ai/ask", Op::GetAskSettings, &[]),
+    route("PUT", "/workspaces/:workspace/ai/ask", Op::SetAskSettings, &[]),
+    route("GET", "/repos/:owner/:name/actions/workflows", Op::ListWorkflows, &[]),
+    route("GET", "/repos/:owner/:name/actions/workflows/:workflow", Op::GetWorkflow, &[("ref", "ref")]),
     route(
         "GET",
         "/repos/:owner/:name/actions/workflows/:workflow/runs",
         Op::ListWorkflowRuns,
-        &[("branch", "branch"), ("event", "event"), ("status", "status"), ("head_sha", "sha"), ("since", "since"), ("until", "until"), ("per_page", "limit")],
+        &[
+            ("branch", "branch"),
+            ("event", "event"),
+            ("status", "status"),
+            ("head_sha", "sha"),
+            ("since", "since"),
+            ("until", "until"),
+            ("per_page", "limit"),
+        ],
     ),
-    route(
-        "POST",
-        "/repos/:owner/:name/actions/workflows/:workflow/dispatches",
-        Op::DispatchWorkflow,
-        &[],
-    ),
-    route(
-        "PATCH",
-        "/repos/:owner/:name/actions/workflows/:workflow",
-        Op::UpdateWorkflow,
-        &[],
-    ),
-    route(
-        "PUT",
-        "/repos/:owner/:name/actions/workflows/:workflow/enable",
-        Op::UpdateWorkflow,
-        &[],
-    ),
-    route(
-        "PUT",
-        "/repos/:owner/:name/actions/workflows/:workflow/disable",
-        Op::UpdateWorkflow,
-        &[],
-    ),
+    route("POST", "/repos/:owner/:name/actions/workflows/:workflow/dispatches", Op::DispatchWorkflow, &[]),
+    route("PATCH", "/repos/:owner/:name/actions/workflows/:workflow", Op::UpdateWorkflow, &[]),
+    route("PUT", "/repos/:owner/:name/actions/workflows/:workflow/enable", Op::UpdateWorkflow, &[]),
+    route("PUT", "/repos/:owner/:name/actions/workflows/:workflow/disable", Op::UpdateWorkflow, &[]),
     route(
         "GET",
         "/repos/:owner/:name/actions/runs",
         Op::ListWorkflowRuns,
-        &[("workflow", "workflow"), ("branch", "branch"), ("event", "event"), ("pull", "pull"), ("head_sha", "sha"), ("status", "status"), ("since", "since"), ("until", "until"), ("per_page", "limit")],
+        &[
+            ("workflow", "workflow"),
+            ("branch", "branch"),
+            ("event", "event"),
+            ("pull", "pull"),
+            ("head_sha", "sha"),
+            ("status", "status"),
+            ("since", "since"),
+            ("until", "until"),
+            ("per_page", "limit"),
+        ],
     ),
-    route(
-        "GET",
-        "/repos/:owner/:name/actions/runs/:id",
-        Op::GetWorkflowRun,
-        &[],
-    ),
-    route(
-        "GET",
-        "/repos/:owner/:name/actions/runs/:id/attempts/:attempt",
-        Op::GetWorkflowRun,
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/actions/runs/:id/cancel",
-        Op::CancelWorkflowRun,
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/actions/runs/:id/force-cancel",
-        Op::CancelWorkflowRun,
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/actions/runs/:id/rerun",
-        Op::RerunWorkflowRun,
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/actions/runs/:id/rerun-failed-jobs",
-        Op::RerunWorkflowRun,
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/actions/jobs/:job/rerun",
-        Op::RerunWorkflowRun,
-        &[],
-    ),
-    route(
-        "GET",
-        "/repos/:owner/:name/actions/jobs/:job/logs",
-        Op::GetJobLogs,
-        &[("after", "after"), ("tail", "tail")],
-    ),
+    route("GET", "/repos/:owner/:name/actions/runs/:id", Op::GetWorkflowRun, &[]),
+    route("GET", "/repos/:owner/:name/actions/runs/:id/attempts/:attempt", Op::GetWorkflowRun, &[]),
+    route("POST", "/repos/:owner/:name/actions/runs/:id/cancel", Op::CancelWorkflowRun, &[]),
+    route("POST", "/repos/:owner/:name/actions/runs/:id/force-cancel", Op::CancelWorkflowRun, &[]),
+    route("POST", "/repos/:owner/:name/actions/runs/:id/rerun", Op::RerunWorkflowRun, &[]),
+    route("POST", "/repos/:owner/:name/actions/runs/:id/rerun-failed-jobs", Op::RerunWorkflowRun, &[]),
+    route("POST", "/repos/:owner/:name/actions/jobs/:job/rerun", Op::RerunWorkflowRun, &[]),
+    route("GET", "/repos/:owner/:name/actions/jobs/:job/logs", Op::GetJobLogs, &[("after", "after"), ("tail", "tail")]),
     // Packages, at GitHub's addresses with the workspace in place of the
     // organization. A name with a slash is one URL-encoded segment.
-    route("GET", "/workspaces/:workspace/packages", Op::Packages(PackagesOp::ListPackages), &[("package_type", "package_type"), ("q", "q"), ("state", "state")]),
+    route(
+        "GET",
+        "/workspaces/:workspace/packages",
+        Op::Packages(PackagesOp::ListPackages),
+        &[("package_type", "package_type"), ("q", "q"), ("state", "state")],
+    ),
     route("GET", "/workspaces/:workspace/packages/:package_type/:package_name", Op::Packages(PackagesOp::GetPackage), &[]),
     route("PATCH", "/workspaces/:workspace/packages/:package_type/:package_name", Op::Packages(PackagesOp::UpdatePackage), &[]),
     route("DELETE", "/workspaces/:workspace/packages/:package_type/:package_name", Op::Packages(PackagesOp::DeletePackage), &[]),
     route("POST", "/workspaces/:workspace/packages/:package_type/:package_name/restore", Op::Packages(PackagesOp::RestorePackage), &[]),
-    route("GET", "/workspaces/:workspace/packages/:package_type/:package_name/versions", Op::Packages(PackagesOp::ListVersions), &[("state", "state")]),
-    route("GET", "/workspaces/:workspace/packages/:package_type/:package_name/versions/:version_id", Op::Packages(PackagesOp::GetVersion), &[]),
-    route("DELETE", "/workspaces/:workspace/packages/:package_type/:package_name/versions/:version_id", Op::Packages(PackagesOp::DeleteVersion), &[]),
-    route("POST", "/workspaces/:workspace/packages/:package_type/:package_name/versions/:version_id/restore", Op::Packages(PackagesOp::RestoreVersion), &[]),
+    route(
+        "GET",
+        "/workspaces/:workspace/packages/:package_type/:package_name/versions",
+        Op::Packages(PackagesOp::ListVersions),
+        &[("state", "state")],
+    ),
+    route(
+        "GET",
+        "/workspaces/:workspace/packages/:package_type/:package_name/versions/:version_id",
+        Op::Packages(PackagesOp::GetVersion),
+        &[],
+    ),
+    route(
+        "DELETE",
+        "/workspaces/:workspace/packages/:package_type/:package_name/versions/:version_id",
+        Op::Packages(PackagesOp::DeleteVersion),
+        &[],
+    ),
+    route(
+        "POST",
+        "/workspaces/:workspace/packages/:package_type/:package_name/versions/:version_id/restore",
+        Op::Packages(PackagesOp::RestoreVersion),
+        &[],
+    ),
     route("PUT", "/workspaces/:workspace/packages/:package_type/:package_name/repository", Op::Packages(PackagesOp::LinkPackage), &[]),
     route("DELETE", "/workspaces/:workspace/packages/:package_type/:package_name/repository", Op::Packages(PackagesOp::UnlinkPackage), &[]),
     route("GET", "/workspaces/:workspace/packages/:package_type/:package_name/access", Op::Packages(PackagesOp::ListAccess), &[]),
     route("PUT", "/workspaces/:workspace/packages/:package_type/:package_name/access", Op::Packages(PackagesOp::SetAccess), &[]),
-    route("DELETE", "/workspaces/:workspace/packages/:package_type/:package_name/access", Op::Packages(PackagesOp::RemoveAccess), &[("username", "username"), ("team", "team")]),
-    route("GET", "/workspaces/:workspace/packages/:package_type/:package_name/actions-access", Op::Packages(PackagesOp::ListActionsAccess), &[]),
-    route("PUT", "/workspaces/:workspace/packages/:package_type/:package_name/actions-access", Op::Packages(PackagesOp::SetActionsAccess), &[]),
-    route("DELETE", "/workspaces/:workspace/packages/:package_type/:package_name/actions-access/:repository", Op::Packages(PackagesOp::RemoveActionsAccess), &[]),
+    route(
+        "DELETE",
+        "/workspaces/:workspace/packages/:package_type/:package_name/access",
+        Op::Packages(PackagesOp::RemoveAccess),
+        &[("username", "username"), ("team", "team")],
+    ),
+    route(
+        "GET",
+        "/workspaces/:workspace/packages/:package_type/:package_name/actions-access",
+        Op::Packages(PackagesOp::ListActionsAccess),
+        &[],
+    ),
+    route(
+        "PUT",
+        "/workspaces/:workspace/packages/:package_type/:package_name/actions-access",
+        Op::Packages(PackagesOp::SetActionsAccess),
+        &[],
+    ),
+    route(
+        "DELETE",
+        "/workspaces/:workspace/packages/:package_type/:package_name/actions-access/:repository",
+        Op::Packages(PackagesOp::RemoveActionsAccess),
+        &[],
+    ),
     // Artifacts, at GitHub's addresses. `…/zip` answers with a redirect to
     // a signed link (lib.rs).
-    route("GET", "/repos/:owner/:name/actions/artifacts", Op::Artifacts(ArtifactsOp::ListArtifacts), &[("name", "name"), ("page", "page"), ("per_page", "per_page")]),
+    route(
+        "GET",
+        "/repos/:owner/:name/actions/artifacts",
+        Op::Artifacts(ArtifactsOp::ListArtifacts),
+        &[("name", "name"), ("page", "page"), ("per_page", "per_page")],
+    ),
     route("GET", "/repos/:owner/:name/actions/runs/:id/artifacts", Op::Artifacts(ArtifactsOp::ListRunArtifacts), &[("name", "name")]),
     route("GET", "/repos/:owner/:name/actions/artifacts/:id", Op::Artifacts(ArtifactsOp::GetArtifact), &[]),
     route("GET", "/repos/:owner/:name/actions/artifacts/:id/zip", Op::Artifacts(ArtifactsOp::DownloadArtifact), &[]),
     route("DELETE", "/repos/:owner/:name/actions/artifacts/:id", Op::Artifacts(ArtifactsOp::DeleteArtifact), &[]),
-    route("GET", "/repos/:owner/:name/actions/permissions/artifact-and-log-retention", Op::Artifacts(ArtifactsOp::GetArtifactRetention), &[]),
-    route("PUT", "/repos/:owner/:name/actions/permissions/artifact-and-log-retention", Op::Artifacts(ArtifactsOp::SetArtifactRetention), &[]),
+    route(
+        "GET",
+        "/repos/:owner/:name/actions/permissions/artifact-and-log-retention",
+        Op::Artifacts(ArtifactsOp::GetArtifactRetention),
+        &[],
+    ),
+    route(
+        "PUT",
+        "/repos/:owner/:name/actions/permissions/artifact-and-log-retention",
+        Op::Artifacts(ArtifactsOp::SetArtifactRetention),
+        &[],
+    ),
     route(
         "GET",
         "/repos/:owner/:name/actions/caches",
@@ -1016,90 +901,20 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/repos/:owner/:name/actions/cache/usage", Op::Caches(CachesOp::GetCacheUsage), &[]),
     route("DELETE", "/repos/:owner/:name/actions/caches", Op::Caches(CachesOp::DeleteCachesByKey), &[("key", "key"), ("ref", "ref")]),
     route("DELETE", "/repos/:owner/:name/actions/caches/:id", Op::Caches(CachesOp::DeleteCache), &[]),
-    route(
-        "GET",
-        "/repos/:owner/:name/actions/secrets",
-        Op::ListActionsSecrets,
-        &[],
-    ),
-    route(
-        "PUT",
-        "/repos/:owner/:name/actions/secrets/:setting",
-        Op::SetActionsSecret,
-        &[],
-    ),
-    route(
-        "DELETE",
-        "/repos/:owner/:name/actions/secrets/:setting",
-        Op::DeleteActionsSecret,
-        &[],
-    ),
-    route(
-        "GET",
-        "/repos/:owner/:name/actions/variables",
-        Op::ListActionsVariables,
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/actions/variables",
-        Op::SetActionsVariable,
-        &[],
-    ),
-    route(
-        "PATCH",
-        "/repos/:owner/:name/actions/variables/:setting",
-        Op::SetActionsVariable,
-        &[],
-    ),
-    route(
-        "DELETE",
-        "/repos/:owner/:name/actions/variables/:setting",
-        Op::DeleteActionsVariable,
-        &[],
-    ),
-    route(
-        "GET",
-        "/workspaces/:workspace/actions/secrets",
-        Op::ListActionsSecrets,
-        &[],
-    ),
-    route(
-        "PUT",
-        "/workspaces/:workspace/actions/secrets/:setting",
-        Op::SetActionsSecret,
-        &[],
-    ),
-    route(
-        "DELETE",
-        "/workspaces/:workspace/actions/secrets/:setting",
-        Op::DeleteActionsSecret,
-        &[],
-    ),
-    route(
-        "GET",
-        "/workspaces/:workspace/actions/variables",
-        Op::ListActionsVariables,
-        &[],
-    ),
-    route(
-        "POST",
-        "/workspaces/:workspace/actions/variables",
-        Op::SetActionsVariable,
-        &[],
-    ),
-    route(
-        "PATCH",
-        "/workspaces/:workspace/actions/variables/:setting",
-        Op::SetActionsVariable,
-        &[],
-    ),
-    route(
-        "DELETE",
-        "/workspaces/:workspace/actions/variables/:setting",
-        Op::DeleteActionsVariable,
-        &[],
-    ),
+    route("GET", "/repos/:owner/:name/actions/secrets", Op::ListActionsSecrets, &[]),
+    route("PUT", "/repos/:owner/:name/actions/secrets/:setting", Op::SetActionsSecret, &[]),
+    route("DELETE", "/repos/:owner/:name/actions/secrets/:setting", Op::DeleteActionsSecret, &[]),
+    route("GET", "/repos/:owner/:name/actions/variables", Op::ListActionsVariables, &[]),
+    route("POST", "/repos/:owner/:name/actions/variables", Op::SetActionsVariable, &[]),
+    route("PATCH", "/repos/:owner/:name/actions/variables/:setting", Op::SetActionsVariable, &[]),
+    route("DELETE", "/repos/:owner/:name/actions/variables/:setting", Op::DeleteActionsVariable, &[]),
+    route("GET", "/workspaces/:workspace/actions/secrets", Op::ListActionsSecrets, &[]),
+    route("PUT", "/workspaces/:workspace/actions/secrets/:setting", Op::SetActionsSecret, &[]),
+    route("DELETE", "/workspaces/:workspace/actions/secrets/:setting", Op::DeleteActionsSecret, &[]),
+    route("GET", "/workspaces/:workspace/actions/variables", Op::ListActionsVariables, &[]),
+    route("POST", "/workspaces/:workspace/actions/variables", Op::SetActionsVariable, &[]),
+    route("PATCH", "/workspaces/:workspace/actions/variables/:setting", Op::SetActionsVariable, &[]),
+    route("DELETE", "/workspaces/:workspace/actions/variables/:setting", Op::DeleteActionsVariable, &[]),
     // Self-hosted runners: a repository's own, or a workspace's.
     route("GET", "/repos/:owner/:name/actions/runners", Op::ListRunners, &[]),
     route("POST", "/repos/:owner/:name/actions/runners/registration-token", Op::CreateRunnerRegistrationToken, &[]),
@@ -1128,86 +943,26 @@ pub const ROUTES: &[Route] = &[
         Op::ListPullRequests,
         &[("state", "state"), ("label", "label"), ("milestone", "milestone"), ("base", "base")],
     ),
-    route(
-        "POST",
-        "/repos/:owner/:name/pulls",
-        Op::CreatePullRequest,
-        &[],
-    ),
-    route(
-        "GET",
-        "/repos/:owner/:name/pulls/:number",
-        Op::GetPullRequest,
-        &[],
-    ),
-    route(
-        "PATCH",
-        "/repos/:owner/:name/pulls/:number",
-        Op::UpdatePullRequest,
-        &[],
-    ),
-    route(
-        "GET",
-        "/repos/:owner/:name/pulls/:number/changes",
-        Op::GetPullRequestChanges,
-        &[("paths", "paths")],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/pulls/:number/reviews",
-        Op::ReviewPullRequest,
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/pulls/:number/requested_reviewers",
-        Op::RequestReviewers,
-        &[],
-    ),
-    route(
-        "DELETE",
-        "/repos/:owner/:name/pulls/:number/requested_reviewers",
-        Op::RemoveRequestedReviewers,
-        &[],
-    ),
-    route(
-        "GET",
-        "/repos/:owner/:name/pulls/:number/session",
-        Op::ReadSession,
-        &[("after", "after")],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/pulls/:number/session",
-        Op::RecordSession,
-        &[],
-    ),
+    route("POST", "/repos/:owner/:name/pulls", Op::CreatePullRequest, &[]),
+    route("GET", "/repos/:owner/:name/pulls/:number", Op::GetPullRequest, &[]),
+    route("PATCH", "/repos/:owner/:name/pulls/:number", Op::UpdatePullRequest, &[]),
+    route("GET", "/repos/:owner/:name/pulls/:number/changes", Op::GetPullRequestChanges, &[("paths", "paths")]),
+    route("POST", "/repos/:owner/:name/pulls/:number/reviews", Op::ReviewPullRequest, &[]),
+    route("POST", "/repos/:owner/:name/pulls/:number/requested_reviewers", Op::RequestReviewers, &[]),
+    route("DELETE", "/repos/:owner/:name/pulls/:number/requested_reviewers", Op::RemoveRequestedReviewers, &[]),
+    route("GET", "/repos/:owner/:name/pulls/:number/session", Op::ReadSession, &[("after", "after")]),
+    route("POST", "/repos/:owner/:name/pulls/:number/session", Op::RecordSession, &[]),
     // Decision records on a pull request (a work item's are with it), and
     // why a line is the way it is.
     route("GET", "/repos/:owner/:name/pulls/:number/decisions", Op::ListDecisions, &[]),
     route("POST", "/repos/:owner/:name/pulls/:number/decisions", Op::RecordDecision, &[]),
     route("GET", "/repos/:owner/:name/why", Op::Why, &[("path", "path"), ("line", "line"), ("ref", "ref")]),
-    route(
-        "POST",
-        "/repos/:owner/:name/pulls/:number/ready",
-        Op::MarkPullRequestReady,
-        &[],
-    ),
+    route("POST", "/repos/:owner/:name/pulls/:number/ready", Op::MarkPullRequestReady, &[]),
     route("POST", "/repos/:owner/:name/pulls/:number/draft", Op::ConvertPullRequestToDraft, &[]),
     route("PATCH", "/repos/:owner/:name/pulls/:number/tasks", Op::CheckPullRequestTask, &[]),
-    route(
-        "POST",
-        "/repos/:owner/:name/pulls/:number/close",
-        Op::ClosePullRequest,
-        &[],
-    ),
+    route("POST", "/repos/:owner/:name/pulls/:number/close", Op::ClosePullRequest, &[]),
     route("POST", "/repos/:owner/:name/pulls/:number/reopen", Op::ReopenPullRequest, &[]),
-    route(
-        "POST",
-        "/repos/:owner/:name/pulls/:number/merge",
-        Op::MergePullRequest,
-        &[],
-    ),
+    route("POST", "/repos/:owner/:name/pulls/:number/merge", Op::MergePullRequest, &[]),
     route("GET", "/repos/:owner/:name/pulls/:number/merge-options", Op::GetPullRequestMergeOptions, &[]),
     route("PUT", "/repos/:owner/:name/pulls/:number/update-branch", Op::UpdatePullRequestBranch, &[]),
     route("PUT", "/repos/:owner/:name/pulls/:number/auto-merge", Op::EnablePullRequestAutoMerge, &[]),
@@ -1222,9 +977,28 @@ pub const ROUTES: &[Route] = &[
     route("POST", "/repos/:owner/:name/commits/:sha/comments", Op::CreateCommitComment, &[]),
     // Artifacts mode's docs, slides, designs and dashboards. Search comes
     // before an artifact by id, which it would otherwise match.
-    route("GET", "/workspaces/:workspace/artifacts", Op::Folios(FoliosOp::List), &[("tab", "tab"), ("kind", "kind"), ("space", "space"), ("project", "project"), ("q", "q"), ("state", "state"), ("cursor", "cursor"), ("limit", "limit")]),
+    route(
+        "GET",
+        "/workspaces/:workspace/artifacts",
+        Op::Folios(FoliosOp::List),
+        &[
+            ("tab", "tab"),
+            ("kind", "kind"),
+            ("space", "space"),
+            ("project", "project"),
+            ("q", "q"),
+            ("state", "state"),
+            ("cursor", "cursor"),
+            ("limit", "limit"),
+        ],
+    ),
     route("POST", "/workspaces/:workspace/artifacts", Op::Folios(FoliosOp::Create), &[]),
-    route("GET", "/workspaces/:workspace/artifacts/search", Op::Folios(FoliosOp::Search), &[("q", "q"), ("kind", "kind"), ("space", "space"), ("project", "project"), ("limit", "limit")]),
+    route(
+        "GET",
+        "/workspaces/:workspace/artifacts/search",
+        Op::Folios(FoliosOp::Search),
+        &[("q", "q"), ("kind", "kind"), ("space", "space"), ("project", "project"), ("limit", "limit")],
+    ),
     route("GET", "/workspaces/:workspace/artifacts/:artifact_id", Op::Folios(FoliosOp::Get), &[]),
     route("PATCH", "/workspaces/:workspace/artifacts/:artifact_id", Op::Folios(FoliosOp::Update), &[]),
     route("DELETE", "/workspaces/:workspace/artifacts/:artifact_id", Op::Folios(FoliosOp::Trash), &[]),
@@ -1245,17 +1019,12 @@ impl Route {
     /// Whether the route answers success with `204` and no body, as
     /// GitHub's address for the same does. MCP still answers `true`.
     pub fn no_content(&self) -> bool {
-        matches!(
-            self.op,
-            Op::DeleteComment | Op::DeleteWorkItemComment | Op::DeleteCommitComment | Op::Caches(CachesOp::DeleteCache)
-        )
+        matches!(self.op, Op::DeleteComment | Op::DeleteWorkItemComment | Op::DeleteCommitComment | Op::Caches(CachesOp::DeleteCache))
     }
 
     /// The names of the route's path parameters, in order.
     pub fn params(&self) -> impl Iterator<Item = &'static str> {
-        self.path
-            .split('/')
-            .filter_map(|segment| segment.strip_prefix(':'))
+        self.path.split('/').filter_map(|segment| segment.strip_prefix(':'))
     }
 
     /// The values of the path parameters, if `path` is this route's.
@@ -1307,16 +1076,8 @@ fn percent_decoded(segment: &str) -> String {
 /// reads and then with what the path names: `owner` and `name` become
 /// `repo`, as does a team's `repo` with its `workspace`, and `number`
 /// becomes an integer.
-pub fn resolve(
-    method: &str,
-    path: &str,
-    query: &[(String, String)],
-    body: Value,
-) -> Option<(&'static Route, Value)> {
-    let (route, params) = ROUTES
-        .iter()
-        .filter(|route| route.method == method)
-        .find_map(|route| Some((route, route.matches(path)?)))?;
+pub fn resolve(method: &str, path: &str, query: &[(String, String)], body: Value) -> Option<(&'static Route, Value)> {
+    let (route, params) = ROUTES.iter().filter(|route| route.method == method).find_map(|route| Some((route, route.matches(path)?)))?;
 
     let mut input = match body {
         Value::Object(fields) => fields,
@@ -1327,12 +1088,7 @@ pub fn resolve(
             input.insert((*key).to_owned(), Value::String(value.clone()));
         }
     }
-    let param = |wanted: &str| {
-        params
-            .iter()
-            .find(|(name, _)| *name == wanted)
-            .map(|(_, value)| *value)
-    };
+    let param = |wanted: &str| params.iter().find(|(name, _)| *name == wanted).map(|(_, value)| *value);
     if let (Some(owner), Some(name)) = (param("owner"), param("name")) {
         input.insert("repo".to_owned(), Value::String(format!("{owner}/{name}")));
     }
@@ -1382,10 +1138,7 @@ pub fn resolve(
     }
     if let Some(number) = param("number") {
         // Not a number: zero, which no work item or pull request has.
-        input.insert(
-            "number".to_owned(),
-            number.parse::<u32>().unwrap_or(0).into(),
-        );
+        input.insert("number".to_owned(), number.parse::<u32>().unwrap_or(0).into());
     }
     Some((route, Value::Object(input)))
 }
@@ -1472,39 +1225,23 @@ mod tests {
         .unwrap();
         assert_eq!(route.op, Op::MergePullRequest);
         // What the path names wins over the body.
-        assert_eq!(
-            input,
-            json!({ "keep_item_open": true, "number": 14, "repo": "flagon-io/hello" })
-        );
+        assert_eq!(input, json!({ "keep_item_open": true, "number": 14, "repo": "flagon-io/hello" }));
     }
 
     #[test]
     fn a_branch_with_slashes_is_one_encoded_segment() {
-        let (route, input) = resolve(
-            "POST",
-            "/repos/flagon-io/hello/branches/feature%2Flogin/rename",
-            &[],
-            json!({ "new_name": "feature/sign-in" }),
-        )
-        .unwrap();
+        let (route, input) =
+            resolve("POST", "/repos/flagon-io/hello/branches/feature%2Flogin/rename", &[], json!({ "new_name": "feature/sign-in" }))
+                .unwrap();
         assert_eq!(route.op, Op::RenameBranch);
-        assert_eq!(
-            input,
-            json!({ "new_name": "feature/sign-in", "branch": "feature/login", "repo": "flagon-io/hello" })
-        );
+        assert_eq!(input, json!({ "new_name": "feature/sign-in", "branch": "feature/login", "repo": "flagon-io/hello" }));
         assert_eq!(percent_decoded("100%"), "100%");
         assert_eq!(percent_decoded("a%2bb%zz"), "a+b%zz");
     }
 
     #[test]
     fn a_collaborator_is_named_by_username() {
-        let (route, input) = resolve(
-            "PATCH",
-            "/repos/flagon-io/hello/collaborators/ada",
-            &[],
-            json!({ "role": "maintain" }),
-        )
-        .unwrap();
+        let (route, input) = resolve("PATCH", "/repos/flagon-io/hello/collaborators/ada", &[], json!({ "role": "maintain" })).unwrap();
         assert_eq!(route.op, Op::UpdateCollaborator);
         assert_eq!(input, json!({ "role": "maintain", "username": "ada", "repo": "flagon-io/hello" }));
         let (route, input) = resolve("DELETE", "/user/repository_invitations/rin_1", &[], Value::Null).unwrap();
@@ -1521,8 +1258,7 @@ mod tests {
         let (route, input) = resolve("PATCH", "/workspaces/acme/teams/backend", &[], json!({ "name": "Back end" })).unwrap();
         assert_eq!(route.op, Op::UpdateTeam);
         assert_eq!(input, json!({ "name": "Back end", "workspace": "acme", "team": "backend" }));
-        let (route, input) =
-            resolve("PUT", "/workspaces/acme/teams/backend/members/ana", &[], json!({ "role": "maintainer" })).unwrap();
+        let (route, input) = resolve("PUT", "/workspaces/acme/teams/backend/members/ana", &[], json!({ "role": "maintainer" })).unwrap();
         assert_eq!(route.op, Op::SetTeamMember);
         assert_eq!(input, json!({ "role": "maintainer", "workspace": "acme", "team": "backend", "username": "ana" }));
         let query = [("include_child_teams".to_owned(), "true".to_owned())];
@@ -1530,8 +1266,7 @@ mod tests {
         assert_eq!(route.op, Op::ListTeamMembers);
         assert_eq!(input, json!({ "include_child_teams": "true", "workspace": "acme", "team": "backend" }));
         // A repository is named by itself, in the team's workspace.
-        let (route, input) =
-            resolve("PUT", "/workspaces/acme/teams/backend/repos/rocket", &[], json!({ "role": "write" })).unwrap();
+        let (route, input) = resolve("PUT", "/workspaces/acme/teams/backend/repos/rocket", &[], json!({ "role": "write" })).unwrap();
         assert_eq!(route.op, Op::SetTeamRepo);
         assert_eq!(input, json!({ "role": "write", "workspace": "acme", "team": "backend", "repo": "acme/rocket" }));
         let op = |method: &str, path: &str| resolve(method, path, &[], Value::Null).unwrap().0.op;
@@ -1553,10 +1288,7 @@ mod tests {
         let body = json!({ "reviewers": ["ana"], "team_reviewers": ["backend"] });
         let (route, input) = resolve("POST", "/repos/acme/rocket/pulls/7/requested_reviewers", &[], body.clone()).unwrap();
         assert_eq!(route.op, Op::RequestReviewers);
-        assert_eq!(
-            input,
-            json!({ "reviewers": ["ana"], "team_reviewers": ["backend"], "repo": "acme/rocket", "number": 7 })
-        );
+        assert_eq!(input, json!({ "reviewers": ["ana"], "team_reviewers": ["backend"], "repo": "acme/rocket", "number": 7 }));
         let (route, _) = resolve("DELETE", "/repos/acme/rocket/pulls/7/requested_reviewers", &[], body).unwrap();
         assert_eq!(route.op, Op::RemoveRequestedReviewers);
         let query = [("ref".to_owned(), "main".to_owned())];
@@ -1673,8 +1405,7 @@ mod tests {
         let (route, input) = resolve("PATCH", "/repos/acme/web/pulls/9", &[], json!({ "state": "open" })).unwrap();
         assert_eq!(route.op, Op::UpdatePullRequest);
         assert_eq!(input, json!({ "state": "open", "number": 9, "repo": "acme/web" }));
-        let (route, input) =
-            resolve("PATCH", "/repos/acme/web/pulls/comments/cmt_1", &[], json!({ "body": "Better" })).unwrap();
+        let (route, input) = resolve("PATCH", "/repos/acme/web/pulls/comments/cmt_1", &[], json!({ "body": "Better" })).unwrap();
         assert_eq!(route.op, Op::EditComment);
         assert_eq!(input, json!({ "body": "Better", "comment_id": "cmt_1", "repo": "acme/web" }));
         let (route, input) = resolve("DELETE", "/repos/acme/web/pulls/comments/cmt_1", &[], Value::Null).unwrap();
@@ -1685,8 +1416,7 @@ mod tests {
         assert_eq!(op("POST", "/repos/acme/web/attachments"), Op::UploadAttachment);
         assert_eq!(op("DELETE", "/repos/acme/web/pulls/7/subscription"), Op::DeleteThreadSubscription);
         // A work item's are in its workspace.
-        let (route, input) =
-            resolve("PATCH", "/workspaces/acme/work/comments/cmt_1", &[], json!({ "body": "Better" })).unwrap();
+        let (route, input) = resolve("PATCH", "/workspaces/acme/work/comments/cmt_1", &[], json!({ "body": "Better" })).unwrap();
         assert_eq!(route.op, Op::EditWorkItemComment);
         assert_eq!(input, json!({ "body": "Better", "comment_id": "cmt_1", "workspace": "acme" }));
         assert_eq!(op("DELETE", "/workspaces/acme/work/comments/cmt_1"), Op::DeleteWorkItemComment);
@@ -1698,7 +1428,8 @@ mod tests {
     #[test]
     fn work_items_are_addressed_by_workspace_and_number() {
         let op = |method: &str, path: &str| resolve(method, path, &[], Value::Null).unwrap().0.op;
-        let query = [("state".to_owned(), "open".to_owned()), ("repo".to_owned(), "acme/web".to_owned()), ("role".to_owned(), "target".to_owned())];
+        let query =
+            [("state".to_owned(), "open".to_owned()), ("repo".to_owned(), "acme/web".to_owned()), ("role".to_owned(), "target".to_owned())];
         let (route, input) = resolve("GET", "/workspaces/acme/work", &query, Value::Null).unwrap();
         assert_eq!(route.op, Op::ListWorkItems);
         assert_eq!(input, json!({ "state": "open", "repo": "acme/web", "role": "target", "workspace": "acme" }));
@@ -1726,7 +1457,8 @@ mod tests {
         assert_eq!(op("POST", "/workspaces/acme/work/12/cycle"), Op::CycleWorkItem);
         assert_eq!(op("GET", "/workspaces/acme/work/12/links"), Op::ListWorkItemLinks);
         assert_eq!(op("POST", "/workspaces/acme/work/12/links"), Op::LinkWorkItem);
-        let (route, input) = resolve("DELETE", "/workspaces/acme/work/12/links", &[("repo".to_owned(), "acme/api".to_owned())], Value::Null).unwrap();
+        let (route, input) =
+            resolve("DELETE", "/workspaces/acme/work/12/links", &[("repo".to_owned(), "acme/api".to_owned())], Value::Null).unwrap();
         assert_eq!(route.op, Op::UnlinkWorkItem);
         assert_eq!(input, json!({ "repo": "acme/api", "number": 12, "workspace": "acme" }));
         assert_eq!(op("PUT", "/workspaces/acme/work/12/parent"), Op::SetWorkItemParent);
@@ -1823,7 +1555,11 @@ mod tests {
 
     #[test]
     fn caches_are_at_githubs_addresses() {
-        let query = [("key".to_owned(), "cargo-".to_owned()), ("ref".to_owned(), "refs/heads/main".to_owned()), ("sort".to_owned(), "size_in_bytes".to_owned())];
+        let query = [
+            ("key".to_owned(), "cargo-".to_owned()),
+            ("ref".to_owned(), "refs/heads/main".to_owned()),
+            ("sort".to_owned(), "size_in_bytes".to_owned()),
+        ];
         let (route, input) = resolve("GET", "/repos/acme/web/actions/caches", &query, Value::Null).unwrap();
         assert_eq!(route.op, Op::Caches(CachesOp::ListCaches));
         assert_eq!(input, json!({ "key": "cargo-", "ref": "refs/heads/main", "sort": "size_in_bytes", "repo": "acme/web" }));
@@ -1845,10 +1581,7 @@ mod tests {
 
     #[test]
     fn query_parameters_are_renamed() {
-        let query = [
-            ("q".to_owned(), "parser".to_owned()),
-            ("x".to_owned(), "y".to_owned()),
-        ];
+        let query = [("q".to_owned(), "parser".to_owned()), ("x".to_owned(), "y".to_owned())];
         let (route, input) = resolve("GET", "/repos", &query, Value::Null).unwrap();
         assert_eq!(route.op, Op::ListRepos);
         assert_eq!(input, json!({ "query": "parser" }));
@@ -1870,8 +1603,7 @@ mod tests {
                 assert!(properties.contains_key(*key), "{}: {key}", route.path);
             }
             for name in route.params() {
-                let covered = matches!(name, "owner" | "name") && properties.contains_key("repo")
-                    || properties.contains_key(name);
+                let covered = matches!(name, "owner" | "name") && properties.contains_key("repo") || properties.contains_key(name);
                 assert!(covered, "{}: {name}", route.path);
             }
         }

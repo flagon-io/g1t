@@ -81,7 +81,8 @@ pub fn tag_version(tag: &str) -> Option<Version> {
         // `1.2.` followed by more is not a version.
         return None;
     }
-    let mut normalized: Vec<String> = parts.iter().map(|p| p.trim_start_matches('0').to_owned()).map(|p| if p.is_empty() { "0".into() } else { p }).collect();
+    let mut normalized: Vec<String> =
+        parts.iter().map(|p| p.trim_start_matches('0').to_owned()).map(|p| if p.is_empty() { "0".into() } else { p }).collect();
     while normalized.len() < 4 {
         normalized.push("0".into());
     }
@@ -123,18 +124,13 @@ pub fn branch_version(branch: &str) -> Version {
     if !numeric {
         return Version { version: format!("dev-{branch}"), normalized: format!("dev-{branch}") };
     }
-    let mut nines: Vec<String> = parts
-        .iter()
-        .map(|p| if p.bytes().all(|b| b.is_ascii_digit()) { (*p).to_owned() } else { "9999999".to_owned() })
-        .collect();
+    let mut nines: Vec<String> =
+        parts.iter().map(|p| if p.bytes().all(|b| b.is_ascii_digit()) { (*p).to_owned() } else { "9999999".to_owned() }).collect();
     while nines.len() < 4 {
         nines.push("9999999".to_owned());
     }
-    let version = if parts.last().is_some_and(|p| matches!(*p, "x" | "X" | "*")) {
-        format!("{branch}-dev")
-    } else {
-        format!("{branch}.x-dev")
-    };
+    let version =
+        if parts.last().is_some_and(|p| matches!(*p, "x" | "X" | "*")) { format!("{branch}-dev") } else { format!("{branch}.x-dev") };
     Version { version, normalized: format!("{}-dev", nines.join(".")) }
 }
 
@@ -200,10 +196,7 @@ pub fn version_entry(composer: &Value, name: &str, version: &Version, origin: &O
     entry.insert("version".into(), json!(version.version));
     entry.insert("version_normalized".into(), json!(version.normalized));
     entry.insert("source".into(), json!({ "type": "git", "url": origin.git_url, "reference": origin.commit }));
-    entry.insert(
-        "dist".into(),
-        json!({ "type": "zip", "url": origin.dist_url, "reference": origin.commit, "shasum": "" }),
-    );
+    entry.insert("dist".into(), json!({ "type": "zip", "url": origin.dist_url, "reference": origin.commit, "shasum": "" }));
     if origin.default_branch {
         entry.insert("default-branch".into(), json!(true));
     }
@@ -231,9 +224,7 @@ pub fn root(workspace: &str, available: &[String]) -> Value {
 fn glob(pattern: &[u8], text: &[u8]) -> bool {
     match (pattern.first(), text.first()) {
         (None, None) => true,
-        (Some(b'*'), _) => {
-            glob(&pattern[1..], text) || (!text.is_empty() && text[0] != b'/' && glob(pattern, &text[1..]))
-        }
+        (Some(b'*'), _) => glob(&pattern[1..], text) || (!text.is_empty() && text[0] != b'/' && glob(pattern, &text[1..])),
         (Some(b'?'), Some(c)) if *c != b'/' => glob(&pattern[1..], &text[1..]),
         (Some(p), Some(c)) if p == c => glob(&pattern[1..], &text[1..]),
         _ => false,
@@ -387,14 +378,8 @@ mod tests {
     #[test]
     fn branches_are_dev_versions() {
         assert_eq!(branch_version("main"), Version { version: "dev-main".into(), normalized: "dev-main".into() });
-        assert_eq!(
-            branch_version("1.x"),
-            Version { version: "1.x-dev".into(), normalized: "1.9999999.9999999.9999999-dev".into() }
-        );
-        assert_eq!(
-            branch_version("2.1"),
-            Version { version: "2.1.x-dev".into(), normalized: "2.1.9999999.9999999-dev".into() }
-        );
+        assert_eq!(branch_version("1.x"), Version { version: "1.x-dev".into(), normalized: "1.9999999.9999999.9999999-dev".into() });
+        assert_eq!(branch_version("2.1"), Version { version: "2.1.x-dev".into(), normalized: "2.1.9999999.9999999-dev".into() });
         assert_eq!(branch_version("feature/x").version, "dev-feature/x");
         assert!(branch_version("main").is_dev());
     }
@@ -439,7 +424,9 @@ mod tests {
 
     #[test]
     fn export_ignore_leaves_files_out_as_git_archive_does() {
-        let patterns = export_ignores("# dev only\n/tests export-ignore\n.github/ export-ignore\n*.md export-ignore\n/phpunit.xml.dist export-ignore\nsrc/* text\n");
+        let patterns = export_ignores(
+            "# dev only\n/tests export-ignore\n.github/ export-ignore\n*.md export-ignore\n/phpunit.xml.dist export-ignore\nsrc/* text\n",
+        );
         assert_eq!(patterns, ["/tests", ".github/", "*.md", "/phpunit.xml.dist"]);
         assert!(ignored(&patterns, "tests/LibTest.php"));
         assert!(ignored(&patterns, ".github/workflows/ci.yml"));

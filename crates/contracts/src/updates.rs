@@ -371,9 +371,7 @@ pub fn update_command(body: &str) -> Option<UpdateCommand> {
         ["close"] => UpdateCommand::Close,
         ["reopen"] => UpdateCommand::Reopen,
         ["ignore", "this", "dependency"] => UpdateCommand::IgnoreDependency,
-        ["ignore", "this", which, "version"] if level(which).is_some() => {
-            UpdateCommand::IgnoreVersion { level: (*which).to_owned() }
-        }
+        ["ignore", "this", which, "version"] if level(which).is_some() => UpdateCommand::IgnoreVersion { level: (*which).to_owned() },
         ["show", "ignore", "conditions"] => UpdateCommand::ShowIgnores { dependency: None },
         ["show", _, "ignore", "conditions"] => UpdateCommand::ShowIgnores { dependency: Some(named()) },
         ["ignore", _] => UpdateCommand::IgnoreNamed { dependency: named(), level: None },
@@ -381,9 +379,7 @@ pub fn update_command(body: &str) -> Option<UpdateCommand> {
             UpdateCommand::IgnoreNamed { dependency: named(), level: level(which) }
         }
         ["unignore", _] => UpdateCommand::Unignore { dependency: named(), level: None },
-        ["unignore", _, which, "version"] if level(which).is_some() => {
-            UpdateCommand::Unignore { dependency: named(), level: level(which) }
-        }
+        ["unignore", _, which, "version"] if level(which).is_some() => UpdateCommand::Unignore { dependency: named(), level: level(which) },
         _ => return None,
     })
 }
@@ -408,9 +404,15 @@ mod tests {
             ("@g1t show ignore conditions", Some(UpdateCommand::ShowIgnores { dependency: None })),
             ("@g1t show @babel/core ignore conditions", Some(UpdateCommand::ShowIgnores { dependency: Some("@babel/core".into()) })),
             ("@g1t ignore eslint", Some(UpdateCommand::IgnoreNamed { dependency: "eslint".into(), level: None })),
-            ("@g1t ignore eslint minor version", Some(UpdateCommand::IgnoreNamed { dependency: "eslint".into(), level: Some("minor".into()) })),
+            (
+                "@g1t ignore eslint minor version",
+                Some(UpdateCommand::IgnoreNamed { dependency: "eslint".into(), level: Some("minor".into()) }),
+            ),
             ("@g1t unignore *", Some(UpdateCommand::Unignore { dependency: "*".into(), level: None })),
-            ("@g1t unignore Eslint major version", Some(UpdateCommand::Unignore { dependency: "Eslint".into(), level: Some("major".into()) })),
+            (
+                "@g1t unignore Eslint major version",
+                Some(UpdateCommand::Unignore { dependency: "Eslint".into(), level: Some("major".into()) }),
+            ),
             ("@g1t can you rebase this?", None),
             ("@g1tbot rebase", None),
             ("please @g1t rebase", None),
@@ -423,7 +425,8 @@ mod tests {
 
     #[test]
     fn a_problem_reads_as_one_line() {
-        let problem = ConfigProblem { line: 4, column: 7, key: "updates[0].schedule.interval".into(), message: "hourly is not an interval.".into() };
+        let problem =
+            ConfigProblem { line: 4, column: 7, key: "updates[0].schedule.interval".into(), message: "hourly is not an interval.".into() };
         assert_eq!(problem.sentence(), "line 4, updates[0].schedule.interval: hourly is not an interval.");
         assert_eq!(ConfigProblem { message: "Not YAML.".into(), ..ConfigProblem::default() }.sentence(), "Not YAML.");
     }

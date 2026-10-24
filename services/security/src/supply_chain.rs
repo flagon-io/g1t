@@ -11,8 +11,8 @@ use g1t_contracts::access::Capability;
 use g1t_contracts::repos::{Comparison, FileDiff, LineKind, RepoPath};
 use g1t_contracts::security::{FindLockfilesArgs, Lockfiles};
 use g1t_contracts::security_suite::{
-    DEPENDENCY_REVIEW_CHECK, DependencyGraph, DependencyGraphArgs, DependencyReview, DependencyReviewArgs, GraphDependency,
-    GraphManifest, PaidFeature, PullScanningArgs, RepoSecuritySettings, ReviewChange, ReviewVulnerability, SbomArgs,
+    DEPENDENCY_REVIEW_CHECK, DependencyGraph, DependencyGraphArgs, DependencyReview, DependencyReviewArgs, GraphDependency, GraphManifest,
+    PaidFeature, PullScanningArgs, RepoSecuritySettings, ReviewChange, ReviewVulnerability, SbomArgs,
 };
 use g1t_contracts::work::{AddCommentArgs, Comment, CommentActionArgs, PullStatus};
 use g1t_contracts::{FailureCode, Outcome, User};
@@ -35,12 +35,8 @@ const MAX_REVIEWED: usize = 500;
 /// Every package `files` resolve, with what each lockfile says of it. A
 /// directory with a `go.mod` is read from it rather than its `go.sum`.
 pub fn graph_of(files: &Lockfiles) -> Vec<Dependency> {
-    let go_mods: BTreeSet<&str> = files
-        .files
-        .iter()
-        .filter(|file| file.path.ends_with("go.mod"))
-        .map(|file| file.path.trim_end_matches("go.mod"))
-        .collect();
+    let go_mods: BTreeSet<&str> =
+        files.files.iter().filter(|file| file.path.ends_with("go.mod")).map(|file| file.path.trim_end_matches("go.mod")).collect();
     let mut deps = Vec::new();
     for file in &files.files {
         let Some(lockfile) = Lockfile::for_path(&file.path) else { continue };
@@ -130,7 +126,12 @@ impl Security {
     }
 
     async fn lockfiles_at(&self, repo_id: &str, git_ref: Option<&str>) -> Result<Lockfiles> {
-        g1t_kit::call(&self.repos, "find_lockfiles", &FindLockfilesArgs { repo_id: repo_id.to_owned(), git_ref: git_ref.map(str::to_owned) }).await
+        g1t_kit::call(
+            &self.repos,
+            "find_lockfiles",
+            &FindLockfilesArgs { repo_id: repo_id.to_owned(), git_ref: git_ref.map(str::to_owned) },
+        )
+        .await
     }
 
     pub(crate) async fn dependency_graph(&self, a: DependencyGraphArgs) -> Result<Outcome<DependencyGraph>> {
@@ -180,7 +181,11 @@ impl Security {
                 direct: 0,
             });
         }
-        Ok(Outcome::Ok(DependencyGraph { commit: self.store.deps_commit(&repo.repo_id).await?, manifests: manifests.into_values().collect(), dependencies }))
+        Ok(Outcome::Ok(DependencyGraph {
+            commit: self.store.deps_commit(&repo.repo_id).await?,
+            manifests: manifests.into_values().collect(),
+            dependencies,
+        }))
     }
 
     pub(crate) async fn sbom(&self, a: SbomArgs) -> Result<Outcome<Value>> {
@@ -213,7 +218,8 @@ impl Security {
 
     /// Asks OSV about the packages a change adds.
     async fn findings_for(&self, added: &[&Dependency]) -> Result<BTreeMap<String, Vec<Finding>>> {
-        let packages: Vec<Package> = added.iter().map(|dep| dep.package.clone()).collect::<BTreeSet<_>>().into_iter().take(MAX_REVIEWED).collect();
+        let packages: Vec<Package> =
+            added.iter().map(|dep| dep.package.clone()).collect::<BTreeSet<_>>().into_iter().take(MAX_REVIEWED).collect();
         if packages.is_empty() {
             return Ok(BTreeMap::new());
         }
@@ -242,10 +248,18 @@ impl Security {
 
     /// Reviews the change from `base` (in `base_repo`) to `head` (in
     /// `head_repo`, a fork's for a pull request from one).
-    async fn review(&self, base_repo: &str, base: &str, head_repo: &str, head: &str, policy: &Policy) -> Result<(Verdict, DependencyReview)> {
+    async fn review(
+        &self,
+        base_repo: &str,
+        base: &str,
+        head_repo: &str,
+        head: &str,
+        policy: &Policy,
+    ) -> Result<(Verdict, DependencyReview)> {
         let (before, after) = (self.lockfiles_at(base_repo, Some(base)).await?, self.lockfiles_at(head_repo, Some(head)).await?);
         let changes = review::diff(&graph_of(&before), &graph_of(&after));
-        let added: Vec<&Dependency> = changes.iter().filter(|change| change.kind == ChangeKind::Added).map(|change| &change.dependency).collect();
+        let added: Vec<&Dependency> =
+            changes.iter().filter(|change| change.kind == ChangeKind::Added).map(|change| &change.dependency).collect();
         let findings = self.findings_for(&added).await?;
         let verdict = review::judge(&changes, &findings, policy);
         let view = review_view(base, head, &verdict, policy);
@@ -289,7 +303,10 @@ impl Security {
         }
         let (settings, _) = self.store.repo_settings(&repo.repo_id).await?;
         if !settings.dependency_review {
-            return Ok(Outcome::fail(FailureCode::Conflict, "Dependency review is off for this repository. Turn it on in its Security settings."));
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "Dependency review is off for this repository. Turn it on in its Security settings.",
+            ));
         }
         Ok(match self.check_pull(&repo, &settings, a.number, true).await? {
             Some(view) => Outcome::Ok(view),
@@ -302,7 +319,13 @@ impl Security {
     /// reviewed before (the base merged into it, say) takes that result
     /// without another review, and its comment is left alone. `again`
     /// reviews it whatever was reviewed before.
-    async fn check_pull(&self, repo: &RepoRow, settings: &RepoSecuritySettings, number: u32, again: bool) -> Result<Option<DependencyReview>> {
+    async fn check_pull(
+        &self,
+        repo: &RepoRow,
+        settings: &RepoSecuritySettings,
+        number: u32,
+        again: bool,
+    ) -> Result<Option<DependencyReview>> {
         let Some(detail) = self.pull_detail(repo, number).await? else { return Ok(None) };
         let pull = &detail.pull;
         // Asked for again: only while it is open.
@@ -329,7 +352,16 @@ impl Security {
             let mut view = previous_view(previous);
             view.head = head.clone();
             self.store
-                .set_pull_check(&repo.repo_id, number, "review", &head, &previous.state, &previous.description, &serde_json::to_value(&view)?, &memo(key.as_deref()))
+                .set_pull_check(
+                    &repo.repo_id,
+                    number,
+                    "review",
+                    &head,
+                    &previous.state,
+                    &previous.description,
+                    &serde_json::to_value(&view)?,
+                    &memo(key.as_deref()),
+                )
                 .await?;
             self.set_status(repo, &head, DEPENDENCY_REVIEW_CHECK, &previous.state, &previous.description, number).await;
             return Ok(Some(view));
@@ -353,7 +385,16 @@ impl Security {
             (if verdict.passed { "success" } else { "failure" }, verdict.headline(), view, summary)
         };
         self.store
-            .set_pull_check(&repo.repo_id, number, "review", &head, state, &description, &serde_json::to_value(&view)?, &memo(key.as_deref()))
+            .set_pull_check(
+                &repo.repo_id,
+                number,
+                "review",
+                &head,
+                state,
+                &description,
+                &serde_json::to_value(&view)?,
+                &memo(key.as_deref()),
+            )
             .await?;
         self.set_status(repo, &head, DEPENDENCY_REVIEW_CHECK, state, &description, number).await;
         if settings.review_comment {
@@ -371,21 +412,29 @@ impl Security {
         let done: Result<Outcome<Value>> = match comment_plan(our_comment(comments), &body, changes) {
             CommentPlan::Leave => return,
             CommentPlan::Edit(comment_id) => {
-                g1t_kit::call(&self.work, "edit_comment", &CommentActionArgs { actor, repo: Some(path), workspace: String::new(), comment_id, body }).await
+                g1t_kit::call(
+                    &self.work,
+                    "edit_comment",
+                    &CommentActionArgs { actor, repo: Some(path), workspace: String::new(), comment_id, body },
+                )
+                .await
             }
             CommentPlan::Add => {
-                g1t_kit::call(&self.work, "add_comment", &AddCommentArgs {
-                    actor,
-                    repo: Some(path),
-                    workspace: String::new(),
-                    number,
-                    body,
-                    path: None,
-                    line: None,
-                    verdict: None,
-                },
-            )
-            .await
+                g1t_kit::call(
+                    &self.work,
+                    "add_comment",
+                    &AddCommentArgs {
+                        actor,
+                        repo: Some(path),
+                        workspace: String::new(),
+                        number,
+                        body,
+                        path: None,
+                        line: None,
+                        verdict: None,
+                    },
+                )
+                .await
             }
         };
         match done {
@@ -409,11 +458,8 @@ pub fn review_key(comparison: &Comparison, policy: &Policy) -> Option<String> {
         return None;
     }
     lockfiles.sort_by(|a, b| a.path.cmp(&b.path));
-    let mut text = format!(
-        "fail_on {}\ndeny {}\n",
-        policy.fail_on.map_or("none", |severity| severity.as_str()),
-        policy.deny_licenses.join(",")
-    );
+    let mut text =
+        format!("fail_on {}\ndeny {}\n", policy.fail_on.map_or("none", |severity| severity.as_str()), policy.deny_licenses.join(","));
     for file in lockfiles {
         text.push_str(&format!("file {} {:?}\n", file.path, file.status));
         for line in file.hunks.iter().flat_map(|hunk| &hunk.lines) {
@@ -436,10 +482,7 @@ fn memo(key: Option<&str>) -> Vec<String> {
 }
 
 fn stored_key(commented: &str) -> Option<String> {
-    serde_json::from_str::<Vec<String>>(commented)
-        .ok()?
-        .into_iter()
-        .find_map(|entry| entry.strip_prefix("key:").map(str::to_owned))
+    serde_json::from_str::<Vec<String>>(commented).ok()?.into_iter().find_map(|entry| entry.strip_prefix("key:").map(str::to_owned))
 }
 
 /// g1t's dependency review comment on a pull request: the first comment g1t
@@ -481,14 +524,14 @@ mod tests {
                 LockfileText { path: "go.sum".into(), text: "golang.org/x/net v0.1.0 h1:x=\n".into() },
                 LockfileText {
                     path: "web/package-lock.json".into(),
-                    text: r#"{"packages":{"":{"dependencies":{"lodash":"^4"}},"node_modules/lodash":{"version":"4.17.21","license":"MIT"}}}"#.into(),
+                    text:
+                        r#"{"packages":{"":{"dependencies":{"lodash":"^4"}},"node_modules/lodash":{"version":"4.17.21","license":"MIT"}}}"#
+                            .into(),
                 },
             ],
         };
-        let deps: Vec<String> = graph_of(&files)
-            .iter()
-            .map(|dep| format!("{} {} {}", dep.manifest, dep.package.name, dep.relationship.as_str()))
-            .collect();
+        let deps: Vec<String> =
+            graph_of(&files).iter().map(|dep| format!("{} {} {}", dep.manifest, dep.package.name, dep.relationship.as_str())).collect();
         assert_eq!(deps, ["go.mod golang.org/x/net transitive", "web/package-lock.json lodash direct"]);
     }
 
@@ -532,11 +575,19 @@ mod tests {
     #[test]
     fn the_base_merged_in_keeps_the_review_key_and_a_lockfile_change_moves_it() {
         let policy = policy_of("high", &[]);
-        let bump = [(LineKind::Context, 10, "\"lodash\": {"), (LineKind::Delete, 11, "\"version\": \"4.17.21\""), (LineKind::Add, 11, "\"version\": \"4.17.20\"")];
+        let bump = [
+            (LineKind::Context, 10, "\"lodash\": {"),
+            (LineKind::Delete, 11, "\"version\": \"4.17.21\""),
+            (LineKind::Add, 11, "\"version\": \"4.17.20\""),
+        ];
         let first = review_key(&compared(vec![lockfile("package-lock.json", &bump)]), &policy).unwrap();
         // The base merged in: other files, and the same lockfile lines
         // further down with other context around them.
-        let moved = [(LineKind::Context, 40, "\"lodash\": { "), (LineKind::Delete, 41, "\"version\": \"4.17.21\""), (LineKind::Add, 41, "\"version\": \"4.17.20\"")];
+        let moved = [
+            (LineKind::Context, 40, "\"lodash\": { "),
+            (LineKind::Delete, 41, "\"version\": \"4.17.21\""),
+            (LineKind::Add, 41, "\"version\": \"4.17.20\""),
+        ];
         let mut caught_up = vec![lockfile("package-lock.json", &moved), lockfile("src/app.ts", &[(LineKind::Add, 1, "x")])];
         caught_up.reverse();
         assert_eq!(review_key(&compared(caught_up), &policy).as_deref(), Some(first.as_str()));

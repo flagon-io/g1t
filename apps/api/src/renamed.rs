@@ -35,10 +35,7 @@ pub fn rewrite(input: &Value, old: &str, new: &str) -> Value {
     {
         input["repo"] = Value::String(format!("{new}/{name}"));
     }
-    if input["workspace"]
-        .as_str()
-        .is_some_and(|workspace| workspace.eq_ignore_ascii_case(old))
-    {
+    if input["workspace"].as_str().is_some_and(|workspace| workspace.eq_ignore_ascii_case(old)) {
         input["workspace"] = Value::String(new.to_owned());
     }
     input
@@ -49,14 +46,7 @@ pub async fn retarget(services: &Services, input: &Value) -> Result<Option<Value
     let Some(old) = named_slug(input) else {
         return Ok(None);
     };
-    let current: Option<String> = g1t_kit::call(
-        &services.identity,
-        "resolve_slug",
-        &SlugArgs {
-            slug: old.to_owned(),
-        },
-    )
-    .await?;
+    let current: Option<String> = g1t_kit::call(&services.identity, "resolve_slug", &SlugArgs { slug: old.to_owned() }).await?;
     Ok(current.map(|new| rewrite(input, old, &new)))
 }
 
@@ -70,10 +60,7 @@ pub async fn transferred(services: &Services, input: &Value) -> Result<Option<Va
         &services.repos,
         "resolve_path",
         &g1t_contracts::repos::ResolvePathArgs {
-            path: g1t_contracts::repos::RepoPath {
-                namespace: namespace.to_owned(),
-                name: name.to_owned(),
-            },
+            path: g1t_contracts::repos::RepoPath { namespace: namespace.to_owned(), name: name.to_owned() },
         },
     )
     .await?;
@@ -102,33 +89,21 @@ mod tests {
     #[test]
     fn a_transferred_repository_is_named_by_its_new_path() {
         let input = json!({ "repo": "syntaqx/g1t", "number": 4 });
-        assert_eq!(
-            moved_to(&input, "flagon-io/g1t"),
-            json!({ "repo": "flagon-io/g1t", "number": 4 })
-        );
+        assert_eq!(moved_to(&input, "flagon-io/g1t"), json!({ "repo": "flagon-io/g1t", "number": 4 }));
     }
 
     #[test]
     fn an_alias_is_run_again_under_its_workspace() {
         let input = json!({ "repo": "g1t/g1t", "number": 7 });
         assert_eq!(named_slug(&input), Some("g1t"));
-        assert_eq!(
-            rewrite(&input, "g1t", "flagon-io"),
-            json!({ "repo": "flagon-io/g1t", "number": 7 })
-        );
-        assert_eq!(
-            rewrite(&json!({ "workspace": "G1T" }), "g1t", "flagon-io"),
-            json!({ "workspace": "flagon-io" })
-        );
+        assert_eq!(rewrite(&input, "g1t", "flagon-io"), json!({ "repo": "flagon-io/g1t", "number": 7 }));
+        assert_eq!(rewrite(&json!({ "workspace": "G1T" }), "g1t", "flagon-io"), json!({ "workspace": "flagon-io" }));
     }
 
     #[test]
     fn rewrites_only_the_old_slug() {
         let input = json!({ "repo": "Acme/rocket", "workspace": "acme", "title": "acme/x" });
-        assert_eq!(
-            rewrite(&input, "acme", "acme-inc"),
-            json!({ "repo": "acme-inc/rocket", "workspace": "acme-inc", "title": "acme/x" })
-        );
+        assert_eq!(rewrite(&input, "acme", "acme-inc"), json!({ "repo": "acme-inc/rocket", "workspace": "acme-inc", "title": "acme/x" }));
         let other = json!({ "repo": "globex/rocket" });
         assert_eq!(rewrite(&other, "acme", "acme-inc"), other);
     }

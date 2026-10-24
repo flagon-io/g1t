@@ -30,11 +30,7 @@ to the API names the operations it calls, which link to the
 /// Help text as a sentence: clap drops the full stop doc comments end with.
 fn sentence(text: &str) -> String {
     let text = text.trim();
-    if text.is_empty() || text.ends_with(['.', ':', '?', '!']) {
-        text.to_owned()
-    } else {
-        format!("{text}.")
-    }
+    if text.is_empty() || text.ends_with(['.', ':', '?', '!']) { text.to_owned() } else { format!("{text}.") }
 }
 
 fn slug(text: &str) -> String {
@@ -56,12 +52,7 @@ fn cell(text: &str) -> String {
 fn flag(arg: &Arg) -> String {
     let value = arg
         .get_value_names()
-        .map(|v| {
-            v.iter()
-                .map(|n| n.to_string())
-                .collect::<Vec<_>>()
-                .join(" ")
-        })
+        .map(|v| v.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(" "))
         .unwrap_or_else(|| arg.get_id().to_string().to_uppercase());
     let takes_value = matches!(arg.get_action(), ArgAction::Set | ArgAction::Append);
     let optional = arg.get_num_args().is_some_and(|n| n.min_values() == 0);
@@ -70,44 +61,23 @@ fn flag(arg: &Arg) -> String {
         (None, Some(l)) => format!("--{l}"),
         (Some(s), None) => format!("-{s}"),
         (None, None) => {
-            return if arg.is_required_set() {
-                format!("<{value}>")
-            } else {
-                format!("[{value}]")
-            };
+            return if arg.is_required_set() { format!("<{value}>") } else { format!("[{value}]") };
         }
     };
     if takes_value {
-        name.push_str(&if optional {
-            format!(" [{value}]")
-        } else {
-            format!(" <{value}>")
-        });
+        name.push_str(&if optional { format!(" [{value}]") } else { format!(" <{value}>") });
     }
     name
 }
 
 fn describe(arg: &Arg) -> String {
     let mut text = sentence(&arg.get_help().map(|h| h.to_string()).unwrap_or_default());
-    let values: Vec<String> = arg
-        .get_possible_values()
-        .iter()
-        .filter(|v| !v.is_hide_set())
-        .map(|v| format!("`{}`", v.get_name()))
-        .collect();
+    let values: Vec<String> =
+        arg.get_possible_values().iter().filter(|v| !v.is_hide_set()).map(|v| format!("`{}`", v.get_name())).collect();
     if !values.is_empty() && !text.contains(&values.join(", ")) {
-        let _ = write!(
-            text,
-            "{}One of {}.",
-            if text.is_empty() { "" } else { " " },
-            values.join(", ")
-        );
+        let _ = write!(text, "{}One of {}.", if text.is_empty() { "" } else { " " }, values.join(", "));
     }
-    let defaults: Vec<String> = arg
-        .get_default_values()
-        .iter()
-        .map(|v| v.to_string_lossy().into_owned())
-        .collect();
+    let defaults: Vec<String> = arg.get_default_values().iter().map(|v| v.to_string_lossy().into_owned()).collect();
     if !defaults.is_empty() && !matches!(arg.get_action(), ArgAction::SetTrue) {
         let _ = write!(text, " Default: `{}`.", defaults.join(","));
     }
@@ -123,23 +93,14 @@ fn describe(arg: &Arg) -> String {
 /// The flags a command group takes for every command under it (`g1t work
 /// --workspace`): its global ones that no command above it has.
 fn group_flags<'a>(cmd: &'a Command, above: &[String]) -> Vec<&'a Arg> {
-    cmd.get_arguments()
-        .filter(|a| {
-            a.is_global_set()
-                && !a.is_hide_set()
-                && !above.iter().any(|id| id == a.get_id().as_str())
-        })
-        .collect()
+    cmd.get_arguments().filter(|a| a.is_global_set() && !a.is_hide_set() && !above.iter().any(|id| id == a.get_id().as_str())).collect()
 }
 
 fn command(out: &mut String, cmd: &Command, path: &str, depth: usize, above: &[String]) {
     if cmd.is_hide_set() || cmd.get_name() == "help" {
         return;
     }
-    let subs: Vec<&Command> = cmd
-        .get_subcommands()
-        .filter(|c| !c.is_hide_set() && c.get_name() != "help")
-        .collect();
+    let subs: Vec<&Command> = cmd.get_subcommands().filter(|c| !c.is_hide_set() && c.get_name() != "help").collect();
     let heading = "#".repeat(depth.min(4));
     let _ = writeln!(out, "{heading} {path}\n");
     if let Some(about) = cmd.get_about() {
@@ -148,10 +109,7 @@ fn command(out: &mut String, cmd: &Command, path: &str, depth: usize, above: &[S
     if !subs.is_empty() {
         let own = group_flags(cmd, above);
         if !own.is_empty() {
-            let _ = writeln!(
-                out,
-                "Flags every `{path}` command takes:\n\n| Flag | |\n| --- | --- |"
-            );
+            let _ = writeln!(out, "Flags every `{path}` command takes:\n\n| Flag | |\n| --- | --- |");
             for arg in &own {
                 let _ = writeln!(out, "| `{}` | {} |", cell(&flag(arg)), describe(arg));
             }
@@ -160,13 +118,7 @@ fn command(out: &mut String, cmd: &Command, path: &str, depth: usize, above: &[S
         let mut above = above.to_vec();
         above.extend(own.iter().map(|a| a.get_id().to_string()));
         for sub in &subs {
-            command(
-                out,
-                sub,
-                &format!("{path} {}", sub.get_name()),
-                depth + 1,
-                &above,
-            );
+            command(out, sub, &format!("{path} {}", sub.get_name()), depth + 1, &above);
         }
         return;
     }
@@ -175,11 +127,7 @@ fn command(out: &mut String, cmd: &Command, path: &str, depth: usize, above: &[S
     let _ = writeln!(out, "```text\n{usage}\n```\n");
     let args: Vec<&Arg> = cmd
         .get_arguments()
-        .filter(|a| {
-            !a.is_hide_set()
-                && !a.is_global_set()
-                && !matches!(a.get_id().as_str(), "help" | "version")
-        })
+        .filter(|a| !a.is_hide_set() && !a.is_global_set() && !matches!(a.get_id().as_str(), "help" | "version"))
         .collect();
     if !args.is_empty() {
         let _ = writeln!(out, "| Argument or flag | |\n| --- | --- |");
@@ -192,11 +140,7 @@ fn command(out: &mut String, cmd: &Command, path: &str, depth: usize, above: &[S
         let _ = writeln!(out, "```text\n{}\n```\n", after.to_string().trim());
     }
     let key = path.trim_start_matches("g1t ");
-    if let Some(m) = crate::mapping::COMMANDS
-        .iter()
-        .find(|m| m.command == key)
-        .filter(|m| !m.ops.is_empty())
-    {
+    if let Some(m) = crate::mapping::COMMANDS.iter().find(|m| m.command == key).filter(|m| !m.ops.is_empty()) {
         let links: Vec<String> = m
             .ops
             .iter()
@@ -237,13 +181,11 @@ pub fn command_lines(page: &str) -> Vec<String> {
         if !text.starts_with("g1t ") {
             return;
         }
-        let end = [
-            " | ", " && ", " || ", " ; ", "; ", " # ", " > ", " < ", "`", " 2>",
-        ]
-        .iter()
-        .filter_map(|op| text.find(op))
-        .min()
-        .unwrap_or(text.len());
+        let end = [" | ", " && ", " || ", " ; ", "; ", " # ", " > ", " < ", "`", " 2>"]
+            .iter()
+            .filter_map(|op| text.find(op))
+            .min()
+            .unwrap_or(text.len());
         found.push(text[..end].trim().to_owned());
     };
     for line in page.lines() {
@@ -272,11 +214,7 @@ pub fn wrong(line: &str) -> Option<String> {
     root.build();
     let words = shell_words(line);
     // Not a command: "g1t / deploy" (a check's name), "g1t <noreply@…>".
-    let command_word = |w: &String| {
-        w.chars()
-            .next()
-            .is_some_and(|c| c.is_ascii_lowercase() || c == '-')
-    };
+    let command_word = |w: &String| w.chars().next().is_some_and(|c| c.is_ascii_lowercase() || c == '-');
     if !words.get(1).is_some_and(command_word) {
         return None;
     }
@@ -296,10 +234,7 @@ pub fn wrong(line: &str) -> Option<String> {
             // The aliases the docs make, and placeholders like COMMAND, are not checked.
             None if path.len() == 1 && DOC_ALIASES.contains(&word.as_str()) => return None,
             None => {
-                if word
-                    .chars()
-                    .all(|c| c.is_ascii_uppercase() || c == '_' || c == '<' || c == '>')
-                {
+                if word.chars().all(|c| c.is_ascii_uppercase() || c == '_' || c == '<' || c == '>') {
                     return None;
                 }
                 return Some(format!("`{}` has no command `{word}`", path.join(" ")));
@@ -319,20 +254,11 @@ pub fn wrong(line: &str) -> Option<String> {
             Some((flag, value)) => (flag, Some(value)),
             None => (flag, None),
         };
-        if flag.is_empty()
-            || flag.starts_with(['<', '['])
-            || flag.chars().any(|c| c.is_ascii_uppercase())
-        {
+        if flag.is_empty() || flag.starts_with(['<', '[']) || flag.chars().any(|c| c.is_ascii_uppercase()) {
             continue;
         }
-        let known = |arg: &&clap::Arg| {
-            arg.get_long() == Some(flag) || arg.get_all_aliases().is_some_and(|a| a.contains(&flag))
-        };
-        let Some(arg) = cmd
-            .get_arguments()
-            .find(known)
-            .or_else(|| globals.iter().copied().find(known))
-        else {
+        let known = |arg: &&clap::Arg| arg.get_long() == Some(flag) || arg.get_all_aliases().is_some_and(|a| a.contains(&flag));
+        let Some(arg) = cmd.get_arguments().find(known).or_else(|| globals.iter().copied().find(known)) else {
             if matches!(flag, "help" | "version") {
                 continue;
             }
@@ -341,18 +267,11 @@ pub fn wrong(line: &str) -> Option<String> {
         // A value from a fixed list: one of them (a placeholder is not checked).
         let values = arg.get_possible_values();
         let value = inline.or_else(|| rest.get(i + 1).map(|v| v.as_str()));
-        let literal = |v: &&str| {
-            v.chars()
-                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
-        };
+        let literal = |v: &&str| v.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_');
         let unknown = |v: &&str| !values.iter().any(|p| p.matches(v, false));
         if let Some(value) = value.filter(|v| !values.is_empty() && literal(v) && unknown(v)) {
             let names: Vec<String> = values.iter().map(|v| v.get_name().to_owned()).collect();
-            return Some(format!(
-                "`{} --{flag}` takes {}, not {value}",
-                path.join(" "),
-                names.join(", ")
-            ));
+            return Some(format!("`{} --{flag}` takes {}, not {value}", path.join(" "), names.join(", ")));
         }
     }
     None
@@ -392,10 +311,7 @@ mod tests {
         // The docs, and the plugins' skills, commands and instructions.
         let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
         let mut pages: Vec<std::path::PathBuf> =
-            ["apps/docs/src/content/docs", "plugins", "README.md"]
-                .iter()
-                .map(|p| std::path::Path::new(root).join(p))
-                .collect();
+            ["apps/docs/src/content/docs", "plugins", "README.md"].iter().map(|p| std::path::Path::new(root).join(p)).collect();
         let mut problems = Vec::new();
         let mut checked = 0;
         while let Some(path) = pages.pop() {
@@ -416,21 +332,13 @@ mod tests {
             for line in super::command_lines(&page) {
                 checked += 1;
                 if let Some(problem) = super::wrong(&line) {
-                    let short = name
-                        .split("content/docs/")
-                        .last()
-                        .unwrap_or(&name)
-                        .to_owned();
+                    let short = name.split("content/docs/").last().unwrap_or(&name).to_owned();
                     problems.push(format!("{short}: {line}: {problem}"));
                 }
             }
         }
         assert!(checked > 100, "found only {checked} command lines");
-        assert!(
-            problems.is_empty(),
-            "commands the CLI does not have:\n{}",
-            problems.join("\n")
-        );
+        assert!(problems.is_empty(), "commands the CLI does not have:\n{}", problems.join("\n"));
     }
 
     #[test]
@@ -442,34 +350,24 @@ mod tests {
         assert!(super::wrong("g1t session start --hearbeat").is_some());
         assert!(super::wrong("g1t session start --harness claude-managed-agents").is_some());
         assert_eq!(super::wrong("g1t session log --kind tool-call x"), None);
-        assert_eq!(
-            super::wrong("g1t session start --harness=claude_code"),
-            None
-        );
+        assert_eq!(super::wrong("g1t session start --harness=claude_code"), None);
         assert_eq!(super::wrong("g1t / deploy"), None, "not a command");
         assert_eq!(super::wrong("g1t co 12"), None, "an alias is not checked");
         assert_eq!(
-            super::command_lines(
-                "Run `g1t work claim 12 --note x` and\n```sh\n$ g1t pr view | head\n```"
-            ),
+            super::command_lines("Run `g1t work claim 12 --note x` and\n```sh\n$ g1t pr view | head\n```"),
             vec!["g1t work claim 12 --note x", "g1t pr view"]
         );
     }
 
     #[test]
     fn cli_reference_is_current() {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../apps/docs/src/content/docs/reference/cli.md"
-        );
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../apps/docs/src/content/docs/reference/cli.md");
         let want = super::reference();
         if std::env::var_os("G1T_WRITE_DOCS").is_some() {
             std::fs::write(path, &want).unwrap();
             return;
         }
-        let have = std::fs::read_to_string(path)
-            .unwrap_or_default()
-            .replace("\r\n", "\n");
+        let have = std::fs::read_to_string(path).unwrap_or_default().replace("\r\n", "\n");
         assert!(
             have == want,
             "apps/docs/src/content/docs/reference/cli.md is out of date: run G1T_WRITE_DOCS=1 cargo test -p g1t cli_reference"

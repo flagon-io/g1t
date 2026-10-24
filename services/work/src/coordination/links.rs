@@ -22,8 +22,8 @@ use worker::Result;
 
 use super::updates::push_delivery;
 use super::{SESSION_COLUMNS, SessionRow};
-use crate::items::{self, Named};
 use crate::Work;
+use crate::items::{self, Named};
 
 /// The start (`?2` characters) of the first prompt each session in `?1`
 /// (a JSON list of ids) recorded, by the session's own numbering.
@@ -361,16 +361,7 @@ impl Work {
 
     /// The ids of a session's line: its parents and its subagents.
     pub(crate) async fn family(&self, session_id: &str) -> Result<HashSet<String>> {
-        Ok(self
-            .db
-            .prepare(FAMILY)
-            .bind(&[session_id.into()])?
-            .all()
-            .await?
-            .results::<IdRow>()?
-            .into_iter()
-            .map(|row| row.id)
-            .collect())
+        Ok(self.db.prepare(FAMILY).bind(&[session_id.into()])?.all().await?.results::<IdRow>()?.into_iter().map(|row| row.id).collect())
     }
 
     /// Tells `session` and each other active session that touched one of
@@ -417,10 +408,13 @@ impl Work {
                 ..ours.clone()
             };
             // The pair is noticed once, and each side told, in one change.
-            let mut statements = vec![self
-                .db
-                .prepare(INSERT_OVERLAP)
-                .bind(&[session.repo_id.as_str().into(), low.as_str().into(), high.as_str().into(), serde_json::to_string(&files)?.into(), at.as_str().into()])?];
+            let mut statements = vec![self.db.prepare(INSERT_OVERLAP).bind(&[
+                session.repo_id.as_str().into(),
+                low.as_str().into(),
+                high.as_str().into(),
+                serde_json::to_string(&files)?.into(),
+                at.as_str().into(),
+            ])?];
             let guard = "EXISTS (SELECT 1 FROM session_overlaps WHERE repo_id = ?7 AND low = ?8 AND high = ?9 AND noticed_at = ?10)";
             let mut sent = Vec::new();
             for event in [&ours, &theirs] {
@@ -510,7 +504,11 @@ impl Work {
     }
 
     /// What a tree of sessions touched, its links, and the skills it used.
-    pub(crate) async fn tree_facts(&self, repo_id: &str, ids: &[String]) -> Result<(Vec<SessionTouch>, Vec<SessionLink>, Vec<SessionSkill>)> {
+    pub(crate) async fn tree_facts(
+        &self,
+        repo_id: &str,
+        ids: &[String],
+    ) -> Result<(Vec<SessionTouch>, Vec<SessionLink>, Vec<SessionSkill>)> {
         let ids_json = serde_json::to_string(ids)?;
         // A work item touched is shown by its number.
         let touches = self
@@ -530,11 +528,8 @@ impl Work {
             .await?
             .results::<TouchRow>()?;
         // A pull request opened on a branch after the session pushed it.
-        let branches: HashSet<(String, String)> = touches
-            .iter()
-            .filter(|touch| touch.kind == "branch")
-            .map(|touch| (touch.session_id.clone(), touch.value.clone()))
-            .collect();
+        let branches: HashSet<(String, String)> =
+            touches.iter().filter(|touch| touch.kind == "branch").map(|touch| (touch.session_id.clone(), touch.value.clone())).collect();
         for (session_id, branch) in branches.iter().take(20) {
             self.link_branch(session_id, repo_id, branch).await?;
         }
@@ -573,7 +568,9 @@ impl Work {
         }
         for (kind, number) in wanted.into_iter().take(MAX_LINKED) {
             let found = match kind {
-                LinkKind::Item => items::by_number(self, &workspace, number).await?.map(|held| (held.item.title, state_name(&held.item.state))),
+                LinkKind::Item => {
+                    items::by_number(self, &workspace, number).await?.map(|held| (held.item.title, state_name(&held.item.state)))
+                }
                 LinkKind::Pull => self.pull(repo_id, number).await?.map(|pull| (pull.title, state_name(&pull.status))),
             };
             if let Some(found) = found {
@@ -725,9 +722,7 @@ impl Work {
         let now = now_ms();
         Ok(self
             .db
-            .prepare(format!(
-                "SELECT {SESSION_COLUMNS} FROM sessions WHERE repo_id = ? AND id IN (SELECT value FROM json_each(?))"
-            ))
+            .prepare(format!("SELECT {SESSION_COLUMNS} FROM sessions WHERE repo_id = ? AND id IN (SELECT value FROM json_each(?))"))
             .bind(&[repo_id.into(), serde_json::to_string(ids)?.into()])?
             .all()
             .await?

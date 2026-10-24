@@ -40,10 +40,7 @@ impl Answer {
 
 pub async fn send(method: Method, url: &str, headers: &[(&str, &str)], body: Option<String>) -> Result<Answer> {
     let mut response = open(method, url, headers, body).await?;
-    Ok(Answer {
-        status: response.status_code(),
-        body: response.text().await.unwrap_or_default(),
-    })
+    Ok(Answer { status: response.status_code(), body: response.text().await.unwrap_or_default() })
 }
 
 /// Sends a request and hands back the response as it starts, for a body

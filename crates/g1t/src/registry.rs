@@ -63,43 +63,21 @@ impl Registry {
             .user_agent(concat!("g1t/", env!("CARGO_PKG_VERSION")))
             .try_proxy_from_env(true)
             .build();
-        Registry {
-            agent,
-            base,
-            host,
-            name,
-            credentials,
-            token: None,
-        }
+        Registry { agent, base, host, name, credentials, token: None }
     }
 
     /// Trades the g1t token for a registry token that may pull and push
     /// this image, at the token endpoint the registry names.
     pub fn sign_in(&mut self) -> Result<()> {
         let ping = self.raw("GET", &format!("{}/v2/", self.base), &[], None, false)?;
-        let (realm, service) = ping
-            .challenge
-            .as_deref()
-            .and_then(parse_challenge)
-            .unwrap_or_else(|| (format!("{}/v2/token", self.base), self.host.clone()));
-        let url = format!(
-            "{realm}?service={service}&scope=repository:{}:pull,push",
-            self.name
-        );
-        let basic = base64::engine::general_purpose::STANDARD.encode(format!(
-            "{}:{}",
-            self.credentials.username, self.credentials.secret
-        ));
+        let (realm, service) =
+            ping.challenge.as_deref().and_then(parse_challenge).unwrap_or_else(|| (format!("{}/v2/token", self.base), self.host.clone()));
+        let url = format!("{realm}?service={service}&scope=repository:{}:pull,push", self.name);
+        let basic = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", self.credentials.username, self.credentials.secret));
         let authorization = format!("Basic {basic}");
         let mut reply = None;
         for attempt in 0..ATTEMPTS {
-            match self.raw(
-                "GET",
-                &url,
-                &[("authorization", &authorization)],
-                None,
-                false,
-            ) {
+            match self.raw("GET", &url, &[("authorization", &authorization)], None, false) {
                 Ok(r) if retry_wait(&r, attempt).is_none() => {
                     reply = Some(r);
                     break;
@@ -111,39 +89,17 @@ impl Registry {
         }
         let reply = reply.ok_or_else(|| format!("{} did not answer the sign-in.", self.host))?;
         if reply.status != 200 {
-            return Err(format!(
-                "{} refused the token: {}",
-                self.host,
-                explain(&reply)
-            ));
+            return Err(format!("{} refused the token: {}", self.host, explain(&reply)));
         }
-        let body: Value = serde_json::from_str(&reply.body).map_err(|_| {
-            format!(
-                "{} answered the sign-in with something that is not JSON.",
-                self.host
-            )
-        })?;
-        let token = body
-            .get("token")
-            .or_else(|| body.get("access_token"))
-            .and_then(Value::as_str);
-        self.token = Some(
-            token
-                .ok_or_else(|| format!("{} answered the sign-in without a token.", self.host))?
-                .to_owned(),
-        );
+        let body: Value = serde_json::from_str(&reply.body)
+            .map_err(|_| format!("{} answered the sign-in with something that is not JSON.", self.host))?;
+        let token = body.get("token").or_else(|| body.get("access_token")).and_then(Value::as_str);
+        self.token = Some(token.ok_or_else(|| format!("{} answered the sign-in without a token.", self.host))?.to_owned());
         Ok(())
     }
 
     /// One request, as it went. Transport failures are errors.
-    fn raw(
-        &self,
-        method: &str,
-        url: &str,
-        headers: &[(&str, &str)],
-        body: Option<&[u8]>,
-        bearer: bool,
-    ) -> Result<Reply> {
+    fn raw(&self, method: &str, url: &str, headers: &[(&str, &str)], body: Option<&[u8]>, bearer: bool) -> Result<Reply> {
         let mut request = self.agent.request(method, url);
         for (name, value) in headers {
             request = request.set(name, value);
@@ -171,10 +127,7 @@ impl Registry {
         };
         if method != "HEAD" {
             let mut body = String::new();
-            let _ = response
-                .into_reader()
-                .take(1 << 20)
-                .read_to_string(&mut body);
+            let _ = response.into_reader().take(1 << 20).read_to_string(&mut body);
             reply.body = body;
         }
         Ok(reply)
@@ -182,13 +135,7 @@ impl Registry {
 
     /// One request with the registry token, signing in again once if the
     /// token has run out.
-    fn send(
-        &mut self,
-        method: &str,
-        url: &str,
-        headers: &[(&str, &str)],
-        body: Option<&[u8]>,
-    ) -> Result<Reply> {
+    fn send(&mut self, method: &str, url: &str, headers: &[(&str, &str)], body: Option<&[u8]>) -> Result<Reply> {
         let reply = self.raw(method, url, headers, body, true)?;
         if reply.status == 401 {
             self.sign_in()?;
@@ -199,13 +146,7 @@ impl Registry {
 
     /// A request that may be sent again as it is, tried until it gets an
     /// answer that is not a `429` or `5xx`.
-    fn call(
-        &mut self,
-        method: &str,
-        url: &str,
-        headers: &[(&str, &str)],
-        body: Option<&[u8]>,
-    ) -> Result<Reply> {
+    fn call(&mut self, method: &str, url: &str, headers: &[(&str, &str)], body: Option<&[u8]>) -> Result<Reply> {
         let mut last = String::new();
         for attempt in 0..ATTEMPTS {
             match self.send(method, url, headers, body) {
@@ -222,9 +163,7 @@ impl Registry {
                 }
             }
         }
-        Err(format!(
-            "{method} {url} failed {ATTEMPTS} times; the last: {last}"
-        ))
+        Err(format!("{method} {url} failed {ATTEMPTS} times; the last: {last}"))
     }
 
     pub fn blob_exists(&mut self, digest: &str) -> Result<bool> {
@@ -267,9 +206,7 @@ impl Registry {
     /// Where an interrupted upload stands: the offset to continue from,
     /// or a restart when the registry let it go.
     fn upload_offset(&mut self, location: &mut String) -> std::result::Result<u64, Failed> {
-        let reply = self
-            .call("GET", location, &[], None)
-            .map_err(Failed::Fatal)?;
+        let reply = self.call("GET", location, &[], None).map_err(Failed::Fatal)?;
         match reply.status {
             200 | 204 => {
                 *location = self.resolve(reply.location.as_deref(), location);
@@ -280,34 +217,19 @@ impl Registry {
                     .ok_or_else(|| Failed::Restart("the upload's progress is unknown".to_owned()))
             }
             404 => Err(Failed::Restart("the registry let the upload go".to_owned())),
-            _ => Err(Failed::Fatal(format!(
-                "Could not check the upload: {}",
-                explain(&reply)
-            ))),
+            _ => Err(Failed::Fatal(format!("Could not check the upload: {}", explain(&reply)))),
         }
     }
 
-    fn upload(
-        &mut self,
-        blob: &Blob,
-        tar: &Path,
-        chunk_size: u64,
-    ) -> std::result::Result<u64, Failed> {
+    fn upload(&mut self, blob: &Blob, tar: &Path, chunk_size: u64) -> std::result::Result<u64, Failed> {
         let start = format!("{}/v2/{}/blobs/uploads/", self.base, self.name);
-        let reply = self
-            .call("POST", &start, &[], Some(&[]))
-            .map_err(Failed::Fatal)?;
+        let reply = self.call("POST", &start, &[], Some(&[])).map_err(Failed::Fatal)?;
         if reply.status != 202 {
-            return Err(Failed::Fatal(format!(
-                "Could not start an upload: {}",
-                explain(&reply)
-            )));
+            return Err(Failed::Fatal(format!("Could not start an upload: {}", explain(&reply))));
         }
         let mut location = self.resolve(reply.location.as_deref(), "");
         if location.is_empty() {
-            return Err(Failed::Fatal(
-                "The registry started an upload without saying where.".to_owned(),
-            ));
+            return Err(Failed::Fatal("The registry started an upload without saying where.".to_owned()));
         }
         let (mut source, base_offset) = open(blob, tar).map_err(Failed::Fatal)?;
         let total_chunks = chunk::count(blob.size, chunk_size);
@@ -316,13 +238,9 @@ impl Registry {
         let mut failures = 0u32;
         let mut buffer = Vec::new();
         while let Some(&(_, length)) = chunk::plan(blob.size, chunk_size, offset).first() {
-            read_at(&mut source, base_offset + offset, length, &mut buffer)
-                .map_err(Failed::Fatal)?;
+            read_at(&mut source, base_offset + offset, length, &mut buffer).map_err(Failed::Fatal)?;
             let range = chunk::content_range(offset, length);
-            let headers = [
-                ("content-type", "application/octet-stream"),
-                ("content-range", range.as_str()),
-            ];
+            let headers = [("content-type", "application/octet-stream"), ("content-range", range.as_str())];
             let sent = self.send("PATCH", &location.clone(), &headers, Some(&buffer));
             let retry = match &sent {
                 Ok(reply) if reply.status == 202 => None,
@@ -332,16 +250,9 @@ impl Registry {
             match sent {
                 Ok(reply) if reply.status == 202 => {
                     location = self.resolve(reply.location.as_deref(), &location);
-                    let next = reply
-                        .range
-                        .as_deref()
-                        .and_then(chunk::next_offset)
-                        .unwrap_or(offset + length);
+                    let next = reply.range.as_deref().and_then(chunk::next_offset).unwrap_or(offset + length);
                     if next > blob.size {
-                        return Err(Failed::Fatal(format!(
-                            "The registry says it holds {next} bytes of a {}-byte blob.",
-                            blob.size
-                        )));
+                        return Err(Failed::Fatal(format!("The registry says it holds {next} bytes of a {}-byte blob.", blob.size)));
                     }
                     offset = if next == 0 { offset + length } else { next };
                     chunks += 1;
@@ -366,10 +277,7 @@ impl Registry {
                     offset = self.upload_offset(&mut location)?;
                 }
                 Ok(reply) if retry.is_none() => {
-                    return Err(Failed::Fatal(format!(
-                        "A chunk was refused: {}",
-                        explain(&reply)
-                    )));
+                    return Err(Failed::Fatal(format!("A chunk was refused: {}", explain(&reply))));
                 }
                 sent => {
                     failures += 1;
@@ -378,14 +286,9 @@ impl Registry {
                         Err(error) => error,
                     };
                     if failures >= ATTEMPTS {
-                        return Err(Failed::Fatal(format!(
-                            "A chunk failed {ATTEMPTS} times; the last: {why}"
-                        )));
+                        return Err(Failed::Fatal(format!("A chunk failed {ATTEMPTS} times; the last: {why}")));
                     }
-                    eprintln!(
-                        "    chunk at {} failed ({why}); trying again",
-                        chunk::human(offset)
-                    );
+                    eprintln!("    chunk at {} failed ({why}); trying again", chunk::human(offset));
                     wait(retry);
                     offset = self.upload_offset(&mut location)?;
                 }
@@ -393,35 +296,21 @@ impl Registry {
         }
         // Every byte is in: close the upload with its digest.
         let separator = if location.contains('?') { '&' } else { '?' };
-        let finish = format!(
-            "{location}{separator}digest={}",
-            blob.digest.replace(':', "%3A")
-        );
+        let finish = format!("{location}{separator}digest={}", blob.digest.replace(':', "%3A"));
         let mut failures = 0u32;
         loop {
-            let sent = self.send(
-                "PUT",
-                &finish,
-                &[("content-type", "application/octet-stream")],
-                Some(&[]),
-            );
+            let sent = self.send("PUT", &finish, &[("content-type", "application/octet-stream")], Some(&[]));
             let why = match sent {
                 Ok(reply) if reply.status == 201 => return Ok(chunks.max(1)),
                 Ok(reply) if reply.status != 404 && retry_wait(&reply, failures).is_none() => {
-                    return Err(Failed::Fatal(format!(
-                        "The registry did not take {}: {}",
-                        blob.digest,
-                        explain(&reply)
-                    )));
+                    return Err(Failed::Fatal(format!("The registry did not take {}: {}", blob.digest, explain(&reply))));
                 }
                 Ok(reply) => explain(&reply),
                 Err(error) => error,
             };
             failures += 1;
             if failures >= ATTEMPTS {
-                return Err(Failed::Fatal(format!(
-                    "Closing the upload failed {ATTEMPTS} times; the last: {why}"
-                )));
+                return Err(Failed::Fatal(format!("Closing the upload failed {ATTEMPTS} times; the last: {why}")));
             }
             wait(Some(backoff(failures)));
             // The close may have landed before the answer was lost.
@@ -435,19 +324,11 @@ impl Registry {
     }
 
     /// Puts the manifest under the tag. Returns the registry's digest.
-    pub fn push_manifest(
-        &mut self,
-        tag: &str,
-        media_type: &str,
-        manifest: &[u8],
-    ) -> Result<String> {
+    pub fn push_manifest(&mut self, tag: &str, media_type: &str, manifest: &[u8]) -> Result<String> {
         let url = format!("{}/v2/{}/manifests/{tag}", self.base, self.name);
         let reply = self.call("PUT", &url, &[("content-type", media_type)], Some(manifest))?;
         if reply.status != 201 && reply.status != 200 {
-            return Err(format!(
-                "The registry did not take the manifest: {}",
-                explain(&reply)
-            ));
+            return Err(format!("The registry did not take the manifest: {}", explain(&reply)));
         }
         Ok(reply.digest.unwrap_or_default())
     }
@@ -464,29 +345,17 @@ fn open(blob: &Blob, tar: &Path) -> Result<(File, u64)> {
 
 fn read_at(file: &mut File, offset: u64, length: u64, buffer: &mut Vec<u8>) -> Result<()> {
     buffer.resize(length as usize, 0);
-    file.seek(SeekFrom::Start(offset))
-        .map_err(|e| e.to_string())?;
-    file.read_exact(buffer)
-        .map_err(|e| format!("Could not read the image: {e}"))
+    file.seek(SeekFrom::Start(offset)).map_err(|e| e.to_string())?;
+    file.read_exact(buffer).map_err(|e| format!("Could not read the image: {e}"))
 }
 
 fn percent(done: u64, total: u64) -> String {
-    format!(
-        "{:.0}%",
-        if total == 0 {
-            100.0
-        } else {
-            done as f64 * 100.0 / total as f64
-        }
-    )
+    format!("{:.0}%", if total == 0 { 100.0 } else { done as f64 * 100.0 / total as f64 })
 }
 
 /// `Bearer realm="https://g1t.sh/v2/token",service="g1t.sh",scope="…"`.
 fn parse_challenge(header: &str) -> Option<(String, String)> {
-    let rest = header
-        .trim()
-        .strip_prefix("Bearer ")
-        .or_else(|| header.trim().strip_prefix("bearer "))?;
+    let rest = header.trim().strip_prefix("Bearer ").or_else(|| header.trim().strip_prefix("bearer "))?;
     let mut realm = None;
     let mut service = None;
     for part in rest.split(',') {
@@ -528,10 +397,7 @@ fn wait(delay: Option<Duration>) {
 /// sent them, the status otherwise.
 fn explain(reply: &Reply) -> String {
     if let Ok(body) = serde_json::from_str::<Value>(&reply.body)
-        && let Some(error) = body
-            .get("errors")
-            .and_then(Value::as_array)
-            .and_then(|e| e.first())
+        && let Some(error) = body.get("errors").and_then(Value::as_array).and_then(|e| e.first())
     {
         let code = error.get("code").and_then(Value::as_str).unwrap_or("ERROR");
         let message = error.get("message").and_then(Value::as_str).unwrap_or("");
@@ -541,11 +407,7 @@ fn explain(reply: &Reply) -> String {
     if text.is_empty() || text.starts_with('<') {
         format!("HTTP {}", reply.status)
     } else {
-        format!(
-            "HTTP {}: {}",
-            reply.status,
-            text.chars().take(200).collect::<String>()
-        )
+        format!("HTTP {}: {}", reply.status, text.chars().take(200).collect::<String>())
     }
 }
 
@@ -554,37 +416,20 @@ mod tests {
     use super::*;
 
     fn reply(status: u16, retry_after: Option<u64>, body: &str) -> Reply {
-        Reply {
-            status,
-            location: None,
-            range: None,
-            digest: None,
-            retry_after,
-            challenge: None,
-            body: body.to_owned(),
-        }
+        Reply { status, location: None, range: None, digest: None, retry_after, challenge: None, body: body.to_owned() }
     }
 
     #[test]
     fn challenges_name_the_token_endpoint() {
         let header = r#"Bearer realm="https://g1t.sh/v2/token",service="g1t.sh",scope="repository:acme/web:pull""#;
-        assert_eq!(
-            parse_challenge(header),
-            Some(("https://g1t.sh/v2/token".into(), "g1t.sh".into()))
-        );
+        assert_eq!(parse_challenge(header), Some(("https://g1t.sh/v2/token".into(), "g1t.sh".into())));
         assert_eq!(parse_challenge("Basic realm=\"x\""), None);
     }
 
     #[test]
     fn only_429_and_5xx_are_tried_again() {
-        assert_eq!(
-            retry_wait(&reply(429, Some(7), ""), 0),
-            Some(Duration::from_secs(7))
-        );
-        assert_eq!(
-            retry_wait(&reply(503, None, ""), 2),
-            Some(Duration::from_secs(4))
-        );
+        assert_eq!(retry_wait(&reply(429, Some(7), ""), 0), Some(Duration::from_secs(7)));
+        assert_eq!(retry_wait(&reply(503, None, ""), 2), Some(Duration::from_secs(4)));
         assert_eq!(retry_wait(&reply(400, None, ""), 0), None);
         assert_eq!(retry_wait(&reply(413, None, ""), 0), None);
     }
@@ -598,13 +443,7 @@ mod tests {
     #[test]
     fn errors_read_as_the_registry_wrote_them() {
         let body = r#"{"errors":[{"code":"DENIED","message":"Pushing needs Write."}]}"#;
-        assert_eq!(
-            explain(&reply(403, None, body)),
-            "DENIED: Pushing needs Write. (403)"
-        );
-        assert_eq!(
-            explain(&reply(413, None, "<html>Too large</html>")),
-            "HTTP 413"
-        );
+        assert_eq!(explain(&reply(403, None, body)), "DENIED: Pushing needs Write. (403)");
+        assert_eq!(explain(&reply(413, None, "<html>Too large</html>")), "HTTP 413");
     }
 }

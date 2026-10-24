@@ -229,7 +229,11 @@ pub fn body(entry: &Entry, plan: &PullPlan, file: &str) -> String {
         };
         body.push_str(&format!("Bumps {what} in {place}:\n\n"));
         let several = directories.len() > 1;
-        body.push_str(if several { "| Package | Directory | From | To |\n| --- | --- | --- | --- |\n" } else { "| Package | From | To |\n| --- | --- | --- |\n" });
+        body.push_str(if several {
+            "| Package | Directory | From | To |\n| --- | --- | --- | --- |\n"
+        } else {
+            "| Package | From | To |\n| --- | --- | --- |\n"
+        });
         for update in &plan.updates {
             if several {
                 body.push_str(&format!("| {} | `{}` | `{}` | `{}` |\n", linked(update), update.directory, update.from, update.to));
@@ -282,7 +286,9 @@ mod tests {
     use crate::config::read;
 
     fn entry(extra: &str) -> Entry {
-        let source = format!("version: 2\nupdates:\n  - package-ecosystem: npm\n    directories: [\"/\", \"/web\"]\n    schedule: {{interval: daily}}\n{extra}");
+        let source = format!(
+            "version: 2\nupdates:\n  - package-ecosystem: npm\n    directories: [\"/\", \"/web\"]\n    schedule: {{interval: daily}}\n{extra}"
+        );
         let found = read(&source);
         assert!(found.problems.is_empty(), "{:?}", found.problems);
         found.config.updates.into_iter().next().unwrap()
@@ -327,9 +333,8 @@ mod tests {
 
     #[test]
     fn commit_message_prefixes() {
-        let message = |prefix: Option<&str>, development: Option<&str>, scope: bool, dev: bool| {
-            prefix_text(prefix, development, scope, dev)
-        };
+        let message =
+            |prefix: Option<&str>, development: Option<&str>, scope: bool, dev: bool| prefix_text(prefix, development, scope, dev);
         fn prefix_text(prefix: Option<&str>, development: Option<&str>, scope: bool, dev: bool) -> String {
             super::prefix(
                 Some(&CommitMessage { prefix: prefix.map(str::to_owned), prefix_development: development.map(str::to_owned), scope }),
@@ -358,7 +363,8 @@ mod tests {
         assert!(name.starts_with("g1t/npm_and_yarn/lint-") && name.len() == "g1t/npm_and_yarn/lint-".len() + 10, "{name}");
         let dashed = entry("    pull-request-branch-name:\n      separator: \"-\"\n");
         assert_eq!(branch(&dashed, &solo("lodash", "/web")), "g1t-npm_and_yarn-web-lodash-4.17.21");
-        let custom = entry("    pull-request-branch-name:\n      prefix: deps\n      word-separator: \"-\"\n      branch-name-case: uppercase\n");
+        let custom =
+            entry("    pull-request-branch-name:\n      prefix: deps\n      word-separator: \"-\"\n      branch-name-case: uppercase\n");
         assert_eq!(branch(&custom, &solo("lodash", "/")), "deps/NPM-AND-YARN/LODASH-4.17.21");
         let templated = entry("    pull-request-branch-name:\n      template: \"{prefix}/{dependency}/{version}\"\n");
         assert_eq!(branch(&templated, &solo("lodash", "/")), "g1t/lodash/4.17.21");
@@ -377,7 +383,8 @@ mod tests {
         assert!(text.contains("[Package](https://www.npmjs.com/package/lodash)"));
         assert!(text.contains("`@g1t rebase`") && text.contains("`@g1t ignore this major version`"));
         assert!(text.ends_with("_Opened by g1t's version updates, as `.github/dependabot.yml` asks for Web._"));
-        let grouped = group(vec![update("eslint", "/", DependencyType::Development), update("eslint", "/web", DependencyType::Development)]);
+        let grouped =
+            group(vec![update("eslint", "/", DependencyType::Development), update("eslint", "/web", DependencyType::Development)]);
         let text = body(&plain, &grouped, ".g1t/dependabot.yml");
         assert!(text.starts_with("Bumps the lint group with 2 updates in the /, /web directories:"), "{text}");
         assert!(text.contains("| Package | Directory | From | To |"));

@@ -159,13 +159,7 @@ mod tests {
 
     #[test]
     fn what_someone_owns_is_kept_short_and_once() {
-        let owns = clean_owns(&[
-            " storefront ".into(),
-            "Storefront".into(),
-            "".into(),
-            "the release process.".into(),
-            "x".repeat(100),
-        ]);
+        let owns = clean_owns(&[" storefront ".into(), "Storefront".into(), "".into(), "the release process.".into(), "x".repeat(100)]);
         assert_eq!(owns[0], "storefront");
         assert_eq!(owns[1], "the release process");
         assert_eq!(owns[2].len(), MAX_OWNS_LENGTH);

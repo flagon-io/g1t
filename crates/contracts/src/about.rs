@@ -11,7 +11,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::repos::{RepoPath, Repo};
+use crate::repos::{Repo, RepoPath};
 use crate::{User, Viewer};
 
 /// One language's share of a repository's code, by bytes.

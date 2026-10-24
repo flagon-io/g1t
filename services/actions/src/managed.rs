@@ -19,8 +19,8 @@ use g1t_contracts::actions::{
     ManagedBy, RemoveManagedWorkflowArgs, RemoveWorkspaceManagedWorkflowArgs, SetManagedDeployArgs, SetManagedWorkflowArgs,
     SetWorkspaceManagedWorkflowArgs, WorkspaceManagedWorkflow, WorkspaceManagedWorkflowsArgs,
 };
-use g1t_contracts::repos::{BlobArgs, BlobView, ListArgs, Repo, RepoPath, TreeArgs, TreeView};
 use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry, Surface};
+use g1t_contracts::repos::{BlobArgs, BlobView, ListArgs, Repo, RepoPath, TreeArgs, TreeView};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, User, new_id};
 use g1t_kit::now_ms;
@@ -75,10 +75,7 @@ impl WorkspaceRow {
     }
 
     fn target(&self) -> Target {
-        Target {
-            repositories: serde_json::from_str(&self.repositories).unwrap_or_default(),
-            visibility: self.visibility.clone(),
-        }
+        Target { repositories: serde_json::from_str(&self.repositories).unwrap_or_default(), visibility: self.visibility.clone() }
     }
 
     /// Whether it runs in `repo`.
@@ -230,7 +227,10 @@ impl Actions {
             production: a.production,
         };
         match managed::deploy_workflow(&settings) {
-            Some(source) => self.set_managed_workflow(SetManagedWorkflowArgs { repo_id: a.repo_id, name, source, origin: "deployments".to_owned() }).await,
+            Some(source) => {
+                self.set_managed_workflow(SetManagedWorkflowArgs { repo_id: a.repo_id, name, source, origin: "deployments".to_owned() })
+                    .await
+            }
             None => {
                 self.remove_managed_workflow(RemoveManagedWorkflowArgs { repo_id: a.repo_id, name }).await?;
                 Ok(Outcome::Ok(false))
@@ -271,7 +271,12 @@ impl Actions {
 
     /// Copies a workspace's managed workflow's source, as `actor` reads it:
     /// the file at the commit its ref names. Err is the refusal.
-    async fn copy_source(&self, actor: &User, workspace: &str, given: &str) -> Result<std::result::Result<(Repo, String, Option<String>), String>> {
+    async fn copy_source(
+        &self,
+        actor: &User,
+        workspace: &str,
+        given: &str,
+    ) -> Result<std::result::Result<(Repo, String, Option<String>), String>> {
         let source = match parse_source(given, workspace) {
             Ok(source) => source,
             Err(problem) => return Ok(Err(problem)),
@@ -529,7 +534,8 @@ impl Actions {
             .all()
             .await?
             .results::<Row>()?;
-        let workspace: Vec<WorkspaceRow> = self.workspace_rows(&repo.namespace).await?.into_iter().filter(|row| row.targets(repo)).collect();
+        let workspace: Vec<WorkspaceRow> =
+            self.workspace_rows(&repo.namespace).await?.into_iter().filter(|row| row.targets(repo)).collect();
         if installed.is_empty() && workspace.is_empty() {
             return Ok(files);
         }
@@ -576,7 +582,9 @@ mod tests {
         assert_eq!((source.repo.as_str(), source.path.as_str(), source.git_ref.as_str()), ("policies", ".g1t/workflows/scan.yml", "main"));
         assert!(parse_source("ACME/policies/.github/workflows/scan.yaml@v1", "acme").is_ok());
         assert!(parse_source("other/policies/.g1t/workflows/scan.yml@main", "acme").unwrap_err().contains("acme's own"));
-        for bad in ["acme/policies@main", "acme/policies/README.md@main", "acme/policies/.g1t/workflows/scan.yml", "./.g1t/workflows/scan.yml"] {
+        for bad in
+            ["acme/policies@main", "acme/policies/README.md@main", "acme/policies/.g1t/workflows/scan.yml", "./.g1t/workflows/scan.yml"]
+        {
             assert!(parse_source(bad, "acme").is_err(), "{bad}");
         }
     }

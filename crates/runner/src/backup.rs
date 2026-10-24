@@ -288,11 +288,8 @@ fn back_up(job: &Job, fetched: &mut u64) -> Result<String> {
         }
         None => (0, None, Vec::new()),
     };
-    job.post(
-        "complete",
-        json!({ "refs": cut.refs, "size": size, "sha256": sha256, "parts": parts, "fetched_bytes": *fetched }),
-    )
-    .context("could not report the backup")?;
+    job.post("complete", json!({ "refs": cut.refs, "size": size, "sha256": sha256, "parts": parts, "fetched_bytes": *fetched }))
+        .context("could not report the backup")?;
     Ok(match cut.bundle {
         Some(_) => format!("{} bundle of {} refs, {size} bytes", spec.kind, cut.refs.len()),
         None => format!("nothing new to bundle in {} refs", cut.refs.len()),
@@ -366,7 +363,12 @@ mod tests {
     fn commit(dir: &Path, file: &str, text: &str) {
         std::fs::write(dir.join(file), text).unwrap();
         git_in(dir, &["add", "--all"], None).unwrap();
-        git_in(dir, &["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", text], None).unwrap();
+        git_in(
+            dir,
+            &["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", text],
+            None,
+        )
+        .unwrap();
     }
 
     fn mirror_of(origin: &Path, into: &Path) {
@@ -387,7 +389,12 @@ mod tests {
         std::fs::create_dir_all(&origin).unwrap();
         git_in(&origin, &["init", "--quiet", "--initial-branch=main"], None).unwrap();
         commit(&origin, "a.txt", "one");
-        git_in(&origin, &["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "tag.gpgsign=false", "tag", "-a", "v1", "-m", "v1"], None).unwrap();
+        git_in(
+            &origin,
+            &["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "tag.gpgsign=false", "tag", "-a", "v1", "-m", "v1"],
+            None,
+        )
+        .unwrap();
         let mirror = root.join("mirror.git");
 
         // Full.
@@ -428,12 +435,8 @@ mod tests {
             git_in(&restored, &["bundle", "verify", "--quiet", bundle.to_str().unwrap()], None).unwrap();
             git_in(&restored, &["fetch", "--quiet", "--no-tags", bundle.to_str().unwrap(), "+refs/*:refs/backup-staging/*"], None).unwrap();
         }
-        let updates: String = moved
-            .refs
-            .iter()
-            .filter(|(name, _)| name.as_str() != "HEAD")
-            .map(|(name, hash)| format!("update {name} {hash}\n"))
-            .collect();
+        let updates: String =
+            moved.refs.iter().filter(|(name, _)| name.as_str() != "HEAD").map(|(name, hash)| format!("update {name} {hash}\n")).collect();
         git_in(&restored, &["update-ref", "--stdin"], Some(&updates)).unwrap();
         let staging: String = git_in(&restored, &["for-each-ref", "--format=delete %(refname)", "refs/backup-staging/"], None).unwrap();
         git_in(&restored, &["update-ref", "--stdin"], Some(&format!("{staging}\n"))).unwrap();

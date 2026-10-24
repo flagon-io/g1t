@@ -45,8 +45,7 @@ impl From<ProfileRow> for Profile {
     }
 }
 
-const PROFILE_COLUMNS: &str =
-    "username, display_username, display_name, bio, location, website, pronouns, timezone, avatar, created_at";
+const PROFILE_COLUMNS: &str = "username, display_username, display_name, bio, location, website, pronouns, timezone, avatar, created_at";
 
 /// A field as it is kept: whitespace runs made single spaces, control
 /// characters dropped, trimmed. Empty is none. Too long is refused.
@@ -192,10 +191,7 @@ impl Identity {
 
     pub async fn update_profile(&self, a: UpdateProfileArgs) -> Result<Outcome<Profile>> {
         if a.actor.kind != PrincipalKind::User || a.actor.id.is_empty() {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only a person can change their own profile.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only a person can change their own profile."));
         }
         let fields = match check(&a) {
             Ok(fields) => fields,
@@ -271,10 +267,7 @@ mod tests {
     #[test]
     fn keeps_https_addresses() {
         assert_eq!(website("https://example.com").unwrap().as_deref(), Some("https://example.com"));
-        assert_eq!(
-            website("HTTPS://syntaqx.com/about?x=1#me").unwrap().as_deref(),
-            Some("https://syntaqx.com/about?x=1#me")
-        );
+        assert_eq!(website("HTTPS://syntaqx.com/about?x=1#me").unwrap().as_deref(), Some("https://syntaqx.com/about?x=1#me"));
         assert_eq!(website("example.com/me").unwrap().as_deref(), Some("https://example.com/me"));
         assert_eq!(website("https://a.b.example.dev:8443/").unwrap().as_deref(), Some("https://a.b.example.dev:8443/"));
         assert_eq!(website("  ").unwrap(), None);
@@ -320,11 +313,7 @@ mod tests {
             ..UpdateProfileArgs::default()
         };
         assert!(check(&args).is_err());
-        let args = UpdateProfileArgs {
-            website: "syntaqx.com".into(),
-            pronouns: "he/him".into(),
-            ..args
-        };
+        let args = UpdateProfileArgs { website: "syntaqx.com".into(), pronouns: "he/him".into(), ..args };
         let fields = check(&args).ok().unwrap();
         assert_eq!(fields.website.as_deref(), Some("https://syntaqx.com"));
         assert_eq!(fields.pronouns.as_deref(), Some("he/him"));

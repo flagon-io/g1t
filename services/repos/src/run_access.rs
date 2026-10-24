@@ -73,10 +73,8 @@ pub(crate) fn kept(refused_only: bool, status: u16) -> bool {
 fn pushed_refs(body: &[u8]) -> Vec<String> {
     let mut refs = Vec::new();
     let mut position = 0;
-    while let Some(length) = body
-        .get(position..position + 4)
-        .and_then(|hex| std::str::from_utf8(hex).ok())
-        .and_then(|hex| usize::from_str_radix(hex, 16).ok())
+    while let Some(length) =
+        body.get(position..position + 4).and_then(|hex| std::str::from_utf8(hex).ok()).and_then(|hex| usize::from_str_radix(hex, 16).ok())
     {
         if length < 4 || position + length > body.len() {
             break;
@@ -102,20 +100,12 @@ fn rebuilt(request: &Request, body: &[u8]) -> Result<Request> {
         headers.set(&name, &value)?;
     }
     let mut init = RequestInit::new();
-    init.with_method(Method::Post)
-        .with_headers(headers)
-        .with_body(Some(Uint8Array::from(body).into()));
+    init.with_method(Method::Post).with_headers(headers).with_body(Some(Uint8Array::from(body).into()));
     Request::new_with_init(request.url()?.as_str(), &init)
 }
 
 fn refusal(decision: &Decision) -> Result<Response> {
-    crate::git_ops::plain_refusal(
-        decision
-            .reason
-            .clone()
-            .unwrap_or_else(|| "Not allowed.".to_owned()),
-        403,
-    )
+    crate::git_ops::plain_refusal(decision.reason.clone().unwrap_or_else(|| "Not allowed.".to_owned()), 403)
 }
 
 impl<S: GitStore> Repos<S> {
@@ -133,10 +123,7 @@ impl<S: GitStore> Repos<S> {
             && let Some(source) = found.fork_of.as_deref()
             && let Some(source) = self.registry.by_id(source).await?
         {
-            repo = RepoPath {
-                namespace: source.namespace,
-                name: source.name,
-            };
+            repo = RepoPath { namespace: source.namespace, name: source.name };
         }
         Ok(AuditTarget {
             workspace: repo.namespace.to_lowercase(),
@@ -146,14 +133,7 @@ impl<S: GitStore> Repos<S> {
     }
 
     pub(crate) async fn record_git(&self, entry: NewAuditEntry) {
-        let recorded: Result<u32> = g1t_kit::call(
-            &self.events,
-            "audit_record",
-            &RecordAuditArgs {
-                entries: vec![entry],
-            },
-        )
-        .await;
+        let recorded: Result<u32> = g1t_kit::call(&self.events, "audit_record", &RecordAuditArgs { entries: vec![entry] }).await;
         if let Err(error) = recorded {
             console_error!("git audit entry not recorded: {error}");
         }
@@ -161,39 +141,19 @@ impl<S: GitStore> Repos<S> {
 
     /// Checks a run credential against its grants before anything else
     /// sees the request, and starts the request's audit entry.
-    pub(crate) async fn admit_git(
-        &self,
-        mut request: Request,
-        git: &GitRequest,
-        viewer: Viewer,
-        found: Option<&Repo>,
-    ) -> Result<Admitted> {
+    pub(crate) async fn admit_git(&self, mut request: Request, git: &GitRequest, viewer: Viewer, found: Option<&Repo>) -> Result<Admitted> {
         let post = request.method() == Method::Post;
         let write = git.service == GitService::ReceivePack;
         let action = if write { "git.push" } else { "git.fetch" };
-        let request_id = request
-            .headers()
-            .get("cf-ray")?
-            .unwrap_or_else(|| g1t_contracts::new_id("req", g1t_kit::now_ms()));
+        let request_id = request.headers().get("cf-ray")?.unwrap_or_else(|| g1t_contracts::new_id("req", g1t_kit::now_ms()));
         let Some(user) = viewer.clone() else {
-            return Ok(Admitted::Go {
-                request,
-                viewer,
-                entry: None,
-            });
+            return Ok(Admitted::Go { request, viewer, entry: None });
         };
         // A run credential carries its scope; whatever kind of principal
         // it resolves as, it is held to that scope.
         let run_scope = user.acting.as_ref().map(|acting| acting.scope.clone());
         let entry = |target: AuditTarget, decision: &Decision| {
-            NewAuditEntry::new(
-                AuditActor::of(&user),
-                action,
-                Surface::Git,
-                target,
-                decision,
-                request_id.clone(),
-            )
+            NewAuditEntry::new(AuditActor::of(&user), action, Surface::Git, target, decision, request_id.clone())
         };
 
         let Some(scope) = run_scope else {
@@ -207,21 +167,15 @@ impl<S: GitStore> Repos<S> {
                 })),
                 None => None,
             };
-            return Ok(Admitted::Go {
-                request,
-                viewer,
-                entry,
-            });
+            return Ok(Admitted::Go { request, viewer, entry });
         };
 
         // A session's credential reaches its repository's pull requests'
         // working copies too, made after it was: by what they copy.
         let source = match found.and_then(|repo| repo.fork_of.as_deref()) {
-            Some(source_id) if scope.run.as_ref().is_some_and(|run| run.kind == RunCredentialKind::Session) => self
-                .registry
-                .by_id(source_id)
-                .await?
-                .map(|source| RepoPath { namespace: source.namespace, name: source.name }),
+            Some(source_id) if scope.run.as_ref().is_some_and(|run| run.kind == RunCredentialKind::Session) => {
+                self.registry.by_id(source_id).await?.map(|source| RepoPath { namespace: source.namespace, name: source.name })
+            }
             _ => None,
         };
         let mut decision = decide_git_at(&scope, &git.path, source.as_ref(), write);
@@ -258,12 +212,7 @@ impl<S: GitStore> Repos<S> {
 
     /// Records a git request's entry with how it ended: `status` is the
     /// HTTP status git was answered with.
-    pub(crate) async fn finish_git(
-        &self,
-        entry: Option<Box<GitEntry>>,
-        status: u16,
-        message: Option<String>,
-    ) {
+    pub(crate) async fn finish_git(&self, entry: Option<Box<GitEntry>>, status: u16, message: Option<String>) {
         let Some(GitEntry { mut entry, refused_only }) = entry.map(|entry| *entry) else {
             return;
         };
@@ -351,19 +300,14 @@ mod tests {
         let new = "4807077b296e6edbf410d55e72749d3e1170c291";
         let zero = "0000000000000000000000000000000000000000";
         let body = [
-            pkt(&format!(
-                "{old} {new} refs/heads/fix\0 report-status side-band-64k\n"
-            )),
+            pkt(&format!("{old} {new} refs/heads/fix\0 report-status side-band-64k\n")),
             pkt(&format!("{old} {zero} refs/heads/main\n")),
             pkt(&format!("{zero} {new} refs/tags/v1\n")),
             b"0000".to_vec(),
             b"PACK\0\0\0\x02".to_vec(),
         ]
         .concat();
-        assert_eq!(
-            pushed_refs(&body),
-            ["refs/heads/fix", "refs/heads/main", "refs/tags/v1"]
-        );
+        assert_eq!(pushed_refs(&body), ["refs/heads/fix", "refs/heads/main", "refs/tags/v1"]);
         assert!(pushed_refs(b"0000").is_empty());
     }
 }

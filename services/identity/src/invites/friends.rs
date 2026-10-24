@@ -54,15 +54,13 @@ pub(crate) const USED: &str = r#"SELECT count(*) AS n FROM invites i WHERE i.inv
    AND (i.redeemed_at IS NOT NULL OR (i.revoked_at IS NULL AND i.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))"#;
 
 /// The invites staff granted the person `?1`, together (negative takes back).
-pub(crate) const GRANTED: &str =
-    r#"SELECT COALESCE(SUM(amount), 0) AS n FROM invite_grants WHERE target_kind = 'user' AND target_id = ?1"#;
+pub(crate) const GRANTED: &str = r#"SELECT COALESCE(SUM(amount), 0) AS n FROM invite_grants WHERE target_kind = 'user' AND target_id = ?1"#;
 
 /// Whether the person `?1` already has a pending invite to g1t for `?2`.
 pub(crate) const PENDING_FOR: &str = r#"SELECT count(*) AS n FROM invites WHERE inviter_id = ?1 AND email = ?2 AND charged_to = 'user'
    AND redeemed_at IS NULL AND revoked_at IS NULL AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"#;
 
-const ALREADY_ON_G1T: &str =
-    "That address already has a g1t account, so there is nothing to invite them to. To work with them, invite them to a workspace from its People page.";
+const ALREADY_ON_G1T: &str = "That address already has a g1t account, so there is nothing to invite them to. To work with them, invite them to a workspace from its People page.";
 const ALREADY_PENDING: &str = "You already have a pending invite for that address. Send it again, or revoke it to make a new one.";
 const ONLY_PENDING: &str = "Only a pending invite can be sent again.";
 const NOT_YOURS: &str = "There is no invite to g1t of yours with that id.";
@@ -187,8 +185,7 @@ impl Identity {
         // invite to g1t alone is the person's own business.
         if let Some((_, slug)) = &joins {
             let surface = a.surface.unwrap_or(Surface::Web);
-            self.audit_invites(&a.user, "invite.created", vec![slug.clone()], surface, format!("Invited {email} to g1t and {slug}"))
-                .await;
+            self.audit_invites(&a.user, "invite.created", vec![slug.clone()], surface, format!("Invited {email} to g1t and {slug}")).await;
         }
         Ok(Outcome::Ok(invite))
     }
@@ -210,9 +207,10 @@ impl Identity {
         if let Some(reason) = Self::draft_allowed(&a.user) {
             return Ok(Outcome::fail(FailureCode::Forbidden, reason));
         }
-        let row = self.invite_by_id(a.id.trim()).await?.filter(|row| {
-            row.inviter_id.as_deref() == Some(a.user.id.as_str()) && row.charged_to.as_deref() == Some("user")
-        });
+        let row = self
+            .invite_by_id(a.id.trim())
+            .await?
+            .filter(|row| row.inviter_id.as_deref() == Some(a.user.id.as_str()) && row.charged_to.as_deref() == Some("user"));
         let Some(row) = row else {
             return Ok(Outcome::fail(FailureCode::NotFound, NOT_YOURS));
         };
@@ -347,8 +345,8 @@ mod tests {
 
     #[test]
     fn signing_up_from_a_friends_invite_confirms_the_address_and_makes_a_workspace_of_ones_own() {
-        use super::super::{AwaitingJoin, InviteRow, admits, awaiting_join, email_proof, starts_confirmed};
         use super::super::invitations::makes_own_workspace;
+        use super::super::{AwaitingJoin, InviteRow, admits, awaiting_join, email_proof, starts_confirmed};
         const KEY: &[u8] = b"identity key";
         let row = InviteRow {
             id: "inv_1".into(),
@@ -387,12 +385,7 @@ mod tests {
         assert!(makes_own_workspace(row.workspace.as_deref(), false));
         assert_eq!(awaiting_join(&row, now), AwaitingJoin::Nothing);
         // Its inviter sees it used, by whom.
-        let used = InviteRow {
-            redeemer: Some("ada".into()),
-            redeemed_at: Some(now.into()),
-            applied_at: Some(now.into()),
-            ..row
-        };
+        let used = InviteRow { redeemer: Some("ada".into()), redeemed_at: Some(now.into()), applied_at: Some(now.into()), ..row };
         assert_eq!(used.status(now), InviteStatus::Redeemed);
         assert_eq!(super::super::charge_of(used.charged_to.as_deref()), InviteCharge::User);
     }

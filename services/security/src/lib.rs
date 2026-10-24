@@ -39,9 +39,9 @@ mod overview;
 mod patterns;
 mod planning;
 mod pull_text;
-mod resolved;
 mod ranges;
 mod registries;
+mod resolved;
 mod schedule;
 mod secret_alerts;
 mod security_updates;
@@ -58,8 +58,8 @@ mod yaml;
 
 use g1t_contracts::access::{self, Capability};
 use g1t_contracts::events::{Event, WorkspaceRenamed};
-use g1t_contracts::security::UPDATE_BRANCH_PREFIX;
 use g1t_contracts::repos::{GetArgs, PathByIdArgs, Repo, RepoPath, RepoStatus, StatusByIdArgs};
+use g1t_contracts::security::UPDATE_BRANCH_PREFIX;
 use g1t_contracts::security::*;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, User};
@@ -169,18 +169,12 @@ impl Security {
     /// findings (the Write role) and do `capability`. Findings are for those
     /// who can change the code: to anyone else the page does not exist,
     /// public repository or not.
-    async fn member_repo(
-        &self,
-        path: &RepoPath,
-        viewer: &Option<User>,
-        capability: Capability,
-    ) -> Result<Outcome<RepoRow>> {
+    async fn member_repo(&self, path: &RepoPath, viewer: &Option<User>, capability: Capability) -> Result<Outcome<RepoRow>> {
         let hidden = || fail(FailureCode::NotFound, "Repository not found.");
         if viewer.is_none() {
             return Ok(hidden());
         }
-        let repo: Outcome<Repo> =
-            g1t_kit::call(&self.repos, "get", &GetArgs { path: path.clone(), viewer: viewer.clone() }).await?;
+        let repo: Outcome<Repo> = g1t_kit::call(&self.repos, "get", &GetArgs { path: path.clone(), viewer: viewer.clone() }).await?;
         let repo = match repo {
             Outcome::Ok(repo) if repo.fork_of.is_none() => repo,
             _ => return Ok(hidden()),
@@ -189,10 +183,7 @@ impl Security {
             return Ok(hidden());
         }
         if !access::can(viewer.as_ref(), &repo, capability) {
-            return Ok(fail(
-                FailureCode::Forbidden,
-                access::needs(capability, &format!("{}/{}", repo.namespace, repo.name)),
-            ));
+            return Ok(fail(FailureCode::Forbidden, access::needs(capability, &format!("{}/{}", repo.namespace, repo.name))));
         }
         let row = self.store.register(&repo.id, &repo.namespace, &repo.name).await?;
         self.store.set_private(&repo.id, repo.is_private).await?;
@@ -202,8 +193,7 @@ impl Security {
     /// Where the repository stands: archived or deleted. When repos
     /// cannot say, it is taken as an ordinary active repository.
     async fn status(&self, repo_id: &str) -> Result<RepoStatus> {
-        let status: Result<RepoStatus> =
-            g1t_kit::call(&self.repos, "status_by_id", &StatusByIdArgs { id: repo_id.to_owned() }).await;
+        let status: Result<RepoStatus> = g1t_kit::call(&self.repos, "status_by_id", &StatusByIdArgs { id: repo_id.to_owned() }).await;
         Ok(match status {
             Ok(status) => status,
             Err(error) => {
@@ -295,26 +285,24 @@ impl Security {
         let comment = (!comment.is_empty()).then_some(comment);
         if let Some(finding) = self.store.secret(&repo.repo_id, &a.id).await? {
             if !a.reason.for_secrets() {
-                return Ok(fail(
-                    FailureCode::Invalid,
-                    "A secret is dismissed as false_positive, used_in_tests, revoked or wont_fix.",
-                ));
+                return Ok(fail(FailureCode::Invalid, "A secret is dismissed as false_positive, used_in_tests, revoked or wont_fix."));
             }
             if finding.state != AlertState::Open {
                 return Ok(fail(FailureCode::Conflict, "This alert is not open. Reopen it first to dismiss it again."));
             }
+            self.store.dismiss_secret(&repo.repo_id, &a.id, a.reason, &a.actor.username, comment.as_deref()).await?;
             self.store
-                .dismiss_secret(&repo.repo_id, &a.id, a.reason, &a.actor.username, comment.as_deref())
-                .await?;
-            self.store
-                .record(&repo.repo_id, &[Activity {
-                    alert_id: &a.id,
-                    action: "dismissed",
-                    actor: Some(&a.actor.username),
-                    reason: Some(a.reason),
-                    comment: comment.as_deref(),
-                    number: None,
-                }])
+                .record(
+                    &repo.repo_id,
+                    &[Activity {
+                        alert_id: &a.id,
+                        action: "dismissed",
+                        actor: Some(&a.actor.username),
+                        reason: Some(a.reason),
+                        comment: comment.as_deref(),
+                        number: None,
+                    }],
+                )
                 .await?;
             let secret = self.store.secret(&repo.repo_id, &a.id).await?;
             if let Some(secret) = &secret {
@@ -348,23 +336,28 @@ impl Security {
         if vuln.state != AlertState::Open {
             return Ok(fail(FailureCode::Conflict, "This alert is not open. Reopen it first to dismiss it again."));
         }
+        self.store.dismiss_vulnerability(&repo.repo_id, &a.id, a.reason, &a.actor.username, comment.as_deref()).await?;
         self.store
-            .dismiss_vulnerability(&repo.repo_id, &a.id, a.reason, &a.actor.username, comment.as_deref())
-            .await?;
-        self.store
-            .record(&repo.repo_id, &[Activity {
-                alert_id: &a.id,
-                action: "dismissed",
-                actor: Some(&a.actor.username),
-                reason: Some(a.reason),
-                comment: comment.as_deref(),
-                number: None,
-            }])
+            .record(
+                &repo.repo_id,
+                &[Activity {
+                    alert_id: &a.id,
+                    action: "dismissed",
+                    actor: Some(&a.actor.username),
+                    reason: Some(a.reason),
+                    comment: comment.as_deref(),
+                    number: None,
+                }],
+            )
             .await?;
         let vulnerability = self.store.vulnerability(&repo.repo_id, &a.id).await?;
         if let Some(vuln) = &vulnerability {
-            let event = g1t_contracts::security_suite::SecurityEvent { reason: Some(a.reason.as_str().to_owned()), ..deps::vulnerability_event(&repo, vuln) };
-            self.alert_event(g1t_contracts::security_suite::AlertType::Vulnerability, "dismissed", &repo, event, Some(a.actor.id.clone())).await;
+            let event = g1t_contracts::security_suite::SecurityEvent {
+                reason: Some(a.reason.as_str().to_owned()),
+                ..deps::vulnerability_event(&repo, vuln)
+            };
+            self.alert_event(g1t_contracts::security_suite::AlertType::Vulnerability, "dismissed", &repo, event, Some(a.actor.id.clone()))
+                .await;
             let changed = summaries::Changed { scan: "change", dismissed: 1, ..summaries::Changed::default() };
             self.summarize(&repo, g1t_contracts::security_suite::AlertType::Vulnerability, changed, Some(a.actor.id.clone())).await?;
         }
@@ -383,7 +376,8 @@ impl Security {
         if !a.actor.verified {
             return Ok(fail(FailureCode::Forbidden, "Confirm your email address first."));
         }
-        let reopened = Activity { alert_id: &a.id, action: "reopened", actor: Some(&a.actor.username), reason: None, comment: None, number: None };
+        let reopened =
+            Activity { alert_id: &a.id, action: "reopened", actor: Some(&a.actor.username), reason: None, comment: None, number: None };
         if let Some(finding) = self.store.secret(&repo.repo_id, &a.id).await? {
             if finding.state == AlertState::Open {
                 return Ok(fail(FailureCode::Conflict, "This alert is already open."));
@@ -511,19 +505,12 @@ impl Security {
         allowed.sort();
         allowed.dedup();
         let all = a.secrets.clone();
-        let fresh: Vec<NewSecret> = a
-            .secrets
-            .into_iter()
-            .filter(|secret| !known.iter().any(|(fingerprint, _, _)| *fingerprint == secret.fingerprint))
-            .collect();
+        let fresh: Vec<NewSecret> =
+            a.secrets.into_iter().filter(|secret| !known.iter().any(|(fingerprint, _, _)| *fingerprint == secret.fingerprint)).collect();
         // A likely test value goes through, so it lands: open, not blocked.
         let (tests, real): (Vec<NewSecret>, Vec<NewSecret>) = fresh.into_iter().partition(|secret| secret.test_value.is_some());
-        self.store
-            .add_secrets(&a.repo_id, &real, SecretStatus::Blocked, "push", a.pusher.as_deref())
-            .await?;
-        self.store
-            .add_secrets(&a.repo_id, &tests, SecretStatus::Open, "push", a.pusher.as_deref())
-            .await?;
+        self.store.add_secrets(&a.repo_id, &real, SecretStatus::Blocked, "push", a.pusher.as_deref()).await?;
+        self.store.add_secrets(&a.repo_id, &tests, SecretStatus::Open, "push", a.pusher.as_deref()).await?;
         let fresh: Vec<String> = real.iter().map(|secret| secret.fingerprint.clone()).collect();
         self.secrets_found(&repo, &all, "push", &fresh, a.pusher.as_deref()).await?;
         let ids = self
@@ -594,7 +581,8 @@ impl Security {
             }
             "bump.stopped" => {
                 if let Ok(stopped) = serde_json::from_value::<BumpStopped>(event.data.clone()) {
-                    self.bump_stopped(&stopped.namespace, &stopped.name, &stopped.branch, stopped.exit_code, stopped.reason.as_deref()).await?;
+                    self.bump_stopped(&stopped.namespace, &stopped.name, &stopped.branch, stopped.exit_code, stopped.reason.as_deref())
+                        .await?;
                 }
             }
             "comment.created" => self.update_comment(event).await?,
@@ -632,16 +620,9 @@ impl Security {
                 if let Some(moved) = g1t_kit::transfer::read(event) {
                     // Where it is now, so moves heard out of order end in
                     // the same place.
-                    let now: Option<g1t_contracts::repos::RepoPath> = g1t_kit::call(
-                        &self.repos,
-                        "path_by_id",
-                        &g1t_contracts::repos::PathByIdArgs { id: moved.repo_id.clone() },
-                    )
-                    .await?;
-                    let current = now.map_or_else(
-                        || moved.destination().to_owned(),
-                        |path| format!("{}/{}", path.namespace, path.name),
-                    );
+                    let now: Option<g1t_contracts::repos::RepoPath> =
+                        g1t_kit::call(&self.repos, "path_by_id", &g1t_contracts::repos::PathByIdArgs { id: moved.repo_id.clone() }).await?;
+                    let current = now.map_or_else(|| moved.destination().to_owned(), |path| format!("{}/{}", path.namespace, path.name));
                     if let Some((namespace, name)) = current.split_once('/') {
                         self.store.moved(&moved.repo_id, namespace, name).await?;
                     }
@@ -861,7 +842,8 @@ mod tests {
             ("resolved".to_owned(), "sec_2".to_owned(), "resolved".to_owned()),
             ("blocked".to_owned(), "sec_3".to_owned(), "blocked".to_owned()),
         ];
-        let secrets = [secret("allowed", None), secret("resolved", None), secret("example", Some("it says it is an example")), secret("real", None)];
+        let secrets =
+            [secret("allowed", None), secret("resolved", None), secret("example", Some("it says it is an example")), secret("real", None)];
         assert_eq!(let_through(&known, &secrets), ["allowed", "example"]);
     }
 
@@ -872,7 +854,10 @@ mod tests {
         }))
         .unwrap();
         assert!(pushed.unscanned && pushed.before.is_none() && pushed.git_ref == "refs/heads/import");
-        let ordinary: Pushed = serde_json::from_value(serde_json::json!({ "repoId": "rep_1", "ref": "refs/heads/main", "after": "abc", "defaultBranch": true })).unwrap();
+        let ordinary: Pushed = serde_json::from_value(
+            serde_json::json!({ "repoId": "rep_1", "ref": "refs/heads/main", "after": "abc", "defaultBranch": true }),
+        )
+        .unwrap();
         assert!(!ordinary.unscanned);
     }
 

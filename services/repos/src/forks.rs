@@ -33,10 +33,7 @@ pub const DEFAULT_RETENTION_DAYS: u64 = 7;
 const RETIRES_PER_SWEEP: u32 = 25;
 
 pub fn retention_days(env: &Env) -> u64 {
-    env.var("FORK_RETENTION_DAYS")
-        .ok()
-        .and_then(|value| value.to_string().parse().ok())
-        .unwrap_or(DEFAULT_RETENTION_DAYS)
+    env.var("FORK_RETENTION_DAYS").ok().and_then(|value| value.to_string().parse().ok()).unwrap_or(DEFAULT_RETENTION_DAYS)
 }
 
 /// When a working copy whose pull request settled at `now` is removed.
@@ -199,11 +196,7 @@ impl Registry {
             Some((at, head)) => (JsValue::from(at), head.map_or(JsValue::NULL, JsValue::from)),
             None => (JsValue::NULL, JsValue::NULL),
         };
-        self.db
-            .prepare("UPDATE repos SET retired_at = ?, retired_head = ? WHERE id = ?")
-            .bind(&[at, head, id.into()])?
-            .run()
-            .await?;
+        self.db.prepare("UPDATE repos SET retired_at = ?, retired_head = ? WHERE id = ?").bind(&[at, head, id.into()])?.run().await?;
         crate::registry::note_retired(id, retired.and_then(|(_, head)| head));
         Ok(())
     }
@@ -355,10 +348,7 @@ impl<S: GitStore> Repos<S> {
             None => None,
         };
         let (Some(head), Some(parent)) = (head, parent) else {
-            return Err(worker::Error::RustError(format!(
-                "working copy {} cannot be made again: its repository or head is gone",
-                fork.id
-            )));
+            return Err(worker::Error::RustError(format!("working copy {} cannot be made again: its repository or head is gone", fork.id)));
         };
         let key = store_key(fork);
         let parent_git = self.store.open(&store_key(&parent)).await?;
@@ -379,7 +369,8 @@ impl<S: GitStore> Repos<S> {
             )
             .await;
             self.refs_moved(&fork.id).await;
-            moved?.map_err(|reason| worker::Error::RustError(format!("working copy {} made again, but not at {head}: {reason}", fork.id)))?;
+            moved?
+                .map_err(|reason| worker::Error::RustError(format!("working copy {} made again, but not at {head}: {reason}", fork.id)))?;
         }
         self.registry.revived(&fork.id, retire_after.as_deref()).await?;
         self.refs_moved(&fork.id).await;
@@ -395,8 +386,8 @@ mod tests {
     fn every_event_that_settles_a_copy_is_sent_to_this_queue() {
         let users = ["user.deleting", "user.restored"];
         for kind in g1t_contracts::webhooks::EVENT_TYPES.iter().chain(users.iter()) {
-            let acts = pull_change(kind).is_some()
-                || crate::stats::shown_differently(kind, &serde_json::json!({ "username": "ana" })).is_some();
+            let acts =
+                pull_change(kind).is_some() || crate::stats::shown_differently(kind, &serde_json::json!({ "username": "ana" })).is_some();
             if acts {
                 assert!(g1t_contracts::subscribers::routed("SUBSCRIBER_REPOS", kind), "{kind} is not routed to repos");
             }

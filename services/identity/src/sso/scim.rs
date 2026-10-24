@@ -88,7 +88,12 @@ fn emails_of(value: &Value) -> Vec<String> {
         .as_array()
         .into_iter()
         .flatten()
-        .filter_map(|email| Some((email["primary"].as_bool() == Some(true) || boolean(&email["primary"]) == Some(true), text(&email["value"])?.to_lowercase())))
+        .filter_map(|email| {
+            Some((
+                email["primary"].as_bool() == Some(true) || boolean(&email["primary"]) == Some(true),
+                text(&email["value"])?.to_lowercase(),
+            ))
+        })
         .filter(|(_, address)| address.contains('@'))
         .collect();
     found.sort_by_key(|(primary, _)| !primary);
@@ -129,12 +134,8 @@ pub fn to_resource(id: &str, user: &ScimUser, created: &str, modified: &str, bas
     if let Some(family) = &user.family_name {
         name.insert("familyName".into(), json!(family));
     }
-    let emails: Vec<Value> = user
-        .emails
-        .iter()
-        .enumerate()
-        .map(|(i, address)| json!({ "value": address, "type": "work", "primary": i == 0 }))
-        .collect();
+    let emails: Vec<Value> =
+        user.emails.iter().enumerate().map(|(i, address)| json!({ "value": address, "type": "work", "primary": i == 0 })).collect();
     let mut resource = json!({
         "schemas": [USER_SCHEMA],
         "id": id,
@@ -167,7 +168,13 @@ pub enum Filter {
 /// Reads a filter. Providers look a user up by one attribute, `eq`;
 /// anything else is refused as RFC 7644 says, so nothing is listed wrongly.
 pub fn parse_filter(filter: &str) -> Result<Filter, ScimError> {
-    let refused = || ScimError::new(400, Some("invalidFilter"), format!("Only `attribute eq \"value\"` on userName, externalId, id or emails is supported: {filter}"));
+    let refused = || {
+        ScimError::new(
+            400,
+            Some("invalidFilter"),
+            format!("Only `attribute eq \"value\"` on userName, externalId, id or emails is supported: {filter}"),
+        )
+    };
     let filter = filter.trim();
     let (attribute, rest) = filter.split_once(char::is_whitespace).ok_or_else(refused)?;
     let (operator, value) = rest.trim().split_once(char::is_whitespace).ok_or_else(refused)?;
@@ -199,7 +206,8 @@ pub fn apply_patch(user: &mut ScimUser, body: &Value) -> Result<(), ScimError> {
         match operation["path"].as_str().map(str::trim).filter(|p| !p.is_empty()) {
             Some(path) => set(user, path, if op == "remove" { &Value::Null } else { value })?,
             None => {
-                let fields = value.as_object().ok_or_else(|| ScimError::invalid("A change without a path needs an object of attributes."))?;
+                let fields =
+                    value.as_object().ok_or_else(|| ScimError::invalid("A change without a path needs an object of attributes."))?;
                 for (path, value) in fields {
                     set(user, path, if op == "remove" { &Value::Null } else { value })?;
                 }
@@ -397,7 +405,8 @@ mod tests {
     #[test]
     fn okta_deactivates_with_a_path() {
         let mut user = from_resource(&okta_user()).unwrap();
-        apply_patch(&mut user, &json!({ "schemas": [PATCH_SCHEMA], "Operations": [{ "op": "replace", "value": { "active": false } }] })).unwrap();
+        apply_patch(&mut user, &json!({ "schemas": [PATCH_SCHEMA], "Operations": [{ "op": "replace", "value": { "active": false } }] }))
+            .unwrap();
         assert!(!user.active);
         apply_patch(&mut user, &json!({ "Operations": [{ "op": "replace", "path": "active", "value": true }] })).unwrap();
         assert!(user.active);

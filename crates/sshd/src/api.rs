@@ -73,11 +73,7 @@ pub struct Api {
 
 impl Api {
     pub fn new(base: String, secret: String) -> Self {
-        Self {
-            base,
-            secret,
-            http: reqwest::Client::new(),
-        }
+        Self { base, secret, http: reqwest::Client::new() }
     }
 
     /// Who the key with this SHA-256 fingerprint signs in as: the person
@@ -101,13 +97,7 @@ impl Api {
     }
 
     /// `Ok(Err(message))` is a refusal to show the user.
-    pub async fn access(
-        &self,
-        user: &User,
-        owner: &str,
-        repo: &str,
-        service: Service,
-    ) -> Result<Result<Access, String>> {
+    pub async fn access(&self, user: &User, owner: &str, repo: &str, service: Service) -> Result<Result<Access, String>> {
         let response = self
             .http
             .post(format!("{}/_internal/ssh/access", self.base))

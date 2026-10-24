@@ -4,9 +4,7 @@ use serde_json::{Value, json};
 use std::io::Write;
 use std::time::Duration;
 
-use crate::cli::{
-    RunCommand, RunListArgs, RunLogsArgs, RunRerunArgs, RunSelect, RunViewArgs, RunWatchArgs,
-};
+use crate::cli::{RunCommand, RunListArgs, RunLogsArgs, RunRerunArgs, RunSelect, RunViewArgs, RunWatchArgs};
 use crate::client::Client;
 use crate::context::Ctx;
 use crate::error::{Error, Kind, Result};
@@ -57,29 +55,17 @@ fn resolve(ctx: &Ctx, client: &Client, repo: &Repo, given: Option<&str>) -> Resu
             return Ok(tail.to_owned());
         }
         if let Ok(n) = tail.trim_start_matches('#').parse::<u64>() {
-            let runs = super::items(
-                client
-                    .op("list_workflow_runs")
-                    .repo(repo)
-                    .query("per_page", 100)
-                    .send()?,
-                "workflow_runs",
-            );
+            let runs = super::items(client.op("list_workflow_runs").repo(repo).query("per_page", 100).send()?, "workflow_runs");
             return runs
                 .iter()
                 .find(|r| r["number"].as_u64() == Some(n))
                 .and_then(|r| r["id"].as_str().map(str::to_owned))
                 .ok_or_else(|| Error::failed(format!("No run #{n} among {repo}'s latest 100.")));
         }
-        return Err(Error::usage(format!(
-            "`{given}` is not a run: give its id (run_…) or number."
-        )));
+        return Err(Error::usage(format!("`{given}` is not a run: give its id (run_…) or number.")));
     }
     let branch = crate::git::current_branch();
-    let mut call = client
-        .op("list_workflow_runs")
-        .repo(repo)
-        .query("per_page", 1);
+    let mut call = client.op("list_workflow_runs").repo(repo).query("per_page", 1);
     if let Some(b) = &branch {
         call = call.query("branch", b);
     }
@@ -87,38 +73,19 @@ fn resolve(ctx: &Ctx, client: &Client, repo: &Repo, given: Option<&str>) -> Resu
     let latest = match runs.first() {
         Some(r) => r.clone(),
         None if branch.is_some() => {
-            let all = super::items(
-                client
-                    .op("list_workflow_runs")
-                    .repo(repo)
-                    .query("per_page", 1)
-                    .send()?,
-                "workflow_runs",
-            );
-            all.first()
-                .cloned()
-                .ok_or_else(|| Error::failed(format!("{repo} has no workflow runs.")))?
+            let all = super::items(client.op("list_workflow_runs").repo(repo).query("per_page", 1).send()?, "workflow_runs");
+            all.first().cloned().ok_or_else(|| Error::failed(format!("{repo} has no workflow runs.")))?
         }
         None => return Err(Error::failed(format!("{repo} has no workflow runs."))),
     };
     if !ctx.out.structured() || ctx.out.tty {
-        eprintln!(
-            "Run {} ({} #{} on {}, {})",
-            s(&latest, "id"),
-            s(&latest, "name"),
-            latest["number"],
-            branch_of(&latest),
-            state(&latest)
-        );
+        eprintln!("Run {} ({} #{} on {}, {})", s(&latest, "id"), s(&latest, "name"), latest["number"], branch_of(&latest), state(&latest));
     }
     Ok(s(&latest, "id").to_owned())
 }
 
 fn branch_of(run: &Value) -> String {
-    s(run, "ref")
-        .trim_start_matches("refs/heads/")
-        .trim_start_matches("refs/tags/")
-        .to_owned()
+    s(run, "ref").trim_start_matches("refs/heads/").trim_start_matches("refs/tags/").to_owned()
 }
 
 fn list(ctx: &Ctx, args: RunListArgs) -> Result<()> {
@@ -158,18 +125,11 @@ fn list(ctx: &Ctx, args: RunListArgs) -> Result<()> {
             ]
         })
         .collect();
-    out.table(
-        &["state", "title", "workflow", "branch", "event", "id", "age"],
-        &rows,
-    )
+    out.table(&["state", "title", "workflow", "branch", "event", "id", "age"], &rows)
 }
 
 fn get_run(client: &Client, repo: &Repo, id: &str) -> Result<Value> {
-    client
-        .op("get_workflow_run")
-        .repo(repo)
-        .arg("id", id)
-        .send()
+    client.op("get_workflow_run").repo(repo).arg("id", id).send()
 }
 
 /// One object: the run, with its jobs, notes and attempts in it.
@@ -212,11 +172,7 @@ fn print_run(out: &Output, run: &Value, job_filter: Option<&str>) {
             "{} {} {}",
             mark(out, js),
             out.bold(s(job, "name")),
-            out.dim(&format!(
-                "{} {}",
-                js,
-                elapsed(&job["started_at"], &job["finished_at"])
-            ))
+            out.dim(&format!("{} {}", js, elapsed(&job["started_at"], &job["finished_at"])))
         );
         if let Some(reason) = job["reason"].as_str() {
             println!("  {}", out.dim(reason));
@@ -232,11 +188,7 @@ fn print_run(out: &Output, run: &Value, job_filter: Option<&str>) {
                 _ => String::new(),
             };
             let level = s(a, "level");
-            let painted = if level == "error" {
-                out.red(level)
-            } else {
-                out.yellow(level)
-            };
+            let painted = if level == "error" { out.red(level) } else { out.yellow(level) };
             println!("  {painted} {place}{}", s(a, "message"));
         }
     }
@@ -249,11 +201,7 @@ fn print_run(out: &Output, run: &Value, job_filter: Option<&str>) {
 }
 
 fn job_matches(job: &Value, wanted: &str) -> bool {
-    ["id", "key", "name"].iter().any(|k| {
-        job[*k]
-            .as_str()
-            .is_some_and(|v| v.eq_ignore_ascii_case(wanted))
-    })
+    ["id", "key", "name"].iter().any(|k| job[*k].as_str().is_some_and(|v| v.eq_ignore_ascii_case(wanted)))
 }
 
 fn failed(run: &Value) -> bool {
@@ -274,15 +222,7 @@ fn view(ctx: &Ctx, args: RunViewArgs) -> Result<()> {
         print_run(&ctx.out, &run, args.job.as_deref());
         if args.log || args.log_failed {
             println!();
-            print_logs(
-                ctx,
-                &client,
-                &repo,
-                &run,
-                args.job.as_deref(),
-                args.log_failed,
-                60,
-            )?;
+            print_logs(ctx, &client, &repo, &run, args.job.as_deref(), args.log_failed, 60)?;
         }
     }
     if args.exit_status && failed(&run) {
@@ -326,11 +266,7 @@ fn watch(ctx: &Ctx, args: RunWatchArgs) -> Result<()> {
             } else if !ctx.out.tty {
                 eprintln!("{} #{} {}", s(&run, "name"), run["number"], state(&run));
             }
-            return if failed(&run) {
-                Err(Error::exit(Kind::Failed))
-            } else {
-                Ok(())
-            };
+            return if failed(&run) { Err(Error::exit(Kind::Failed)) } else { Ok(()) };
         }
         std::thread::sleep(Duration::from_secs(args.interval.max(1)));
     }
@@ -341,12 +277,7 @@ fn job_log(client: &Client, repo: &Repo, job: &str) -> Result<Vec<Value>> {
     let mut chunks = Vec::new();
     let mut after = 0u64;
     for _ in 0..200 {
-        let page = client
-            .op("get_job_logs")
-            .repo(repo)
-            .arg("job", job)
-            .query("after", after)
-            .send()?;
+        let page = client.op("get_job_logs").repo(repo).arg("job", job).query("after", after).send()?;
         let got = page["chunks"].as_array().cloned().unwrap_or_default();
         if let Some(last) = got.last().and_then(|c| c["seq"].as_u64()) {
             after = last;
@@ -361,24 +292,14 @@ fn job_log(client: &Client, repo: &Repo, job: &str) -> Result<Vec<Value>> {
 }
 
 fn lines_of(chunks: &[Value], step: Option<u64>) -> Vec<String> {
-    let text: String = chunks
-        .iter()
-        .filter(|c| step.is_none_or(|n| c["step"].as_u64() == Some(n)))
-        .map(|c| s(c, "text"))
-        .collect();
+    let text: String = chunks.iter().filter(|c| step.is_none_or(|n| c["step"].as_u64() == Some(n))).map(|c| s(c, "text")).collect();
     text.lines().map(str::to_owned).collect()
 }
 
 /// The last `n` lines worth reading: group markers dropped.
 pub fn tail(lines: &[String], n: usize) -> Vec<String> {
-    let kept: Vec<&String> = lines
-        .iter()
-        .filter(|l| !l.starts_with("##[group]") && !l.starts_with("##[endgroup]"))
-        .collect();
-    kept[kept.len().saturating_sub(n)..]
-        .iter()
-        .map(|l| (*l).clone())
-        .collect()
+    let kept: Vec<&String> = lines.iter().filter(|l| !l.starts_with("##[group]") && !l.starts_with("##[endgroup]")).collect();
+    kept[kept.len().saturating_sub(n)..].iter().map(|l| (*l).clone()).collect()
 }
 
 /// For each failing step of each failing job: its last lines.
@@ -388,12 +309,8 @@ pub fn failing_steps(jobs: &[(Value, Vec<Value>)], n: usize) -> Vec<Value> {
         if super::pr::bucket(state(job)) != "fail" {
             continue;
         }
-        let steps: Vec<&Value> = job["steps"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|st| super::pr::bucket(state(st)) == "fail")
-            .collect();
+        let steps: Vec<&Value> =
+            job["steps"].as_array().into_iter().flatten().filter(|st| super::pr::bucket(state(st)) == "fail").collect();
         if steps.is_empty() {
             // It failed outside its steps, setting up or being cancelled.
             out.push(json!({
@@ -413,15 +330,7 @@ pub fn failing_steps(jobs: &[(Value, Vec<Value>)], n: usize) -> Vec<Value> {
     out
 }
 
-fn print_logs(
-    ctx: &Ctx,
-    client: &Client,
-    repo: &Repo,
-    run: &Value,
-    job_filter: Option<&str>,
-    failed_only: bool,
-    n: usize,
-) -> Result<()> {
+fn print_logs(ctx: &Ctx, client: &Client, repo: &Repo, run: &Value, job_filter: Option<&str>, failed_only: bool, n: usize) -> Result<()> {
     let jobs: Vec<Value> = run["jobs"]
         .as_array()
         .into_iter()
@@ -431,18 +340,11 @@ fn print_logs(
         .cloned()
         .collect();
     if job_filter.is_some() && jobs.is_empty() {
-        return Err(Error::usage(format!(
-            "No job {} in this run.",
-            job_filter.unwrap_or_default()
-        )));
+        return Err(Error::usage(format!("No job {} in this run.", job_filter.unwrap_or_default())));
     }
     let mut fetched = Vec::new();
     for job in jobs {
-        let chunks = if job["started_at"].is_null() {
-            Vec::new()
-        } else {
-            job_log(client, repo, s(&job, "id"))?
-        };
+        let chunks = if job["started_at"].is_null() { Vec::new() } else { job_log(client, repo, s(&job, "id"))? };
         fetched.push((job, chunks));
     }
     let out = &ctx.out;
@@ -458,11 +360,7 @@ fn print_logs(
         for st in &steps {
             let title = match st["name"].as_str() {
                 Some(name) => format!("{} › {} {name}", s(st, "job"), st["step"]),
-                None => format!(
-                    "{} ({})",
-                    s(st, "job"),
-                    st["reason"].as_str().unwrap_or("failed")
-                ),
+                None => format!("{} ({})", s(st, "job"), st["reason"].as_str().unwrap_or("failed")),
             };
             println!("{} {}", out.red("X"), out.bold(&title));
             for line in st["lines"].as_array().into_iter().flatten() {
@@ -480,10 +378,7 @@ fn print_logs(
         return ctx.out.emit(&Value::Array(all));
     }
     for (job, chunks) in &fetched {
-        println!(
-            "{}",
-            out.bold(&format!("== {} ({}) ==", s(job, "name"), state(job)))
-        );
+        println!("{}", out.bold(&format!("== {} ({}) ==", s(job, "name"), state(job))));
         let names: std::collections::HashMap<u64, String> = job["steps"]
             .as_array()
             .into_iter()
@@ -496,13 +391,7 @@ fn print_logs(
             if this != step {
                 step = this;
                 let n = this.unwrap_or(0);
-                let name = names.get(&n).cloned().unwrap_or_else(|| {
-                    if n == 0 {
-                        "Set up".to_owned()
-                    } else {
-                        format!("Step {n}")
-                    }
-                });
+                let name = names.get(&n).cloned().unwrap_or_else(|| if n == 0 { "Set up".to_owned() } else { format!("Step {n}") });
                 println!("{}", out.cyan(&format!("-- {n} {name}")));
             }
             print!("{}", s(c, "text"));
@@ -518,71 +407,33 @@ fn print_logs(
 fn logs(ctx: &Ctx, args: RunLogsArgs) -> Result<()> {
     let (repo, client) = ctx.repo_client()?;
     let id = resolve(ctx, &client, &repo, args.run.as_deref())?;
-    let run = flatten(
-        &get_run(&client, &repo, &id)?,
-        &run_url(&client.host.site, &repo, &id),
-    );
-    print_logs(
-        ctx,
-        &client,
-        &repo,
-        &run,
-        args.job.as_deref(),
-        args.failed,
-        args.tail,
-    )
+    let run = flatten(&get_run(&client, &repo, &id)?, &run_url(&client.host.site, &repo, &id));
+    print_logs(ctx, &client, &repo, &run, args.job.as_deref(), args.failed, args.tail)
 }
 
 fn rerun(ctx: &Ctx, args: RunRerunArgs) -> Result<()> {
     let (repo, client) = ctx.repo_client()?;
     let (call, what) = if let Some(job) = &args.job {
-        (
-            client.op("rerun_job").repo(&repo).arg("job", job),
-            format!("job {job}"),
-        )
+        (client.op("rerun_job").repo(&repo).arg("job", job), format!("job {job}"))
     } else {
         let id = resolve(ctx, &client, &repo, args.run.as_deref())?;
         if args.failed {
-            (
-                client.op("rerun_failed_jobs").repo(&repo).arg("id", &id),
-                format!("the failed jobs of {id}"),
-            )
+            (client.op("rerun_failed_jobs").repo(&repo).arg("id", &id), format!("the failed jobs of {id}"))
         } else {
-            (
-                client.op("rerun_workflow_run").repo(&repo).arg("id", &id),
-                id.clone(),
-            )
+            (client.op("rerun_workflow_run").repo(&repo).arg("id", &id), id.clone())
         }
     };
-    let call = if args.debug {
-        call.field("debug", true)
-    } else {
-        call
-    };
+    let call = if args.debug { call.field("debug", true) } else { call };
     let run = call.send()?;
     let id = s(&run, "id").to_owned();
-    super::done(
-        ctx,
-        &run,
-        &format!("Rerunning {what} (attempt {})", run["attempt"]),
-        &run_url(&client.host.site, &repo, &id),
-    )
+    super::done(ctx, &run, &format!("Rerunning {what} (attempt {})", run["attempt"]), &run_url(&client.host.site, &repo, &id))
 }
 
 fn cancel(ctx: &Ctx, args: RunSelect) -> Result<()> {
     let (repo, client) = ctx.repo_client()?;
     let id = resolve(ctx, &client, &repo, args.run.as_deref())?;
-    let run = client
-        .op("cancel_workflow_run")
-        .repo(&repo)
-        .arg("id", &id)
-        .send()?;
-    super::done(
-        ctx,
-        &run,
-        &format!("Cancelling {id}"),
-        &run_url(&client.host.site, &repo, &id),
-    )
+    let run = client.op("cancel_workflow_run").repo(&repo).arg("id", &id).send()?;
+    super::done(ctx, &run, &format!("Cancelling {id}"), &run_url(&client.host.site, &repo, &id))
 }
 
 #[cfg(test)]
@@ -609,13 +460,7 @@ mod tests {
 
     #[test]
     fn states_prefer_the_conclusion() {
-        assert_eq!(
-            state(&json!({ "status": "completed", "conclusion": "failure" })),
-            "failure"
-        );
-        assert_eq!(
-            state(&json!({ "status": "in_progress", "conclusion": null })),
-            "in_progress"
-        );
+        assert_eq!(state(&json!({ "status": "completed", "conclusion": "failure" })), "failure");
+        assert_eq!(state(&json!({ "status": "in_progress", "conclusion": null })), "in_progress");
     }
 }

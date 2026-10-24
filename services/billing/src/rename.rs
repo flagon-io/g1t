@@ -250,12 +250,8 @@ impl Billing {
         let renamed: WorkspaceRenamed = serde_json::from_value(event.data.clone())?;
         let current = match identity {
             Some(identity) => {
-                let names: std::collections::HashMap<String, String> = g1t_kit::call(
-                    identity,
-                    "usernames",
-                    &UsernamesArgs { ids: vec![renamed.workspace_id.clone()] },
-                )
-                .await?;
+                let names: std::collections::HashMap<String, String> =
+                    g1t_kit::call(identity, "usernames", &UsernamesArgs { ids: vec![renamed.workspace_id.clone()] }).await?;
                 names.get(&renamed.workspace_id).cloned().unwrap_or_else(|| renamed.to.clone())
             }
             None => renamed.to.clone(),
@@ -345,18 +341,55 @@ mod tests {
     fn every_table_keyed_by_a_slug_is_moved() {
         let all = STATEMENTS.join("\n");
         for table in [
-            "ledger", "runs", "checkouts", "workspace_invoices", "sales_notes", "accounts",
-            "pending_usage", "pending_baselines", "limits", "subscriptions", "month_closes", "account_members", "sales_records",
-            "enterprise_invoice_lines", "billing_accounts", "admin_actions", "enterprise_invoices",
-            "allowance_use", "trial_grants", "credit_grants", "storage_days",
-            "reservations", "spikes", "limit_requests", "plan_payments", "card_checks", "alerts_sent",
-            "package_storage_days", "pending_days", "token_usage", "price_notices", "closed_workspaces",
-            "workspace_costs", "own_counts", "ai_reload", "ai_reloads", "tax_and_fees", "reset_costs",
-            "provider_connections", "provider_costs", "provider_person_costs", "provider_conversations",
+            "ledger",
+            "runs",
+            "checkouts",
+            "workspace_invoices",
+            "sales_notes",
+            "accounts",
+            "pending_usage",
+            "pending_baselines",
+            "limits",
+            "subscriptions",
+            "month_closes",
+            "account_members",
+            "sales_records",
+            "enterprise_invoice_lines",
+            "billing_accounts",
+            "admin_actions",
+            "enterprise_invoices",
+            "allowance_use",
+            "trial_grants",
+            "credit_grants",
+            "storage_days",
+            "reservations",
+            "spikes",
+            "limit_requests",
+            "plan_payments",
+            "card_checks",
+            "alerts_sent",
+            "package_storage_days",
+            "pending_days",
+            "token_usage",
+            "price_notices",
+            "closed_workspaces",
+            "workspace_costs",
+            "own_counts",
+            "ai_reload",
+            "ai_reloads",
+            "tax_and_fees",
+            "reset_costs",
+            "provider_connections",
+            "provider_costs",
+            "provider_person_costs",
+            "provider_conversations",
         ] {
-            assert!(all.contains(&format!("FROM {table} WHERE workspace = ?2"))
-                || all.contains(&format!("UPDATE {table} SET"))
-                || all.contains(&format!("UPDATE OR IGNORE {table} SET")), "{table}");
+            assert!(
+                all.contains(&format!("FROM {table} WHERE workspace = ?2"))
+                    || all.contains(&format!("UPDATE {table} SET"))
+                    || all.contains(&format!("UPDATE OR IGNORE {table} SET")),
+                "{table}"
+            );
         }
     }
 }

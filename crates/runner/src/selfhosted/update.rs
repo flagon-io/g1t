@@ -188,10 +188,7 @@ pub fn linux_harness(config: &Config, folder: &Path) -> Result<PathBuf> {
         return Ok(path);
     }
     let manifest = manifest_of(config, VERSION)?;
-    let file = manifest
-        .files
-        .get(&format!("linux-{arch}"))
-        .ok_or_else(|| anyhow!("release {VERSION} has no Linux build for {arch}"))?;
+    let file = manifest.files.get(&format!("linux-{arch}")).ok_or_else(|| anyhow!("release {VERSION} has no Linux build for {arch}"))?;
     log(&format!("Fetching the Linux harness for containers ({})", file.name));
     let bytes = download(&format!("{}/{VERSION}/{}", downloads(config), file.name))?;
     if sha256(&bytes) != file.sha256 {
@@ -211,10 +208,7 @@ pub fn update(config: &Config) -> Result<Option<String>> {
     if !takes(&latest, VERSION, &platform(), own_sha256().as_deref()) {
         return Ok(None);
     }
-    let file = latest
-        .files
-        .get(&platform())
-        .ok_or_else(|| anyhow!("release {} has no build for {}", latest.version, platform()))?;
+    let file = latest.files.get(&platform()).ok_or_else(|| anyhow!("release {} has no build for {}", latest.version, platform()))?;
     let bytes = download(&format!("{}/{}/{}", downloads(config), latest.version, file.name))?;
     if sha256(&bytes) != file.sha256 {
         bail!("the download's SHA-256 is not the release's; not updating");
@@ -265,7 +259,8 @@ mod tests {
 
     #[test]
     fn a_release_published_again_with_another_build_replaces_this_one() {
-        let release: Manifest = serde_json::from_str(r#"{"version":"0.3.7","files":{"linux-x64":{"name":"g1t-runner-linux-x64","sha256":"aa"}}}"#).unwrap();
+        let release: Manifest =
+            serde_json::from_str(r#"{"version":"0.3.7","files":{"linux-x64":{"name":"g1t-runner-linux-x64","sha256":"aa"}}}"#).unwrap();
         assert!(!takes(&release, "0.3.7", "linux-x64", Some("aa")), "the same build");
         assert!(!takes(&release, "0.3.7", "linux-x64", Some("AA")), "hashes compare as hex");
         assert!(takes(&release, "0.3.7", "linux-x64", Some("bb")), "published again with another");
@@ -300,7 +295,10 @@ mod tests {
     #[test]
     fn platforms_are_named_as_releases_name_them() {
         let name = platform();
-        assert!(["linux-x64", "linux-arm64", "macos-arm64", "macos-x64", "windows-x64", "windows-arm64"].contains(&name.as_str()), "{name}");
+        assert!(
+            ["linux-x64", "linux-arm64", "macos-arm64", "macos-x64", "windows-x64", "windows-arm64"].contains(&name.as_str()),
+            "{name}"
+        );
         assert_eq!(sha256(b"abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
     }
 }

@@ -323,11 +323,7 @@ mod tests {
             .and_then(|(_, rest)| rest.split_once("] as const"))
             .map(|(list, _)| list)
             .expect("EVENT_TYPES in webhooks.ts");
-        let mirrored: Vec<&str> = list
-            .split(',')
-            .map(|item| item.trim().trim_matches('"'))
-            .filter(|item| !item.is_empty())
-            .collect();
+        let mirrored: Vec<&str> = list.split(',').map(|item| item.trim().trim_matches('"')).filter(|item| !item.is_empty()).collect();
         assert_eq!(mirrored, EVENT_TYPES);
     }
 }

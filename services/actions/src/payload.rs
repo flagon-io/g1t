@@ -14,10 +14,10 @@
 //! deployment and its statuses, and a workflow run.
 
 use g1t_actions::events::{account_id, github_id};
-use g1t_contracts::{PrincipalKind, User};
-use g1t_contracts::repos::{Commit, Repo, RepoPath};
 use g1t_contracts::repos::FileStatus;
+use g1t_contracts::repos::{Commit, Repo, RepoPath};
 use g1t_contracts::work::{Comment, DEFAULT_LABELS, Label, MilestoneRef, Pull, PullStatus, State, WorkItem, label_color_for};
+use g1t_contracts::{PrincipalKind, User};
 use serde_json::{Value, json};
 
 use crate::{API, SITE};
@@ -258,11 +258,8 @@ pub fn push(
     let deleted = after == ZERO;
     let commits: Vec<Value> = commits.iter().map(|c| commit(repo, c)).collect();
     let full_name = format!("{}/{}", repo.namespace, repo.name);
-    let compare = if created {
-        format!("{SITE}/{full_name}/commit/{after}")
-    } else {
-        format!("{SITE}/{full_name}/compare/{before}...{after}")
-    };
+    let compare =
+        if created { format!("{SITE}/{full_name}/commit/{after}") } else { format!("{SITE}/{full_name}/compare/{before}...{after}") };
     json!({
         "ref": git_ref,
         "before": before,
@@ -767,7 +764,6 @@ pub fn deployment_status(repo: &Repo, status: &Value, deployment: &Value) -> Val
     })
 }
 
-
 /// A review's `state` as GitHub's `pull_request_review` event spells it.
 pub(crate) fn review_state(verdict: g1t_contracts::work::Verdict) -> &'static str {
     match verdict {
@@ -931,9 +927,19 @@ mod github_shapes {
     fn payloads() -> Vec<(&'static str, Value)> {
         let repo = repo();
         let pull = a_pull();
-        let mut push = push(&repo, "refs/heads/main", Some("6113728f27ae82c7b1a177c8d03f9e96e0adf246"), &a_commit().hash, &[a_commit()], "ada", Some("0d0efg+ada@users.noreply.g1t.sh"), false);
+        let mut push = push(
+            &repo,
+            "refs/heads/main",
+            Some("6113728f27ae82c7b1a177c8d03f9e96e0adf246"),
+            &a_commit().hash,
+            &[a_commit()],
+            "ada",
+            Some("0d0efg+ada@users.noreply.g1t.sh"),
+            false,
+        );
         push_changes(&mut push, &[("README.md".into(), FileStatus::Modified)]);
-        let known = [Label { name: "bug".into(), color: "d73a4a".into(), description: "Something isn't working".into(), items: 1, pulls: 1 }];
+        let known =
+            [Label { name: "bug".into(), color: "d73a4a".into(), description: "Something isn't working".into(), items: 1, pulls: 1 }];
         let mut pull_request = json!({
             "action": "opened", "number": 2, "pull_request": self::pull(&repo, &pull),
             "repository": repository(&repo), "sender": user("ada"),
@@ -1087,7 +1093,8 @@ mod github_shapes {
         let made = push(&repo, "refs/heads/new", None, after, &[a_commit()], "ada", None, false);
         assert_eq!((made["created"].clone(), made["deleted"].clone(), made["forced"].clone()), (json!(true), json!(false), json!(false)));
         assert_eq!(made["before"], ZERO);
-        let forced = push(&repo, "refs/heads/main", Some("6113728f27ae82c7b1a177c8d03f9e96e0adf246"), after, &[a_commit()], "ada", None, true);
+        let forced =
+            push(&repo, "refs/heads/main", Some("6113728f27ae82c7b1a177c8d03f9e96e0adf246"), after, &[a_commit()], "ada", None, true);
         assert_eq!(forced["forced"], true);
         assert_eq!(forced["compare"], format!("https://g1t.sh/acme/web/compare/6113728f27ae82c7b1a177c8d03f9e96e0adf246...{after}"));
         assert_eq!(forced["head_commit"]["id"], after);
@@ -1174,10 +1181,23 @@ mod github_shapes {
         let data = json!({ "runId": "run_1", "pull": 2 });
         let pull = a_pull();
         let run = |pull: Option<&Pull>| {
-            workflow_run(&repo, &FollowedRun {
-                data: &data, workflow_id: None, attempt: None, created_at: None, started_at: None, updated_at: None,
-                actor: None, triggering_actor: None, title: None, head_commit: None, pull, base_sha: Some("b4se"),
-            })
+            workflow_run(
+                &repo,
+                &FollowedRun {
+                    data: &data,
+                    workflow_id: None,
+                    attempt: None,
+                    created_at: None,
+                    started_at: None,
+                    updated_at: None,
+                    actor: None,
+                    triggering_actor: None,
+                    title: None,
+                    head_commit: None,
+                    pull,
+                    base_sha: Some("b4se"),
+                },
+            )
         };
         let named = run(Some(&pull));
         let first = &named["pull_requests"][0];

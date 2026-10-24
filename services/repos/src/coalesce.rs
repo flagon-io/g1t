@@ -30,10 +30,7 @@ impl<K: Eq + Hash + Clone, V: Clone> Memo<K, V> {
     }
 
     pub fn get(&self, key: &K, now: u64) -> Option<V> {
-        self.entries
-            .get(key)
-            .filter(|(_, at)| now.saturating_sub(*at) < self.ttl_ms)
-            .map(|(value, _)| value.clone())
+        self.entries.get(key).filter(|(_, at)| now.saturating_sub(*at) < self.ttl_ms).map(|(value, _)| value.clone())
     }
 
     pub fn put(&mut self, key: K, value: V, now: u64) {

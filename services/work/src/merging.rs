@@ -88,7 +88,11 @@ pub(crate) fn keeping(kept: Option<(&str, Option<&str>, &str)>, divergence: &Div
     let pair = format!("{}..{}", divergence.head, divergence.base);
     match kept {
         Some((head, kept_base, kept_pair)) if head == divergence.head && kept_base == Some(merge_base) => {
-            if kept_pair == pair { Keeping::Current } else { Keeping::Confirm }
+            if kept_pair == pair {
+                Keeping::Current
+            } else {
+                Keeping::Confirm
+            }
         }
         _ => Keeping::Read,
     }
@@ -124,11 +128,7 @@ fn messages_for(
         (None, Some(fork)) => (fork.namespace.clone(), format!("{}/{}", fork.namespace, fork.name)),
         (None, None) => (repo.namespace.clone(), format!("{}/{}", repo.namespace, repo.name)),
     };
-    let branch = pull
-        .branch
-        .clone()
-        .or_else(|| pull.fork.as_ref().map(|copy| copy.name.clone()))
-        .unwrap_or_default();
+    let branch = pull.branch.clone().or_else(|| pull.fork.as_ref().map(|copy| copy.name.clone())).unwrap_or_default();
     let facts = MessageFacts {
         number: pull.number,
         title: &pull.title,
@@ -191,10 +191,7 @@ pub(crate) fn choose_method(
         ));
     }
     if requirements.linear_history && !method.is_linear() {
-        return Err(format!(
-            "{base} requires linear history, so a merge commit cannot land there. Merge by {} instead.",
-            labels(&offered)
-        ));
+        return Err(format!("{base} requires linear history, so a merge commit cannot land there. Merge by {} instead.", labels(&offered)));
     }
     if !requirements.allows_method(method) {
         return Err(format!(
@@ -403,11 +400,7 @@ impl Work {
                     .await?;
                 let commits = serde_json::to_string(&texts)?;
                 if commits.len() > MAX_KEPT_COMMITS {
-                    self.db
-                        .prepare("DELETE FROM pull_message_commits WHERE pull_id = ?")
-                        .bind(&[pull.id.as_str().into()])?
-                        .run()
-                        .await?;
+                    self.db.prepare("DELETE FROM pull_message_commits WHERE pull_id = ?").bind(&[pull.id.as_str().into()])?.run().await?;
                     return Ok(());
                 }
                 self.db
@@ -588,10 +581,7 @@ impl Work {
             ));
         };
         if self.branch_in_use(pull, &branch).await? {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                format!("Another open pull request still uses {branch}, so it stays."),
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, format!("Another open pull request still uses {branch}, so it stays.")));
         }
         let removed: Outcome<g1t_contracts::repos::Branch> = g1t_kit::call(
             &self.repos,
@@ -600,20 +590,10 @@ impl Work {
         )
         .await?;
         check!(removed);
-        self.db
-            .prepare("UPDATE pulls SET head_branch_deleted = 1 WHERE id = ?")
-            .bind(&[pull.id.as_str().into()])?
-            .run()
+        self.db.prepare("UPDATE pulls SET head_branch_deleted = 1 WHERE id = ?").bind(&[pull.id.as_str().into()])?.run().await?;
+        self.note(&pull.repo_id, pull.number, (&actor.id, &actor.username), &format!("deleted the `{branch}` branch")).await?;
+        self.publish("pull.head_branch_deleted", &pull.repo_id, actor, PullEvent { detail: Some(branch), ..Self::pull_event(pull) })
             .await?;
-        self.note(&pull.repo_id, pull.number, (&actor.id, &actor.username), &format!("deleted the `{branch}` branch"))
-            .await?;
-        self.publish(
-            "pull.head_branch_deleted",
-            &pull.repo_id,
-            actor,
-            PullEvent { detail: Some(branch), ..Self::pull_event(pull) },
-        )
-        .await?;
         Ok(Outcome::Ok(()))
     }
 
@@ -682,12 +662,8 @@ impl Work {
         let (Some((path, branch)), Some(head)) = (deletable_branch(&pull, &repo), pull.head_commit.clone()) else {
             return Ok(Outcome::fail(FailureCode::Invalid, "This pull request has no branch that can be restored."));
         };
-        let exists: Option<String> = g1t_kit::call(
-            &self.repos,
-            "head",
-            &HeadArgs { repo_id: pull.source_id().to_owned(), branch: branch.clone() },
-        )
-        .await?;
+        let exists: Option<String> =
+            g1t_kit::call(&self.repos, "head", &HeadArgs { repo_id: pull.source_id().to_owned(), branch: branch.clone() }).await?;
         if exists.is_some() {
             return Ok(Outcome::fail(FailureCode::Conflict, format!("{branch} exists already.")));
         }
@@ -698,20 +674,10 @@ impl Work {
         )
         .await?;
         check!(created);
-        self.db
-            .prepare("UPDATE pulls SET head_branch_deleted = 0 WHERE id = ?")
-            .bind(&[pull.id.as_str().into()])?
-            .run()
+        self.db.prepare("UPDATE pulls SET head_branch_deleted = 0 WHERE id = ?").bind(&[pull.id.as_str().into()])?.run().await?;
+        self.note(&pull.repo_id, pull.number, (&a.actor.id, &a.actor.username), &format!("restored the `{branch}` branch")).await?;
+        self.publish("pull.head_branch_restored", &pull.repo_id, &a.actor, PullEvent { detail: Some(branch), ..Self::pull_event(&pull) })
             .await?;
-        self.note(&pull.repo_id, pull.number, (&a.actor.id, &a.actor.username), &format!("restored the `{branch}` branch"))
-            .await?;
-        self.publish(
-            "pull.head_branch_restored",
-            &pull.repo_id,
-            &a.actor,
-            PullEvent { detail: Some(branch), ..Self::pull_event(&pull) },
-        )
-        .await?;
         Ok(match self.pull(&repo.id, pull.number).await? {
             Some(pull) => Outcome::Ok(pull),
             None => no_pull(),

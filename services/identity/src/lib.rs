@@ -19,6 +19,7 @@ mod email;
 mod emails;
 mod github;
 mod invites;
+mod job_tokens;
 mod members;
 mod oauth;
 mod onboarding;
@@ -28,7 +29,6 @@ mod privacy;
 mod profiles;
 mod purge_jobs;
 mod rename;
-mod job_tokens;
 mod run_credentials;
 mod security;
 mod shared_invites;
@@ -58,8 +58,7 @@ const PASSWORD_TOO_SHORT: &str = "Use a password of at least 10 characters.";
 
 /// A user as selected from the database; `verified` arrives as 0 or 1.
 /// What a username may be, as registration and GitHub sign-up say when one is refused.
-pub(crate) const USERNAME_RULES: &str =
-    "Usernames use letters of either case, digits and single hyphens, up to 39 characters, not starting or ending with a hyphen, and cannot be a reserved word.";
+pub(crate) const USERNAME_RULES: &str = "Usernames use letters of either case, digits and single hyphens, up to 39 characters, not starting or ending with a hyphen, and cannot be a reserved word.";
 
 #[derive(Deserialize)]
 struct Account {
@@ -118,13 +117,7 @@ struct KeyRow {
 
 impl From<KeyRow> for SshKey {
     fn from(row: KeyRow) -> Self {
-        SshKey {
-            id: row.id,
-            title: row.title,
-            fingerprint: row.fingerprint,
-            created_at: row.created_at,
-            last_used_at: row.last_used_at,
-        }
+        SshKey { id: row.id, title: row.title, fingerprint: row.fingerprint, created_at: row.created_at, last_used_at: row.last_used_at }
     }
 }
 
@@ -137,13 +130,7 @@ impl Identity {
     /// Runs a query that returns at most one user, for showing to others:
     /// without their workspaces.
     async fn find_public_user(&self, sql: &str, param: &str) -> Result<Viewer> {
-        Ok(self
-            .db
-            .prepare(sql)
-            .bind(&[JsValue::from(param)])?
-            .first::<Account>(None)
-            .await?
-            .map(User::from))
+        Ok(self.db.prepare(sql).bind(&[JsValue::from(param)])?.first::<Account>(None).await?.map(User::from))
     }
 
     /// Attaches the workspaces a user belongs to, so that any service can
@@ -163,11 +150,7 @@ impl Identity {
         // waits on this before its loaders start.
         let read = self
             .db
-            .batch(vec![
-                self.user_suspension_statement(&user.id)?,
-                self.memberships_statement(&user.id)?,
-                self.grants_statement(&user.id)?,
-            ])
+            .batch(vec![self.user_suspension_statement(&user.id)?, self.memberships_statement(&user.id)?, self.grants_statement(&user.id)?])
             .await?;
         let [suspension, memberships, grants] = read.as_slice() else {
             return Err(worker::Error::RustError("the account's batch came back short".into()));
@@ -224,11 +207,7 @@ impl Identity {
                     "DELETE FROM email_tokens WHERE user_id = ?1 AND kind = ?2
                        AND (?2 = 'reset' OR email_id IS ?3)",
                 )
-                .bind(&[
-                    owner.id.as_str().into(),
-                    kind.into(),
-                    owner.email_id.as_deref().map_or(JsValue::NULL, Into::into),
-                ])?
+                .bind(&[owner.id.as_str().into(), kind.into(), owner.email_id.as_deref().map_or(JsValue::NULL, Into::into)])?
                 .run()
                 .await?;
         }
@@ -237,7 +216,10 @@ impl Identity {
 
     async fn resend_verification(&self, a: UserArgs) -> Result<Outcome<bool>> {
         if !self.allow(throttle::CONFIRM_ACCOUNT, &a.user.id).await? {
-            return Ok(Outcome::fail(FailureCode::Conflict, "Too many confirmation emails this hour. Check your inbox, or try again later."));
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "Too many confirmation emails this hour. Check your inbox, or try again later.",
+            ));
         }
         self.resend_primary(&a.user).await
     }
@@ -246,10 +228,7 @@ impl Identity {
     /// ends the code sent with it (emails.rs).
     async fn verify_email(&self, a: EmailTokenArgs) -> Result<Outcome<g1t_contracts::accounts::EmailConfirmed>> {
         let Some(owner) = self.redeem_email_token(&a.token, "verify").await? else {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                "This confirmation link is not valid or has expired.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Invalid, "This confirmation link is not valid or has expired."));
         };
         self.confirm_address(&owner.id, owner.email_id.as_deref()).await
     }
@@ -284,11 +263,7 @@ impl Identity {
                      VALUES (?, ?, 'reset', {}, ?)",
                     sql_after(RESET_TTL_SECONDS)
                 ))
-                .bind(&[
-                    crypto::sha256_hex(&token).into(),
-                    target.user_id.as_str().into(),
-                    target.email_id.as_str().into(),
-                ])?
+                .bind(&[crypto::sha256_hex(&token).into(), target.user_id.as_str().into(), target.email_id.as_str().into()])?
                 .run()
                 .await?;
             email::send_password_reset(&self.env, &target.display, &target.username, &token).await?;
@@ -309,17 +284,11 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Invalid, PASSWORD_TOO_SHORT));
         }
         let Some(owner) = self.redeem_email_token(&a.token, "reset").await? else {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                "This reset link is not valid or has expired.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Invalid, "This reset link is not valid or has expired."));
         };
         self.db
             .prepare("UPDATE users SET password_hash = ? WHERE id = ?")
-            .bind(&[
-                crypto::hash_password(&a.password).into(),
-                owner.id.as_str().into(),
-            ])?
+            .bind(&[crypto::hash_password(&a.password).into(), owner.id.as_str().into()])?
             .run()
             .await?;
         // Following an emailed link also proves the address it went to
@@ -327,27 +296,15 @@ impl Identity {
         let _ = self.confirm_address(&owner.id, owner.email_id.as_deref()).await?;
         // Anyone signed in with the old password is signed out, and nobody
         // stays locked out by the wrong guesses before it.
-        self.db
-            .prepare("DELETE FROM sessions WHERE user_id = ?")
-            .bind(&[owner.id.as_str().into()])?
-            .run()
-            .await?;
+        self.db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(&[owner.id.as_str().into()])?.run().await?;
         self.clear(&throttle::key(throttle::PASSWORD_ACCOUNT, &owner.id)).await?;
         self.log_security(&owner.id, "password_changed", None, None).await;
         self.tell_primary_and_backup(&owner.id, &owner.username, "Your password was changed").await;
         let verified = self
-            .find_public_user(
-                "SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE id = ?",
-                &owner.id,
-            )
+            .find_public_user("SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE id = ?", &owner.id)
             .await?
             .is_some_and(|user| user.verified);
-        Ok(Outcome::Ok(User {
-            id: owner.id,
-            username: owner.username,
-            verified,
-            ..User::default()
-        }))
+        Ok(Outcome::Ok(User { id: owner.id, username: owner.username, verified, ..User::default() }))
     }
 
     /// The account a login names: a username, or any confirmed address.
@@ -373,12 +330,7 @@ impl Identity {
 
     /// Checks a password for a login, throttled (see throttle.rs). The
     /// refusal is one of two messages, the same for every account.
-    async fn checked_password(
-        &self,
-        login: &str,
-        password: &str,
-        client: Option<&str>,
-    ) -> Result<std::result::Result<User, &'static str>> {
+    async fn checked_password(&self, login: &str, password: &str, client: Option<&str>) -> Result<std::result::Result<User, &'static str>> {
         let row = self.password_row(login).await?;
         let subject = row.as_ref().map_or_else(|| login.trim().to_lowercase(), |row| row.id.clone());
         let (account_key, client_key) = Identity::password_keys(&subject, client);
@@ -389,12 +341,7 @@ impl Identity {
         match row.filter(|row| !row.password_hash.is_empty() && crypto::verify_password(password, &row.password_hash)) {
             Some(row) => {
                 self.clear(&account_key).await?;
-                Ok(Ok(User {
-                    id: row.id,
-                    username: row.username,
-                    verified: row.verified != 0,
-                    ..User::default()
-                }))
+                Ok(Ok(User { id: row.id, username: row.username, verified: row.verified != 0, ..User::default() }))
             }
             None => {
                 let owner = owner.as_ref().map(|(id, name)| (id.as_str(), name.as_str()));
@@ -428,9 +375,7 @@ impl Identity {
         if !claimable {
             return invalid(USERNAME_RULES);
         }
-        let well_formed_email = email
-            .split_once('@')
-            .is_some_and(|(local, domain)| !local.is_empty() && domain.contains('.'))
+        let well_formed_email = email.split_once('@').is_some_and(|(local, domain)| !local.is_empty() && domain.contains('.'))
             && !email.contains(char::is_whitespace);
         if !well_formed_email {
             return invalid("Enter a valid email address.");
@@ -458,20 +403,13 @@ impl Identity {
                  UNION ALL SELECT email FROM user_emails WHERE email = ? AND verified_at IS NOT NULL
                  UNION ALL SELECT slug FROM workspaces WHERE slug = ?",
             )
-            .bind(&[
-                username.as_str().into(),
-                email.as_str().into(),
-                username.as_str().into(),
-            ])?
+            .bind(&[username.as_str().into(), email.as_str().into(), username.as_str().into()])?
             .first::<serde_json::Value>(None)
             .await?;
         // A renamed workspace's old slug stays reserved for it a while, and
         // a deleted workspace's for good.
         if taken.is_some() || self.slug_held(&username).await? || self.slug_deleted(&username).await? {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                "That username or email is already registered.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, "That username or email is already registered."));
         }
         let password_hash = crypto::hash_password(&a.password);
         let user = match self
@@ -544,17 +482,10 @@ impl Identity {
                 "INSERT INTO sessions (id, user_id, expires_at, authenticated_at) VALUES (?, ?, {}, {SQL_NOW})",
                 sql_after(SESSION_TTL_SECONDS)
             ))
-            .bind(&[
-                crypto::sha256_hex(&session_token).into(),
-                user.id.as_str().into(),
-            ])?
+            .bind(&[crypto::sha256_hex(&session_token).into(), user.id.as_str().into()])?
             .run()
             .await?;
-        Ok(Outcome::Ok(SignedIn {
-            user,
-            session_token,
-            two_factor_challenge: None,
-        }))
+        Ok(Outcome::Ok(SignedIn { user, session_token, two_factor_challenge: None }))
     }
 
     async fn sign_out(&self, a: SessionArgs) -> Result<()> {
@@ -567,15 +498,15 @@ impl Identity {
         let session = crypto::sha256_hex(&a.session_token);
         let user = self
             .find_public_user(
-            &format!(
-                "SELECT users.id, users.username, users.display_username, users.email_verified_at IS NOT NULL AS verified,
+                &format!(
+                    "SELECT users.id, users.username, users.display_username, users.email_verified_at IS NOT NULL AS verified,
                    users.avatar
                  FROM sessions JOIN users ON users.id = sessions.user_id
                  WHERE sessions.id = ? AND sessions.expires_at > {SQL_NOW} AND users.deleted_at IS NULL"
-            ),
-            &session,
-        )
-        .await?;
+                ),
+                &session,
+            )
+            .await?;
         self.with_workspaces_via(user, sso::Via::Session(&session)).await
     }
 
@@ -844,10 +775,7 @@ impl Identity {
 
     async fn add_ssh_key(&self, a: AddSshKeyArgs) -> Result<Outcome<SshKey>> {
         let Some(key) = crypto::parse_ssh_key(&a.public_key) else {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                "That is not a valid OpenSSH public key.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Invalid, "That is not a valid OpenSSH public key."));
         };
         // Someone's SSH key, or a repository's deploy key (deploy_keys.rs).
         if self.key_in_use(&key.fingerprint).await? {
@@ -859,14 +787,9 @@ impl Identity {
             .find(|candidate| !candidate.is_empty())
             .unwrap_or_default()
             .to_owned();
-        let row = KeyRow {
-            id: new_id("key", now),
-            title,
-            fingerprint: key.fingerprint,
-            created_at: rfc3339(now),
-            last_used_at: None,
-        };
-        let inserted = self.db
+        let row = KeyRow { id: new_id("key", now), title, fingerprint: key.fingerprint, created_at: rfc3339(now), last_used_at: None };
+        let inserted = self
+            .db
             .prepare(
                 "INSERT INTO ssh_keys (id, user_id, title, public_key, fingerprint, created_at)
                  VALUES (?, ?, ?, ?, ?, ?)",

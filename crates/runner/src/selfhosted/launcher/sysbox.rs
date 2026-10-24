@@ -71,13 +71,22 @@ impl Backend for SysboxHost {
 
     fn availability(&self) -> Availability {
         let Ok(out) = docker().args(["info", "--format", "{{json .Runtimes}}"]).output() else {
-            return Availability::no("Docker is not installed.", "Install Docker Engine and Sysbox 0.7 or later (https://github.com/nestybox/sysbox), or QEMU with KVM for a VM.");
+            return Availability::no(
+                "Docker is not installed.",
+                "Install Docker Engine and Sysbox 0.7 or later (https://github.com/nestybox/sysbox), or QEMU with KVM for a VM.",
+            );
         };
         if !out.status.success() {
-            return Availability::no("Docker does not answer, or this user may not use it.", "Start Docker, and add this user to the docker group.");
+            return Availability::no(
+                "Docker does not answer, or this user may not use it.",
+                "Start Docker, and add this user to the docker group.",
+            );
         }
         if !has_sysbox(&String::from_utf8_lossy(&out.stdout)) {
-            return Availability::no("Docker has no Sysbox runtime.", "Install Sysbox 0.7 or later (https://github.com/nestybox/sysbox), or QEMU with KVM for a VM.");
+            return Availability::no(
+                "Docker has no Sysbox runtime.",
+                "Install Sysbox 0.7 or later (https://github.com/nestybox/sysbox), or QEMU with KVM for a VM.",
+            );
         }
         Availability::yes()
     }
@@ -212,7 +221,9 @@ mod tests {
 
     #[test]
     fn sysbox_is_found_among_the_runtimes() {
-        assert!(has_sysbox(r#"{"io.containerd.runc.v2":{"path":"runc"},"runc":{"path":"runc"},"sysbox-runc":{"path":"/usr/bin/sysbox-runc"}}"#));
+        assert!(has_sysbox(
+            r#"{"io.containerd.runc.v2":{"path":"runc"},"runc":{"path":"runc"},"sysbox-runc":{"path":"/usr/bin/sysbox-runc"}}"#
+        ));
         assert!(!has_sysbox(r#"{"runc":{"path":"runc"}}"#));
         assert!(!has_sysbox("not json"));
     }

@@ -14,10 +14,7 @@ pub enum Expanded {
 }
 
 fn builtin(name: &str) -> bool {
-    Cli::command()
-        .get_subcommands()
-        .any(|c| c.get_name() == name || c.get_all_aliases().any(|a| a == name))
-        || matches!(name, "help")
+    Cli::command().get_subcommands().any(|c| c.get_name() == name || c.get_all_aliases().any(|a| a == name)) || matches!(name, "help")
 }
 
 /// Splits `text` into words the way a shell would, quotes included.
@@ -84,12 +81,7 @@ pub fn substitute(expansion: &[String], args: &[String]) -> Vec<String> {
             word
         })
         .collect();
-    out.extend(
-        args.iter()
-            .zip(&used)
-            .filter(|(_, u)| !**u)
-            .map(|(a, _)| a.clone()),
-    );
+    out.extend(args.iter().zip(&used).filter(|(_, u)| !**u).map(|(a, _)| a.clone()));
     out
 }
 
@@ -125,10 +117,7 @@ pub fn run(command: AliasCommand) -> Result<()> {
     match command {
         AliasCommand::Set(args) => {
             if builtin(&args.name) {
-                return Err(Error::usage(format!(
-                    "`{}` is already a g1t command.",
-                    args.name
-                )));
+                return Err(Error::usage(format!("`{}` is already a g1t command.", args.name)));
             }
             if !args.expansion.starts_with('!') {
                 let words = split(&args.expansion)?;
@@ -142,17 +131,9 @@ pub fn run(command: AliasCommand) -> Result<()> {
                     }
                 }
             }
-            let replaced = config
-                .aliases
-                .insert(args.name.clone(), args.expansion.clone())
-                .is_some();
+            let replaced = config.aliases.insert(args.name.clone(), args.expansion.clone()).is_some();
             config.save()?;
-            eprintln!(
-                "✓ {} {} now runs `g1t {}`.",
-                if replaced { "Changed:" } else { "Added:" },
-                args.name,
-                args.expansion
-            );
+            eprintln!("✓ {} {} now runs `g1t {}`.", if replaced { "Changed:" } else { "Added:" }, args.name, args.expansion);
             Ok(())
         }
         AliasCommand::List => {
@@ -167,11 +148,7 @@ pub fn run(command: AliasCommand) -> Result<()> {
         }
         AliasCommand::Delete(args) => {
             if config.aliases.remove(&args.name).is_none() {
-                return Err(Error {
-                    kind: Kind::Failed,
-                    message: format!("No alias {}.", args.name),
-                    silent: false,
-                });
+                return Err(Error { kind: Kind::Failed, message: format!("No alias {}.", args.name), silent: false });
             }
             config.save()?;
             eprintln!("✓ Deleted the alias {}.", args.name);
@@ -191,14 +168,8 @@ mod tests {
     #[test]
     fn words_split_like_a_shell() {
         assert_eq!(split("pr checkout").unwrap(), v(&["pr", "checkout"]));
-        assert_eq!(
-            split(r#"work list --label "good first issue""#).unwrap(),
-            v(&["work", "list", "--label", "good first issue"])
-        );
-        assert_eq!(
-            split("api '/repos/{owner}/{name}'").unwrap(),
-            v(&["api", "/repos/{owner}/{name}"])
-        );
+        assert_eq!(split(r#"work list --label "good first issue""#).unwrap(), v(&["work", "list", "--label", "good first issue"]));
+        assert_eq!(split("api '/repos/{owner}/{name}'").unwrap(), v(&["api", "/repos/{owner}/{name}"]));
         assert_eq!(split(r"a\ b c").unwrap(), v(&["a b", "c"]));
         assert_eq!(split("x ''").unwrap(), v(&["x", ""]));
         assert!(split("'open").is_err());
@@ -206,15 +177,9 @@ mod tests {
 
     #[test]
     fn arguments_fill_their_places() {
+        assert_eq!(substitute(&v(&["pr", "checkout"]), &v(&["12"])), v(&["pr", "checkout", "12"]));
         assert_eq!(
-            substitute(&v(&["pr", "checkout"]), &v(&["12"])),
-            v(&["pr", "checkout", "12"])
-        );
-        assert_eq!(
-            substitute(
-                &v(&["work", "list", "--label", "$1"]),
-                &v(&["bug", "-L", "5"])
-            ),
+            substitute(&v(&["work", "list", "--label", "$1"]), &v(&["bug", "-L", "5"])),
             v(&["work", "list", "--label", "bug", "-L", "5"])
         );
     }

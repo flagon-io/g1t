@@ -216,11 +216,9 @@ impl Billing {
                 ),
                 "Everyone in the workspace at one price, never per person".to_owned(),
                 "Unlimited projects, previews and repositories".to_owned(),
-                "Checks, workflows, the merge queue, deployments, semantic search, and Security and quality on private repositories".to_owned(),
-                format!(
-                    "Usage past {} is charged the same way, up to your spend limit",
-                    dollars(p.plan_included_micros),
-                ),
+                "Checks, workflows, the merge queue, deployments, semantic search, and Security and quality on private repositories"
+                    .to_owned(),
+                format!("Usage past {} is charged the same way, up to your spend limit", dollars(p.plan_included_micros),),
             ],
             overage: format!(
                 "Runner minutes are a flat rate per machine ({}), each job rounded up to the minute. Everything else g1t runs is metered from the first unit at what it costs g1t plus {}%: deploy builds by the second ({} a build minute), {} per million app requests, {} per million CPU milliseconds, {} a month per custom domain, private storage past the free {} at {} per GB-month, and git operations past the free {} a month at {} per 1,000. Unused included usage does not roll over.",
@@ -243,16 +241,16 @@ impl Billing {
     pub(crate) async fn plan_cycle(&self, workspace: &str) -> Result<Option<(String, Option<String>)>> {
         // Both rows are read at once; the Deployments one counts only
         // without the plan's (and is asked about again only then).
-        let (plan, deployments) =
-            futures_util::future::try_join(self.subscription_row(workspace, Feature::Plan), self.subscription_row(workspace, Feature::Deployments))
-                .await?;
+        let (plan, deployments) = futures_util::future::try_join(
+            self.subscription_row(workspace, Feature::Plan),
+            self.subscription_row(workspace, Feature::Deployments),
+        )
+        .await?;
         let row = match self.current_from(workspace, Feature::Plan, plan).await? {
             Some(row) => Some(row),
             None => self.current_from(workspace, Feature::Deployments, deployments).await?,
         };
-        Ok(row
-            .filter(|row| status_from(&row.status).on())
-            .map(|row| (row.started_at, row.period_end)))
+        Ok(row.filter(|row| status_from(&row.status).on()).map(|row| (row.started_at, row.period_end)))
     }
 
     pub(crate) async fn subscription_row(&self, workspace: &str, feature: Feature) -> Result<Option<SubscriptionRow>> {
@@ -432,7 +430,9 @@ impl Billing {
                 }
                 Err(error) if is_missing(&error) => {
                     self.db
-                        .prepare("UPDATE subscriptions SET status = 'canceled', updated_at = ? WHERE workspace = ? AND feature = 'deployments'")
+                        .prepare(
+                            "UPDATE subscriptions SET status = 'canceled', updated_at = ? WHERE workspace = ? AND feature = 'deployments'",
+                        )
                         .bind(&[rfc3339(now_ms()).into(), plan.workspace.as_str().into()])?
                         .run()
                         .await?;
@@ -484,7 +484,9 @@ impl Billing {
                 }
                 Err(error) if is_missing(&error) => {
                     self.db
-                        .prepare("UPDATE subscriptions SET status = 'canceled', updated_at = ? WHERE workspace = ? AND feature = 'security'")
+                        .prepare(
+                            "UPDATE subscriptions SET status = 'canceled', updated_at = ? WHERE workspace = ? AND feature = 'security'",
+                        )
                         .bind(&[rfc3339(now_ms()).into(), activation.workspace.as_str().into()])?
                         .run()
                         .await?;
@@ -527,33 +529,26 @@ impl Billing {
     pub(crate) async fn subscribe(&self, a: SubscribeArgs) -> Result<Outcome<Checkout>> {
         let workspace = a.workspace.to_lowercase();
         if !a.actor.manages_billing(&workspace) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only an owner or a billing manager can turn on a paid feature.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner or a billing manager can turn on a paid feature."));
         }
         let Some(stripe) = &self.stripe else {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                "Payments are not set up on this g1t, so the plan is already on.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, "Payments are not set up on this g1t, so the plan is already on."));
         };
         // Deployments and Security and quality come with the plan: there is
         // nothing of their own to start.
         if a.feature == Feature::Security {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
-                format!("Security and quality comes with the g1t plan, with no price of its own. Start the plan at /{workspace}/-/settings/billing."),
+                format!(
+                    "Security and quality comes with the g1t plan, with no price of its own. Start the plan at /{workspace}/-/settings/billing."
+                ),
             ));
         }
         let feature = Feature::Plan;
         let name = if feature == Feature::Security { "The Security and quality activation" } else { "The g1t plan" };
         let state = self.state(&workspace, feature).await?;
         if state.included {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                format!("{name} is included for {workspace} already, at no charge."),
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, format!("{name} is included for {workspace} already, at no charge.")));
         }
         if self.plan_on(&workspace, feature).await? {
             return Ok(Outcome::fail(FailureCode::Conflict, format!("{name} is already on for {workspace}.")));
@@ -583,10 +578,7 @@ impl Billing {
             (None, _) => None,
         };
         if let (Some(customer), Some(method)) = (customer.as_deref(), saved) {
-            match stripe
-                .subscribe_with_card(&workspace, feature.as_str(), &plan.title, plan.monthly_cents, customer, &method)
-                .await
-            {
+            match stripe.subscribe_with_card(&workspace, feature.as_str(), &plan.title, plan.monthly_cents, customer, &method).await {
                 Ok(subscription) if matches!(subscription.status.as_str(), "active" | "trialing") => {
                     self.record(&workspace, feature, &subscription, &a.actor.username).await?;
                     let account = self.account_of(&workspace).await?;
@@ -620,14 +612,7 @@ impl Billing {
             let return_url = &a.return_url;
             async move {
                 stripe
-                    .start_subscription(
-                        workspace,
-                        feature.as_str(),
-                        &plan.title,
-                        plan.monthly_cents,
-                        customer.as_deref(),
-                        return_url,
-                    )
+                    .start_subscription(workspace, feature.as_str(), &plan.title, plan.monthly_cents, customer.as_deref(), return_url)
                     .await
             }
         };
@@ -661,15 +646,15 @@ impl Billing {
             .await
         {
             worker::console_error!("{workspace}: the plan's page could not be recorded: {error}");
-            return Ok(Outcome::fail(FailureCode::Conflict, "g1t could not keep track of the payment page. Nothing was charged; try again."));
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "g1t could not keep track of the payment page. Nothing was charged; try again.",
+            ));
         }
         Ok(Outcome::Ok(Checkout { url }))
     }
 
-    pub(crate) async fn confirm_subscription(
-        &self,
-        a: ConfirmSubscriptionArgs,
-    ) -> Result<Outcome<FeatureState>> {
+    pub(crate) async fn confirm_subscription(&self, a: ConfirmSubscriptionArgs) -> Result<Outcome<FeatureState>> {
         let workspace = a.workspace.to_lowercase();
         if !a.viewer.is_some_and(|viewer| viewer.is_member(&workspace)) {
             return Ok(members_only());
@@ -698,16 +683,10 @@ impl Billing {
         Ok(Outcome::Ok(self.state(&workspace, feature).await?))
     }
 
-    pub(crate) async fn cancel_subscription(
-        &self,
-        a: CancelSubscriptionArgs,
-    ) -> Result<Outcome<FeatureState>> {
+    pub(crate) async fn cancel_subscription(&self, a: CancelSubscriptionArgs) -> Result<Outcome<FeatureState>> {
         let workspace = a.workspace.to_lowercase();
         if !a.actor.manages_billing(&workspace) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only an owner or a billing manager can change the workspace's plan.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner or a billing manager can change the workspace's plan."));
         }
         // The activation; or the plan, or a Deployments subscription from
         // before it.
@@ -727,8 +706,7 @@ impl Billing {
             Ok(subscription) => subscription,
             Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error))),
         };
-        self.record(&workspace, feature, &subscription, &row.started_by)
-            .await?;
+        self.record(&workspace, feature, &subscription, &row.started_by).await?;
         let shown = if feature == Feature::Security { Feature::Security } else { Feature::Plan };
         Ok(Outcome::Ok(self.state(&workspace, shown).await?))
     }
@@ -802,18 +780,19 @@ impl Billing {
         description.push_str(&drawn.note());
         // The ledger's unique reference decides between duplicate
         // deliveries: the one that loses gives back what it drew.
-        let posted = self.post_usage(crate::storage::UsageLine {
-            workspace: &workspace,
-            charged: charge - drawn.total(),
-            description: &description,
-            repo: a.repo.as_deref(),
-            task: a.feature.as_str(),
-            cost: cost_micros,
-            reference: &a.reference,
-            created_at: &timestamp,
-            drawn,
-        })
-        .await;
+        let posted = self
+            .post_usage(crate::storage::UsageLine {
+                workspace: &workspace,
+                charged: charge - drawn.total(),
+                description: &description,
+                repo: a.repo.as_deref(),
+                task: a.feature.as_str(),
+                cost: cost_micros,
+                reference: &a.reference,
+                created_at: &timestamp,
+                drawn,
+            })
+            .await;
         if !posted? {
             return Ok(Outcome::Ok(false));
         }

@@ -67,13 +67,7 @@ impl Identity {
     /// A refusal if the person already owns a free workspace, for
     /// `create_workspace`.
     pub(crate) async fn second_free_workspace<T>(&self, user_id: &str) -> Result<Option<Outcome<T>>> {
-        let owned: Vec<String> = self
-            .memberships(user_id)
-            .await?
-            .into_iter()
-            .filter(|m| m.role == Role::Owner)
-            .map(|m| m.slug)
-            .collect();
+        let owned: Vec<String> = self.memberships(user_id).await?.into_iter().filter(|m| m.role == Role::Owner).map(|m| m.slug).collect();
         Ok(match self.free_of(owned).await {
             Ok(free) => second_free_refusal(&free).map(|why| Outcome::fail(FailureCode::PaymentRequired, why)),
             Err(error) => {

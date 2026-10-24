@@ -92,9 +92,8 @@ pub fn folder(given: Option<&str>) -> PathBuf {
     if let Some(dir) = std::env::var_os("G1T_RUNNER_DIR").filter(|d| !d.is_empty()) {
         return PathBuf::from(dir);
     }
-    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."));
+    let home =
+        std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
     home.join(".g1t-runner")
 }
 

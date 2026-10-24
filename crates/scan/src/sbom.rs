@@ -49,9 +49,8 @@ fn license_field(license: Option<&str>) -> String {
     // Ids joined by AND, OR and WITH: every other word an operator.
     let words: Vec<&str> = license.split(|c: char| c.is_whitespace() || c == '(' || c == ')').filter(|w| !w.is_empty()).collect();
     let id = |word: &str| word.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '+' | ':'));
-    let valid = words.iter().enumerate().all(|(at, word)| {
-        if at % 2 == 1 { matches!(*word, "AND" | "OR" | "WITH") } else { id(word) }
-    }) && words.len() % 2 == 1;
+    let valid = words.iter().enumerate().all(|(at, word)| if at % 2 == 1 { matches!(*word, "AND" | "OR" | "WITH") } else { id(word) })
+        && words.len() % 2 == 1;
     if valid { license.to_owned() } else { "NOASSERTION".to_owned() }
 }
 
@@ -84,7 +83,10 @@ pub fn spdx(subject: &Subject, dependencies: &[Dependency]) -> Value {
         if !seen.insert(purl.clone()) {
             continue;
         }
-        let id = format!("SPDXRef-Package-{}", spdx_id(&format!("{}-{}-{}", crate::graph::purl_type(dep.package.ecosystem), dep.package.name, dep.package.version)));
+        let id = format!(
+            "SPDXRef-Package-{}",
+            spdx_id(&format!("{}-{}-{}", crate::graph::purl_type(dep.package.ecosystem), dep.package.name, dep.package.version))
+        );
         packages.push(json!({
             "SPDXID": id,
             "name": dep.package.name,
@@ -149,12 +151,15 @@ mod tests {
             unique: "0f2c9d1e",
             created: "2026-10-07T12:00:00Z",
         };
-        spdx(&subject, &[
-            dep(Ecosystem::Npm, "@babel/core", "7.0.0", true, Some("MIT")),
-            dep(Ecosystem::Npm, "lodash", "4.17.21", false, Some("MIT")),
-            dep(Ecosystem::Npm, "lodash", "4.17.21", false, Some("MIT")),
-            dep(Ecosystem::Cargo, "serde", "1.0.0", false, Some("see LICENSE file")),
-        ])
+        spdx(
+            &subject,
+            &[
+                dep(Ecosystem::Npm, "@babel/core", "7.0.0", true, Some("MIT")),
+                dep(Ecosystem::Npm, "lodash", "4.17.21", false, Some("MIT")),
+                dep(Ecosystem::Npm, "lodash", "4.17.21", false, Some("MIT")),
+                dep(Ecosystem::Cargo, "serde", "1.0.0", false, Some("see LICENSE file")),
+            ],
+        )
     }
 
     #[test]
@@ -198,10 +203,16 @@ mod tests {
         let serde = packages.iter().find(|package| package["name"] == "serde").unwrap();
         assert_eq!(serde["licenseDeclared"], "NOASSERTION");
         let relationships = doc["relationships"].as_array().unwrap();
-        assert!(relationships.iter().any(|r| r["relationshipType"] == "DEV_DEPENDENCY_OF"
-            && r["spdxElementId"] == "SPDXRef-Package-npm-babel-core-7.0.0"));
-        assert!(relationships.iter().any(|r| r["relationshipType"] == "DEPENDS_ON"
-            && r["relatedSpdxElement"] == "SPDXRef-Package-npm-lodash-4.17.21"));
+        assert!(
+            relationships
+                .iter()
+                .any(|r| r["relationshipType"] == "DEV_DEPENDENCY_OF" && r["spdxElementId"] == "SPDXRef-Package-npm-babel-core-7.0.0")
+        );
+        assert!(
+            relationships
+                .iter()
+                .any(|r| r["relationshipType"] == "DEPENDS_ON" && r["relatedSpdxElement"] == "SPDXRef-Package-npm-lodash-4.17.21")
+        );
         assert_eq!(relationships.len(), 4);
     }
 }

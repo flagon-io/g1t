@@ -238,11 +238,7 @@ pub(crate) fn month_of(timestamp: &str) -> String {
 pub(crate) fn next_month_start(month: &str) -> String {
     let year: i32 = month[..4].parse().unwrap_or(1970);
     let number: u32 = month[5..7].parse().unwrap_or(1);
-    if number == 12 {
-        format!("{}-01-01T00:00:00Z", year + 1)
-    } else {
-        format!("{year}-{:02}-01T00:00:00Z", number + 1)
-    }
+    if number == 12 { format!("{}-01-01T00:00:00Z", year + 1) } else { format!("{year}-{:02}-01T00:00:00Z", number + 1) }
 }
 
 /// The last second of `month`, for a charge that belongs to a month that
@@ -553,12 +549,8 @@ impl Billing {
     /// be open.
     pub(crate) async fn is_public(&self, repo: &str) -> bool {
         let Some(repos) = &self.repos else { return false };
-        let found: Result<Vec<g1t_contracts::repos::RepoVisibility>> = g1t_kit::call(
-            repos,
-            "visibility",
-            &g1t_contracts::repos::VisibilityArgs { paths: vec![repo.to_owned()] },
-        )
-        .await;
+        let found: Result<Vec<g1t_contracts::repos::RepoVisibility>> =
+            g1t_kit::call(repos, "visibility", &g1t_contracts::repos::VisibilityArgs { paths: vec![repo.to_owned()] }).await;
         match found {
             Ok(list) => list.iter().any(|v| v.path.eq_ignore_ascii_case(repo) && !v.is_private),
             Err(error) => {
@@ -622,9 +614,11 @@ mod tests {
     use futures_util::FutureExt;
 
     fn split(gross: i64, available: &[i64]) -> Vec<i64> {
-        let drawn = draw_in_order(gross, |source, want| {
-            std::future::ready(Ok(want.min(available.get(source).copied().unwrap_or(0).max(0))))
-        }).now_or_never().unwrap().unwrap();
+        let drawn =
+            draw_in_order(gross, |source, want| std::future::ready(Ok(want.min(available.get(source).copied().unwrap_or(0).max(0)))))
+                .now_or_never()
+                .unwrap()
+                .unwrap();
         [drawn.credit, drawn.trial, drawn.oss][..available.len()].to_vec()
     }
 
@@ -636,7 +630,10 @@ mod tests {
             // Another charge has already taken the included balance that
             // an earlier read would have said could pay for all of this.
             std::future::ready(Ok(if source == 0 { 0 } else { want }))
-        }).now_or_never().unwrap().unwrap();
+        })
+        .now_or_never()
+        .unwrap()
+        .unwrap();
         assert_eq!(requested, [(0, 500_000), (1, 500_000)]);
         assert_eq!(drawn.credit, 0);
         assert_eq!(drawn.trial, 500_000);
@@ -647,7 +644,10 @@ mod tests {
     fn a_failed_source_returns_the_actual_prior_draw_for_compensation() {
         let failed = draw_in_order(500_000, |source, _| {
             std::future::ready(if source == 0 { Ok(200_000) } else { Err(worker::Error::RustError("unavailable".into())) })
-        }).now_or_never().unwrap().unwrap_err();
+        })
+        .now_or_never()
+        .unwrap()
+        .unwrap_err();
         assert_eq!(failed.1.credit, 200_000);
         assert_eq!(failed.1.trial, 0);
         assert_eq!(failed.1.total(), 200_000);

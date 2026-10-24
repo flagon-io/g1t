@@ -88,18 +88,40 @@ impl ChecksOp {
 
     pub fn description(self) -> &'static str {
         match self {
-            ChecksOp::CreateCommitStatus => "Set a status on a commit: state (pending, success, failure or error), context (what reports it, such as ci/build; default by default), description (at most 140 characters) and target_url (where to see more). A context has one status per commit: setting it again replaces it. A status is a check: a required check or a ruleset's required status check of its context is met by it. Needs the Write role; publishes status.created.",
-            ChecksOp::ListCommitStatuses => "List the statuses on a commit, named by its SHA, a branch or a tag: one per context, newest first. Check runs are listed by list_check_runs_for_ref instead.",
-            ChecksOp::GetCombinedStatus => "A commit's statuses, one per context, and the state they add up to: failure if any failed or errored, pending if any is pending or there are none, success otherwise. Named by its SHA, a branch or a tag.",
-            ChecksOp::CreateCheckRun => "Report a check run on a commit: name and head_sha are required; status (queued, in_progress or completed; queued by default), conclusion (success, failure, neutral, cancelled, skipped, timed_out or action_required; it makes the run completed), started_at and completed_at (RFC 3339; filled in when left out), details_url (your page for it), external_id (your id for it), output (title, summary and text in Markdown, and up to 50 annotations: path, start_line, end_line, start_column, end_column, annotation_level notice, warning or failure, message, title, raw_details) and actions (up to 3 buttons: label, description, identifier). app names who reports it, by default your token's name. Runs are grouped per reporter and commit into a check suite. A check run is a check: a required check of its name is met by it, a cancelled one failing. Needs the Write role; publishes check_run.created, and check_run.completed when it is created completed.",
-            ChecksOp::UpdateCheckRun => "Change a check run reported through the API, by id (cr_…). Fields left out stay as they are; output annotations are added to the ones it has (at most 1000 in all); actions, when given, replace its buttons. Giving a conclusion completes it. Publishes check_run.completed when it completes. A g1t Actions job's check run is its workflow's and cannot be changed.",
-            ChecksOp::GetCheckRun => "Get a check run by id: cr_… for one reported through the API, or a g1t Actions job's id (job_…), whose workflow run is its suite and whose workflow says its name, run and event in workflow.",
-            ChecksOp::ListCheckRunAnnotations => "List a check run's annotations in the order they were reported: path, start_line, end_line, start_column, end_column, annotation_level (notice, warning or failure), message, title and raw_details.",
-            ChecksOp::RerequestCheckRun => "Ask for a check run to run again. For one reported through the API, its reporter is sent check_run.rerequested; for a g1t Actions job, its workflow run runs again (which also needs workflows:write). Needs the Write role.",
-            ChecksOp::ListCheckRunsForRef => "List a commit's check runs, named by its SHA, a branch or a tag: those reported through the API and each job of its g1t Actions workflow runs. filter latest (the default) gives each name's latest run and each workflow's latest run per event; all gives every one. Narrow with check_name, status and app (a reporter's slug; actions for g1t Actions).",
-            ChecksOp::ListCheckSuitesForRef => "List a commit's check suites, named by its SHA, a branch or a tag: one per reporter that reported check runs on it through the API, and one per g1t Actions workflow run, with its status and conclusion worked out from its latest check runs. Narrow with app and check_name.",
+            ChecksOp::CreateCommitStatus => {
+                "Set a status on a commit: state (pending, success, failure or error), context (what reports it, such as ci/build; default by default), description (at most 140 characters) and target_url (where to see more). A context has one status per commit: setting it again replaces it. A status is a check: a required check or a ruleset's required status check of its context is met by it. Needs the Write role; publishes status.created."
+            }
+            ChecksOp::ListCommitStatuses => {
+                "List the statuses on a commit, named by its SHA, a branch or a tag: one per context, newest first. Check runs are listed by list_check_runs_for_ref instead."
+            }
+            ChecksOp::GetCombinedStatus => {
+                "A commit's statuses, one per context, and the state they add up to: failure if any failed or errored, pending if any is pending or there are none, success otherwise. Named by its SHA, a branch or a tag."
+            }
+            ChecksOp::CreateCheckRun => {
+                "Report a check run on a commit: name and head_sha are required; status (queued, in_progress or completed; queued by default), conclusion (success, failure, neutral, cancelled, skipped, timed_out or action_required; it makes the run completed), started_at and completed_at (RFC 3339; filled in when left out), details_url (your page for it), external_id (your id for it), output (title, summary and text in Markdown, and up to 50 annotations: path, start_line, end_line, start_column, end_column, annotation_level notice, warning or failure, message, title, raw_details) and actions (up to 3 buttons: label, description, identifier). app names who reports it, by default your token's name. Runs are grouped per reporter and commit into a check suite. A check run is a check: a required check of its name is met by it, a cancelled one failing. Needs the Write role; publishes check_run.created, and check_run.completed when it is created completed."
+            }
+            ChecksOp::UpdateCheckRun => {
+                "Change a check run reported through the API, by id (cr_…). Fields left out stay as they are; output annotations are added to the ones it has (at most 1000 in all); actions, when given, replace its buttons. Giving a conclusion completes it. Publishes check_run.completed when it completes. A g1t Actions job's check run is its workflow's and cannot be changed."
+            }
+            ChecksOp::GetCheckRun => {
+                "Get a check run by id: cr_… for one reported through the API, or a g1t Actions job's id (job_…), whose workflow run is its suite and whose workflow says its name, run and event in workflow."
+            }
+            ChecksOp::ListCheckRunAnnotations => {
+                "List a check run's annotations in the order they were reported: path, start_line, end_line, start_column, end_column, annotation_level (notice, warning or failure), message, title and raw_details."
+            }
+            ChecksOp::RerequestCheckRun => {
+                "Ask for a check run to run again. For one reported through the API, its reporter is sent check_run.rerequested; for a g1t Actions job, its workflow run runs again (which also needs workflows:write). Needs the Write role."
+            }
+            ChecksOp::ListCheckRunsForRef => {
+                "List a commit's check runs, named by its SHA, a branch or a tag: those reported through the API and each job of its g1t Actions workflow runs. filter latest (the default) gives each name's latest run and each workflow's latest run per event; all gives every one. Narrow with check_name, status and app (a reporter's slug; actions for g1t Actions)."
+            }
+            ChecksOp::ListCheckSuitesForRef => {
+                "List a commit's check suites, named by its SHA, a branch or a tag: one per reporter that reported check runs on it through the API, and one per g1t Actions workflow run, with its status and conclusion worked out from its latest check runs. Narrow with app and check_name."
+            }
             ChecksOp::GetCheckSuite => "Get a check suite by id: cs_… for a reporter's, or a g1t Actions workflow run's id (run_…).",
-            ChecksOp::RerequestCheckSuite => "Ask for a check suite to run again: its reporter is sent check_suite.rerequested, or a g1t Actions workflow run runs again (which also needs workflows:write). Needs the Write role.",
+            ChecksOp::RerequestCheckSuite => {
+                "Ask for a check suite to run again: its reporter is sent check_suite.rerequested, or a g1t Actions workflow run runs again (which also needs workflows:write). Needs the Write role."
+            }
         }
     }
 
@@ -121,13 +143,16 @@ impl ChecksOp {
         let run_id = || json!({ "type": "string", "description": "The check run's id: cr_…, or a g1t Actions job's job_…" });
         let suite_id = || json!({ "type": "string", "description": "The check suite's id: cs_…, or a g1t Actions run's run_…" });
         let run_fields = |mut properties: Value, creating: bool| {
-            properties["name"] = json!({ "type": "string", "description": "The check's name, at most 100 characters, such as lint or coverage." });
+            properties["name"] =
+                json!({ "type": "string", "description": "The check's name, at most 100 characters, such as lint or coverage." });
             if creating {
                 properties["head_sha"] = json!({ "type": "string", "description": "The commit's full SHA (or a branch or tag, read as the commit it points to now)." });
                 properties["app"] = json!({ "type": "string", "description": "Who reports it, shown with it and grouping its check suite: by default your token's name." });
             }
-            properties["status"] = json!({ "type": "string", "enum": STATUSES, "description": "Where it is: queued, in_progress or completed." });
-            properties["conclusion"] = json!({ "type": "string", "enum": CONCLUSIONS, "description": "How it came out; giving one completes it." });
+            properties["status"] =
+                json!({ "type": "string", "enum": STATUSES, "description": "Where it is: queued, in_progress or completed." });
+            properties["conclusion"] =
+                json!({ "type": "string", "enum": CONCLUSIONS, "description": "How it came out; giving one completes it." });
             properties["started_at"] = json!({ "type": "string", "description": "When it started, RFC 3339." });
             properties["completed_at"] = json!({ "type": "string", "description": "When it completed, RFC 3339." });
             properties["details_url"] = json!({ "type": "string", "description": "Your page for it, http or https." });
@@ -315,7 +340,12 @@ pub async fn run(op: ChecksOp, services: &Services, viewer: &Viewer, input: &Val
             call::<_, g1t_contracts::work::CommitStatus>(services, "create_commit_status", &args).await
         }
         ChecksOp::ListCommitStatuses => {
-            call::<_, Vec<g1t_contracts::work::CommitStatus>>(services, "commit_statuses", &RefArgs { viewer: viewer.clone(), repo, git_ref: git_ref() }).await
+            call::<_, Vec<g1t_contracts::work::CommitStatus>>(
+                services,
+                "commit_statuses",
+                &RefArgs { viewer: viewer.clone(), repo, git_ref: git_ref() },
+            )
+            .await
         }
         ChecksOp::GetCombinedStatus => {
             call::<_, CombinedStatus>(services, "combined_status", &RefArgs { viewer: viewer.clone(), repo, git_ref: git_ref() }).await
@@ -332,11 +362,16 @@ pub async fn run(op: ChecksOp, services: &Services, viewer: &Viewer, input: &Val
                 call::<_, CommitCheckRun>(services, "update_check_run", &UpdateCheckRunArgs { actor: actor(), repo, id: id(), run }).await
             }
         }
-        ChecksOp::GetCheckRun => call::<_, CommitCheckRun>(services, "get_check_run", &CheckIdArgs { viewer: viewer.clone(), repo, id: id() }).await,
-        ChecksOp::ListCheckRunAnnotations => {
-            call::<_, Vec<CheckAnnotation>>(services, "check_run_annotations", &CheckIdArgs { viewer: viewer.clone(), repo, id: id() }).await
+        ChecksOp::GetCheckRun => {
+            call::<_, CommitCheckRun>(services, "get_check_run", &CheckIdArgs { viewer: viewer.clone(), repo, id: id() }).await
         }
-        ChecksOp::GetCheckSuite => call::<_, CommitCheckSuite>(services, "get_check_suite", &CheckIdArgs { viewer: viewer.clone(), repo, id: id() }).await,
+        ChecksOp::ListCheckRunAnnotations => {
+            call::<_, Vec<CheckAnnotation>>(services, "check_run_annotations", &CheckIdArgs { viewer: viewer.clone(), repo, id: id() })
+                .await
+        }
+        ChecksOp::GetCheckSuite => {
+            call::<_, CommitCheckSuite>(services, "get_check_suite", &CheckIdArgs { viewer: viewer.clone(), repo, id: id() }).await
+        }
         ChecksOp::RerequestCheckRun | ChecksOp::RerequestCheckSuite => {
             let method = if op == ChecksOp::RerequestCheckRun { "rerequest_check_run" } else { "rerequest_check_suite" };
             let done: Outcome<bool> = g1t_kit::call(&services.work, method, &RerequestArgs { actor: actor(), repo, id: id() }).await?;
@@ -358,7 +393,13 @@ pub async fn run(op: ChecksOp, services: &Services, viewer: &Viewer, input: &Val
             call::<_, CheckRunList>(services, "ref_check_runs", &args).await
         }
         ChecksOp::ListCheckSuitesForRef => {
-            let args = RefCheckSuitesArgs { viewer: viewer.clone(), repo, git_ref: git_ref(), app: text(input, "app"), check_name: text(input, "check_name") };
+            let args = RefCheckSuitesArgs {
+                viewer: viewer.clone(),
+                repo,
+                git_ref: git_ref(),
+                app: text(input, "app"),
+                check_name: text(input, "check_name"),
+            };
             call::<_, CheckSuiteList>(services, "ref_check_suites", &args).await
         }
     }
@@ -394,7 +435,8 @@ mod tests {
 
     #[test]
     fn pages_on_the_site_become_full_addresses() {
-        let value = json!({ "checkRuns": [{ "htmlUrl": "/acme/web/checks/cr_1", "detailsUrl": "https://ci.example.com/1", "name": "/x" }] });
+        let value =
+            json!({ "checkRuns": [{ "htmlUrl": "/acme/web/checks/cr_1", "detailsUrl": "https://ci.example.com/1", "name": "/x" }] });
         let out = absolute(value, "https://g1t.sh");
         assert_eq!(out["checkRuns"][0]["htmlUrl"], "https://g1t.sh/acme/web/checks/cr_1");
         assert_eq!(out["checkRuns"][0]["detailsUrl"], "https://ci.example.com/1");
@@ -407,7 +449,12 @@ mod tests {
             assert!(crate::operations::Op::ALL.contains(&crate::operations::Op::Checks(op)), "{}", op.name());
             assert!(!op.title().is_empty() && op.description().len() > 40, "{}", op.name());
             assert!(op.input()["required"].as_array().unwrap().contains(&json!("repo")), "{}", op.name());
-            assert_eq!(op.reads(), g1t_contracts::scopes::scope_for(op.name()).unwrap().level() == g1t_contracts::scopes::Level::Read, "{}", op.name());
+            assert_eq!(
+                op.reads(),
+                g1t_contracts::scopes::scope_for(op.name()).unwrap().level() == g1t_contracts::scopes::Level::Read,
+                "{}",
+                op.name()
+            );
         }
     }
 }

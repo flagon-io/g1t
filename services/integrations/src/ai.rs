@@ -22,7 +22,8 @@ use crate::{Integrations, Secrets, ask, ask_loop, ask_tools, auto, fail, http, h
 use g1t_secrets as crypto;
 
 /// The methods this module answers.
-pub const METHODS: &[&str] = &["ai_list", "ai_add", "ai_update", "ai_remove", "ai_test", "ask_settings", "set_ask_settings", "ask", "ai_brief"];
+pub const METHODS: &[&str] =
+    &["ai_list", "ai_add", "ai_update", "ai_remove", "ai_test", "ask_settings", "set_ask_settings", "ask", "ai_brief"];
 
 /// Answers one of [`METHODS`].
 pub async fn route(service: &Integrations, method: &str, body: Value) -> Result<Response> {
@@ -372,19 +373,13 @@ impl Integrations {
             .await?;
         let Some(id) = route.as_ref().and_then(|route| route.provider_id.clone()) else {
             return Ok((
-                AskSetup {
-                    problem: Some("No AI provider is chosen for Ask in this workspace yet.".to_owned()),
-                    ..AskSetup::default()
-                },
+                AskSetup { problem: Some("No AI provider is chosen for Ask in this workspace yet.".to_owned()), ..AskSetup::default() },
                 None,
             ));
         };
         let Some(row) = self.ai_row_in(workspace, &id).await? else {
             return Ok((
-                AskSetup {
-                    problem: Some("The AI provider chosen for Ask was removed. Choose another.".to_owned()),
-                    ..AskSetup::default()
-                },
+                AskSetup { problem: Some("The AI provider chosen for Ask was removed. Choose another.".to_owned()), ..AskSetup::default() },
                 None,
             ));
         };
@@ -488,12 +483,7 @@ impl Integrations {
         let Some(repo) = &page.repo else {
             return Ok(facts);
         };
-        let view = |number: u32| ViewArgs {
-            repo: repo.clone(),
-            number,
-            viewer: Some(actor.clone()),
-            after_seq: 0,
-        };
+        let view = |number: u32| ViewArgs { repo: repo.clone(), number, viewer: Some(actor.clone()), after_seq: 0 };
         if let Some(number) = page.pull {
             let found: Outcome<PullDetail> = g1t_kit::call(&self.work, "get_pull", &view(number)).await?;
             if let Outcome::Ok(detail) = found {
@@ -642,12 +632,7 @@ impl Integrations {
             return self.ask_refused(answering, &problem).await;
         }
         self.ai_note(&row.id, None).await?;
-        let meta = ask::line(&AskEvent::Meta {
-            provider,
-            provider_label: provider.label().to_owned(),
-            model,
-            auto: setup.auto,
-        });
+        let meta = ask::line(&AskEvent::Meta { provider, provider_label: provider.label().to_owned(), model, auto: setup.auto });
         answering.streaming(response.stream()?, meta);
         let lines = futures_util::stream::unfold(answering, |mut answering| async move {
             let line = answering.next().await?;
@@ -668,7 +653,8 @@ impl Integrations {
         let (Some(row), None) = (row, setup.problem) else {
             return Ok(Outcome::Ok(None));
         };
-        let model = if setup.auto { auto::choose(&auto_models(&row), row.config().model.as_deref(), auto::Need::Quick) } else { setup.model };
+        let model =
+            if setup.auto { auto::choose(&auto_models(&row), row.config().model.as_deref(), auto::Need::Quick) } else { setup.model };
         let Some(model) = model else {
             return Ok(Outcome::Ok(None));
         };
@@ -721,7 +707,6 @@ impl Integrations {
         }
         ask_refusal(problem)
     }
-
 }
 
 /// The route that holds the workspace's choice for Ask g1t.
@@ -793,11 +778,8 @@ mod tests {
         assert_eq!(endpoint.base_url.as_deref(), Some("https://llm.acme.dev/v1"));
         let mut plain = AiConfig { base_url: Some("http://llm.acme.dev".into()), ..AiConfig::default() };
         assert!(check_config(AiProvider::AnthropicEndpoint, &mut plain, key).is_err());
-        let mut header = AiConfig {
-            base_url: Some("https://llm.acme.dev".into()),
-            auth_header: Some("x-token".into()),
-            ..AiConfig::default()
-        };
+        let mut header =
+            AiConfig { base_url: Some("https://llm.acme.dev".into()), auth_header: Some("x-token".into()), ..AiConfig::default() };
         assert!(check_config(AiProvider::AnthropicEndpoint, &mut header, key).is_err());
         // Azure needs its resource and deployment as well as the key.
         let mut azure = AiConfig { base_url: Some("https://acme.openai.azure.com".into()), ..AiConfig::default() };
@@ -896,5 +878,4 @@ mod tests {
         assert!(auto_models(&azure).is_empty());
         assert_eq!(auto::choose(&auto_models(&azure), azure.config().model.as_deref(), auto::need(&simple)).as_deref(), Some("prod-gpt"));
     }
-
 }

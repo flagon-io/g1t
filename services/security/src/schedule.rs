@@ -158,7 +158,8 @@ pub fn cronjob(text: &str) -> Result<String, String> {
     }
     let lower = text.to_lowercase();
     let words: Vec<&str> = lower.split_whitespace().collect();
-    let unclear = || format!("`{text}` is neither a cron expression, such as `0 9 * * 1`, nor a schedule g1t reads, such as `every day at 5pm`.");
+    let unclear =
+        || format!("`{text}` is neither a cron expression, such as `0 9 * * 1`, nor a schedule g1t reads, such as `every day at 5pm`.");
     let Some(("every", rest)) = words.split_first().map(|(first, rest)| (*first, rest)) else {
         return Err(unclear());
     };

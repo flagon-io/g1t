@@ -33,16 +33,16 @@
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use g1t_contracts::actions::{
-    ARTIFACT_MAX_BYTES, Artifact, ArtifactBlob, ArtifactCommitArgs, ArtifactReservation, ArtifactReserveArgs, BlobArgs, BlobGrant, BlobPart,
-    BlobSignArgs, CACHE_MAX_ENTRY_BYTES, CACHE_PART_BYTES, CacheCommitArgs, CacheCommitted, CacheHit, CacheLookupArgs, CacheReservation,
-    CacheReserveArgs, CacheUploadArgs, JobArtifactsArgs,
+    ARTIFACT_MAX_BYTES, Artifact, ArtifactBlob, ArtifactCommitArgs, ArtifactReservation, ArtifactReserveArgs, BlobArgs, BlobGrant,
+    BlobPart, BlobSignArgs, CACHE_MAX_ENTRY_BYTES, CACHE_PART_BYTES, CacheCommitArgs, CacheCommitted, CacheHit, CacheLookupArgs,
+    CacheReservation, CacheReserveArgs, CacheUploadArgs, JobArtifactsArgs,
 };
 use g1t_contracts::{Failure, FailureCode, Outcome};
 use serde_json::{Map, Value, json};
 use worker::{Bucket, Env, Request, Response, Result, UploadedPart};
 
-use crate::run_artifacts::blob_url;
 use crate::operations::Services;
+use crate::run_artifacts::blob_url;
 
 /// The Twirp services, by name.
 pub const CACHE_SERVICE: &str = "github.actions.results.api.v1.CacheService";
@@ -271,7 +271,8 @@ fn field<'a>(body: &'a Value, name: &str) -> &'a Value {
     if !body[name].is_null() {
         return &body[name];
     }
-    let camel: String = name.split('_').enumerate().map(|(i, p)| if i == 0 { p.to_owned() } else { p[..1].to_uppercase() + &p[1..] }).collect();
+    let camel: String =
+        name.split('_').enumerate().map(|(i, p)| if i == 0 { p.to_owned() } else { p[..1].to_uppercase() + &p[1..] }).collect();
     &body[camel]
 }
 
@@ -322,7 +323,15 @@ pub fn upload_url(api: &str, blob: &str) -> String {
 
 /// Starts an R2 upload for an entry the service reserved, and the signed
 /// link the toolkit sends it to.
-async fn start_upload(bucket: &Bucket, services: &Services, job: &str, token: &str, kind: &str, id: &str, object: &str) -> Result<Outcome<String>> {
+async fn start_upload(
+    bucket: &Bucket,
+    services: &Services,
+    job: &str,
+    token: &str,
+    kind: &str,
+    id: &str,
+    object: &str,
+) -> Result<Outcome<String>> {
     let upload = bucket.create_multipart_upload(object).execute().await?;
     let upload = upload.upload_id().await;
     let signed: Outcome<String> = g1t_kit::call(
@@ -345,7 +354,8 @@ async fn start_blocks(bucket: &Bucket, services: &Services, token: &str, object:
     let started = bucket.create_multipart_upload(object).execute().await?;
     let mine = started.upload_id().await;
     let kept: Outcome<String> =
-        g1t_kit::call(&services.actions, "blob_start", &BlobArgs { blob: token.to_owned(), upload: mine.clone(), ..BlobArgs::default() }).await?;
+        g1t_kit::call(&services.actions, "blob_start", &BlobArgs { blob: token.to_owned(), upload: mine.clone(), ..BlobArgs::default() })
+            .await?;
     if !matches!(&kept, Outcome::Ok(kept) if *kept == mine) {
         let _ = started.abort().await;
     }
@@ -439,7 +449,10 @@ async fn twirp_inner(mut request: Request, env: &Env, services: &Services, servi
     }
     match (service, method) {
         (CACHE_SERVICE, "GetCacheEntryDownloadURL") => {
-            let restore: Vec<String> = field(&body, "restore_keys").as_array().map(|k| k.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).unwrap_or_default();
+            let restore: Vec<String> = field(&body, "restore_keys")
+                .as_array()
+                .map(|k| k.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect())
+                .unwrap_or_default();
             let args = CacheLookupArgs { job, token, key: text(&body, "key"), restore, version: Some(text(&body, "version")) };
             let found: Outcome<Option<CacheHit>> = g1t_kit::call(actions, "cache_lookup", &args).await?;
             match found {
@@ -451,7 +464,13 @@ async fn twirp_inner(mut request: Request, env: &Env, services: &Services, servi
             }
         }
         (CACHE_SERVICE, "CreateCacheEntry") => {
-            let args = CacheReserveArgs { job: job.clone(), token: token.clone(), key: text(&body, "key"), size: 0, version: Some(text(&body, "version")) };
+            let args = CacheReserveArgs {
+                job: job.clone(),
+                token: token.clone(),
+                key: text(&body, "key"),
+                size: 0,
+                version: Some(text(&body, "version")),
+            };
             let reserved: Outcome<CacheReservation> = g1t_kit::call(actions, "cache_reserve", &args).await?;
             let reserved = match reserved {
                 Outcome::Ok(reserved) => reserved,
@@ -479,7 +498,13 @@ async fn twirp_inner(mut request: Request, env: &Env, services: &Services, servi
             }
         }
         (CACHE_SERVICE, "FinalizeCacheEntryUpload") => {
-            let args = CacheUploadArgs { job: job.clone(), token: token.clone(), number: None, key: Some(text(&body, "key")), version: Some(text(&body, "version")) };
+            let args = CacheUploadArgs {
+                job: job.clone(),
+                token: token.clone(),
+                number: None,
+                key: Some(text(&body, "key")),
+                version: Some(text(&body, "version")),
+            };
             let pending: Outcome<CacheReservation> = g1t_kit::call(actions, "cache_upload", &args).await?;
             let pending = match pending {
                 Outcome::Ok(pending) => pending,
@@ -495,7 +520,13 @@ async fn twirp_inner(mut request: Request, env: &Env, services: &Services, servi
         }
         (ARTIFACT_SERVICE, "CreateArtifact") => {
             let expires_at = Some(text(&body, "expires_at")).filter(|e| !e.is_empty());
-            let args = ArtifactReserveArgs { job: job.clone(), token: token.clone(), name: text(&body, "name"), expires_at, ..ArtifactReserveArgs::default() };
+            let args = ArtifactReserveArgs {
+                job: job.clone(),
+                token: token.clone(),
+                name: text(&body, "name"),
+                expires_at,
+                ..ArtifactReserveArgs::default()
+            };
             let reserved: Outcome<ArtifactReservation> = g1t_kit::call(actions, "artifact_reserve", &args).await?;
             let reserved = match reserved {
                 Outcome::Ok(reserved) => reserved,
@@ -531,7 +562,9 @@ async fn twirp_inner(mut request: Request, env: &Env, services: &Services, servi
             let args = JobArtifactsArgs { job, token, run_id: None, name: Some(text(&body, "name")), id: None };
             let found: Outcome<ArtifactBlob> = g1t_kit::call(actions, "job_artifact", &args).await?;
             match found {
-                Outcome::Ok(found) if !found.blob.is_empty() => Response::from_json(&json!({ "signed_url": blob_url(&services.addresses.api, &found.blob) })),
+                Outcome::Ok(found) if !found.blob.is_empty() => {
+                    Response::from_json(&json!({ "signed_url": blob_url(&services.addresses.api, &found.blob) }))
+                }
                 Outcome::Ok(_) => twirp_error("failed_precondition", "Download links are not set up on this installation."),
                 Outcome::Fail(refused) => twirp_failure(&refused),
             }
@@ -661,7 +694,9 @@ pub fn lookup_answer(found: Outcome<Option<CacheHit>>, version: &str, api: &str)
         ),
         // No entry, or one without a download link (no ACTIONS_KEY): a miss.
         Outcome::Ok(_) => (204, None),
-        Outcome::Fail(refused) => (refused.code.http_status(), Some(json!({ "message": refused.message, "error": { "message": refused.message } }))),
+        Outcome::Fail(refused) => {
+            (refused.code.http_status(), Some(json!({ "message": refused.message, "error": { "message": refused.message } })))
+        }
     }
 }
 
@@ -691,7 +726,8 @@ async fn cache_v1_inner(mut request: Request, env: &Env, services: &Services, me
     let parts: Vec<&str> = rest.split('/').filter(|p| !p.is_empty()).collect();
     match (method, parts.as_slice()) {
         ("GET", ["cache"]) => {
-            let keys: Vec<String> = query(&request, "keys").unwrap_or_default().split(',').map(|k| k.trim().to_owned()).filter(|k| !k.is_empty()).collect();
+            let keys: Vec<String> =
+                query(&request, "keys").unwrap_or_default().split(',').map(|k| k.trim().to_owned()).filter(|k| !k.is_empty()).collect();
             let Some((key, restore)) = keys.split_first() else {
                 return plain_error(400, "Give keys.");
             };
@@ -736,7 +772,10 @@ async fn cache_v1_inner(mut request: Request, env: &Env, services: &Services, me
                 "PATCH" => {
                     let range = request.headers().get("content-range")?.unwrap_or_default();
                     let Some((part, length)) = chunk_part(&range) else {
-                        return plain_error(400, &format!("Send the entry in chunks of {} MB, each with its Content-Range.", CACHE_PART_BYTES / 1_048_576));
+                        return plain_error(
+                            400,
+                            &format!("Send the entry in chunks of {} MB, each with its Content-Range.", CACHE_PART_BYTES / 1_048_576),
+                        );
                     };
                     let Some(body) = request.inner().body() else { return plain_error(400, "The chunk is empty.") };
                     // An entry sent in one chunk (as sccache sends every
@@ -768,7 +807,8 @@ async fn cache_v1_inner(mut request: Request, env: &Env, services: &Services, me
                                 Ok(size) => size,
                                 Err(problem) => return plain_error(400, &format!("The entry could not be completed: {problem}")),
                             };
-                            let _: Outcome<bool> = g1t_kit::call(actions, "blob_done", &BlobArgs { blob, size, ..BlobArgs::default() }).await?;
+                            let _: Outcome<bool> =
+                                g1t_kit::call(actions, "blob_done", &BlobArgs { blob, size, ..BlobArgs::default() }).await?;
                             size
                         }
                     };
@@ -791,10 +831,7 @@ async fn finish(bucket: &Bucket, object: &str, upload_id: &str, parts: &[BlobPar
         return put_whole(bucket, object, upload_id, None).await.map_err(|e| e.to_string());
     }
     let upload = bucket.resume_multipart_upload(object, upload_id).map_err(|e| e.to_string())?;
-    let done = upload
-        .complete(parts.iter().map(|p| UploadedPart::new(p.part as u16, p.etag.clone())))
-        .await
-        .map_err(|e| e.to_string())?;
+    let done = upload.complete(parts.iter().map(|p| UploadedPart::new(p.part as u16, p.etag.clone()))).await.map_err(|e| e.to_string())?;
     Ok(done.size())
 }
 
@@ -874,7 +911,8 @@ pub async fn blob(request: Request, env: &Env, services: &Services, method: &str
 }
 
 async fn blob_inner(mut request: Request, env: &Env, services: &Services, method: &str, token: &str) -> Result<Response> {
-    let opened: Outcome<BlobGrant> = g1t_kit::call(&services.actions, "blob_open", &BlobArgs { blob: token.to_owned(), ..BlobArgs::default() }).await?;
+    let opened: Outcome<BlobGrant> =
+        g1t_kit::call(&services.actions, "blob_open", &BlobArgs { blob: token.to_owned(), ..BlobArgs::default() }).await?;
     let grant = match opened {
         Outcome::Ok(grant) => grant,
         Outcome::Fail(refused) => {
@@ -915,7 +953,9 @@ async fn blob_inner(mut request: Request, env: &Env, services: &Services, method
                 match byte_range(&asked, size) {
                     Some(Some((first, last))) => {
                         let length = last - first + 1;
-                        let Some(object) = bucket.get(&grant.object).range(worker::Range::OffsetWithLength { offset: first, length }).execute().await? else {
+                        let Some(object) =
+                            bucket.get(&grant.object).range(worker::Range::OffsetWithLength { offset: first, length }).execute().await?
+                        else {
                             return azure_error(404, "BlobNotFound", "It is gone.");
                         };
                         let Some(body) = object.body() else { return azure_error(404, "BlobNotFound", "It is gone.") };
@@ -954,12 +994,21 @@ async fn blob_inner(mut request: Request, env: &Env, services: &Services, method
                     let size = put_whole(&bucket, &grant.object, upload_id, body).await?;
                     if size > limit {
                         bucket.delete(&grant.object).await?;
-                        return azure_error(413, "RequestBodyTooLarge", &format!("It is {} MB, more than g1t keeps ({} MB).", size / 1_048_576, limit / 1_048_576));
+                        return azure_error(
+                            413,
+                            "RequestBodyTooLarge",
+                            &format!("It is {} MB, more than g1t keeps ({} MB).", size / 1_048_576, limit / 1_048_576),
+                        );
                     }
                     // A cache entry is measured in R2 when it is finalized;
                     // an artifact keeps its size now.
                     if grant.kind != "cache" {
-                        let _: Outcome<bool> = g1t_kit::call(&services.actions, "blob_done", &BlobArgs { blob: token.to_owned(), size, ..BlobArgs::default() }).await?;
+                        let _: Outcome<bool> = g1t_kit::call(
+                            &services.actions,
+                            "blob_done",
+                            &BlobArgs { blob: token.to_owned(), size, ..BlobArgs::default() },
+                        )
+                        .await?;
                     }
                     azure(201)
                 }
@@ -1002,8 +1051,17 @@ async fn blob_inner(mut request: Request, env: &Env, services: &Services, method
 }
 
 /// Finishes an upload from the blocks a list names.
-async fn complete_blob(bucket: &Bucket, services: &Services, token: &str, grant: &BlobGrant, upload_id: &str, ids: &[String], limit: u64) -> Result<Response> {
-    let recorded: Outcome<Vec<BlobPart>> = g1t_kit::call(&services.actions, "blob_parts", &BlobArgs { blob: token.to_owned(), ..BlobArgs::default() }).await?;
+async fn complete_blob(
+    bucket: &Bucket,
+    services: &Services,
+    token: &str,
+    grant: &BlobGrant,
+    upload_id: &str,
+    ids: &[String],
+    limit: u64,
+) -> Result<Response> {
+    let recorded: Outcome<Vec<BlobPart>> =
+        g1t_kit::call(&services.actions, "blob_parts", &BlobArgs { blob: token.to_owned(), ..BlobArgs::default() }).await?;
     let recorded = match recorded {
         Outcome::Ok(recorded) => recorded,
         Outcome::Fail(refused) => return azure_error(403, "AuthenticationFailed", &refused.message),
@@ -1018,9 +1076,14 @@ async fn complete_blob(bucket: &Bucket, services: &Services, token: &str, grant:
     };
     if size > limit {
         bucket.delete(&grant.object).await?;
-        return azure_error(413, "RequestBodyTooLarge", &format!("It is {} MB, more than g1t keeps ({} MB).", size / 1_048_576, limit / 1_048_576));
+        return azure_error(
+            413,
+            "RequestBodyTooLarge",
+            &format!("It is {} MB, more than g1t keeps ({} MB).", size / 1_048_576, limit / 1_048_576),
+        );
     }
-    let _: Outcome<bool> = g1t_kit::call(&services.actions, "blob_done", &BlobArgs { blob: token.to_owned(), size, ..BlobArgs::default() }).await?;
+    let _: Outcome<bool> =
+        g1t_kit::call(&services.actions, "blob_done", &BlobArgs { blob: token.to_owned(), size, ..BlobArgs::default() }).await?;
     azure(201)
 }
 
@@ -1055,10 +1118,7 @@ mod tests {
         let ids = block_list(&xml);
         assert_eq!(ids, [azure_block_id(0), azure_block_id(1)]);
         // Sent out of order, as they are concurrently.
-        let recorded = vec![
-            BlobPart { part: 2, etag: "b".into(), size: 3 },
-            BlobPart { part: 1, etag: "a".into(), size: 8 },
-        ];
+        let recorded = vec![BlobPart { part: 2, etag: "b".into(), size: 3 }, BlobPart { part: 1, etag: "a".into(), size: 8 }];
         let parts = parts_for(&ids, &recorded).unwrap();
         assert_eq!(parts.iter().map(|p| p.etag.as_str()).collect::<Vec<_>>(), ["a", "b"]);
         // A block never sent, or listed out of order.
@@ -1185,7 +1245,8 @@ mod tests {
 
         // The same three, as prost 0.14 encodes them with OpenDAL's
         // generated types (the `ghac` crate, 0.3.0), byte for byte.
-        let recorded = |hex: &str| -> Vec<u8> { (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap()).collect() };
+        let recorded =
+            |hex: &str| -> Vec<u8> { (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap()).collect() };
         let prefix = "1218736363616368652f662f632f622f66636230613164326533";
         let suffix = "0f736363616368652d76302e31382e30";
         assert_eq!(recorded(&format!("{prefix}1a{suffix}")), create);
@@ -1213,7 +1274,9 @@ mod tests {
         let found = proto::response("GetCacheEntryDownloadURL", &json!({ "ok": true, "signed_download_url": "u", "matched_key": "k" }));
         assert_eq!(found, [vec![0x08, 0x01], pb_text(2, "u"), pb_text(3, "k")].concat());
         // A miss is an empty message: ok false.
-        assert!(proto::response("GetCacheEntryDownloadURL", &json!({ "ok": false, "signed_download_url": "", "matched_key": "" })).is_empty());
+        assert!(
+            proto::response("GetCacheEntryDownloadURL", &json!({ "ok": false, "signed_download_url": "", "matched_key": "" })).is_empty()
+        );
     }
 
     /// The toolkit's requests, as `@actions/cache` 4 and `@actions/artifact`
@@ -1234,7 +1297,8 @@ mod tests {
             "version": 4
         });
         assert_eq!(text(&create_artifact, "workflow_job_run_backend_id"), "job_1");
-        let list = json!({ "workflow_run_backend_id": "run_1", "workflow_job_run_backend_id": "job_1", "id_filter": "42", "name_filter": "dist" });
+        let list =
+            json!({ "workflow_run_backend_id": "run_1", "workflow_job_run_backend_id": "job_1", "id_filter": "42", "name_filter": "dist" });
         assert_eq!(number(&list, "id_filter"), Some(42));
         assert_eq!(text(&list, "name_filter"), "dist");
         // A client writing JSON names instead reads the same.

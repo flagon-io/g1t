@@ -47,20 +47,12 @@ pub fn repo_path(prefix: &str, given: &str) -> Result<String> {
 pub fn run(ctx: &Ctx, args: WhyArgs) -> Result<()> {
     let (given, line) = split_target(&args.target);
     // From inside a working copy, a path is relative to where you are.
-    let prefix = if ctx.global.repo.is_none() {
-        crate::git::run(&["rev-parse", "--show-prefix"]).unwrap_or_default()
-    } else {
-        String::new()
-    };
+    let prefix =
+        if ctx.global.repo.is_none() { crate::git::run(&["rev-parse", "--show-prefix"]).unwrap_or_default() } else { String::new() };
     let path = repo_path(&prefix, &given)?;
     let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
-    let found = client
-        .op("why")
-        .repo(&repo)
-        .query("path", &path)
-        .query_opt("line", line)
-        .query_opt("ref", args.reference.clone())
-        .send()?;
+    let found =
+        client.op("why").repo(&repo).query("path", &path).query_opt("line", line).query_opt("ref", args.reference.clone()).send()?;
     if ctx.out.structured() {
         return ctx.out.emit(&found);
     }
@@ -79,17 +71,8 @@ pub fn run(ctx: &Ctx, args: WhyArgs) -> Result<()> {
             .or_else(|| commit["author"]["username"].as_str())
             .or_else(|| commit["author"].as_str())
             .unwrap_or("");
-        let when = commit["date"]
-            .as_str()
-            .or_else(|| commit["author"]["date"].as_str())
-            .map(ago)
-            .unwrap_or_default();
-        println!(
-            "  {} {} {}",
-            out.dim("Commit "),
-            out.yellow(sha.get(..12).unwrap_or(sha)),
-            message.lines().next().unwrap_or("")
-        );
+        let when = commit["date"].as_str().or_else(|| commit["author"]["date"].as_str()).map(ago).unwrap_or_default();
+        println!("  {} {} {}", out.dim("Commit "), out.yellow(sha.get(..12).unwrap_or(sha)), message.lines().next().unwrap_or(""));
         let by = [who.to_owned(), when].into_iter().filter(|p| !p.is_empty()).collect::<Vec<_>>().join(", ");
         if !by.is_empty() {
             println!("          {}", out.dim(&by));

@@ -181,7 +181,9 @@ impl<S: GitStore> Repos<S> {
             } else {
                 "SELECT COUNT(*) AS count FROM releases WHERE repo_id = ? AND draft = 0"
             };
-            Ok::<_, worker::Error>(self.db().prepare(sql).bind(&[repo.id.as_str().into()])?.first::<Row>(None).await?.map_or(0, |row| row.count as u64))
+            Ok::<_, worker::Error>(
+                self.db().prepare(sql).bind(&[repo.id.as_str().into()])?.first::<Row>(None).await?.map_or(0, |row| row.count as u64),
+            )
         };
         let latest = async {
             let Some(id) = latest_id(self.db(), &repo.id).await? else { return Ok::<_, worker::Error>(None) };
@@ -388,7 +390,8 @@ impl<S: GitStore> Repos<S> {
             .await?
             .results::<Row>()?;
         let ids: Vec<String> = rows.iter().map(|row| row.repo_id.clone()).collect();
-        let readable: HashMap<String, Repo> = self.registry.readable(&ids, &a.viewer).await?.into_iter().map(|repo| (repo.id.clone(), repo)).collect();
+        let readable: HashMap<String, Repo> =
+            self.registry.readable(&ids, &a.viewer).await?.into_iter().map(|repo| (repo.id.clone(), repo)).collect();
         Ok(rows
             .into_iter()
             .filter_map(|row| {
@@ -437,7 +440,11 @@ impl<S: GitStore> Repos<S> {
     }
 
     /// The repository, if the actor may make and change its releases.
-    async fn writable_for_releases(&self, path: &g1t_contracts::repos::RepoPath, actor: &User) -> Result<std::result::Result<Repo, Outcome<()>>> {
+    async fn writable_for_releases(
+        &self,
+        path: &g1t_contracts::repos::RepoPath,
+        actor: &User,
+    ) -> Result<std::result::Result<Repo, Outcome<()>>> {
         let viewer = Some(actor.clone());
         let Some(repo) = self.readable(path, &viewer).await? else {
             return Ok(Err(not_found()));
@@ -536,7 +543,8 @@ impl<S: GitStore> Repos<S> {
             ])?
             .run()
             .await?;
-        let made = self.release(ReleaseArgs { path: a.path, viewer: Some(a.actor.clone()), id: Some(id), tag: None, latest: false }).await?;
+        let made =
+            self.release(ReleaseArgs { path: a.path, viewer: Some(a.actor.clone()), id: Some(id), tag: None, latest: false }).await?;
         if let Outcome::Ok(release) = &made {
             self.publish_release(&repo, &a.actor, None, Some(release)).await;
         }
@@ -565,7 +573,9 @@ impl<S: GitStore> Repos<S> {
         // draft again keeps no date.
         let published_at = if draft { None } else { release.published_at.clone().or(Some(now.clone())) };
         self.db()
-            .prepare("UPDATE releases SET name = ?2, body = ?3, draft = ?4, prerelease = ?5, published_at = ?6, updated_at = ?7 WHERE id = ?1")
+            .prepare(
+                "UPDATE releases SET name = ?2, body = ?3, draft = ?4, prerelease = ?5, published_at = ?6, updated_at = ?7 WHERE id = ?1",
+            )
             .bind(&[
                 release.id.as_str().into(),
                 name.map_or(JsValue::NULL, |name| name.into()),
@@ -577,7 +587,9 @@ impl<S: GitStore> Repos<S> {
             ])?
             .run()
             .await?;
-        let changed = self.release(ReleaseArgs { path: a.path, viewer: Some(a.actor.clone()), id: Some(release.id.clone()), tag: None, latest: false }).await?;
+        let changed = self
+            .release(ReleaseArgs { path: a.path, viewer: Some(a.actor.clone()), id: Some(release.id.clone()), tag: None, latest: false })
+            .await?;
         if let Outcome::Ok(after) = &changed {
             self.publish_release(&repo, &a.actor, Some(&release), Some(after)).await;
         }

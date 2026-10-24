@@ -25,7 +25,6 @@ use sha2::{Digest, Sha256};
 use super::process::{self, Commands, Ended};
 use super::{Job, glob, zip};
 
-
 /// How often a long transfer says how far it has got.
 const PROGRESS_EVERY: Duration = Duration::from_secs(5);
 
@@ -61,14 +60,22 @@ impl Job {
         let mut command = Command::new("bash");
         command.args(["-c", script]).current_dir(&self.workspace);
         let mut commands = Commands::default();
-        matches!(process::run(command, Duration::from_secs(1800).min(self.remaining_time()), &mut self.log, &mut commands), Ok(Ended::Exited(0)))
+        matches!(
+            process::run(command, Duration::from_secs(1800).min(self.remaining_time()), &mut self.log, &mut commands),
+            Ok(Ended::Exited(0))
+        )
     }
 
     /// Reads a download to its end, handing `each` every piece, and says
     /// how it is going every few seconds as GitHub's cache and artifact
     /// actions do (`Received 46137344 of 523190823 (8.8%), 43.9 MBs/sec`),
     /// so a long download is never a silent step. Its total in bytes.
-    fn receive(&mut self, reader: &mut dyn Read, total: Option<u64>, mut each: impl FnMut(&[u8]) -> std::io::Result<()>) -> Result<u64, String> {
+    fn receive(
+        &mut self,
+        reader: &mut dyn Read,
+        total: Option<u64>,
+        mut each: impl FnMut(&[u8]) -> std::io::Result<()>,
+    ) -> Result<u64, String> {
         let started = Instant::now();
         let mut told = Instant::now();
         let mut received = 0u64;
@@ -113,7 +120,12 @@ impl Job {
             let mut tries = 0;
             let answer = loop {
                 tries += 1;
-                match crate::http::agent().put(&url).set("authorization", &self.auth()).timeout(Duration::from_secs(600)).send_bytes(&buffer[..filled]) {
+                match crate::http::agent()
+                    .put(&url)
+                    .set("authorization", &self.auth())
+                    .timeout(Duration::from_secs(600))
+                    .send_bytes(&buffer[..filled])
+                {
                     Ok(response) => break response.into_json::<serde_json::Value>().map_err(|e| e.to_string())?,
                     Err(ureq::Error::Status(status, response)) if status < 500 => return Err(refusal(response)),
                     Err(error) if tries >= 3 => return Err(error.to_string()),
@@ -153,9 +165,13 @@ impl Job {
     pub(crate) fn upload_artifact(&mut self, with: &BTreeMap<String, String>) -> (bool, BTreeMap<String, String>) {
         let name = input(with, "name").unwrap_or("artifact").to_owned();
         let missing = input(with, "if-no-files-found").unwrap_or("warn").to_ascii_lowercase();
-        let checked = check_name(&name)
-            .and_then(|()| keep(with, true))
-            .and_then(|keep| if matches!(missing.as_str(), "warn" | "error" | "ignore") { Ok(keep) } else { Err(format!("`if-no-files-found` is `{missing}`; it takes warn, error or ignore.")) });
+        let checked = check_name(&name).and_then(|()| keep(with, true)).and_then(|keep| {
+            if matches!(missing.as_str(), "warn" | "error" | "ignore") {
+                Ok(keep)
+            } else {
+                Err(format!("`if-no-files-found` is `{missing}`; it takes warn, error or ignore."))
+            }
+        });
         let keep = match checked {
             Ok(keep) => keep,
             Err(message) => {
@@ -233,7 +249,8 @@ impl Job {
             ureq::Error::Status(_, response) => format!("The artifact could not be uploaded: {}", refusal(response)),
             other => format!("The artifact could not be uploaded: {other}"),
         };
-        let started = crate::http::agent().post(&self.url(&query))
+        let started = crate::http::agent()
+            .post(&self.url(&query))
             .set("authorization", &self.auth())
             .timeout(Duration::from_secs(60))
             .call()
@@ -256,7 +273,10 @@ impl Job {
         }
         let base = format!("artifacts/uploads/{id}");
         let give_up = |job: &Job| {
-            let _ = crate::http::agent().delete(&job.url(&format!("{base}?upload={}", urlencode(&upload)))).set("authorization", &job.auth()).call();
+            let _ = crate::http::agent()
+                .delete(&job.url(&format!("{base}?upload={}", urlencode(&upload))))
+                .set("authorization", &job.auth())
+                .call();
         };
         let parts = match self.send_parts(&base, &upload, archive, part_bytes) {
             Ok(parts) => parts,
@@ -265,7 +285,8 @@ impl Job {
                 return Err(format!("The artifact could not be uploaded: {error}"));
             }
         };
-        let done = crate::http::agent().post(&self.url(&format!("{base}/complete?upload={}", urlencode(&upload))))
+        let done = crate::http::agent()
+            .post(&self.url(&format!("{base}/complete?upload={}", urlencode(&upload))))
             .set("authorization", &self.auth())
             .timeout(Duration::from_secs(120))
             .send_json(serde_json::json!({ "size": size, "parts": parts, "digest": format!("sha256:{digest}") }));
@@ -276,7 +297,11 @@ impl Job {
                 return Err(failed(error));
             }
         };
-        Ok(Sent { id: number(&done["id"]).unwrap_or(id), digest, retention: retention.map(|d| d as u32).or((keep.retention != 0).then_some(keep.retention)) })
+        Ok(Sent {
+            id: number(&done["id"]).unwrap_or(id),
+            digest,
+            retention: retention.map(|d| d as u32).or((keep.retention != 0).then_some(keep.retention)),
+        })
     }
 
     /// The artifacts of this run, or of the run `run_id` of this
@@ -286,7 +311,8 @@ impl Job {
             Some(run) => format!("artifacts?run_id={}", urlencode(run)),
             None => "artifacts".to_owned(),
         };
-        let listed = crate::http::agent().get(&self.url(&rest))
+        let listed = crate::http::agent()
+            .get(&self.url(&rest))
             .set("authorization", &self.auth())
             .timeout(Duration::from_secs(60))
             .call()
@@ -306,7 +332,8 @@ impl Job {
         let fetched = self.fetch_to(artifact, &file).and_then(|format| {
             if format == "tgz" {
                 std::fs::create_dir_all(into).map_err(|e| e.to_string())?;
-                let script = format!("tar{} -xzf {} -C {}", tar_local(), quote(&file.display().to_string()), quote(&into.display().to_string()));
+                let script =
+                    format!("tar{} -xzf {} -C {}", tar_local(), quote(&file.display().to_string()), quote(&into.display().to_string()));
                 if self.shell(&script) { Ok(()) } else { Err("it could not be unpacked".into()) }
             } else {
                 zip::extract(&file, into).map(|_| ()).map_err(|e| format!("it could not be unpacked: {e}"))
@@ -319,7 +346,8 @@ impl Job {
     /// Downloads an artifact into `file`, checking its digest; how it is
     /// packed, `zip` or `tgz`.
     fn fetch_to(&mut self, artifact: &Listed, file: &Path) -> Result<String, String> {
-        let response = match crate::http::agent().get(&self.url(&format!("artifacts/{}/download", artifact.id)))
+        let response = match crate::http::agent()
+            .get(&self.url(&format!("artifacts/{}/download", artifact.id)))
             .set("authorization", &self.auth())
             .timeout(Duration::from_secs(4 * 3600))
             .call()
@@ -395,7 +423,12 @@ impl Job {
                 let own = self.github_value("repository");
                 let repository = input(with, "repository").unwrap_or(&own);
                 if !repository.eq_ignore_ascii_case(&own) {
-                    return fail(self, &format!("g1t downloads artifacts from other runs of the same repository only; {repository} is not this run's repository, {own}."));
+                    return fail(
+                        self,
+                        &format!(
+                            "g1t downloads artifacts from other runs of the same repository only; {repository} is not this run's repository, {own}."
+                        ),
+                    );
                 }
                 Some(run.to_owned())
             }
@@ -475,7 +508,11 @@ impl Job {
         if chosen.is_empty() {
             return fail(self, &format!("No artifacts found matching pattern '{pattern}'."));
         }
-        self.log.line(&format!("Merging {}: {}", count(chosen.len(), "artifact"), chosen.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", ")));
+        self.log.line(&format!(
+            "Merging {}: {}",
+            count(chosen.len(), "artifact"),
+            chosen.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", ")
+        ));
         let folder = self.temp.join(format!("merge-{}", super::rand_id()));
         let targets = download_targets(&folder, &chosen, false, false, !separate);
         let mut result = None;
@@ -501,16 +538,22 @@ impl Job {
         let _ = std::fs::remove_dir_all(&folder);
         if result.0 && delete {
             for artifact in &chosen {
-                match crate::http::agent().delete(&self.url(&format!("artifacts/{}", artifact.id))).set("authorization", &self.auth()).timeout(Duration::from_secs(60)).call() {
+                match crate::http::agent()
+                    .delete(&self.url(&format!("artifacts/{}", artifact.id)))
+                    .set("authorization", &self.auth())
+                    .timeout(Duration::from_secs(60))
+                    .call()
+                {
                     Ok(_) => self.log.line(&format!("Deleted artifact {}.", artifact.name)),
-                    Err(ureq::Error::Status(_, response)) => self.log.line(&format!("##[warning]Artifact {} could not be deleted: {}", artifact.name, refusal(response))),
+                    Err(ureq::Error::Status(_, response)) => {
+                        self.log.line(&format!("##[warning]Artifact {} could not be deleted: {}", artifact.name, refusal(response)))
+                    }
                     Err(error) => self.log.line(&format!("##[warning]Artifact {} could not be deleted: {error}", artifact.name)),
                 }
             }
         }
         result
     }
-
 }
 
 /// An input, trimmed; `None` when empty.
@@ -553,7 +596,9 @@ fn check_name(name: &str) -> Result<(), String> {
             '\n' => "a line break".to_owned(),
             c => format!("`{c}`"),
         };
-        return Err(format!("The artifact name `{name}` is not valid: it contains {shown}. A name may not contain \" : < > | * ? \\ / or line breaks."));
+        return Err(format!(
+            "The artifact name `{name}` is not valid: it contains {shown}. A name may not contain \" : < > | * ? \\ / or line breaks."
+        ));
     }
     Ok(())
 }
@@ -576,7 +621,11 @@ fn keep(with: &BTreeMap<String, String>, takes_overwrite: bool) -> Result<Keep, 
         None => 0,
         Some(text) => match text.parse::<u32>() {
             Ok(days @ 0..=90) => days,
-            _ => return Err(format!("`retention-days` is `{text}`; it takes a number of days from 1 to 90, or nothing for the repository's setting.")),
+            _ => {
+                return Err(format!(
+                    "`retention-days` is `{text}`; it takes a number of days from 1 to 90, or nothing for the repository's setting."
+                ));
+            }
         },
     };
     let level = match input(with, "compression-level") {
@@ -641,7 +690,9 @@ fn artifact_ids(text: &str) -> Result<Vec<u64>, String> {
     text.split(',')
         .map(str::trim)
         .filter(|id| !id.is_empty())
-        .map(|id| id.parse::<u64>().map_err(|_| format!("`artifact-ids` takes artifact ids, numbers separated by commas; `{id}` is not one.")))
+        .map(|id| {
+            id.parse::<u64>().map_err(|_| format!("`artifact-ids` takes artifact ids, numbers separated by commas; `{id}` is not one."))
+        })
         .collect()
 }
 
@@ -695,11 +746,7 @@ fn megabytes(bytes: u64) -> String {
 /// makes every path a local one. Elsewhere the flag is left off, since
 /// bsdtar (macOS) doesn't know it.
 pub(crate) fn tar_local() -> &'static str {
-    if cfg!(windows) {
-        " --force-local"
-    } else {
-        ""
-    }
+    if cfg!(windows) { " --force-local" } else { "" }
 }
 
 fn urlencode(text: &str) -> String {
@@ -720,7 +767,10 @@ mod tests {
 
     #[test]
     fn transfers_say_how_far_they_have_got_as_githubs_do() {
-        assert_eq!(progress("Received", 46_137_344, Some(523_190_823), Duration::from_secs(1)), "Received 46137344 of 523190823 (8.8%), 44.0 MBs/sec");
+        assert_eq!(
+            progress("Received", 46_137_344, Some(523_190_823), Duration::from_secs(1)),
+            "Received 46137344 of 523190823 (8.8%), 44.0 MBs/sec"
+        );
         assert_eq!(progress("Sent", 1_048_576, None, Duration::from_secs(2)), "Sent 1048576 bytes, 0.5 MBs/sec");
         assert_eq!(progress("Received", 10, Some(0), Duration::ZERO), "Received 10 bytes, 0.0 MBs/sec");
     }

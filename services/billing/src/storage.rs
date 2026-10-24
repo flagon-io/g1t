@@ -65,7 +65,10 @@ pub(crate) const CHARGED_HERE: [&str; 7] = ["security", "context", "storage", "g
 macro_rules! net_of_baseline {
     ($column:literal) => {
         concat!(
-            "MAX(0, COALESCE(pending_usage.", $column, ", 0) - COALESCE((SELECT b.", $column,
+            "MAX(0, COALESCE(pending_usage.",
+            $column,
+            ", 0) - COALESCE((SELECT b.",
+            $column,
             " FROM pending_baselines b WHERE b.workspace = pending_usage.workspace AND b.source = pending_usage.source",
             " AND b.month = pending_usage.month), 0))"
         )
@@ -94,7 +97,8 @@ pub(crate) const SET_PENDING: &str = "INSERT INTO pending_usage (workspace, sour
 /// correction was worked out from (`?8`), so of two late reports at once
 /// only one moves it. `?1` workspace, `?2` source, `?3` month, `?4` charge,
 /// `?5` cost, `?6` now, `?7` detail, `?8` the cost it was worked out from.
-pub(crate) const LATE_RAISE: &str = "INSERT INTO pending_usage (workspace, source, month, charge_micros, cost_micros, updated_at, detail, charged_at)
+pub(crate) const LATE_RAISE: &str =
+    "INSERT INTO pending_usage (workspace, source, month, charge_micros, cost_micros, updated_at, detail, charged_at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'late: ' || ?6)
      ON CONFLICT (workspace, source, month) DO UPDATE SET
        charge_micros = ?4, cost_micros = ?5, updated_at = ?6, detail = COALESCE(?7, detail)
@@ -126,7 +130,8 @@ pub(crate) fn late_delta(charged_net: i64, new_net: i64) -> i64 {
 /// (its `_test_detach` row nets it to nothing), or the plan's included
 /// usage drawn in it. `?1` workspace, `?2` the month's first day, `?3` the
 /// next month's, `?4` the month.
-pub(crate) const PLAN_EVIDENCE: &str = "SELECT (EXISTS (SELECT 1 FROM plan_payments p WHERE p.workspace = ?1 AND p.paid_at >= ?2 AND p.paid_at < ?3
+pub(crate) const PLAN_EVIDENCE: &str =
+    "SELECT (EXISTS (SELECT 1 FROM plan_payments p WHERE p.workspace = ?1 AND p.paid_at >= ?2 AND p.paid_at < ?3
                         AND NOT EXISTS (SELECT 1 FROM complimentary_periods c WHERE c.workspace = ?1 AND c.starts_at <= p.paid_at
                                          AND (c.ends_at IS NULL OR c.ends_at > p.paid_at) AND p.amount_micros = c.fee_cents * 10000)
                         AND p.amount_micros > 0 AND substr(p.invoice_id, -12) <> '_test_detach'
@@ -292,7 +297,12 @@ impl Billing {
 
     /// `post_usage`, with `also` written in the same batch, whether or not
     /// the entry was new.
-    pub(crate) async fn post_usage_with(&self, line: UsageLine<'_>, also: Vec<worker::D1PreparedStatement>, allocation: Option<(&str, &credits::Eligible, bool)>) -> Result<bool> {
+    pub(crate) async fn post_usage_with(
+        &self,
+        line: UsageLine<'_>,
+        also: Vec<worker::D1PreparedStatement>,
+        allocation: Option<(&str, &credits::Eligible, bool)>,
+    ) -> Result<bool> {
         // The price versions it was charged at (pricing.rs).
         let mut versions = Vec::new();
         for meter in crate::pricing::meters_of(line.task) {
@@ -471,7 +481,12 @@ impl Billing {
                 Ok::<(), worker::Error>(())
             };
             if let Err(error) = charged.await {
-                worker::console_error!("{}: charging {} for {} failed; tried again next tick: {error}", row.workspace, row.source, row.month);
+                worker::console_error!(
+                    "{}: charging {} for {} failed; tried again next tick: {error}",
+                    row.workspace,
+                    row.source,
+                    row.month
+                );
             }
         }
         Ok(())
@@ -482,7 +497,14 @@ impl Billing {
     /// on that month's allowances, at most once for any figure), and the
     /// row keeps the highest figure seen. Only sources billing charges
     /// itself; true when the report was taken.
-    pub(crate) async fn late_correction(&self, workspace: &str, source: &str, month: &str, cost_micros: i64, detail: Option<&str>) -> Result<bool> {
+    pub(crate) async fn late_correction(
+        &self,
+        workspace: &str,
+        source: &str,
+        month: &str,
+        cost_micros: i64,
+        detail: Option<&str>,
+    ) -> Result<bool> {
         if !CHARGED_HERE.contains(&source) {
             return Ok(false);
         }
@@ -527,7 +549,8 @@ impl Billing {
             }
             return Ok(true);
         }
-        let (raw_old, net_old, baseline) = row.map_or((0, 0, 0), |r| (r.cost_micros.unwrap_or(0), r.net.unwrap_or(0), r.baseline.unwrap_or(0)));
+        let (raw_old, net_old, baseline) =
+            row.map_or((0, 0, 0), |r| (r.cost_micros.unwrap_or(0), r.net.unwrap_or(0), r.baseline.unwrap_or(0)));
         let delta = late_delta(net_old, (new_cost - baseline).max(0));
         if new_cost < raw_old {
             worker::console_warn!(
@@ -548,7 +571,11 @@ impl Billing {
                 self.audit(
                     &account.id,
                     "late_usage",
-                    &format!("{subject}: {} cost now, {} charged. Review for a refund.", crate::features::dollars(new_cost), crate::features::dollars(raw_old)),
+                    &format!(
+                        "{subject}: {} cost now, {} charged. Review for a refund.",
+                        crate::features::dollars(new_cost),
+                        crate::features::dollars(raw_old)
+                    ),
                     "billing",
                 )
                 .await?;
@@ -766,8 +793,12 @@ impl Billing {
     pub(crate) async fn measure_git(&self) -> Result<()> {
         let Some(repos) = &self.repos else { return Ok(()) };
         let month = credits::month_of(&rfc3339(now_ms()));
-        let list: Vec<WorkspaceGitOperations> =
-            g1t_kit::call(repos, "git_operations", &GitOperationsArgs { since: Some(git_since(&month)), month: month.clone(), namespace: None }).await?;
+        let list: Vec<WorkspaceGitOperations> = g1t_kit::call(
+            repos,
+            "git_operations",
+            &GitOperationsArgs { since: Some(git_since(&month)), month: month.clone(), namespace: None },
+        )
+        .await?;
         let price = self.price("git_operations").await?.map_or(GIT_MICROS_PER_THOUSAND as f64, |(cost, _)| cost);
         for workspace in list {
             let slug = workspace.namespace.to_lowercase();
@@ -868,12 +899,13 @@ impl Billing {
     pub(crate) async fn git_operations_this_month(&self, workspace: &str) -> Result<u64> {
         let Some(repos) = &self.repos else { return Ok(0) };
         let month = credits::month_of(&rfc3339(now_ms()));
-        let list: Result<Vec<WorkspaceGitOperations>> =
-            g1t_kit::call(repos, "git_operations", &GitOperationsArgs { since: Some(format!("{month}-01T00")), month, namespace: Some(workspace.to_lowercase()) }).await;
-        Ok(list
-            .ok()
-            .and_then(|list| list.into_iter().find(|w| w.namespace.eq_ignore_ascii_case(workspace)))
-            .map_or(0, |w| w.operations))
+        let list: Result<Vec<WorkspaceGitOperations>> = g1t_kit::call(
+            repos,
+            "git_operations",
+            &GitOperationsArgs { since: Some(format!("{month}-01T00")), month, namespace: Some(workspace.to_lowercase()) },
+        )
+        .await;
+        Ok(list.ok().and_then(|list| list.into_iter().find(|w| w.namespace.eq_ignore_ascii_case(workspace))).map_or(0, |w| w.operations))
     }
 }
 

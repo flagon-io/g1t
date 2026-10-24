@@ -26,13 +26,7 @@ pub enum SearchType {
 }
 
 impl SearchType {
-    pub const ALL: [SearchType; 5] = [
-        SearchType::Repositories,
-        SearchType::Code,
-        SearchType::Items,
-        SearchType::Pulls,
-        SearchType::People,
-    ];
+    pub const ALL: [SearchType; 5] = [SearchType::Repositories, SearchType::Code, SearchType::Items, SearchType::Pulls, SearchType::People];
 
     pub fn as_str(self) -> &'static str {
         match self {

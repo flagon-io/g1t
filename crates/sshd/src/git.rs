@@ -51,10 +51,7 @@ struct Bridge<'a> {
 
 impl Bridge<'_> {
     fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
-        let mut request = self
-            .http
-            .request(method, format!("{}/{path}", self.access.remote))
-            .bearer_auth(&self.access.token);
+        let mut request = self.http.request(method, format!("{}/{path}", self.access.remote)).bearer_auth(&self.access.token);
         if self.protocol_v2 {
             request = request.header("git-protocol", "version=2");
         }
@@ -65,20 +62,10 @@ impl Bridge<'_> {
     /// `# service=…` section that smart HTTP prepends.
     async fn advertise<W: AsyncWrite + Unpin>(&self, writer: &mut W) -> Result<()> {
         let service = self.service.as_str();
-        let response = self
-            .request(
-                reqwest::Method::GET,
-                &format!("info/refs?service={service}"),
-            )
-            .send()
-            .await?
-            .error_for_status()?;
+        let response = self.request(reqwest::Method::GET, &format!("info/refs?service={service}")).send().await?.error_for_status()?;
         let body = response.bytes().await?;
         let mut advertisement = &body[..];
-        if advertisement
-            .get(4..)
-            .is_some_and(|rest| rest.starts_with(b"# service="))
-        {
+        if advertisement.get(4..).is_some_and(|rest| rest.starts_with(b"# service=")) {
             let length = usize::from_str_radix(std::str::from_utf8(&body[..4])?, 16)?;
             ensure!(body.len() >= length + 4, "truncated ref advertisement");
             advertisement = &body[length + 4..];
@@ -115,11 +102,7 @@ impl Bridge<'_> {
         W: AsyncWrite + Unpin,
     {
         if !self.protocol_v2 {
-            writer
-                .write_all(&error_pkt(
-                    "g1t needs git protocol version 2 over SSH (git 2.26 or newer)",
-                ))
-                .await?;
+            writer.write_all(&error_pkt("g1t needs git protocol version 2 over SSH (git 2.26 or newer)")).await?;
             return Ok(());
         }
         self.advertise(writer).await?;
@@ -147,11 +130,7 @@ impl Bridge<'_> {
         }
         let mut body = Vec::new();
         let lines = read_section(reader, &mut body).await?;
-        let commands: Vec<&str> = lines
-            .iter()
-            .filter(|line| !line.starts_with("shallow "))
-            .map(String::as_str)
-            .collect();
+        let commands: Vec<&str> = lines.iter().filter(|line| !line.starts_with("shallow ")).map(String::as_str).collect();
         // A bare flush means the client had nothing to push.
         let Some(first) = commands.first() else {
             return Ok(());
@@ -159,9 +138,7 @@ impl Bridge<'_> {
         let capabilities = first.split_once('\0').map_or("", |(_, caps)| caps);
         let has_push_options = capabilities.split(' ').any(|cap| cap == "push-options");
         // Commands are "<old id> <new id> <ref>"; only deletions send no pack.
-        let sends_pack = commands
-            .iter()
-            .any(|command| command.split(' ').nth(1) != Some(ZERO_ID));
+        let sends_pack = commands.iter().any(|command| command.split(' ').nth(1) != Some(ZERO_ID));
 
         if has_push_options {
             read_section(reader, &mut body).await?;
@@ -175,10 +152,7 @@ impl Bridge<'_> {
 
 /// Reads pkt-lines up to and including the next flush, appending the raw
 /// bytes to `raw`. Returns the payload of each line.
-async fn read_section<R: AsyncBufRead + Unpin>(
-    reader: &mut R,
-    raw: &mut Vec<u8>,
-) -> Result<Vec<String>> {
+async fn read_section<R: AsyncBufRead + Unpin>(reader: &mut R, raw: &mut Vec<u8>) -> Result<Vec<String>> {
     let mut lines = Vec::new();
     loop {
         let mut header = [0u8; 4];
@@ -200,11 +174,7 @@ async fn read_section<R: AsyncBufRead + Unpin>(
     }
 }
 
-async fn read_into<R: AsyncBufRead + Unpin>(
-    reader: &mut R,
-    raw: &mut Vec<u8>,
-    count: usize,
-) -> Result<()> {
+async fn read_into<R: AsyncBufRead + Unpin>(reader: &mut R, raw: &mut Vec<u8>, count: usize) -> Result<()> {
     let start = raw.len();
     raw.resize(start + count, 0);
     reader.read_exact(&mut raw[start..]).await?;

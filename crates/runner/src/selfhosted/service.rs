@@ -16,11 +16,8 @@ use super::log;
 
 /// What the service is called: one per runner, so a machine can run several.
 pub fn service_name(config: &Config) -> String {
-    let clean: String = config
-        .name
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c.to_ascii_lowercase() } else { '-' })
-        .collect();
+    let clean: String =
+        config.name.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c.to_ascii_lowercase() } else { '-' }).collect();
     format!("g1t-runner-{clean}")
 }
 
@@ -114,8 +111,11 @@ pub fn main(action: &str, config: &Config, folder: &Path) -> Result<()> {
         match action {
             "install" => {
                 let bin = format!("\"{}\" service run --dir \"{}\"", exe.display(), folder.display());
-                run("sc.exe", &["create", &name, "binPath=", &bin, "start=", "auto", "DisplayName=", &format!("g1t runner {}", config.name)])
-                    .context("could not create the service (run from an Administrator prompt)")?;
+                run(
+                    "sc.exe",
+                    &["create", &name, "binPath=", &bin, "start=", "auto", "DisplayName=", &format!("g1t runner {}", config.name)],
+                )
+                .context("could not create the service (run from an Administrator prompt)")?;
                 let _ = run("sc.exe", &["description", &name, "g1t self-hosted runner: runs this workspace's workflow jobs."]);
                 let _ = run("sc.exe", &["failure", &name, "reset=", "86400", "actions=", "restart/5000/restart/5000/restart/30000"]);
                 run("sc.exe", &["start", &name])?;
@@ -228,10 +228,8 @@ mod windows {
     pub fn serve(name: &str) -> Result<()> {
         let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
         let _ = NAME.set(wide.clone());
-        let table = [
-            ServiceTableEntry { name: wide.as_ptr(), main: Some(service_main) },
-            ServiceTableEntry { name: std::ptr::null(), main: None },
-        ];
+        let table =
+            [ServiceTableEntry { name: wide.as_ptr(), main: Some(service_main) }, ServiceTableEntry { name: std::ptr::null(), main: None }];
         // SAFETY: the table is terminated by a null entry and outlives the
         // call, which returns when the service stops.
         if unsafe { StartServiceCtrlDispatcherW(table.as_ptr()) } == 0 {

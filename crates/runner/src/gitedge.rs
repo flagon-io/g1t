@@ -52,8 +52,8 @@ use std::collections::BTreeMap;
 use std::io::{self, BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, RwLock, TryLockError};
 use std::time::Instant;
 
@@ -489,10 +489,9 @@ fn snapshot(edge: &Edge, request: Request) -> (u16, u64) {
         };
         match version.filter(|_| edge.mirror().join(PACKED_MARKER).exists()) {
             None => None,
-            Some(version) => Some((
-                version,
-                Command::new("tar").current_dir(&edge.root).args(["-cf", &name, MIRROR]).stdin(Stdio::null()).output(),
-            )),
+            Some(version) => {
+                Some((version, Command::new("tar").current_dir(&edge.root).args(["-cf", &name, MIRROR]).stdin(Stdio::null()).output()))
+            }
         }
     };
     let version = match made {
@@ -715,7 +714,9 @@ fn read_fetch(request: &mut Request) -> Option<Vec<u8>> {
 /// request's Content-Encoding: git compresses a large request with gzip.
 pub(crate) fn wants(body: &[u8], encoding: Option<&str>) -> Option<(Vec<String>, Vec<String>)> {
     let decoded;
-    let body = if encoding.is_some_and(|encoding| encoding.trim().eq_ignore_ascii_case("gzip") || encoding.trim().eq_ignore_ascii_case("x-gzip")) {
+    let body = if encoding
+        .is_some_and(|encoding| encoding.trim().eq_ignore_ascii_case("gzip") || encoding.trim().eq_ignore_ascii_case("x-gzip"))
+    {
         let mut out = Vec::new();
         flate2::read::GzDecoder::new(body).take(4 * MAX_FETCH_BODY).read_to_end(&mut out).ok()?;
         decoded = out;
@@ -806,7 +807,9 @@ fn backend(edge: &Edge, mut request: Request, endpoint: &str, query: &str, body:
     for (n, (key, value)) in UPLOAD_PACK_CONFIG.iter().enumerate() {
         command.env(format!("GIT_CONFIG_KEY_{n}"), key).env(format!("GIT_CONFIG_VALUE_{n}"), value);
     }
-    for (name, variable) in [("content-type", "CONTENT_TYPE"), ("git-protocol", "GIT_PROTOCOL"), ("content-encoding", "HTTP_CONTENT_ENCODING")] {
+    for (name, variable) in
+        [("content-type", "CONTENT_TYPE"), ("git-protocol", "GIT_PROTOCOL"), ("content-encoding", "HTTP_CONTENT_ENCODING")]
+    {
         if let Some(value) = header(&request, name) {
             command.env(variable, value);
         }
@@ -817,11 +820,7 @@ fn backend(edge: &Edge, mut request: Request, endpoint: &str, query: &str, body:
     if let Some(address) = request.remote_addr() {
         command.env("REMOTE_ADDR", address.ip().to_string());
     }
-    let spawned = command
-        .stdin(if post { Stdio::piped() } else { Stdio::null() })
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn();
+    let spawned = command.stdin(if post { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn();
     let mut child = match spawned {
         Ok(child) => child,
         Err(error) => {
@@ -956,21 +955,47 @@ mod tests {
         let a = "a".repeat(40);
         let b = "b".repeat(40);
         // Protocol v2: capabilities, a delimiter, the arguments.
-        let v2 = [pkt("command=fetch
-"), pkt("object-format=sha1
-"), "0001".to_owned(), pkt("thin-pack
-"), pkt("deepen 1
-"), pkt(&format!("want {a}
-")), pkt("want-ref refs/heads/main
-"), pkt(&format!("have {b}
-")), pkt("done
-"), "0000".to_owned()].concat();
+        let v2 = [
+            pkt("command=fetch
+"),
+            pkt("object-format=sha1
+"),
+            "0001".to_owned(),
+            pkt("thin-pack
+"),
+            pkt("deepen 1
+"),
+            pkt(&format!(
+                "want {a}
+"
+            )),
+            pkt("want-ref refs/heads/main
+"),
+            pkt(&format!(
+                "have {b}
+"
+            )),
+            pkt("done
+"),
+            "0000".to_owned(),
+        ]
+        .concat();
         assert_eq!(wants(v2.as_bytes(), None), Some((vec![a.clone()], vec!["refs/heads/main".to_owned()])));
         // Protocol v0: the first want carries the capabilities.
-        let v0 = [pkt(&format!("want {a} multi_ack_detailed side-band-64k thin-pack ofs-delta agent=git/2.39.5
-")), pkt(&format!("want {b}
-")), "0000".to_owned(), pkt("done
-")].concat();
+        let v0 = [
+            pkt(&format!(
+                "want {a} multi_ack_detailed side-band-64k thin-pack ofs-delta agent=git/2.39.5
+"
+            )),
+            pkt(&format!(
+                "want {b}
+"
+            )),
+            "0000".to_owned(),
+            pkt("done
+"),
+        ]
+        .concat();
         assert_eq!(wants(v0.as_bytes(), None), Some((vec![a.clone(), b.clone()], vec![])));
         // Gzipped, as git sends a large request.
         let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
@@ -990,4 +1015,3 @@ mod tests {
         assert!(invalid(&sync("https://example.com/r.git", "refs/heads/../x")).is_some());
     }
 }
-

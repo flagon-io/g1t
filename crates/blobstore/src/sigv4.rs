@@ -52,16 +52,9 @@ fn sha256_hex(data: &[u8]) -> String {
 
 /// The query string, sorted and encoded as signing needs it.
 fn canonical_query(query: &[(String, String)]) -> String {
-    let mut pairs: Vec<(String, String)> = query
-        .iter()
-        .map(|(key, value)| (uri_encode(key, false), uri_encode(value, false)))
-        .collect();
+    let mut pairs: Vec<(String, String)> = query.iter().map(|(key, value)| (uri_encode(key, false), uri_encode(value, false))).collect();
     pairs.sort();
-    pairs
-        .iter()
-        .map(|(key, value)| format!("{key}={value}"))
-        .collect::<Vec<_>>()
-        .join("&")
+    pairs.iter().map(|(key, value)| format!("{key}={value}")).collect::<Vec<_>>().join("&")
 }
 
 impl Credentials {
@@ -70,11 +63,7 @@ impl Credentials {
     }
 
     fn signature(&self, date: &str, canonical_request: &str) -> String {
-        let to_sign = format!(
-            "AWS4-HMAC-SHA256\n{date}\n{}\n{}",
-            self.scope(date),
-            sha256_hex(canonical_request.as_bytes())
-        );
+        let to_sign = format!("AWS4-HMAC-SHA256\n{date}\n{}\n{}", self.scope(date), sha256_hex(canonical_request.as_bytes()));
         let key = hmac(format!("AWS4{}", self.secret_access_key).as_bytes(), &date[..8]);
         let key = hmac(&key, &self.region);
         let key = hmac(&key, "s3");
@@ -93,24 +82,15 @@ impl Credentials {
         headers: &[(String, String)],
         payload_hash: &str,
     ) -> String {
-        let mut headers: Vec<(String, String)> = headers
-            .iter()
-            .map(|(name, value)| (name.to_ascii_lowercase(), value.trim().to_owned()))
-            .collect();
+        let mut headers: Vec<(String, String)> =
+            headers.iter().map(|(name, value)| (name.to_ascii_lowercase(), value.trim().to_owned())).collect();
         headers.sort();
-        let date = headers
-            .iter()
-            .find(|(name, _)| name == "x-amz-date")
-            .map(|(_, value)| value.clone())
-            .unwrap_or_default();
+        let date = headers.iter().find(|(name, _)| name == "x-amz-date").map(|(_, value)| value.clone()).unwrap_or_default();
         let signed: Vec<&str> = headers.iter().map(|(name, _)| name.as_str()).collect();
         let signed = signed.join(";");
         let canonical_headers: String = headers.iter().map(|(name, value)| format!("{name}:{value}\n")).collect();
-        let canonical = format!(
-            "{method}\n{}\n{}\n{canonical_headers}\n{signed}\n{payload_hash}",
-            uri_encode(path, true),
-            canonical_query(query)
-        );
+        let canonical =
+            format!("{method}\n{}\n{}\n{canonical_headers}\n{signed}\n{payload_hash}", uri_encode(path, true), canonical_query(query));
         format!(
             "AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={signed}, Signature={}",
             self.access_key_id,
@@ -130,11 +110,7 @@ impl Credentials {
             ("X-Amz-Expires".to_owned(), expires.to_string()),
             ("X-Amz-SignedHeaders".to_owned(), "host".to_owned()),
         ];
-        let canonical = format!(
-            "GET\n{}\n{}\nhost:{host}\n\nhost\n{UNSIGNED}",
-            uri_encode(path, true),
-            canonical_query(&query)
-        );
+        let canonical = format!("GET\n{}\n{}\nhost:{host}\n\nhost\n{UNSIGNED}", uri_encode(path, true), canonical_query(&query));
         query.push(("X-Amz-Signature".to_owned(), self.signature(date, &canonical)));
         format!("{base}{}?{}", uri_encode(path, true), canonical_query(&query))
     }

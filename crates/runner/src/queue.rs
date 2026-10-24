@@ -45,22 +45,20 @@ struct Item {
 enum Stopped {
     /// Merging this pull request's change did not apply cleanly. The
     /// pull request ahead whose change it collided with, if one did.
-    Conflict { number: u32, with: Option<u32>, files: Vec<String> },
+    Conflict {
+        number: u32,
+        with: Option<u32>,
+        files: Vec<String>,
+    },
     Failed(anyhow::Error),
 }
 
 fn git_ok(dir: &Path, args: &[&str]) -> bool {
-    Command::new("git")
-        .current_dir(dir)
-        .args(args)
-        .output()
-        .is_ok_and(|output| output.status.success())
+    Command::new("git").current_dir(dir).args(args).output().is_ok_and(|output| output.status.success())
 }
 
 fn changed_files(dir: &Path, from: &str, to: &str) -> Vec<String> {
-    git(dir, &["diff", "--name-only", from, to])
-        .map(|out| out.lines().map(str::to_owned).collect())
-        .unwrap_or_default()
+    git(dir, &["diff", "--name-only", from, to]).map(|out| out.lines().map(str::to_owned).collect()).unwrap_or_default()
 }
 
 /// Clones the base, then merges each pull request in order. Returns the
@@ -74,9 +72,9 @@ fn build(stack: &[Item], auth: &str) -> std::result::Result<String, Stopped> {
         .and_then(|_| git(workdir, &["rev-parse", "--abbrev-ref", "HEAD"]))
         .and_then(|branch| crate::clone::ensure(workdir, auth, "origin", &branch, &base).map(|_| branch))
         .and_then(|_| git(workdir, &["checkout", "--quiet", "-B", "g1t-queue", &base]))
-    .and_then(|_| git(workdir, &["config", "user.name", crate::AUTHOR_NAME]))
-    .and_then(|_| git(workdir, &["config", "user.email", crate::AUTHOR_EMAIL]))
-    .map_err(Stopped::Failed)?;
+        .and_then(|_| git(workdir, &["config", "user.name", crate::AUTHOR_NAME]))
+        .and_then(|_| git(workdir, &["config", "user.email", crate::AUTHOR_EMAIL]))
+        .map_err(Stopped::Failed)?;
 
     for (index, item) in stack.iter().enumerate() {
         crate::clone::fetch(workdir, auth, &item.remote, &item.branch)
@@ -86,8 +84,14 @@ fn build(stack: &[Item], auth: &str) -> std::result::Result<String, Stopped> {
         // Shallow: deep enough for the change and the state so far to share
         // a commit to merge from.
         if crate::clone::has(workdir, &item.commit) {
-            crate::clone::share_history(workdir, auth, &[(base_remote.as_str(), "HEAD"), (item.remote.as_str(), item.branch.as_str())], "HEAD", &item.commit)
-                .map_err(Stopped::Failed)?;
+            crate::clone::share_history(
+                workdir,
+                auth,
+                &[(base_remote.as_str(), "HEAD"), (item.remote.as_str(), item.branch.as_str())],
+                "HEAD",
+                &item.commit,
+            )
+            .map_err(Stopped::Failed)?;
         }
         // The branch may have moved on since the queue looked; what was
         // queued is the commit, and it must be there.
@@ -113,23 +117,15 @@ fn build(stack: &[Item], auth: &str) -> std::result::Result<String, Stopped> {
                     files.iter().any(|file| theirs.contains(file))
                 })
                 .map(|earlier| earlier.number);
-            return Err(Stopped::Conflict {
-                number: item.number,
-                with,
-                files,
-            });
+            return Err(Stopped::Conflict { number: item.number, with, files });
         }
     }
-    git(workdir, &["rev-parse", "HEAD"])
-        .map(|out| out.trim().to_owned())
-        .map_err(Stopped::Failed)
+    git(workdir, &["rev-parse", "HEAD"]).map(|out| out.trim().to_owned()).map_err(Stopped::Failed)
 }
 
 fn report(api: &str, entry: &str, token: &str, mut body: serde_json::Value) -> Result<()> {
     body["token"] = token.into();
-    crate::http::agent().post(&format!("{api}/queue/{entry}"))
-        .send_json(body)
-        .context("could not report the merge queue's result")?;
+    crate::http::agent().post(&format!("{api}/queue/{entry}")).send_json(body).context("could not report the merge queue's result")?;
     Ok(())
 }
 
@@ -141,21 +137,15 @@ pub fn main() -> i32 {
             return 2;
         }
     };
-    let secrets: Vec<String> = ["G1T_TOKEN", "QUEUE_TOKEN"]
-        .iter()
-        .filter_map(|name| std::env::var(name).ok())
-        .filter(|secret| !secret.is_empty())
-        .collect();
+    let secrets: Vec<String> =
+        ["G1T_TOKEN", "QUEUE_TOKEN"].iter().filter_map(|name| std::env::var(name).ok()).filter(|secret| !secret.is_empty()).collect();
     let result = (|| -> Result<serde_json::Value> {
         let auth = auth_option(&env("G1T_USER")?, &env("G1T_TOKEN")?);
         let stack: Vec<Item> = serde_json::from_str(&env("STACK")?).context("STACK is not valid")?;
         if stack.is_empty() {
             bail!("nothing to merge");
         }
-        let commands: Vec<String> = std::env::var("CHECKS")
-            .ok()
-            .and_then(|json| serde_json::from_str(&json).ok())
-            .unwrap_or_default();
+        let commands: Vec<String> = std::env::var("CHECKS").ok().and_then(|json| serde_json::from_str(&json).ok()).unwrap_or_default();
         let combined = match build(&stack, &auth) {
             Ok(combined) => combined,
             Err(Stopped::Conflict { number, with, files }) => {
@@ -175,24 +165,14 @@ pub fn main() -> i32 {
                 }));
             }
         };
-        let contract: Vec<String> = std::env::var("CONTRACT_CHECKS")
-            .ok()
-            .and_then(|json| serde_json::from_str(&json).ok())
-            .unwrap_or_default();
+        let contract: Vec<String> =
+            std::env::var("CONTRACT_CHECKS").ok().and_then(|json| serde_json::from_str(&json).ok()).unwrap_or_default();
         let workdir = Path::new(WORKDIR);
-        let mut results: Vec<_> = commands
-            .iter()
-            .map(|command| run_command(command, workdir, &secrets))
-            .collect();
-        let contract_results: Vec<_> = contract
-            .iter()
-            .map(|command| run_command(command, workdir, &secrets))
-            .collect();
+        let mut results: Vec<_> = commands.iter().map(|command| run_command(command, workdir, &secrets)).collect();
+        let contract_results: Vec<_> = contract.iter().map(|command| run_command(command, workdir, &secrets)).collect();
         // A contract check that fails here may have been failing on the base
         // already: try those on the base alone.
-        let failing: Vec<usize> = (0..contract_results.len())
-            .filter(|&index| !contract_results[index].passed)
-            .collect();
+        let failing: Vec<usize> = (0..contract_results.len()).filter(|&index| !contract_results[index].passed).collect();
         let mut contract_results = contract_results;
         if !failing.is_empty() {
             let base = env("BASE_COMMIT")?;
@@ -203,10 +183,7 @@ pub fn main() -> i32 {
                 if !on_base.passed {
                     let result = &mut contract_results[index];
                     result.passed = true;
-                    result.command = format!(
-                        "{} (already failing on the default branch; not held against this)",
-                        result.command
-                    );
+                    result.command = format!("{} (already failing on the default branch; not held against this)", result.command);
                 }
             }
             git(workdir, &["checkout", "--quiet", &combined_head])?;
@@ -215,25 +192,12 @@ pub fn main() -> i32 {
         // Pushed whether or not it passed, so a failure can be looked at.
         let branch = env("QUEUE_BRANCH")?;
         let base_remote = env("BASE_REMOTE")?;
-        git(
-            Path::new(WORKDIR),
-            &[
-                "-c",
-                &auth,
-                "push",
-                "--quiet",
-                "--force",
-                &base_remote,
-                &format!("HEAD:refs/heads/{branch}"),
-            ],
-        )
-        .map_err(|error| anyhow::anyhow!("{}", redact(&format!("{error:#}"), &secrets)))
-        .context("could not push the tested state")?;
+        git(Path::new(WORKDIR), &["-c", &auth, "push", "--quiet", "--force", &base_remote, &format!("HEAD:refs/heads/{branch}")])
+            .map_err(|error| anyhow::anyhow!("{}", redact(&format!("{error:#}"), &secrets)))
+            .context("could not push the tested state")?;
         Ok(serde_json::json!({ "combinedCommit": combined, "results": results }))
     })();
-    let body = result.unwrap_or_else(|error| {
-        serde_json::json!({ "error": redact(&format!("{error:#}"), &secrets) })
-    });
+    let body = result.unwrap_or_else(|error| serde_json::json!({ "error": redact(&format!("{error:#}"), &secrets) }));
     match report(&api, &entry, &token, body) {
         Ok(()) => 0,
         Err(error) => {

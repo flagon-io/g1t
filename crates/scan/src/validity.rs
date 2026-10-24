@@ -98,19 +98,16 @@ pub fn check_for(kind: SecretKind, value: &str) -> Option<Probe> {
         // that are allowed to (a restricted key without it answers 403,
         // which still means the key exists).
         SecretKind::StripeLiveKey => status("GET", "https://api.stripe.com/v1/balance", bearer()),
-        SecretKind::SlackToken => Some(Probe {
-            method: "POST",
-            url: "https://slack.com/api/auth.test",
-            headers: bearer(),
-            body: None,
-            reader: Reader::SlackOk,
-        }),
+        SecretKind::SlackToken => {
+            Some(Probe { method: "POST", url: "https://slack.com/api/auth.test", headers: bearer(), body: None, reader: Reader::SlackOk })
+        }
         SecretKind::NpmToken => status("GET", "https://registry.npmjs.org/-/whoami", bearer()),
         SecretKind::OpenaiKey => status("GET", "https://api.openai.com/v1/models", bearer()),
-        SecretKind::AnthropicKey => status("GET", "https://api.anthropic.com/v1/models", vec![
-            ("x-api-key", value.to_owned()),
-            ("anthropic-version", "2023-06-01".to_owned()),
-        ]),
+        SecretKind::AnthropicKey => status(
+            "GET",
+            "https://api.anthropic.com/v1/models",
+            vec![("x-api-key", value.to_owned()), ("anthropic-version", "2023-06-01".to_owned())],
+        ),
         SecretKind::SendgridKey => status("GET", "https://api.sendgrid.com/v3/scopes", bearer()),
         // An access key alone cannot sign a request; its secret key is
         // usually elsewhere. Webhook addresses would post a message. The

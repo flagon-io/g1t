@@ -144,17 +144,7 @@ const DOCUMENTED_EXAMPLES: &[&str] = &[
 ];
 
 /// Words that say a value is not real.
-const TEST_WORDS: &[&str] = &[
-    "example",
-    "sample",
-    "dummy",
-    "fake",
-    "placeholder",
-    "changeme",
-    "notreal",
-    "redacted",
-    "xxxxx",
-];
+const TEST_WORDS: &[&str] = &["example", "sample", "dummy", "fake", "placeholder", "changeme", "notreal", "redacted", "xxxxx"];
 
 /// Why a secret the rules found looks like a value made for tests or
 /// documentation, or `None` when it looks real. Judged from the value
@@ -296,16 +286,58 @@ struct Rule {
 }
 
 const RULES: &[Rule] = &[
-    Rule { kind: SecretKind::AwsAccessKey, prefixes: &["AKIA", "ASIA", "ABIA", "ACCA"], body: Alphabet::UpperDigit, min: 16, max: 16, check: None },
-    Rule { kind: SecretKind::GithubToken, prefixes: &["ghp_", "gho_", "ghu_", "ghs_", "ghr_"], body: Alphabet::Alnum, min: 36, max: 255, check: None },
+    Rule {
+        kind: SecretKind::AwsAccessKey,
+        prefixes: &["AKIA", "ASIA", "ABIA", "ACCA"],
+        body: Alphabet::UpperDigit,
+        min: 16,
+        max: 16,
+        check: None,
+    },
+    Rule {
+        kind: SecretKind::GithubToken,
+        prefixes: &["ghp_", "gho_", "ghu_", "ghs_", "ghr_"],
+        body: Alphabet::Alnum,
+        min: 36,
+        max: 255,
+        check: None,
+    },
     Rule { kind: SecretKind::GithubToken, prefixes: &["github_pat_"], body: Alphabet::Word, min: 50, max: 255, check: None },
-    Rule { kind: SecretKind::GitlabToken, prefixes: &["glpat-", "gloas-", "glrt-", "glptt-", "gldt-"], body: Alphabet::Token, min: 20, max: 64, check: None },
+    Rule {
+        kind: SecretKind::GitlabToken,
+        prefixes: &["glpat-", "gloas-", "glrt-", "glptt-", "gldt-"],
+        body: Alphabet::Token,
+        min: 20,
+        max: 64,
+        check: None,
+    },
     Rule { kind: SecretKind::StripeLiveKey, prefixes: &["sk_live_", "rk_live_"], body: Alphabet::Alnum, min: 20, max: 255, check: None },
-    Rule { kind: SecretKind::SlackToken, prefixes: &["xoxb-", "xoxp-", "xoxa-", "xoxr-", "xoxs-", "xoxe-"], body: Alphabet::Token, min: 20, max: 255, check: Some(has_digit) },
-    Rule { kind: SecretKind::SlackWebhook, prefixes: &["https://hooks.slack.com/services/"], body: Alphabet::Path, min: 30, max: 120, check: Some(slack_webhook) },
+    Rule {
+        kind: SecretKind::SlackToken,
+        prefixes: &["xoxb-", "xoxp-", "xoxa-", "xoxr-", "xoxs-", "xoxe-"],
+        body: Alphabet::Token,
+        min: 20,
+        max: 255,
+        check: Some(has_digit),
+    },
+    Rule {
+        kind: SecretKind::SlackWebhook,
+        prefixes: &["https://hooks.slack.com/services/"],
+        body: Alphabet::Path,
+        min: 30,
+        max: 120,
+        check: Some(slack_webhook),
+    },
     Rule { kind: SecretKind::GoogleApiKey, prefixes: &["AIza"], body: Alphabet::Token, min: 35, max: 35, check: None },
     Rule { kind: SecretKind::AnthropicKey, prefixes: &["sk-ant-"], body: Alphabet::Token, min: 40, max: 255, check: None },
-    Rule { kind: SecretKind::OpenaiKey, prefixes: &["sk-proj-", "sk-svcacct-", "sk-admin-"], body: Alphabet::Token, min: 40, max: 255, check: None },
+    Rule {
+        kind: SecretKind::OpenaiKey,
+        prefixes: &["sk-proj-", "sk-svcacct-", "sk-admin-"],
+        body: Alphabet::Token,
+        min: 40,
+        max: 255,
+        check: None,
+    },
     // The keys OpenAI issued before project keys carry "T3BlbkFJ" in the middle.
     Rule { kind: SecretKind::OpenaiKey, prefixes: &["sk-"], body: Alphabet::Alnum, min: 40, max: 60, check: Some(openai_legacy) },
     Rule { kind: SecretKind::NpmToken, prefixes: &["npm_"], body: Alphabet::Alnum, min: 36, max: 36, check: None },
@@ -342,10 +374,7 @@ fn placeholder(body: &str) -> bool {
 }
 
 fn boundary_before(line: &str, at: usize) -> bool {
-    line[..at]
-        .chars()
-        .next_back()
-        .is_none_or(|c| !c.is_ascii_alphanumeric())
+    line[..at].chars().next_back().is_none_or(|c| !c.is_ascii_alphanumeric())
 }
 
 /// The secrets of the formats in [`RULES`] on one line.
@@ -427,10 +456,7 @@ fn service_jwt(line: &str, found: &mut Vec<(SecretKind, String)>) {
         if !boundary_before(line, at) {
             continue;
         }
-        let token: String = line[at..]
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
-            .collect();
+        let token: String = line[at..].chars().take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')).collect();
         let parts: Vec<&str> = token.split('.').collect();
         if parts.len() != 3 || parts[0].len() < 10 || parts[1].len() < 10 || parts[2].len() < 20 {
             continue;
@@ -451,11 +477,7 @@ const PEM_BODY: usize = 40;
 fn looks_like_pem_body(text: &str) -> bool {
     let text = text.trim().trim_start_matches(['"', '\'']);
     text.starts_with("Proc-Type:")
-        || text
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '='))
-            .count()
-            >= PEM_BODY
+        || text.chars().take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '=')).count() >= PEM_BODY
 }
 
 /// The header of a PEM private key, when a key follows it: on the next
@@ -474,18 +496,10 @@ fn private_key(line: &str, next: Option<&str>, found: &mut Vec<(SecretKind, Stri
         return;
     }
     let after = rest[header.len()..].trim_start_matches("\\n").trim_start_matches("\\r\\n");
-    let body = if looks_like_pem_body(after) {
-        Some(after)
-    } else {
-        next.filter(|next| looks_like_pem_body(next))
-    };
+    let body = if looks_like_pem_body(after) { Some(after) } else { next.filter(|next| looks_like_pem_body(next)) };
     if let Some(body) = body {
-        let body: String = body
-            .trim()
-            .trim_start_matches(['"', '\''])
-            .chars()
-            .take_while(|c| !c.is_whitespace() && *c != '\\' && *c != '"')
-            .collect();
+        let body: String =
+            body.trim().trim_start_matches(['"', '\'']).chars().take_while(|c| !c.is_whitespace() && *c != '\\' && *c != '"').collect();
         found.push((SecretKind::PrivateKey, format!("{header}\n{body}")));
     }
 }
@@ -532,10 +546,8 @@ pub fn scan_text(text: &str) -> Vec<Hit> {
 /// vendored or generated code, where a match is someone else's fixture.
 pub fn skipped_path(path: &str) -> bool {
     let name = path.rsplit('/').next().unwrap_or(path);
-    matches!(
-        name,
-        "package-lock.json" | "pnpm-lock.yaml" | "yarn.lock" | "Cargo.lock" | "go.sum" | "poetry.lock"
-    ) || path.split('/').any(|part| part == "node_modules" || part == "vendor")
+    matches!(name, "package-lock.json" | "pnpm-lock.yaml" | "yarn.lock" | "Cargo.lock" | "go.sum" | "poetry.lock")
+        || path.split('/').any(|part| part == "node_modules" || part == "vendor")
         || name.ends_with(".min.js")
         || name.ends_with(".map")
 }

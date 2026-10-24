@@ -104,13 +104,7 @@ impl Work {
 
     /// A work item by id, whoever is asking.
     pub(super) async fn item_by_id(&self, id: &str) -> Result<Option<Held>> {
-        Ok(self
-            .db
-            .prepare(select("id = ?"))
-            .bind(&[id.into()])?
-            .first::<ItemRow>(None)
-            .await?
-            .and_then(ItemRow::held))
+        Ok(self.db.prepare(select("id = ?")).bind(&[id.into()])?.first::<ItemRow>(None).await?.and_then(ItemRow::held))
     }
 
     /// The work items of these ids, in no particular order.
@@ -119,12 +113,7 @@ impl Work {
             return Ok(Vec::new());
         }
         held_rows(
-            &self
-                .db
-                .prepare(select("id IN (SELECT value FROM json_each(?))"))
-                .bind(&[serde_json::to_string(ids)?.into()])?
-                .all()
-                .await?,
+            &self.db.prepare(select("id IN (SELECT value FROM json_each(?))")).bind(&[serde_json::to_string(ids)?.into()])?.all().await?,
         )
     }
 
@@ -209,36 +198,37 @@ impl Work {
         let viewer = a.viewer.as_ref();
         let member = viewer.and_then(|user| access::workspace_role(user, &workspace)).is_some();
         let granted: Vec<&str> = viewer
-            .map(|user| user.grants.iter().filter(|grant| grant.workspace.eq_ignore_ascii_case(&workspace)).map(|grant| grant.repo_id.as_str()).collect())
+            .map(|user| {
+                user.grants
+                    .iter()
+                    .filter(|grant| grant.workspace.eq_ignore_ascii_case(&workspace))
+                    .map(|grant| grant.repo_id.as_str())
+                    .collect()
+            })
             .unwrap_or_default();
-        let label = a
-            .label
-            .map(|label| label.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase())
-            .filter(|label| !label.is_empty());
+        let label =
+            a.label.map(|label| label.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()).filter(|label| !label.is_empty());
         let assignee = a.assignee.map(|name| name.trim().trim_start_matches('@').to_lowercase()).filter(|name| !name.is_empty());
         let state = state_name(a.state).map_or(JsValue::NULL, JsValue::from);
         let project = self.project_filter(&workspace, a.project.as_deref()).await?;
-        let query = self
-            .db
-            .prepare(LIST_SQL.replace("{ITEM_COLUMNS}", ITEM_COLUMNS))
-            .bind(&[
-                workspace.as_str().into(),
-                state,
-                optional(&label),
-                optional_number(a.milestone),
-                optional(&assignee),
-                optional(&repo.as_ref().map(|repo| repo.id.clone())),
-                a.role.map_or(JsValue::NULL, |role| role.as_str().into()),
-                u32::from(member).into(),
-                serde_json::to_string(&granted)?.into(),
-                a.limit.unwrap_or(LIST_PAGE).clamp(1, LIST_PAGE).into(),
-                optional(&a.closed_since.map(|at| at.trim().to_owned()).filter(|at| !at.is_empty())),
-                optional_number(if a.horizon.is_some() { None } else { a.before }),
-                a.horizon.map_or(JsValue::NULL, |horizon| horizon.as_str().into()),
-                optional_number(a.parent),
-                optional(&project),
-                optional_number(a.cycle),
-            ])?;
+        let query = self.db.prepare(LIST_SQL.replace("{ITEM_COLUMNS}", ITEM_COLUMNS)).bind(&[
+            workspace.as_str().into(),
+            state,
+            optional(&label),
+            optional_number(a.milestone),
+            optional(&assignee),
+            optional(&repo.as_ref().map(|repo| repo.id.clone())),
+            a.role.map_or(JsValue::NULL, |role| role.as_str().into()),
+            u32::from(member).into(),
+            serde_json::to_string(&granted)?.into(),
+            a.limit.unwrap_or(LIST_PAGE).clamp(1, LIST_PAGE).into(),
+            optional(&a.closed_since.map(|at| at.trim().to_owned()).filter(|at| !at.is_empty())),
+            optional_number(if a.horizon.is_some() { None } else { a.before }),
+            a.horizon.map_or(JsValue::NULL, |horizon| horizon.as_str().into()),
+            optional_number(a.parent),
+            optional(&project),
+            optional_number(a.cycle),
+        ])?;
         let rows = self.timing.db(1, query.all()).await?.results::<ItemRow>()?;
         Ok(Outcome::Ok(
             rows.into_iter()
@@ -403,8 +393,24 @@ mod tests {
         cycle: Option<u32>,
     ) -> Vec<u32> {
         let sql = LIST_SQL.replace("{ITEM_COLUMNS}", ITEM_COLUMNS);
-        let values: [&dyn ToSql; 16] =
-            [&"acme", &state, &None::<String>, &None::<u32>, &None::<String>, &None::<String>, &None::<String>, &1, &"[]", &limit, &closed_since, &before, &None::<String>, &parent, &project, &cycle];
+        let values: [&dyn ToSql; 16] = [
+            &"acme",
+            &state,
+            &None::<String>,
+            &None::<u32>,
+            &None::<String>,
+            &None::<String>,
+            &None::<String>,
+            &1,
+            &"[]",
+            &limit,
+            &closed_since,
+            &before,
+            &None::<String>,
+            &parent,
+            &project,
+            &cycle,
+        ];
         let mut statement = db.prepare(&sql).unwrap();
         let numbers = statement.query_map(&values[..], |row| row.get::<_, u32>("number")).unwrap();
         numbers.map(Result::unwrap).collect()
@@ -413,7 +419,10 @@ mod tests {
     #[test]
     fn cycle_lists_only_its_work_items() {
         let db = acme();
-        db.execute_batch("UPDATE work_items SET cycle_number = 4 WHERE number IN (1, 3); UPDATE work_items SET cycle_number = 5 WHERE number = 2;").unwrap();
+        db.execute_batch(
+            "UPDATE work_items SET cycle_number = 4 WHERE number IN (1, 3); UPDATE work_items SET cycle_number = 5 WHERE number = 2;",
+        )
+        .unwrap();
         assert_eq!(listed_with(&db, None, 100, None, None, None, None, Some(4)), [3, 1]);
         assert_eq!(listed_with(&db, None, 100, None, None, None, None, Some(9)), Vec::<u32>::new());
     }
@@ -447,8 +456,10 @@ mod tests {
     #[test]
     fn parent_lists_only_its_sub_items() {
         let db = acme();
-        db.execute_batch("UPDATE work_items SET parent_id = 'wki_1' WHERE number IN (2, 4); UPDATE work_items SET parent_id = 'wki_2' WHERE number = 5;")
-            .unwrap();
+        db.execute_batch(
+            "UPDATE work_items SET parent_id = 'wki_1' WHERE number IN (2, 4); UPDATE work_items SET parent_id = 'wki_2' WHERE number = 5;",
+        )
+        .unwrap();
         assert_eq!(listed_under(&db, None, 100, None, None, Some(1)), [4, 2]);
         assert_eq!(listed_under(&db, Some("open"), 100, None, None, Some(1)), [2]);
         // Not their sub-items' sub-items, and none for one that has none.

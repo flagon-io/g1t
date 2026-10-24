@@ -26,11 +26,7 @@ fn parts(version: &str) -> (Vec<Part>, Vec<Part>) {
             if current.is_empty() {
                 return;
             }
-            out.push(if digits {
-                Part::Number(current.parse().unwrap_or(u64::MAX))
-            } else {
-                Part::Text(current.to_lowercase())
-            });
+            out.push(if digits { Part::Number(current.parse().unwrap_or(u64::MAX)) } else { Part::Text(current.to_lowercase()) });
             current.clear();
         };
         for c in text.chars() {

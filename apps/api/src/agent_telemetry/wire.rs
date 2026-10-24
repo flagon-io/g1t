@@ -599,7 +599,8 @@ mod tests {
         let sum_point = [fixed64(3, 5), fixed64(4, 1.5f64.to_bits()), bytes(7, &string_attribute("type", "input"))].concat();
         let int_point = [fixed64(6, 40), bytes(7, &string_attribute("type", "output"))].concat();
         let sum = [bytes(1, &sum_point), bytes(1, &int_point), uint(2, 2), uint(3, 1)].concat();
-        let histogram_point = [uint(4, 3), fixed64(5, 900.0f64.to_bits()), bytes(9, &string_attribute("gen_ai.token.type", "input"))].concat();
+        let histogram_point =
+            [uint(4, 3), fixed64(5, 900.0f64.to_bits()), bytes(9, &string_attribute("gen_ai.token.type", "input"))].concat();
         let histogram = [bytes(1, &histogram_point), uint(2, 1)].concat();
         let metrics = [
             bytes(2, &[bytes(1, b"claude_code.token.usage"), bytes(7, &sum)].concat()),

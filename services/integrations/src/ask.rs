@@ -16,7 +16,7 @@
 //! the browser, never into the prompt.
 
 use g1t_contracts::ai::{
-    ASK_MAX_MESSAGE_CHARS, ASK_MAX_MESSAGES, ASK_MAX_TOTAL_CHARS, AskEvent, AskMessage, AskPage, AskRole, AiConfig, AiProvider,
+    ASK_MAX_MESSAGE_CHARS, ASK_MAX_MESSAGES, ASK_MAX_TOTAL_CHARS, AiConfig, AiProvider, AskEvent, AskMessage, AskPage, AskRole,
 };
 use serde_json::{Value, json};
 
@@ -68,10 +68,8 @@ pub fn build(request: &Request) -> Result<Built, String> {
     if base.is_empty() {
         return Err(format!("{} has no address to send to.", provider.label()));
     }
-    let mut headers = vec![
-        ("content-type".to_owned(), "application/json".to_owned()),
-        ("accept".to_owned(), "text/event-stream".to_owned()),
-    ];
+    let mut headers =
+        vec![("content-type".to_owned(), "application/json".to_owned()), ("accept".to_owned(), "text/event-stream".to_owned())];
     if let Some(key) = request.key.filter(|key| !key.is_empty()) {
         let header = models::auth_header(provider, request.config);
         if header == "authorization" {
@@ -121,11 +119,8 @@ pub fn build(request: &Request) -> Result<Built, String> {
             // OpenAI's own API, and Azure's, take `max_completion_tokens`
             // (its reasoning models refuse `max_tokens`); the rest take
             // `max_tokens`.
-            let limit = if matches!(provider, AiProvider::Openai | AiProvider::AzureOpenai) {
-                "max_completion_tokens"
-            } else {
-                "max_tokens"
-            };
+            let limit =
+                if matches!(provider, AiProvider::Openai | AiProvider::AzureOpenai) { "max_completion_tokens" } else { "max_tokens" };
             body[limit] = json!(request.max_tokens);
             if !request.tools.is_empty() {
                 body["tools"] = json!(
@@ -215,10 +210,8 @@ pub fn tool_turns(api: &str, text: &str, calls: &[Call], results: &[Answered]) -
 /// trimmed, at most [`ASK_MAX_MESSAGES`] of its latest turns, alternating
 /// and starting and ending with the person.
 pub fn conversation(messages: Vec<AskMessage>) -> Result<Vec<AskMessage>, String> {
-    let mut messages: Vec<AskMessage> = messages
-        .into_iter()
-        .map(|message| AskMessage { role: message.role, content: message.content.trim().to_owned() })
-        .collect();
+    let mut messages: Vec<AskMessage> =
+        messages.into_iter().map(|message| AskMessage { role: message.role, content: message.content.trim().to_owned() }).collect();
     if messages.last().is_none_or(|message| message.role != AskRole::User || message.content.is_empty()) {
         return Err("Write a question to ask.".to_owned());
     }
@@ -282,11 +275,7 @@ pub struct Context<'a> {
 pub fn system_prompt(context: &Context) -> String {
     let Context { slug, name, username, site, today, now, page, facts, tools, local } = *context;
     let site = site.trim_end_matches('/');
-    let named = if name.is_empty() || name.eq_ignore_ascii_case(slug) {
-        slug.to_owned()
-    } else {
-        format!("{name} ({slug})")
-    };
+    let named = if name.is_empty() || name.eq_ignore_ascii_case(slug) { slug.to_owned() } else { format!("{name} ({slug})") };
     let mut prompt = format!(
         "You are g1t, the assistant built into g1t ({site}), where teams keep their repositories, work items, pull \
          requests, workflows, deployments, releases and docs. You are answering @{username}, a member of the \
@@ -510,9 +499,16 @@ pub enum Piece {
     Text(String),
     /// The model starts asking for a tool: the call at `index` in this
     /// answer, with its id and the tool's name.
-    ToolStart { index: u64, id: String, name: String },
+    ToolStart {
+        index: u64,
+        id: String,
+        name: String,
+    },
     /// More of the arguments of the call at `index`, as JSON text in parts.
-    ToolInput { index: u64, json: String },
+    ToolInput {
+        index: u64,
+        json: String,
+    },
     /// Why the answer stopped, when the provider says.
     Stop(String),
     /// The provider is finished.
@@ -542,9 +538,7 @@ pub fn read_anthropic(data: &str) -> Vec<Piece> {
             .unwrap_or_default(),
         "message_delta" => event["delta"]["stop_reason"].as_str().map(|reason| vec![Piece::Stop(reason.to_owned())]).unwrap_or_default(),
         "message_stop" => vec![Piece::End],
-        "error" => vec![Piece::Error(
-            event["error"]["message"].as_str().unwrap_or("The provider stopped with an error.").to_owned(),
-        )],
+        "error" => vec![Piece::Error(event["error"]["message"].as_str().unwrap_or("The provider stopped with an error.").to_owned())],
         _ => Vec::new(),
     }
 }
@@ -558,10 +552,8 @@ pub fn read_openai(data: &str) -> Vec<Piece> {
         return Vec::new();
     };
     if event["error"].is_object() || event["error"].is_string() {
-        let message = event["error"]["message"]
-            .as_str()
-            .or_else(|| event["error"].as_str())
-            .unwrap_or("The provider stopped with an error.");
+        let message =
+            event["error"]["message"].as_str().or_else(|| event["error"].as_str()).unwrap_or("The provider stopped with an error.");
         return vec![Piece::Error(message.to_owned())];
     }
     let mut pieces = Vec::new();
@@ -575,11 +567,7 @@ pub fn read_openai(data: &str) -> Vec<Piece> {
         let name = call["function"]["name"].as_str().filter(|name| !name.is_empty());
         let id = call["id"].as_str().filter(|id| !id.is_empty());
         if name.is_some() || id.is_some() {
-            pieces.push(Piece::ToolStart {
-                index,
-                id: id.unwrap_or_default().to_owned(),
-                name: name.unwrap_or_default().to_owned(),
-            });
+            pieces.push(Piece::ToolStart { index, id: id.unwrap_or_default().to_owned(), name: name.unwrap_or_default().to_owned() });
         }
         if let Some(json) = call["function"]["arguments"].as_str().filter(|json| !json.is_empty()) {
             pieces.push(Piece::ToolInput { index, json: json.to_owned() });
@@ -803,11 +791,8 @@ mod tests {
 
     #[test]
     fn an_anthropic_endpoint_takes_its_own_address_and_header() {
-        let config = AiConfig {
-            base_url: Some("https://llm.acme.dev/v1".into()),
-            auth_header: Some("authorization".into()),
-            ..AiConfig::default()
-        };
+        let config =
+            AiConfig { base_url: Some("https://llm.acme.dev/v1".into()), auth_header: Some("authorization".into()), ..AiConfig::default() };
         let built = plain(AiProvider::AnthropicEndpoint, &config, Some("k"), "m", "s", &[say(AskRole::User, "hi")], 10).unwrap();
         assert_eq!(built.url, "https://llm.acme.dev/v1/messages");
         assert_eq!(header(&built, "authorization"), Some("Bearer k"));
@@ -859,7 +844,10 @@ mod tests {
             max_tokens: 100,
         };
         let sent = body(&build(&request).unwrap());
-        assert_eq!(sent["tools"][0], json!({ "name": "pull_request", "description": "Pull requests", "input_schema": tools[0].input_schema }));
+        assert_eq!(
+            sent["tools"][0],
+            json!({ "name": "pull_request", "description": "Pull requests", "input_schema": tools[0].input_schema })
+        );
         // The tools and system prompt are cached across the answer's rounds.
         assert_eq!(sent["tools"][1]["cache_control"], json!({ "type": "ephemeral" }));
         assert!(sent["tools"][0].get("cache_control").is_none());
@@ -891,7 +879,8 @@ mod tests {
     #[test]
     fn openai_is_given_functions_and_each_round_of_calls() {
         let messages = [say(AskRole::User, "Summarize #7")];
-        let calls = [Call { id: "call_a".into(), name: "pull_request".into(), input: json!({ "action": "get", "repo": "acme/web", "number": 7 }) }];
+        let calls =
+            [Call { id: "call_a".into(), name: "pull_request".into(), input: json!({ "action": "get", "repo": "acme/web", "number": 7 }) }];
         let results = [Answered { id: "call_a".into(), content: "{\"title\":\"Fix\"}".into(), is_error: false }];
         let rounds = tool_turns("openai", "", &calls, &results);
         let tools = tools();
@@ -1047,7 +1036,9 @@ mod tests {
         );
         assert!(read_anthropic(r#"{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"…"}}"#).is_empty());
         assert_eq!(
-            read_anthropic(r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"work_item","input":{}}}"#),
+            read_anthropic(
+                r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"work_item","input":{}}}"#
+            ),
             vec![Piece::ToolStart { index: 1, id: "toolu_1".into(), name: "work_item".into() }]
         );
         assert_eq!(
@@ -1069,11 +1060,14 @@ mod tests {
 
     #[test]
     fn openai_events_become_text_tools_and_a_stop() {
-        assert_eq!(read_openai(r#"{"choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}"#), vec![
-            Piece::Text("Hi".into())
-        ]);
         assert_eq!(
-            read_openai(r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"work_item","arguments":""}}]}}]}"#),
+            read_openai(r#"{"choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}"#),
+            vec![Piece::Text("Hi".into())]
+        );
+        assert_eq!(
+            read_openai(
+                r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"work_item","arguments":""}}]}}]}"#
+            ),
             vec![Piece::ToolStart { index: 0, id: "call_1".into(), name: "work_item".into() }]
         );
         assert_eq!(

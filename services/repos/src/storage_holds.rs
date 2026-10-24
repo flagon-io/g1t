@@ -55,18 +55,18 @@
 //! and writes a row of `storage_recoveries` with the evidence.
 use std::collections::HashMap;
 
+use g1t_contracts::billing::AdminLogArgs;
 use g1t_contracts::repos::{
-    AdminReleaseStorageHoldArgs, AdminStorageDriftArgs, AdminStorageHoldArgs, AdminStorageHoldsArgs, AdminStorageRecoveriesArgs,
-    AskedRef, Repo, RepoDrift, StorageDrift, StorageHold, StorageHoldInspection, StorageHoldRepo, StorageHolds, StorageRecovery,
+    AdminReleaseStorageHoldArgs, AdminStorageDriftArgs, AdminStorageHoldArgs, AdminStorageHoldsArgs, AdminStorageRecoveriesArgs, AskedRef,
+    Repo, RepoDrift, StorageDrift, StorageHold, StorageHoldInspection, StorageHoldRepo, StorageHolds, StorageRecovery,
     StorageRecoveryAudit, UpstreamState,
 };
-use g1t_contracts::billing::AdminLogArgs;
 use g1t_contracts::time::{parse_rfc3339, rfc3339};
 use g1t_contracts::{FailureCode, Outcome, new_id};
 use g1t_kit::now_ms;
 use serde::Deserialize;
-use worker::wasm_bindgen::JsValue;
 use worker::Result;
+use worker::wasm_bindgen::JsValue;
 
 use crate::public_storage::{GRACE_MS, LEASE_MS, LEGACY_MS};
 use crate::registry::{Registry, store_key};
@@ -171,7 +171,8 @@ pub(crate) const RELEASE_LOCK_ROW: &str = "DELETE FROM storage_copy_locks
 /// migration 0024): written in the release's batch, only if its recovery
 /// row was. ?1 audit id, ?2 workspace or null, ?3 account or null, ?4
 /// action, ?5 detail, ?6 staff, ?7 created_at.
-pub(crate) const RELEASE_AUDIT: &str = "INSERT INTO storage_recovery_audits (recovery_id, workspace, account, action, detail, by, created_at)
+pub(crate) const RELEASE_AUDIT: &str =
+    "INSERT INTO storage_recovery_audits (recovery_id, workspace, account, action, detail, by, created_at)
     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7 WHERE EXISTS (SELECT 1 FROM storage_recoveries WHERE id = ?1)";
 
 /// Lines billing has not confirmed: those never tried first, then those
@@ -266,7 +267,12 @@ pub fn audit_line(hold: &StorageHold, bytes: u64, reason: &str, recovery_id: &st
         _ => String::new(),
     };
     let size = if hold.kind == "copy_lock" { String::new() } else { format!(", {}", format_bytes(bytes)) };
-    let detail = format!("{} {} on {}{written}{size}: {reason} · storage_recoveries {recovery_id}", kind_label(&hold.kind), hold.id, named(&hold.repo));
+    let detail = format!(
+        "{} {} on {}{written}{size}: {reason} · storage_recoveries {recovery_id}",
+        kind_label(&hold.kind),
+        hold.id,
+        named(&hold.repo)
+    );
     AuditLine { workspace, detail }
 }
 
@@ -300,7 +306,9 @@ pub fn verdict(basis: Basis<'_>, now: u64, epoch_ms: Option<u64>) -> Verdict {
         Basis::Reservation { state: "ended", ended_ms, .. } => Verdict {
             abandoned: true,
             why: match ended_ms {
-                Some(ended) => format!("The write stopped at {} without knowing whether the store took it, and sends nothing after.", at(ended)),
+                Some(ended) => {
+                    format!("The write stopped at {} without knowing whether the store took it, and sends nothing after.", at(ended))
+                }
                 None => "The write stopped without knowing whether the store took it, and sends nothing after.".to_owned(),
             },
             releasable_at_ms: None,
@@ -319,13 +327,21 @@ pub fn verdict(basis: Basis<'_>, now: u64, epoch_ms: Option<u64>) -> Verdict {
             } else {
                 Verdict {
                     abandoned: false,
-                    why: format!("The write may still be sending: its lease runs to {}, then {} minutes' grace.", at(lease_until_ms), GRACE_MS / 60_000),
+                    why: format!(
+                        "The write may still be sending: its lease runs to {}, then {} minutes' grace.",
+                        at(lease_until_ms),
+                        GRACE_MS / 60_000
+                    ),
                     releasable_at_ms: Some(free),
                 }
             }
         }
         Basis::Unledgered => match epoch_ms {
-            None => Verdict { abandoned: false, why: "The ledger has not begun, so these bytes cannot be told apart from a write in flight.".to_owned(), releasable_at_ms: None },
+            None => Verdict {
+                abandoned: false,
+                why: "The ledger has not begun, so these bytes cannot be told apart from a write in flight.".to_owned(),
+                releasable_at_ms: None,
+            },
             Some(epoch) => {
                 let free = epoch.saturating_add(LEGACY_MS);
                 if now >= free {
@@ -361,19 +377,31 @@ pub fn verdict(basis: Basis<'_>, now: u64, epoch_ms: Option<u64>) -> Verdict {
             } else {
                 Verdict {
                     abandoned: false,
-                    why: format!("The copy may still be running: its lease runs to {}, then {} minutes' grace.", at(lease), GRACE_MS / 60_000),
+                    why: format!(
+                        "The copy may still be running: its lease runs to {}, then {} minutes' grace.",
+                        at(lease),
+                        GRACE_MS / 60_000
+                    ),
                     releasable_at_ms: Some(free),
                 }
             }
         }
         Basis::Lock { lease_until_ms: None, created_ms } => match epoch_ms {
-            None => Verdict { abandoned: false, why: "The ledger has not begun, so this lock cannot be told apart from a copy in flight.".to_owned(), releasable_at_ms: None },
+            None => Verdict {
+                abandoned: false,
+                why: "The ledger has not begun, so this lock cannot be told apart from a copy in flight.".to_owned(),
+                releasable_at_ms: None,
+            },
             Some(epoch) => {
                 let free = legacy_lock_deadline(epoch, created_ms);
                 if now >= free {
                     Verdict {
                         abandoned: true,
-                        why: format!("Taken by code older than the ledger (begun {}), with no lease; {} hours have passed since.", at(epoch), LEGACY_MS / 3_600_000),
+                        why: format!(
+                            "Taken by code older than the ledger (begun {}), with no lease; {} hours have passed since.",
+                            at(epoch),
+                            LEGACY_MS / 3_600_000
+                        ),
                         releasable_at_ms: None,
                     }
                 } else {
@@ -552,7 +580,9 @@ impl Registry {
     async fn find_hold(&self, kind: &str, id: &str) -> Result<Option<Found>> {
         Ok(match kind {
             "reservation" => self.db.prepare(RESERVATION).bind(&[id.into()])?.first::<ReservationRow>(None).await?.map(Found::Reservation),
-            "unledgered" => self.db.prepare(UNLEDGERED).bind(&[1.0.into(), id.into()])?.first::<UnledgeredRow>(None).await?.map(Found::Unledgered),
+            "unledgered" => {
+                self.db.prepare(UNLEDGERED).bind(&[1.0.into(), id.into()])?.first::<UnledgeredRow>(None).await?.map(Found::Unledgered)
+            }
             "copy_lock" => self.db.prepare(LOCKS).bind(&[1.0.into(), id.into()])?.first::<LockRow>(None).await?.map(Found::Lock),
             _ => None,
         })
@@ -561,22 +591,51 @@ impl Registry {
     async fn all_holds(&self, limit: u32) -> Result<Vec<Found>> {
         let limit = f64::from(limit);
         let mut found: Vec<Found> = Vec::new();
-        found.extend(self.db.prepare(UNLEDGERED).bind(&[limit.into(), JsValue::NULL])?.all().await?.results::<UnledgeredRow>()?.into_iter().map(Found::Unledgered));
-        found.extend(self.db.prepare(LOCKS).bind(&[limit.into(), JsValue::NULL])?.all().await?.results::<LockRow>()?.into_iter().map(Found::Lock));
-        found.extend(self.db.prepare(RESERVATIONS).bind(&[limit.into()])?.all().await?.results::<ReservationRow>()?.into_iter().map(Found::Reservation));
+        found.extend(
+            self.db
+                .prepare(UNLEDGERED)
+                .bind(&[limit.into(), JsValue::NULL])?
+                .all()
+                .await?
+                .results::<UnledgeredRow>()?
+                .into_iter()
+                .map(Found::Unledgered),
+        );
+        found.extend(
+            self.db.prepare(LOCKS).bind(&[limit.into(), JsValue::NULL])?.all().await?.results::<LockRow>()?.into_iter().map(Found::Lock),
+        );
+        found.extend(
+            self.db
+                .prepare(RESERVATIONS)
+                .bind(&[limit.into()])?
+                .all()
+                .await?
+                .results::<ReservationRow>()?
+                .into_iter()
+                .map(Found::Reservation),
+        );
         Ok(found)
     }
 }
 
 /// A repository as a hold names it, with its row when it still has one.
-async fn named(registry: &Registry, id: &str, known: &mut HashMap<String, Option<(Repo, bool)>>) -> Result<(StorageHoldRepo, Option<Repo>)> {
+async fn named(
+    registry: &Registry,
+    id: &str,
+    known: &mut HashMap<String, Option<(Repo, bool)>>,
+) -> Result<(StorageHoldRepo, Option<Repo>)> {
     if !known.contains_key(id) {
         let row = registry.by_id_any(id).await?.map(|(repo, deleted_at)| (repo, deleted_at.is_some()));
         known.insert(id.to_owned(), row);
     }
     Ok(match known.get(id).cloned().flatten() {
         Some((repo, deleted)) => (
-            StorageHoldRepo { id: id.to_owned(), path: Some(format!("{}/{}", repo.namespace, repo.name)), private: repo.is_private, deleted },
+            StorageHoldRepo {
+                id: id.to_owned(),
+                path: Some(format!("{}/{}", repo.namespace, repo.name)),
+                private: repo.is_private,
+                deleted,
+            },
             Some(repo),
         ),
         None => (StorageHoldRepo { id: id.to_owned(), ..StorageHoldRepo::default() }, None),
@@ -584,7 +643,11 @@ async fn named(registry: &Registry, id: &str, known: &mut HashMap<String, Option
 }
 
 async fn describe(
-    registry: &Registry, found: &Found, now: u64, epoch_ms: Option<u64>, known: &mut HashMap<String, Option<(Repo, bool)>>,
+    registry: &Registry,
+    found: &Found,
+    now: u64,
+    epoch_ms: Option<u64>,
+    known: &mut HashMap<String, Option<(Repo, bool)>>,
 ) -> Result<StorageHold> {
     let (charged, written) = found.repos();
     let (repo, _) = named(registry, charged, known).await?;
@@ -772,8 +835,15 @@ impl<S: GitStore> Repos<S> {
                 (
                     vec![
                         db.prepare(RELEASE_RESERVATION).bind(&[
-                            audit.as_str().into(), row.id.as_str().into(), held.into(), evidence.as_str().into(), staff.into(),
-                            reason.into(), released_at.as_str().into(), (GRACE_MS as f64).into(), (now as f64).into(),
+                            audit.as_str().into(),
+                            row.id.as_str().into(),
+                            held.into(),
+                            evidence.as_str().into(),
+                            staff.into(),
+                            reason.into(),
+                            released_at.as_str().into(),
+                            (GRACE_MS as f64).into(),
+                            (now as f64).into(),
                         ])?,
                         db.prepare(RELEASE_RESERVATION_SUM).bind(&[audit.as_str().into(), row.root_id.as_str().into(), held.into()])?,
                         db.prepare(RELEASE_RESERVATION_ROW).bind(&[audit.as_str().into(), row.id.as_str().into()])?,
@@ -786,8 +856,15 @@ impl<S: GitStore> Repos<S> {
                 (
                     vec![
                         db.prepare(RELEASE_UNLEDGERED).bind(&[
-                            audit.as_str().into(), row.root_id.as_str().into(), held.into(), evidence.as_str().into(), staff.into(),
-                            reason.into(), released_at.as_str().into(), (LEGACY_MS as f64).into(), (now as f64).into(),
+                            audit.as_str().into(),
+                            row.root_id.as_str().into(),
+                            held.into(),
+                            evidence.as_str().into(),
+                            staff.into(),
+                            reason.into(),
+                            released_at.as_str().into(),
+                            (LEGACY_MS as f64).into(),
+                            (now as f64).into(),
                         ])?,
                         db.prepare(RELEASE_UNLEDGERED_SUM).bind(&[audit.as_str().into(), row.root_id.as_str().into(), held.into()])?,
                     ],
@@ -800,11 +877,23 @@ impl<S: GitStore> Repos<S> {
                 (
                     vec![
                         db.prepare(RELEASE_LOCK).bind(&[
-                            audit.as_str().into(), row.repo_id.as_str().into(), row.destination_id.as_str().into(), evidence.as_str().into(),
-                            staff.into(), reason.into(), released_at.as_str().into(), (deadline as f64).into(), (GRACE_MS as f64).into(),
-                            (now as f64).into(), (LEGACY_MS as f64).into(),
+                            audit.as_str().into(),
+                            row.repo_id.as_str().into(),
+                            row.destination_id.as_str().into(),
+                            evidence.as_str().into(),
+                            staff.into(),
+                            reason.into(),
+                            released_at.as_str().into(),
+                            (deadline as f64).into(),
+                            (GRACE_MS as f64).into(),
+                            (now as f64).into(),
+                            (LEGACY_MS as f64).into(),
                         ])?,
-                        db.prepare(RELEASE_LOCK_ROW).bind(&[audit.as_str().into(), row.repo_id.as_str().into(), row.destination_id.as_str().into()])?,
+                        db.prepare(RELEASE_LOCK_ROW).bind(&[
+                            audit.as_str().into(),
+                            row.repo_id.as_str().into(),
+                            row.destination_id.as_str().into(),
+                        ])?,
                     ],
                     0,
                 )
@@ -826,7 +915,10 @@ impl<S: GitStore> Repos<S> {
         ])?);
         let results = db.batch(statements).await?;
         if results[0].results::<Written>()?.is_empty() {
-            return Ok(Outcome::fail(FailureCode::Conflict, "It changed since it was inspected, so nothing was released. Inspect it again."));
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "It changed since it was inspected, so nothing was released. Inspect it again.",
+            ));
         }
         worker::console_log!(
             "{}",
@@ -873,7 +965,11 @@ impl<S: GitStore> Repos<S> {
     /// or only `only`) to its `admin_log`, keyed by the recovery's id so a
     /// line sent twice is written once, and marks each sent only once
     /// billing confirms it. What each answered, by recovery id.
-    pub(crate) async fn send_recovery_audits(&self, only: Option<&str>, limit: u32) -> Result<Vec<(String, std::result::Result<(), String>)>> {
+    pub(crate) async fn send_recovery_audits(
+        &self,
+        only: Option<&str>,
+        limit: u32,
+    ) -> Result<Vec<(String, std::result::Result<(), String>)>> {
         let db = &self.registry.db;
         let unsent = db
             .prepare(AUDITS_UNSENT)
@@ -889,7 +985,10 @@ impl<S: GitStore> Repos<S> {
                 Ok(()) => db.prepare(AUDIT_SENT).bind(&[row.recovery_id.as_str().into(), now.as_str().into()])?.run().await?,
                 Err(error) => {
                     worker::console_error!("{}", serde_json::json!({ "storage_release_unaudited": row.recovery_id, "error": error }));
-                    db.prepare(AUDIT_UNSENT).bind(&[row.recovery_id.as_str().into(), error.as_str().into(), now.as_str().into()])?.run().await?
+                    db.prepare(AUDIT_UNSENT)
+                        .bind(&[row.recovery_id.as_str().into(), error.as_str().into(), now.as_str().into()])?
+                        .run()
+                        .await?
                 }
             };
             answers.push((row.recovery_id, answer));
@@ -1200,7 +1299,10 @@ mod tests {
         forked.target = Some(StorageHoldRepo { id: "rep_2".into(), path: Some("bob/site".into()), ..StorageHoldRepo::default() });
         let line = audit_line(&forked, 0, reason, "srr_9");
         assert_eq!(line.workspace.as_deref(), Some("acme"));
-        assert_eq!(line.detail, "Copy lock rep_1 on acme/site (rep_1) → bob/site (rep_2): The push ended with a 500. · storage_recoveries srr_9");
+        assert_eq!(
+            line.detail,
+            "Copy lock rep_1 on acme/site (rep_1) → bob/site (rep_2): The push ended with a 500. · storage_recoveries srr_9"
+        );
         forked.target = Some(StorageHoldRepo { id: "rep_2".into(), ..StorageHoldRepo::default() });
         assert!(audit_line(&forked, 0, reason, "srr_9").detail.contains("→ repository rep_2 (gone)"));
         // A write to the charged repository itself names it once.
@@ -1220,12 +1322,14 @@ mod tests {
     #[test]
     fn a_release_keeps_its_audit_line_in_the_same_batch_and_billing_writes_it_once() {
         let source = include_str!("storage_holds.rs");
-        let release = &source[source.find("async fn admin_release_storage_hold(").unwrap()..source.find("async fn send_recovery_audits(").unwrap()];
+        let release =
+            &source[source.find("async fn admin_release_storage_hold(").unwrap()..source.find("async fn send_recovery_audits(").unwrap()];
         let pushed = release.find("statements.push(db.prepare(RELEASE_AUDIT)").expect("the outbox row is one of the batch's statements");
         assert!(pushed < release.find("db.batch(statements)").unwrap(), "added before the batch runs");
         // Each line is sent with its recovery id as billing's key, and only
         // marked sent once billing says so.
-        let sending = &source[source.find("async fn send_recovery_audit(").unwrap()..source.find("async fn sweep_recovery_audits(").unwrap()];
+        let sending =
+            &source[source.find("async fn send_recovery_audit(").unwrap()..source.find("async fn sweep_recovery_audits(").unwrap()];
         assert!(sending.contains("key: Some(row.recovery_id.clone())"));
         assert!(sending.contains("Ok(true) => Ok(())"));
     }

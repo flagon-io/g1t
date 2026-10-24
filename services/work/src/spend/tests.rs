@@ -26,7 +26,17 @@ fn database() -> Connection {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn session(db: &Connection, id: &str, repo: &str, actor: &str, started: &str, cost: Option<f64>, pull: Option<u32>, parent: Option<&str>, model: &str) {
+fn session(
+    db: &Connection,
+    id: &str,
+    repo: &str,
+    actor: &str,
+    started: &str,
+    cost: Option<f64>,
+    pull: Option<u32>,
+    parent: Option<&str>,
+    model: &str,
+) {
     db.execute(
         "INSERT INTO sessions (id, repo_id, pull, branch, actor_id, actor_name, harness, harness_session_id,
            state, started_at, last_seen_at, parent_id, model, cost_usd)
@@ -122,8 +132,10 @@ fn a_persons_spend_is_shared_out_by_work_and_says_what_landed() {
 
     // Everyone, by name, not by what they spent.
     let people = rows(&db, PEOPLE, &[&"acme", &FROM, &TO]);
-    let people: Vec<(&str, i64, f64)> =
-        people.iter().map(|p| (p["username"].as_str().unwrap(), p["sessions"].as_i64().unwrap(), p["cost_usd"].as_f64().unwrap())).collect();
+    let people: Vec<(&str, i64, f64)> = people
+        .iter()
+        .map(|p| (p["username"].as_str().unwrap(), p["sessions"].as_i64().unwrap(), p["cost_usd"].as_f64().unwrap()))
+        .collect();
     assert_eq!(people, [("usr_1", 5, 10.0), ("usr_2", 1, 7.0)]);
 
     let person = rows(&db, PERSON, &[&"acme", &"USR_2"]);

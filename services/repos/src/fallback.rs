@@ -56,12 +56,7 @@ impl Settings {
             Switched::All
         } else {
             Switched::Some(
-                namespaces
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|name| crate::shards::valid_namespace(name))
-                    .map(str::to_owned)
-                    .collect(),
+                namespaces.split(',').map(str::trim).filter(|name| crate::shards::valid_namespace(name)).map(str::to_owned).collect(),
             )
         };
         Some(Settings {
@@ -100,11 +95,7 @@ fn segment(text: &str) -> String {
 
 /// Percent-encodes a query value.
 fn query(pairs: &[(&str, String)]) -> String {
-    pairs
-        .iter()
-        .map(|(key, value)| format!("{key}={}", segment(value)))
-        .collect::<Vec<_>>()
-        .join("&")
+    pairs.iter().map(|(key, value)| format!("{key}={}", segment(value))).collect::<Vec<_>>().join("&")
 }
 
 /// How a call on the binding is asked of the store's API.
@@ -130,10 +121,10 @@ fn arg<'a>(args: &'a [Value], at: usize) -> &'a Value {
 }
 
 fn text(args: &[Value], at: usize) -> Result<String, Refused> {
-    arg(args, at).as_str().map(str::to_owned).ok_or_else(|| Refused {
-        code: "INVALID_ARGUMENT",
-        message: format!("argument {at} should be text"),
-    })
+    arg(args, at)
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| Refused { code: "INVALID_ARGUMENT", message: format!("argument {at} should be text") })
 }
 
 /// The request for `method(args)`: on the namespace when `repo` is `None`
@@ -239,7 +230,8 @@ pub fn answer(route: &Route, status: u16, body: Vec<u8>) -> Answer {
         return Answer::Null;
     }
     let said: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
-    let message = said.get("message").and_then(Value::as_str).map_or_else(|| format!("the fallback store answered {status}"), str::to_owned);
+    let message =
+        said.get("message").and_then(Value::as_str).map_or_else(|| format!("the fallback store answered {status}"), str::to_owned);
     // 5xx may pass: like the binding's INTERNAL_ERROR.
     let code = if status >= 500 {
         Some("INTERNAL_ERROR".to_owned())
@@ -296,7 +288,8 @@ mod tests {
 
     #[test]
     fn calls_on_the_namespace_become_requests_for_its_key() {
-        let create = route("g1t", None, "create", &[json!("acme--rocket"), json!({ "description": "d", "setDefaultBranch": "trunk" })]).unwrap();
+        let create =
+            route("g1t", None, "create", &[json!("acme--rocket"), json!({ "description": "d", "setDefaultBranch": "trunk" })]).unwrap();
         assert_eq!(create.method, "POST");
         assert_eq!(create.path, "/api/repos");
         assert_eq!(create.body.unwrap(), json!({ "name": "g1t/acme--rocket", "description": "d", "defaultBranch": "trunk" }));

@@ -5,8 +5,7 @@ use std::collections::{HashMap, HashSet};
 use serde_json::Value;
 
 use crate::cli::{
-    RepoCloneArgs, RepoCommand, RepoCreateArgs, RepoDetachArgs, RepoForkArgs, RepoForksArgs, RepoListArgs, RepoSyncArgs,
-    RepoViewArgs,
+    RepoCloneArgs, RepoCommand, RepoCreateArgs, RepoDetachArgs, RepoForkArgs, RepoForksArgs, RepoListArgs, RepoSyncArgs, RepoViewArgs,
 };
 use crate::client::Client;
 use crate::context::Ctx;
@@ -72,15 +71,8 @@ fn view(ctx: &Ctx, args: RepoViewArgs) -> Result<()> {
     } else if found["parent_id"].is_string() {
         println!("{}", out.dim("Forked from a repository you cannot see"));
     }
-    let visibility = if found["is_private"] == true {
-        "private"
-    } else {
-        "public"
-    };
-    let mut facts = vec![
-        visibility.to_owned(),
-        format!("default branch {}", s(&found, "default_branch")),
-    ];
+    let visibility = if found["is_private"] == true { "private" } else { "public" };
+    let mut facts = vec![visibility.to_owned(), format!("default branch {}", s(&found, "default_branch"))];
     if found["archived_at"].is_string() {
         facts.push("archived".to_owned());
     }
@@ -98,11 +90,7 @@ fn clone(ctx: &Ctx, args: RepoCloneArgs) -> Result<()> {
         Repo::parse(&args.repository, &host.name)?
     } else {
         let client = ctx.signed_in_client()?;
-        Repo {
-            host: host.name.clone(),
-            owner: ctx.me(&client)?,
-            name: args.repository.clone(),
-        }
+        Repo { host: host.name.clone(), owner: ctx.me(&client)?, name: args.repository.clone() }
     };
     let host = crate::auth::resolve(&ctx.config, Some(&repo.host))?;
     let url = format!("{}.git", web_url(&host.site, &repo));
@@ -134,11 +122,7 @@ fn create(ctx: &Ctx, args: RepoCreateArgs) -> Result<()> {
         .field("private", !args.public)
         .field_opt("deploy", args.deploy.then_some(true))
         .send()?;
-    let repo = Repo {
-        host: client.host.name.clone(),
-        owner: s(&made, "namespace").to_owned(),
-        name: s(&made, "name").to_owned(),
-    };
+    let repo = Repo { host: client.host.name.clone(), owner: s(&made, "namespace").to_owned(), name: s(&made, "name").to_owned() };
     let url = web_url(&client.host.site, &repo);
     if ctx.out.structured() {
         ctx.out.emit(&made)?;
@@ -168,17 +152,10 @@ fn create(ctx: &Ctx, args: RepoCreateArgs) -> Result<()> {
 
 fn list(ctx: &Ctx, args: RepoListArgs) -> Result<()> {
     let client = ctx.client()?;
-    let found = client
-        .op("list_repos")
-        .query_opt("q", args.query.clone())
-        .send()?;
+    let found = client.op("list_repos").query_opt("q", args.query.clone()).send()?;
     let mut repos: Vec<Value> = super::items(found, "repositories");
     if let Some(w) = &args.workspace {
-        repos.retain(|r| {
-            r["namespace"]
-                .as_str()
-                .is_some_and(|n| n.eq_ignore_ascii_case(w))
-        });
+        repos.retain(|r| r["namespace"].as_str().is_some_and(|n| n.eq_ignore_ascii_case(w)));
     }
     repos.truncate(args.limit);
     if ctx.out.structured() {
@@ -193,11 +170,7 @@ fn list(ctx: &Ctx, args: RepoListArgs) -> Result<()> {
     let rows: Vec<Vec<Cell>> = repos
         .iter()
         .map(|r| {
-            let visibility = if r["is_private"] == true {
-                "private"
-            } else {
-                "public"
-            };
+            let visibility = if r["is_private"] == true { "private" } else { "public" };
             vec![
                 Cell::styled(
                     format!("{}/{}", s(r, "namespace"), s(r, "name")),
@@ -223,11 +196,7 @@ fn fork(ctx: &Ctx, args: RepoForkArgs) -> Result<()> {
         .field_opt("name", args.name)
         .field("default_branch_only", !args.all_branches)
         .send()?;
-    let fork = Repo {
-        host: client.host.name.clone(),
-        owner: s(&made, "namespace").to_owned(),
-        name: s(&made, "name").to_owned(),
-    };
+    let fork = Repo { host: client.host.name.clone(), owner: s(&made, "namespace").to_owned(), name: s(&made, "name").to_owned() };
     let url = web_url(&client.host.site, &fork);
     if ctx.out.structured() {
         ctx.out.emit(&made)?;
@@ -249,11 +218,7 @@ fn fork(ctx: &Ctx, args: RepoForkArgs) -> Result<()> {
 
 fn forks(ctx: &Ctx, args: RepoForksArgs) -> Result<()> {
     let (repo, client) = named_or(ctx, args.repository.as_deref(), Ctx::repo_client)?;
-    let found = client
-        .op("list_forks")
-        .repo(&repo)
-        .query("limit", args.limit.clamp(1, 100))
-        .send()?;
+    let found = client.op("list_forks").repo(&repo).query("limit", args.limit.clamp(1, 100)).send()?;
     let mut list: Vec<Value> = super::items(found, "forks");
     list.truncate(args.limit);
     if ctx.out.structured() {
@@ -298,11 +263,7 @@ fn sync(ctx: &Ctx, args: RepoSyncArgs) -> Result<()> {
     let short = head.get(..7).unwrap_or(head);
     match s(&synced, "status") {
         "up_to_date" => eprintln!("{} {fork} {branch} is up to date.", out.green("✓")),
-        "fast_forwarded" => eprintln!(
-            "{} Synced {fork} {branch}: took in {}, now at {short}.",
-            out.green("✓"),
-            commits(behind)
-        ),
+        "fast_forwarded" => eprintln!("{} Synced {fork} {branch}: took in {}, now at {short}.", out.green("✓"), commits(behind)),
         "merged" => eprintln!(
             "{} Synced {fork} {branch}: merged {} into its {} of its own, now at {short}.",
             out.green("✓"),
@@ -310,10 +271,7 @@ fn sync(ctx: &Ctx, args: RepoSyncArgs) -> Result<()> {
             commits(ahead)
         ),
         _ => {
-            eprintln!(
-                "{} {fork} {branch} was not synced: it and the repository it came from both changed these files.",
-                out.red("✗")
-            );
+            eprintln!("{} {fork} {branch} was not synced: it and the repository it came from both changed these files.", out.red("✗"));
             for path in synced["conflicts"].as_array().into_iter().flatten().filter_map(Value::as_str) {
                 eprintln!("  {path}");
             }
@@ -342,21 +300,13 @@ fn detach(ctx: &Ctx, args: RepoDetachArgs) -> Result<()> {
         }
     }
     let detached = client.op("detach_fork").repo(&fork).send()?;
-    super::done(
-        ctx,
-        &detached,
-        &format!("Detached {fork}: it is no longer a fork"),
-        &web_url(&client.host.site, &fork),
-    )
+    super::done(ctx, &detached, &format!("Detached {fork}: it is no longer a fork"), &web_url(&client.host.site, &fork))
 }
 
 /// The repository's default branch.
 pub fn default_branch(client: &crate::client::Client, repo: &Repo) -> Result<String> {
     let found = client.op("get_repo").repo(repo).send()?;
-    found["default_branch"]
-        .as_str()
-        .map(str::to_owned)
-        .ok_or_else(|| Error::failed(format!("{repo} has no default branch yet.")))
+    found["default_branch"].as_str().map(str::to_owned).ok_or_else(|| Error::failed(format!("{repo} has no default branch yet.")))
 }
 
 /// A repository as `owner/name`, lowercase, to look its description up by.

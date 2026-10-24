@@ -125,10 +125,8 @@ fn post(url: &str, credential: Option<&str>, body: &Value) -> std::result::Resul
         Ok(response) => response.into_json::<Value>().map_err(|e| Failure::Unreachable(e.to_string())),
         Err(ureq::Error::Status(status, response)) => {
             let text = response.into_string().unwrap_or_default();
-            let message = serde_json::from_str::<Value>(&text)
-                .ok()
-                .and_then(|v| v["error"]["message"].as_str().map(str::to_owned))
-                .unwrap_or(text);
+            let message =
+                serde_json::from_str::<Value>(&text).ok().and_then(|v| v["error"]["message"].as_str().map(str::to_owned)).unwrap_or(text);
             Err(Failure::Refused(status, message))
         }
         Err(error) => Err(Failure::Unreachable(error.to_string())),
@@ -153,7 +151,14 @@ impl Api {
     /// poll (it gives a host-mode runner no public repository's work, and a
     /// job asking for one of its machines only to a runner that takes its
     /// size); an older g1t ignores them.
-    pub fn poll(&self, running: &[String], wait_ms: u64, isolation: &str, capacity: &Capacity, sizes: &[OfferedSize]) -> std::result::Result<Poll, Failure> {
+    pub fn poll(
+        &self,
+        running: &[String],
+        wait_ms: u64,
+        isolation: &str,
+        capacity: &Capacity,
+        sizes: &[OfferedSize],
+    ) -> std::result::Result<Poll, Failure> {
         let mut body = poll_body(running, wait_ms, isolation);
         capacity.add_to(&mut body);
         body["sizes"] = json!(sizes);

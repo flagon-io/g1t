@@ -23,12 +23,7 @@ pub(crate) struct PurgeJob {
 }
 
 impl Identity {
-    pub(crate) fn purge_job_statements(
-        &self,
-        kind: &str,
-        id: &str,
-        payload: Value,
-    ) -> Result<Vec<D1PreparedStatement>> {
+    pub(crate) fn purge_job_statements(&self, kind: &str, id: &str, payload: Value) -> Result<Vec<D1PreparedStatement>> {
         let now = rfc3339(now_ms());
         let payload = payload.to_string();
         ["AVATAR", "CHAT", "NOTIFY", "ARTIFACTS", "EVENTS"]
@@ -46,8 +41,13 @@ impl Identity {
     }
 
     pub(crate) async fn run_purge_jobs(&self) -> Result<()> {
-        let jobs = self.db.prepare("SELECT * FROM purge_jobs WHERE completed_at IS NULL AND retry_at <= ? ORDER BY retry_at LIMIT 25")
-            .bind(&[rfc3339(now_ms()).into()])?.all().await?.results::<PurgeJob>()?;
+        let jobs = self
+            .db
+            .prepare("SELECT * FROM purge_jobs WHERE completed_at IS NULL AND retry_at <= ? ORDER BY retry_at LIMIT 25")
+            .bind(&[rfc3339(now_ms()).into()])?
+            .all()
+            .await?
+            .results::<PurgeJob>()?;
         for job in jobs {
             let result = self.run_purge_job(&job).await;
             // Do not persist remote response bodies: they may contain personal data or secrets.
@@ -62,11 +62,7 @@ impl Identity {
                 let retry = rfc3339(now_ms() + 900_000 * (1_u64 << job.attempts.min(6)));
                 self.db.prepare("UPDATE purge_jobs SET attempts = attempts + 1, retry_at = ?3, last_error = 'Cleanup failed; retry pending' WHERE subject_id = ?1 AND target = ?2 AND completed_at IS NULL")
                     .bind(&[job.subject_id.as_str().into(), job.target.as_str().into(), retry.into()])?.run().await?;
-                worker::console_error!(
-                    "purge target {} failed for {}; retry pending",
-                    job.target,
-                    job.subject_id
-                );
+                worker::console_error!("purge target {} failed for {}; retry pending", job.target, job.subject_id);
             }
         }
         Ok(())
@@ -75,54 +71,37 @@ impl Identity {
     async fn run_purge_job(&self, job: &PurgeJob) -> Result<bool> {
         let payload: Value = serde_json::from_str(&job.payload)?;
         if job.target == "AVATAR" {
-            self.forget_avatar(
-                payload
-                    .get("avatar")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned),
-            )
-            .await?;
+            self.forget_avatar(payload.get("avatar").and_then(Value::as_str).map(str::to_owned)).await?;
             return Ok(true);
         }
         let service = self.env.service(&job.target)?;
         if job.target == "EVENTS" {
             let (kind, data) = if job.kind == "user" {
-                (
-                    "user.deleted",
-                    json!({"userId": job.subject_id, "username": payload["username"]}),
-                )
+                ("user.deleted", json!({"userId": job.subject_id, "username": payload["username"]}))
             } else {
-                (
-                    "workspace.deleted",
-                    json!({"workspaceId": job.subject_id, "slug": payload["slug"]}),
-                )
+                ("workspace.deleted", json!({"workspaceId": job.subject_id, "slug": payload["slug"]}))
             };
             let _: Value = g1t_kit::call(
                 &service,
                 "publish",
-                &Publish {
-                    events: vec![NewEvent {
-                        kind,
-                        source: "identity",
-                        repo_id: None,
-                        actor: None,
-                        data,
-                    }],
-                },
+                &Publish { events: vec![NewEvent { kind, source: "identity", repo_id: None, actor: None, data }] },
             )
             .await?;
         } else {
-            let result: Value = g1t_kit::call(&service, "purge_personal_data", &json!({
-                "kind": job.kind, "id": job.subject_id, "username": payload["username"], "slug": payload["slug"],
-                "old_slugs": payload["old_slugs"], "members": payload["members"],
-            })).await?;
+            let result: Value = g1t_kit::call(
+                &service,
+                "purge_personal_data",
+                &json!({
+                    "kind": job.kind, "id": job.subject_id, "username": payload["username"], "slug": payload["slug"],
+                    "old_slugs": payload["old_slugs"], "members": payload["members"],
+                }),
+            )
+            .await?;
             if result.get("pending") == Some(&Value::Bool(true)) {
                 return Ok(false);
             }
             if result.get("ok") != Some(&Value::Bool(true)) {
-                return Err(worker::Error::RustError(
-                    "Cleanup did not confirm success".into(),
-                ));
+                return Err(worker::Error::RustError("Cleanup did not confirm success".into()));
             }
         }
         Ok(true)

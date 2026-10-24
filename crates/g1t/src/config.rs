@@ -61,9 +61,7 @@ pub fn dir() -> Result<PathBuf> {
     }
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
-        .ok_or_else(|| {
-            Error::failed("No home directory to keep settings in. Set G1T_CONFIG_DIR.")
-        })?;
+        .ok_or_else(|| Error::failed("No home directory to keep settings in. Set G1T_CONFIG_DIR."))?;
     Ok(PathBuf::from(home).join(".config").join("g1t"))
 }
 
@@ -76,28 +74,21 @@ impl Config {
         let path = path()?;
         match std::fs::read_to_string(&path) {
             Ok(text) if text.trim().is_empty() => Ok(Config::default()),
-            Ok(text) => serde_json::from_str(&text)
-                .map_err(|e| Error::failed(format!("{} is not valid: {e}", path.display()))),
+            Ok(text) => serde_json::from_str(&text).map_err(|e| Error::failed(format!("{} is not valid: {e}", path.display()))),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Config::default()),
-            Err(e) => Err(Error::failed(format!(
-                "Could not read {}: {e}",
-                path.display()
-            ))),
+            Err(e) => Err(Error::failed(format!("Could not read {}: {e}", path.display()))),
         }
     }
 
     pub fn save(&self) -> Result<()> {
         let path = path()?;
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| Error::failed(format!("Could not make {}: {e}", parent.display())))?;
+            std::fs::create_dir_all(parent).map_err(|e| Error::failed(format!("Could not make {}: {e}", parent.display())))?;
         }
         let text = serde_json::to_string_pretty(self).expect("config serializes") + "\n";
         let tmp = path.with_extension("json.tmp");
-        write_private(&tmp, text.as_bytes())
-            .map_err(|e| Error::failed(format!("Could not write {}: {e}", tmp.display())))?;
-        std::fs::rename(&tmp, &path)
-            .map_err(|e| Error::failed(format!("Could not write {}: {e}", path.display())))?;
+        write_private(&tmp, text.as_bytes()).map_err(|e| Error::failed(format!("Could not write {}: {e}", tmp.display())))?;
+        std::fs::rename(&tmp, &path).map_err(|e| Error::failed(format!("Could not write {}: {e}", path.display())))?;
         Ok(())
     }
 
@@ -112,12 +103,7 @@ fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     {
         use std::io::Write;
         use std::os::unix::fs::OpenOptionsExt;
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(path)?;
+        let mut file = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(path)?;
         file.write_all(bytes)
     }
     #[cfg(not(unix))]
@@ -146,10 +132,7 @@ mod tests {
         );
         config.aliases.insert("co".into(), "pr checkout".into());
         let text = serde_json::to_string(&config).unwrap();
-        assert!(
-            !text.contains("token"),
-            "no token field when none is kept: {text}"
-        );
+        assert!(!text.contains("token"), "no token field when none is kept: {text}");
         assert_eq!(serde_json::from_str::<Config>(&text).unwrap(), config);
     }
 }

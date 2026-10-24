@@ -83,10 +83,7 @@ pub fn check(facts: &Facts) -> std::result::Result<(), (FailureCode, String)> {
     if let Some(last) = facts.last_renamed_at {
         let cooldown_from = rfc3339(facts.now_ms.saturating_sub(RENAME_COOLDOWN_HOURS * HOUR_MS));
         if last > cooldown_from.as_str() {
-            return refuse(
-                FailureCode::Conflict,
-                "A workspace can be renamed once a day. Try again tomorrow.",
-            );
+            return refuse(FailureCode::Conflict, "A workspace can be renamed once a day. Try again tomorrow.");
         }
     }
     if facts.someone_elses_username || facts.another_workspace || facts.deleted || facts.aliased {
@@ -113,8 +110,7 @@ pub struct RedirectRow {
 /// Where an old slug leads: the workspace's current slug, while the
 /// redirect still holds.
 pub fn resolve(row: Option<RedirectRow>, now_ms: u64) -> Option<String> {
-    row.filter(|row| row.created_at >= hold_cutoff(now_ms))
-        .map(|row| row.slug)
+    row.filter(|row| row.created_at >= hold_cutoff(now_ms)).map(|row| row.slug)
 }
 
 #[derive(Deserialize)]
@@ -166,23 +162,13 @@ impl Identity {
         let current = a.slug.trim().to_lowercase();
         let wanted = a.new_slug.trim().to_lowercase();
         if a.actor.kind != PrincipalKind::User || a.actor.role_in(&current) != Some(Role::Owner) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only an owner can rename a workspace.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can rename a workspace."));
         }
         if !a.actor.verified {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Confirm your email address before renaming a workspace.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Confirm your email address before renaming a workspace."));
         }
-        let Some(workspace) = self
-            .db
-            .prepare("SELECT id FROM workspaces WHERE slug = ?")
-            .bind(&[current.as_str().into()])?
-            .first::<Target>(None)
-            .await?
+        let Some(workspace) =
+            self.db.prepare("SELECT id FROM workspaces WHERE slug = ?").bind(&[current.as_str().into()])?.first::<Target>(None).await?
         else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Workspace not found."));
         };
@@ -214,9 +200,7 @@ impl Identity {
             wanted: &wanted,
             someone_elses_username,
             another_workspace,
-            redirect: redirect
-                .as_ref()
-                .map(|row| (row.workspace_id.as_str(), row.created_at.as_str())),
+            redirect: redirect.as_ref().map(|row| (row.workspace_id.as_str(), row.created_at.as_str())),
             last_renamed_at: last_renamed_at.as_deref(),
             deleted: self.slug_deleted(&wanted).await?,
             aliased: self.is_alias(&wanted).await?,
@@ -252,26 +236,18 @@ impl Identity {
                     .bind(&[workspace_id.as_str().into(), u8::from(protected).into()])?,
                 // A redirect the workspace is renaming back to, or one whose
                 // hold has ended, gives way to the slug in use.
-                self.db
-                    .prepare("DELETE FROM workspace_redirects WHERE old_slug = ?")
-                    .bind(&[wanted.as_str().into()])?,
-                self.db
-                    .prepare("UPDATE workspaces SET slug = ? WHERE id = ? AND slug = ?")
-                    .bind(&[
-                        wanted.as_str().into(),
-                        workspace_id.as_str().into(),
-                        from.as_str().into(),
-                    ])?,
+                self.db.prepare("DELETE FROM workspace_redirects WHERE old_slug = ?").bind(&[wanted.as_str().into()])?,
+                self.db.prepare("UPDATE workspaces SET slug = ? WHERE id = ? AND slug = ?").bind(&[
+                    wanted.as_str().into(),
+                    workspace_id.as_str().into(),
+                    from.as_str().into(),
+                ])?,
                 self.db
                     .prepare(
                         "INSERT OR REPLACE INTO workspace_redirects (old_slug, workspace_id, created_at)
                          VALUES (?, ?, ?)",
                     )
-                    .bind(&[
-                        from.as_str().into(),
-                        workspace_id.as_str().into(),
-                        now.as_str().into(),
-                    ])?,
+                    .bind(&[from.as_str().into(), workspace_id.as_str().into(), now.as_str().into()])?,
                 // Agents at work keep their scope: it names the repository
                 // by its path.
                 self.db
@@ -283,12 +259,7 @@ impl Identity {
                     .bind(&[wanted.as_str().into(), from.as_str().into()])?,
             ])
             .await?;
-        self.publish_renamed(WorkspaceRenamed {
-            workspace_id,
-            from,
-            to: wanted.clone(),
-        }, &a.actor.id)
-        .await;
+        self.publish_renamed(WorkspaceRenamed { workspace_id, from, to: wanted.clone() }, &a.actor.id).await;
         Ok(match self.get_workspace(SlugArgs { slug: wanted }).await? {
             Some(workspace) => Outcome::Ok(workspace),
             None => Outcome::fail(FailureCode::NotFound, "Workspace not found."),
@@ -317,9 +288,7 @@ impl Identity {
         for attempt in 1..=PUBLISH_ATTEMPTS {
             match g1t_kit::call::<_, serde_json::Value>(&events, "publish", &publish).await {
                 Ok(_) => return,
-                Err(error) => worker::console_error!(
-                    "workspace.renamed publish attempt {attempt} failed: {error}"
-                ),
+                Err(error) => worker::console_error!("workspace.renamed publish attempt {attempt} failed: {error}"),
             }
         }
     }
@@ -333,13 +302,7 @@ mod tests {
     const NOW: u64 = 1_790_918_179_123;
 
     fn facts<'a>(current: &'a str, wanted: &'a str) -> Facts<'a> {
-        Facts {
-            workspace_id: "wsp_a",
-            current,
-            wanted,
-            now_ms: NOW,
-            ..Facts::default()
-        }
+        Facts { workspace_id: "wsp_a", current, wanted, now_ms: NOW, ..Facts::default() }
     }
 
     fn refused(facts: &Facts) -> FailureCode {
@@ -374,25 +337,13 @@ mod tests {
 
     #[test]
     fn refuses_names_in_use() {
-        let taken = Facts {
-            someone_elses_username: true,
-            ..facts("acme", "bob")
-        };
+        let taken = Facts { someone_elses_username: true, ..facts("acme", "bob") };
         assert_eq!(refused(&taken), FailureCode::Conflict);
-        let taken = Facts {
-            another_workspace: true,
-            ..facts("acme", "globex")
-        };
+        let taken = Facts { another_workspace: true, ..facts("acme", "globex") };
         assert_eq!(refused(&taken), FailureCode::Conflict);
-        let deleted = Facts {
-            deleted: true,
-            ..facts("acme", "initech")
-        };
+        let deleted = Facts { deleted: true, ..facts("acme", "initech") };
         assert_eq!(refused(&deleted), FailureCode::Conflict);
-        let aliased = Facts {
-            aliased: true,
-            ..facts("acme", "flagon")
-        };
+        let aliased = Facts { aliased: true, ..facts("acme", "flagon") };
         assert_eq!(refused(&aliased), FailureCode::Conflict);
     }
 
@@ -400,21 +351,12 @@ mod tests {
     fn an_old_slug_is_held_for_its_workspace_until_the_hold_ends() {
         let recently = rfc3339(NOW - 10 * DAY_MS);
         let long_ago = rfc3339(NOW - (SLUG_HOLD_DAYS + 1) * DAY_MS);
-        let held_by_other = Facts {
-            redirect: Some(("wsp_b", recently.as_str())),
-            ..facts("acme", "globex")
-        };
+        let held_by_other = Facts { redirect: Some(("wsp_b", recently.as_str())), ..facts("acme", "globex") };
         assert_eq!(refused(&held_by_other), FailureCode::Conflict);
-        let held_by_self = Facts {
-            redirect: Some(("wsp_a", recently.as_str())),
-            last_renamed_at: Some(recently.as_str()),
-            ..facts("acme-inc", "acme")
-        };
+        let held_by_self =
+            Facts { redirect: Some(("wsp_a", recently.as_str())), last_renamed_at: Some(recently.as_str()), ..facts("acme-inc", "acme") };
         assert!(check(&held_by_self).is_ok(), "a workspace can rename back");
-        let expired = Facts {
-            redirect: Some(("wsp_b", long_ago.as_str())),
-            ..facts("acme", "globex")
-        };
+        let expired = Facts { redirect: Some(("wsp_b", long_ago.as_str())), ..facts("acme", "globex") };
         assert!(check(&expired).is_ok(), "after the hold anyone can take it");
     }
 
@@ -422,15 +364,9 @@ mod tests {
     fn renames_are_limited_to_one_a_day() {
         let an_hour_ago = rfc3339(NOW - HOUR_MS);
         let two_days_ago = rfc3339(NOW - 2 * DAY_MS);
-        let soon = Facts {
-            last_renamed_at: Some(an_hour_ago.as_str()),
-            ..facts("acme", "acme-inc")
-        };
+        let soon = Facts { last_renamed_at: Some(an_hour_ago.as_str()), ..facts("acme", "acme-inc") };
         assert_eq!(refused(&soon), FailureCode::Conflict);
-        let later = Facts {
-            last_renamed_at: Some(two_days_ago.as_str()),
-            ..facts("acme", "acme-inc")
-        };
+        let later = Facts { last_renamed_at: Some(two_days_ago.as_str()), ..facts("acme", "acme-inc") };
         assert!(check(&later).is_ok());
     }
 

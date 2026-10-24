@@ -108,7 +108,9 @@ impl Packages {
             Credentials::Token(_) | Credentials::Bad => {
                 return error(
                     401,
-                    format!("The token is not right, or has expired. Make an access token at {TOKENS}, then: cargo login --registry {workspace}"),
+                    format!(
+                        "The token is not right, or has expired. Make an access token at {TOKENS}, then: cargo login --registry {workspace}"
+                    ),
                 );
             }
         };
@@ -117,11 +119,17 @@ impl Packages {
         match route {
             CargoRoute::Config if read => self.cargo_config(url, workspace, viewer).await,
             CargoRoute::Index { name } if read => self.cargo_index(&request, workspace, &name, viewer).await,
-            CargoRoute::Download { name, version } if read => self.crate_download(workspace, &name, &version, viewer, method == Method::Head, ctx).await,
+            CargoRoute::Download { name, version } if read => {
+                self.crate_download(workspace, &name, &version, viewer, method == Method::Head, ctx).await
+            }
             CargoRoute::Search if read => self.cargo_search(url, workspace, viewer).await,
             CargoRoute::Publish if method == Method::Put => self.cargo_publish(&mut request, workspace, viewer).await,
-            CargoRoute::Yank { name, version } if method == Method::Delete => self.cargo_yank(workspace, &name, &version, true, viewer).await,
-            CargoRoute::Unyank { name, version } if method == Method::Put => self.cargo_yank(workspace, &name, &version, false, viewer).await,
+            CargoRoute::Yank { name, version } if method == Method::Delete => {
+                self.cargo_yank(workspace, &name, &version, true, viewer).await
+            }
+            CargoRoute::Unyank { name, version } if method == Method::Put => {
+                self.cargo_yank(workspace, &name, &version, false, viewer).await
+            }
             CargoRoute::Owners { .. } => error(
                 400,
                 "Crate owners are not kept here: who may publish a crate is decided by its repository's roles, or the workspace's. See https://docs.g1t.sh/guides/packages/#who-can-see-and-publish-a-package",
@@ -195,7 +203,15 @@ impl Packages {
         Ok(Response::ok(body)?.with_headers(headers))
     }
 
-    async fn crate_download(&self, workspace: &str, name: &str, version: &str, viewer: Option<&User>, head: bool, ctx: &Context) -> Result<Response> {
+    async fn crate_download(
+        &self,
+        workspace: &str,
+        name: &str,
+        version: &str,
+        viewer: Option<&User>,
+        head: bool,
+        ctx: &Context,
+    ) -> Result<Response> {
         let Some(package) = self.crate_package(workspace, name).await? else {
             return not_found();
         };
@@ -229,12 +245,8 @@ impl Packages {
     /// `cargo search`: the workspace's crates the viewer may see, by name.
     async fn cargo_search(&self, url: &Url, workspace: &str, viewer: Option<&User>) -> Result<Response> {
         let query = url.query_pairs().find(|(k, _)| k == "q").map(|(_, v)| v.into_owned()).unwrap_or_default();
-        let per_page = url
-            .query_pairs()
-            .find(|(k, _)| k == "per_page")
-            .and_then(|(_, v)| v.parse::<u32>().ok())
-            .unwrap_or(10)
-            .clamp(1, MAX_SEARCH);
+        let per_page =
+            url.query_pairs().find(|(k, _)| k == "per_page").and_then(|(_, v)| v.parse::<u32>().ok()).unwrap_or(10).clamp(1, MAX_SEARCH);
         let rows = self.db.list(workspace, Some(CARGO), None, Some(&query), MAX_SEARCH).await?;
         let packages: Vec<&PackageRow> = rows.iter().map(|row| &row.package).collect();
         let may = self.may_all(viewer, &packages, Action::Pull).await?;
@@ -256,9 +268,7 @@ impl Packages {
     /// The package publishing makes, linked to the repository the crate's
     /// `repository` names on g1t, or else the one named like it.
     async fn cargo_target(&self, workspace: &str, name: &str, metadata: &Value) -> Result<TargetOf> {
-        let named = npm::repository_of(&metadata["repository"], &self.host)
-            .filter(|(owner, _)| owner == workspace)
-            .map(|(_, repo)| repo);
+        let named = npm::repository_of(&metadata["repository"], &self.host).filter(|(owner, _)| owner == workspace).map(|(_, repo)| repo);
         let lower = name.to_ascii_lowercase();
         let dashed = lower.replace('_', "-");
         let mut repo = None;
@@ -375,9 +385,7 @@ impl Packages {
         if !stored {
             self.store.put(&digest.object_key(), krate.to_vec()).await?;
         }
-        self.db
-            .keep_blob(&package.id, &digest, size, Some("application/gzip"), &digest.object_key(), now)
-            .await?;
+        self.db.keep_blob(&package.id, &digest, size, Some("application/gzip"), &digest.object_key(), now).await?;
         self.db
             .publish(
                 NewVersion {
@@ -402,10 +410,7 @@ impl Packages {
             .await?;
         // The README and description the crate's page shows: the highest
         // stable version's, so a pre-release does not replace them.
-        let highest = std::iter::once(version.as_str())
-            .chain(existing.iter().map(|v| v.version.as_str()))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let highest = std::iter::once(version.as_str()).chain(existing.iter().map(|v| v.version.as_str())).collect::<Vec<_>>().join("\n");
         if crate::db::newest_version(&highest).as_deref() == Some(version.as_str()) {
             let readme = metadata["readme"].as_str().unwrap_or("").trim();
             let readme_digest = if readme.is_empty() || readme.len() > MAX_README_BYTES {
@@ -416,20 +421,14 @@ impl Packages {
                 if self.db.blob(&digest).await?.is_none() {
                     self.store.put(&digest.object_key(), bytes.clone()).await?;
                 }
-                self.db
-                    .keep_blob(&package.id, &digest, bytes.len() as u64, Some("text/markdown"), &digest.object_key(), now)
-                    .await?;
+                self.db.keep_blob(&package.id, &digest, bytes.len() as u64, Some("text/markdown"), &digest.object_key(), now).await?;
                 Some(digest.to_string())
             };
             self.db.set_readme(&package.id, readme_digest.as_deref(), metadata["description"].as_str(), now).await?;
         }
         self.db.measure(&package.workspace).await?;
-        let event = PackageEvent {
-            version: Some(version.clone()),
-            digest: Some(digest.to_string()),
-            size: Some(size),
-            ..self.event_of(&package)
-        };
+        let event =
+            PackageEvent { version: Some(version.clone()), digest: Some(digest.to_string()), size: Some(size), ..self.event_of(&package) };
         self.announce("package.published", &package, event, &caller).await;
         self.audit(&caller, "package.publish", &package, Some(&format!("{workspace}/{name}@{version}")), None).await;
         Response::from_json(&json!({ "warnings": { "invalid_categories": [], "invalid_badges": [], "other": [] } }))

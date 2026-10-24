@@ -214,8 +214,12 @@ impl Security {
         if pull.base.as_deref() == Some(branch.as_str()) {
             return;
         }
-        let deleted: Result<Outcome<bool>> =
-            g1t_kit::call(&self.repos, "delete_branch", &DeleteBranchArgs { repo_id: repo.repo_id.clone(), branch: branch.clone(), head: Some(head) }).await;
+        let deleted: Result<Outcome<bool>> = g1t_kit::call(
+            &self.repos,
+            "delete_branch",
+            &DeleteBranchArgs { repo_id: repo.repo_id.clone(), branch: branch.clone(), head: Some(head) },
+        )
+        .await;
         match deleted {
             Ok(Outcome::Ok(_)) => {}
             Ok(Outcome::Fail(refused)) => worker::console_log!("security: branch {branch} of {} kept: {}", repo.repo_id, refused.message),
@@ -244,7 +248,8 @@ impl Security {
     /// A pull request closed or merged: if it is one of g1t's update pull
     /// requests, its branch goes.
     pub(crate) async fn pull_finished(&self, repo_id: &str, number: u32) -> Result<()> {
-        let ours = self.store.update_by_pull(repo_id, number).await?.is_some() || self.store.update_pull_by_number(repo_id, number).await?.is_some();
+        let ours = self.store.update_by_pull(repo_id, number).await?.is_some()
+            || self.store.update_pull_by_number(repo_id, number).await?.is_some();
         if !ours {
             return Ok(());
         }
@@ -259,7 +264,8 @@ impl Security {
 
     /// Whether an update still in progress is made on `branch`.
     async fn branch_in_use(&self, repo_id: &str, branch: &str) -> Result<bool> {
-        let single = self.store.updates(repo_id).await?.into_iter().any(|row| row.state().in_progress() && row.branch.as_deref() == Some(branch));
+        let single =
+            self.store.updates(repo_id).await?.into_iter().any(|row| row.state().in_progress() && row.branch.as_deref() == Some(branch));
         let pulls = self.store.update_pulls(repo_id).await?.into_iter().any(|row| row.state().in_progress() && row.branch == branch);
         Ok(single || pulls)
     }
@@ -288,8 +294,17 @@ impl Security {
             match self.retire(repo, number, |base| resolved_text(base, &packages, &fixes)).await? {
                 Retired::Merged => self.store.set_update(&row, UpdateState::Merged, Some(number), row.item(), None).await?,
                 Retired::Closed => {
-                    let activity: Vec<Activity> =
-                        fixes.iter().map(|alert| Activity { alert_id: &alert.id, action: "update_superseded", actor: Some(system), reason: None, comment: None, number: Some(number) }).collect();
+                    let activity: Vec<Activity> = fixes
+                        .iter()
+                        .map(|alert| Activity {
+                            alert_id: &alert.id,
+                            action: "update_superseded",
+                            actor: Some(system),
+                            reason: None,
+                            comment: None,
+                            number: Some(number),
+                        })
+                        .collect();
                     self.store.record(&repo.repo_id, &activity).await?;
                 }
                 Retired::Left => {}
@@ -303,7 +318,8 @@ impl Security {
             let dependencies = row.dependencies();
             let why: Option<Why<'_>> = if row.kind == "security" {
                 let Some(osv) = osv_ecosystem(&row.ecosystem) else { continue };
-                let fixes: Vec<&VulnRow> = dependencies.iter().flat_map(|dependency| targeted(&alerts, osv, &dependency.name, &dependency.to)).collect();
+                let fixes: Vec<&VulnRow> =
+                    dependencies.iter().flat_map(|dependency| targeted(&alerts, osv, &dependency.name, &dependency.to)).collect();
                 if dependencies.is_empty() || still_needed(&fixes) {
                     None
                 } else {
@@ -316,11 +332,13 @@ impl Security {
                 let into_default = row.bump().is_none_or(|bump| bump.base.is_none());
                 match lockfiles {
                     Some((located, paths)) if into_default && row.state() == UpdateState::Open => {
-                        let now: Vec<(UpdatedDependency, Now)> =
-                            dependencies.iter().map(|dependency| (dependency.clone(), now_of(&row.ecosystem, dependency, located, paths))).collect();
-                        version_resolved_text("", &now).is_some().then(|| {
-                            Box::new(move |base: &str| version_resolved_text(base, &now).unwrap_or_default()) as Why<'_>
-                        })
+                        let now: Vec<(UpdatedDependency, Now)> = dependencies
+                            .iter()
+                            .map(|dependency| (dependency.clone(), now_of(&row.ecosystem, dependency, located, paths)))
+                            .collect();
+                        version_resolved_text("", &now)
+                            .is_some()
+                            .then(|| Box::new(move |base: &str| version_resolved_text(base, &now).unwrap_or_default()) as Why<'_>)
                     }
                     _ => None,
                 }
@@ -341,7 +359,8 @@ impl Security {
                 let state = if retired == Retired::Merged { UpdateState::Merged } else { UpdateState::Superseded };
                 for dependency in &dependencies {
                     if let Some(update) = self.store.update(&repo.repo_id, osv, &dependency.name).await?
-                        && (update.state().in_progress() && (update.pull() == row.pull() || update.branch.as_deref() == Some(row.branch.as_str())))
+                        && (update.state().in_progress()
+                            && (update.pull() == row.pull() || update.branch.as_deref() == Some(row.branch.as_str())))
                     {
                         self.store.set_update(&update, state, update.pull(), update.item(), None).await?;
                     }
@@ -445,7 +464,10 @@ mod tests {
         let fixes = targeted(&alerts, "npm", "sharp", "0.35.5");
         assert_eq!(fixes.len(), 1);
         assert!(still_needed(&fixes));
-        let alerts = vec![alert("sharp", "0.34.1", "package-lock.json", "GHSA-1", "fixed"), alert("sharp", "0.35.5", "package-lock.json", "GHSA-2", "open")];
+        let alerts = vec![
+            alert("sharp", "0.34.1", "package-lock.json", "GHSA-1", "fixed"),
+            alert("sharp", "0.35.5", "package-lock.json", "GHSA-2", "open"),
+        ];
         let fixes = targeted(&alerts, "npm", "sharp", "0.35.5");
         assert!(!still_needed(&fixes), "an alert the update would not fix keeps nothing open");
         assert!(targeted(&alerts, "crates.io", "sharp", "0.35.5").is_empty());
@@ -465,9 +487,18 @@ mod tests {
             "Closed: the alerts this fixed are resolved on `main` (`sharp` 0.33.0 and 0.34.1 are no longer in `package-lock.json` or `web/package-lock.json`)."
         );
         let dismissed = alert("sharp", "0.34.1", "package-lock.json", "GHSA-9", "dismissed");
-        assert_eq!(resolved_text("main", &packages, &[&dismissed]), "Closed: the alert this fixed was dismissed, so this update is no longer needed.");
-        assert!(resolved_text("main", &packages, &[&fixed, &dismissed]).starts_with("Closed: the alerts this fixed are resolved on `main` or dismissed ("));
-        assert_eq!(resolved_text("trunk", &packages, &[]), "Closed: `sharp` is no longer vulnerable on `trunk`, so this update is no longer needed.");
+        assert_eq!(
+            resolved_text("main", &packages, &[&dismissed]),
+            "Closed: the alert this fixed was dismissed, so this update is no longer needed."
+        );
+        assert!(
+            resolved_text("main", &packages, &[&fixed, &dismissed])
+                .starts_with("Closed: the alerts this fixed are resolved on `main` or dismissed (")
+        );
+        assert_eq!(
+            resolved_text("trunk", &packages, &[]),
+            "Closed: `sharp` is no longer vulnerable on `trunk`, so this update is no longer needed."
+        );
     }
 
     fn dependency(name: &str, to: &str, directory: &str) -> UpdatedDependency {

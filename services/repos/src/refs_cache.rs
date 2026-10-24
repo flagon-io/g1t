@@ -60,9 +60,9 @@ pub fn kind(git: &GitRequest, get: bool, protocol: u8, body: Option<&[u8]>) -> O
     }
     match (get, git.endpoint, body) {
         (true, "info/refs", _) => Some(Kind::Advertisement),
-        (false, "git-upload-pack", Some(body)) if protocol == 2 && is_ls_refs(body) => Some(Kind::LsRefs {
-            request: g1t_secrets::sha256_hex_bytes(body),
-        }),
+        (false, "git-upload-pack", Some(body)) if protocol == 2 && is_ls_refs(body) => {
+            Some(Kind::LsRefs { request: g1t_secrets::sha256_hex_bytes(body) })
+        }
         _ => None,
     }
 }
@@ -73,10 +73,7 @@ fn is_ls_refs(body: &[u8]) -> bool {
         return false;
     }
     let (lines, end) = crate::land::read_pkt_lines(body);
-    end == body.len()
-        && lines
-            .first()
-            .is_some_and(|line| line.strip_suffix(b"\n").unwrap_or(line) == b"command=ls-refs")
+    end == body.len() && lines.first().is_some_and(|line| line.strip_suffix(b"\n").unwrap_or(line) == b"command=ls-refs")
 }
 
 /// The protocol version a `Git-Protocol` header asks for: `version=2`
@@ -115,10 +112,7 @@ impl Key {
         // Branch names can hold characters a URL cannot, and git forbids
         // newlines in them.
         let head = head.map_or_else(|| "-".to_owned(), |branch| format!("refs/heads/{branch}"));
-        Key {
-            repo_id: repo_id.to_owned(),
-            hash: g1t_secrets::sha256_hex(&format!("{version}\nv{protocol}\n{what}\n{head}")),
-        }
+        Key { repo_id: repo_id.to_owned(), hash: g1t_secrets::sha256_hex(&format!("{version}\nv{protocol}\n{what}\n{head}")) }
     }
 
     fn colo_url(&self) -> String {
@@ -154,10 +148,7 @@ impl Entry {
 
     fn decode(bytes: &[u8]) -> Option<Entry> {
         let at = bytes.iter().position(|byte| *byte == b'\n')?;
-        Some(Entry {
-            content_type: String::from_utf8(bytes[..at].to_vec()).ok()?,
-            body: bytes[at + 1..].to_vec(),
-        })
+        Some(Entry { content_type: String::from_utf8(bytes[..at].to_vec()).ok()?, body: bytes[at + 1..].to_vec() })
     }
 
     /// The answer, as the git store gives it.
@@ -205,9 +196,7 @@ pub async fn keep_in_colo(key: &Key, entry: &Entry) {
     let Ok(response) = Response::from_bytes(entry.body.clone()) else {
         return;
     };
-    let _ = worker::Cache::default()
-        .put(key.colo_url(), response.with_headers(headers))
-        .await;
+    let _ = worker::Cache::default().put(key.colo_url(), response.with_headers(headers)).await;
 }
 
 /// Keeps `entry` in this colo's cache and the shared one.
@@ -229,14 +218,7 @@ mod tests {
     use g1t_contracts::repos::RepoPath;
 
     fn git(endpoint: &'static str, service: GitService) -> GitRequest {
-        GitRequest {
-            path: RepoPath {
-                namespace: "acme".into(),
-                name: "rocket".into(),
-            },
-            endpoint,
-            service,
-        }
+        GitRequest { path: RepoPath { namespace: "acme".into(), name: "rocket".into() }, endpoint, service }
     }
 
     fn pkt(payload: &str) -> Vec<u8> {
@@ -270,13 +252,26 @@ mod tests {
         assert!(matches!(kind(&pack, false, 2, Some(&listing)), Some(Kind::LsRefs { .. })));
         // Only under protocol v2, and never a fetch of objects.
         assert_eq!(kind(&pack, false, 0, Some(&listing)), None);
-        let fetch = [pkt("command=fetch\n"), b"0001".to_vec(), pkt("want 1111111111111111111111111111111111111111\n"), pkt("done\n"), b"0000".to_vec()].concat();
+        let fetch = [
+            pkt("command=fetch\n"),
+            b"0001".to_vec(),
+            pkt("want 1111111111111111111111111111111111111111\n"),
+            pkt("done\n"),
+            b"0000".to_vec(),
+        ]
+        .concat();
         assert_eq!(kind(&pack, false, 2, Some(&fetch)), None);
         let v0 = [pkt("want 1111111111111111111111111111111111111111 side-band-64k\n"), b"0000".to_vec(), pkt("done\n")].concat();
         assert_eq!(kind(&pack, false, 0, Some(&v0)), None);
         // Not a whole request, or one too large: passed through.
         assert_eq!(kind(&pack, false, 2, Some(&listing[..listing.len() - 2])), None);
-        let huge = [pkt("command=ls-refs\n"), b"0001".to_vec(), (0..3000).flat_map(|n| pkt(&format!("ref-prefix refs/heads/branch-{n}\n"))).collect(), b"0000".to_vec()].concat();
+        let huge = [
+            pkt("command=ls-refs\n"),
+            b"0001".to_vec(),
+            (0..3000).flat_map(|n| pkt(&format!("ref-prefix refs/heads/branch-{n}\n"))).collect(),
+            b"0000".to_vec(),
+        ]
+        .concat();
         assert_eq!(kind(&pack, false, 2, Some(&huge)), None);
         assert_eq!(kind(&pack, false, 2, None), None);
     }
@@ -387,11 +382,24 @@ mod tests {
             }
         }
         // The writers known today, so that the check is seen to find them.
-        for expected in ["create", "delete_branch", "land", "land_by", "push_update", "rename_branch", "create_branch", "remove_branch", "forks_follow", "keep_head", "revive", "fork", "sync_fork", "commit_file", "pull_merge_ref"] {
-            assert!(
-                all.iter().any(|function| function.contains(&format!("fn {expected}("))),
-                "{expected} not found among {all:?}"
-            );
+        for expected in [
+            "create",
+            "delete_branch",
+            "land",
+            "land_by",
+            "push_update",
+            "rename_branch",
+            "create_branch",
+            "remove_branch",
+            "forks_follow",
+            "keep_head",
+            "revive",
+            "fork",
+            "sync_fork",
+            "commit_file",
+            "pull_merge_ref",
+        ] {
+            assert!(all.iter().any(|function| function.contains(&format!("fn {expected}("))), "{expected} not found among {all:?}");
         }
         // A push through git over HTTPS, and the default branch, which HEAD follows.
         let forwards = writers(include_str!("lib.rs"), &["git_http::forward("]);

@@ -132,7 +132,9 @@ pub(crate) fn classify(method: &str, target: &str) -> Kind {
     let (path, query) = route(target);
     let parts: Vec<&str> = path.trim_matches('/').split('/').collect();
     match (method, parts.as_slice()) {
-        ("POST", ["containers", "create"]) => Kind::CreateContainer { name: query_value(query, "name").map(decode).filter(|n| !n.is_empty()) },
+        ("POST", ["containers", "create"]) => {
+            Kind::CreateContainer { name: query_value(query, "name").map(decode).filter(|n| !n.is_empty()) }
+        }
         ("GET", ["containers", id, "json"]) => Kind::InspectContainer { id: decode(id) },
         ("POST", ["networks", _, "connect"]) => Kind::ConnectNetwork,
         ("POST", ["networks", _, "disconnect"]) => Kind::DisconnectNetwork,
@@ -258,10 +260,8 @@ pub(crate) fn connect_aliases(body: &Value) -> Vec<String> {
 
 /// A container's inspection, with the ports it publishes filled in.
 pub(crate) fn rewrite_inspect(body: &mut Value, published: &BTreeMap<String, String>) {
-    let ports: Map<String, Value> = published
-        .iter()
-        .map(|(port, host)| (port.clone(), json!([{ "HostIp": "0.0.0.0", "HostPort": host }])))
-        .collect();
+    let ports: Map<String, Value> =
+        published.iter().map(|(port, host)| (port.clone(), json!([{ "HostIp": "0.0.0.0", "HostPort": host }]))).collect();
     if let Some(settings) = body.get_mut("NetworkSettings").and_then(Value::as_object_mut) {
         settings.insert("Ports".into(), Value::Object(ports));
     }
@@ -324,7 +324,13 @@ pub(crate) fn serve(client: Box<dyn Duplex>, host: Arc<dyn Host>, state: Arc<Mut
 }
 
 /// Requests, client to Engine.
-fn forward(client: Box<dyn Duplex>, mut upstream: Box<dyn Duplex>, pending: mpsc::Sender<Pending>, host: &Arc<dyn Host>, state: &Arc<Mutex<State>>) -> io::Result<()> {
+fn forward(
+    client: Box<dyn Duplex>,
+    mut upstream: Box<dyn Duplex>,
+    pending: mpsc::Sender<Pending>,
+    host: &Arc<dyn Host>,
+    state: &Arc<Mutex<State>>,
+) -> io::Result<()> {
     let closer = client.try_clone_box()?;
     let upstream_closer = upstream.try_clone_box()?;
     let mut reader = BufReader::new(client);
@@ -464,7 +470,8 @@ fn answer(upstream: Box<dyn Duplex>, mut client: Box<dyn Duplex>, pending: mpsc:
                 Pending::Created { name, published } => {
                     let body = http::read_body(&mut reader, http::response_body(&head, "POST"))?;
                     if (200..300).contains(&head.status())
-                        && let Some(id) = serde_json::from_slice::<Value>(&body).ok().and_then(|v| v.get("Id").and_then(Value::as_str).map(str::to_owned))
+                        && let Some(id) =
+                            serde_json::from_slice::<Value>(&body).ok().and_then(|v| v.get("Id").and_then(Value::as_str).map(str::to_owned))
                         && let Ok(mut state) = state.lock()
                     {
                         state.published.insert(id, published.clone());
@@ -648,9 +655,7 @@ mod tests {
                 if head.target().contains("/containers/create") {
                     writer.write_all(&http::json_response(201, "Created", &json!({ "Id": "c".repeat(64), "Warnings": [] }))).unwrap();
                 } else if head.target().contains("/json") {
-                    writer
-                        .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n")
-                        .unwrap();
+                    writer.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n").unwrap();
                     let text = json!({ "Id": "c".repeat(64), "NetworkSettings": { "Ports": {} } }).to_string();
                     writer.write_all(format!("{:x}\r\n{text}\r\n0\r\n\r\n", text.len()).as_bytes()).unwrap();
                 } else if head.target().contains("/logs") {

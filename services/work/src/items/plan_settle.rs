@@ -16,11 +16,11 @@
 
 use std::collections::HashSet;
 
+use g1t_contracts::Outcome;
 use g1t_contracts::ai::{AiBriefArgs, MAX_BRIEF_INPUT_CHARS, MAX_BRIEF_TOKENS};
 use g1t_contracts::events::WorkItemEvent;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
-use g1t_contracts::Outcome;
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
@@ -65,7 +65,10 @@ struct Budget {
 /// say this one repeats.
 pub(crate) fn read_suggestion(answer: &str, known: &[u32], at: &str) -> Option<PlanSuggestion> {
     // Some models answer with a JSON object instead of the four lines.
-    let json = answer.find('{').zip(answer.rfind('}')).and_then(|(open, close)| serde_json::from_str::<serde_json::Value>(&answer[open..=close]).ok());
+    let json = answer
+        .find('{')
+        .zip(answer.rfind('}'))
+        .and_then(|(open, close)| serde_json::from_str::<serde_json::Value>(&answer[open..=close]).ok());
     if let Some(serde_json::Value::Object(fields)) = json {
         let text = |key: &str| match fields.get(key) {
             Some(serde_json::Value::String(text)) => text.clone(),
@@ -311,7 +314,12 @@ impl Work {
             }
             let suggestion = answer.as_deref().and_then(|answer| read_suggestion(answer, &known, &at));
             if let (Some(answer), None) = (&answer, &suggestion) {
-                worker::console_log!("{}#{}: the AI provider's suggestion did not read: {}", item.workspace, item.number, clip(answer, 300));
+                worker::console_log!(
+                    "{}#{}: the AI provider's suggestion did not read: {}",
+                    item.workspace,
+                    item.number,
+                    clip(answer, 300)
+                );
             }
             // Asked once: with no provider, or no usable answer, it is not
             // asked again.
@@ -364,7 +372,9 @@ impl Work {
                     .prepare("SELECT title, state, result FROM sessions WHERE item_id = ?1 ORDER BY last_seen_at DESC LIMIT 5")
                     .bind(&key)?,
                 self.db.prepare("SELECT summary FROM decisions WHERE item_id = ?1 ORDER BY created_at DESC LIMIT 5").bind(&key)?,
-                self.db.prepare("SELECT number, status, title FROM pulls WHERE item_id = ?1 ORDER BY created_at DESC LIMIT 5").bind(&key)?,
+                self.db
+                    .prepare("SELECT number, status, title FROM pulls WHERE item_id = ?1 ORDER BY created_at DESC LIMIT 5")
+                    .bind(&key)?,
             ];
             let results = self.db.batch(statements).await?;
             let lines = |index: usize| -> Result<Vec<Line>> {
@@ -377,10 +387,18 @@ impl Work {
                     format!("- {} ({}){result}", line.title.unwrap_or_else(|| "Untitled session".into()), line.state.unwrap_or_default())
                 })
                 .collect();
-            let decisions: Vec<String> = lines(1)?.into_iter().filter_map(|line| line.summary).map(|summary| format!("- {}", clip(&summary, 300))).collect();
+            let decisions: Vec<String> =
+                lines(1)?.into_iter().filter_map(|line| line.summary).map(|summary| format!("- {}", clip(&summary, 300))).collect();
             let pulls: Vec<String> = lines(2)?
                 .into_iter()
-                .map(|line| format!("- #{} {} ({})", line.number.unwrap_or_default(), line.title.unwrap_or_default(), line.status.unwrap_or_default()))
+                .map(|line| {
+                    format!(
+                        "- #{} {} ({})",
+                        line.number.unwrap_or_default(),
+                        line.title.unwrap_or_default(),
+                        line.status.unwrap_or_default()
+                    )
+                })
                 .collect();
             let none = || "- none".to_owned();
             let input = format!(
@@ -434,8 +452,12 @@ mod tests {
         // A JSON object, in a code fence or not.
         let json = "```json\n{\"horizon\": \"next\", \"appetite\": \"medium\", \"duplicate\": 12, \"why\": \"Same as #12.\"}\n```";
         let read = read_suggestion(json, &[12], at).unwrap();
-        assert_eq!((read.horizon, read.appetite, read.duplicate_of, read.why.as_str()), (Horizon::Next, Some(Appetite::Medium), Some(12), "Same as #12."));
-        let read = read_suggestion("{\"horizon\":\"later\",\"appetite\":\"small\",\"duplicate\":null,\"why\":\"Nice to have.\"}", &[], at).unwrap();
+        assert_eq!(
+            (read.horizon, read.appetite, read.duplicate_of, read.why.as_str()),
+            (Horizon::Next, Some(Appetite::Medium), Some(12), "Same as #12.")
+        );
+        let read = read_suggestion("{\"horizon\":\"later\",\"appetite\":\"small\",\"duplicate\":null,\"why\":\"Nice to have.\"}", &[], at)
+            .unwrap();
         assert_eq!((read.horizon, read.duplicate_of), (Horizon::Later, None));
         // Keys in quotes or headings.
         let read = read_suggestion("## Horizon: next\n\"appetite\": small\nwhy: ok", &[], at).unwrap();
@@ -449,6 +471,9 @@ mod tests {
         let clipped = clip(&long, 30);
         assert!(clipped.chars().count() <= 31 && clipped.ends_with('…'), "{clipped}");
         assert_eq!(read_standing("  \n "), None);
-        assert_eq!(read_standing("- #205 merged; the plan is live. Next: place the backlog.").as_deref(), Some("#205 merged; the plan is live. Next: place the backlog."));
+        assert_eq!(
+            read_standing("- #205 merged; the plan is live. Next: place the backlog.").as_deref(),
+            Some("#205 merged; the plan is live. Next: place the backlog.")
+        );
     }
 }

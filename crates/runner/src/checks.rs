@@ -57,9 +57,7 @@ fn tail(text: &str, limit: usize) -> String {
 }
 
 pub(crate) fn redact(text: &str, secrets: &[String]) -> String {
-    secrets.iter().fold(text.to_owned(), |text, secret| {
-        text.replace(secret, "[redacted]")
-    })
+    secrets.iter().fold(text.to_owned(), |text, secret| text.replace(secret, "[redacted]"))
 }
 
 /// Runs one command in the checkout, without this process's credentials.
@@ -98,10 +96,7 @@ pub(crate) fn run_command(command: &str, workdir: &Path, secrets: &[String]) -> 
             let timed_out = matches!(code, Some(TIMED_OUT | KILLED) | None);
             let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
             if timed_out {
-                text.push_str(&format!(
-                    "\nStopped after {} minutes.",
-                    COMMAND_TIMEOUT_SECONDS / 60
-                ));
+                text.push_str(&format!("\nStopped after {} minutes.", COMMAND_TIMEOUT_SECONDS / 60));
             }
             CheckResult {
                 command: command.to_owned(),
@@ -129,9 +124,7 @@ struct Reporter {
 impl Reporter {
     fn send(&self, mut body: serde_json::Value) -> Result<()> {
         body["token"] = self.token.clone().into();
-        crate::http::agent().post(&self.url)
-            .send_json(body)
-            .context("could not report the check run")?;
+        crate::http::agent().post(&self.url).send_json(body).context("could not report the check run")?;
         Ok(())
     }
 }
@@ -145,18 +138,7 @@ fn check_out(secrets: &[String]) -> Result<()> {
     let cloned = crate::clone::clone(Path::new("/work"), &auth, &[], &remote, WORKDIR)
         .and_then(|_| git(workdir, &["rev-parse", "--abbrev-ref", "HEAD"]))
         .and_then(|branch| crate::clone::ensure(workdir, &auth, "origin", &branch, &commit))
-    .and_then(|_| {
-        git(
-            Path::new(WORKDIR),
-            &[
-                "-c",
-                "advice.detachedHead=false",
-                "checkout",
-                "--quiet",
-                &commit,
-            ],
-        )
-    });
+        .and_then(|_| git(Path::new(WORKDIR), &["-c", "advice.detachedHead=false", "checkout", "--quiet", &commit]));
     if let Err(error) = cloned {
         bail!("{}", redact(&format!("{error:#}"), secrets));
     }
@@ -165,24 +147,15 @@ fn check_out(secrets: &[String]) -> Result<()> {
 
 pub fn main() -> i32 {
     let reporter = match (env("G1T_API"), env("CHECK_RUN"), env("CHECK_TOKEN")) {
-        (Ok(api), Ok(run), Ok(token)) => Reporter {
-            url: format!("{api}/checks/{run}"),
-            token,
-        },
+        (Ok(api), Ok(run), Ok(token)) => Reporter { url: format!("{api}/checks/{run}"), token },
         _ => {
             eprintln!("g1t-runner: G1T_API, CHECK_RUN and CHECK_TOKEN must be set");
             return 2;
         }
     };
-    let secrets: Vec<String> = ["G1T_TOKEN", "CHECK_TOKEN"]
-        .iter()
-        .filter_map(|name| std::env::var(name).ok())
-        .filter(|secret| !secret.is_empty())
-        .collect();
-    let commands: Vec<String> = std::env::var("CHECKS")
-        .ok()
-        .and_then(|json| serde_json::from_str(&json).ok())
-        .unwrap_or_default();
+    let secrets: Vec<String> =
+        ["G1T_TOKEN", "CHECK_TOKEN"].iter().filter_map(|name| std::env::var(name).ok()).filter(|secret| !secret.is_empty()).collect();
+    let commands: Vec<String> = std::env::var("CHECKS").ok().and_then(|json| serde_json::from_str(&json).ok()).unwrap_or_default();
 
     // Says the run has started.
     if let Err(error) = reporter.send(serde_json::json!({})) {
@@ -194,10 +167,7 @@ pub fn main() -> i32 {
             "error": format!("The commit could not be checked out: {error:#}"),
         }),
         Ok(()) => {
-            let results: Vec<CheckResult> = commands
-                .iter()
-                .map(|command| run_command(command, Path::new(WORKDIR), &secrets))
-                .collect();
+            let results: Vec<CheckResult> = commands.iter().map(|command| run_command(command, Path::new(WORKDIR), &secrets)).collect();
             serde_json::json!({ "results": results })
         }
     };

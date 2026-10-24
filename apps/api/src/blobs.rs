@@ -35,8 +35,9 @@ use worker::kv::KvStore;
 use worker::{Bucket, Env, Request, Response, Result, UploadedPart, Url};
 
 use g1t_contracts::actions::{
-    ARTIFACT_PART_BYTES, Artifact, ArtifactArgs, ArtifactBlob, ArtifactCommitArgs, ArtifactReservation, ArtifactReserveArgs, CACHE_PART_BYTES,
-    CacheAbortArgs, CacheCommitArgs, CacheCommitted, CacheHit, CacheLookupArgs, CacheReservation, CacheReserveArgs, JobArtifactsArgs,
+    ARTIFACT_PART_BYTES, Artifact, ArtifactArgs, ArtifactBlob, ArtifactCommitArgs, ArtifactReservation, ArtifactReserveArgs,
+    CACHE_PART_BYTES, CacheAbortArgs, CacheCommitArgs, CacheCommitted, CacheHit, CacheLookupArgs, CacheReservation, CacheReserveArgs,
+    JobArtifactsArgs,
 };
 use g1t_contracts::{FailureCode, Outcome};
 
@@ -122,18 +123,16 @@ fn decode(text: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         match bytes[i] {
-            b'%' if i + 2 < bytes.len() => {
-                match u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or("zz"), 16) {
-                    Ok(byte) => {
-                        out.push(byte);
-                        i += 3;
-                    }
-                    Err(_) => {
-                        out.push(b'%');
-                        i += 1;
-                    }
+            b'%' if i + 2 < bytes.len() => match u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or("zz"), 16) {
+                Ok(byte) => {
+                    out.push(byte);
+                    i += 3;
                 }
-            }
+                Err(_) => {
+                    out.push(b'%');
+                    i += 1;
+                }
+            },
             b'+' => {
                 out.push(b' ');
                 i += 1;
@@ -156,11 +155,7 @@ fn query(request: &Request, name: &str) -> Option<String> {
 /// the path after `/actions/jobs/`.
 pub async fn for_job(request: Request, env: &Env, services: &Services, method: &str, rest: &str) -> Result<Response> {
     let (job, what) = rest.split_once('/').unwrap_or((rest, ""));
-    let token = request
-        .headers()
-        .get("authorization")?
-        .and_then(|h| h.strip_prefix("Bearer ").map(str::to_owned))
-        .unwrap_or_default();
+    let token = request.headers().get("authorization")?.and_then(|h| h.strip_prefix("Bearer ").map(str::to_owned)).unwrap_or_default();
     let owner: Outcome<Value> = g1t_kit::call(&services.actions, "job_auth", &json!({ "job": job, "token": token })).await?;
     let owner = match owner {
         Outcome::Ok(owner) => owner,
@@ -232,12 +227,23 @@ async fn cache(
     match (method, parts.as_slice()) {
         ("GET", ["cache"]) => {
             let key = query(&request, "key").unwrap_or_default();
-            let restore: Vec<String> =
-                query(&request, "restore").unwrap_or_default().lines().map(str::trim).filter(|p| !p.is_empty()).map(str::to_owned).collect();
+            let restore: Vec<String> = query(&request, "restore")
+                .unwrap_or_default()
+                .lines()
+                .map(str::trim)
+                .filter(|p| !p.is_empty())
+                .map(str::to_owned)
+                .collect();
             let found: Outcome<Option<CacheHit>> = g1t_kit::call(
                 &services.actions,
                 "cache_lookup",
-                &CacheLookupArgs { job: job.to_owned(), token: token.to_owned(), key: key.clone(), restore, version: Some(version.clone()).filter(|v| !v.is_empty()) },
+                &CacheLookupArgs {
+                    job: job.to_owned(),
+                    token: token.to_owned(),
+                    key: key.clone(),
+                    restore,
+                    version: Some(version.clone()).filter(|v| !v.is_empty()),
+                },
             )
             .await?;
             let found = match refused(found) {
@@ -269,7 +275,13 @@ async fn cache(
             let reserved: Outcome<CacheReservation> = g1t_kit::call(
                 &services.actions,
                 "cache_reserve",
-                &CacheReserveArgs { job: job.to_owned(), token: token.to_owned(), key, size: bytes.len() as u64, version: Some(version.clone()).filter(|v| !v.is_empty()) },
+                &CacheReserveArgs {
+                    job: job.to_owned(),
+                    token: token.to_owned(),
+                    key,
+                    size: bytes.len() as u64,
+                    version: Some(version.clone()).filter(|v| !v.is_empty()),
+                },
             )
             .await?;
             let reserved = match reserved {
@@ -292,7 +304,13 @@ async fn cache(
             let reserved: Outcome<CacheReservation> = g1t_kit::call(
                 &services.actions,
                 "cache_reserve",
-                &CacheReserveArgs { job: job.to_owned(), token: token.to_owned(), key, size, version: Some(version.clone()).filter(|v| !v.is_empty()) },
+                &CacheReserveArgs {
+                    job: job.to_owned(),
+                    token: token.to_owned(),
+                    key,
+                    size,
+                    version: Some(version.clone()).filter(|v| !v.is_empty()),
+                },
             )
             .await?;
             let reserved = match refused(reserved) {
@@ -512,7 +530,8 @@ async fn artifacts(
         ("GET", ["artifacts", id, "download"]) => {
             let Ok(id) = id.parse::<u64>() else { return error(404, "No such artifact.") };
             // Any run of the job's repository: the service checks.
-            let found: Outcome<ArtifactBlob> = g1t_kit::call(actions, "job_artifact", &credential(Some(id), None, query(&request, "run_id"))).await?;
+            let found: Outcome<ArtifactBlob> =
+                g1t_kit::call(actions, "job_artifact", &credential(Some(id), None, query(&request, "run_id"))).await?;
             match found {
                 Outcome::Ok(found) => stream(bucket, &found.object, &found.artifact.format).await,
                 Outcome::Fail(failure) => error(failure.code.http_status(), &failure.message),
@@ -548,7 +567,8 @@ async fn artifacts(
             };
             let size = bytes.len() as u64;
             bucket.put(&reserved.object, bytes).execute().await?;
-            let args = ArtifactCommitArgs { job: job.to_owned(), token: token.to_owned(), id: Some(reserved.id), name: None, size, digest: None };
+            let args =
+                ArtifactCommitArgs { job: job.to_owned(), token: token.to_owned(), id: Some(reserved.id), name: None, size, digest: None };
             let committed: Outcome<Artifact> = g1t_kit::call(actions, "artifact_commit", &args).await?;
             match refused(committed) {
                 Ok(_) => crate::reply(&json!({ "name": name, "size": size })),
@@ -598,13 +618,18 @@ async fn abort(services: &Services, job: &str, token: &str, id: &str) -> Result<
 
 /// An entry saved in KV before the cache moved to R2, by key or restore key.
 /// Someone who can see the run downloading one of its artifacts.
-pub async fn download(env: &Env, services: &Services, viewer: &g1t_contracts::Viewer, owner: &str, repo: &str, run: &str, name: &str) -> Result<Response> {
-    let seen: Outcome<Value> = g1t_kit::call(
-        &services.actions,
-        "run",
-        &json!({ "repo": { "namespace": owner, "name": repo }, "viewer": viewer, "id": run }),
-    )
-    .await?;
+pub async fn download(
+    env: &Env,
+    services: &Services,
+    viewer: &g1t_contracts::Viewer,
+    owner: &str,
+    repo: &str,
+    run: &str,
+    name: &str,
+) -> Result<Response> {
+    let seen: Outcome<Value> =
+        g1t_kit::call(&services.actions, "run", &json!({ "repo": { "namespace": owner, "name": repo }, "viewer": viewer, "id": run }))
+            .await?;
     if let Outcome::Fail(refused) = seen {
         let status = if refused.code == FailureCode::NotFound { 404 } else { 403 };
         return error(status, &refused.message);

@@ -61,10 +61,7 @@ pub(crate) async fn merge_base<H: GitRepo, T: GitRepo>(
     };
     // The head's side: every commit off the line, in the order met, with
     // its parents, and the commits of the line it reaches.
-    let known: HashMap<&str, &[String]> = history
-        .iter()
-        .map(|commit| (commit.hash.as_str(), commit.parents.as_slice()))
-        .collect();
+    let known: HashMap<&str, &[String]> = history.iter().map(|commit| (commit.hash.as_str(), commit.parents.as_slice())).collect();
     let mut order: Vec<String> = Vec::new();
     let mut parents_of: HashMap<String, Vec<String>> = HashMap::new();
     let mut reached: HashSet<String> = HashSet::new();
@@ -90,10 +87,7 @@ pub(crate) async fn merge_base<H: GitRepo, T: GitRepo>(
         parents_of.insert(hash, parents);
     }
     // The newest commit of the line the head reaches.
-    let Some(newest) = target_history
-        .iter()
-        .position(|commit| reached.contains(&commit.hash))
-    else {
+    let Some(newest) = target_history.iter().position(|commit| reached.contains(&commit.hash)) else {
         return Ok(None);
     };
     let on_line = &target_history[newest];
@@ -101,10 +95,7 @@ pub(crate) async fn merge_base<H: GitRepo, T: GitRepo>(
     // What the target merged in above it, walked down to the line; the
     // head's commits it meets are shared.
     let mut commits: HashMap<String, Commit> = HashMap::new();
-    let mut frontier: Vec<String> = target_history[..newest]
-        .iter()
-        .flat_map(|commit| commit.parents.iter().skip(1).cloned())
-        .collect();
+    let mut frontier: Vec<String> = target_history[..newest].iter().flat_map(|commit| commit.parents.iter().skip(1).cloned()).collect();
     let mut hits: HashSet<String> = HashSet::new();
     if !parents_of.is_empty() {
         let mut walked: HashSet<String> = HashSet::new();
@@ -138,10 +129,7 @@ pub(crate) async fn merge_base<H: GitRepo, T: GitRepo>(
             // The rest wait for the next round.
             let later = wanted.split_off(wanted.len().min(AT_ONCE).min(MAX_READS - reads));
             reads += wanted.len();
-            let found = futures_util::future::try_join_all(
-                wanted.iter().map(|hash| target_repo.log(hash, STEP)),
-            )
-            .await?;
+            let found = futures_util::future::try_join_all(wanted.iter().map(|hash| target_repo.log(hash, STEP))).await?;
             for (hash, chain) in wanted.iter().zip(found) {
                 if chain.is_empty() {
                     // The store lacks it: nothing to follow below.
@@ -168,24 +156,13 @@ pub(crate) async fn merge_base<H: GitRepo, T: GitRepo>(
             }
         }
     }
-    let merged: HashSet<String> = hits
-        .iter()
-        .chain(&below)
-        .filter(|hash| parents_of.contains_key(*hash))
-        .cloned()
-        .collect();
+    let merged: HashSet<String> = hits.iter().chain(&below).filter(|hash| parents_of.contains_key(*hash)).cloned().collect();
     let best = match below.contains(&on_line.hash) {
-        true => order
-            .iter()
-            .find(|hash| hits.contains(*hash) && !below.contains(*hash)),
+        true => order.iter().find(|hash| hits.contains(*hash) && !below.contains(*hash)),
         false => None,
     };
     let tree = match best {
-        Some(hash) => match history
-            .iter()
-            .chain(commits.values())
-            .find(|commit| commit.hash == *hash)
-        {
+        Some(hash) => match history.iter().chain(commits.values()).find(|commit| commit.hash == *hash) {
             Some(commit) => Some(commit.tree_hash.clone()),
             None => match read_tree_of(target_repo, hash).await? {
                 Some(tree) => Some(tree),
@@ -203,12 +180,7 @@ pub(crate) async fn merge_base<H: GitRepo, T: GitRepo>(
 
 /// A commit's tree, read by its hash.
 async fn read_tree_of<R: GitRepo>(repo: &R, hash: &str) -> Result<Option<String>> {
-    Ok(repo
-        .log(hash, 1)
-        .await?
-        .into_iter()
-        .find(|commit| commit.hash == hash)
-        .map(|commit| commit.tree_hash))
+    Ok(repo.log(hash, 1).await?.into_iter().find(|commit| commit.hash == hash).map(|commit| commit.tree_hash))
 }
 
 #[cfg(test)]
@@ -225,10 +197,7 @@ mod tests {
             hash: hash.into(),
             tree_hash: format!("t{hash}"),
             message: hash.into(),
-            author: Signature {
-                name: "a".into(),
-                email: "a@example.com".into(),
-            },
+            author: Signature { name: "a".into(), email: "a@example.com".into() },
             parents: parents.iter().map(|&parent| parent.to_owned()).collect(),
             authored_at: String::new(),
         }
@@ -244,14 +213,8 @@ mod tests {
 
     impl Fake {
         fn with(commits: &[(&str, &[&str])]) -> Fake {
-            let commits = commits
-                .iter()
-                .map(|(hash, parents)| ((*hash).to_owned(), commit(hash, parents)))
-                .collect();
-            Fake {
-                commits,
-                ..Fake::default()
-            }
+            let commits = commits.iter().map(|(hash, parents)| ((*hash).to_owned(), commit(hash, parents))).collect();
+            Fake { commits, ..Fake::default() }
         }
 
         fn history(&self, head: &str) -> Vec<Commit> {
@@ -259,10 +222,7 @@ mod tests {
             let mut at = self.commits.get(head);
             while let Some(commit) = at {
                 out.push(commit.clone());
-                at = commit
-                    .parents
-                    .first()
-                    .and_then(|parent| self.commits.get(parent));
+                at = commit.parents.first().and_then(|parent| self.commits.get(parent));
             }
             out
         }
@@ -284,17 +244,10 @@ mod tests {
         }
         async fn log(&self, git_ref: &str, limit: u32) -> worker::Result<Vec<Commit>> {
             *self.logs.borrow_mut() += 1;
-            Ok(self
-                .history(git_ref)
-                .into_iter()
-                .take(limit as usize)
-                .collect())
+            Ok(self.history(git_ref).into_iter().take(limit as usize).collect())
         }
         async fn parents(&self, commit_hash: &str) -> worker::Result<Option<Vec<String>>> {
-            Ok(self
-                .commits
-                .get(commit_hash)
-                .map(|commit| commit.parents.clone()))
+            Ok(self.commits.get(commit_hash).map(|commit| commit.parents.clone()))
         }
         async fn read_tree(&self, _tree_hash: &str) -> worker::Result<Option<Vec<TreeEntry>>> {
             Ok(None)
@@ -327,30 +280,17 @@ mod tests {
     #[test]
     fn a_branch_off_the_target_meets_it_where_it_left() {
         // main: m0 - m1; the branch: m0 - h1 - h2.
-        let fake = Fake::with(&[
-            ("m0", &[]),
-            ("m1", &["m0"]),
-            ("h1", &["m0"]),
-            ("h2", &["h1"]),
-        ]);
+        let fake = Fake::with(&[("m0", &[]), ("m1", &["m0"]), ("h1", &["m0"]), ("h2", &["h1"])]);
         let found = fake.merge_base("h2", "m1").unwrap();
         assert_eq!((found.hash.as_str(), found.tree.as_str()), ("m0", "tm0"));
         assert!(found.merged.is_empty());
     }
 
     #[test]
-    fn a_branch_made_from_a_pull_request_that_merged_with_a_merge_commit_meets_it_at_that_pull_request_s_head()
-     {
+    fn a_branch_made_from_a_pull_request_that_merged_with_a_merge_commit_meets_it_at_that_pull_request_s_head() {
         // #360's branch: m0 - p1; #361's, made from it: p1 - s1 - s2. Main
         // took another change (m1), then #360 as a merge commit (M).
-        let fake = Fake::with(&[
-            ("m0", &[]),
-            ("p1", &["m0"]),
-            ("s1", &["p1"]),
-            ("s2", &["s1"]),
-            ("m1", &["m0"]),
-            ("M", &["m1", "p1"]),
-        ]);
+        let fake = Fake::with(&[("m0", &[]), ("p1", &["m0"]), ("s1", &["p1"]), ("s2", &["s1"]), ("m1", &["m0"]), ("M", &["m1", "p1"])]);
         let found = fake.merge_base("s2", "M").unwrap();
         assert_eq!((found.hash.as_str(), found.tree.as_str()), ("p1", "tp1"));
         assert_eq!(found.merged, set(&["p1"]));
@@ -377,27 +317,15 @@ mod tests {
     #[test]
     fn a_branch_that_merged_the_target_in_meets_it_at_its_head() {
         // As #361 did to start its checks: s2 merged M in.
-        let fake = Fake::with(&[
-            ("m0", &[]),
-            ("p1", &["m0"]),
-            ("s1", &["p1"]),
-            ("m1", &["m0"]),
-            ("M", &["m1", "p1"]),
-            ("s2", &["s1", "M"]),
-        ]);
+        let fake =
+            Fake::with(&[("m0", &[]), ("p1", &["m0"]), ("s1", &["p1"]), ("m1", &["m0"]), ("M", &["m1", "p1"]), ("s2", &["s1", "M"])]);
         assert_eq!(fake.merge_base("s2", "M").unwrap().hash, "M");
     }
 
     #[test]
     fn merges_below_where_the_branch_left_are_not_read() {
         // A merge of another branch (o1) into main before h1 left it.
-        let fake = Fake::with(&[
-            ("m0", &[]),
-            ("o1", &["m0"]),
-            ("M", &["m0", "o1"]),
-            ("h1", &["M"]),
-            ("m1", &["M"]),
-        ]);
+        let fake = Fake::with(&[("m0", &[]), ("o1", &["m0"]), ("M", &["m0", "o1"]), ("h1", &["M"]), ("m1", &["M"])]);
         let found = fake.merge_base("h1", "m1").unwrap();
         assert_eq!(found.hash, "M");
         assert_eq!(*fake.logs.borrow(), 0);
@@ -406,12 +334,7 @@ mod tests {
     #[test]
     fn what_else_the_target_merged_is_walked_past() {
         // Main merged o1 (unrelated) above where the branch left.
-        let fake = Fake::with(&[
-            ("m0", &[]),
-            ("o1", &["m0"]),
-            ("h1", &["m0"]),
-            ("M", &["m0", "o1"]),
-        ]);
+        let fake = Fake::with(&[("m0", &[]), ("o1", &["m0"]), ("h1", &["m0"]), ("M", &["m0", "o1"])]);
         let found = fake.merge_base("h1", "M").unwrap();
         assert_eq!(found.hash, "m0");
         assert!(found.merged.is_empty());

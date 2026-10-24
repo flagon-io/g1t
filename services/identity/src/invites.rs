@@ -125,11 +125,7 @@ pub fn new_code_body() -> String {
 
 /// How a code is shown: `g1t-` and groups of four.
 pub fn format_code(body: &str) -> String {
-    let groups: Vec<&str> = body
-        .as_bytes()
-        .chunks(GROUP)
-        .map(|chunk| std::str::from_utf8(chunk).unwrap_or_default())
-        .collect();
+    let groups: Vec<&str> = body.as_bytes().chunks(GROUP).map(|chunk| std::str::from_utf8(chunk).unwrap_or_default()).collect();
     format!("g1t-{}", groups.join("-"))
 }
 
@@ -296,8 +292,7 @@ pub fn proves_email(key: &[u8], invite_id: &str, bound: Option<&str>, email: &st
 /// the address it was sent to. A code typed in or passed on, or an invite
 /// bound to no address: confirmed as any other is.
 pub fn starts_confirmed(key: &[u8], verified: bool, invite: Option<&InviteRow>, email: &str, proof: Option<&str>) -> bool {
-    verified
-        || invite.is_some_and(|row| row.kind == "account" && proves_email(key, &row.id, row.email.as_deref(), email, proof))
+    verified || invite.is_some_and(|row| row.kind == "account" && proves_email(key, &row.id, row.email.as_deref(), email, proof))
 }
 
 /// What an invite used to sign up does once its account confirms its
@@ -335,7 +330,8 @@ pub fn awaiting_join(row: &InviteRow, now: &str) -> AwaitingJoin {
     match (&row.workspace_id, &row.workspace) {
         (None, _) => AwaitingJoin::Nothing,
         (Some(_), None) => AwaitingJoin::Lapsed(
-            "Your email address is confirmed. The workspace your invite was for has been deleted, so the invite no longer applies.".to_owned(),
+            "Your email address is confirmed. The workspace your invite was for has been deleted, so the invite no longer applies."
+                .to_owned(),
         ),
         (Some(workspace_id), Some(slug)) => AwaitingJoin::Invited { workspace_id: workspace_id.clone(), slug: slug.clone() },
     }
@@ -345,9 +341,9 @@ pub fn awaiting_join(row: &InviteRow, now: &str) -> AwaitingJoin {
 pub fn normalize_email(email: &str) -> Option<String> {
     let email = email.trim().to_lowercase();
     let well_formed = email.len() <= 254
-        && email
-            .split_once('@')
-            .is_some_and(|(local, domain)| !local.is_empty() && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.') && !domain.contains('@'))
+        && email.split_once('@').is_some_and(|(local, domain)| {
+            !local.is_empty() && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.') && !domain.contains('@')
+        })
         && !email.contains(char::is_whitespace);
     well_formed.then_some(email)
 }
@@ -419,13 +415,7 @@ pub struct InviteRow {
 impl InviteRow {
     pub fn status(&self, now: &str) -> InviteStatus {
         answered_status(
-            status_of(
-                self.revoked_at.as_deref(),
-                self.redeemed_at.as_deref(),
-                self.applied_at.as_deref(),
-                &self.expires_at,
-                now,
-            ),
+            status_of(self.revoked_at.as_deref(), self.redeemed_at.as_deref(), self.applied_at.as_deref(), &self.expires_at, now),
             &self.kind,
             self.workspace.is_some(),
             self.accepted_at.as_deref(),
@@ -441,11 +431,7 @@ impl InviteRow {
     }
 
     fn admits(&self, now: &str) -> Admits<'_> {
-        Admits {
-            kind: &self.kind,
-            email: self.email.as_deref(),
-            status: self.status(now),
-        }
+        Admits { kind: &self.kind, email: self.email.as_deref(), status: self.status(now) }
     }
 }
 
@@ -563,11 +549,7 @@ impl Identity {
             .map_or(1.0, |count| count.n);
         if hits <= 1.0 {
             // A new window: forget windows gone by.
-            self.db
-                .prepare("DELETE FROM rate_limits WHERE bucket < ?")
-                .bind(&[((now.saturating_sub(1)) as f64).into()])?
-                .run()
-                .await?;
+            self.db.prepare("DELETE FROM rate_limits WHERE bucket < ?").bind(&[((now.saturating_sub(1)) as f64).into()])?.run().await?;
         }
         Ok(hits <= f64::from(limit))
     }
@@ -604,19 +586,11 @@ impl Identity {
         let Some(body) = normalize_code(code) else {
             return Ok(None);
         };
-        self.db
-            .prepare(format!("SELECT {COLUMNS} WHERE i.code_hash = ?"))
-            .bind(&[code_hash(&body).into()])?
-            .first::<InviteRow>(None)
-            .await
+        self.db.prepare(format!("SELECT {COLUMNS} WHERE i.code_hash = ?")).bind(&[code_hash(&body).into()])?.first::<InviteRow>(None).await
     }
 
     async fn invite_by_id(&self, id: &str) -> Result<Option<InviteRow>> {
-        self.db
-            .prepare(format!("SELECT {COLUMNS} WHERE i.id = ?"))
-            .bind(&[id.into()])?
-            .first::<InviteRow>(None)
-            .await
+        self.db.prepare(format!("SELECT {COLUMNS} WHERE i.id = ?")).bind(&[id.into()])?.first::<InviteRow>(None).await
     }
 
     /// An invite as shown, with its code when `reveal` and it is pending.
@@ -628,9 +602,7 @@ impl Identity {
         // until that account uses it.
         let invitee = row.invitee.clone().filter(|_| row.email.is_none() || row.redeemed_at.is_some());
         let code = if reveal && status == InviteStatus::Pending {
-            row.sealed_code
-                .as_deref()
-                .and_then(|sealed| self.invite_sealer()?.open(sealed, &row.id))
+            row.sealed_code.as_deref().and_then(|sealed| self.invite_sealer()?.open(sealed, &row.id))
         } else {
             None
         };
@@ -710,9 +682,7 @@ impl Identity {
         let invite = match code {
             Some(code) => {
                 let now = rfc3339(now_ms());
-                self.invite_by_code(code)
-                    .await?
-                    .filter(|row| admits(Some(&row.admits(&now)), new.email, true).is_ok())
+                self.invite_by_code(code).await?.filter(|row| admits(Some(&row.admits(&now)), new.email, true).is_ok())
             }
             None => None,
         };
@@ -723,19 +693,9 @@ impl Identity {
         // The code alone proves nothing (it can be passed on), so without
         // the proof the new account confirms the address like any other.
         let verified = starts_confirmed(&self.proof_key(), new.verified, invite.as_ref(), new.email, new.email_proof);
-        let user = User {
-            id: new_id("usr", now_ms()),
-            username: new.username.to_owned(),
-            verified,
-            ..User::default()
-        };
+        let user = User { id: new_id("usr", now_ms()), username: new.username.to_owned(), verified, ..User::default() };
         let verified_at = if verified { SQL_NOW } else { "NULL" };
-        let values = [
-            JsValue::from(user.id.as_str()),
-            new.username.into(),
-            new.email.into(),
-            new.password_hash.into(),
-        ];
+        let values = [JsValue::from(user.id.as_str()), new.username.into(), new.email.into(), new.password_hash.into()];
         let plain = format!(
             "INSERT INTO users (id, username, email, password_hash, email_verified_at)
              VALUES (?, ?, ?, ?, {verified_at})"
@@ -765,13 +725,8 @@ impl Identity {
             }
             return Err(error);
         }
-        let exists = self
-            .db
-            .prepare("SELECT id FROM users WHERE id = ?")
-            .bind(&[user.id.as_str().into()])?
-            .first::<Id>(None)
-            .await?
-            .is_some();
+        let exists =
+            self.db.prepare("SELECT id FROM users WHERE id = ?").bind(&[user.id.as_str().into()])?.first::<Id>(None).await?.is_some();
         if !exists {
             // Another sign-up spent the code first: the account is made
             // without it, and confirms its address like any other.
@@ -1042,12 +997,7 @@ impl Identity {
             }
             _ => friends::INSERT,
         };
-        let inserted = self
-            .db
-            .prepare(sql)
-            .bind(&binds)?
-            .first::<Id>(None)
-            .await?;
+        let inserted = self.db.prepare(sql).bind(&binds)?.first::<Id>(None).await?;
         if inserted.is_none() {
             return Ok(None);
         }
@@ -1102,16 +1052,12 @@ impl Identity {
     /// How an invite names the person who sent it: their name, else their
     /// username.
     async fn display_name(&self, user: &User) -> String {
-        self.name_of("SELECT display_name AS name FROM users WHERE id = ?", &user.id)
-            .await
-            .unwrap_or_else(|| user.username.clone())
+        self.name_of("SELECT display_name AS name FROM users WHERE id = ?", &user.id).await.unwrap_or_else(|| user.username.clone())
     }
 
     /// A workspace's name, as an invite shows it; its slug if it has none.
     async fn workspace_name(&self, workspace_id: &str, slug: &str) -> String {
-        self.name_of("SELECT name FROM workspaces WHERE id = ?", workspace_id)
-            .await
-            .unwrap_or_else(|| slug.to_owned())
+        self.name_of("SELECT name FROM workspaces WHERE id = ?", workspace_id).await.unwrap_or_else(|| slug.to_owned())
     }
 
     /// A name `sql` selects for `id`, if it has one. Only for wording an
@@ -1122,23 +1068,14 @@ impl Identity {
             name: Option<String>,
         }
         let read = async { self.db.prepare(sql).bind(&[id.into()])?.first::<Name>(None).await };
-        read.await
-            .ok()
-            .flatten()
-            .and_then(|row| row.name)
-            .map(|name| name.trim().to_owned())
-            .filter(|name| !name.is_empty())
+        read.await.ok().flatten().and_then(|row| row.name).map(|name| name.trim().to_owned()).filter(|name| !name.is_empty())
     }
 
     /// The address a pending invite is bound to, if it is: signing up with
     /// GitHub uses it when GitHub has confirmed it too (github.rs).
     pub(crate) async fn bound_email_of(&self, code: &str) -> Result<Option<String>> {
         let now = rfc3339(now_ms());
-        Ok(self
-            .invite_by_code(code)
-            .await?
-            .filter(|row| row.status(&now) == InviteStatus::Pending)
-            .and_then(|row| row.email))
+        Ok(self.invite_by_code(code).await?.filter(|row| row.status(&now) == InviteStatus::Pending).and_then(|row| row.email))
     }
 
     /// Revokes a pending invite the person made, or one made for a
@@ -1151,12 +1088,7 @@ impl Identity {
         if a.user.kind != PrincipalKind::User || a.user.acting.is_some() {
             return Ok(Outcome::fail(FailureCode::Forbidden, PEOPLE_ONLY));
         }
-        let revoked = self
-            .db
-            .prepare(REVOKE)
-            .bind(&[a.user.id.as_str().into(), a.id.as_str().into()])?
-            .first::<Id>(None)
-            .await?;
+        let revoked = self.db.prepare(REVOKE).bind(&[a.user.id.as_str().into(), a.id.as_str().into()])?.first::<Id>(None).await?;
         let Some(Id { id }) = revoked else {
             return Ok(Outcome::fail(FailureCode::NotFound, "There is no pending invite of yours with that id."));
         };
@@ -1212,9 +1144,8 @@ impl Identity {
         let repository = self.repository_of_code(&row.id).await?;
         // Opened from the invite's own email: the account it makes starts
         // with the address confirmed. Said only while it can make one.
-        let email_proven = pending
-            && !has_account
-            && row.email.as_deref().is_some_and(|bound| self.proven(&row, bound, a.email_proof.as_deref()));
+        let email_proven =
+            pending && !has_account && row.email.as_deref().is_some_and(|bound| self.proven(&row, bound, a.email_proof.as_deref()));
         #[derive(Deserialize)]
         struct From {
             username: String,
@@ -1228,20 +1159,17 @@ impl Identity {
                 .bind(&[id.as_str().into()])?
                 .first::<From>(None)
                 .await?
-                .map(|from| InviteFrom {
-                    username: from.username,
-                    name: from.name,
-                    avatar: from.avatar,
-                }),
+                .map(|from| InviteFrom { username: from.username, name: from.name, avatar: from.avatar }),
             None => None,
         };
         let workspace = match &row.workspace_id {
-            Some(id) => self
-                .db
-                .prepare("SELECT slug, name, avatar FROM workspaces WHERE id = ?")
-                .bind(&[id.as_str().into()])?
-                .first::<ProfileWorkspace>(None)
-                .await?,
+            Some(id) => {
+                self.db
+                    .prepare("SELECT slug, name, avatar FROM workspaces WHERE id = ?")
+                    .bind(&[id.as_str().into()])?
+                    .first::<ProfileWorkspace>(None)
+                    .await?
+            }
             None => None,
         };
         Ok(Outcome::Ok(InvitePreview {
@@ -1286,10 +1214,7 @@ impl Identity {
         };
         let joins = row.as_ref().is_some_and(joins_workspace) || repository.is_some();
         if let Err(refusal) = admits(row.as_ref().map(|row| row.admits(&now)).as_ref(), &email, false) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                if refusal == Refusal::WrongEmail { WRONG_EMAIL } else { INVALID },
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, if refusal == Refusal::WrongEmail { WRONG_EMAIL } else { INVALID }));
         }
         let Some(row) = row.filter(|_| joins) else {
             return Ok(Outcome::fail(
@@ -1312,9 +1237,10 @@ impl Identity {
         }
         // An invite sent before the workspace was free waits until it
         // starts the plan (paid.rs); the code is not used up.
-        let joins_slug = row.workspace.clone().or_else(|| {
-            repository.as_ref().and_then(|r| r.name.split_once('/').map(|(workspace, _)| workspace.to_owned()))
-        });
+        let joins_slug = row
+            .workspace
+            .clone()
+            .or_else(|| repository.as_ref().and_then(|r| r.name.split_once('/').map(|(workspace, _)| workspace.to_owned())));
         if let Some(slug) = joins_slug.as_deref()
             && let Some(refused) = self.free_workspace_refusal(slug).await?
         {
@@ -1333,11 +1259,7 @@ impl Identity {
         if claimed.is_none() {
             return Ok(Outcome::fail(FailureCode::Forbidden, INVALID));
         }
-        let lands = row
-            .workspace
-            .clone()
-            .or_else(|| repository.map(|repository| repository.name))
-            .unwrap_or_default();
+        let lands = row.workspace.clone().or_else(|| repository.map(|repository| repository.name)).unwrap_or_default();
         self.after_redeemed(&row, &a.user, false).await?;
         Ok(Outcome::Ok(lands))
     }
@@ -1588,11 +1510,12 @@ impl Identity {
                 // A code, or its start: matched by its hint.
                 let prefix = query.to_lowercase();
                 let prefix = prefix.strip_prefix("g1t-").unwrap_or(&prefix).replace('-', "");
-                let hint = (prefix.len() >= GROUP && prefix.chars().all(|c| ALPHABET.contains(&(c as u8))))
-                    .then(|| code_hint(&prefix));
+                let hint = (prefix.len() >= GROUP && prefix.chars().all(|c| ALPHABET.contains(&(c as u8)))).then(|| code_hint(&prefix));
                 let pattern = crate::admin::like_pattern(Some(query)).unwrap_or_default();
                 let mut binds: Vec<JsValue> = vec![pattern.as_str().into(), pattern.as_str().into(), pattern.as_str().into()];
-                let mut filter = "WHERE (lower(i.email) LIKE ? ESCAPE '\\' OR iu.username LIKE ? ESCAPE '\\' OR ru.username LIKE ? ESCAPE '\\'".to_owned();
+                let mut filter =
+                    "WHERE (lower(i.email) LIKE ? ESCAPE '\\' OR iu.username LIKE ? ESCAPE '\\' OR ru.username LIKE ? ESCAPE '\\'"
+                        .to_owned();
                 if let Some(hint) = hint {
                     filter.push_str(" OR i.hint = ?");
                     binds.push(hint.into());
@@ -1637,10 +1560,7 @@ impl Identity {
                 actor: AuditActor::of(actor),
                 action: action.to_owned(),
                 surface,
-                target: AuditTarget {
-                    workspace,
-                    ..AuditTarget::default()
-                },
+                target: AuditTarget { workspace, ..AuditTarget::default() },
                 outcome: AuditOutcome::Allowed,
                 rule: "invite".to_owned(),
                 result: Some("ok".to_owned()),
@@ -1855,10 +1775,7 @@ mod tests {
         for status in [InviteStatus::Redeemed, InviteStatus::Revoked, InviteStatus::Expired] {
             assert_eq!(admits(Some(&invite("account", None, status)), "a@example.com", true), Err(Refusal::Invalid));
             // A dead code says nothing about whom it was for.
-            assert_eq!(
-                admits(Some(&invite("account", Some("ada@example.com"), status)), "eve@example.com", true),
-                Err(Refusal::Invalid)
-            );
+            assert_eq!(admits(Some(&invite("account", Some("ada@example.com"), status)), "eve@example.com", true), Err(Refusal::Invalid));
         }
         assert_eq!(admits(None, "a@example.com", true), Err(Refusal::Invalid));
     }

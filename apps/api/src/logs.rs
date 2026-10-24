@@ -181,8 +181,12 @@ pub async fn download(services: &Services, viewer: &Viewer, wanted: Wanted<'_>) 
     let path = RepoPath { namespace: owner.to_owned(), name: repo.to_owned() };
     match wanted {
         Wanted::Run { id, attempt, .. } => {
-            let logs: Outcome<Vec<JobLogText>> =
-                g1t_kit::call(&services.actions, "run_logs", &RunLogsArgs { repo: path, viewer: viewer.clone(), id: id.to_owned(), attempt }).await?;
+            let logs: Outcome<Vec<JobLogText>> = g1t_kit::call(
+                &services.actions,
+                "run_logs",
+                &RunLogsArgs { repo: path, viewer: viewer.clone(), id: id.to_owned(), attempt },
+            )
+            .await?;
             match logs {
                 Outcome::Ok(jobs) => {
                     let file = match attempt {
@@ -195,10 +199,16 @@ pub async fn download(services: &Services, viewer: &Viewer, wanted: Wanted<'_>) 
             }
         }
         Wanted::Job { job, .. } => {
-            let log: Outcome<JobLogText> =
-                g1t_kit::call(&services.actions, "job_log_text", &JobLogTextArgs { repo: path, viewer: viewer.clone(), job: job.to_owned() }).await?;
+            let log: Outcome<JobLogText> = g1t_kit::call(
+                &services.actions,
+                "job_log_text",
+                &JobLogTextArgs { repo: path, viewer: viewer.clone(), job: job.to_owned() },
+            )
+            .await?;
             match log {
-                Outcome::Ok(log) => attachment(job_text(&log).into_bytes(), "text/plain; charset=utf-8", &format!("{}.txt", file_name(&log.name))),
+                Outcome::Ok(log) => {
+                    attachment(job_text(&log).into_bytes(), "text/plain; charset=utf-8", &format!("{}.txt", file_name(&log.name)))
+                }
                 Outcome::Fail(refused) => failure(&refused),
             }
         }
@@ -216,7 +226,11 @@ mod tests {
             job_id: "job_1".into(),
             name: name.into(),
             steps: vec![StepState { number: 1, name: "Run cargo test".into(), ..StepState::default() }],
-            chunks: chunks.iter().enumerate().map(|(i, (step, text))| LogChunk { seq: i as u64 + 1, step: *step, text: (*text).into() }).collect(),
+            chunks: chunks
+                .iter()
+                .enumerate()
+                .map(|(i, (step, text))| LogChunk { seq: i as u64 + 1, step: *step, text: (*text).into() })
+                .collect(),
             done: true,
             omitted: false,
         }

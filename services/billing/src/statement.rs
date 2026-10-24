@@ -2,12 +2,12 @@
 //! read at a glance (by day or by project, a line per kind of charge),
 //! with each line's entries a page at a time.
 
+use g1t_contracts::Outcome;
 use g1t_contracts::billing::{
     Covered, LedgerEntry, MeterUsage, Statement, StatementArgs, StatementEntriesArgs, StatementGroup, StatementLine, StatementTotals,
     UsageMetersArgs,
 };
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::Outcome;
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
@@ -55,7 +55,8 @@ pub(crate) const RUNNER_MINUTES: &str = "Runner minutes, ";
 /// first (the plan's included usage, the trial, a pool, g1t), and what a
 /// discount took off. `line_price`, for a whole column. The one measure of
 /// usage every page shows.
-pub(crate) const PRICE_SQL: &str = "(-amount_micros + COALESCE(credit_micros, 0) + COALESCE(gift_micros, 0) + COALESCE(trial_micros, 0) + COALESCE(oss_micros, 0)
+pub(crate) const PRICE_SQL: &str =
+    "(-amount_micros + COALESCE(credit_micros, 0) + COALESCE(gift_micros, 0) + COALESCE(trial_micros, 0) + COALESCE(oss_micros, 0)
       + COALESCE(given_micros, 0) + COALESCE(discount_micros, 0))";
 
 /// Whether a usage line is an agent run's own line (`run_…`, from when g1t
@@ -143,12 +144,8 @@ pub(crate) fn build_minutes(seconds: i64) -> Option<String> {
 pub(crate) fn runner_minutes(by_machine: &[(String, i64)]) -> Option<String> {
     let used: Vec<_> = by_machine.iter().filter(|(_, minutes)| *minutes > 0).collect();
     let (first, rest) = used.split_first()?;
-    let mut text = format!(
-        "{} runner minute{} on {}",
-        crate::features::thousands(first.1 as u64),
-        if first.1 == 1 { "" } else { "s" },
-        first.0
-    );
+    let mut text =
+        format!("{} runner minute{} on {}", crate::features::thousands(first.1 as u64), if first.1 == 1 { "" } else { "s" }, first.0);
     for (machine, minutes) in rest {
         text.push_str(&format!(", {} on {machine}", crate::features::thousands(*minutes as u64)));
     }
@@ -286,7 +283,8 @@ impl Billing {
         for row in rows {
             let key = row.group_key.unwrap_or_default();
             let amount = row.amount.unwrap_or(0);
-            let paid_for = [row.credit.unwrap_or(0), row.gift.unwrap_or(0), row.trial.unwrap_or(0), row.oss.unwrap_or(0), row.given.unwrap_or(0)];
+            let paid_for =
+                [row.credit.unwrap_or(0), row.gift.unwrap_or(0), row.trial.unwrap_or(0), row.oss.unwrap_or(0), row.given.unwrap_or(0)];
             for (total, micros) in covered.iter_mut().zip(paid_for) {
                 *total += micros;
             }
@@ -517,12 +515,7 @@ impl Billing {
             return Ok(Outcome::Ok(vec![]));
         };
         let mut filters = vec![format!("({KIND_SQL}) = ?4")];
-        let mut values: Vec<JsValue> = vec![
-            workspace.as_str().into(),
-            from.as_str().into(),
-            until.as_str().into(),
-            a.kind.as_str().into(),
-        ];
+        let mut values: Vec<JsValue> = vec![workspace.as_str().into(), from.as_str().into(), until.as_str().into(), a.kind.as_str().into()];
         if let Some(day) = a.day.as_deref().filter(|d| d.len() == 10) {
             values.push(day.into());
             filters.push(format!("substr(created_at, 1, 10) = ?{}", values.len()));

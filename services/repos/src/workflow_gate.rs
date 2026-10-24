@@ -55,7 +55,11 @@ fn first_difference(old: &[TreeItem], new: &[TreeItem]) -> Option<String> {
 
 /// The first workflow file that differs between two root trees (`None`
 /// for a commit with no parent), as a path.
-pub(crate) async fn changed_between<R: GitRepo>(objects: &Objects<'_, R>, old_root: Option<&str>, new_root: &str) -> Result<Option<String>> {
+pub(crate) async fn changed_between<R: GitRepo>(
+    objects: &Objects<'_, R>,
+    old_root: Option<&str>,
+    new_root: &str,
+) -> Result<Option<String>> {
     for dir in WORKFLOW_DIRS {
         let old = match old_root {
             Some(root) => subtree(objects, root, dir).await?,
@@ -103,7 +107,12 @@ pub(crate) async fn changed_in_commits<R: GitRepo>(pack: &Pack, repo: &R, ids: &
 /// lines it prints, when `token` may not change workflow files and the
 /// push (`body`, read `whole` or not) does or cannot be checked.
 #[cfg(test)]
-pub(crate) async fn judge_push<R: GitRepo>(token: &TokenAccess, body: &[u8], whole: bool, git: &R) -> Result<Option<(&'static str, Vec<String>)>> {
+pub(crate) async fn judge_push<R: GitRepo>(
+    token: &TokenAccess,
+    body: &[u8],
+    whole: bool,
+    git: &R,
+) -> Result<Option<(&'static str, Vec<String>)>> {
     let mut pack = whole.then(|| crate::push_checks::read_pack(body));
     if let Some(Ok(pack)) = &mut pack {
         crate::secret_scan::supply_bases(pack, git).await?;
@@ -123,9 +132,16 @@ pub(crate) async fn judge_pack<R: GitRepo>(
     if updates.iter().all(|(_, _, new)| new.is_none()) {
         return Ok(None);
     }
-    let too_large = |line: String| Ok(Some(("push too large to check for workflow files", vec![line, "Push in smaller parts, or with a token that has the workflow_files:write scope.".to_owned()])));
+    let too_large = |line: String| {
+        Ok(Some((
+            "push too large to check for workflow files",
+            vec![line, "Push in smaller parts, or with a token that has the workflow_files:write scope.".to_owned()],
+        )))
+    };
     let Some(pack) = pack else {
-        return too_large("This push is too large for g1t to check whether it changes workflow files, and this token may not change them.".to_owned());
+        return too_large(
+            "This push is too large for g1t to check whether it changes workflow files, and this token may not change them.".to_owned(),
+        );
     };
     // A push with no pack moves refs to commits the repository has: an
     // empty pack, which changes nothing.
@@ -133,13 +149,18 @@ pub(crate) async fn judge_pack<R: GitRepo>(
         Ok(pack) => pack,
         Err(problem) => {
             worker::console_error!("a push's pack could not be read for workflow files: {problem}");
-            return Ok(Some(("push could not be checked for workflow files", vec!["g1t could not read this push to check it for workflow files. Push again.".to_owned()])));
+            return Ok(Some((
+                "push could not be checked for workflow files",
+                vec!["g1t could not read this push to check it for workflow files. Push again.".to_owned()],
+            )));
         }
     };
     for (_, _, new) in updates {
         let Some(new) = new else { continue };
         let Some(ids) = rule_facts::added(pack, &new, MAX_COMMITS) else {
-            return too_large(format!("This push adds more than {MAX_COMMITS} commits to one ref, too many for g1t to check for workflow files, and this token may not change them."));
+            return too_large(format!(
+                "This push adds more than {MAX_COMMITS} commits to one ref, too many for g1t to check for workflow files, and this token may not change them."
+            ));
         };
         if let Some(path) = changed_in_commits(pack, git, &ids).await? {
             let reason = decide_workflow_files(Some(token), [path.as_str()])
@@ -147,7 +168,10 @@ pub(crate) async fn judge_pack<R: GitRepo>(
                 .unwrap_or_else(|| format!("This access token cannot change the workflow file {path}."));
             return Ok(Some((
                 "workflow files need the workflow_files:write scope",
-                vec![reason, "Push with a token that has the workflow_files:write scope, or make the change signed in on g1t.sh.".to_owned()],
+                vec![
+                    reason,
+                    "Push with a token that has the workflow_files:write scope, or make the change signed in on g1t.sh.".to_owned(),
+                ],
             )));
         }
     }
@@ -253,7 +277,11 @@ mod tests {
                     .tree(&id)
                     .unwrap()
                     .into_iter()
-                    .map(|item| TreeEntry { name: item.name.clone(), hash: item.id.clone(), kind: if item.is_tree() { EntryKind::Tree } else { EntryKind::Blob } })
+                    .map(|item| TreeEntry {
+                        name: item.name.clone(),
+                        hash: item.id.clone(),
+                        kind: if item.is_tree() { EntryKind::Tree } else { EntryKind::Blob },
+                    })
                     .collect();
                 repo.trees.insert(id, entries);
             }
@@ -261,7 +289,14 @@ mod tests {
         let (base_id, _) = commit(&before.root, None);
         repo.commits.insert(
             base_id.clone(),
-            Commit { hash: base_id.clone(), tree_hash: before.root.clone(), message: String::new(), author: Signature { name: String::new(), email: String::new() }, parents: Vec::new(), authored_at: String::new() },
+            Commit {
+                hash: base_id.clone(),
+                tree_hash: before.root.clone(),
+                message: String::new(),
+                author: Signature { name: String::new(), email: String::new() },
+                parents: Vec::new(),
+                authored_at: String::new(),
+            },
         );
         let (tip, data) = commit(&after.root, Some(&base_id));
         let mut objects = after.objects.clone();
@@ -304,7 +339,11 @@ mod tests {
                     .tree(&id)
                     .unwrap()
                     .into_iter()
-                    .map(|item| TreeEntry { name: item.name.clone(), hash: item.id.clone(), kind: if item.is_tree() { EntryKind::Tree } else { EntryKind::Blob } })
+                    .map(|item| TreeEntry {
+                        name: item.name.clone(),
+                        hash: item.id.clone(),
+                        kind: if item.is_tree() { EntryKind::Tree } else { EntryKind::Blob },
+                    })
                     .collect();
                 repo.trees.insert(id, entries);
             }
@@ -312,7 +351,14 @@ mod tests {
         let (base_id, _) = commit(&before.root, None);
         repo.commits.insert(
             base_id.clone(),
-            Commit { hash: base_id.clone(), tree_hash: before.root.clone(), message: String::new(), author: Signature { name: String::new(), email: String::new() }, parents: Vec::new(), authored_at: String::new() },
+            Commit {
+                hash: base_id.clone(),
+                tree_hash: before.root.clone(),
+                message: String::new(),
+                author: Signature { name: String::new(), email: String::new() },
+                parents: Vec::new(),
+                authored_at: String::new(),
+            },
         );
         let (tip, data) = commit(&after.root, Some(&base_id));
         let mut objects = after.objects.clone();

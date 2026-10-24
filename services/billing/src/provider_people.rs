@@ -212,10 +212,7 @@ pub(crate) fn person_rows(
 
 /// An address as kept: trimmed and lowercased, as identity matches them.
 fn email(value: &Value) -> Option<String> {
-    value
-        .as_str()
-        .map(|email| email.trim().to_lowercase())
-        .filter(|email| !email.is_empty())
+    value.as_str().map(|email| email.trim().to_lowercase()).filter(|email| !email.is_empty())
 }
 
 /// A number of cents (a JSON number or a decimal string) in millionths of
@@ -244,10 +241,8 @@ pub(crate) fn openai_users_url(after: Option<&str>) -> String {
 /// to read after.
 pub(crate) fn parse_openai_users(body: &Value) -> Result<(Vec<(String, String)>, Option<String>), String> {
     let users = body["data"].as_array().ok_or("OpenAI's list of users had no data.")?;
-    let found: Vec<(String, String)> = users
-        .iter()
-        .filter_map(|user| Some((user["id"].as_str()?.to_owned(), email(&user["email"])?)))
-        .collect();
+    let found: Vec<(String, String)> =
+        users.iter().filter_map(|user| Some((user["id"].as_str()?.to_owned(), email(&user["email"])?))).collect();
     let next = (body["has_more"].as_bool() == Some(true))
         .then(|| {
             body["last_id"]
@@ -313,18 +308,14 @@ pub(crate) fn parse_openai_user_costs(
     let buckets = body["data"].as_array().ok_or("OpenAI's costs had no data.")?;
     let (mut days, mut charges, mut other) = (Vec::new(), Vec::new(), BTreeSet::new());
     for bucket in buckets {
-        let start = bucket["start_time"]
-            .as_u64()
-            .ok_or("A bucket in OpenAI's costs had no start.")?;
+        let start = bucket["start_time"].as_u64().ok_or("A bucket in OpenAI's costs had no start.")?;
         let day = day_of(start * 1000);
         let results = bucket["results"].as_array().or_else(|| bucket["result"].as_array());
         for result in results.into_iter().flatten() {
             let Some(user) = result["user_id"].as_str().filter(|id| !id.is_empty()) else {
                 continue;
             };
-            let value = result["amount"]["value"]
-                .as_f64()
-                .ok_or("A cost in OpenAI's report had no amount.")?;
+            let value = result["amount"]["value"].as_f64().ok_or("A cost in OpenAI's report had no amount.")?;
             let currency = result["amount"]["currency"].as_str().unwrap_or("usd");
             if !currency.eq_ignore_ascii_case("usd") {
                 other.insert(currency.to_uppercase());
@@ -357,9 +348,7 @@ pub(crate) fn parse_openai_completions(
     let buckets = body["data"].as_array().ok_or("OpenAI's usage had no data.")?;
     let (mut days, mut charges, mut unpriced) = (Vec::new(), Vec::new(), BTreeSet::new());
     for bucket in buckets {
-        let start = bucket["start_time"]
-            .as_u64()
-            .ok_or("A bucket in OpenAI's usage had no start.")?;
+        let start = bucket["start_time"].as_u64().ok_or("A bucket in OpenAI's usage had no start.")?;
         let day = day_of(start * 1000);
         let results = bucket["results"].as_array().or_else(|| bucket["result"].as_array());
         for result in results.into_iter().flatten() {
@@ -368,11 +357,7 @@ pub(crate) fn parse_openai_completions(
             };
             let model = text(&result["model"]);
             let count = |key: &str| result[key].as_u64().unwrap_or(0);
-            let (input, cached, written) = (
-                count("input_tokens"),
-                count("input_cached_tokens"),
-                count("input_cache_write_tokens"),
-            );
+            let (input, cached, written) = (count("input_tokens"), count("input_cached_tokens"), count("input_cache_write_tokens"));
             let usage = ModelUsage {
                 model: model.clone(),
                 tier: None,
@@ -405,9 +390,7 @@ pub(crate) fn parse_openai_completions(
 }
 
 fn next_page(body: &Value) -> Option<String> {
-    (body["has_more"].as_bool() == Some(true))
-        .then(|| body["next_page"].as_str().filter(|s| !s.is_empty()).map(str::to_owned))
-        .flatten()
+    (body["has_more"].as_bool() == Some(true)).then(|| body["next_page"].as_str().filter(|s| !s.is_empty()).map(str::to_owned)).flatten()
 }
 
 // --- Cursor ---------------------------------------------------------------------
@@ -437,9 +420,7 @@ pub(crate) fn cursor_body(start: u64, end: u64, page: u32, page_size: u32) -> St
 /// conversation); a service account's events name it instead of a person.
 /// The events, and whether there is a next page.
 pub(crate) fn parse_cursor(body: &Value) -> Result<(Vec<CursorEvent>, bool), String> {
-    let events = body["usageEvents"]
-        .as_array()
-        .ok_or("Cursor's usage events had no usageEvents.")?;
+    let events = body["usageEvents"].as_array().ok_or("Cursor's usage events had no usageEvents.")?;
     let mut found = Vec::new();
     for event in events {
         let at = match &event["timestamp"] {
@@ -463,10 +444,7 @@ pub(crate) fn parse_cursor(body: &Value) -> Result<(Vec<CursorEvent>, bool), Str
             actor,
             model: text(&event["model"]),
             micros,
-            conversation: event["conversationId"]
-                .as_str()
-                .filter(|id| !id.is_empty())
-                .map(str::to_owned),
+            conversation: event["conversationId"].as_str().filter(|id| !id.is_empty()).map(str::to_owned),
         });
     }
     Ok((found, body["pagination"]["hasNextPage"].as_bool() == Some(true)))
@@ -501,30 +479,19 @@ pub(crate) fn cursor_people(events: &[CursorEvent]) -> (Vec<PersonRow>, Vec<Conv
             micros: event.micros,
         });
         if let Some(conversation) = &event.conversation {
-            let sums = conversations
-                .entry((event.day.clone(), event.kind, event.actor.clone(), conversation.clone()))
-                .or_insert((0, 0));
+            let sums = conversations.entry((event.day.clone(), event.kind, event.actor.clone(), conversation.clone())).or_insert((0, 0));
             sums.0 += event.micros;
             sums.1 += 1;
         }
     }
     let mut sessions: BTreeMap<(String, ActorKind, String, String), u32> = BTreeMap::new();
     for (day, kind, actor, _) in conversations.keys() {
-        *sessions
-            .entry((day.clone(), *kind, actor.clone(), CURSOR_HARNESS.to_owned()))
-            .or_insert(0) += 1;
+        *sessions.entry((day.clone(), *kind, actor.clone(), CURSOR_HARNESS.to_owned())).or_insert(0) += 1;
     }
     let rows = person_rows(&charges, &sessions, CostUnit::Usd, false);
     let conversations = conversations
         .into_iter()
-        .map(|((day, kind, actor, conversation), (micros, events))| ConversationRow {
-            day,
-            kind,
-            actor,
-            conversation,
-            micros,
-            events,
-        })
+        .map(|((day, kind, actor, conversation), (micros, events))| ConversationRow { day, kind, actor, conversation, micros, events })
         .collect();
     (rows, conversations)
 }
@@ -540,12 +507,7 @@ pub(crate) fn amp_client(credential: &str) -> Option<(&str, &str)> {
 
 /// The form that asks Amp for a client-credentials token.
 pub(crate) fn amp_token_form(id: &str, secret: &str) -> String {
-    format!(
-        "grant_type=client_credentials&client_id={}&client_secret={}&scope={}",
-        encode(id),
-        encode(secret),
-        encode(AMP_SCOPES)
-    )
+    format!("grant_type=client_credentials&client_id={}&client_secret={}&scope={}", encode(id), encode(secret), encode(AMP_SCOPES))
 }
 
 /// Amp's daily usage for the `days` days to `last` (`YYYY-MM-DD`), last
@@ -564,18 +526,11 @@ pub(crate) fn parse_amp(body: &Value) -> Result<(Vec<String>, Vec<Charge>), Stri
     let days = body["data"].as_array().ok_or("Amp's daily usage had no data.")?;
     let (mut answered, mut charges) = (Vec::new(), Vec::new());
     for entry in days {
-        let day = entry["date"]
-            .as_str()
-            .filter(|s| s.len() >= 10)
-            .ok_or("A day in Amp's usage had no date.")?[..10]
-            .to_owned();
+        let day = entry["date"].as_str().filter(|s| s.len() >= 10).ok_or("A day in Amp's usage had no date.")?[..10].to_owned();
         for user in entry["users"].as_array().into_iter().flatten() {
-            let Some(actor) = email(&user["user"]["email"]).or_else(|| {
-                user["user"]["id"]
-                    .as_str()
-                    .filter(|id| !id.is_empty())
-                    .map(str::to_owned)
-            }) else {
+            let Some(actor) =
+                email(&user["user"]["email"]).or_else(|| user["user"]["id"].as_str().filter(|id| !id.is_empty()).map(str::to_owned))
+            else {
                 continue;
             };
             let total = dollars_to_micros(user["metrics"]["usage"].as_f64().unwrap_or(0.0)).unwrap_or(0);
@@ -630,10 +585,7 @@ pub(crate) fn devin_members_url(after: Option<&str>, first: u32) -> String {
 /// `user_id` and `email`, paged by `end_cursor` while `has_next_page`.
 pub(crate) fn parse_devin_members(body: &Value) -> Result<(Vec<(String, String)>, Option<String>), String> {
     let items = body["items"].as_array().ok_or("Devin's list of members had no items.")?;
-    let found = items
-        .iter()
-        .filter_map(|user| Some((user["user_id"].as_str()?.to_owned(), email(&user["email"])?)))
-        .collect();
+    let found = items.iter().filter_map(|user| Some((user["user_id"].as_str()?.to_owned(), email(&user["email"])?))).collect();
     let next = (body["has_next_page"].as_bool() == Some(true))
         .then(|| body["end_cursor"].as_str().filter(|s| !s.is_empty()).map(str::to_owned))
         .flatten();
@@ -645,10 +597,7 @@ pub(crate) fn parse_devin_members(body: &Value) -> Result<(Vec<(String, String)>
 pub(crate) fn devin_consumption_url(user_id: &str, from: &str, until: u64) -> String {
     let after = day_start(from).unwrap_or(0) / 1000 + DEVIN_DAY_OFFSET_S;
     let before = until / 1000 + DEVIN_DAY_OFFSET_S;
-    format!(
-        "{DEVIN_API}/consumption/daily/users/{}?time_after={after}&time_before={before}",
-        encode(user_id)
-    )
+    format!("{DEVIN_API}/consumption/daily/users/{}?time_after={after}&time_before={before}", encode(user_id))
 }
 
 /// The harness each of Devin's products is: Devin Desktop's agent
@@ -667,9 +616,7 @@ fn devin_product_harness(product: &str) -> &'static str {
 /// `review`), which add up to the day's `acus`. A charge per product, in
 /// millionths of an ACU.
 pub(crate) fn parse_devin_consumption(body: &Value, actor: &str) -> Result<Vec<Charge>, String> {
-    let days = body["consumption_by_date"]
-        .as_array()
-        .ok_or("Devin's consumption had no days.")?;
+    let days = body["consumption_by_date"].as_array().ok_or("Devin's consumption had no days.")?;
     let mut charges = Vec::new();
     for entry in days {
         let at = entry["date"].as_u64().ok_or("A day in Devin's consumption had no date.")?;
@@ -722,9 +669,7 @@ pub(crate) fn windsurf_body(credential: &str, day: &str) -> String {
 /// a credit, for the range asked for. A charge per person who used any, in
 /// millionths of a credit.
 pub(crate) fn parse_windsurf(body: &Value, day: &str) -> Result<Vec<Charge>, String> {
-    let users = body["userTableStats"]
-        .as_array()
-        .ok_or("Devin Desktop's analytics had no userTableStats.")?;
+    let users = body["userTableStats"].as_array().ok_or("Devin Desktop's analytics had no userTableStats.")?;
     let mut charges = Vec::new();
     for user in users {
         let Some(actor) = email(&user["email"]) else {
@@ -759,15 +704,9 @@ pub(crate) fn basic(user: &str) -> String {
     let bytes = format!("{user}:").into_bytes();
     let mut out = String::new();
     for chunk in bytes.chunks(3) {
-        let n = (u32::from(chunk[0]) << 16)
-            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
-            | u32::from(*chunk.get(2).unwrap_or(&0));
+        let n = (u32::from(chunk[0]) << 16) | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8) | u32::from(*chunk.get(2).unwrap_or(&0));
         for (index, shift) in [18, 12, 6, 0].into_iter().enumerate() {
-            out.push(if index <= chunk.len() {
-                ALPHABET[((n >> shift) & 63) as usize] as char
-            } else {
-                '='
-            });
+            out.push(if index <= chunk.len() { ALPHABET[((n >> shift) & 63) as usize] as char } else { '=' });
         }
     }
     format!("Basic {out}")
@@ -800,12 +739,7 @@ pub(crate) async fn fetch_json(
         let body: Value = response.json().await.unwrap_or(Value::Null);
         Ok::<_, worker::Error>((status, body))
     };
-    sent.await.map_err(|_| {
-        format!(
-            "g1t couldn't reach {}. It tries again at the next daily read.",
-            provider.label()
-        )
-    })
+    sent.await.map_err(|_| format!("g1t couldn't reach {}. It tries again at the next daily read.", provider.label()))
 }
 
 /// A request that must answer 200: its body, or why not, key scrubbed.
@@ -818,11 +752,7 @@ async fn ask(
     body: Option<(&str, String)>,
 ) -> Result<(u16, Value), String> {
     let (status, answer) = fetch_json(provider, method, url, authorization, body).await?;
-    if status == 200 {
-        Ok((status, answer))
-    } else {
-        Err(explain(provider, status, &answer, credential))
-    }
+    if status == 200 { Ok((status, answer)) } else { Err(explain(provider, status, &answer, credential)) }
 }
 
 /// An Amp token for the application, or why not.
@@ -863,27 +793,13 @@ pub(crate) async fn check(provider: CostProvider, credential: &str, now: u64) ->
         }
         CostProvider::Amp => {
             let token = amp_token(credential).await?;
-            let (_, body) = ask(
-                provider,
-                credential,
-                Method::Get,
-                &amp_daily_url(&yesterday, 1),
-                Some(&format!("Bearer {token}")),
-                None,
-            )
-            .await?;
+            let (_, body) =
+                ask(provider, credential, Method::Get, &amp_daily_url(&yesterday, 1), Some(&format!("Bearer {token}")), None).await?;
             parse_amp(&body)?;
         }
         CostProvider::Devin if devin_cloud(credential) => {
-            let (_, body) = ask(
-                provider,
-                credential,
-                Method::Get,
-                &devin_members_url(None, 1),
-                Some(&format!("Bearer {credential}")),
-                None,
-            )
-            .await?;
+            let (_, body) =
+                ask(provider, credential, Method::Get, &devin_members_url(None, 1), Some(&format!("Bearer {credential}")), None).await?;
             parse_devin_members(&body)?;
         }
         CostProvider::Devin => {
@@ -966,11 +882,7 @@ async fn read_openai(credential: &str, from: &str, until: u64) -> PeopleRead {
         if status != 200 {
             return failed(explain(provider, status, &body, credential));
         }
-        let parsed = if list_price {
-            parse_openai_completions(&body, &emails)
-        } else {
-            parse_openai_user_costs(&body, &emails)
-        };
+        let parsed = if list_price { parse_openai_completions(&body, &emails) } else { parse_openai_user_costs(&body, &emails) };
         let (answered, found, other, next) = match parsed {
             Ok(page) => page,
             Err(problem) => return failed(problem),
@@ -991,10 +903,7 @@ async fn read_openai(credential: &str, from: &str, until: u64) -> PeopleRead {
     } else if left_out.is_empty() {
         None
     } else if list_price {
-        Some(format!(
-            "g1t has no list price for {}, so their use isn't counted.",
-            left_out.into_iter().collect::<Vec<_>>().join(", ")
-        ))
+        Some(format!("g1t has no list price for {}, so their use isn't counted.", left_out.into_iter().collect::<Vec<_>>().join(", ")))
     } else {
         Some(format!(
             "Some costs were reported in {}, not US dollars, and are left out.",
@@ -1110,9 +1019,8 @@ async fn read_devin(credential: &str, from: &str, until: u64) -> PeopleRead {
             Err(problem) => return failed(problem),
         }
     }
-    let note = (people.len() > DEVIN_PEOPLE).then(|| {
-        format!("Devin has more people than g1t reads at once: the first {DEVIN_PEOPLE} are read.")
-    });
+    let note =
+        (people.len() > DEVIN_PEOPLE).then(|| format!("Devin has more people than g1t reads at once: the first {DEVIN_PEOPLE} are read."));
     let wanted = days_back(from, until);
     let mut charges = Vec::new();
     for chunk in people.chunks(4).take(DEVIN_PEOPLE.div_ceil(4)) {
@@ -1185,8 +1093,7 @@ async fn read_windsurf(credential: &str, from: &str, until: u64) -> PeopleRead {
 mod tests {
     use super::*;
     use crate::provider_costs::{
-        ACTOR_TOTALS, DELETE_CONVERSATION_DAY, PERSON_DAYS, UPSERT_CONVERSATION, UPSERT_COST_IN, UPSERT_PERSON_COST,
-        organization_days,
+        ACTOR_TOTALS, DELETE_CONVERSATION_DAY, PERSON_DAYS, UPSERT_CONVERSATION, UPSERT_COST_IN, UPSERT_PERSON_COST, organization_days,
     };
     use g1t_contracts::time::{parse_rfc3339, rfc3339};
 
@@ -1355,10 +1262,7 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(next.as_deref(), Some("user_1"));
-        assert_eq!(
-            openai_users_url(Some("user_1")),
-            "https://api.openai.com/v1/organization/users?limit=100&after=user_1"
-        );
+        assert_eq!(openai_users_url(Some("user_1")), "https://api.openai.com/v1/organization/users?limit=100&after=user_1");
 
         let emails: HashMap<String, String> = users.into_iter().collect();
         // Costs by user and line item: dollars, the model out of the line
@@ -1397,8 +1301,7 @@ mod tests {
     #[test]
     fn openais_tokens_are_priced_at_list_price_where_its_costs_cant_be_split() {
         let emails: HashMap<String, String> = [("user_abc".to_owned(), "user@example.com".to_owned())].into();
-        let (days, charges, unpriced, next) =
-            parse_openai_completions(&json(OPENAI_COMPLETIONS_EXAMPLE), &emails).unwrap();
+        let (days, charges, unpriced, next) = parse_openai_completions(&json(OPENAI_COMPLETIONS_EXAMPLE), &emails).unwrap();
         assert_eq!(days, ["2024-11-01"]);
         assert!(unpriced.is_empty());
         assert_eq!(next.as_deref(), Some("page_AAAAAGdGxdEiJdKOAAAAAGcqsYA="));
@@ -1477,10 +1380,7 @@ mod tests {
         }))
         .unwrap();
         assert!(!more);
-        assert_eq!(
-            (events[0].kind, events[0].actor.as_str(), events[0].micros),
-            (ActorKind::ApiKey, "Nightly CI Agent", 15_000)
-        );
+        assert_eq!((events[0].kind, events[0].actor.as_str(), events[0].micros), (ActorKind::ApiKey, "Nightly CI Agent", 15_000));
         assert!(parse_cursor(&serde_json::json!({ "error": "Unauthorized", "message": "Invalid API key" })).is_err());
     }
 
@@ -1508,10 +1408,7 @@ mod tests {
         let (days, charges) = parse_amp(&json(AMP_EXAMPLE)).unwrap();
         assert_eq!(days, ["2026-10-20", "2026-10-21"]);
         let rows = person_rows(&charges, &BTreeMap::new(), CostUnit::Usd, false);
-        let models: Vec<(&str, &str, i64)> = rows
-            .iter()
-            .map(|r| (r.actor.as_str(), r.model.as_str(), r.micros))
-            .collect();
+        let models: Vec<(&str, &str, i64)> = rows.iter().map(|r| (r.actor.as_str(), r.model.as_str(), r.micros)).collect();
         // Orbs and tools are the day's usage beyond its models, with no
         // model; a person who used nothing has no row.
         assert_eq!(
@@ -1561,10 +1458,8 @@ mod tests {
         )
         .unwrap();
         let rows = person_rows(&charges, &BTreeMap::new(), CostUnit::Acus, false);
-        let found: Vec<(&str, &str, &str, i64)> = rows
-            .iter()
-            .map(|r| (r.day.as_str(), r.harness.as_str(), r.model.as_str(), r.micros))
-            .collect();
+        let found: Vec<(&str, &str, &str, i64)> =
+            rows.iter().map(|r| (r.day.as_str(), r.harness.as_str(), r.model.as_str(), r.micros)).collect();
         assert_eq!(
             found,
             [
@@ -1612,18 +1507,8 @@ mod tests {
             CostUnit::Usd,
             false,
         );
-        let found: Vec<(&str, &str, i64, u32)> = rows
-            .iter()
-            .map(|r| (r.actor.as_str(), r.model.as_str(), r.micros, r.sessions))
-            .collect();
-        assert_eq!(
-            found,
-            [
-                ("ada@example.com", "a", 2, 3),
-                ("ada@example.com", "b", 5, 0),
-                ("idle@example.com", "", 0, 1)
-            ]
-        );
+        let found: Vec<(&str, &str, i64, u32)> = rows.iter().map(|r| (r.actor.as_str(), r.model.as_str(), r.micros, r.sessions)).collect();
+        assert_eq!(found, [("ada@example.com", "a", 2, 3), ("ada@example.com", "b", 5, 0), ("idle@example.com", "", 0, 1)]);
     }
 
     #[test]
@@ -1675,12 +1560,8 @@ mod tests {
             row.day = "2025-06-26".into();
             write("openai", &row);
         }
-        let credits = person_rows(
-            &parse_windsurf(&json(WINDSURF_EXAMPLE), "2025-06-26").unwrap(),
-            &BTreeMap::new(),
-            CostUnit::Credits,
-            false,
-        );
+        let credits =
+            person_rows(&parse_windsurf(&json(WINDSURF_EXAMPLE), "2025-06-26").unwrap(), &BTreeMap::new(), CostUnit::Credits, false);
         for row in &credits {
             write("devin", row);
         }
@@ -1703,9 +1584,7 @@ mod tests {
         // Each actor's totals keep their unit, for what matches nobody.
         let mut statement = db.prepare(&format!("{ACTOR_TOTALS} ORDER BY provider, actor")).unwrap();
         let totals: Vec<(String, String, String, i64)> = statement
-            .query_map(rusqlite::params!["acme", "2025-06-26", "2025-06-26"], |r| {
-                Ok((r.get(0)?, r.get(2)?, r.get(3)?, r.get(4)?))
-            })
+            .query_map(rusqlite::params!["acme", "2025-06-26", "2025-06-26"], |r| Ok((r.get(0)?, r.get(2)?, r.get(3)?, r.get(4)?)))
             .unwrap()
             .map(Result::unwrap)
             .collect();
@@ -1717,15 +1596,10 @@ mod tests {
         let org = organization_days(&refs);
         assert_eq!(org[&("2025-06-26".to_owned(), "claude-4.5-sonnet".to_owned(), CostUnit::Usd)], 586_923);
         for ((day, model, unit), micros) in &org {
-            db.execute(
-                UPSERT_COST_IN,
-                rusqlite::params!["acme", "cursor", day, model, micros, unit.name().to_uppercase(), "t1"],
-            )
-            .unwrap();
+            db.execute(UPSERT_COST_IN, rusqlite::params!["acme", "cursor", day, model, micros, unit.name().to_uppercase(), "t1"]).unwrap();
         }
-        let currency: String = db
-            .query_row("SELECT DISTINCT currency FROM provider_costs WHERE provider = 'cursor'", [], |r| r.get(0))
-            .unwrap();
+        let currency: String =
+            db.query_row("SELECT DISTINCT currency FROM provider_costs WHERE provider = 'cursor'", [], |r| r.get(0)).unwrap();
         assert_eq!(CostUnit::parse(&currency), Some(CostUnit::Usd));
 
         // A conversation can be found by Cursor's id; a day read again
@@ -1738,11 +1612,8 @@ mod tests {
             )
             .unwrap();
         assert_eq!(found, 586_923);
-        db.execute(DELETE_CONVERSATION_DAY, rusqlite::params!["acme", "cursor", "2025-06-26"])
-            .unwrap();
-        let left: i64 = db
-            .query_row("SELECT COUNT(*) FROM provider_conversations", [], |r| r.get(0))
-            .unwrap();
+        db.execute(DELETE_CONVERSATION_DAY, rusqlite::params!["acme", "cursor", "2025-06-26"]).unwrap();
+        let left: i64 = db.query_row("SELECT COUNT(*) FROM provider_conversations", [], |r| r.get(0)).unwrap();
         assert_eq!(left, 0);
     }
 }

@@ -41,9 +41,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use g1t_contracts::billing::{
-    AdminDetachTestStripeArgs, CreditKind, DetachSkipped, TestStripeDetach, WorkspaceDetach,
-};
+use g1t_contracts::billing::{AdminDetachTestStripeArgs, CreditKind, DetachSkipped, TestStripeDetach, WorkspaceDetach};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, new_id};
 use g1t_kit::now_ms;
@@ -138,8 +136,7 @@ pub(crate) const FOUND: &str = "WITH payment_candidates(workspace) AS MATERIALIZ
 pub(crate) const CLOSED: &str = "SELECT workspace, month FROM month_closes WHERE ?1 IS NULL OR workspace = ?1";
 
 /// A workspace's AI and purchased credit still open: what a detach closes.
-pub(crate) const AI_GRANTS: &str =
-    "SELECT id FROM credit_grants WHERE workspace = ?1 AND closed_at IS NULL AND (kind = 'purchased' OR scope = 'models' OR source = 'purchase')";
+pub(crate) const AI_GRANTS: &str = "SELECT id FROM credit_grants WHERE workspace = ?1 AND closed_at IS NULL AND (kind = 'purchased' OR scope = 'models' OR source = 'purchase')";
 
 /// The plans whose subscriptions a detach may cancel at Stripe.
 pub(crate) const OPEN_PLANS: &str = "SELECT subscription_id FROM subscriptions WHERE workspace = ?1 AND status <> 'canceled'";
@@ -195,18 +192,21 @@ pub(crate) const STATEMENTS: &[&str] = &[
 ];
 
 /// A past month marked closed. `?1` workspace, `?2` month, `?3` why, `?4` now.
-pub(crate) const SKIP_MONTH: &str = "INSERT OR IGNORE INTO month_closes (workspace, month, status, amount_micros, payment_id, error, closed_at)
+pub(crate) const SKIP_MONTH: &str =
+    "INSERT OR IGNORE INTO month_closes (workspace, month, status, amount_micros, payment_id, error, closed_at)
      VALUES (?1, ?2, 'skipped', 0, NULL, ?3, ?4)";
 
 /// An AI credit grant closed. `?1` now, `?2` why, `?3` who, `?4` what was
 /// left, `?5` the grant.
-pub(crate) const CLOSE_GRANT: &str = "UPDATE credit_grants SET closed_at = ?1, closed_reason = 'revoked', closed_note = ?2, closed_by = ?3, closed_micros = ?4
+pub(crate) const CLOSE_GRANT: &str =
+    "UPDATE credit_grants SET closed_at = ?1, closed_reason = 'revoked', closed_note = ?2, closed_by = ?3, closed_micros = ?4
      WHERE id = ?5 AND closed_at IS NULL";
 
 /// A ledger line of the batch, as `Billing::enter` writes one. `?1` id,
 /// `?2` workspace, `?3` amount, `?4` description, `?5` reference, `?6` who,
 /// `?7` now, `?8` the credit's kind or NULL.
-pub(crate) const LEDGER: &str = "INSERT INTO ledger (id, workspace, kind, amount_micros, description, reference, created_by, created_at, billed_to, credit_kind)
+pub(crate) const LEDGER: &str =
+    "INSERT INTO ledger (id, workspace, kind, amount_micros, description, reference, created_by, created_at, billed_to, credit_kind)
      VALUES (?1, ?2, 'top_up', ?3, ?4, ?5, ?6, ?7, 'g1t', ?8)";
 
 /// The balance moved with it. `?1` workspace, `?2` amount, `?3` now.
@@ -217,10 +217,21 @@ pub(crate) const BALANCE: &str = "INSERT INTO accounts (workspace, balance_micro
 /// is checked against the migrations.
 #[cfg(test)]
 pub(crate) const USES: &[(&str, &[&str])] = &[
-    ("accounts", &[
-        "workspace", "balance_micros", "customer_id", "card_brand", "card_last4", "card_exp_month", "card_exp_year", "card_synced_at",
-        "tax_address_needed_at", "created_at",
-    ]),
+    (
+        "accounts",
+        &[
+            "workspace",
+            "balance_micros",
+            "customer_id",
+            "card_brand",
+            "card_last4",
+            "card_exp_month",
+            "card_exp_year",
+            "card_synced_at",
+            "tax_address_needed_at",
+            "created_at",
+        ],
+    ),
     ("subscriptions", &["workspace", "subscription_id", "status", "updated_at"]),
     ("card_checks", &["workspace"]),
     ("checkouts", &["workspace", "status"]),
@@ -232,15 +243,20 @@ pub(crate) const USES: &[(&str, &[&str])] = &[
     ("disputes", &["workspace", "status", "updated_at"]),
     ("workspace_invoices", &["workspace", "status"]),
     ("invoice_attempts", &["workspace"]),
-    ("complimentary", &["workspace", "status", "ended_at", "ended_reason", "pending_op", "stripe_status", "updated_by", "updated_at", "live"]),
+    (
+        "complimentary",
+        &["workspace", "status", "ended_at", "ended_reason", "pending_op", "stripe_status", "updated_by", "updated_at", "live"],
+    ),
     ("complimentary_periods", &["workspace", "ends_at"]),
-    ("credit_grants", &[
-        "id", "workspace", "kind", "scope", "source", "closed_at", "closed_reason", "closed_note", "closed_by", "closed_micros",
-    ]),
+    (
+        "credit_grants",
+        &["id", "workspace", "kind", "scope", "source", "closed_at", "closed_reason", "closed_note", "closed_by", "closed_micros"],
+    ),
     ("plan_payments", &["invoice_id", "workspace", "amount_micros", "paid_at"]),
-    ("ledger", &[
-        "id", "workspace", "kind", "amount_micros", "description", "reference", "created_by", "created_at", "billed_to", "credit_kind",
-    ]),
+    (
+        "ledger",
+        &["id", "workspace", "kind", "amount_micros", "description", "reference", "created_by", "created_at", "billed_to", "credit_kind"],
+    ),
     ("month_closes", &["workspace", "month", "status", "amount_micros", "payment_id", "error", "closed_at"]),
     ("account_members", &["workspace"]),
     ("admin_actions", &["id", "account", "action", "detail", "by", "created_at"]),
@@ -294,7 +310,10 @@ impl OpenGrant {
 /// Why the call is refused before anything is read, if it is.
 pub(crate) fn refusal(live: bool, has_key: bool, a: &AdminDetachTestStripeArgs) -> Option<(FailureCode, String)> {
     if live {
-        return Some((FailureCode::Forbidden, "Billing takes real cards: test-mode data is detached before the live key, never after.".into()));
+        return Some((
+            FailureCode::Forbidden,
+            "Billing takes real cards: test-mode data is detached before the live key, never after.".into(),
+        ));
     }
     if a.by.trim().is_empty() {
         return Some((FailureCode::Invalid, "Say who is detaching.".into()));
@@ -471,22 +490,23 @@ pub(crate) fn batch(
     for month in &d.months_skipped {
         out.push((SKIP_MONTH, vec![text(ws), text(month), text(MONTH_NOTE), text(at)]));
     }
-    let mut line = |out: &mut Vec<(&'static str, Vec<Bind>)>, amount: i64, description: String, reference: String, kind: Option<CreditKind>| {
-        out.push((
-            LEDGER,
-            vec![
-                Bind::Text(ids()),
-                text(ws),
-                Bind::Number(amount),
-                Bind::Text(description),
-                Bind::Text(reference),
-                text(by),
-                text(at),
-                kind.map_or(Bind::Null, |k| text(k.as_str())),
-            ],
-        ));
-        out.push((BALANCE, vec![text(ws), Bind::Number(amount), text(at)]));
-    };
+    let mut line =
+        |out: &mut Vec<(&'static str, Vec<Bind>)>, amount: i64, description: String, reference: String, kind: Option<CreditKind>| {
+            out.push((
+                LEDGER,
+                vec![
+                    Bind::Text(ids()),
+                    text(ws),
+                    Bind::Number(amount),
+                    Bind::Text(description),
+                    Bind::Text(reference),
+                    text(by),
+                    text(at),
+                    kind.map_or(Bind::Null, |k| text(k.as_str())),
+                ],
+            ));
+            out.push((BALANCE, vec![text(ws), Bind::Number(amount), text(at)]));
+        };
     for grant in grants {
         let left = grant.left.max(0);
         let why = if grant.was_paid() {
@@ -497,7 +517,13 @@ pub(crate) fn batch(
         out.push((CLOSE_GRANT, vec![text(at), text(why), text(by), Bind::Number(left), text(&grant.id)]));
         if left > 0 {
             // `<grant>_revoked`: the replay reads the grant as closed by it.
-            line(&mut out, -left, format!("AI credit closed before live billing: {} unused", cents(left)), format!("{}_revoked", grant.id), Some(grant.kind));
+            line(
+                &mut out,
+                -left,
+                format!("AI credit closed before live billing: {} unused", cents(left)),
+                format!("{}_revoked", grant.id),
+                Some(grant.kind),
+            );
         }
     }
     if d.payments_reversed_micros > 0 {
@@ -542,7 +568,11 @@ pub(crate) fn describe(d: &WorkspaceDetach) -> String {
         parts.push(format!("months {} closed as skipped", d.months_skipped.join(", ")));
     }
     if d.credit_grants_closed > 0 {
-        parts.push(format!("{} closed ({} unused)", count(d.credit_grants_closed, "AI credit grant", "AI credit grants"), cents(d.credit_closed_micros)));
+        parts.push(format!(
+            "{} closed ({} unused)",
+            count(d.credit_grants_closed, "AI credit grant", "AI credit grants"),
+            cents(d.credit_closed_micros)
+        ));
     }
     if d.payments_reversed_micros > 0 {
         parts.push(format!("{} of test payments reversed", cents(d.payments_reversed_micros)));
@@ -660,8 +690,19 @@ impl Billing {
             }
             self.db.batch(prepared).await?;
             if detach.written_off_micros > 0 {
-                self.grant_credit(&detach.workspace, CreditKind::Goodwill, detach.written_off_micros, WRITE_OFF_NOTE, &by, None, None, None, None, None)
-                    .await?;
+                self.grant_credit(
+                    &detach.workspace,
+                    CreditKind::Goodwill,
+                    detach.written_off_micros,
+                    WRITE_OFF_NOTE,
+                    &by,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+                .await?;
             }
             detach.done = true;
             self.audit(&own_account(&detach.workspace), "test_detach", &describe(&detach), &by).await?;
@@ -735,12 +776,8 @@ mod tests {
         files.sort();
         let mut tables: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         for file in files {
-            let sql: String = std::fs::read_to_string(file)
-                .unwrap()
-                .lines()
-                .map(|l| l.split("--").next().unwrap_or(""))
-                .collect::<Vec<_>>()
-                .join("\n");
+            let sql: String =
+                std::fs::read_to_string(file).unwrap().lines().map(|l| l.split("--").next().unwrap_or("")).collect::<Vec<_>>().join("\n");
             for statement in sql.split(';') {
                 let words: Vec<&str> = statement.split_whitespace().collect();
                 let s = words.join(" ");
@@ -801,7 +838,9 @@ mod tests {
         // is named somewhere, so the list cannot go stale.
         let all = every_sql().join("\n");
         for table in schema.keys() {
-            let named = [" FROM ", " INTO ", "UPDATE "].iter().any(|p| all.contains(&format!("{p}{table} ")) || all.contains(&format!("{p}{table}\n")));
+            let named = [" FROM ", " INTO ", "UPDATE "]
+                .iter()
+                .any(|p| all.contains(&format!("{p}{table} ")) || all.contains(&format!("{p}{table}\n")));
             if named {
                 assert!(USES.iter().any(|(t, _)| t == table), "{table} is used but not in USES");
             }
@@ -921,7 +960,10 @@ mod tests {
         let moved: i64 = statements
             .iter()
             .filter(|(sql, _)| *sql == LEDGER)
-            .map(|(_, v)| match v[2] { Bind::Number(n) => n, _ => 0 })
+            .map(|(_, v)| match v[2] {
+                Bind::Number(n) => n,
+                _ => 0,
+            })
             .sum();
         assert_eq!(found.balance + moved + d.written_off_micros, 0);
         assert!(statements.iter().any(|(sql, v)| *sql == LEDGER && v[4] == text("cs_test_ai_revoked")));

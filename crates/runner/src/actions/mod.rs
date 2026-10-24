@@ -68,7 +68,11 @@ pub(crate) struct Post {
 }
 
 pub(crate) enum PostRun {
-    Node { action_dir: PathBuf, script: String, using: String },
+    Node {
+        action_dir: PathBuf,
+        script: String,
+        using: String,
+    },
     /// A Docker action's `post-entrypoint`.
     Docker(containers::DockerRun),
 }
@@ -127,10 +131,7 @@ pub(crate) struct Job {
 }
 
 fn text_map(value: Option<&Value>) -> BTreeMap<String, String> {
-    value
-        .and_then(Value::as_object)
-        .map(|map| map.iter().map(|(k, v)| (k.clone(), expr::to_text(v))).collect())
-        .unwrap_or_default()
+    value.and_then(Value::as_object).map(|map| map.iter().map(|(k, v)| (k.clone(), expr::to_text(v))).collect()).unwrap_or_default()
 }
 
 /// Where `name_steps` puts a step's `GITHUB_ACTION`.
@@ -153,7 +154,11 @@ pub(crate) fn name_steps(steps: &mut [Map<String, Value>]) {
                         let name = uses.split('@').next().unwrap_or_default();
                         let name = name.strip_prefix("docker://").unwrap_or(name);
                         let repository: Vec<&str> = name.splitn(3, '/').take(2).collect();
-                        repository.join("_").chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' }).collect()
+                        repository
+                            .join("_")
+                            .chars()
+                            .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+                            .collect()
                     }
                 };
                 let base = format!("__{base}");
@@ -301,11 +306,7 @@ impl Job {
     pub(crate) fn with_scope<T>(&self, contexts: &Map<String, Value>, f: impl FnOnce(&Scope) -> T) -> T {
         let workspace = self.workspace.clone();
         let hash = move |patterns: &[String]| files::hash_files(&workspace, patterns);
-        let scope = Scope {
-            contexts,
-            status: self.status(),
-            hash_files: Some(&hash),
-        };
+        let scope = Scope { contexts, status: self.status(), hash_files: Some(&hash) };
         f(&scope)
     }
 
@@ -404,16 +405,16 @@ impl Job {
             // A job container without bash, as GitHub's runner does.
             None if self.container.as_ref().is_some_and(|c| c.shell == "sh") => ("sh".into(), vec!["-e".into(), "{0}".into()], "sh"),
             None => ("bash".into(), vec!["-e".into(), "{0}".into()], "sh"),
-            Some("bash") => ("bash".into(), vec!["--noprofile".into(), "--norc".into(), "-eo".into(), "pipefail".into(), "{0}".into()], "sh"),
+            Some("bash") => {
+                ("bash".into(), vec!["--noprofile".into(), "--norc".into(), "-eo".into(), "pipefail".into(), "{0}".into()], "sh")
+            }
             Some("sh") => ("sh".into(), vec!["-e".into(), "{0}".into()], "sh"),
             Some("python") => (self.python_program(), vec!["{0}".into()], "py"),
             Some("pwsh") if cfg!(windows) || program_exists("pwsh") => ("pwsh".into(), powershell_args(), "ps1"),
             Some("powershell") if cfg!(windows) => ("powershell".into(), powershell_args(), "ps1"),
-            Some("cmd") if cfg!(windows) => (
-                "cmd".into(),
-                vec!["/D".into(), "/E:ON".into(), "/V:OFF".into(), "/S".into(), "/C".into(), "CALL \"{0}\"".into()],
-                "cmd",
-            ),
+            Some("cmd") if cfg!(windows) => {
+                ("cmd".into(), vec!["/D".into(), "/E:ON".into(), "/V:OFF".into(), "/S".into(), "/C".into(), "CALL \"{0}\"".into()], "cmd")
+            }
             Some(other @ ("pwsh" | "powershell" | "cmd")) => {
                 self.log.line(&format!(
                     "##[error]`shell: {other}` needs Windows or PowerShell, which g1t's Linux runners do not have. A self-hosted Windows runner can run it: `runs-on: [self-hosted, windows]`."
@@ -468,10 +469,7 @@ impl Job {
                 command
             }
         };
-        let mut commands = Commands {
-            debug: self.debug,
-            ..Commands::default()
-        };
+        let mut commands = Commands { debug: self.debug, ..Commands::default() };
         let ended = process::run(command, timeout.min(self.remaining()), &mut self.log, &mut commands);
         let ok = match ended {
             Ok(Ended::Exited(0)) => true,
@@ -495,7 +493,14 @@ impl Job {
 
     /// Runs one step of a frame. Returns whether it succeeded (its
     /// conclusion). `number` is the step the log belongs to.
-    pub(crate) fn step(&mut self, frame: &mut Frame, step: &Map<String, Value>, number: u32, report: bool, defaults: &Map<String, Value>) -> bool {
+    pub(crate) fn step(
+        &mut self,
+        frame: &mut Frame,
+        step: &Map<String, Value>,
+        number: u32,
+        report: bool,
+        defaults: &Map<String, Value>,
+    ) -> bool {
         // A cancellation heard during an earlier step (which it stopped) or
         // since: from here on, only cleanup steps run, and none is stopped
         // for it again.
@@ -571,18 +576,14 @@ impl Job {
                     String::new()
                 }
             };
-            let shell = step
-                .get("shell")
-                .map(expr::to_text)
-                .or_else(|| defaults.get("shell").map(expr::to_text));
+            let shell = step.get("shell").map(expr::to_text).or_else(|| defaults.get("shell").map(expr::to_text));
             if frame.action_path.is_some() && shell.is_none() {
                 self.log.line("##[error]A composite action's `run` steps need a `shell`.");
                 (false, BTreeMap::new())
             } else {
-                let working_directory = step
-                    .get("working-directory")
-                    .or_else(|| defaults.get("working-directory"))
-                    .map(|v| self.with_scope(&contexts, |scope| expr::interpolate(&expr::to_text(v), scope)).unwrap_or_else(|_| expr::to_text(v)));
+                let working_directory = step.get("working-directory").or_else(|| defaults.get("working-directory")).map(|v| {
+                    self.with_scope(&contexts, |scope| expr::interpolate(&expr::to_text(v), scope)).unwrap_or_else(|_| expr::to_text(v))
+                });
                 let mut env = env;
                 if let Some(path) = &frame.action_path {
                     env.insert("GITHUB_ACTION_PATH".into(), path.clone());
@@ -601,10 +602,7 @@ impl Job {
         let own_deadline = self.step_deadline.filter(|_| self.step_deadline != outer_deadline);
         self.step_deadline = outer_deadline;
         let ok = if own_deadline.is_some_and(|until| Instant::now() >= until) {
-            self.log.line(&format!(
-                "##[error]The step ran past its timeout-minutes ({}) and was stopped.",
-                minutes.unwrap_or_default()
-            ));
+            self.log.line(&format!("##[error]The step ran past its timeout-minutes ({}) and was stopped.", minutes.unwrap_or_default()));
             false
         } else {
             ok
@@ -619,11 +617,7 @@ impl Job {
         } else {
             "failure"
         };
-        let conclusion = if ok || continue_on_error {
-            "success"
-        } else {
-            outcome
-        };
+        let conclusion = if ok || continue_on_error { "success" } else { outcome };
         if !ok && continue_on_error && !stopped {
             self.log.line("##[warning]The step failed, and `continue-on-error` lets the job go on.");
         }
@@ -641,7 +635,12 @@ impl Job {
     }
 
     /// A step's own `env` over `base`, read with `contexts`.
-    fn step_env(&self, step: &Map<String, Value>, contexts: &Map<String, Value>, mut base: BTreeMap<String, String>) -> BTreeMap<String, String> {
+    fn step_env(
+        &self,
+        step: &Map<String, Value>,
+        contexts: &Map<String, Value>,
+        mut base: BTreeMap<String, String>,
+    ) -> BTreeMap<String, String> {
         if let Some(Value::Object(step_env)) = step.get("env") {
             for (name, value) in step_env {
                 let value = self.with_scope(contexts, |scope| expr::interpolate_value(value, scope)).unwrap_or(Value::Null);
@@ -803,7 +802,8 @@ fn setup(spec: Value, api: Api) -> Result<Job> {
 
 /// [`setup`] with the workspace and temporary folder given: a test's own.
 fn setup_in(mut spec: Value, api: Api, workspace: PathBuf, temp: PathBuf) -> Result<Job> {
-    let masks: Vec<String> = spec["masks"].as_array().map(|m| m.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).unwrap_or_default();
+    let masks: Vec<String> =
+        spec["masks"].as_array().map(|m| m.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).unwrap_or_default();
     // With the token the spec came with: the one the job started with is spent.
     let relay = broker::Relay::new(&api);
     let mut log = Log::new(api, masks);
@@ -828,8 +828,9 @@ fn setup_in(mut spec: Value, api: Api, workspace: PathBuf, temp: PathBuf) -> Res
     // This process's environment, less what only it should see. `ImageOS`
     // and `ImageVersion` come with it when the machine's image sets them,
     // as GitHub's images do; nothing makes them up otherwise.
-    let mut base_env: BTreeMap<String, String> =
-        std::env::vars().filter(|(name, _)| !matches!(name.as_str(), "ACTIONS_TOKEN" | "ACTIONS_JOB" | "MODE") && !name.starts_with("G1T_")).collect();
+    let mut base_env: BTreeMap<String, String> = std::env::vars()
+        .filter(|(name, _)| !matches!(name.as_str(), "ACTIONS_TOKEN" | "ACTIONS_JOB" | "MODE") && !name.starts_with("G1T_"))
+        .collect();
     base_env.insert("HOME".into(), std::env::var("HOME").unwrap_or_else(|_| "/home/node".into()));
     base_env.extend(text_map(spec.get("variables")));
     base_env.insert("GITHUB_EVENT_PATH".into(), paths::shown(&temp.join("event.json")));
@@ -844,10 +845,7 @@ fn setup_in(mut spec: Value, api: Api, workspace: PathBuf, temp: PathBuf) -> Res
 
     // `timeoutMinutes` is how the API spelled it before its bodies were
     // `snake_case`.
-    let timeout = spec["timeout_minutes"]
-        .as_u64()
-        .or_else(|| spec["timeoutMinutes"].as_u64())
-        .unwrap_or(60);
+    let timeout = spec["timeout_minutes"].as_u64().or_else(|| spec["timeoutMinutes"].as_u64()).unwrap_or(60);
 
     // Brokered secrets on a self-hosted runner (broker.rs): the steps'
     // HTTPS goes through the job's proxy, which passes requests carrying a
@@ -914,7 +912,9 @@ fn default_variables(spec: &mut Value) {
     }
     let owner_id = g1t_actions::events::owner_id(&spec["event"]);
     if let Some(owner_id) = owner_id.filter(|id| !id.is_empty()) {
-        if spec["variables"].is_object() && spec["variables"].get("GITHUB_REPOSITORY_OWNER_ID").and_then(Value::as_str).is_none_or(str::is_empty) {
+        if spec["variables"].is_object()
+            && spec["variables"].get("GITHUB_REPOSITORY_OWNER_ID").and_then(Value::as_str).is_none_or(str::is_empty)
+        {
             spec["variables"]["GITHUB_REPOSITORY_OWNER_ID"] = json!(owner_id);
         }
         if spec["github"].is_object() && spec["github"].get("repository_owner_id").and_then(Value::as_str).is_none_or(str::is_empty) {
@@ -996,7 +996,10 @@ fn cloudflare(name: &str, self_hosted: bool) -> Option<String> {
 /// The memory a job has: its cgroup's limit, else the machine's.
 fn memory_limit(cgroup_max: Option<&str>, meminfo: Option<&str>) -> Option<u64> {
     let total = meminfo.and_then(|info| {
-        info.lines().find_map(|line| line.strip_prefix("MemTotal:")).and_then(|rest| rest.trim().trim_end_matches("kB").trim().parse::<u64>().ok()).map(|kb| kb * 1024)
+        info.lines()
+            .find_map(|line| line.strip_prefix("MemTotal:"))
+            .and_then(|rest| rest.trim().trim_end_matches("kB").trim().parse::<u64>().ok())
+            .map(|kb| kb * 1024)
     });
     let limit = cgroup_max.and_then(|max| max.trim().parse::<u64>().ok());
     match (limit, total) {
@@ -1023,7 +1026,11 @@ pub(crate) fn setup_header(machine: &Machine) -> Vec<String> {
     lines.push("##[group]Operating System".into());
     let release = machine.os_release.as_deref().unwrap_or_default();
     let field = |key: &str| {
-        release.lines().find_map(|line| line.strip_prefix(key).and_then(|rest| rest.strip_prefix('='))).map(|value| value.trim().trim_matches('"').to_owned()).filter(|v| !v.is_empty())
+        release
+            .lines()
+            .find_map(|line| line.strip_prefix(key).and_then(|rest| rest.strip_prefix('=')))
+            .map(|value| value.trim().trim_matches('"').to_owned())
+            .filter(|v| !v.is_empty())
     };
     match field("NAME") {
         Some(name) => {
@@ -1084,10 +1091,8 @@ fn run_defaults(spec: &Value) -> Map<String, Value> {
 }
 
 fn run_job(job: &mut Job) {
-    let mut steps: Vec<Map<String, Value>> = job.spec["spec"]["steps"]
-        .as_array()
-        .map(|steps| steps.iter().filter_map(|s| s.as_object().cloned()).collect())
-        .unwrap_or_default();
+    let mut steps: Vec<Map<String, Value>> =
+        job.spec["spec"]["steps"].as_array().map(|steps| steps.iter().filter_map(|s| s.as_object().cloned()).collect()).unwrap_or_default();
     name_steps(&mut steps);
     let defaults = run_defaults(&job.spec);
 
@@ -1287,15 +1292,13 @@ pub(crate) fn main() -> i32 {
         Ok(spec) => spec,
         Err(error) => {
             eprintln!("g1t-runner: could not fetch the job: {error:#}");
-            api.report(json!({ "kind": "done", "conclusion": "failure", "reason": format!("The runner could not fetch the job: {error}") }));
+            api.report(
+                json!({ "kind": "done", "conclusion": "failure", "reason": format!("The runner could not fetch the job: {error}") }),
+            );
             return 1;
         }
     };
-    let reporter = Api {
-        base: api.base.clone(),
-        job: api.job.clone(),
-        token: api.token.clone(),
-    };
+    let reporter = Api { base: api.base.clone(), job: api.job.clone(), token: api.token.clone() };
     let mut job = match setup(spec, reporter) {
         Ok(job) => job,
         Err(error) => {
@@ -1320,11 +1323,19 @@ mod tests {
             runner_name: "g1t".into(),
             os: "Linux".into(),
             arch: "X64".into(),
-            os_release: Some("PRETTY_NAME=\"Debian GNU/Linux 12 (bookworm)\"\nNAME=\"Debian GNU/Linux\"\nVERSION_ID=\"12\"\nVERSION=\"12 (bookworm)\"\n".into()),
+            os_release: Some(
+                "PRETTY_NAME=\"Debian GNU/Linux 12 (bookworm)\"\nNAME=\"Debian GNU/Linux\"\nVERSION_ID=\"12\"\nVERSION=\"12 (bookworm)\"\n"
+                    .into(),
+            ),
             image: Some(("ubuntu24".into(), "20261005.1".into())),
             cpus: 4,
             memory_bytes: Some(12 * 1024 * 1024 * 1024),
-            permissions: vec![("contents".into(), "read".into()), ("id-token".into(), "none".into()), ("metadata".into(), "read".into()), ("pull-requests".into(), "write".into())],
+            permissions: vec![
+                ("contents".into(), "read".into()),
+                ("id-token".into(), "none".into()),
+                ("metadata".into(), "read".into()),
+                ("pull-requests".into(), "write".into()),
+            ],
             ..Machine::default()
         };
         let text = setup_header(&machine).join("\n");
@@ -1338,14 +1349,28 @@ mod tests {
              Secret source: Actions\nPrepare workflow directory"
         );
         // A self-hosted machine without an image of GitHub's, or an os-release.
-        let own = Machine { version: "0.2.0".into(), self_hosted: true, runner_name: "build-box".into(), os: "macOS".into(), arch: "ARM64".into(), cpus: 8, ..Machine::default() };
+        let own = Machine {
+            version: "0.2.0".into(),
+            self_hosted: true,
+            runner_name: "build-box".into(),
+            os: "macOS".into(),
+            arch: "ARM64".into(),
+            cpus: 8,
+            ..Machine::default()
+        };
         let text = setup_header(&own).join("\n");
-        assert!(text.contains("Runner name: 'build-box'\n##[group]Operating System\nmacOS ARM64\n##[endgroup]\n##[group]Machine\nSelf-hosted"), "{text}");
+        assert!(
+            text.contains("Runner name: 'build-box'\n##[group]Operating System\nmacOS ARM64\n##[endgroup]\n##[group]Machine\nSelf-hosted"),
+            "{text}"
+        );
         assert!(!text.contains("Runner Image") && !text.contains("Memory") && !text.contains("Permissions"), "{text}");
         // On g1t's machines, the container it ran in.
         let hosted = Machine { cpus: 4, instance: Some("7f3a9c".into()), host: Some("node-12".into()), ..Machine::default() };
         let text = setup_header(&hosted).join("\n");
-        assert!(text.contains("##[group]Machine\nHosted by g1t\nArchitecture: \nCPUs: 4\nInstance: 7f3a9c\nHost: node-12\n##[endgroup]"), "{text}");
+        assert!(
+            text.contains("##[group]Machine\nHosted by g1t\nArchitecture: \nCPUs: 4\nInstance: 7f3a9c\nHost: node-12\n##[endgroup]"),
+            "{text}"
+        );
         assert_eq!(memory_limit(Some("max\n"), Some("MemTotal:       16384000 kB\n")), Some(16_384_000 * 1024));
         assert_eq!(memory_limit(Some("4294967296\n"), Some("MemTotal:       16384000 kB\n")), Some(4_294_967_296));
         assert_eq!(memory_limit(None, None), None);
@@ -1375,7 +1400,8 @@ mod tests {
         );
         // No variables: no `env:`.
         assert!(!script_header("make", "sh -e {0}", &BTreeMap::new()).contains(&"env:".to_owned()));
-        let with: BTreeMap<String, String> = [("path", "~/.cargo\ntarget\n"), ("key", "k")].into_iter().map(|(k, v)| (k.to_owned(), v.to_owned())).collect();
+        let with: BTreeMap<String, String> =
+            [("path", "~/.cargo\ntarget\n"), ("key", "k")].into_iter().map(|(k, v)| (k.to_owned(), v.to_owned())).collect();
         assert_eq!(
             uses_header("actions/cache@v4", &with, &BTreeMap::new()),
             ["##[group]Run actions/cache@v4", "with:", "  key: k", "  path: ~/.cargo", "    target", "##[endgroup]"]
@@ -1414,7 +1440,9 @@ mod tests {
         let newline = if cfg!(windows) { "\r\n" } else { "\n" };
         assert_eq!(
             script_contents("pwsh", "Write-Output hi"),
-            format!("$ErrorActionPreference = 'stop'{newline}Write-Output hi{newline}if ((Test-Path -LiteralPath variable:\\LASTEXITCODE)) {{ exit $LASTEXITCODE }}")
+            format!(
+                "$ErrorActionPreference = 'stop'{newline}Write-Output hi{newline}if ((Test-Path -LiteralPath variable:\\LASTEXITCODE)) {{ exit $LASTEXITCODE }}"
+            )
         );
         assert!(script_contents("powershell.exe", "x").starts_with("$ErrorActionPreference = 'stop'"));
         assert_eq!(script_contents("bash", "echo hi"), "echo hi");
@@ -1451,7 +1479,18 @@ mod tests {
         let names: Vec<String> = steps.iter().map(|s| expr::to_text(&s[ACTION_NAME])).collect();
         assert_eq!(
             names,
-            ["__run", "__run_2", "build", "__actions_setup-node", "__actions_cache", "__actions_setup-node_2", "__self", "__run_3", "__run_4", "__run_5"]
+            [
+                "__run",
+                "__run_2",
+                "build",
+                "__actions_setup-node",
+                "__actions_cache",
+                "__actions_setup-node_2",
+                "__self",
+                "__run_3",
+                "__run_4",
+                "__run_5"
+            ]
         );
     }
 

@@ -19,45 +19,46 @@
 
 mod accounts;
 mod allocation;
-mod complimentary;
-mod enterprise_attempt;
 mod budget;
-mod charged;
 mod cards;
+mod charged;
 mod closing;
+mod complimentary;
 mod compute;
 mod costs;
+mod credits;
 mod cycle;
 mod detach;
-mod margin;
+mod details;
+mod enterprise_attempt;
+mod features;
 mod git_edge;
+mod grants;
+mod invoice_attempt;
+mod invoices;
+mod keeper;
+mod limits;
+mod margin;
+mod overages;
 mod platform;
 mod pricing;
 mod provider_costs;
 mod provider_people;
-mod report;
-mod details;
-mod credits;
-mod grants;
-mod overages;
-mod requests;
-mod storage;
-mod invoices;
-mod invoice_attempt;
-mod sales;
-mod statement;
-mod webhooks;
-mod features;
-mod keeper;
-mod limits;
 mod rename;
+mod report;
+mod requests;
 mod reset;
 mod retention;
+mod sales;
+mod statement;
+mod storage;
 mod stripe;
 mod stripe_sync;
 mod subscriptions;
 mod tax;
+mod webhooks;
 
+use futures_util::future::{try_join, try_join5};
 use g1t_contracts::billing::*;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, new_id};
@@ -65,7 +66,6 @@ use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::Deserialize;
 use worker::wasm_bindgen::JsValue;
 use worker::{Context, D1Database, Env, MessageBatch, MessageExt, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
-use futures_util::future::{try_join, try_join5};
 
 use stripe::Stripe;
 
@@ -180,7 +180,8 @@ pub(crate) struct NewCheckout<'a> {
 /// `tests::every_checkout_insert_fills_the_table` rather than by a 500.
 /// A page asked for twice in Stripe's idempotency window is the same page:
 /// the row the first made stands, and the second is handed the same page.
-pub(crate) const CHECKOUT_INSERT: &str = "INSERT OR IGNORE INTO checkouts (id, workspace, amount_cents, fee_cents, created_by, created_at, feature, status)
+pub(crate) const CHECKOUT_INSERT: &str =
+    "INSERT OR IGNORE INTO checkouts (id, workspace, amount_cents, fee_cents, created_by, created_at, feature, status)
      VALUES (?, ?, ?, ?, ?, ?, ?, 'open')";
 
 impl Billing {
@@ -265,11 +266,7 @@ struct Billing {
 
 impl Billing {
     fn status(&self) -> Status {
-        Status {
-            enabled: self.stripe.is_some(),
-            live: self.stripe.as_ref().is_some_and(Stripe::live),
-            free: self.free,
-        }
+        Status { enabled: self.stripe.is_some(), live: self.stripe.as_ref().is_some_and(Stripe::live), free: self.free }
     }
 
     async fn row(&self, workspace: &str) -> Result<Option<AccountRow>> {
@@ -367,7 +364,10 @@ impl Billing {
     async fn set_customer_email(&self, a: SetCustomerEmailArgs) -> Result<Outcome<bool>> {
         let workspace = a.workspace.to_lowercase();
         if !a.actor.manages_billing(&workspace) {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner or a billing manager can change the workspace's billing email."));
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                "Only an owner or a billing manager can change the workspace's billing email.",
+            ));
         }
         let email = a.email.trim();
         let Some(stripe) = &self.stripe else {
@@ -404,7 +404,8 @@ impl Billing {
         created_by: Option<&str>,
         customer: Option<&str>,
     ) -> Result<()> {
-        let mut statements = self.entry_statements(workspace, kind, amount_micros, description, reference, cost_micros, created_by, customer)?;
+        let mut statements =
+            self.entry_statements(workspace, kind, amount_micros, description, reference, cost_micros, created_by, customer)?;
         let kind = match kind {
             EntryKind::TopUp => "top_up",
             EntryKind::Usage => "usage",
@@ -436,40 +437,35 @@ impl Billing {
             EntryKind::Usage => "usage",
         };
         Ok(vec![
-                self.db
-                    .prepare(
-                        "INSERT INTO ledger
+            self.db
+                .prepare(
+                    "INSERT INTO ledger
                            (id, workspace, kind, amount_micros, description, cost_micros, reference, created_by, created_at, billed_to)
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'g1t')",
-                    )
-                    .bind(&[
-                        new_id("led", now).into(),
-                        workspace.into(),
-                        kind.into(),
-                        // D1 takes numbers as doubles, which hold every
-                        // amount this service will see exactly.
-                        (amount_micros as f64).into(),
-                        description.into(),
-                        cost_micros.map_or(JsValue::NULL, |cost| (cost as f64).into()),
-                        reference.into(),
-                        optional(created_by),
-                        timestamp.as_str().into(),
-                    ])?,
-                self.db
-                    .prepare(
-                        "INSERT INTO accounts (workspace, balance_micros, customer_id, created_at)
+                )
+                .bind(&[
+                    new_id("led", now).into(),
+                    workspace.into(),
+                    kind.into(),
+                    // D1 takes numbers as doubles, which hold every
+                    // amount this service will see exactly.
+                    (amount_micros as f64).into(),
+                    description.into(),
+                    cost_micros.map_or(JsValue::NULL, |cost| (cost as f64).into()),
+                    reference.into(),
+                    optional(created_by),
+                    timestamp.as_str().into(),
+                ])?,
+            self.db
+                .prepare(
+                    "INSERT INTO accounts (workspace, balance_micros, customer_id, created_at)
                          VALUES (?1, ?2, ?3, ?4)
                          ON CONFLICT (workspace) DO UPDATE SET
                            balance_micros = balance_micros + ?2,
                            customer_id = COALESCE(?3, customer_id)",
-                    )
-                    .bind(&[
-                        workspace.into(),
-                        (amount_micros as f64).into(),
-                        optional(customer),
-                        timestamp.as_str().into(),
-                    ])?,
-            ])
+                )
+                .bind(&[workspace.into(), (amount_micros as f64).into(), optional(customer), timestamp.as_str().into()])?,
+        ])
     }
 
     /// What follows an entry entered on its own.
@@ -482,14 +478,14 @@ impl Billing {
         // leaves it.
         if kind == "top_up" && amount_micros > 0 {
             return Ok(vec![
-                    self.db
-                        .prepare(
-                            "UPDATE limits SET dispute_owed_micros = MAX(dispute_owed_micros - ?2, 0)
+                self.db
+                    .prepare(
+                        "UPDATE limits SET dispute_owed_micros = MAX(dispute_owed_micros - ?2, 0)
                              WHERE workspace = ?1 AND dispute_owed_micros > 0",
-                        )
-                        .bind(&[workspace.into(), (amount_micros as f64).into()])?,
-                    self.db.prepare(CLEAR_STOP).bind(&[workspace.into()])?,
-                ]);
+                    )
+                    .bind(&[workspace.into(), (amount_micros as f64).into()])?,
+                self.db.prepare(CLEAR_STOP).bind(&[workspace.into()])?,
+            ]);
         }
         Ok(vec![])
     }
@@ -514,9 +510,7 @@ impl Billing {
             .all()
             .await?
             .results::<LedgerRow>()?;
-        Ok(Outcome::Ok(
-            rows.into_iter().map(LedgerEntry::from).collect(),
-        ))
+        Ok(Outcome::Ok(rows.into_iter().map(LedgerEntry::from).collect()))
     }
 
     async fn usage(&self, a: UsageArgs) -> Result<Outcome<Usage>> {
@@ -549,12 +543,7 @@ impl Billing {
             let workspace = workspace.clone();
             let since = a.since.clone();
             async move {
-                let rows = db
-                    .prepare(sql)
-                    .bind(&[workspace.into(), since.into()])?
-                    .all()
-                    .await?
-                    .results::<SliceRow>()?;
+                let rows = db.prepare(sql).bind(&[workspace.into(), since.into()])?.all().await?.results::<SliceRow>()?;
                 Ok::<Vec<UsageSlice>, worker::Error>(
                     rows.into_iter()
                         .map(|row| UsageSlice {
@@ -579,17 +568,20 @@ impl Billing {
         }
         let totals = async {
             self.db
-                .prepare(format!(
-                    "SELECT
+                .prepare(
+                    format!(
+                        "SELECT
                        -SUM(CASE WHEN kind = 'usage' THEN amount_micros END) AS spent,
                        SUM(CASE WHEN kind = 'usage' THEN COALESCE(credit_micros, 0) + COALESCE(gift_micros, 0) + COALESCE(trial_micros, 0)
                                 + COALESCE(oss_micros, 0) + COALESCE(given_micros, 0) END) AS covered,
                        SUM(CASE WHEN kind = 'usage' THEN {price} END) AS price,",
-                    price = crate::statement::PRICE_SQL
-                ) + "
+                        price = crate::statement::PRICE_SQL
+                    ) + "
                        SUM(CASE WHEN kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' THEN cost_micros END) AS cost,
                        SUM(CASE WHEN kind = 'usage' AND billed_to = 'workspace' THEN cost_micros END) AS provider,
-                       SUM(CASE WHEN kind = 'usage' AND " + crate::statement::RUN_SQL + " THEN 1 ELSE 0 END) AS runs,
+                       SUM(CASE WHEN kind = 'usage' AND "
+                        + crate::statement::RUN_SQL
+                        + " THEN 1 ELSE 0 END) AS runs,
                        SUM(CASE WHEN kind = 'top_up' THEN amount_micros END) AS added,
                        SUM(CASE WHEN kind = 'usage' THEN discount_micros END) AS discount
                      FROM ledger WHERE workspace = ?1 AND created_at >= ?2",
@@ -648,16 +640,10 @@ impl Billing {
     async fn checkout(&self, a: CheckoutArgs) -> Result<Outcome<Checkout>> {
         let workspace = a.workspace.to_lowercase();
         if !a.actor.manages_billing(&workspace) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only an owner or a billing manager can prepay for a workspace.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner or a billing manager can prepay for a workspace."));
         }
         let Some(stripe) = &self.stripe else {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                "Payments are not set up on this g1t yet.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, "Payments are not set up on this g1t yet."));
         };
         let bank_transfer = a.method.as_deref() == Some("bank_transfer");
         if let Err(why) = prepay_amount(a.amount_cents, bank_transfer) {
@@ -707,12 +693,14 @@ impl Billing {
         let Some(url) = session.url.clone() else {
             return Ok(Outcome::fail(FailureCode::Conflict, "Stripe returned no payment page. Try again in a minute."));
         };
-        let recorded = self
-            .record_checkout(&NewCheckout { id: &session.id, workspace, amount_cents, fee_cents, created_by, feature })
-            .await;
+        let recorded =
+            self.record_checkout(&NewCheckout { id: &session.id, workspace, amount_cents, fee_cents, created_by, feature }).await;
         if let Err(error) = recorded {
             worker::console_error!("{workspace}: a payment page could not be recorded: {error}");
-            return Ok(Outcome::fail(FailureCode::Conflict, "g1t could not keep track of the payment page. Nothing was charged; try again."));
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "g1t could not keep track of the payment page. Nothing was charged; try again.",
+            ));
         }
         Ok(Outcome::Ok(Checkout { url }))
     }
@@ -767,7 +755,12 @@ impl Billing {
     /// page, by the ledger's unique reference: a page credited already
     /// enters nothing (0). The credit in cents.
     pub(crate) async fn credit_prepayment(&self, workspace: &str, session: &stripe::Session, fee_cents: u32, by: &str) -> Result<i64> {
-        let seen = self.db.prepare("SELECT id FROM ledger WHERE reference = ?").bind(&[session.id.as_str().into()])?.first::<Touched>(None).await?;
+        let seen = self
+            .db
+            .prepare("SELECT id FROM ledger WHERE reference = ?")
+            .bind(&[session.id.as_str().into()])?
+            .first::<Touched>(None)
+            .await?;
         if seen.is_some() {
             return Ok(0);
         }
@@ -775,19 +768,24 @@ impl Billing {
         let cents = tax::prepay_credit_cents(session.before_tax_cents(), fee);
         let tax_cents = session.tax_cents();
         let description = format!("Paid in advance{}", tax::paid_with(tax::Extras { tax_cents, fee_cents: fee }));
-        let mut writes = self
-            .entry_statements(
-                workspace,
-                EntryKind::TopUp,
-                cents * MICROS_PER_DOLLAR / 100,
-                &description,
-                &session.id,
-                None,
-                Some(by),
-                session.customer.as_deref(),
-            )?;
+        let mut writes = self.entry_statements(
+            workspace,
+            EntryKind::TopUp,
+            cents * MICROS_PER_DOLLAR / 100,
+            &description,
+            &session.id,
+            None,
+            Some(by),
+            session.customer.as_deref(),
+        )?;
         writes.extend(self.after_entry_statements(workspace, "top_up", cents * 10_000)?);
-        writes.extend(self.extras_statements(workspace, &session.id, session.payment_intent.as_deref(), tax::Extras { tax_cents, fee_cents: fee }, None)?);
+        writes.extend(self.extras_statements(
+            workspace,
+            &session.id,
+            session.payment_intent.as_deref(),
+            tax::Extras { tax_cents, fee_cents: fee },
+            None,
+        )?);
         match self.db.batch(writes).await {
             Ok(_) => {}
             // Credited a moment ago by whoever confirmed it alongside.
@@ -876,7 +874,8 @@ impl Billing {
         // standard one otherwise. What it cost g1t: a machine's memory
         // and disk cost what they are each second, and without its own CPU
         // it is costed at its vCPUs as busy as the standard machine's.
-        let instance = a.instance.as_deref().and_then(g1t_contracts::actions::billed_instance).unwrap_or(g1t_contracts::actions::STANDARD_INSTANCE);
+        let instance =
+            a.instance.as_deref().and_then(g1t_contracts::actions::billed_instance).unwrap_or(g1t_contracts::actions::STANDARD_INSTANCE);
         let base_scale = keeper::base_scale(instance.memory_gib, instance.disk_gb);
         let cost_scale = keeper::busy_scale(&instance);
         let vcpus = instance.vcpu.max(4.0);
@@ -1061,27 +1060,19 @@ impl Billing {
 }
 
 fn members_only<T>() -> Outcome<T> {
-    Outcome::fail(
-        FailureCode::Forbidden,
-        "Only members can see a workspace's billing.",
-    )
+    Outcome::fail(FailureCode::Forbidden, "Only members can see a workspace's billing.")
 }
 
 impl Billing {
     fn from_env(env: &Env) -> Result<Self> {
-        let stripe = env
-            .secret("STRIPE_SECRET_KEY")
-            .ok()
-            .map(|key| key.to_string())
-            .filter(|key| !key.is_empty())
-            .map(Stripe::new);
+        let stripe = env.secret("STRIPE_SECRET_KEY").ok().map(|key| key.to_string()).filter(|key| !key.is_empty()).map(Stripe::new);
         let charging = charging_from(env.var("CHARGING").ok().map(|v| v.to_string()).as_deref(), stripe.is_some());
         if charging && stripe.is_none() {
             worker::console_error!(
                 "CHARGING is on but STRIPE_SECRET_KEY is not set: usage is recorded, free workspaces are held to their limits, and nothing can be paid"
             );
         }
-            Ok(Billing {
+        Ok(Billing {
             db: env.d1("DB")?,
             stripe,
             charging,
@@ -1090,11 +1081,7 @@ impl Billing {
                 .ok()
                 .map(|secret| secret.to_string().trim().to_owned())
                 .filter(|secret| !secret.is_empty()),
-            margin_percent: env
-                .var("MARGIN_PERCENT")
-                .ok()
-                .and_then(|percent| percent.to_string().parse().ok())
-                .unwrap_or(20),
+            margin_percent: env.var("MARGIN_PERCENT").ok().and_then(|percent| percent.to_string().parse().ok()).unwrap_or(20),
             free: env.var("FREE_WHILE_BUILDING").is_ok_and(|v| v.to_string() == "true"),
             ceilings: limits::Ceilings::from_env(env),
             trials_on: {
@@ -1133,9 +1120,10 @@ async fn tick(billing: &Billing, env: &Env) {
         None
     };
     if let Some(users) = &users
-        && let Err(error) = billing.autopay(users).await {
-            worker::console_error!("paying at the limit failed: {error}");
-        }
+        && let Err(error) = billing.autopay(users).await
+    {
+        worker::console_error!("paying at the limit failed: {error}");
+    }
     // Last month's final count of git operations, once it is over: until
     // it is taken, last month is neither charged nor closed.
     if let Err(error) = billing.measure_last_month_git().await {
@@ -1158,9 +1146,10 @@ async fn tick(billing: &Billing, env: &Env) {
     }
     if let Some(users) = &users
         && let Ok(identity) = env.service("IDENTITY")
-        && let Err(error) = billing.warn_limits(&identity, users).await {
-            worker::console_error!("warning owners failed: {error}");
-        }
+        && let Err(error) = billing.warn_limits(&identity, users).await
+    {
+        worker::console_error!("warning owners failed: {error}");
+    }
 }
 
 /// Every fifteen minutes: runs settled, Stripe replayed, cards charged at
@@ -1209,9 +1198,10 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     // Once a day, and at once if the costs were never checked: check every
     // cost against what Cloudflare billed.
     if (daily || billing.never_checked().await.unwrap_or(false))
-        && let Err(error) = billing.reconcile(&keeper).await {
-            worker::console_error!("checking costs against Cloudflare failed: {error}");
-        }
+        && let Err(error) = billing.reconcile(&keeper).await
+    {
+        worker::console_error!("checking costs against Cloudflare failed: {error}");
+    }
     // Once a day: credit from g1t past its expiry stops counting
     // (grants.rs), before the day is reconciled.
     if daily {
@@ -1225,7 +1215,9 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     // (margin.rs). After the keeper, so its proposals are in.
     if daily {
         match billing.costs_daily(&env, &keeper).await {
-            Ok(run) => worker::console_log!("costs: {} lines, {} days, {} proposals, {} alerts", run.lines, run.days, run.proposals, run.alerts),
+            Ok(run) => {
+                worker::console_log!("costs: {} lines, {} days, {} proposals, {} alerts", run.lines, run.days, run.proposals, run.alerts)
+            }
             Err(error) => worker::console_error!("reconciling costs failed: {error}"),
         }
     }
@@ -1454,7 +1446,10 @@ mod tests {
         assert!(prepay_amount(2_499, false).is_err());
         assert!(prepay_amount(10_000, false).is_ok());
         assert!(prepay_amount(1_000_000, false).is_ok());
-        assert_eq!(prepay_amount(1_000_001, false).unwrap_err(), "Prepay between $25 and $10,000 by card; from $1,000, a bank transfer works too.");
+        assert_eq!(
+            prepay_amount(1_000_001, false).unwrap_err(),
+            "Prepay between $25 and $10,000 by card; from $1,000, a bank transfer works too."
+        );
         assert!(prepay_amount(99_999, true).is_err());
         assert!(prepay_amount(100_000, true).is_ok());
     }
@@ -1575,7 +1570,6 @@ mod tests {
         sql[start..start + sql[start..].find(')').unwrap()].split(',').map(|c| c.trim().to_owned()).collect()
     }
 
-
     #[test]
     fn every_checkout_insert_fills_the_table() {
         // The plan's, the activation's, a card check's and a prepayment's
@@ -1596,11 +1590,9 @@ mod tests {
         let values = CHECKOUT_INSERT.split("VALUES").nth(1).unwrap();
         assert_eq!(values.matches('?').count() + values.matches("'open'").count(), given.len());
         // And no page writes a row of its own any more.
-        for (file, source) in [
-            ("lib.rs", include_str!("lib.rs")),
-            ("features.rs", include_str!("features.rs")),
-            ("cards.rs", include_str!("cards.rs")),
-        ] {
+        for (file, source) in
+            [("lib.rs", include_str!("lib.rs")), ("features.rs", include_str!("features.rs")), ("cards.rs", include_str!("cards.rs"))]
+        {
             let inserts = source.matches(concat!("INTO ", "checkouts (")).count();
             assert!(inserts <= usize::from(file == "lib.rs"), "{file} inserts into checkouts on its own");
         }
@@ -1622,7 +1614,11 @@ mod tests {
         // The ledger is written from a dozen places; a column without a
         // default would break every one that does not name it.
         for (column, required) in columns("ledger") {
-            assert!(!required || ["id", "workspace", "kind", "amount_micros", "description", "reference", "created_at"].contains(&column.as_str()), "{column}");
+            assert!(
+                !required
+                    || ["id", "workspace", "kind", "amount_micros", "description", "reference", "created_at"].contains(&column.as_str()),
+                "{column}"
+            );
         }
     }
 }

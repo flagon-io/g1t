@@ -14,10 +14,7 @@ use crate::repo::Repo;
 /// else (an RFC 3339 time) as it is.
 pub fn since(text: &str, now_ms: i64) -> String {
     let text = text.trim();
-    let (number, unit) = text.split_at(
-        text.find(|c: char| !c.is_ascii_digit())
-            .unwrap_or(text.len()),
-    );
+    let (number, unit) = text.split_at(text.find(|c: char| !c.is_ascii_digit()).unwrap_or(text.len()));
     let secs = match unit {
         "s" => 1,
         "m" => 60,
@@ -47,12 +44,7 @@ pub fn clock(time_us: i64) -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + i64::from(m <= 2);
-    format!(
-        "{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02}",
-        rem / 3600,
-        (rem % 3600) / 60,
-        rem % 60
-    )
+    format!("{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02}", rem / 3600, (rem % 3600) / 60, rem % 60)
 }
 
 /// The workspace and project: --project (SLUG or WORKSPACE/SLUG), or the
@@ -85,30 +77,18 @@ fn project_of(client: &Client, repo: &Repo) -> Result<(String, String)> {
     let found = client.op("get_repo").repo(repo).send()?;
     let here = Repo {
         host: repo.host.clone(),
-        owner: found["namespace"]
-            .as_str()
-            .unwrap_or(&repo.owner)
-            .to_owned(),
+        owner: found["namespace"].as_str().unwrap_or(&repo.owner).to_owned(),
         name: found["name"].as_str().unwrap_or(&repo.name).to_owned(),
     };
-    let projects = super::items(
-        client
-            .op("list_projects")
-            .arg("workspace", &here.owner)
-            .send()?,
-        "projects",
-    );
+    let projects = super::items(client.op("list_projects").arg("workspace", &here.owner).send()?, "projects");
     let full = here.to_string();
-    let mine: Vec<&Value> = projects
-        .iter()
-        .filter(|p| s(p, "repository").eq_ignore_ascii_case(&full))
-        .collect();
+    let mine: Vec<&Value> = projects.iter().filter(|p| s(p, "repository").eq_ignore_ascii_case(&full)).collect();
     let pick = mine.iter().find(|p| p["primary"] == true).or(mine.first());
     match pick {
         Some(p) => Ok((here.owner.clone(), s(p, "slug").to_owned())),
-        None => Err(Error::failed(format!(
-            "{here} has no deployments or logs of its own. Name a repository with --project WORKSPACE/NAME."
-        ))),
+        None => {
+            Err(Error::failed(format!("{here} has no deployments or logs of its own. Name a repository with --project WORKSPACE/NAME.")))
+        }
     }
 }
 
@@ -136,12 +116,7 @@ fn print_lines(out: &Output, lines: &[Value]) -> Result<()> {
             _ => out.cyan(sev),
         };
         let pad = " ".repeat(5usize.saturating_sub(sev.len()));
-        println!(
-            "{} {painted}{pad} {} {}",
-            out.dim(&clock(l["time_us"].as_i64().unwrap_or(0))),
-            out.dim(s(l, "service")),
-            s(l, "body")
-        );
+        println!("{} {painted}{pad} {} {}", out.dim(&clock(l["time_us"].as_i64().unwrap_or(0))), out.dim(s(l, "service")), s(l, "body"));
     }
     Ok(())
 }
@@ -186,17 +161,7 @@ pub fn run(ctx: &Ctx, args: LogsArgs) -> Result<()> {
                 ]
             })
             .collect();
-        return out.table(
-            &[
-                "count",
-                "error",
-                "where",
-                "state",
-                "last seen",
-                "fingerprint",
-            ],
-            &rows,
-        );
+        return out.table(&["count", "error", "where", "state", "last seen", "fingerprint"], &rows);
     }
     let fetch = |from: Option<String>, limit: usize| -> Result<Vec<Value>> {
         let found = client
@@ -234,21 +199,13 @@ pub fn run(ctx: &Ctx, args: LogsArgs) -> Result<()> {
         if lines.is_empty() && !ctx.out.structured() {
             eprintln!(
                 "No log lines in {workspace}/{slug}{}.",
-                args.since
-                    .as_deref()
-                    .map(|s| format!(" in the last {s}"))
-                    .unwrap_or_default()
+                args.since.as_deref().map(|s| format!(" in the last {s}")).unwrap_or_default()
             );
         }
         return Ok(());
     }
-    let mut last_us = lines
-        .iter()
-        .filter_map(|l| l["time_us"].as_i64())
-        .max()
-        .unwrap_or(now_ms * 1000);
-    let mut seen: std::collections::HashSet<String> =
-        lines.iter().map(|l| s(l, "id").to_owned()).collect();
+    let mut last_us = lines.iter().filter_map(|l| l["time_us"].as_i64()).max().unwrap_or(now_ms * 1000);
+    let mut seen: std::collections::HashSet<String> = lines.iter().map(|l| s(l, "id").to_owned()).collect();
     loop {
         std::thread::sleep(Duration::from_secs(2));
         let mut batch = fetch(Some((last_us / 1000).to_string()), 200)?;
@@ -267,14 +224,8 @@ mod tests {
 
     #[test]
     fn spans_become_times() {
-        assert_eq!(
-            since("15m", 1_000_000_000),
-            (1_000_000_000 - 900_000).to_string()
-        );
-        assert_eq!(
-            since("2h", 10_000_000_000),
-            (10_000_000_000i64 - 7_200_000).to_string()
-        );
+        assert_eq!(since("15m", 1_000_000_000), (1_000_000_000 - 900_000).to_string());
+        assert_eq!(since("2h", 10_000_000_000), (10_000_000_000i64 - 7_200_000).to_string());
         assert_eq!(since("2026-10-12T09:00:00Z", 0), "2026-10-12T09:00:00Z");
     }
 

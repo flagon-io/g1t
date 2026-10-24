@@ -77,7 +77,11 @@ impl<S: GitStore> Repos<S> {
         // takes at once is refused whole, before anything else is asked.
         let full_name = format!("{}/{}", repo.namespace, repo.name);
         if let Some((reason, lines)) = crate::git_http::too_many_ref_updates(body, repo.max_ref_updates, &full_name) {
-            return Ok(Checks { verdict: Verdict::Refused(crate::git_http::declined(body, &reason, &lines)?), spans: Vec::new(), bases: None });
+            return Ok(Checks {
+                verdict: Verdict::Refused(crate::git_http::declined(body, &reason, &lines)?),
+                spans: Vec::new(),
+                bases: None,
+            });
         }
         let git = self.store.open(&store_key(repo)).await?;
         let token = crate::workflow_gate::gated(pusher);
@@ -204,11 +208,7 @@ impl<S: GitStore> Repos<S> {
         if blocked.is_empty() {
             return checks(Verdict::Clear);
         }
-        checks(Verdict::Blocked(crate::git_http::declined(
-            body,
-            &protection::reason(&blocked),
-            &protection::explain(&blocked),
-        )?))
+        checks(Verdict::Blocked(crate::git_http::declined(body, &protection::reason(&blocked), &protection::explain(&blocked))?))
     }
 }
 
@@ -220,7 +220,8 @@ mod tests {
     #[test]
     fn a_push_is_read_once_for_every_check() {
         let blob = b"hello
-".to_vec();
+"
+        .to_vec();
         let command = b"0000000000000000000000000000000000000000 4807077b296e6edbf410d55e72749d3e1170c291 refs/heads/main report-status
 ";
         let mut body = format!("{:04x}", command.len() + 4).into_bytes();

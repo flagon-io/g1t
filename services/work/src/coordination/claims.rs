@@ -113,12 +113,13 @@ impl Work {
     async fn actor_session(&self, repo: Option<&Repo>, actor: &User, id: &str) -> Result<Option<SessionRow>> {
         let row = match repo {
             Some(repo) => self.session_row(&repo.id, id).await?,
-            None => self
-                .db
-                .prepare(format!("SELECT {} FROM sessions WHERE id = ?", super::SESSION_COLUMNS))
-                .bind(&[id.into()])?
-                .first::<SessionRow>(None)
-                .await?,
+            None => {
+                self.db
+                    .prepare(format!("SELECT {} FROM sessions WHERE id = ?", super::SESSION_COLUMNS))
+                    .bind(&[id.into()])?
+                    .first::<SessionRow>(None)
+                    .await?
+            }
         };
         Ok(row.filter(|row| row.actor_id == actor.id))
     }
@@ -196,7 +197,8 @@ impl Work {
         );
         // The session is on the work item now, not only tied to it by the claim.
         if let (Some(id), Some(session_repo)) = (session_id, session_repo) {
-            let path: Option<RepoPath> = g1t_kit::call(&self.repos, "path_by_id", &g1t_contracts::repos::PathByIdArgs { id: session_repo }).await?;
+            let path: Option<RepoPath> =
+                g1t_kit::call(&self.repos, "path_by_id", &g1t_contracts::repos::PathByIdArgs { id: session_repo }).await?;
             // A session in another workspace's repository names none of
             // this one's work items.
             if let Some(path) = path.filter(|path| path.namespace.eq_ignore_ascii_case(&opened.workspace)) {
@@ -271,8 +273,7 @@ impl Work {
         // The others, as far as the actor may read where they are.
         let claimed_in: Vec<String> = others.iter().filter_map(|claim| claim.repo_id.clone()).collect();
         let readable = items::readable_repo_ids(self, Some(&a.actor), &claimed_in).await?;
-        let others: Vec<Claim> =
-            others.into_iter().filter(|claim| claim.repo_id.as_ref().is_none_or(|id| readable.contains(id))).collect();
+        let others: Vec<Claim> = others.into_iter().filter(|claim| claim.repo_id.as_ref().is_none_or(|id| readable.contains(id))).collect();
         let blocked_by = self.blockers(Some(&a.actor), &held.item.workspace, &held.item.blocked_by).await?;
         let repos = claim_repos(&held, repo_id.as_deref());
         // Claiming what you hold renews it.
@@ -346,22 +347,19 @@ impl Work {
                 Some(&a.actor),
             )
         };
-        let mut statements = vec![self
-            .db
-            .prepare(upsert_claim_sql())
-            .bind(&[
-                proposed_id.as_str().into(),
-                held.item.id.as_str().into(),
-                text_or_null(&repo_id),
-                text_or_null(&session_id),
-                a.actor.id.as_str().into(),
-                a.actor.username.as_str().into(),
-                text_or_null(&harness),
-                text_or_null(&note),
-                minutes.into(),
-                at.as_str().into(),
-                expires_at.as_str().into(),
-            ])?];
+        let mut statements = vec![self.db.prepare(upsert_claim_sql()).bind(&[
+            proposed_id.as_str().into(),
+            held.item.id.as_str().into(),
+            text_or_null(&repo_id),
+            text_or_null(&session_id),
+            a.actor.id.as_str().into(),
+            a.actor.username.as_str().into(),
+            text_or_null(&harness),
+            text_or_null(&note),
+            minutes.into(),
+            at.as_str().into(),
+            expires_at.as_str().into(),
+        ])?];
         let sent = push_delivery(
             &mut statements,
             self.delivery_to(
@@ -428,15 +426,16 @@ impl Work {
             Some((to, note)) => (text_or_null(to), JsValue::from(note)),
             None => (JsValue::NULL, JsValue::NULL),
         };
-        let mut statements = vec![self
-            .db
-            .prepare(format!(
-                "UPDATE claims
+        let mut statements = vec![
+            self.db
+                .prepare(format!(
+                    "UPDATE claims
                  SET state = ?, ended_at = ?, end_reason = ?, handoff_to = ?, note = COALESCE(?, note)
                  WHERE id = ? AND state = 'active'
                  RETURNING {CLAIM_COLUMNS}"
-            ))
-            .bind(&[state.as_str().into(), at.as_str().into(), reason.into(), handoff_to, note, claim.id.as_str().into()])?];
+                ))
+                .bind(&[state.as_str().into(), at.as_str().into(), reason.into(), handoff_to, note, claim.id.as_str().into()])?,
+        ];
         // A claim ends once: its id and how it ended name the change.
         let sent = push_delivery(
             &mut statements,
@@ -488,8 +487,7 @@ impl Work {
         };
         let to = tidy(a.to.as_deref().map(|to| to.trim().trim_start_matches('@')), 100).map(|to| to.to_lowercase());
         if let Some(name) = &to {
-            let account: Viewer =
-                g1t_kit::call(&self.identity, "user_by_username", &UsernameArgs { username: name.clone() }).await?;
+            let account: Viewer = g1t_kit::call(&self.identity, "user_by_username", &UsernameArgs { username: name.clone() }).await?;
             if account.is_none() {
                 return Ok(Outcome::fail(FailureCode::Invalid, format!("There is no account named {name}.")));
             }
@@ -603,7 +601,8 @@ impl Work {
         }
         let results = self.db.batch(statements).await?;
         for (index, sent) in sent {
-            let Some(row) = results.get(index).map(|result| result.results::<ClaimRow>()).transpose()?.and_then(|rows| rows.into_iter().next())
+            let Some(row) =
+                results.get(index).map(|result| result.results::<ClaimRow>()).transpose()?.and_then(|rows| rows.into_iter().next())
             else {
                 continue;
             };

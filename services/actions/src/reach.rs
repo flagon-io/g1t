@@ -60,7 +60,8 @@ pub(crate) fn parse_uses(uses: &str) -> Option<UsesRef> {
     let mut parts = name.splitn(3, '/');
     let (owner, repo) = (parts.next()?, parts.next()?);
     let path = parts.next().unwrap_or_default().trim_matches('/');
-    let fine = |part: &str| !part.is_empty() && part.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')) && part != "..";
+    let fine =
+        |part: &str| !part.is_empty() && part.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')) && part != "..";
     if !fine(owner) || !fine(repo) || git_ref.trim().is_empty() || path.split('/').any(|part| part == "..") {
         return None;
     }
@@ -84,7 +85,9 @@ pub(crate) fn may_use(caller: &Repo, target: &Repo, access_level: &str) -> std::
         ));
     }
     if !caller.is_private {
-        return Err(format!("{name} is private, and a public repository's workflows cannot use a private repository's actions or workflows."));
+        return Err(format!(
+            "{name} is private, and a public repository's workflows cannot use a private repository's actions or workflows."
+        ));
     }
     Ok(())
 }
@@ -446,7 +449,9 @@ impl Actions {
         let (origin, file) = match parse_uses(uses) {
             None => {
                 let Some(local) = uses.trim().strip_prefix("./") else {
-                    return Ok(Err(format!("`{uses}` is not a workflow: name one as ./.g1t/workflows/build.yml or owner/repo/.g1t/workflows/build.yml@ref.")));
+                    return Ok(Err(format!(
+                        "`{uses}` is not a workflow: name one as ./.g1t/workflows/build.yml or owner/repo/.g1t/workflows/build.yml@ref."
+                    )));
                 };
                 // In the same repository and commit as the workflow the
                 // calling job is in: the run's, or the called workflow's.
@@ -460,7 +465,9 @@ impl Actions {
             }
             Some(used) => {
                 if !is_workflow_path(&used.path) {
-                    return Ok(Err(format!("`{uses}` is not a workflow file: it is under .g1t/workflows/ or .github/workflows/ and ends .yml or .yaml.")));
+                    return Ok(Err(format!(
+                        "`{uses}` is not a workflow file: it is under .g1t/workflows/ or .github/workflows/ and ends .yml or .yaml."
+                    )));
                 }
                 let Some((caller, _)) = self.repo_by_id(&run.repo_id).await? else {
                     return Ok(Err("The repository is gone.".to_owned()));
@@ -510,7 +517,8 @@ mod tests {
             serde_json::from_value(json!({ "NPM_TOKEN": "npm-1", "DEPLOY_KEY": "key-2", "OTHER": "x" })).unwrap();
         let github = json!({ "ref": "refs/heads/main" });
         let vars = serde_json::Map::new();
-        let contexts: serde_json::Map<String, Value> = serde_json::from_value(json!({ "needs": { "build": { "outputs": { "target": "prod" } } } })).unwrap();
+        let contexts: serde_json::Map<String, Value> =
+            serde_json::from_value(json!({ "needs": { "build": { "outputs": { "target": "prod" } } } })).unwrap();
         // Nothing passed: nothing but the job's token, which is added later.
         let none = secrets_plan(&json!({ "uses": "acme/shared/.g1t/workflows/x.yml@v1" }), &contexts, None);
         assert!(resolve_secrets(&none, &base, &github, &vars).is_empty());
@@ -529,7 +537,11 @@ mod tests {
         assert_eq!(passed["token"], "npm-1");
         assert_eq!(passed["where"], "prod-key-2");
         // Nested: the inner call reads what the outer one was given.
-        let inner = secrets_plan(&json!({ "secrets": { "NPM": "${{ secrets.token }}", "LEAK": "${{ secrets.OTHER }}" } }), &contexts, Some(mapped.clone()));
+        let inner = secrets_plan(
+            &json!({ "secrets": { "NPM": "${{ secrets.token }}", "LEAK": "${{ secrets.OTHER }}" } }),
+            &contexts,
+            Some(mapped.clone()),
+        );
         let passed = resolve_secrets(&inner, &base, &github, &vars);
         assert_eq!(passed.get("NPM"), Some(&json!("npm-1")));
         assert_eq!(passed.get("LEAK"), None);

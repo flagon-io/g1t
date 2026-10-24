@@ -12,8 +12,8 @@ use g1t_contracts::security_suite::{
 };
 use g1t_kit::now_ms;
 use serde::Deserialize;
-use worker::wasm_bindgen::JsValue;
 use worker::Result;
+use worker::wasm_bindgen::JsValue;
 
 use crate::store::{Store, now, optional};
 
@@ -366,11 +366,7 @@ impl Store {
     // --- Repository and workspace settings ----------------------------------
 
     pub async fn set_private(&self, repo_id: &str, private: bool) -> Result<()> {
-        self.db
-            .prepare("UPDATE repos SET private = ? WHERE repo_id = ?")
-            .bind(&[i32::from(private).into(), repo_id.into()])?
-            .run()
-            .await?;
+        self.db.prepare("UPDATE repos SET private = ? WHERE repo_id = ?").bind(&[i32::from(private).into(), repo_id.into()])?.run().await?;
         Ok(())
     }
 
@@ -383,10 +379,7 @@ impl Store {
             .first::<SettingsRow>(None)
             .await?;
         Ok(match row {
-            Some(row) => (
-                row.settings.as_deref().and_then(|json| serde_json::from_str(json).ok()).unwrap_or_default(),
-                row.private != 0,
-            ),
+            Some(row) => (row.settings.as_deref().and_then(|json| serde_json::from_str(json).ok()).unwrap_or_default(), row.private != 0),
             None => (RepoSecuritySettings::default(), true),
         })
     }
@@ -452,12 +445,7 @@ impl Store {
              FROM custom_patterns p LEFT JOIN repos r ON r.repo_id = p.repo_id
              WHERE p.namespace = ?1 AND (p.repo_id IS NULL OR p.repo_id = ?2)
              ORDER BY p.repo_id IS NOT NULL, p.name";
-        self.db
-            .prepare(sql)
-            .bind(&[namespace.into(), optional(repo_id.or(Some("")))])?
-            .all()
-            .await?
-            .results::<PatternRow>()
+        self.db.prepare(sql).bind(&[namespace.into(), optional(repo_id.or(Some("")))])?.all().await?.results::<PatternRow>()
     }
 
     pub async fn pattern(&self, id: &str) -> Result<Option<PatternRow>> {
@@ -531,8 +519,12 @@ impl Store {
     /// covers, so it looks for the pattern too.
     pub async fn rescan_for_pattern(&self, namespace: &str, repo_id: Option<&str>) -> Result<()> {
         let sql = match repo_id {
-            Some(_) => "UPDATE repos SET history = 'pending', history_cursor = NULL, history_commits = 0, history_finished_at = NULL WHERE repo_id = ?",
-            None => "UPDATE repos SET history = 'pending', history_cursor = NULL, history_commits = 0, history_finished_at = NULL WHERE namespace = ?",
+            Some(_) => {
+                "UPDATE repos SET history = 'pending', history_cursor = NULL, history_commits = 0, history_finished_at = NULL WHERE repo_id = ?"
+            }
+            None => {
+                "UPDATE repos SET history = 'pending', history_cursor = NULL, history_commits = 0, history_finished_at = NULL WHERE namespace = ?"
+            }
         };
         self.db.prepare(sql).bind(&[repo_id.unwrap_or(namespace).into()])?.run().await?;
         Ok(())
@@ -1098,7 +1090,14 @@ impl Store {
                     "UPDATE code_alerts SET status = 'fixed', fixed_at = ?, updated_at = ?
                      WHERE repo_id = ? AND tool = ? AND category = ? AND fingerprint = ? AND status = 'open' RETURNING id",
                 )
-                .bind(&[now.as_str().into(), now.as_str().into(), repo_id.into(), tool.into(), category.into(), fingerprint.as_str().into()])?
+                .bind(&[
+                    now.as_str().into(),
+                    now.as_str().into(),
+                    repo_id.into(),
+                    tool.into(),
+                    category.into(),
+                    fingerprint.as_str().into(),
+                ])?
                 .first::<Row>(None)
                 .await?
             {
@@ -1146,12 +1145,7 @@ impl Store {
             .map(CodeAlert::from))
     }
 
-    pub async fn set_code_alert(
-        &self,
-        repo_id: &str,
-        id: &str,
-        dismissal: Option<(DismissReason, Option<&str>, &str)>,
-    ) -> Result<()> {
+    pub async fn set_code_alert(&self, repo_id: &str, id: &str, dismissal: Option<(DismissReason, Option<&str>, &str)>) -> Result<()> {
         let now = now();
         match dismissal {
             Some((reason, comment, by)) => {
@@ -1160,7 +1154,15 @@ impl Store {
                         "UPDATE code_alerts SET status = 'dismissed', dismiss_reason = ?, dismiss_comment = ?, dismissed_by = ?,
                            dismissed_at = ?, updated_at = ? WHERE repo_id = ? AND id = ?",
                     )
-                    .bind(&[reason.as_str().into(), optional(comment), by.into(), now.as_str().into(), now.as_str().into(), repo_id.into(), id.into()])?
+                    .bind(&[
+                        reason.as_str().into(),
+                        optional(comment),
+                        by.into(),
+                        now.as_str().into(),
+                        now.as_str().into(),
+                        repo_id.into(),
+                        id.into(),
+                    ])?
                     .run()
                     .await?;
             }
@@ -1193,7 +1195,9 @@ impl Store {
 
     pub async fn pull_check(&self, repo_id: &str, pull: u32, kind: &str) -> Result<Option<PullCheckRow>> {
         self.db
-            .prepare("SELECT commit_sha, state, description, detail, commented FROM pull_checks WHERE repo_id = ? AND pull = ? AND kind = ?")
+            .prepare(
+                "SELECT commit_sha, state, description, detail, commented FROM pull_checks WHERE repo_id = ? AND pull = ? AND kind = ?",
+            )
             .bind(&[repo_id.into(), pull.into(), kind.into()])?
             .first::<PullCheckRow>(None)
             .await

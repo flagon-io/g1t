@@ -107,7 +107,8 @@ fn deploy(dir: &Path, api: &str, extra: &[(&str, &str)]) -> std::process::Output
 #[test]
 fn deploy_builds_the_checkout_it_runs_in_without_cloning() {
     let (api, seen) = fake_api();
-    let dir = checkout("deploy", &[("site/index.html", "<h1>hello</h1>"), ("site/about.html", "<p>about</p>"), ("README.md", "not served")]);
+    let dir =
+        checkout("deploy", &[("site/index.html", "<h1>hello</h1>"), ("site/about.html", "<p>about</p>"), ("README.md", "not served")]);
     let output = deploy(&dir, &api, &[("ROOT_DIR", "site")]);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "{stdout}\n{}", String::from_utf8_lossy(&output.stderr));
@@ -158,11 +159,16 @@ fn deploy_needs_its_build() {
 fn a_container_is_built_as_its_site_where_containers_are_switched_off() {
     let (api, seen) = fake_api();
     // A Go server beside a folder of files: a container, else the files.
-    let dir = checkout("container-site", &[("go.mod", "module x\n"), ("main.go", "package main\n"), ("public/index.html", "<h1>hello</h1>")]);
+    let dir =
+        checkout("container-site", &[("go.mod", "module x\n"), ("main.go", "package main\n"), ("public/index.html", "<h1>hello</h1>")]);
     let output = deploy(&dir, &api, &[]);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "{stdout}
-{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "{stdout}
+{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(stdout.contains("Building it as a Go server, not as a site of `public`"), "{stdout}");
     assert!(stdout.contains("as a static site instead"), "{stdout}");
     let seen = seen.lock().unwrap();
@@ -175,7 +181,11 @@ fn a_container_is_built_as_its_site_where_containers_are_switched_off() {
     let (api, seen) = fake_api();
     let files = checkout(
         "site-and-dockerfile",
-        &[("index.html", "<h1>hello</h1>"), ("server.js", ""), ("Dockerfile", "FROM node:22-slim\nCOPY . .\nCMD [\"node\", \"server.js\"]\n")],
+        &[
+            ("index.html", "<h1>hello</h1>"),
+            ("server.js", ""),
+            ("Dockerfile", "FROM node:22-slim\nCOPY . .\nCMD [\"node\", \"server.js\"]\n"),
+        ],
     );
     let output = deploy(&files, &api, &[]);
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -283,8 +293,14 @@ fn a_server_that_cannot_run_as_a_worker_falls_back_to_a_container() {
     let unsettled = checkout(
         "worker-unsettled",
         &[
-            ("package.json", r#"{ "private": true, "type": "module", "scripts": { "start": "node server.js" }, "dependencies": { "express": "5.1.0" } }"#),
-            ("server.js", "import express from 'express';\nawait new Promise((resolve) => setTimeout(resolve, 10));\nexpress().listen(3000);\n"),
+            (
+                "package.json",
+                r#"{ "private": true, "type": "module", "scripts": { "start": "node server.js" }, "dependencies": { "express": "5.1.0" } }"#,
+            ),
+            (
+                "server.js",
+                "import express from 'express';\nawait new Promise((resolve) => setTimeout(resolve, 10));\nexpress().listen(3000);\n",
+            ),
         ],
     );
     let output = deploy(&unsettled, &api, &[]);

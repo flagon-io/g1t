@@ -255,9 +255,10 @@ pub fn security_policy(files: &[FileEntry]) -> Option<String> {
         files
             .iter()
             .find(|file| {
-                file.path
-                    .strip_prefix(dir)
-                    .is_some_and(|name| !name.contains('/') && (name.eq_ignore_ascii_case("security.md") || name.eq_ignore_ascii_case("security.txt") && dir.is_empty()))
+                file.path.strip_prefix(dir).is_some_and(|name| {
+                    !name.contains('/')
+                        && (name.eq_ignore_ascii_case("security.md") || name.eq_ignore_ascii_case("security.txt") && dir.is_empty())
+                })
             })
             .map(|file| file.path.clone())
     })
@@ -284,11 +285,7 @@ pub async fn work_out<R: GitRepo>(git: &R, head: &str, tree: &str, identity: Opt
             }
         }
         let attributes = match root.iter().find(|file| file.path == ".gitattributes").and_then(|file| file.hash.clone()) {
-            Some(hash) => git
-                .read_blob(&hash)
-                .await?
-                .map(|bytes| Attributes::parse(&String::from_utf8_lossy(&bytes)))
-                .unwrap_or_default(),
+            Some(hash) => git.read_blob(&hash).await?.map(|bytes| Attributes::parse(&String::from_utf8_lossy(&bytes))).unwrap_or_default(),
             None => Attributes::default(),
         };
         let policy = security_policy(&files);
@@ -403,10 +400,7 @@ pub fn shown_differently(kind: &str, data: &serde_json::Value) -> Option<String>
 /// [`shown_differently`]) to be worked out again on its next view, as an
 /// older version's would be.
 pub async fn rework_naming(db: &D1Database, needle: &str) -> Result<()> {
-    db.prepare("UPDATE repo_stats SET version = 0 WHERE instr(contributors, ?1) > 0")
-        .bind(&[needle.into()])?
-        .run()
-        .await?;
+    db.prepare("UPDATE repo_stats SET version = 0 WHERE instr(contributors, ?1) > 0").bind(&[needle.into()])?.run().await?;
     Ok(())
 }
 

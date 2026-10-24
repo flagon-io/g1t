@@ -8,7 +8,9 @@
 //! a few minutes. `GET …/artifacts/{id}/zip` answers with a redirect to
 //! that link, as GitHub's does.
 
-use g1t_contracts::actions::{Artifact, ArtifactArgs, ArtifactBlob, ArtifactList, ArtifactRetention, ArtifactRetentionArgs, ArtifactsArgs, DeleteArtifactArgs};
+use g1t_contracts::actions::{
+    Artifact, ArtifactArgs, ArtifactBlob, ArtifactList, ArtifactRetention, ArtifactRetentionArgs, ArtifactsArgs, DeleteArtifactArgs,
+};
 use g1t_contracts::{FailureCode, Outcome, Viewer};
 use serde_json::{Value, json};
 use worker::Result;
@@ -68,13 +70,27 @@ impl ArtifactsOp {
 
     pub fn description(self) -> &'static str {
         match self {
-            ArtifactsOp::ListArtifacts => "List a repository's artifacts that have not expired, newest first: each with its id (a number), name, size_in_bytes, digest (sha256:… of its zip), created_at, expires_at, archive_download_url, and workflow_run (its run's id, head_branch and head_sha). Narrow with name; page with page and per_page (30 by default, at most 100). total_count counts every match. Needs the Read role; a public repository's are open to anyone.",
-            ArtifactsOp::ListRunArtifacts => "List one workflow run's artifacts that have not expired, oldest first, in the same shape as list_artifacts. Narrow with name. Needs the Read role.",
-            ArtifactsOp::GetArtifact => "Get one artifact by its id: its name, size_in_bytes, digest, when it was made and when it expires, and its run. Needs the Read role.",
-            ArtifactsOp::DownloadArtifact => "A link to download an artifact as a zip file (an artifact an older runner kept is a .tar.gz), good for 10 minutes and needing no token. Over REST, GET …/zip answers 302 with the link in Location, as GitHub does: `curl -L` follows it. Over MCP the link is returned as url, with expires_at. Needs the Read role.",
-            ArtifactsOp::DeleteArtifact => "Delete an artifact before it expires: its bytes go at once and its id stops resolving. Needs the Write role.",
-            ArtifactsOp::GetArtifactRetention => "How many days the repository keeps artifacts (days), and the most it may choose (maximum_allowed_days, 90). A workflow's retention-days can ask for fewer days, never more. Needs the Read role.",
-            ArtifactsOp::SetArtifactRetention => "Set how many days the repository keeps artifacts by default, and at most: days, from 1 to 90. Artifacts already uploaded keep the expiry they were given. Needs the Maintain role.",
+            ArtifactsOp::ListArtifacts => {
+                "List a repository's artifacts that have not expired, newest first: each with its id (a number), name, size_in_bytes, digest (sha256:… of its zip), created_at, expires_at, archive_download_url, and workflow_run (its run's id, head_branch and head_sha). Narrow with name; page with page and per_page (30 by default, at most 100). total_count counts every match. Needs the Read role; a public repository's are open to anyone."
+            }
+            ArtifactsOp::ListRunArtifacts => {
+                "List one workflow run's artifacts that have not expired, oldest first, in the same shape as list_artifacts. Narrow with name. Needs the Read role."
+            }
+            ArtifactsOp::GetArtifact => {
+                "Get one artifact by its id: its name, size_in_bytes, digest, when it was made and when it expires, and its run. Needs the Read role."
+            }
+            ArtifactsOp::DownloadArtifact => {
+                "A link to download an artifact as a zip file (an artifact an older runner kept is a .tar.gz), good for 10 minutes and needing no token. Over REST, GET …/zip answers 302 with the link in Location, as GitHub does: `curl -L` follows it. Over MCP the link is returned as url, with expires_at. Needs the Read role."
+            }
+            ArtifactsOp::DeleteArtifact => {
+                "Delete an artifact before it expires: its bytes go at once and its id stops resolving. Needs the Write role."
+            }
+            ArtifactsOp::GetArtifactRetention => {
+                "How many days the repository keeps artifacts (days), and the most it may choose (maximum_allowed_days, 90). A workflow's retention-days can ask for fewer days, never more. Needs the Read role."
+            }
+            ArtifactsOp::SetArtifactRetention => {
+                "Set how many days the repository keeps artifacts by default, and at most: days, from 1 to 90. Artifacts already uploaded keep the expiry they were given. Needs the Maintain role."
+            }
         }
     }
 
@@ -104,7 +120,9 @@ impl ArtifactsOp {
                 }),
                 &["repo", "id"],
             ),
-            ArtifactsOp::GetArtifact | ArtifactsOp::DownloadArtifact | ArtifactsOp::DeleteArtifact => (json!({ "repo": repo, "id": id }), &["repo", "id"]),
+            ArtifactsOp::GetArtifact | ArtifactsOp::DownloadArtifact | ArtifactsOp::DeleteArtifact => {
+                (json!({ "repo": repo, "id": id }), &["repo", "id"])
+            }
             ArtifactsOp::GetArtifactRetention => (json!({ "repo": repo }), &["repo"]),
             ArtifactsOp::SetArtifactRetention => (
                 json!({
@@ -215,7 +233,9 @@ pub async fn run(op: ArtifactsOp, services: &Services, viewer: &Viewer, input: &
         ArtifactsOp::DownloadArtifact => {
             let found: Outcome<ArtifactBlob> = g1t_kit::call(actions, "artifact_download", &by_id()).await?;
             match found {
-                Outcome::Ok(found) if found.blob.is_empty() => Outcome::fail(FailureCode::Invalid, "Download links are not set up on this installation."),
+                Outcome::Ok(found) if found.blob.is_empty() => {
+                    Outcome::fail(FailureCode::Invalid, "Download links are not set up on this installation.")
+                }
                 Outcome::Ok(found) => Outcome::Ok(json!({
                     "url": blob_url(&api, &found.blob),
                     "expires_at": g1t_contracts::time::rfc3339(g1t_kit::now_ms() + 10 * 60 * 1000),
@@ -228,7 +248,8 @@ pub async fn run(op: ArtifactsOp, services: &Services, viewer: &Viewer, input: &
             let Some(actor) = viewer.clone() else {
                 return Ok(Outcome::fail(FailureCode::Unauthenticated, "Deleting an artifact needs a g1t access token."));
             };
-            let done: Outcome<Artifact> = g1t_kit::call(actions, "delete_artifact", &DeleteArtifactArgs { actor, repo, id: id.unwrap_or_default() }).await?;
+            let done: Outcome<Artifact> =
+                g1t_kit::call(actions, "delete_artifact", &DeleteArtifactArgs { actor, repo, id: id.unwrap_or_default() }).await?;
             mapped(done, |a| json!({ "deleted": true, "id": a.id, "name": a.name }))
         }
         ArtifactsOp::GetArtifactRetention | ArtifactsOp::SetArtifactRetention => {
@@ -240,7 +261,8 @@ pub async fn run(op: ArtifactsOp, services: &Services, viewer: &Viewer, input: &
             } else {
                 None
             };
-            let found: Outcome<ArtifactRetention> = g1t_kit::call(actions, "artifact_retention", &ArtifactRetentionArgs { repo, viewer: viewer.clone(), days }).await?;
+            let found: Outcome<ArtifactRetention> =
+                g1t_kit::call(actions, "artifact_retention", &ArtifactRetentionArgs { repo, viewer: viewer.clone(), days }).await?;
             mapped(found, |r| json!({ "days": r.days, "maximum_allowed_days": r.maximum_allowed_days }))
         }
     })

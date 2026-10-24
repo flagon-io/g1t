@@ -109,7 +109,12 @@ impl<'a, R: GitRepo> Trees<'a, R> {
             level = level
                 .iter()
                 .filter_map(|hash| {
-                    self.read.get(hash)?.as_ref()?.iter().find(|entry| entry.name == segment && entry.kind == EntryKind::Tree).map(|entry| entry.hash.clone())
+                    self.read
+                        .get(hash)?
+                        .as_ref()?
+                        .iter()
+                        .find(|entry| entry.name == segment && entry.kind == EntryKind::Tree)
+                        .map(|entry| entry.hash.clone())
                 })
                 .collect();
         }

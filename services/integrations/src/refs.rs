@@ -34,26 +34,12 @@ pub fn project(key: &str) -> &str {
 }
 
 fn from_url(url: &str) -> Option<Reference> {
-    let path_segments: Vec<&str> = url
-        .split(['?', '#'])
-        .next()
-        .unwrap_or(url)
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .collect();
+    let path_segments: Vec<&str> = url.split(['?', '#']).next().unwrap_or(url).split('/').filter(|segment| !segment.is_empty()).collect();
     let host = path_segments.get(1).copied().unwrap_or_default().to_ascii_lowercase();
-    let after = |name: &str| {
-        path_segments
-            .iter()
-            .position(|segment| *segment == name)
-            .and_then(|at| path_segments.get(at + 1).copied())
-    };
+    let after = |name: &str| path_segments.iter().position(|segment| *segment == name).and_then(|at| path_segments.get(at + 1).copied());
     if host == "linear.app" || host.ends_with(".linear.app") {
         let key = as_key(after("issue")?)?;
-        return Some(Reference::Key {
-            key,
-            from: Some(Source::Linear),
-        });
+        return Some(Reference::Key { key, from: Some(Source::Linear) });
     }
     if host == "sentry.io" || host.ends_with(".sentry.io") {
         let id = after("issues")?;
@@ -61,10 +47,7 @@ fn from_url(url: &str) -> Option<Reference> {
     }
     // Jira, wherever it is hosted: `/browse/TECH-1234`.
     let key = as_key(after("browse")?)?;
-    Some(Reference::Key {
-        key,
-        from: Some(Source::Jira),
-    })
+    Some(Reference::Key { key, from: Some(Source::Jira) })
 }
 
 /// Every reference in `text`, in order, each once.
@@ -97,10 +80,7 @@ mod tests {
     use super::*;
 
     fn key(key: &str, from: Option<Source>) -> Reference {
-        Reference::Key {
-            key: key.to_owned(),
-            from,
-        }
+        Reference::Key { key: key.to_owned(), from }
     }
 
     #[test]
@@ -119,24 +99,13 @@ mod tests {
 
     #[test]
     fn addresses_say_which_system() {
-        assert_eq!(
-            find("https://acme.atlassian.net/browse/TECH-12?focusedCommentId=3"),
-            vec![key("TECH-12", Some(Source::Jira))]
-        );
-        assert_eq!(
-            find("https://linear.app/acme/issue/ENG-42/fix-the-thing"),
-            vec![key("ENG-42", Some(Source::Linear))]
-        );
+        assert_eq!(find("https://acme.atlassian.net/browse/TECH-12?focusedCommentId=3"), vec![key("TECH-12", Some(Source::Jira))]);
+        assert_eq!(find("https://linear.app/acme/issue/ENG-42/fix-the-thing"), vec![key("ENG-42", Some(Source::Linear))]);
         assert_eq!(
             find("Broke in https://acme.sentry.io/issues/4509812345/?project=1"),
-            vec![Reference::SentryIssue {
-                id: "4509812345".to_owned()
-            }]
+            vec![Reference::SentryIssue { id: "4509812345".to_owned() }]
         );
-        assert_eq!(
-            find("https://sentry.io/organizations/acme/issues/77/"),
-            vec![Reference::SentryIssue { id: "77".to_owned() }]
-        );
+        assert_eq!(find("https://sentry.io/organizations/acme/issues/77/"), vec![Reference::SentryIssue { id: "77".to_owned() }]);
     }
 
     #[test]

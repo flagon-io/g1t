@@ -110,11 +110,7 @@ impl From<SettingsRow> for RepoSettings {
             allow_commit_comments: flag(row.allow_commit_comments, defaults.allow_commit_comments),
             auto_close_items: flag(row.auto_close_items, defaults.auto_close_items),
             auto_merge: row.auto_merge != 0,
-            required_checks: row
-                .required_checks
-                .as_deref()
-                .and_then(|names| serde_json::from_str(names).ok())
-                .unwrap_or_default(),
+            required_checks: row.required_checks.as_deref().and_then(|names| serde_json::from_str(names).ok()).unwrap_or_default(),
             require_up_to_date: row.require_up_to_date != 0,
             required_approvals: row.required_approvals,
             count_agent_approvals: row.count_agent_approvals != 0,
@@ -140,12 +136,8 @@ impl Work {
             let row = found.first::<SettingsRow>(crate::prefetch::Slot::Settings)?;
             return Ok(row.map_or_else(RepoSettings::default, RepoSettings::from));
         }
-        let row = self
-            .db
-            .prepare("SELECT * FROM repo_settings WHERE repo_id = ?")
-            .bind(&[repo_id.into()])?
-            .first::<SettingsRow>(None)
-            .await?;
+        let row =
+            self.db.prepare("SELECT * FROM repo_settings WHERE repo_id = ?").bind(&[repo_id.into()])?.first::<SettingsRow>(None).await?;
         Ok(row.map_or_else(RepoSettings::default, RepoSettings::from))
     }
 
@@ -163,10 +155,7 @@ impl Work {
     /// and the branch protection ones, written to its "Default branch
     /// protection" ruleset (made when it has none and they protect
     /// anything). Rules that only rulesets have stay as they are.
-    pub(crate) async fn update_settings(
-        &self,
-        a: UpdateSettingsArgs,
-    ) -> Result<Outcome<RepoSettings>> {
+    pub(crate) async fn update_settings(&self, a: UpdateSettingsArgs) -> Result<Outcome<RepoSettings>> {
         let repo = match self.repo(&a.repo, &Some(a.actor.clone())).await? {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
@@ -177,9 +166,7 @@ impl Work {
         if !a.actor.verified {
             return Ok(Outcome::fail(FailureCode::Forbidden, crate::UNVERIFIED));
         }
-        if let Outcome::Fail(failure) =
-            crate::allowed(Some(&a.actor), &repo, g1t_contracts::access::Capability::ManageSettings)
-        {
+        if let Outcome::Fail(failure) = crate::allowed(Some(&a.actor), &repo, g1t_contracts::access::Capability::ManageSettings) {
             return Ok(Outcome::Fail(failure));
         }
         let before = self.default_branch_settings(&repo).await?;
@@ -196,8 +183,7 @@ impl Work {
         };
         // Branch protection changes need the role that changes it.
         if protection_changed(&before, &settings)
-            && let Outcome::Fail(failure) =
-                crate::allowed(Some(&a.actor), &repo, g1t_contracts::access::Capability::ManageProtection)
+            && let Outcome::Fail(failure) = crate::allowed(Some(&a.actor), &repo, g1t_contracts::access::Capability::ManageProtection)
         {
             return Ok(Outcome::Fail(failure));
         }
@@ -318,10 +304,7 @@ fn tidy_merge_settings(mut settings: RepoSettings) -> std::result::Result<RepoSe
     if settings.merge_commit_message == CommitMessageDefault::PullTitleAndCommits {
         return Err("A merge commit's message cannot list the pull request's commits; choose another default.".to_owned());
     }
-    for (template, kind) in [
-        (&mut settings.merge_commit_template, "merge"),
-        (&mut settings.squash_commit_template, "squash"),
-    ] {
+    for (template, kind) in [(&mut settings.merge_commit_template, "merge"), (&mut settings.squash_commit_template, "squash")] {
         *template = template.as_deref().map(str::trim).filter(|text| !text.is_empty()).map(str::to_owned);
         if template.as_ref().is_some_and(|text| text.chars().count() > MAX_TEMPLATE_CHARS) {
             return Err(format!("The {kind} commit template is too long: keep it to {MAX_TEMPLATE_CHARS} characters."));

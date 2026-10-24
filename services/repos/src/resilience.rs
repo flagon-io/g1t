@@ -86,8 +86,12 @@ pub const COOL_MS: u64 = 10_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum State {
-    Closed { failures: u32 },
-    Open { until: u64 },
+    Closed {
+        failures: u32,
+    },
+    Open {
+        until: u64,
+    },
     /// One probe is out; everything else waits for it.
     HalfOpen,
 }
@@ -217,7 +221,10 @@ impl Busy {
         } else if self.rate_limited {
             format!("g1t's git storage is handling more requests than it allows right now. Try again in {} seconds.\n", self.retry_after)
         } else {
-            format!("g1t's git storage is not answering right now. Try again in {} seconds; https://status.g1t.sh has the latest.\n", self.retry_after)
+            format!(
+                "g1t's git storage is not answering right now. Try again in {} seconds; https://status.g1t.sh has the latest.\n",
+                self.retry_after
+            )
         }
     }
 }

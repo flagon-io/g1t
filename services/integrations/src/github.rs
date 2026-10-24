@@ -66,12 +66,7 @@ pub struct AppConfig {
 impl AppConfig {
     pub fn from_env(env: &Env) -> Self {
         let var = |name: &str| env.var(name).map(|v| v.to_string().trim().to_owned()).unwrap_or_default();
-        let secret = |name: &str| {
-            env.secret(name)
-                .ok()
-                .map(|value| value.to_string())
-                .filter(|value| !value.trim().is_empty())
-        };
+        let secret = |name: &str| env.secret(name).ok().map(|value| value.to_string()).filter(|value| !value.trim().is_empty());
         AppConfig {
             app_id: var("GITHUB_APP_ID"),
             slug: var("GITHUB_APP_SLUG"),
@@ -313,11 +308,7 @@ impl GithubApp {
         http::send(
             method,
             &url,
-            &[
-                ("authorization", &authorization),
-                ("accept", "application/vnd.github+json"),
-                ("x-github-api-version", "2022-11-28"),
-            ],
+            &[("authorization", &authorization), ("accept", "application/vnd.github+json"), ("x-github-api-version", "2022-11-28")],
             body.map(|body| body.to_string()),
         )
         .await
@@ -353,9 +344,7 @@ impl GithubApp {
             return Ok(Err(NOT_SET_UP.to_owned()));
         };
         let jwt = github_jwt::app_jwt(self.config.issuer(), key, now / 1000).await?;
-        let answer = self
-            .github(Method::Post, &format!("/app/installations/{installation_id}/access_tokens"), &jwt, None)
-            .await?;
+        let answer = self.github(Method::Post, &format!("/app/installations/{installation_id}/access_tokens"), &jwt, None).await?;
         if !answer.ok() {
             return Ok(Err(answer.problem("GitHub")));
         }
@@ -387,11 +376,7 @@ impl GithubApp {
     }
 
     async fn link(&self, repo_id: &str) -> Result<Option<LinkRow>> {
-        self.db
-            .prepare("SELECT * FROM github_repos WHERE repo_id = ?")
-            .bind(&[repo_id.into()])?
-            .first::<LinkRow>(None)
-            .await
+        self.db.prepare("SELECT * FROM github_repos WHERE repo_id = ?").bind(&[repo_id.into()])?.first::<LinkRow>(None).await
     }
 
     async fn note(&self, repo_id: &str, problem: Option<&str>) -> Result<()> {
@@ -418,8 +403,7 @@ impl GithubApp {
         if !self.config.configured() {
             return Ok(Outcome::Ok(GithubAppStatus::default()));
         }
-        let account: GithubAccountView =
-            g1t_kit::call(&self.identity, "github_account", &json!({ "user": a.viewer })).await?;
+        let account: GithubAccountView = g1t_kit::call(&self.identity, "github_account", &json!({ "user": a.viewer })).await?;
         let installations = self
             .db
             .prepare("SELECT * FROM github_installations WHERE workspace = ? ORDER BY account")
@@ -436,9 +420,8 @@ impl GithubApp {
     }
 
     fn owner_only<T>(actor: &User, workspace: &str) -> Option<Outcome<T>> {
-        (actor.role_in(workspace) != Some(Role::Owner) || actor.kind != PrincipalKind::User).then(|| {
-            fail(FailureCode::Forbidden, "Only an owner of the workspace can add or remove GitHub accounts.")
-        })
+        (actor.role_in(workspace) != Some(Role::Owner) || actor.kind != PrincipalKind::User)
+            .then(|| fail(FailureCode::Forbidden, "Only an owner of the workspace can add or remove GitHub accounts."))
     }
 
     /// Records an installation against a workspace, once the person's own
@@ -506,9 +489,7 @@ impl GithubApp {
     async fn user_installations(&self, token: &str) -> Result<std::result::Result<Vec<Value>, String>> {
         let mut all = Vec::new();
         for page in 1..=5 {
-            let answer = self
-                .github(Method::Get, &format!("/user/installations?per_page=100&page={page}"), token, None)
-                .await?;
+            let answer = self.github(Method::Get, &format!("/user/installations?per_page=100&page={page}"), token, None).await?;
             if !answer.ok() {
                 return Ok(Err(answer.problem("GitHub")));
             }
@@ -619,9 +600,7 @@ impl GithubApp {
             bind.extend(ids.iter().map(|id| number(*id)));
             let rows = self
                 .db
-                .prepare(format!(
-                    "SELECT github_repo_id, repo FROM github_repos WHERE workspace = ? AND github_repo_id IN ({marks})"
-                ))
+                .prepare(format!("SELECT github_repo_id, repo FROM github_repos WHERE workspace = ? AND github_repo_id IN ({marks})"))
                 .bind(&bind)?
                 .all()
                 .await?
@@ -667,9 +646,7 @@ impl GithubApp {
         };
         // Read with the person's token: only a repository both they and the
         // installation can reach answers.
-        let answer = self
-            .github(Method::Get, &format!("/repositories/{}", a.github_repo_id), &user_token, None)
-            .await?;
+        let answer = self.github(Method::Get, &format!("/repositories/{}", a.github_repo_id), &user_token, None).await?;
         if !answer.ok() {
             return refuse(FailureCode::NotFound, "That GitHub repository is not one you and the app can both reach.");
         }
@@ -745,10 +722,7 @@ impl GithubApp {
             .await?;
         let job = a.issues.then(|| IssueJob {
             actor: a.actor.clone(),
-            repo: RepoPath {
-                namespace: repo.namespace.clone(),
-                name: repo.name.clone(),
-            },
+            repo: RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() },
             repo_id: repo.id.clone(),
             full_name: full_name.to_owned(),
             installation_id: a.installation_id,
@@ -792,15 +766,10 @@ impl GithubApp {
             }
         }
         let authors: HashSet<u64> = issues.iter().filter_map(|issue| issue["user"]["id"].as_u64()).collect();
-        let names: HashMap<String, String> = g1t_kit::call(
-            &self.identity,
-            "github_usernames",
-            &GithubUsernamesArgs {
-                github_ids: authors.into_iter().collect(),
-            },
-        )
-        .await
-        .unwrap_or_default();
+        let names: HashMap<String, String> =
+            g1t_kit::call(&self.identity, "github_usernames", &GithubUsernamesArgs { github_ids: authors.into_iter().collect() })
+                .await
+                .unwrap_or_default();
         let mut copied = 0u32;
         for issue in &issues {
             let g1t_name = issue["user"]["id"].as_u64().and_then(|id| names.get(&id.to_string())).map(String::as_str);
@@ -828,11 +797,8 @@ impl GithubApp {
             .await?;
             let Outcome::Ok(opened) = opened else { continue };
             if issue["state"].as_str() == Some("closed") {
-                let reason = if issue["state_reason"].as_str() == Some("not_planned") {
-                    CloseReason::NotPlanned
-                } else {
-                    CloseReason::Completed
-                };
+                let reason =
+                    if issue["state_reason"].as_str() == Some("not_planned") { CloseReason::NotPlanned } else { CloseReason::Completed };
                 let _: Outcome<Value> = g1t_kit::call(
                     &self.work,
                     "close_work_item",
@@ -875,10 +841,7 @@ impl GithubApp {
     /// Checks and records a delivery. What it asks for is done by
     /// `process`, after the answer has gone.
     pub async fn receive(&self, a: &GithubReceiveArgs) -> Result<(Received, Option<(String, Value)>)> {
-        let answer = |status: u16, message: &str| Received {
-            status,
-            message: message.to_owned(),
-        };
+        let answer = |status: u16, message: &str| Received { status, message: message.to_owned() };
         let Some(secret) = self.config.webhook_secret.as_deref() else {
             return Ok((answer(404, "GitHub is not set up on this g1t."), None));
         };
@@ -962,7 +925,8 @@ impl GithubApp {
                 }
             }
             ("repository", "renamed") | ("repository", "transferred") => {
-                let (Some(repo), Some(full_name)) = (payload["repository"]["id"].as_u64(), payload["repository"]["full_name"].as_str()) else {
+                let (Some(repo), Some(full_name)) = (payload["repository"]["id"].as_u64(), payload["repository"]["full_name"].as_str())
+                else {
                     return Ok(());
                 };
                 self.db
@@ -977,12 +941,7 @@ impl GithubApp {
                 }
             }
             ("meta", "deleted") => {
-                let ids = self
-                    .db
-                    .prepare("SELECT DISTINCT id FROM github_installations")
-                    .all()
-                    .await?
-                    .results::<Value>()?;
+                let ids = self.db.prepare("SELECT DISTINCT id FROM github_installations").all().await?.results::<Value>()?;
                 for row in ids {
                     if let Some(id) = row["id"].as_u64() {
                         self.installation_gone(id).await?;

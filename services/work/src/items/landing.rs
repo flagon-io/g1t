@@ -218,12 +218,8 @@ impl Work {
             commit: landing.commit.clone(),
             pushed_by: landing.pushed_by.clone(),
         };
-        let resolution = Resolution {
-            repo: path.clone(),
-            pull: landing.pull,
-            commit: landing.commit.clone(),
-            pushed_by: landing.pushed_by.clone(),
-        };
+        let resolution =
+            Resolution { repo: path.clone(), pull: landing.pull, commit: landing.commit.clone(), pushed_by: landing.pushed_by.clone() };
         let what = landing_note(&path, landing.pull, landing.commit.as_deref()) + &tie_note(&path, landing.tie);
         let mut closed = Vec::new();
         for id in closes {
@@ -242,11 +238,7 @@ impl Work {
                 .map(|sql| self.db.prepare(*sql).bind(&binds[..g1t_kit::rename::parameters(sql)]))
                 .collect::<Result<Vec<_>>>()?;
             let results = self.db.batch(statements).await?;
-            let closed_now = results
-                .get(3)
-                .map(|result| result.results::<ValueRow>())
-                .transpose()?
-                .is_some_and(|rows| !rows.is_empty());
+            let closed_now = results.get(3).map(|result| result.results::<ValueRow>()).transpose()?.is_some_and(|rows| !rows.is_empty());
             let Some(held) = self.item_by_id(id).await? else { continue };
             if closed_now {
                 self.publish_item(
@@ -400,7 +392,10 @@ impl Work {
             OnBranch::Off => {
                 return Ok(Outcome::fail(
                     FailureCode::Invalid,
-                    format!("Commit {short} is not on {}, the default branch: only a commit there closes a work item.", repo.default_branch),
+                    format!(
+                        "Commit {short} is not on {}, the default branch: only a commit there closes a work item.",
+                        repo.default_branch
+                    ),
                 ));
             }
             OnBranch::Unknown => {
@@ -451,7 +446,8 @@ impl Work {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        let rows = self.db.prepare(CLOSED_BY_COMMIT).bind(&[repo.id.as_str().into(), commit.into()])?.all().await?.results::<ClosedRow>()?;
+        let rows =
+            self.db.prepare(CLOSED_BY_COMMIT).bind(&[repo.id.as_str().into(), commit.into()])?.all().await?.results::<ClosedRow>()?;
         let ids: Vec<String> = rows.iter().map(|row| row.id.clone()).collect();
         let held = self.items_by_ids(&ids).await?;
         let viewer = a.viewer.as_ref();
@@ -480,7 +476,13 @@ mod tests {
     #[test]
     fn a_commit_names_only_the_work_items_the_viewer_may_see() {
         use crate::items::rows_for_test::{held_for_test, person_for_test};
-        let row = |id: &str, number: u32| ClosedRow { id: id.into(), workspace: "acme".into(), number, title: format!("Item {number}"), closed: 1 };
+        let row = |id: &str, number: u32| ClosedRow {
+            id: id.into(),
+            workspace: "acme".into(),
+            number,
+            title: format!("Item {number}"),
+            closed: 1,
+        };
         // #1 filed in a public repository, #2 a members-only one.
         let held = vec![held_for_test(1, &[("rep_web", "origin", "acme", false)], &[]), held_for_test(2, &[], &[])];
         let numbers = |viewer: Option<&User>| -> Vec<u32> {

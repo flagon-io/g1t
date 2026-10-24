@@ -74,7 +74,12 @@ fn health_value(given: &str) -> Result<Value> {
 }
 
 /// The fields `create` and `edit` both set, onto `call`. Whether any was given.
-fn with_fields<'a>(ctx: &Ctx, place: &Place, mut call: crate::client::Call<'a>, fields: &ProjectFields) -> Result<(crate::client::Call<'a>, bool)> {
+fn with_fields<'a>(
+    ctx: &Ctx,
+    place: &Place,
+    mut call: crate::client::Call<'a>,
+    fields: &ProjectFields,
+) -> Result<(crate::client::Call<'a>, bool)> {
     let mut changed = false;
     let brief = prompt::body(fields.brief.clone(), fields.brief_file.as_deref(), false)?;
     for (key, value) in [
@@ -261,7 +266,8 @@ fn create(ctx: &Ctx, workspace: Option<&str>, args: ProjectCreateArgs) -> Result
     if name.trim().is_empty() {
         return Err(Error::usage("The name is empty."));
     }
-    let call = place.client.op("create_work_project").arg("workspace", &place.workspace).field("name", name.trim()).field_opt("slug", args.slug);
+    let call =
+        place.client.op("create_work_project").arg("workspace", &place.workspace).field("name", name.trim()).field_opt("slug", args.slug);
     let (call, _) = with_fields(ctx, &place, call, &args.fields)?;
     let made = call.send()?;
     let slug = s(&made, "slug").to_owned();
@@ -277,23 +283,11 @@ fn create(ctx: &Ctx, workspace: Option<&str>, args: ProjectCreateArgs) -> Result
 
 fn add_member(ctx: &Ctx, place: &Place, slug: &str, login: &str) -> Result<Value> {
     let who = super::who(ctx, &place.client, login)?;
-    place
-        .client
-        .op("add_work_project_member")
-        .arg("workspace", &place.workspace)
-        .arg("project", slug)
-        .arg("username", &who)
-        .send()
+    place.client.op("add_work_project_member").arg("workspace", &place.workspace).arg("project", slug).arg("username", &who).send()
 }
 
 fn add_repo(place: &Place, slug: &str, repo: &str) -> Result<Value> {
-    place
-        .client
-        .op("add_work_project_repo")
-        .arg("workspace", &place.workspace)
-        .arg("project", slug)
-        .field("repo", repo.trim())
-        .send()
+    place.client.op("add_work_project_repo").arg("workspace", &place.workspace).arg("project", slug).field("repo", repo.trim()).send()
 }
 
 fn edit(ctx: &Ctx, workspace: Option<&str>, args: ProjectEditArgs) -> Result<()> {

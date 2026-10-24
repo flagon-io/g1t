@@ -115,7 +115,11 @@ pub fn messages(pack: &Pack, ids: &[String]) -> Vec<CommitFacts> {
 /// The files that differ between two trees, deletions included, with the
 /// size of each new blob the pack holds. Whether the list is complete.
 /// Each level of the trees is read at once.
-async fn changed<R: GitRepo>(objects: &Objects<'_, R>, old_root: Option<String>, new_root: Option<String>) -> Result<(Vec<FileChange>, bool)> {
+async fn changed<R: GitRepo>(
+    objects: &Objects<'_, R>,
+    old_root: Option<String>,
+    new_root: Option<String>,
+) -> Result<(Vec<FileChange>, bool)> {
     let mut files = Vec::new();
     let mut level: Vec<(String, Option<String>, Option<String>)> = vec![(String::new(), old_root, new_root)];
     while !level.is_empty() {
@@ -274,12 +278,7 @@ pub fn signing_facts(pack: &Pack, ids: &[String]) -> (Vec<String>, Vec<String>) 
 /// Every commit of `ids` read, with its signature decided against who
 /// owns the keys and addresses (`owners`, when signatures matter). The
 /// commits are read at once.
-pub async fn read_all<R: GitRepo>(
-    pack: &Pack,
-    repo: &R,
-    ids: &[String],
-    owners: Option<&Owners>,
-) -> Result<Vec<CommitFacts>> {
+pub async fn read_all<R: GitRepo>(pack: &Pack, repo: &R, ids: &[String], owners: Option<&Owners>) -> Result<Vec<CommitFacts>> {
     let objects = Objects { pack, repo, reads: Cell::new(0) };
     let objects = &objects;
     let read = try_join_all(ids.iter().map(|id| async move {
@@ -321,7 +320,9 @@ mod tests {
         use g1t_scan::pack::write_pack;
         let first = b"tree t\nauthor A <a@x> 1 +0000\ncommitter A <a@x> 1 +0000\n\none\n".to_vec();
         let first_id = g1t_scan::pack::object_id(ObjectKind::Commit, &first);
-        let second = format!("tree t\nparent {first_id}\nparent {}\nauthor A <a@x> 1 +0000\ncommitter A <a@x> 1 +0000\n\ntwo\n", "f".repeat(40)).into_bytes();
+        let second =
+            format!("tree t\nparent {first_id}\nparent {}\nauthor A <a@x> 1 +0000\ncommitter A <a@x> 1 +0000\n\ntwo\n", "f".repeat(40))
+                .into_bytes();
         let second_id = g1t_scan::pack::object_id(ObjectKind::Commit, &second);
         let pack = Pack::parse(&write_pack(&[(ObjectKind::Commit, first), (ObjectKind::Commit, second)])).unwrap();
         assert_eq!(added(&pack, &second_id, 10), Some(vec![second_id.clone(), first_id.clone()]));
@@ -337,23 +338,34 @@ author Ada <ada@x> 1 +0000
 committer A <a@x> 1 +0000
 
 feat: one
-".to_vec();
+"
+        .to_vec();
         let first_id = g1t_scan::pack::object_id(ObjectKind::Commit, &first);
-        let merge = format!("tree t
+        let merge = format!(
+            "tree t
 parent {first_id}
 parent {}
 author B <b@x> 1 +0000
 committer B <b@x> 1 +0000
 
 Merge main
-", "f".repeat(40)).into_bytes();
+",
+            "f".repeat(40)
+        )
+        .into_bytes();
         let merge_id = g1t_scan::pack::object_id(ObjectKind::Commit, &merge);
         let pack = Pack::parse(&write_pack(&[(ObjectKind::Commit, first), (ObjectKind::Commit, merge)])).unwrap();
         let ids = added(&pack, &merge_id, 10).unwrap();
         let read = messages(&pack, &ids);
-        assert_eq!(read.iter().map(|commit| commit.message.as_str()).collect::<Vec<_>>(), ["Merge main
-", "feat: one
-"]);
+        assert_eq!(
+            read.iter().map(|commit| commit.message.as_str()).collect::<Vec<_>>(),
+            [
+                "Merge main
+",
+                "feat: one
+"
+            ]
+        );
         assert_eq!(read[0].parents, 2);
         assert_eq!(read[1].author_email.as_deref(), Some("ada@x"));
         assert!(read.iter().all(|commit| commit.files.is_empty() && commit.signature == Signature::Unsigned));
@@ -416,13 +428,16 @@ Merge main
         // The push brings one commit on top of `base`; `base` merged `side`,
         // whose history holds `old`.
         let (base, side, old) = ("b".repeat(40), "5".repeat(40), "0".repeat(40));
-        let tip = format!("tree t
+        let tip = format!(
+            "tree t
 parent {base}
 author A <a@x> 1 +0000
 committer A <a@x> 1 +0000
 
 tip
-").into_bytes();
+"
+        )
+        .into_bytes();
         let tip_id = g1t_scan::pack::object_id(ObjectKind::Commit, &tip);
         let pack = Pack::parse(&write_pack(&[(ObjectKind::Commit, tip)])).unwrap();
         let mut histories = HashMap::new();

@@ -47,16 +47,9 @@ fn settings(ctx: &Ctx, args: DeploySettingsArgs) -> Result<()> {
     let (workspace, project, client) = super::logs::resolve_project(ctx, args.project.as_deref())?;
     let wanted = changes(&args);
     let found = if wanted.is_empty() {
-        client
-            .op("get_deployment_settings")
-            .arg("workspace", &workspace)
-            .arg("project", &project)
-            .send()?
+        client.op("get_deployment_settings").arg("workspace", &workspace).arg("project", &project).send()?
     } else {
-        let mut call = client
-            .op("update_deployment_settings")
-            .arg("workspace", &workspace)
-            .arg("project", &project);
+        let mut call = client.op("update_deployment_settings").arg("workspace", &workspace).arg("project", &project);
         for (key, value) in wanted {
             call = call.field(&key, value);
         }
@@ -67,12 +60,8 @@ fn settings(ctx: &Ctx, args: DeploySettingsArgs) -> Result<()> {
 
 fn switch(ctx: &Ctx, args: DeployProjectArgs, on: bool) -> Result<()> {
     let (workspace, project, client) = super::logs::resolve_project(ctx, args.project.as_deref())?;
-    let found = client
-        .op("update_deployment_settings")
-        .arg("workspace", &workspace)
-        .arg("project", &project)
-        .field("enabled", on)
-        .send()?;
+    let found =
+        client.op("update_deployment_settings").arg("workspace", &workspace).arg("project", &project).field("enabled", on).send()?;
     if ctx.out.structured() {
         return ctx.out.emit(&found);
     }
@@ -158,58 +147,28 @@ fn list(ctx: &Ctx, args: DeployListArgs) -> Result<()> {
             ]
         })
         .collect();
-    out.table(
-        &["id", "environment", "state", "ref", "source", "url", "age"],
-        &rows,
-    )
+    out.table(&["id", "environment", "state", "ref", "source", "url", "age"], &rows)
 }
 
 fn view(ctx: &Ctx, args: DeployViewArgs) -> Result<()> {
     let (repo, client) = ctx.repo_client()?;
-    let page = format!(
-        "{}/{}/{}/deployments/{}",
-        client.host.site, repo.owner, repo.name, args.id
-    );
+    let page = format!("{}/{}/{}/deployments/{}", client.host.site, repo.owner, repo.name, args.id);
     if args.web {
         return super::browse::open(ctx, &page);
     }
-    let d = client
-        .op("get_deployment")
-        .repo(&repo)
-        .arg("id", &args.id)
-        .send()?;
+    let d = client.op("get_deployment").repo(&repo).arg("id", &args.id).send()?;
     if ctx.out.structured() {
         return ctx.out.emit(&d);
     }
     let out = &ctx.out;
-    println!(
-        "{} {} {}",
-        out.bold(s(&d, "environment")),
-        out.state(s(&d, "state")),
-        out.dim(s(&d, "id"))
-    );
+    println!("{} {} {}", out.bold(s(&d, "environment")), out.state(s(&d, "state")), out.dim(s(&d, "id")));
     let sha = s(&d, "sha");
-    println!(
-        "{} {} at {}",
-        out.dim("Ref:"),
-        s(&d, "ref"),
-        &sha[..sha.len().min(12)]
-    );
+    println!("{} {} at {}", out.dim("Ref:"), s(&d, "ref"), &sha[..sha.len().min(12)]);
     if let Some(desc) = d["description"].as_str().filter(|x| !x.is_empty()) {
         println!("{} {desc}", out.dim("What:"));
     }
-    println!(
-        "{} {} by {}, {}",
-        out.dim("From:"),
-        s(&d, "source"),
-        s(&d, "creator"),
-        ago(s(&d, "created_at"))
-    );
-    for (label, key) in [
-        ("Address:", "environment_url"),
-        ("Log:", "log_url"),
-        ("Run:", "run_url"),
-    ] {
+    println!("{} {} by {}, {}", out.dim("From:"), s(&d, "source"), s(&d, "creator"), ago(s(&d, "created_at")));
+    for (label, key) in [("Address:", "environment_url"), ("Log:", "log_url"), ("Run:", "run_url")] {
         if let Some(v) = d[key].as_str().filter(|x| !x.is_empty()) {
             println!("{} {v}", out.dim(label));
         }

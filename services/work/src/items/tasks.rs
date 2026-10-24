@@ -33,8 +33,7 @@ const ITEM_WRITE: &str = "UPDATE work_items SET body = ?1, updated_at = ?2 WHERE
 const PULL_BODY: &str = "SELECT COALESCE(body, '') AS value FROM pulls WHERE id = ?1";
 
 /// As [`ITEM_WRITE`], for a pull request's description.
-const PULL_WRITE: &str =
-    "UPDATE pulls SET body = ?1, updated_at = ?2 WHERE id = ?3 AND COALESCE(body, '') = ?4 RETURNING id AS value";
+const PULL_WRITE: &str = "UPDATE pulls SET body = ?1, updated_at = ?2 WHERE id = ?3 AND COALESCE(body, '') = ?4 RETURNING id AS value";
 
 /// What ticking a box in a body comes to: the box, and the body after,
 /// unless it already was as asked.
@@ -118,10 +117,7 @@ impl Work {
                 return Ok(Some(Outcome::Ok(CheckedTask { task, changed: true, body: after, done, total })));
             }
         }
-        Ok(Some(Outcome::fail(
-            FailureCode::Conflict,
-            "The text kept changing while the box was being ticked. Try again in a moment.",
-        )))
+        Ok(Some(Outcome::fail(FailureCode::Conflict, "The text kept changing while the box was being ticked. Try again in a moment.")))
     }
 }
 
@@ -142,10 +138,8 @@ mod tests {
         for _ in 0..ATTEMPTS {
             let ticked = tick(&seen, check).ok()?;
             let Some(after) = ticked.after else { return Some(ticked.task) };
-            let written: Option<String> = db
-                .query_row(write_sql, params![after, "2026-10-21", id, seen], |row| row.get(0))
-                .optional()
-                .unwrap();
+            let written: Option<String> =
+                db.query_row(write_sql, params![after, "2026-10-21", id, seen], |row| row.get(0)).optional().unwrap();
             if written.is_some() {
                 return Some(ticked.task);
             }
@@ -180,7 +174,8 @@ mod tests {
         // Someone adds a box above while Bo unticks ship: his box is found
         // where it went.
         let seen = read(&db, ITEM_BODY, "itm_1");
-        db.execute("UPDATE work_items SET body = 'Steps:\n- [ ] plan\n- [x] docs\n- [x] tests\n- [x] ship' WHERE id = 'itm_1'", []).unwrap();
+        db.execute("UPDATE work_items SET body = 'Steps:\n- [ ] plan\n- [x] docs\n- [x] tests\n- [x] ship' WHERE id = 'itm_1'", [])
+            .unwrap();
         let bo = tick_from(&db, (ITEM_BODY, ITEM_WRITE), "itm_1", seen, &box_number(3, false, "ship")).unwrap();
         assert_eq!(bo.number, 4);
         assert_eq!(read(&db, ITEM_BODY, "itm_1"), "Steps:\n- [ ] plan\n- [x] docs\n- [x] tests\n- [ ] ship");

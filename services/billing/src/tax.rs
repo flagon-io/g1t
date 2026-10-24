@@ -176,7 +176,9 @@ impl Billing {
         }
         let first = self
             .db
-            .prepare("UPDATE accounts SET tax_address_needed_at = ? WHERE workspace = ? AND tax_address_needed_at IS NULL RETURNING workspace")
+            .prepare(
+                "UPDATE accounts SET tax_address_needed_at = ? WHERE workspace = ? AND tax_address_needed_at IS NULL RETURNING workspace",
+            )
             .bind(&[now.as_str().into(), workspace.into()])?
             .first::<Row>(None)
             .await?
@@ -198,11 +200,7 @@ impl Billing {
 
     /// Clears the mark once an address is saved.
     pub(crate) async fn tax_address_given(&self, workspace: &str) -> Result<()> {
-        self.db
-            .prepare("UPDATE accounts SET tax_address_needed_at = NULL WHERE workspace = ?")
-            .bind(&[workspace.into()])?
-            .run()
-            .await?;
+        self.db.prepare("UPDATE accounts SET tax_address_needed_at = NULL WHERE workspace = ?").bind(&[workspace.into()])?.run().await?;
         Ok(())
     }
 

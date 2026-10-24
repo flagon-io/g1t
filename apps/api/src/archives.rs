@@ -46,8 +46,12 @@ impl ArchiveOp {
 
     pub fn description(self) -> &'static str {
         match self {
-            ArchiveOp::DownloadTarball => "A link to download a branch, tag or commit as a gzipped tar archive (the default branch without ref), good for 10 minutes and needing no token. Over REST, GET …/tarball/{ref} answers 302 with the link in Location, as GitHub does: `curl -L` follows it. Over MCP the link is returned as url, with commit and expires_at. The archive holds one folder, <owner>-<repo>-<first 7 of the commit>/, with executable files and symlinks as git has them and the commit in its pax header. Up to 10,000 files and 24 MB; clone a larger repository. Needs the Read role; a public repository's are open to anyone.",
-            ArchiveOp::DownloadZipball => "A link to download a branch, tag or commit as a zip archive (the default branch without ref), good for 10 minutes and needing no token. Over REST, GET …/zipball/{ref} answers 302 with the link in Location, as GitHub does: `curl -L` follows it. Over MCP the link is returned as url, with commit and expires_at. The archive holds one folder, <owner>-<repo>-<first 7 of the commit>/. Up to 10,000 files and 24 MB; clone a larger repository. Needs the Read role; a public repository's are open to anyone.",
+            ArchiveOp::DownloadTarball => {
+                "A link to download a branch, tag or commit as a gzipped tar archive (the default branch without ref), good for 10 minutes and needing no token. Over REST, GET …/tarball/{ref} answers 302 with the link in Location, as GitHub does: `curl -L` follows it. Over MCP the link is returned as url, with commit and expires_at. The archive holds one folder, <owner>-<repo>-<first 7 of the commit>/, with executable files and symlinks as git has them and the commit in its pax header. Up to 10,000 files and 24 MB; clone a larger repository. Needs the Read role; a public repository's are open to anyone."
+            }
+            ArchiveOp::DownloadZipball => {
+                "A link to download a branch, tag or commit as a zip archive (the default branch without ref), good for 10 minutes and needing no token. Over REST, GET …/zipball/{ref} answers 302 with the link in Location, as GitHub does: `curl -L` follows it. Over MCP the link is returned as url, with commit and expires_at. The archive holds one folder, <owner>-<repo>-<first 7 of the commit>/. Up to 10,000 files and 24 MB; clone a larger repository. Needs the Read role; a public repository's are open to anyone."
+            }
         }
     }
 
@@ -72,14 +76,7 @@ impl ArchiveOp {
 
 /// Where the site serves the archive of `link`.
 pub fn archive_url(site: &str, link: &ArchiveLink, op: ArchiveOp) -> String {
-    format!(
-        "{site}/{}/{}/archive/{}.{}?token={}",
-        link.repo.namespace,
-        link.repo.name,
-        link.commit,
-        op.suffix(),
-        link.token
-    )
+    format!("{site}/{}/{}/archive/{}.{}?token={}", link.repo.namespace, link.repo.name, link.commit, op.suffix(), link.token)
 }
 
 pub async fn run(op: ArchiveOp, services: &Services, viewer: &Viewer, input: &Value) -> Result<Outcome<Value>> {
@@ -87,7 +84,8 @@ pub async fn run(op: ArchiveOp, services: &Services, viewer: &Viewer, input: &Va
         return Ok(Outcome::fail(FailureCode::Invalid, "Give the repository as \"owner/name\"."));
     };
     let git_ref = input["ref"].as_str().map(str::trim).filter(|git_ref| !git_ref.is_empty()).map(str::to_owned);
-    let found: Outcome<ArchiveLink> = g1t_kit::call(&services.repos, "archive_link", &ArchiveLinkArgs { path, viewer: viewer.clone(), git_ref }).await?;
+    let found: Outcome<ArchiveLink> =
+        g1t_kit::call(&services.repos, "archive_link", &ArchiveLinkArgs { path, viewer: viewer.clone(), git_ref }).await?;
     Ok(match found {
         Outcome::Ok(link) => Outcome::Ok(json!({
             "url": archive_url(&services.addresses.site, &link, op),
@@ -108,7 +106,12 @@ mod tests {
             "ownerId": "ws_1", "defaultBranch": "main", "forkOf": null, "createdAt": "2026-10-01T00:00:00.000Z",
         }))
         .unwrap();
-        ArchiveLink { repo, commit: "4807077b296e6edbf410d55e72749d3e1170c291".into(), token: "abc_-123".into(), expires_at: "2026-10-12T00:10:00.000Z".into() }
+        ArchiveLink {
+            repo,
+            commit: "4807077b296e6edbf410d55e72749d3e1170c291".into(),
+            token: "abc_-123".into(),
+            expires_at: "2026-10-12T00:10:00.000Z".into(),
+        }
     }
 
     #[test]

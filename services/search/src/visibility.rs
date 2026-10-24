@@ -114,10 +114,7 @@ pub fn clause(alias: &str) -> String {
 /// parameters are [`Reader::members_json`], [`Reader::namespaces_json`] and
 /// [`Reader::granted_json`], in that order.
 pub fn item_clause(item: &str, origin: &str) -> String {
-    format!(
-        "({item}.workspace IN (SELECT value FROM json_each(?)) OR (({origin}.repo_id IS NOT NULL) AND {}))",
-        clause(origin)
-    )
+    format!("({item}.workspace IN (SELECT value FROM json_each(?)) OR (({origin}.repo_id IS NOT NULL) AND {}))", clause(origin))
 }
 
 /// A repository as the index holds it.
@@ -183,11 +180,7 @@ pub fn check(reader: &Reader, indexed: &[Indexed], readable: Option<&[Repo]>) ->
             }
             // Not readable: private now (or gone). The index learns at once,
             // so counts stop including it before its event arrives.
-            None if !row.private => verdict.corrections.push(Correction {
-                repo_id: row.repo_id.clone(),
-                private: true,
-                path: None,
-            }),
+            None if !row.private => verdict.corrections.push(Correction { repo_id: row.repo_id.clone(), private: true, path: None }),
             None => {}
         }
     }
@@ -211,11 +204,7 @@ mod tests {
     }
 
     fn row(id: &str, namespace: &str, private: bool) -> Indexed {
-        Indexed {
-            repo_id: id.into(),
-            namespace: namespace.into(),
-            private,
-        }
+        Indexed { repo_id: id.into(), namespace: namespace.into(), private }
     }
 
     fn repo(id: &str, namespace: &str, private: bool) -> Repo {
@@ -282,11 +271,7 @@ mod tests {
         assert!(reader.may_see("rep_1", "acme", true));
         // An owner reads everything, whatever the base.
         let owner = Some(User {
-            workspaces: vec![Membership {
-                role: Role::Owner,
-                base_permission: Some(BasePermission::None),
-                ..Membership::member("acme")
-            }],
+            workspaces: vec![Membership { role: Role::Owner, base_permission: Some(BasePermission::None), ..Membership::member("acme") }],
             ..User::default()
         });
         assert!(Reader::of(&owner).may_see("rep_1", "acme", true));
@@ -333,10 +318,7 @@ mod tests {
         let reader = Reader::of(&viewer(&["other"]));
         let verdict = check(&reader, &[row("rep_1", "acme", false)], Some(&[]));
         assert!(verdict.keep.is_empty());
-        assert_eq!(
-            verdict.corrections,
-            vec![Correction { repo_id: "rep_1".into(), private: true, path: None }]
-        );
+        assert_eq!(verdict.corrections, vec![Correction { repo_id: "rep_1".into(), private: true, path: None }]);
         // Signed out, the same.
         let verdict = check(&Reader::of(&None), &[row("rep_1", "acme", false)], Some(&[]));
         assert!(verdict.keep.is_empty());

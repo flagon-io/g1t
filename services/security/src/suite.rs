@@ -8,11 +8,11 @@
 //! reports; each names the workspace's owners and security managers as
 //! `notify`, and its members as `members`, those who may see findings.
 
+use g1t_contracts::advisories::AdvisoryEvent;
 use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface};
 use g1t_contracts::billing::{Feature, HasFeatureArgs};
 use g1t_contracts::events::{NewEvent, Publish};
 use g1t_contracts::identity::{ListMembersArgs, Member};
-use g1t_contracts::advisories::AdvisoryEvent;
 use g1t_contracts::security_suite::{AlertType, EVENT_TYPES, PaidFeature, SecurityEvent, SecuritySummary, needs_activation};
 use g1t_contracts::{FailureCode, Outcome, Role, User, new_id};
 use g1t_kit::now_ms;
@@ -44,12 +44,9 @@ impl Security {
     /// has it included). When billing cannot say, it is taken as not: a
     /// paid feature waits rather than running unpaid.
     pub(crate) async fn activated(&self, namespace: &str) -> bool {
-        let answer: Result<Outcome<bool>> = g1t_kit::call(
-            &self.billing,
-            "has_feature",
-            &HasFeatureArgs { workspace: namespace.to_owned(), feature: Feature::Security },
-        )
-        .await;
+        let answer: Result<Outcome<bool>> =
+            g1t_kit::call(&self.billing, "has_feature", &HasFeatureArgs { workspace: namespace.to_owned(), feature: Feature::Security })
+                .await;
         match answer {
             Ok(Outcome::Ok(on)) => on,
             Ok(Outcome::Fail(_)) => false,
@@ -140,16 +137,13 @@ impl Security {
                         .collect::<Vec<_>>()
                 );
             }
-            data["members"] = serde_json::json!(
-                members.iter().take(MAX_MEMBERS_NAMED).map(|member| member.username.clone()).collect::<Vec<_>>()
-            );
+            data["members"] =
+                serde_json::json!(members.iter().take(MAX_MEMBERS_NAMED).map(|member| member.username.clone()).collect::<Vec<_>>());
         }
         let published: Result<serde_json::Value> = g1t_kit::call(
             events,
             "publish",
-            &Publish {
-                events: vec![NewEvent { kind, source: "security", repo_id: Some(repo.repo_id.clone()), actor: actor_id, data }],
-            },
+            &Publish { events: vec![NewEvent { kind, source: "security", repo_id: Some(repo.repo_id.clone()), actor: actor_id, data }] },
         )
         .await;
         if let Err(error) = published {
@@ -158,13 +152,28 @@ impl Security {
     }
 
     /// Publishes `<type>.<action>` for one alert.
-    pub(crate) async fn alert_event(&self, alert_type: AlertType, action: &str, repo: &RepoRow, event: SecurityEvent, actor_id: Option<String>) {
+    pub(crate) async fn alert_event(
+        &self,
+        alert_type: AlertType,
+        action: &str,
+        repo: &RepoRow,
+        event: SecurityEvent,
+        actor_id: Option<String>,
+    ) {
         let kind = format!("{}.{action}", alert_type.event_prefix());
         self.publish(&kind, repo, event, actor_id).await;
     }
 
     /// Records a security decision in the workspace's audit log.
-    pub(crate) async fn audit(&self, actor: &User, action: &str, repo: Option<&RepoRow>, namespace: &str, path: Option<&str>, message: &str) {
+    pub(crate) async fn audit(
+        &self,
+        actor: &User,
+        action: &str,
+        repo: Option<&RepoRow>,
+        namespace: &str,
+        path: Option<&str>,
+        message: &str,
+    ) {
         let Some(events) = &self.events else { return };
         let entry = NewAuditEntry {
             actor: AuditActor::of(actor),

@@ -135,11 +135,20 @@ mod linux {
     static FORWARDED: Mutex<BTreeSet<u16>> = Mutex::new(BTreeSet::new());
 
     fn sudo(args: &[&str]) -> bool {
-        Command::new("sudo").arg("-n").args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success())
+        Command::new("sudo")
+            .arg("-n")
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
     }
 
     fn sudo_with_input(args: &[&str], input: &str) -> bool {
-        let Ok(mut child) = Command::new("sudo").arg("-n").args(args).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() else {
+        let Ok(mut child) =
+            Command::new("sudo").arg("-n").args(args).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()
+        else {
             return false;
         };
         if let Some(mut stdin) = child.stdin.take() {
@@ -153,7 +162,13 @@ mod linux {
     }
 
     fn group_name() -> String {
-        Command::new("id").arg("-gn").output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned()).filter(|g| !g.is_empty()).unwrap_or_else(|| "node".into())
+        Command::new("id")
+            .arg("-gn")
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
+            .filter(|g| !g.is_empty())
+            .unwrap_or_else(|| "node".into())
     }
 
     /// Sets the socket up, with no Engine behind it yet.
@@ -249,7 +264,11 @@ mod linux {
                 Ok(()) => {
                     let version = engine_version().unwrap_or_else(|| "?".into());
                     sign_in();
-                    return Ok(if vfs { format!("{version} (plain-copy storage: this disk takes no overlays, so images take more room)") } else { version });
+                    return Ok(if vfs {
+                        format!("{version} (plain-copy storage: this disk takes no overlays, so images take more room)")
+                    } else {
+                        version
+                    });
                 }
                 Err(problem) => {
                     last = problem;
@@ -347,7 +366,9 @@ mod linux {
             let listener = match TcpListener::bind(("0.0.0.0", host_port)) {
                 Ok(listener) => listener,
                 Err(error) => {
-                    super::super::note(format!("##[warning]Docker: port {host_port} could not be published for port {container_port}: {error}"));
+                    super::super::note(format!(
+                        "##[warning]Docker: port {host_port} could not be published for port {container_port}: {error}"
+                    ));
                     return;
                 }
             };

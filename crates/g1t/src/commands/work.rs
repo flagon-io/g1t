@@ -11,9 +11,9 @@ use std::collections::{BTreeSet, HashSet, VecDeque};
 use std::time::{Duration, Instant};
 
 use crate::cli::{
-    CloseReason, ItemState, OpenSubItems, ReopenArgs, WorkArgs, WorkBlockArgs, WorkClaimArgs, WorkCloseArgs, WorkCommand,
-    WorkCommentArgs, WorkDispatchArgs, WorkEditArgs, WorkEventsArgs, WorkHandoffArgs, WorkLinkArgs, WorkListArgs,
-    TaskCheckArgs, WorkNewArgs, WorkNextArgs, WorkNumber, WorkPlanArgs, WorkReleaseArgs, WorkViewArgs,
+    CloseReason, ItemState, OpenSubItems, ReopenArgs, TaskCheckArgs, WorkArgs, WorkBlockArgs, WorkClaimArgs, WorkCloseArgs, WorkCommand,
+    WorkCommentArgs, WorkDispatchArgs, WorkEditArgs, WorkEventsArgs, WorkHandoffArgs, WorkLinkArgs, WorkListArgs, WorkNewArgs,
+    WorkNextArgs, WorkNumber, WorkPlanArgs, WorkReleaseArgs, WorkViewArgs,
 };
 use crate::client::{Call, Client};
 use crate::context::Ctx;
@@ -79,7 +79,10 @@ impl Place {
     /// The repository here, or why there is none.
     fn here(&self, what: &str) -> Result<&Repo> {
         self.repo.as_ref().ok_or_else(|| {
-            Error::usage(format!("{what} needs a repository of the {} workspace: run it in one, or pass --repo OWNER/NAME.", self.workspace))
+            Error::usage(format!(
+                "{what} needs a repository of the {} workspace: run it in one, or pass --repo OWNER/NAME.",
+                self.workspace
+            ))
         })
     }
 
@@ -320,17 +323,14 @@ fn new(ctx: &Ctx, workspace: Option<&str>, args: WorkNewArgs) -> Result<()> {
     let made = if later.is_empty() {
         made
     } else {
-        let body = super::attach::with_item_attachments(&place.client, &place.workspace, number, made["body"].as_str().map(str::to_owned), later)?;
+        let body =
+            super::attach::with_item_attachments(&place.client, &place.workspace, number, made["body"].as_str().map(str::to_owned), later)?;
         place.op("update_work_item").arg("number", number).field_opt("body", body).send()?
     };
     let made = if args.assignee.is_empty() {
         made
     } else {
-        let who: Vec<Value> = args
-            .assignee
-            .iter()
-            .map(|a| super::who(ctx, &place.client, a).map(Value::String))
-            .collect::<Result<_>>()?;
+        let who: Vec<Value> = args.assignee.iter().map(|a| super::who(ctx, &place.client, a).map(Value::String)).collect::<Result<_>>()?;
         place.op("update_work_item").arg("number", number).field("assignees", Value::Array(who)).send()?
     };
     super::done(ctx, &made, &format!("Opened {}", place.name(number)), &place.url(number))
@@ -341,9 +341,7 @@ fn comment(ctx: &Ctx, workspace: Option<&str>, args: WorkCommentArgs) -> Result<
     // Images alone make a comment; without any, the text is asked for.
     let body = prompt::body(args.body.body, args.body.body_file.as_deref(), args.attach.is_empty())?;
     let body = super::attach::with_item_attachments(&place.client, &place.workspace, args.number, body, &args.attach)?;
-    let body = body
-        .filter(|b| !b.trim().is_empty())
-        .ok_or_else(|| prompt::needed("The comment", "--body, --body-file or --attach"))?;
+    let body = body.filter(|b| !b.trim().is_empty()).ok_or_else(|| prompt::needed("The comment", "--body, --body-file or --attach"))?;
     let made = place.op("add_work_item_comment").arg("number", args.number).field("body", body).send()?;
     let id = s(&made, "id").to_owned();
     super::done(ctx, &made, &format!("Commented on {}", place.name(args.number)), &format!("{}#{id}", place.url(args.number)))
@@ -393,11 +391,8 @@ fn close(ctx: &Ctx, workspace: Option<&str>, args: WorkCloseArgs) -> Result<()> 
 /// asked at a terminal, refused with what to say anywhere else.
 fn ask_about_sub_items(place: &Place, number: u64) -> Result<(Option<OpenSubItems>, Option<u64>)> {
     let found = place.op("get_work_item").arg("number", number).send()?;
-    let open: Vec<u64> = list_of(&found, "sub_items")
-        .iter()
-        .filter(|item| item["state"] == "open")
-        .filter_map(|item| item["number"].as_u64())
-        .collect();
+    let open: Vec<u64> =
+        list_of(&found, "sub_items").iter().filter(|item| item["state"] == "open").filter_map(|item| item["number"].as_u64()).collect();
     if open.is_empty() {
         return Ok((None, None));
     }
@@ -405,9 +400,7 @@ fn ask_about_sub_items(place: &Place, number: u64) -> Result<(Option<OpenSubItem
     let them = if open.len() == 1 { "1 open sub-item".to_owned() } else { format!("{} open sub-items", open.len()) };
     let said = format!("#{number} has {them} ({}).", listed.join(", "));
     if !prompt::interactive() {
-        return Err(Error::usage(format!(
-            "{said} Say what to do with them: --sub-items leave, close, or move with --move-to NUMBER."
-        )));
+        return Err(Error::usage(format!("{said} Say what to do with them: --sub-items leave, close, or move with --move-to NUMBER.")));
     }
     eprintln!("{said}");
     let choices = ["Leave them open".to_owned(), "Close them too".to_owned(), "Move them to another work item".to_owned()];
@@ -464,10 +457,8 @@ fn edit(ctx: &Ctx, workspace: Option<&str>, args: WorkEditArgs) -> Result<()> {
         call = call.field("body", b);
         changed = true;
     }
-    let touches_lists = !(args.add_label.is_empty()
-        && args.remove_label.is_empty()
-        && args.add_assignee.is_empty()
-        && args.remove_assignee.is_empty());
+    let touches_lists =
+        !(args.add_label.is_empty() && args.remove_label.is_empty() && args.add_assignee.is_empty() && args.remove_assignee.is_empty());
     if touches_lists {
         let found = place.op("get_work_item").arg("number", args.number).send()?;
         let item = found.get("item").unwrap_or(&found);
@@ -477,8 +468,7 @@ fn edit(ctx: &Ctx, workspace: Option<&str>, args: WorkEditArgs) -> Result<()> {
         }
         if !(args.add_assignee.is_empty() && args.remove_assignee.is_empty()) {
             let add: Vec<String> = args.add_assignee.iter().map(|a| super::who(ctx, &place.client, a)).collect::<Result<_>>()?;
-            let remove: Vec<String> =
-                args.remove_assignee.iter().map(|a| super::who(ctx, &place.client, a)).collect::<Result<_>>()?;
+            let remove: Vec<String> = args.remove_assignee.iter().map(|a| super::who(ctx, &place.client, a)).collect::<Result<_>>()?;
             call = call.field("assignees", json!(super::adjust(super::names(&item["assignees"]), &add, &remove)));
         }
         changed = true;
@@ -519,12 +509,8 @@ fn edit(ctx: &Ctx, workspace: Option<&str>, args: WorkEditArgs) -> Result<()> {
 fn link(ctx: &Ctx, workspace: Option<&str>, args: WorkLinkArgs) -> Result<()> {
     let place = place(ctx, workspace)?;
     let repo = place.here("Linking")?.to_string();
-    let linked = place
-        .op("link_work_item")
-        .arg("number", args.number)
-        .field("repo", repo.as_str())
-        .field("role", args.role.name())
-        .send()?;
+    let linked =
+        place.op("link_work_item").arg("number", args.number).field("repo", repo.as_str()).field("role", args.role.name()).send()?;
     super::done(ctx, &linked, &format!("Linked {repo} to {} as {}", place.name(args.number), args.role.name()), &place.url(args.number))
 }
 
@@ -699,12 +685,7 @@ pub fn print_context(out: &Output, name: &str, work: &Value) {
     if !sessions.is_empty() {
         heading(out, "Sessions");
         for session in sessions {
-            let mut line = format!(
-                "{} {} {}",
-                s(session, "id"),
-                out.state(s(session, "state")),
-                super::login_of(session)
-            );
+            let mut line = format!("{} {} {}", s(session, "id"), out.state(s(session, "state")), super::login_of(session));
             if let Some(harness) = session["harness"].as_str() {
                 line.push_str(&out.dim(&format!(" ({harness})")));
             }
@@ -843,10 +824,8 @@ fn claim(ctx: &Ctx, workspace: Option<&str>, args: WorkClaimArgs) -> Result<()> 
             println!("  {}", claim_line(out, other));
         }
     }
-    let waiting: Vec<&Value> = list_of(&found, "blocked_by")
-        .iter()
-        .filter(|b| !matches!(b["state"].as_str(), Some("closed" | "merged")))
-        .collect();
+    let waiting: Vec<&Value> =
+        list_of(&found, "blocked_by").iter().filter(|b| !matches!(b["state"].as_str(), Some("closed" | "merged"))).collect();
     if !waiting.is_empty() {
         println!("{}", out.yellow(&format!("#{number} waits on:")));
         for blocker in waiting {
@@ -858,10 +837,7 @@ fn claim(ctx: &Ctx, workspace: Option<&str>, args: WorkClaimArgs) -> Result<()> 
 
 /// The work item a claim is on: the number given, or the one it opened.
 fn claimed_number(given: Option<u64>, found: &Value) -> u64 {
-    given
-        .or_else(|| found["claim"]["item"].as_u64())
-        .or_else(|| found["item"]["number"].as_u64())
-        .unwrap_or_default()
+    given.or_else(|| found["claim"]["item"].as_u64()).or_else(|| found["item"]["number"].as_u64()).unwrap_or_default()
 }
 
 /// The time a dispatch may take: starting a Managed Agents session makes
@@ -872,9 +848,13 @@ fn dispatch(ctx: &Ctx, workspace: Option<&str>, mut args: WorkDispatchArgs) -> R
     // Neither a number nor a title: what the plan says to take next.
     if args.number.is_none() && args.title.is_none() {
         let place = coordination_place(ctx, workspace, super::QUICK)?;
-        let found = place.op("next_work_item").query_opt("repo", place.repo.as_ref().filter(|_| repo_named(ctx)).map(Repo::to_string)).send()?;
+        let found =
+            place.op("next_work_item").query_opt("repo", place.repo.as_ref().filter(|_| repo_named(ctx)).map(Repo::to_string)).send()?;
         let Some(number) = next_item(&found)["number"].as_u64() else {
-            return Err(Error::usage(format!("Nothing in {}'s plan is ready to take: give a work item's number, or --title for a new one.", place.workspace)));
+            return Err(Error::usage(format!(
+                "Nothing in {}'s plan is ready to take: give a work item's number, or --title for a new one.",
+                place.workspace
+            )));
         };
         eprintln!("Taking #{number}, next in the plan.");
         args.number = Some(number);
@@ -908,10 +888,7 @@ fn dispatch(ctx: &Ctx, workspace: Option<&str>, mut args: WorkDispatchArgs) -> R
     }
     let out = &ctx.out;
     println!("{}", s(&found, "session_url"));
-    eprintln!(
-        "Started {} on #{item} on the workspace's Anthropic account.",
-        found["session"]["id"].as_str().unwrap_or("a session")
-    );
+    eprintln!("Started {} on #{item} on the workspace's Anthropic account.", found["session"]["id"].as_str().unwrap_or("a session"));
     if let Some(url) = found["provider_session_url"].as_str() {
         eprintln!("{} {url}", out.dim("On Anthropic:"));
     }
@@ -982,7 +959,8 @@ fn plan_row(out: &Output, rank: usize, item: &Value) -> Vec<Cell> {
         _ => "",
     };
     let flags = if item["urgent"].as_bool() == Some(true) { "urgent" } else { "" };
-    let waits: Vec<String> = item["blocked_by"].as_array().into_iter().flatten().filter_map(Value::as_u64).map(|n| format!("#{n}")).collect();
+    let waits: Vec<String> =
+        item["blocked_by"].as_array().into_iter().flatten().filter_map(Value::as_u64).map(|n| format!("#{n}")).collect();
     let waits = if waits.is_empty() { String::new() } else { format!("waits on {}", waits.join(", ")) };
     vec![
         Cell::styled(rank.to_string(), out.dim(&rank.to_string())),
@@ -1007,15 +985,9 @@ fn plan(ctx: &Ctx, workspace: Option<&str>, args: WorkPlanArgs) -> Result<()> {
         }
         return print_plan(&ctx.out, &place.workspace, &found);
     };
-    let horizon = [
-        (args.now, "now"),
-        (args.next, "next"),
-        (args.later, "later"),
-        (args.set_aside, "set_aside"),
-        (args.triage, "triage"),
-    ]
-    .into_iter()
-    .find_map(|(chosen, name)| chosen.then_some(name));
+    let horizon = [(args.now, "now"), (args.next, "next"), (args.later, "later"), (args.set_aside, "set_aside"), (args.triage, "triage")]
+        .into_iter()
+        .find_map(|(chosen, name)| chosen.then_some(name));
     let urgent = if args.urgent {
         Some(true)
     } else if args.not_urgent {
@@ -1041,7 +1013,9 @@ fn plan(ctx: &Ctx, workspace: Option<&str>, args: WorkPlanArgs) -> Result<()> {
     }
     let changes = horizon.is_some() || args.before.is_some() || args.after.is_some() || args.top || urgent.is_some();
     if !changes && args.appetite.is_none() && args.budget.is_none() {
-        return Err(Error::usage("Say where to move it (--now, --next, --later, --set-aside, --triage, --before, --after, --top), or what to set (--appetite, --budget, --urgent)."));
+        return Err(Error::usage(
+            "Say where to move it (--now, --next, --later, --set-aside, --triage, --before, --after, --top), or what to set (--appetite, --budget, --urgent).",
+        ));
     }
     let updated = super::unwrap_key(call.send()?, "item");
     if ctx.out.structured() {
@@ -1119,13 +1093,17 @@ fn print_plan(out: &Output, workspace: &str, plan: &Value) -> Result<()> {
 
 fn next(ctx: &Ctx, workspace: Option<&str>, args: WorkNextArgs) -> Result<()> {
     let place = coordination_place(ctx, workspace, super::QUICK)?;
-    let found = place.op("next_work_item").query_opt("repo", place.repo.as_ref().filter(|_| repo_named(ctx)).map(Repo::to_string)).send()?;
+    let found =
+        place.op("next_work_item").query_opt("repo", place.repo.as_ref().filter(|_| repo_named(ctx)).map(Repo::to_string)).send()?;
     let item = next_item(&found).clone();
     let Some(number) = item["number"].as_u64() else {
         if ctx.out.structured() {
             return ctx.out.emit(&Value::Null);
         }
-        eprintln!("Nothing in {}'s plan is ready to take: everything in Now and Next is claimed, blocked or someone else's.", place.workspace);
+        eprintln!(
+            "Nothing in {}'s plan is ready to take: everything in Now and Next is claimed, blocked or someone else's.",
+            place.workspace
+        );
         return Ok(());
     };
     if args.claim {
@@ -1189,12 +1167,7 @@ fn handoff(ctx: &Ctx, workspace: Option<&str>, args: WorkHandoffArgs) -> Result<
 /// The active claims made from a repository's checkouts, or on work items
 /// linked to it.
 pub fn active_claims(client: &Client, repo: &Repo) -> Result<Vec<Value>> {
-    let found = client
-        .op("list_claims")
-        .arg("workspace", workspace_of(repo))
-        .query("repo", repo)
-        .query("state", "active")
-        .send()?;
+    let found = client.op("list_claims").arg("workspace", workspace_of(repo)).query("repo", repo).query("state", "active").send()?;
     Ok(super::items(found, "claims"))
 }
 
@@ -1252,12 +1225,8 @@ fn block(ctx: &Ctx, workspace: Option<&str>, args: WorkBlockArgs, add: bool) -> 
     let place = coordination_place(ctx, workspace, super::QUICK)?;
     let found = place.op("get_work_item").arg("number", args.number).send()?;
     let item = super::unwrap_key(found, "item");
-    let current: Vec<u64> = item["blocked_by"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|n| n.as_u64().or_else(|| n["number"].as_u64()))
-        .collect();
+    let current: Vec<u64> =
+        item["blocked_by"].as_array().into_iter().flatten().filter_map(|n| n.as_u64().or_else(|| n["number"].as_u64())).collect();
     let wanted = blocked_set(args.number, &current, &args.by, add)?;
     let updated = place.op("update_work_item").arg("number", args.number).field("blocked_by", json!(wanted)).send()?;
     if ctx.out.structured() {
@@ -1472,13 +1441,9 @@ fn events(ctx: &Ctx, args: WorkEventsArgs) -> Result<()> {
     // repository with none yet, the start of the log.
     let mut cursor = match &args.after {
         Some(after) => Some(after.clone()),
-        None if args.follow => Some(
-            query
-                .fetch(None, None, 1, false)?
-                .first()
-                .map(|event| s(event, "id").to_owned())
-                .unwrap_or_else(|| "evt_0".to_owned()),
-        ),
+        None if args.follow => {
+            Some(query.fetch(None, None, 1, false)?.first().map(|event| s(event, "id").to_owned()).unwrap_or_else(|| "evt_0".to_owned()))
+        }
         None => None,
     };
     let past = match &args.after {
@@ -1518,10 +1483,7 @@ fn events(ctx: &Ctx, args: WorkEventsArgs) -> Result<()> {
                 // A server that ignores `after` answers with what it has
                 // already sent, over and over.
                 if !batch.is_empty() && batch.iter().all(|event| seen.contains(s(event, "id"))) {
-                    return Err(Error::failed(format!(
-                        "{} cannot follow events: the g1t server is older than this CLI.",
-                        client.host.api
-                    )));
+                    return Err(Error::failed(format!("{} cannot follow events: the g1t server is older than this CLI.", client.host.api)));
                 }
                 for event in &batch {
                     if seen.insert(s(event, "id")) {
@@ -1600,10 +1562,7 @@ mod tests {
             "id": "evt_2", "type": "integration.failed", "time": "2026-10-12T09:01:02.345Z",
             "data": { "number": 14, "item": 12, "check": { "name": "test", "conclusion": "failure" }, "combination": [14, 15] },
         });
-        assert_eq!(
-            event_line(&out, &failed),
-            "2026-10-12 09:01:02\tintegration.failed\t#14\ttest failure with #14, #15\tevt_2"
-        );
+        assert_eq!(event_line(&out, &failed), "2026-10-12 09:01:02\tintegration.failed\t#14\ttest failure with #14, #15\tevt_2");
         let claimed = json!({
             "id": "evt_3", "type": "work.claimed", "time": "2026-10-12T09:02:00Z",
             "data": { "number": 12, "claim": { "item": 12, "note": "taking the parser" } },

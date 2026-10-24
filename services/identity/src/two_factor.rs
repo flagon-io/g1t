@@ -214,11 +214,7 @@ impl Identity {
     /// Ten new recovery codes for the account, replacing any it had.
     async fn new_recovery_codes(&self, user_id: &str) -> Result<RecoveryCodes> {
         let codes: Vec<String> = (0..RECOVERY_CODES).map(|_| new_recovery_code()).collect();
-        let mut statements = vec![
-            self.db
-                .prepare("DELETE FROM two_factor_recovery WHERE user_id = ?")
-                .bind(&[user_id.into()])?,
-        ];
+        let mut statements = vec![self.db.prepare("DELETE FROM two_factor_recovery WHERE user_id = ?").bind(&[user_id.into()])?];
         for code in &codes {
             statements.push(
                 self.db
@@ -348,12 +344,8 @@ impl Identity {
         if !self.two_factor_enabled(&a.user.id).await? {
             return Ok(Outcome::fail(FailureCode::Conflict, NOT_ON));
         }
-        let owned: Vec<String> = self
-            .requiring_workspaces(&a.user.id)
-            .await?
-            .into_iter()
-            .filter_map(|(slug, owner)| owner.then_some(slug))
-            .collect();
+        let owned: Vec<String> =
+            self.requiring_workspaces(&a.user.id).await?.into_iter().filter_map(|(slug, owner)| owner.then_some(slug)).collect();
         if !owned.is_empty() {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
@@ -392,7 +384,8 @@ impl Identity {
         }
         let codes = self.new_recovery_codes(&a.user.id).await?;
         self.log_security(&a.user.id, "recovery_codes_regenerated", None, None).await;
-        self.tell_primary_and_backup(&a.user.id, &a.user.username, "New two-factor recovery codes were made; the old ones no longer work").await;
+        self.tell_primary_and_backup(&a.user.id, &a.user.username, "New two-factor recovery codes were made; the old ones no longer work")
+            .await;
         Ok(Outcome::Ok(codes))
     }
 

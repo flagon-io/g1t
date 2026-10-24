@@ -75,11 +75,7 @@ pub struct Found {
 impl Found {
     /// The model it used most, if any.
     pub fn model(&self) -> Option<String> {
-        self.usage
-            .iter()
-            .filter(|one| !one.usage.model.is_empty())
-            .max_by_key(|one| tokens(&one.usage))
-            .map(|one| one.usage.model.clone())
+        self.usage.iter().filter(|one| !one.usage.model.is_empty()).max_by_key(|one| tokens(&one.usage)).map(|one| one.usage.model.clone())
     }
 }
 
@@ -203,22 +199,20 @@ fn log_use(harness: Harness, event: &str, own: &Attributes, resource: &Attribute
             },
             cost: cost_of(own, resource, "cost_usd").or_else(|| cost_of(own, resource, "cost_usd_micros").map(|micros| micros / 1e6)),
         }),
-        Harness::Codex if event == "codex.sse_event" => {
-            (text("event.kind") == "response.completed").then(|| {
-                let (cached, written) = (count("cached_token_count"), count("cache_write_token_count"));
-                Use {
-                    model: text("model"),
-                    usage: ModelUsage {
-                        input_tokens: count("input_token_count").saturating_sub(cached).saturating_sub(written),
-                        output_tokens: count("output_token_count"),
-                        cache_read_tokens: cached,
-                        cache_write_5m_tokens: written,
-                        ..ModelUsage::default()
-                    },
-                    cost: None,
-                }
-            })
-        }
+        Harness::Codex if event == "codex.sse_event" => (text("event.kind") == "response.completed").then(|| {
+            let (cached, written) = (count("cached_token_count"), count("cache_write_token_count"));
+            Use {
+                model: text("model"),
+                usage: ModelUsage {
+                    input_tokens: count("input_token_count").saturating_sub(cached).saturating_sub(written),
+                    output_tokens: count("output_token_count"),
+                    cache_read_tokens: cached,
+                    cache_write_5m_tokens: written,
+                    ..ModelUsage::default()
+                },
+                cost: None,
+            }
+        }),
         Harness::Codex if event == "codex.turn_cost" => {
             Some(Use { model: text("model"), usage: ModelUsage::default(), cost: Some(cost_of(own, resource, "usage.estimated_usd")?) })
         }
@@ -404,8 +398,11 @@ pub fn read_metrics(resources: &[ResourceMetrics]) -> (Vec<Found>, u64) {
                 continue;
             };
             for point in &metric.points {
-                let read = metric_use(harness, &metric.name, point.value, &point.attributes, &resource.resource)
-                    .zip(session_of(harness, &point.attributes, &resource.resource));
+                let read = metric_use(harness, &metric.name, point.value, &point.attributes, &resource.resource).zip(session_of(
+                    harness,
+                    &point.attributes,
+                    &resource.resource,
+                ));
                 let Some((one, session)) = read else {
                     unread += 1;
                     continue;
@@ -556,23 +553,27 @@ mod tests {
         let resource = attrs(&[("service.name", s("codex_cli_rs"))]);
         let shared = [("conversation.id", s("thr_1")), ("model", s("gpt-5.3-codex"))];
         let completed = LogRecord {
-            attributes: attrs(&[
-                &shared[..],
+            attributes: attrs(
                 &[
-                    ("event.name", s("codex.sse_event")),
-                    ("event.kind", s("response.completed")),
-                    ("input_token_count", AnyValue::Int(10_000)),
-                    ("cached_token_count", AnyValue::Int(8_000)),
-                    ("cache_write_token_count", AnyValue::Int(500)),
-                    ("output_token_count", AnyValue::Int(300)),
-                    ("tool_token_count", AnyValue::Int(10_300)),
-                ],
-            ]
-            .concat()),
+                    &shared[..],
+                    &[
+                        ("event.name", s("codex.sse_event")),
+                        ("event.kind", s("response.completed")),
+                        ("input_token_count", AnyValue::Int(10_000)),
+                        ("cached_token_count", AnyValue::Int(8_000)),
+                        ("cache_write_token_count", AnyValue::Int(500)),
+                        ("output_token_count", AnyValue::Int(300)),
+                        ("tool_token_count", AnyValue::Int(10_300)),
+                    ],
+                ]
+                .concat(),
+            ),
             ..LogRecord::default()
         };
         let delta = LogRecord {
-            attributes: attrs(&[&shared[..], &[("event.name", s("codex.sse_event")), ("event.kind", s("response.output_text.delta"))]].concat()),
+            attributes: attrs(
+                &[&shared[..], &[("event.name", s("codex.sse_event")), ("event.kind", s("response.output_text.delta"))]].concat(),
+            ),
             ..LogRecord::default()
         };
         let cost = LogRecord {
@@ -597,7 +598,8 @@ mod tests {
 
     #[test]
     fn cursors_requests_are_named_in_their_body_and_name_their_person() {
-        let resource = attrs(&[("service.name", s("cursor")), ("cursor.user.email", s("Ana@Example.com")), ("cursor.team.id", AnyValue::Int(7))]);
+        let resource =
+            attrs(&[("service.name", s("cursor")), ("cursor.user.email", s("Ana@Example.com")), ("cursor.team.id", AnyValue::Int(7))]);
         let request = LogRecord {
             body_name: Some("api_request".into()),
             attributes: attrs(&[
@@ -643,7 +645,11 @@ mod tests {
         let usage = &found[0].usage[0].usage;
         assert_eq!(found[0].harness, gemini());
         assert_eq!((usage.input_tokens, usage.cache_read_tokens, usage.output_tokens), (1_030, 4_000, 1_000));
-        let point = |kind: &str, value: f64| Point { value, attributes: attrs(&[("type", s(kind)), ("model", s("gemini-3-pro"))]), ..Point::default() };
+        let point = |kind: &str, value: f64| Point {
+            value,
+            attributes: attrs(&[("type", s(kind)), ("model", s("gemini-3-pro"))]),
+            ..Point::default()
+        };
         let metrics = ResourceMetrics {
             resource,
             metrics: vec![Metric {
@@ -677,10 +683,19 @@ mod tests {
             metrics: vec![
                 Metric {
                     name: "claude_code.token.usage".into(),
-                    points: vec![point(Some("input"), 10.0), point(Some("output"), 5.0), point(Some("cacheRead"), 100.0), point(Some("other"), 1.0)],
+                    points: vec![
+                        point(Some("input"), 10.0),
+                        point(Some("output"), 5.0),
+                        point(Some("cacheRead"), 100.0),
+                        point(Some("other"), 1.0),
+                    ],
                     temporality: Temporality::Delta,
                 },
-                Metric { name: "claude_code.cost.usage".into(), points: vec![point(None, 0.5), point(None, 0.25)], temporality: Temporality::Delta },
+                Metric {
+                    name: "claude_code.cost.usage".into(),
+                    points: vec![point(None, 0.5), point(None, 0.25)],
+                    temporality: Temporality::Delta,
+                },
                 Metric { name: "claude_code.session.count".into(), points: vec![point(None, 1.0)], temporality: Temporality::Delta },
             ],
         };
@@ -703,7 +718,11 @@ mod tests {
         };
         let metrics = ResourceMetrics {
             resource: resource.clone(),
-            metrics: vec![Metric { name: "gen_ai.client.token.usage".into(), points: vec![point("input", 300.0), point("output", 40.0)], temporality: Temporality::Cumulative }],
+            metrics: vec![Metric {
+                name: "gen_ai.client.token.usage".into(),
+                points: vec![point("input", 300.0), point("output", 40.0)],
+                temporality: Temporality::Cumulative,
+            }],
         };
         let (found, _) = read_metrics(&[metrics]);
         assert_eq!(found[0].harness, Harness::Copilot);
@@ -712,7 +731,11 @@ mod tests {
         // Another program's gen_ai metrics are not a harness's.
         let other = ResourceMetrics {
             resource: attrs(&[("service.name", s("my-app")), ("session.id", s("x"))]),
-            metrics: vec![Metric { name: "gen_ai.client.token.usage".into(), points: vec![point("input", 1.0)], temporality: Temporality::Delta }],
+            metrics: vec![Metric {
+                name: "gen_ai.client.token.usage".into(),
+                points: vec![point("input", 1.0)],
+                temporality: Temporality::Delta,
+            }],
         };
         let (found, unread) = read_metrics(&[other]);
         assert!(found.is_empty());

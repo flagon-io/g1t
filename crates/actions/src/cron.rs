@@ -72,15 +72,7 @@ impl Schedule {
         let (days, days_restricted) = field(day, 1, 31, &[])?;
         let (months, _) = field(month, 1, 12, &MONTHS)?;
         let (weekdays, weekdays_restricted) = field(weekday, 0, 6, &WEEKDAYS)?;
-        Ok(Schedule {
-            minutes,
-            hours,
-            days,
-            months,
-            weekdays,
-            days_restricted,
-            weekdays_restricted,
-        })
+        Ok(Schedule { minutes, hours, days, months, weekdays, days_restricted, weekdays_restricted })
     }
 
     /// Whether it fires in the minute starting at `ms` since the epoch, UTC.
@@ -220,8 +212,7 @@ mod tests {
         // Every minute of one hour: its own marks, 09:00 to 09:55, and
         // nothing after.
         let nine = Schedule::parse("* 9 * * *").unwrap();
-        let day: Vec<(u64, u64)> =
-            (0..24 * 60).filter(|&m| nine.runs_at(at(MONDAY, m / 60, m % 60))).map(|m| (m / 60, m % 60)).collect();
+        let day: Vec<(u64, u64)> = (0..24 * 60).filter(|&m| nine.runs_at(at(MONDAY, m / 60, m % 60))).map(|m| (m / 60, m % 60)).collect();
         assert_eq!(day, (0..12).map(|i| (9, i * 5)).collect::<Vec<_>>());
         assert!(!nine.runs_at(at(MONDAY, 10, 0)));
         // Every minute of Mondays: the last run is 23:55, none on Tuesday.

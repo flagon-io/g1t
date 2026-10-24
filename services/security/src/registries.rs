@@ -68,12 +68,7 @@ pub fn npm(document: &Value, name: &str) -> Package {
         })
         .collect();
     let repository = document.get("repository").and_then(|repository| repository.as_str().or_else(|| repository.get("url")?.as_str()));
-    Package {
-        releases,
-        source: repository.and_then(web_url),
-        changelog: None,
-        page: Some(format!("https://www.npmjs.com/package/{name}")),
-    }
+    Package { releases, source: repository.and_then(web_url), changelog: None, page: Some(format!("https://www.npmjs.com/package/{name}")) }
 }
 
 /// crates.io's `/api/v1/crates/<name>`: the crate and its versions.
@@ -174,10 +169,8 @@ pub fn pypi(document: &Value, name: &str) -> Package {
             if files.is_empty() {
                 return None;
             }
-            let published_ms = files
-                .iter()
-                .filter_map(|file| file.get("upload_time_iso_8601").and_then(Value::as_str).and_then(normalized_time))
-                .min();
+            let published_ms =
+                files.iter().filter_map(|file| file.get("upload_time_iso_8601").and_then(Value::as_str).and_then(normalized_time)).min();
             let withdrawn = files.iter().all(|file| file.get("yanked").and_then(Value::as_bool).unwrap_or(false));
             Some(Release { version: version.clone(), published_ms, withdrawn })
         })
@@ -185,7 +178,11 @@ pub fn pypi(document: &Value, name: &str) -> Package {
     let info = document.get("info");
     let urls = info.and_then(|info| info.get("project_urls")).and_then(Value::as_object);
     let link = |keys: &[&str]| -> Option<String> {
-        urls?.iter().find(|(key, _)| keys.iter().any(|wanted| key.eq_ignore_ascii_case(wanted))).and_then(|(_, url)| url.as_str()).map(str::to_owned)
+        urls?
+            .iter()
+            .find(|(key, _)| keys.iter().any(|wanted| key.eq_ignore_ascii_case(wanted)))
+            .and_then(|(_, url)| url.as_str())
+            .map(str::to_owned)
     };
     Package {
         releases,
@@ -207,12 +204,18 @@ pub fn simple_index(document: &Value) -> Package {
             let mine: Vec<&&Value> = files
                 .iter()
                 .filter(|file| {
-                    file.get("filename").and_then(Value::as_str).is_some_and(|name| name.contains(&format!("-{version}-")) || name.contains(&format!("-{version}.")))
+                    file.get("filename")
+                        .and_then(Value::as_str)
+                        .is_some_and(|name| name.contains(&format!("-{version}-")) || name.contains(&format!("-{version}.")))
                 })
                 .collect();
             Release {
-                published_ms: mine.iter().filter_map(|file| file.get("upload-time").and_then(Value::as_str).and_then(normalized_time)).min(),
-                withdrawn: !mine.is_empty() && mine.iter().all(|file| file.get("yanked").is_some_and(|yanked| yanked.as_bool() != Some(false))),
+                published_ms: mine
+                    .iter()
+                    .filter_map(|file| file.get("upload-time").and_then(Value::as_str).and_then(normalized_time))
+                    .min(),
+                withdrawn: !mine.is_empty()
+                    && mine.iter().all(|file| file.get("yanked").is_some_and(|yanked| yanked.as_bool() != Some(false))),
                 version,
             }
         })
@@ -308,7 +311,9 @@ mod tests {
         assert_eq!(package.releases[0].published_ms, Some(parse_rfc3339("2024-05-01T10:00:00.123Z").unwrap()));
         assert!(package.releases[1].withdrawn);
         assert_eq!(package.source.as_deref(), Some("https://github.com/serde-rs/serde"));
-        let sparse = sparse_index("{\"name\":\"x\",\"vers\":\"0.1.0\",\"yanked\":false}\n{\"name\":\"x\",\"vers\":\"0.2.0\",\"yanked\":true,\"pubtime\":\"2025-01-01T00:00:00Z\"}\n");
+        let sparse = sparse_index(
+            "{\"name\":\"x\",\"vers\":\"0.1.0\",\"yanked\":false}\n{\"name\":\"x\",\"vers\":\"0.2.0\",\"yanked\":true,\"pubtime\":\"2025-01-01T00:00:00Z\"}\n",
+        );
         assert_eq!(sparse.releases.len(), 2);
         assert!(sparse.releases[1].withdrawn && sparse.releases[1].published_ms.is_some());
         assert_eq!(sparse_path("serde"), "se/rd/serde");
@@ -324,7 +329,10 @@ mod tests {
         assert_eq!(package.releases.iter().map(|r| r.version.as_str()).collect::<Vec<_>>(), ["v0.7.0", "v0.23.0"]);
         assert_eq!(go_list("", "github.com/gin-gonic/gin/v2").source.as_deref(), Some("https://github.com/gin-gonic/gin"));
         assert_eq!(go_info_time(&json!({"Version": "v0.23.0", "Time": "2024-04-04T17:13:08Z"})), parse_rfc3339("2024-04-04T17:13:08Z"));
-        assert_eq!(package_url("gomod", "github.com/BurntSushi/toml", None).unwrap(), "https://proxy.golang.org/github.com/!burnt!sushi/toml/@v/list");
+        assert_eq!(
+            package_url("gomod", "github.com/BurntSushi/toml", None).unwrap(),
+            "https://proxy.golang.org/github.com/!burnt!sushi/toml/@v/list"
+        );
     }
 
     #[test]

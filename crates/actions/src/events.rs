@@ -251,11 +251,7 @@ pub fn account_id(login: &str) -> u64 {
 /// An id as text of a number: one that is already a number as it is,
 /// a g1t id as its [`github_id`], nothing as nothing.
 fn id_text(id: &str) -> String {
-    if id.is_empty() || id.bytes().all(|b| b.is_ascii_digit()) {
-        id.to_owned()
-    } else {
-        github_id(id).to_string()
-    }
+    if id.is_empty() || id.bytes().all(|b| b.is_ascii_digit()) { id.to_owned() } else { github_id(id).to_string() }
 }
 
 /// The owner's id in a webhook-shaped payload, `repository.owner.id`, a
@@ -395,11 +391,8 @@ mod tests {
 
     #[test]
     fn the_owners_id_comes_from_the_event() {
-        let info = RunInfo {
-            repository: "acme/web".into(),
-            event: json!({ "repository": { "owner": { "id": 42 } } }),
-            ..RunInfo::default()
-        };
+        let info =
+            RunInfo { repository: "acme/web".into(), event: json!({ "repository": { "owner": { "id": 42 } } }), ..RunInfo::default() };
         assert_eq!(info.variables("build")["GITHUB_REPOSITORY_OWNER_ID"], "42");
         assert_eq!(info.context("build", "", None)["repository_owner_id"], "42");
         assert_eq!(owner_id(&json!({ "repository": { "owner": { "id": "ws_1" } } })).as_deref(), Some("ws_1"));
@@ -413,10 +406,20 @@ mod skip_tests {
 
     #[test]
     fn a_commit_can_skip_its_runs_as_on_github() {
-        for message in ["Fix typo [skip ci]", "[ci skip] docs", "Notes [no ci]", "x [skip actions]", "[Actions Skip]", "Tidy\n\nskip-checks: true", "Tidy\n\nSigned-off-by: A <a@b>\nskip-checks:true\n"] {
+        for message in [
+            "Fix typo [skip ci]",
+            "[ci skip] docs",
+            "Notes [no ci]",
+            "x [skip actions]",
+            "[Actions Skip]",
+            "Tidy\n\nskip-checks: true",
+            "Tidy\n\nSigned-off-by: A <a@b>\nskip-checks:true\n",
+        ] {
             assert!(skips_ci(message), "{message:?}");
         }
-        for message in ["Fix the skip ci flag", "skip-checks: true", "Tidy\n\nskip-checks: false", "[skip-ci]", "Tidy\n\nskip-checks: true\n\nMore"] {
+        for message in
+            ["Fix the skip ci flag", "skip-checks: true", "Tidy\n\nskip-checks: false", "[skip-ci]", "Tidy\n\nskip-checks: true\n\nMore"]
+        {
             assert!(!skips_ci(message), "{message:?}");
         }
     }

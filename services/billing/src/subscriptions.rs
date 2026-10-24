@@ -114,7 +114,12 @@ impl Billing {
             .await?
             .and_then(|r| r.cycle_start)
             .and_then(|d| crate::cycle::anchor_of(&d));
-        let configured = self.env.var("CLOUDFLARE_BILLING_DAY").ok().and_then(|v| v.to_string().trim().parse::<u32>().ok()).filter(|d| (1..=31).contains(d));
+        let configured = self
+            .env
+            .var("CLOUDFLARE_BILLING_DAY")
+            .ok()
+            .and_then(|v| v.to_string().trim().parse::<u32>().ok())
+            .filter(|d| (1..=31).contains(d));
         Ok(read.or(configured).unwrap_or(crate::cycle::DEFAULT_ANCHOR))
     }
 
@@ -126,11 +131,8 @@ impl Billing {
             detail: String,
             read_at: String,
         }
-        let row = self
-            .db
-            .prepare("SELECT monthly_micros, detail, read_at FROM cf_subscriptions WHERE id = 'current'")
-            .first::<Row>(None)
-            .await?;
+        let row =
+            self.db.prepare("SELECT monthly_micros, detail, read_at FROM cf_subscriptions WHERE id = 'current'").first::<Row>(None).await?;
         Ok(match row {
             Some(row) => Fixed {
                 monthly_micros: row.monthly_micros,

@@ -15,8 +15,8 @@ use worker::wasm_bindgen::JsValue;
 
 use super::labels::Labeled;
 use super::rows::{ITEM_COLUMNS, ItemRow, workspace_of};
-use crate::rows::{PULL_COLUMNS, PullRow};
 use crate::Work;
+use crate::rows::{PULL_COLUMNS, PullRow};
 
 macro_rules! check {
     ($outcome:expr) => {
@@ -227,10 +227,7 @@ impl Work {
                 .first::<crate::rows::NumberRow>(None)
                 .await?;
             if clash.is_some() {
-                return Ok(Outcome::fail(
-                    FailureCode::Conflict,
-                    format!("A milestone named {title} already exists."),
-                ));
+                return Ok(Outcome::fail(FailureCode::Conflict, format!("A milestone named {title} already exists.")));
             }
         }
         let now = rfc3339(now_ms());
@@ -312,9 +309,7 @@ impl Work {
             .batch(vec![
                 self.db.prepare("DELETE FROM milestones WHERE workspace = ?1 AND number = ?2").bind(&key)?,
                 self.db.prepare("UPDATE work_items SET milestone = NULL WHERE workspace = ?1 AND milestone = ?2").bind(&key)?,
-                self.db
-                    .prepare(format!("UPDATE pulls SET milestone = NULL WHERE {WORKSPACE_PULLS} AND milestone = ?2"))
-                    .bind(&key)?,
+                self.db.prepare(format!("UPDATE pulls SET milestone = NULL WHERE {WORKSPACE_PULLS} AND milestone = ?2")).bind(&key)?,
             ])
             .await?;
         Ok(Outcome::Ok(true))
@@ -360,12 +355,10 @@ impl Work {
             let milestone = Some(milestone);
             match labeled {
                 Labeled::Item(held) => {
-                    self.publish_item(labeled.kind(what), held, Some(actor), WorkItemEvent { milestone, ..Self::item_event(held) })
-                        .await?;
+                    self.publish_item(labeled.kind(what), held, Some(actor), WorkItemEvent { milestone, ..Self::item_event(held) }).await?;
                 }
                 Labeled::Pull(repo, pull) => {
-                    self.publish(labeled.kind(what), &repo.id, actor, PullEvent { milestone, ..Self::pull_event(pull) })
-                        .await?;
+                    self.publish(labeled.kind(what), &repo.id, actor, PullEvent { milestone, ..Self::pull_event(pull) }).await?;
                 }
             }
         }
@@ -384,10 +377,7 @@ mod tests {
     #[test]
     fn moving_between_milestones_is_said_once() {
         assert_eq!(milestone_note(None, Some(&named(1, "Launch"))).as_deref(), Some("added this to the Launch milestone"));
-        assert_eq!(
-            milestone_note(Some(&named(1, "Launch")), None).as_deref(),
-            Some("removed this from the Launch milestone")
-        );
+        assert_eq!(milestone_note(Some(&named(1, "Launch")), None).as_deref(), Some("removed this from the Launch milestone"));
         assert_eq!(
             milestone_note(Some(&named(1, "Launch")), Some(&named(2, "1.1"))).as_deref(),
             Some("moved this from the Launch milestone to 1.1")

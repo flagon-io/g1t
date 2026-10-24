@@ -70,9 +70,9 @@ mod setup;
 use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::process::{Child, Stdio};
-use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
@@ -276,8 +276,15 @@ enum Ask {
     Check,
     /// What a look at the releases found.
     Checked(Result<Found, Fault>),
-    Token { workspace: String, token: String },
-    Refused { workspace: String, allowed: bool, why: String },
+    Token {
+        workspace: String,
+        token: String,
+    },
+    Refused {
+        workspace: String,
+        allowed: bool,
+        why: String,
+    },
     /// A line of the runner's output, or the launcher's; true from its standard output.
     Line(u64, String, bool),
     Exited(u64),
@@ -467,7 +474,11 @@ fn facts(app: &AppHandle, now: &Now) -> Facts {
         held: !settings.runner || *app.state::<Shared>().paused.held(),
         update: update_facts(app, now, backend),
         setup: SetUp {
-            needs: now.sandbox.as_ref().map(|status| setup::needs(status, |kind| settings.runner_capabilities.on(kind))).unwrap_or_default(),
+            needs: now
+                .sandbox
+                .as_ref()
+                .map(|status| setup::needs(status, |kind| settings.runner_capabilities.on(kind)))
+                .unwrap_or_default(),
             ..app.state::<Shared>().setup.held().clone()
         },
         qemu_install: qemu_install(),
@@ -588,7 +599,14 @@ pub fn set_share(app: &AppHandle, cpus: u32, memory_mib: u64) -> Result<(), Stri
     if config::settings(app).runner_backend != Backend::Sandboxed {
         return Err("The share is the sandbox's: choose Sandboxed to set it.".into());
     }
-    let settable = app.state::<Shared>().now.held().sandbox.as_ref().and_then(|status| status.sizes.as_ref()).is_some_and(|sizes| sizes["share_settable"] == true);
+    let settable = app
+        .state::<Shared>()
+        .now
+        .held()
+        .sandbox
+        .as_ref()
+        .and_then(|status| status.sizes.as_ref())
+        .is_some_and(|sizes| sizes["share_settable"] == true);
     if !settable {
         return Err("This g1t-runner can't change the sandbox's share yet: it does once it updates.".into());
     }
@@ -657,7 +675,11 @@ fn supervise(app: AppHandle, tx: Sender<Ask>, rx: Receiver<Ask>) {
         match catch_unwind(AssertUnwindSafe(|| keeper.keep(&rx, asks))) {
             Ok(()) => return,
             Err(panic) => {
-                let why = panic.downcast_ref::<&str>().map(|s| (*s).to_owned()).or_else(|| panic.downcast_ref::<String>().cloned()).unwrap_or_default();
+                let why = panic
+                    .downcast_ref::<&str>()
+                    .map(|s| (*s).to_owned())
+                    .or_else(|| panic.downcast_ref::<String>().cloned())
+                    .unwrap_or_default();
                 eprintln!("g1t: the runner's thread failed ({why}); starting it again in {}s", AFTER_PANIC.as_secs());
                 // Asks that come meanwhile wait for the next keeper; Quit ends it all.
                 let until = Instant::now() + AFTER_PANIC;
@@ -875,7 +897,10 @@ fn copy(text: &str) -> Result<(), String> {
         &[("wl-copy", &[]), ("xclip", &["-selection", "clipboard"]), ("xsel", &["--clipboard", "--input"])]
     };
     for (program, args) in tools {
-        let Ok(mut child) = backend::quiet(program).args(*args).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() else { continue };
+        let Ok(mut child) = backend::quiet(program).args(*args).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()
+        else {
+            continue;
+        };
         if let Some(mut input) = child.stdin.take() {
             let _ = input.write_all(text.as_bytes());
         }
@@ -1339,13 +1364,21 @@ impl Keeper {
                 let tx = self.tx.clone();
                 let binary = native::binary(&folder(&self.app));
                 let dir = native_dir(&self.app, Backend::Sandboxed);
-                self.write_log(&format!("g1t: Linux jobs' sizes: {}.", list.as_deref().map_or("picked for this computer".to_owned(), |l| if l.is_empty() { "none".to_owned() } else { l.to_owned() })));
+                self.write_log(&format!(
+                    "g1t: Linux jobs' sizes: {}.",
+                    list.as_deref().map_or("picked for this computer".to_owned(), |l| if l.is_empty() {
+                        "none".to_owned()
+                    } else {
+                        l.to_owned()
+                    })
+                ));
                 // It waits for a running job before starting Linux jobs again with them.
                 let spawned = std::thread::Builder::new().name("g1t-sandbox-sizes".into()).spawn(move || {
                     let _ = tx.send(Ask::SizesDone(launcher::sizes(&binary, &dir, list.as_deref()).map(Box::new)));
                 });
                 if spawned.is_err() {
-                    *self.app.state::<Shared>().sizes.held() = SizesChange { saving: false, error: Some("g1t couldn't change the sizes: try again.".into()) };
+                    *self.app.state::<Shared>().sizes.held() =
+                        SizesChange { saving: false, error: Some("g1t couldn't change the sizes: try again.".into()) };
                     publish(&self.app);
                 }
             }
@@ -1359,7 +1392,8 @@ impl Keeper {
                     let _ = tx.send(Ask::SizesDone(launcher::share(&binary, &dir, cpus, memory_mib).map(Box::new)));
                 });
                 if spawned.is_err() {
-                    *self.app.state::<Shared>().sizes.held() = SizesChange { saving: false, error: Some("g1t couldn't change the share: try again.".into()) };
+                    *self.app.state::<Shared>().sizes.held() =
+                        SizesChange { saving: false, error: Some("g1t couldn't change the share: try again.".into()) };
                     publish(&self.app);
                 }
             }
@@ -1419,7 +1453,9 @@ impl Keeper {
         let failed = match outcome {
             setup::Outcome::Done | setup::Outcome::Restart => None,
             setup::Outcome::Declined => Some("you said No to Windows' prompt, so nothing changed.".to_owned()),
-            setup::Outcome::Failed(why) => Some(lines.iter().rev().find_map(|l| l.strip_prefix("g1t setup: Failed: ")).map_or(why, str::to_owned)),
+            setup::Outcome::Failed(why) => {
+                Some(lines.iter().rev().find_map(|l| l.strip_prefix("g1t setup: Failed: ")).map_or(why, str::to_owned))
+            }
         };
         if let Some(why) = &failed {
             self.write_log(&format!("g1t: Set up didn't finish: {why}"));
@@ -1709,7 +1745,8 @@ impl Keeper {
         }
         let server = config::server(&app);
         let registration = Registration::load(&app);
-        let ours = registration.as_ref().is_some_and(|r| r.server == server.as_str() && r.workspace == workspace && r.backend == backend) && self.kept(backend);
+        let ours = registration.as_ref().is_some_and(|r| r.server == server.as_str() && r.workspace == workspace && r.backend == backend)
+            && self.kept(backend);
         let mut token = None;
         if !ours {
             if registration.is_some() {
@@ -1730,9 +1767,11 @@ impl Keeper {
             Ok(binary) => binary,
             Err(fault) => return self.not_installed(workspace, token, fault),
         };
-        let started = native::spawn(&binary, &native_dir(&app, backend), &envs).map_err(|e| format!("g1t-runner could not start: {e}")).inspect(|child| {
-            let _ = std::fs::write(folder(&app).join("pid"), child.id().to_string());
-        });
+        let started = native::spawn(&binary, &native_dir(&app, backend), &envs)
+            .map_err(|e| format!("g1t-runner could not start: {e}"))
+            .inspect(|child| {
+                let _ = std::fs::write(folder(&app).join("pid"), child.id().to_string());
+            });
         match started {
             Ok(mut child) => {
                 self.follow(generation, &mut child);
@@ -1890,7 +1929,8 @@ impl Keeper {
             && found.images
             && sandbox.is_some_and(|status| {
                 status.linux().state != State::Absent
-                    && (status.image_behind(&found.version, found.sandbox.as_ref(), native::arch()) || (program && status.made_from.is_none()))
+                    && (status.image_behind(&found.version, found.sandbox.as_ref(), native::arch())
+                        || (program && status.made_from.is_none()))
             });
         self.with_updates(|updates| {
             updates.checked_at = Some(SystemTime::now());
@@ -2103,7 +2143,8 @@ impl Keeper {
         self.hold_workspace(&workspace);
         let generation = self.generation + 1;
         self.generation = generation;
-        self.run = Some(Run::new(generation, Engine::Launcher, Backend::Sandboxed, workspace.clone(), Process::Sandbox(None), token.is_some()));
+        self.run =
+            Some(Run::new(generation, Engine::Launcher, Backend::Sandboxed, workspace.clone(), Process::Sandbox(None), token.is_some()));
         // A new release's image first, then the sandbox starts again.
         let image = self.with_updates(|updates| std::mem::take(&mut updates.image));
         let step = if image && status.linux().state != State::Absent { Step::Update } else { Step::Up };
@@ -2114,7 +2155,13 @@ impl Keeper {
         }
         let name = backend::machine_name();
         let url = server.as_str().trim_end_matches('/').to_owned();
-        let up = launcher::Up { url: &url, name: &name, labels: "desktop", token: token.as_deref(), only: wanted.iter().map(String::as_str).collect() };
+        let up = launcher::Up {
+            url: &url,
+            name: &name,
+            labels: "desktop",
+            token: token.as_deref(),
+            only: wanted.iter().map(String::as_str).collect(),
+        };
         let (args, starting) = match step {
             Step::Update => (launcher::update_args(&dir), vec![]),
             _ => (launcher::up_args(&dir, &up), wanted.clone()),
@@ -2180,7 +2227,10 @@ impl Keeper {
         let now = Instant::now();
         for capability in &status.capabilities {
             let id = capability.id.as_str();
-            let wanting = on.on(id) && !capability.off() && capability.available && matches!(capability.state, State::Error | State::Stopped | State::Absent);
+            let wanting = on.on(id)
+                && !capability.off()
+                && capability.available
+                && matches!(capability.state, State::Error | State::Stopped | State::Absent);
             if !wanting {
                 self.retry.retain(|(kind, _, _)| kind != id);
                 continue;
@@ -2232,7 +2282,11 @@ impl Keeper {
                 (launcher::up_args(&dir, &up), vec![kind.clone()], format!("starting {}", diagnosis::kind_label(kind)))
             }
             Step::Stop(kind) => (launcher::down_only_args(&dir, kind), vec![], format!("stopping {}", diagnosis::kind_label(kind))),
-            Step::Drain(kind) => (launcher::drain_only_args(&dir, kind), vec![], format!("stopping {} after their job, to update g1t-runner", diagnosis::kind_label(kind))),
+            Step::Drain(kind) => (
+                launcher::drain_only_args(&dir, kind),
+                vec![],
+                format!("stopping {} after their job, to update g1t-runner", diagnosis::kind_label(kind)),
+            ),
             Step::Up | Step::Update => return,
         };
         self.write_log(&format!("g1t: {said}."));
@@ -2357,7 +2411,9 @@ impl Keeper {
         self.seen(&status);
         match &step {
             Some(Step::Up) => return self.set(Code::Starting, detail(STARTING_SANDBOX)),
-            Some(Step::Update) if status.state == State::Updating => return self.set(Code::Updating, detail("Updating the sandbox to the newest image.")),
+            Some(Step::Update) if status.state == State::Updating => {
+                return self.set(Code::Updating, detail("Updating the sandbox to the newest image."));
+            }
             _ => {}
         }
         let (code, extra) = shown(&status);
@@ -2392,7 +2448,10 @@ impl Keeper {
         let wait = if code == Code::WaitingForImage { launcher::IMAGES_AGAIN } else { again(false, self.failures) };
         self.not_before = Instant::now() + wait;
         let (code, extra) = match code {
-            Code::Idle | Code::Busy | Code::Starting | Code::Updating => (Code::SandboxFailed, Extra { detail: status.error.clone().or_else(|| some_text("The sandbox stopped by itself.")), ..Extra::default() }),
+            Code::Idle | Code::Busy | Code::Starting | Code::Updating => (
+                Code::SandboxFailed,
+                Extra { detail: status.error.clone().or_else(|| some_text("The sandbox stopped by itself.")), ..Extra::default() },
+            ),
             code => (code, extra),
         };
         self.set(code, Extra { wait_seconds: Some(wait.as_secs()), ..extra });
@@ -2472,8 +2531,13 @@ impl Keeper {
             let app = self.app.clone();
             if let Some(run) = self.run.as_mut() {
                 run.with_token = false;
-                let registration = Registration { server: config::server(&app).to_string(), workspace: run.workspace.clone(), backend: Backend::Sandboxed };
-                SandboxRegistration { server: registration.server.clone(), workspace: registration.workspace.clone(), registered: true }.save(&app);
+                let registration = Registration {
+                    server: config::server(&app).to_string(),
+                    workspace: run.workspace.clone(),
+                    backend: Backend::Sandboxed,
+                };
+                SandboxRegistration { server: registration.server.clone(), workspace: registration.workspace.clone(), registered: true }
+                    .save(&app);
                 registration.save(&app);
             }
         }
@@ -2537,7 +2601,8 @@ fn going_words(going: Going) -> &'static str {
 const TAKING_UP: &str = "Taking up the sandbox, which kept running while g1t was closed.";
 
 /// What the tray says while the sandbox starts.
-const STARTING_SANDBOX: &str = "Starting the sandbox. The first time, it downloads and checks the sandbox's image, which takes a few minutes.";
+const STARTING_SANDBOX: &str =
+    "Starting the sandbox. The first time, it downloads and checks the sandbox's image, which takes a few minutes.";
 
 /// The newest release, signed, and its program when it replaces the one
 /// in `folder` (native::takes) and isn't already `waiting` (by its
@@ -2616,7 +2681,13 @@ mod tests {
     use super::*;
 
     fn view(code: Code, job: Option<&str>) -> View {
-        let facts = Facts { workspace: Some("acme".into()), backend: "sandboxed", machine: "box".into(), job: job.map(str::to_owned), ..Facts::default() };
+        let facts = Facts {
+            workspace: Some("acme".into()),
+            backend: "sandboxed",
+            machine: "box".into(),
+            job: job.map(str::to_owned),
+            ..Facts::default()
+        };
         let diagnosed = diagnosis::diagnose(code, &facts);
         View {
             chip: diagnosis::chip(&diagnosed),
@@ -2665,7 +2736,9 @@ mod tests {
 
     #[test]
     fn the_sandbox_shows_what_its_runners_do_and_linux_trouble_first() {
-        let running = status(r#"{"schema":1,"state":"running","capabilities":[{"id":"linux","available":true,"state":"running"},{"id":"windows","available":false,"state":"absent","cause":"Windows Sandbox is not turned on, or this edition of Windows has none (Home does not)."}]}"#);
+        let running = status(
+            r#"{"schema":1,"state":"running","capabilities":[{"id":"linux","available":true,"state":"running"},{"id":"windows","available":false,"state":"absent","cause":"Windows Sandbox is not turned on, or this edition of Windows has none (Home does not)."}]}"#,
+        );
         assert_eq!(shown(&running).0, Code::Idle);
         let busy = status(r#"{"schema":1,"state":"running","job":{"kind":"workflow","id":"j","name":"build","repo":"acme/web"}}"#);
         assert_eq!(shown(&busy).0, Code::Busy);
@@ -2675,28 +2748,40 @@ mod tests {
         assert_eq!(shown(&updating).0, Code::Updating);
         // Windows jobs run while WSL is missing: the runner waits for jobs,
         // and the Linux card says what is wrong (diagnosis.rs).
-        let no_wsl = status(r#"{"schema":1,"state":"error","error":"WSL is not installed, and the sandbox for Linux jobs is a WSL distribution of its own.","capabilities":[
+        let no_wsl = status(
+            r#"{"schema":1,"state":"error","error":"WSL is not installed, and the sandbox for Linux jobs is a WSL distribution of its own.","capabilities":[
             {"id":"linux","available":false,"state":"error","cause":"WSL is not installed, and the sandbox for Linux jobs is a WSL distribution of its own.","fix":"Open a terminal as administrator and run `wsl --install --no-distribution`."},
-            {"id":"windows","available":true,"state":"running"}]}"#);
+            {"id":"windows","available":true,"state":"running"}]}"#,
+        );
         assert_eq!(shown(&no_wsl).0, Code::Idle);
-        let (code, extra) = shown(&status(r#"{"schema":1,"state":"error","error":"WSL is not installed, and the sandbox for Linux jobs is a WSL distribution of its own.","capabilities":[
+        let (code, extra) = shown(&status(
+            r#"{"schema":1,"state":"error","error":"WSL is not installed, and the sandbox for Linux jobs is a WSL distribution of its own.","capabilities":[
             {"id":"linux","available":false,"state":"error","cause":"WSL is not installed, and the sandbox for Linux jobs is a WSL distribution of its own."},
-            {"id":"windows","available":false,"state":"absent"}]}"#));
+            {"id":"windows","available":false,"state":"absent"}]}"#,
+        ));
         assert_eq!(code, Code::NoWsl);
         assert!(extra.detail.unwrap().starts_with("WSL is not installed"));
         // 0.3.0 without its images, on Home: waiting for them, not failing.
-        let images = status(r#"{"schema":1,"state":"error","error":"release 0.3.0 has no sandbox images","capabilities":[{"id":"linux","available":true,"state":"error","turned_off":false},{"id":"windows","available":false,"state":"absent","turned_off":false}]}"#);
+        let images = status(
+            r#"{"schema":1,"state":"error","error":"release 0.3.0 has no sandbox images","capabilities":[{"id":"linux","available":true,"state":"error","turned_off":false},{"id":"windows","available":false,"state":"absent","turned_off":false}]}"#,
+        );
         assert_eq!(shown(&images).0, Code::WaitingForImage);
         assert_eq!(again(true, 5), launcher::IMAGES_AGAIN);
         assert_eq!(again(false, 1), Duration::from_secs(30));
         assert_eq!(again(false, 9), MOST_BACKOFF);
         // Every kind of job stopped by the person.
-        let off = status(r#"{"schema":1,"state":"stopped","capabilities":[{"id":"linux","available":true,"state":"stopped","turned_off":true},{"id":"windows","available":true,"state":"stopped","turned_off":true}]}"#);
+        let off = status(
+            r#"{"schema":1,"state":"stopped","capabilities":[{"id":"linux","available":true,"state":"stopped","turned_off":true},{"id":"windows","available":true,"state":"stopped","turned_off":true}]}"#,
+        );
         assert_eq!(shown(&off).0, Code::KindsStopped);
-        let failed = status(r#"{"schema":1,"state":"error","error":"the sandbox did not start within 180 seconds","capabilities":[{"id":"linux","available":true,"state":"error"}]}"#);
+        let failed = status(
+            r#"{"schema":1,"state":"error","error":"the sandbox did not start within 180 seconds","capabilities":[{"id":"linux","available":true,"state":"error"}]}"#,
+        );
         let (code, extra) = shown(&failed);
         assert_eq!((code, extra.detail.as_deref()), (Code::SandboxFailed, Some("the sandbox did not start within 180 seconds")));
-        let stopped = status(r#"{"schema":1,"state":"stopped","capabilities":[{"id":"linux","available":true,"state":"stopped"},{"id":"windows","available":true,"state":"stopped"}]}"#);
+        let stopped = status(
+            r#"{"schema":1,"state":"stopped","capabilities":[{"id":"linux","available":true,"state":"stopped"},{"id":"windows","available":true,"state":"stopped"}]}"#,
+        );
         assert_eq!(shown(&stopped).0, Code::SandboxFailed);
     }
 
@@ -2729,7 +2814,9 @@ mod tests {
     fn an_update_drains_only_what_runs_on_the_program() {
         let kinds = |json: &str| native_kinds(&status(json)).iter().map(|c| c.id.clone()).collect::<Vec<_>>();
         assert_eq!(
-            kinds(r#"{"schema":1,"state":"running","capabilities":[{"id":"linux","available":true,"state":"running","turned_off":false},{"id":"windows","available":true,"state":"running","turned_off":false}]}"#),
+            kinds(
+                r#"{"schema":1,"state":"running","capabilities":[{"id":"linux","available":true,"state":"running","turned_off":false},{"id":"windows","available":true,"state":"running","turned_off":false}]}"#
+            ),
             ["windows"]
         );
         assert!(kinds(r#"{"schema":1,"state":"running","capabilities":[{"id":"linux","available":true,"state":"running","turned_off":false},{"id":"windows","available":true,"state":"stopped","turned_off":true}]}"#).is_empty());

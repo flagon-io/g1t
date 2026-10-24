@@ -6,14 +6,14 @@
 
 pub mod about;
 pub mod access;
-pub mod advisories;
-pub mod attachments;
-pub mod agent_sessions;
-pub mod ai;
 pub mod account_deletion;
 pub mod accounts;
 pub mod actions;
+pub mod advisories;
+pub mod agent_sessions;
 pub mod agents;
+pub mod ai;
+pub mod attachments;
 pub mod audit;
 pub mod backups;
 pub mod billing;
@@ -29,12 +29,12 @@ pub mod folios;
 pub mod github;
 pub mod guardrails;
 pub mod identity;
+mod ids;
 pub mod inbox;
-pub mod live;
 pub mod integrations;
+pub mod live;
 pub mod members;
 pub mod model_prices;
-mod ids;
 mod names;
 mod outcome;
 pub mod packages;
@@ -46,10 +46,10 @@ pub mod runners;
 pub mod scopes;
 pub mod search;
 pub mod security;
-pub mod teams;
 pub mod security_suite;
 pub mod sso;
 pub mod subscribers;
+pub mod teams;
 pub mod time;
 pub mod tokens;
 pub mod updates;
@@ -58,8 +58,8 @@ pub mod work;
 
 pub use ids::{id_floor, new_id};
 pub use names::{
-    Username, aliasable_name, claimable_namespace, is_action_owner_name, is_claimable_name, claimable_username, is_namespace_shaped, is_reserved_name, is_route_name,
-    is_valid_namespace, is_valid_repo_name,
+    Username, aliasable_name, claimable_namespace, claimable_username, is_action_owner_name, is_claimable_name, is_namespace_shaped,
+    is_reserved_name, is_route_name, is_valid_namespace, is_valid_repo_name,
 };
 pub use outcome::{Failure, FailureCode, Outcome};
 
@@ -257,10 +257,7 @@ impl User {
     }
 
     pub fn role_in(&self, slug: &str) -> Option<Role> {
-        self.workspaces
-            .iter()
-            .find(|membership| membership.slug == slug)
-            .map(|membership| membership.role)
+        self.workspaces.iter().find(|membership| membership.slug == slug).map(|membership| membership.role)
     }
 
     pub fn is_member(&self, slug: &str) -> bool {
@@ -274,8 +271,7 @@ impl User {
 
     /// Whether this is a person who owns `slug`, or holds `role` in it.
     pub fn owns_or_has(&self, slug: &str, role: OrgRole) -> bool {
-        self.membership(slug)
-            .is_some_and(|membership| membership.role == Role::Owner || membership.has(role))
+        self.membership(slug).is_some_and(|membership| membership.role == Role::Owner || membership.has(role))
     }
 
     /// Whether the user may manage `slug`'s billing: an owner or a billing

@@ -121,10 +121,7 @@ impl TargetOf {
         TargetOf {
             workspace: row.workspace.clone(),
             name: row.name.clone(),
-            repo: row
-                .repo_id
-                .as_ref()
-                .map(|id| (id.clone(), row.repo_name.clone().unwrap_or_default(), !row.public())),
+            repo: row.repo_id.as_ref().map(|id| (id.clone(), row.repo_name.clone().unwrap_or_default(), !row.public())),
             public: row.public(),
             package_id: Some(row.id.clone()),
             inherit: row.inherits(),
@@ -273,10 +270,7 @@ impl Packages {
         let found: Outcome<Repo> = g1t_kit::call(
             &self.repos,
             "get",
-            &GetArgs {
-                path: RepoPath { namespace: workspace.to_owned(), name: name.to_owned() },
-                viewer: Some(User::system(workspace)),
-            },
+            &GetArgs { path: RepoPath { namespace: workspace.to_owned(), name: name.to_owned() }, viewer: Some(User::system(workspace)) },
         )
         .await?;
         Ok(found.into_result().ok().filter(|repo| repo.fork_of.is_none()))
@@ -305,12 +299,8 @@ impl Packages {
             return Some((allowance, true));
         }
         let billing = self.env.service("BILLING").ok()?;
-        let asked: Result<quota::Allowance> = g1t_kit::call(
-            &billing,
-            "entitlements",
-            &g1t_contracts::billing::EntitlementsArgs { workspace: workspace.to_owned() },
-        )
-        .await;
+        let asked: Result<quota::Allowance> =
+            g1t_kit::call(&billing, "entitlements", &g1t_contracts::billing::EntitlementsArgs { workspace: workspace.to_owned() }).await;
         match asked {
             Ok(allowance) => {
                 ALLOWANCES.with(|kept| kept.borrow_mut().insert(workspace.to_owned(), (allowance, now)));
@@ -333,11 +323,8 @@ impl Packages {
         let digests: Vec<String> = files.iter().map(|(digest, _)| digest.clone()).collect();
         let held = self.db.held(&package.workspace, &digests).await?;
         let mut seen = std::collections::HashSet::new();
-        let adding: u64 = files
-            .iter()
-            .filter(|(digest, _)| !held.contains(digest) && seen.insert(digest.clone()))
-            .map(|(_, size)| size)
-            .sum();
+        let adding: u64 =
+            files.iter().filter(|(digest, _)| !held.contains(digest) && seen.insert(digest.clone())).map(|(_, size)| size).sum();
         if adding == 0 {
             return Ok(None);
         }
@@ -494,18 +481,11 @@ impl Packages {
 
     async fn list_packages(&self, a: ListPackagesArgs) -> Result<Outcome<Vec<PackageSummary>>> {
         let workspace = a.workspace.to_lowercase();
-        let rows = self
-            .db
-            .list(&workspace, a.ecosystem.map(Ecosystem::as_str), a.repo_id.as_deref(), a.query.as_deref(), LIST_LIMIT)
-            .await?;
+        let rows =
+            self.db.list(&workspace, a.ecosystem.map(Ecosystem::as_str), a.repo_id.as_deref(), a.query.as_deref(), LIST_LIMIT).await?;
         let packages: Vec<&PackageRow> = rows.iter().map(|row| &row.package).collect();
         let may = self.may_all(a.viewer.as_ref(), &packages, Action::Pull).await?;
-        let visible = rows
-            .iter()
-            .zip(may)
-            .filter(|(_, may)| *may)
-            .map(|(row, _)| self.summary(row))
-            .collect();
+        let visible = rows.iter().zip(may).filter(|(_, may)| *may).map(|(row, _)| self.summary(row)).collect();
         Ok(Outcome::Ok(visible))
     }
 
@@ -539,16 +519,20 @@ impl Packages {
             readme,
             package: self.summary(&row),
             versions,
-            tags: tags
-                .into_iter()
-                .map(|tag| PackageTag { tag: tag.tag, digest: tag.digest, updated_at: tag.updated_at })
-                .collect(),
+            tags: tags.into_iter().map(|tag| PackageTag { tag: tag.tag, digest: tag.digest, updated_at: tag.updated_at }).collect(),
             permissions,
         }))
     }
 
     /// The package `actor` asks to change, if they may `action` it.
-    pub(crate) async fn for_change(&self, actor: &User, workspace: &str, ecosystem: Ecosystem, name: &str, action: Action) -> Result<Outcome<PackageRow>> {
+    pub(crate) async fn for_change(
+        &self,
+        actor: &User,
+        workspace: &str,
+        ecosystem: Ecosystem,
+        name: &str,
+        action: Action,
+    ) -> Result<Outcome<PackageRow>> {
         let Some(package) = self.db.package(&workspace.to_lowercase(), ecosystem.as_str(), name).await?.filter(|p| !p.hidden()) else {
             return Ok(not_found());
         };
@@ -645,7 +629,8 @@ impl Packages {
         if a.unlink {
             if let Some(name) = package.repo_name.as_deref() {
                 self.db.set_link(&package.id, None, "private", now).await?;
-                self.audit_with(&caller, "package.unlinked", &package, None, a.surface, Some(format!("Unlinked from {}", path(name)))).await;
+                self.audit_with(&caller, "package.unlinked", &package, None, a.surface, Some(format!("Unlinked from {}", path(name))))
+                    .await;
             }
         } else if let Some(link) = a.link.as_deref() {
             let link = link.trim().trim_end_matches(".git");
@@ -674,7 +659,8 @@ impl Packages {
             if package.repo_id.as_deref() != Some(repo.id.as_str()) {
                 let visibility = if repo.is_private { "private" } else { "public" };
                 self.db.set_link(&package.id, Some((&repo.id, &repo.name)), visibility, now).await?;
-                self.audit_with(&caller, "package.linked", &package, None, a.surface, Some(format!("Linked to {}", path(&repo.name)))).await;
+                self.audit_with(&caller, "package.linked", &package, None, a.surface, Some(format!("Linked to {}", path(&repo.name))))
+                    .await;
             }
         }
         if let Some(visibility) = a.visibility
@@ -772,11 +758,16 @@ impl Packages {
             Some(WorkspaceMark::Show { workspace }) => return self.db.mark_workspace(&workspace, None).await,
             None => {}
         }
-        if g1t_kit::rename::on_event(env, db, event, &[
-            "UPDATE packages SET workspace = ?1 WHERE workspace = ?2",
-            "UPDATE uploads SET workspace = ?1 WHERE workspace = ?2",
-            "UPDATE workspace_blobs SET workspace = ?1 WHERE workspace = ?2",
-        ])
+        if g1t_kit::rename::on_event(
+            env,
+            db,
+            event,
+            &[
+                "UPDATE packages SET workspace = ?1 WHERE workspace = ?2",
+                "UPDATE uploads SET workspace = ?1 WHERE workspace = ?2",
+                "UPDATE workspace_blobs SET workspace = ?1 WHERE workspace = ?2",
+            ],
+        )
         .await?
         {
             return Ok(());
@@ -800,29 +791,36 @@ impl Packages {
         // name; one moved to another workspace leaves them behind, unlinked.
         // Manage Actions access follows a rename, and lets go of a
         // repository that left the package's workspace.
-        if g1t_kit::transfer::on_event(env, db, event, &[
-            "UPDATE packages SET repo_name = ?6 WHERE repo_id = ?5 AND workspace = ?3",
-            "UPDATE packages SET repo_id = NULL, repo_name = NULL WHERE repo_id = ?5 AND workspace <> ?3",
-            "UPDATE package_actions_access SET repo_name = ?6 WHERE repo_id = ?5",
-            "DELETE FROM package_actions_access WHERE repo_id = ?5 AND package_id IN (SELECT id FROM packages WHERE workspace <> ?3)",
-        ])
+        if g1t_kit::transfer::on_event(
+            env,
+            db,
+            event,
+            &[
+                "UPDATE packages SET repo_name = ?6 WHERE repo_id = ?5 AND workspace = ?3",
+                "UPDATE packages SET repo_id = NULL, repo_name = NULL WHERE repo_id = ?5 AND workspace <> ?3",
+                "UPDATE package_actions_access SET repo_name = ?6 WHERE repo_id = ?5",
+                "DELETE FROM package_actions_access WHERE repo_id = ?5 AND package_id IN (SELECT id FROM packages WHERE workspace <> ?3)",
+            ],
+        )
         .await?
         {
             return Ok(());
         }
-        if g1t_kit::lifecycle::on_purged(db, event, &[
-            "UPDATE packages SET repo_id = NULL, repo_name = NULL, visibility = 'private' WHERE repo_id = ?1",
-            "DELETE FROM package_actions_access WHERE repo_id = ?1",
-        ])
+        if g1t_kit::lifecycle::on_purged(
+            db,
+            event,
+            &[
+                "UPDATE packages SET repo_id = NULL, repo_name = NULL, visibility = 'private' WHERE repo_id = ?1",
+                "DELETE FROM package_actions_access WHERE repo_id = ?1",
+            ],
+        )
         .await?
         {
             return Ok(());
         }
         // A team renamed or deleted: its roles on packages follow.
         if matches!(event.kind.as_str(), "team.edited" | "team.deleted") {
-            let field = |snake: &str, camel: &str| {
-                event.data[snake].as_str().or_else(|| event.data[camel].as_str()).map(str::to_owned)
-            };
+            let field = |snake: &str, camel: &str| event.data[snake].as_str().or_else(|| event.data[camel].as_str()).map(str::to_owned);
             if let Some(team_id) = field("team_id", "teamId") {
                 let slug = field("team", "team");
                 let renamed = (event.kind == "team.edited").then_some(slug.as_deref()).flatten();
@@ -1022,7 +1020,16 @@ mod tests {
 
     #[test]
     fn publisher_documents_are_downloads() {
-        for kind in ["application/xml", "text/xml; charset=utf-8", "application/xhtml+xml", "text/html", "image/svg+xml", "application/vnd.foo+xml", "", "text/javascript"] {
+        for kind in [
+            "application/xml",
+            "text/xml; charset=utf-8",
+            "application/xhtml+xml",
+            "text/html",
+            "image/svg+xml",
+            "application/vnd.foo+xml",
+            "",
+            "text/javascript",
+        ] {
             assert!(opens_as_document(Some(kind)), "{kind}");
         }
         assert!(opens_as_document(None));
@@ -1121,10 +1128,7 @@ mod tests {
         let protected = g1t_contracts::identity::protected_names(Some("wsp_keep"));
         let now = "2026-10-06T12:00:00.000Z";
         let deleting = event("workspace.deleting", json!({ "workspaceId": "wsp_1", "slug": "Acme", "by": "ana", "purgeAfter": "x" }));
-        assert_eq!(
-            workspace_mark(&deleting, &protected, now),
-            Some(WorkspaceMark::Hide { workspace: "acme".into(), at: now.into() })
-        );
+        assert_eq!(workspace_mark(&deleting, &protected, now), Some(WorkspaceMark::Hide { workspace: "acme".into(), at: now.into() }));
         let restored = event("workspace.restored", json!({ "workspaceId": "wsp_1", "slug": "acme" }));
         assert_eq!(workspace_mark(&restored, &protected, now), Some(WorkspaceMark::Show { workspace: "acme".into() }));
     }

@@ -25,25 +25,13 @@ async fn entries<R: GitRepo>(repo: &R, tree: Option<&str>) -> Result<BTreeMap<St
     let Some(tree) = tree else {
         return Ok(BTreeMap::new());
     };
-    Ok(repo
-        .read_tree(tree)
-        .await?
-        .unwrap_or_default()
-        .into_iter()
-        .map(|entry| (entry.name.clone(), entry))
-        .collect())
+    Ok(repo.read_tree(tree).await?.unwrap_or_default().into_iter().map(|entry| (entry.name.clone(), entry)).collect())
 }
 
 /// The files that differ between two trees, a level at a time, with
 /// `hash` null for a file the newer tree no longer has. With no `old`,
 /// every file of `new`. Directories named in `skip` are not entered.
-pub async fn changed<R: GitRepo>(
-    repo: &R,
-    old: Option<&str>,
-    new: &str,
-    skip: &[String],
-    limit: u32,
-) -> Result<(Vec<FileEntry>, bool)> {
+pub async fn changed<R: GitRepo>(repo: &R, old: Option<&str>, new: &str, skip: &[String], limit: u32) -> Result<(Vec<FileEntry>, bool)> {
     changed_with(repo, old, new, skip, limit, false).await
 }
 
@@ -75,9 +63,7 @@ pub async fn changed_with<R: GitRepo>(
                     continue;
                 }
                 let path = format!("{prefix}{name}");
-                let dir = |entry: Option<&TreeEntry>| {
-                    entry.filter(|entry| entry.kind == EntryKind::Tree).map(|entry| entry.hash.clone())
-                };
+                let dir = |entry: Option<&TreeEntry>| entry.filter(|entry| entry.kind == EntryKind::Tree).map(|entry| entry.hash.clone());
                 let (old_dir, new_dir) = (dir(was), dir(now));
                 if (old_dir.is_some() || new_dir.is_some()) && !skipped(name) {
                     next.push((format!("{path}/"), old_dir, new_dir));
@@ -89,11 +75,7 @@ pub async fn changed_with<R: GitRepo>(
                 if files.len() >= limit {
                     return Ok((files, true));
                 }
-                files.push(FileEntry {
-                    path,
-                    hash: new_file.map(|entry| entry.hash.clone()),
-                    kind: new_file.map(|entry| entry.kind),
-                });
+                files.push(FileEntry { path, hash: new_file.map(|entry| entry.hash.clone()), kind: new_file.map(|entry| entry.kind) });
             }
         }
         level = next;
@@ -103,24 +85,12 @@ pub async fn changed_with<R: GitRepo>(
 
 /// The commit a branch or commit names, and its tree.
 pub async fn resolve<R: GitRepo>(repo: &R, git_ref: &str) -> Result<Option<(String, String)>> {
-    Ok(repo
-        .log(git_ref, 1)
-        .await?
-        .into_iter()
-        .next()
-        .map(|commit| (commit.hash, commit.tree_hash)))
+    Ok(repo.log(git_ref, 1).await?.into_iter().next().map(|commit| (commit.hash, commit.tree_hash)))
 }
 
 /// Every file on `git_ref`, or what changed from `base` to it; symlinks
 /// too with `links`.
-pub async fn list<R: GitRepo>(
-    repo: &R,
-    base: Option<&str>,
-    head: &str,
-    skip: &[String],
-    limit: u32,
-    links: bool,
-) -> Result<FileList> {
+pub async fn list<R: GitRepo>(repo: &R, base: Option<&str>, head: &str, skip: &[String], limit: u32, links: bool) -> Result<FileList> {
     let Some(head_commit) = repo.log(head, 1).await?.into_iter().next() else {
         return Ok(FileList::default());
     };
@@ -130,12 +100,7 @@ pub async fn list<R: GitRepo>(
         None => None,
     };
     let (files, truncated) = changed_with(repo, base_tree.as_deref(), &tree, skip, limit, links).await?;
-    Ok(FileList {
-        commit: Some(commit),
-        date: Some(date),
-        files,
-        truncated,
-    })
+    Ok(FileList { commit: Some(commit), date: Some(date), files, truncated })
 }
 
 /// The text of each blob asked for, in order: none for one that is
@@ -152,11 +117,7 @@ pub async fn read<R: GitRepo>(repo: &R, hashes: &[String], max_bytes: u32) -> Re
             let text = bytes
                 .filter(|bytes| bytes.len() <= max_bytes as usize && !bytes.contains(&0))
                 .and_then(|bytes| String::from_utf8(bytes).ok());
-            out.push(BlobText {
-                hash: (*hash).clone(),
-                size,
-                text,
-            });
+            out.push(BlobText { hash: (*hash).clone(), size, text });
         }
     }
     Ok(out)
@@ -216,11 +177,7 @@ mod tests {
     }
 
     fn entry(name: &str, hash: &str, kind: EntryKind) -> TreeEntry {
-        TreeEntry {
-            name: name.into(),
-            hash: hash.into(),
-            kind,
-        }
+        TreeEntry { name: name.into(), hash: hash.into(), kind }
     }
 
     fn commit(hash: &str, tree: &str) -> Commit {
@@ -248,10 +205,7 @@ mod tests {
                 entry("node_modules", "nm", EntryKind::Tree),
             ],
         );
-        fake.trees.insert(
-            "src2".into(),
-            vec![entry("a.rs", "a2", EntryKind::Blob), entry("b.rs", "b1", EntryKind::Exec)],
-        );
+        fake.trees.insert("src2".into(), vec![entry("a.rs", "a2", EntryKind::Blob), entry("b.rs", "b1", EntryKind::Exec)]);
         fake.trees.insert(
             "root2".into(),
             vec![
@@ -275,10 +229,7 @@ mod tests {
         let fake = repo();
         let listed = run(list(&fake, None, "c1", &["node_modules".into()], 100, false)).unwrap();
         assert_eq!(listed.commit.as_deref(), Some("c1"));
-        assert_eq!(
-            paths(&listed),
-            vec![("README.md".into(), Some("r1".into())), ("src/a.rs".into(), Some("a1".into()))]
-        );
+        assert_eq!(paths(&listed), vec![("README.md".into(), Some("r1".into())), ("src/a.rs".into(), Some("a1".into()))]);
     }
 
     #[test]
@@ -287,11 +238,7 @@ mod tests {
         let listed = run(list(&fake, Some("c1"), "c2", &[], 100, false)).unwrap();
         assert_eq!(
             paths(&listed),
-            vec![
-                ("README.md".into(), None),
-                ("src/a.rs".into(), Some("a2".into())),
-                ("src/b.rs".into(), Some("b1".into())),
-            ]
+            vec![("README.md".into(), None), ("src/a.rs".into(), Some("a2".into())), ("src/b.rs".into(), Some("b1".into())),]
         );
         assert!(!listed.truncated);
     }

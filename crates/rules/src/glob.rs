@@ -21,8 +21,13 @@ enum Token {
     /// `*`
     Star,
     /// `**`, and whether a `/` follows it (`**/`), which it may skip.
-    Globstar { slash: bool },
-    Class { negated: bool, items: Vec<(char, char)> },
+    Globstar {
+        slash: bool,
+    },
+    Class {
+        negated: bool,
+        items: Vec<(char, char)>,
+    },
 }
 
 fn tokens(pattern: &str) -> Vec<Token> {
@@ -121,9 +126,7 @@ pub fn matches(pattern: &str, text: &str) -> bool {
             let here = match &tokens[p] {
                 Token::Literal(c) => t < text.len() && text[t] == *c && next(t + 1, p + 1),
                 Token::One => t < text.len() && text[t] != '/' && next(t + 1, p + 1),
-                Token::Class { negated, items } => {
-                    t < text.len() && in_class(text[t], *negated, items) && next(t + 1, p + 1)
-                }
+                Token::Class { negated, items } => t < text.len() && in_class(text[t], *negated, items) && next(t + 1, p + 1),
                 // Nothing more, or one more character (not `/`) and the star again.
                 Token::Star => next(t, p + 1) || (t < text.len() && text[t] != '/' && next(t + 1, p)),
                 Token::Globstar { slash: false } => next(t, p + 1) || (t < text.len() && next(t + 1, p)),

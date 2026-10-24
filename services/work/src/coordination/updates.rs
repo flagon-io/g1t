@@ -12,8 +12,8 @@
 use super::*;
 use crate::rows::NumberRow;
 use sha2::{Digest, Sha256};
-use worker::wasm_bindgen::JsValue;
 use worker::D1PreparedStatement;
+use worker::wasm_bindgen::JsValue;
 
 /// How long an acknowledged update is kept as a receipt, in days.
 pub(crate) const RECEIPT_DAYS: u64 = 30;
@@ -102,7 +102,12 @@ pub(crate) struct Sent {
 }
 
 #[derive(Deserialize)]
-struct UpdateRow { id: String, kind: String, data: String, at: String }
+struct UpdateRow {
+    id: String,
+    kind: String,
+    data: String,
+    at: String,
+}
 
 impl Work {
     /// The update announcing `kind` (`data`, as the change is expected to
@@ -165,11 +170,7 @@ impl Work {
         {
             self.db
                 .prepare(CORRECT)
-                .bind(&[
-                    sent.id.as_str().into(),
-                    serde_json::to_string(&actual)?.into(),
-                    serde_json::to_string(&sent.data)?.into(),
-                ])?
+                .bind(&[sent.id.as_str().into(), serde_json::to_string(&actual)?.into(), serde_json::to_string(&sent.data)?.into()])?
                 .run()
                 .await?;
         }
@@ -221,29 +222,38 @@ impl Work {
     }
 
     pub(super) async fn pending_updates(&self, session: &str) -> Result<Vec<SessionUpdate>> {
-        self.db.prepare(PENDING).bind(&[session.into()])?.all().await?.results::<UpdateRow>()?
-            .into_iter().map(|row| Ok(SessionUpdate {
-                id: row.id, kind: row.kind, data: serde_json::from_str(&row.data)?, at: row.at,
-            })).collect()
+        self.db
+            .prepare(PENDING)
+            .bind(&[session.into()])?
+            .all()
+            .await?
+            .results::<UpdateRow>()?
+            .into_iter()
+            .map(|row| Ok(SessionUpdate { id: row.id, kind: row.kind, data: serde_json::from_str(&row.data)?, at: row.at }))
+            .collect()
     }
 
     /// Acknowledges `ids` for `session` and returns how many of them name
     /// one of its updates, so a caller can tell a mistyped ID from a
     /// receipt. Receipts older than [`RECEIPT_DAYS`] go then.
     pub(super) async fn acknowledge_updates(&self, session: &str, ids: &[String]) -> Result<u32> {
-        if ids.is_empty() { return Ok(0); }
+        if ids.is_empty() {
+            return Ok(0);
+        }
         let now = now_ms();
         let at = rfc3339(now);
-        let mut statements = ids.iter().map(|id| self.db.prepare(ACK)
-            .bind(&[at.as_str().into(), session.into(), id.as_str().into()])).collect::<Result<Vec<_>>>()?;
+        let mut statements = ids
+            .iter()
+            .map(|id| self.db.prepare(ACK).bind(&[at.as_str().into(), session.into(), id.as_str().into()]))
+            .collect::<Result<Vec<_>>>()?;
         let old = rfc3339(now.saturating_sub(RECEIPT_DAYS * 24 * 60 * 60 * 1000));
         statements.push(self.db.prepare(PRUNE).bind(&[session.into(), old.into()])?);
         self.db.batch(statements).await?;
         let mut unique = ids.to_vec();
         unique.sort();
         unique.dedup();
-        let known = self.db.prepare(KNOWN).bind(&[session.into(), serde_json::to_string(&unique)?.into()])?
-            .first::<NumberRow>(None).await?;
+        let known =
+            self.db.prepare(KNOWN).bind(&[session.into(), serde_json::to_string(&unique)?.into()])?.first::<NumberRow>(None).await?;
         Ok(known.map_or(0, |row| row.n))
     }
 }

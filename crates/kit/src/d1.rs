@@ -55,10 +55,7 @@ pub fn constraint(header: Option<&str>) -> Option<String> {
     if value == "first-primary" || value == "first-unconstrained" {
         return Some(value.to_owned());
     }
-    let well_formed = value.len() <= MAX_BOOKMARK
-        && value
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-');
+    let well_formed = value.len() <= MAX_BOOKMARK && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
     Some(if well_formed { value.to_owned() } else { "first-primary".to_owned() })
 }
 
@@ -209,10 +206,7 @@ mod tests {
         timing.db_statements.set(21);
         timing.rpc_ms.set(40);
         timing.rpc_calls.set(1);
-        assert_eq!(
-            timing.header().as_deref(),
-            Some("db;dur=30;desc=\"2 round trips, 21 statements\", rpc;dur=40;desc=\"1 calls\"")
-        );
+        assert_eq!(timing.header().as_deref(), Some("db;dur=30;desc=\"2 round trips, 21 statements\", rpc;dur=40;desc=\"1 calls\""));
     }
 
     #[test]

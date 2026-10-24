@@ -21,11 +21,7 @@ impl Ctx {
     pub fn new(global: Global) -> Result<Ctx> {
         let config = Config::load()?;
         let out = Output::detect(global.json.clone(), global.jq.clone());
-        Ok(Ctx {
-            config,
-            global,
-            out,
-        })
+        Ok(Ctx { config, global, out })
     }
 
     /// The host named by --hostname or G1T_HOST, or the default.
@@ -56,11 +52,7 @@ impl Ctx {
     fn known_hosts(&self) -> Vec<String> {
         let mut hosts: Vec<String> = self.config.hosts.keys().cloned().collect();
         hosts.push(crate::config::DEFAULT_HOST.to_owned());
-        if let Some(h) = self
-            .global
-            .hostname
-            .as_deref()
-            .or(std::env::var("G1T_HOST").ok().as_deref())
+        if let Some(h) = self.global.hostname.as_deref().or(std::env::var("G1T_HOST").ok().as_deref())
             && let Ok((name, _)) = auth::parse_hostname(h)
         {
             hosts.push(name);
@@ -76,9 +68,7 @@ impl Ctx {
         }
         let remotes = crate::git::remotes();
         if remotes.is_empty() {
-            return Err(Error::usage(
-                "Not in a git repository with a g1t remote. Say which repository with --repo OWNER/NAME.",
-            ));
+            return Err(Error::usage("Not in a git repository with a g1t remote. Say which repository with --repo OWNER/NAME."));
         }
         match repo::from_remotes(&remotes, &self.known_hosts()) {
             Some((_, found)) => Ok(found),
@@ -128,32 +118,19 @@ impl Ctx {
 
     /// The signed-in account's username on the client's host.
     pub fn me(&self, client: &Client) -> Result<String> {
-        if let Some(user) = self
-            .config
-            .host(&client.host.name)
-            .and_then(|h| h.user.clone())
+        if let Some(user) = self.config.host(&client.host.name).and_then(|h| h.user.clone())
             && std::env::var_os("G1T_TOKEN").is_none_or(|t| t.is_empty())
         {
             return Ok(user);
         }
         let user = client.op("whoami").send()?;
-        user["username"]
-            .as_str()
-            .map(str::to_owned)
-            .ok_or_else(|| Error::failed("The API did not say who you are."))
+        user["username"].as_str().map(str::to_owned).ok_or_else(|| Error::failed("The API did not say who you are."))
     }
 }
 
 pub fn not_signed_in(host: &Host) -> Error {
-    let flag = if host.name == crate::config::DEFAULT_HOST {
-        String::new()
-    } else {
-        format!(" --hostname {}", host.name)
-    };
-    Error::auth(format!(
-        "Not signed in to {}. Run `g1t auth login{flag}`, or set G1T_TOKEN.",
-        host.name
-    ))
+    let flag = if host.name == crate::config::DEFAULT_HOST { String::new() } else { format!(" --hostname {}", host.name) };
+    Error::auth(format!("Not signed in to {}. Run `g1t auth login{flag}`, or set G1T_TOKEN.", host.name))
 }
 
 /// The repository a pull request's working copy was made from.
@@ -167,16 +144,9 @@ fn parent_of_copy(client: &Client, copy: &Repo, pull_id: &str) -> Result<Repo> {
     let parsed = match fork_of {
         Value::String(s) => Repo::parse(s, &copy.host).ok(),
         Value::Object(o) => {
-            let owner = o
-                .get("namespace")
-                .or_else(|| o.get("owner"))
-                .and_then(Value::as_str);
+            let owner = o.get("namespace").or_else(|| o.get("owner")).and_then(Value::as_str);
             let name = o.get("name").and_then(Value::as_str);
-            owner.zip(name).map(|(owner, name)| Repo {
-                host: copy.host.clone(),
-                owner: owner.into(),
-                name: name.into(),
-            })
+            owner.zip(name).map(|(owner, name)| Repo { host: copy.host.clone(), owner: owner.into(), name: name.into() })
         }
         _ => None,
     };

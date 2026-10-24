@@ -32,20 +32,8 @@ impl Output {
             .and_then(|c| c.parse().ok())
             .or_else(|| terminal_size::terminal_size().map(|(w, _)| w.0 as usize))
             .unwrap_or(120);
-        let json = json.map(|fields| {
-            fields
-                .split(',')
-                .map(|f| f.trim().to_owned())
-                .filter(|f| !f.is_empty())
-                .collect()
-        });
-        Output {
-            json,
-            jq,
-            tty,
-            color,
-            width,
-        }
+        let json = json.map(|fields| fields.split(',').map(|f| f.trim().to_owned()).filter(|f| !f.is_empty()).collect());
+        Output { json, jq, tty, color, width }
     }
 
     /// Whether JSON is wanted instead of the human form.
@@ -67,12 +55,7 @@ impl Output {
             return Ok(());
         }
         let value = sorted(&value);
-        let text = if self.tty {
-            serde_json::to_string_pretty(&value)
-        } else {
-            serde_json::to_string(&value)
-        }
-        .expect("json");
+        let text = if self.tty { serde_json::to_string_pretty(&value) } else { serde_json::to_string(&value) }.expect("json");
         writeln!(out, "{text}")?;
         Ok(())
     }
@@ -88,11 +71,7 @@ impl Output {
     }
 
     pub fn paint(&self, code: &str, text: &str) -> String {
-        if self.color && !text.is_empty() {
-            format!("\x1b[{code}m{text}\x1b[0m")
-        } else {
-            text.to_owned()
-        }
+        if self.color && !text.is_empty() { format!("\x1b[{code}m{text}\x1b[0m") } else { text.to_owned() }
     }
     pub fn bold(&self, t: &str) -> String {
         self.paint("1", t)
@@ -119,12 +98,9 @@ impl Output {
     /// A state word in the color it is usually shown in.
     pub fn state(&self, state: &str) -> String {
         match state {
-            "open" | "success" | "passed" | "approved" | "active" | "completed" | "ready" => {
-                self.green(state)
-            }
+            "open" | "success" | "passed" | "approved" | "active" | "completed" | "ready" => self.green(state),
             "merged" => self.magenta(state),
-            "closed" | "failure" | "failed" | "error" | "cancelled" | "timed_out" | "denied"
-            | "request_changes" => self.red(state),
+            "closed" | "failure" | "failed" | "error" | "cancelled" | "timed_out" | "denied" | "request_changes" => self.red(state),
             "draft" | "skipped" | "neutral" | "inactive" | "not_planned" => self.dim(state),
             "" => String::new(),
             _ => self.yellow(state),
@@ -158,10 +134,7 @@ impl Output {
             let others: usize = widths.iter().sum::<usize>() - widths[widest] + gaps;
             widths[widest] = self.width.saturating_sub(others).max(8);
         }
-        let heads: Vec<Cell> = header
-            .iter()
-            .map(|h| Cell::styled(h.to_uppercase(), self.dim(&h.to_uppercase())))
-            .collect();
+        let heads: Vec<Cell> = header.iter().map(|h| Cell::styled(h.to_uppercase(), self.dim(&h.to_uppercase()))).collect();
         for row in std::iter::once(&heads).chain(rows.iter()) {
             let mut line = String::new();
             for (i, cell) in row.iter().enumerate().take(columns) {
@@ -187,17 +160,11 @@ pub struct Cell {
 impl Cell {
     pub fn new(text: impl Into<String>) -> Cell {
         let plain = text.into();
-        Cell {
-            shown: plain.clone(),
-            plain,
-        }
+        Cell { shown: plain.clone(), plain }
     }
 
     pub fn styled(plain: impl Into<String>, shown: String) -> Cell {
-        Cell {
-            plain: plain.into(),
-            shown,
-        }
+        Cell { plain: plain.into(), shown }
     }
 
     fn fit(&self, width: usize, pad: bool) -> String {
@@ -206,11 +173,7 @@ impl Cell {
             let cut: String = self.plain.chars().take(width.saturating_sub(1)).collect();
             return format!("{cut}…");
         }
-        if pad {
-            format!("{}{}", self.shown, " ".repeat(width - len))
-        } else {
-            self.shown.clone()
-        }
+        if pad { format!("{}{}", self.shown, " ".repeat(width - len)) } else { self.shown.clone() }
     }
 }
 
@@ -246,19 +209,12 @@ pub fn select(value: &Value, fields: &[String]) -> Result<Value> {
         _ => return Ok(value.clone()),
     };
     if let Some(first) = objects.first() {
-        let unknown: Vec<&String> = fields
-            .iter()
-            .filter(|f| !objects.iter().any(|o| o.contains_key(f.as_str())))
-            .collect();
+        let unknown: Vec<&String> = fields.iter().filter(|f| !objects.iter().any(|o| o.contains_key(f.as_str()))).collect();
         if !unknown.is_empty() {
             let mut available: Vec<&String> = first.keys().collect();
             available.sort();
             let available: Vec<&str> = available.iter().map(|s| s.as_str()).collect();
-            return Err(Error::usage(format!(
-                "Unknown JSON field `{}`. Available: {}",
-                unknown[0],
-                available.join(", ")
-            )));
+            return Err(Error::usage(format!("Unknown JSON field `{}`. Available: {}", unknown[0], available.join(", "))));
         }
     }
     let pick = |map: &Map<String, Value>| {
@@ -269,12 +225,7 @@ pub fn select(value: &Value, fields: &[String]) -> Result<Value> {
         Value::Object(out)
     };
     Ok(match value {
-        Value::Array(items) => Value::Array(
-            items
-                .iter()
-                .map(|v| v.as_object().map(pick).unwrap_or_else(|| v.clone()))
-                .collect(),
-        ),
+        Value::Array(items) => Value::Array(items.iter().map(|v| v.as_object().map(pick).unwrap_or_else(|| v.clone())).collect()),
         Value::Object(map) => pick(map),
         other => other.clone(),
     })
@@ -322,10 +273,7 @@ pub fn parse_time(text: &str) -> Option<i64> {
 }
 
 pub fn now() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or_default()
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or_default()
 }
 
 /// `3m ago`, `2h ago`, `5d ago`, or the date for older ones.
@@ -355,10 +303,7 @@ pub fn duration(secs: i64) -> String {
 
 /// How long between two times, when both are known.
 pub fn elapsed(start: &Value, end: &Value) -> String {
-    match (
-        start.as_str().and_then(parse_time),
-        end.as_str().and_then(parse_time),
-    ) {
+    match (start.as_str().and_then(parse_time), end.as_str().and_then(parse_time)) {
         (Some(a), Some(b)) => duration(b - a),
         (Some(a), None) => duration(now() - a),
         _ => String::new(),
@@ -379,19 +324,12 @@ mod tests {
     fn fields_are_selected() {
         let list = json!([{ "number": 1, "title": "a", "body": "x" }, { "number": 2, "title": "b", "body": "y" }]);
         let picked = select(&list, &["number".into(), "title".into()]).unwrap();
-        assert_eq!(
-            picked,
-            json!([{ "number": 1, "title": "a" }, { "number": 2, "title": "b" }])
-        );
+        assert_eq!(picked, json!([{ "number": 1, "title": "a" }, { "number": 2, "title": "b" }]));
         let one = select(&json!({ "a": 1, "b": 2 }), &["b".into()]).unwrap();
         assert_eq!(one, json!({ "b": 2 }));
         let err = select(&list, &["nope".into()]).unwrap_err();
         assert_eq!(err.kind, crate::error::Kind::Usage);
-        assert!(
-            err.message.contains("Available: body, number, title"),
-            "{}",
-            err.message
-        );
+        assert!(err.message.contains("Available: body, number, title"), "{}", err.message);
         // Nothing to check against: an empty list stays empty.
         assert_eq!(select(&json!([]), &["nope".into()]).unwrap(), json!([]));
     }
@@ -399,10 +337,7 @@ mod tests {
     #[test]
     fn json_is_compact_and_ordered() {
         let value: Value = serde_json::from_str(r#"{"title":"a","number":1}"#).unwrap();
-        assert_eq!(
-            serde_json::to_string(&sorted(&value)).unwrap(),
-            r#"{"number":1,"title":"a"}"#
-        );
+        assert_eq!(serde_json::to_string(&sorted(&value)).unwrap(), r#"{"number":1,"title":"a"}"#);
     }
 
     #[test]
@@ -425,15 +360,9 @@ mod tests {
 
     #[test]
     fn plain_output_has_no_color() {
-        let out = Output {
-            color: false,
-            ..Output::default()
-        };
+        let out = Output { color: false, ..Output::default() };
         assert_eq!(out.state("open"), "open");
-        let out = Output {
-            color: true,
-            ..Output::default()
-        };
+        let out = Output { color: true, ..Output::default() };
         assert_eq!(out.state("open"), "\x1b[32mopen\x1b[0m");
     }
 }

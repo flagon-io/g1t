@@ -97,21 +97,45 @@ impl AboutOp {
 
     pub fn description(self) -> &'static str {
         match self {
-            AboutOp::GetLanguages => "The languages a repository's default branch is written in, by bytes, largest first: each with its name, color, bytes and percent. Programming and markup languages count; data (JSON, YAML) and prose (Markdown) do not, nor do vendored, generated and documentation files, unless the repository's .gitattributes says otherwise (linguist-vendored, linguist-generated, linguist-documentation, linguist-language, linguist-detectable). Worked out in the background for the default branch's head and kept by commit: commit says which commit the answer is for, and pending is true while the first is worked out (ask again in a few seconds). partial is true when the repository was too large to read in full.",
-            AboutOp::ListContributors => "Everyone whose commits are on a repository's default branch, most commits first: each with kind (user, matched to an account by an address they confirmed or their noreply address; g1t, g1t itself; author, anyone else, by the name on their commits), name, username and avatar for a user, commits, first_at, last_at, and weeks (commits per week, for the 100 most active). total is how many there are (at most 500 are listed), commits how many were read (the newest 3,000), and weeks the repository's commits by week, oldest first. Worked out in the background and kept by commit, as for get_languages.",
-            AboutOp::GetLicense => "The license in a repository's LICENSE file (or LICENCE, COPYING, UNLICENSE, with or without an extension) on its default branch: its spdx_id (null when the text is not one g1t recognizes), name (\"Other\" then) and path. Not found when it has none, or before the default branch has been read the first time.",
-            AboutOp::ListStargazers => "Who starred a repository, newest first: each username, avatar and starred_at. 100 a page; page from 1.",
-            AboutOp::ListStarred => "The repositories you starred that you can still see, newest first, at most 100: each repository, when you starred it (starred_at) and how many stars it has.",
+            AboutOp::GetLanguages => {
+                "The languages a repository's default branch is written in, by bytes, largest first: each with its name, color, bytes and percent. Programming and markup languages count; data (JSON, YAML) and prose (Markdown) do not, nor do vendored, generated and documentation files, unless the repository's .gitattributes says otherwise (linguist-vendored, linguist-generated, linguist-documentation, linguist-language, linguist-detectable). Worked out in the background for the default branch's head and kept by commit: commit says which commit the answer is for, and pending is true while the first is worked out (ask again in a few seconds). partial is true when the repository was too large to read in full."
+            }
+            AboutOp::ListContributors => {
+                "Everyone whose commits are on a repository's default branch, most commits first: each with kind (user, matched to an account by an address they confirmed or their noreply address; g1t, g1t itself; author, anyone else, by the name on their commits), name, username and avatar for a user, commits, first_at, last_at, and weeks (commits per week, for the 100 most active). total is how many there are (at most 500 are listed), commits how many were read (the newest 3,000), and weeks the repository's commits by week, oldest first. Worked out in the background and kept by commit, as for get_languages."
+            }
+            AboutOp::GetLicense => {
+                "The license in a repository's LICENSE file (or LICENCE, COPYING, UNLICENSE, with or without an extension) on its default branch: its spdx_id (null when the text is not one g1t recognizes), name (\"Other\" then) and path. Not found when it has none, or before the default branch has been read the first time."
+            }
+            AboutOp::ListStargazers => {
+                "Who starred a repository, newest first: each username, avatar and starred_at. 100 a page; page from 1."
+            }
+            AboutOp::ListStarred => {
+                "The repositories you starred that you can still see, newest first, at most 100: each repository, when you starred it (starred_at) and how many stars it has."
+            }
             AboutOp::CheckStarred => "Whether you starred a repository (starred), and how many people have (stars).",
-            AboutOp::Star => "Star a repository you can see. Starring one you starred already changes nothing. Returns starred and the count of stars. People only: a workspace's or an agent's token cannot.",
+            AboutOp::Star => {
+                "Star a repository you can see. Starring one you starred already changes nothing. Returns starred and the count of stars. People only: a workspace's or an agent's token cannot."
+            }
             AboutOp::Unstar => "Take back your star from a repository. Returns starred (false) and the count of stars.",
-            AboutOp::ListReleases => "A repository's releases, newest first, at most 100: each with its id (rel_…), tag_name, target (the commit the tag named), name, body (Markdown notes), draft, prerelease, author, created_at, published_at and latest (the newest published release that is neither a draft nor a prerelease). Drafts are listed only to those with the Write role.",
-            AboutOp::GetLatestRelease => "The latest release: the newest published release that is neither a draft nor a prerelease. Not found when there is none.",
+            AboutOp::ListReleases => {
+                "A repository's releases, newest first, at most 100: each with its id (rel_…), tag_name, target (the commit the tag named), name, body (Markdown notes), draft, prerelease, author, created_at, published_at and latest (the newest published release that is neither a draft nor a prerelease). Drafts are listed only to those with the Write role."
+            }
+            AboutOp::GetLatestRelease => {
+                "The latest release: the newest published release that is neither a draft nor a prerelease. Not found when there is none."
+            }
             AboutOp::GetReleaseByTag => "The release of one tag. A tag with slashes is URL-encoded in the path.",
-            AboutOp::GetRelease => "One release by its id (rel_…), with its tag, target commit, title, notes and whether it is a draft, a prerelease or the latest. A draft is found only by those with the Write role.",
-            AboutOp::CreateRelease => "Publish a release of a tag, with a title (release_name; name in the answer) and notes (body, Markdown). A tag that does not exist yet is made at target (a branch or commit; the default branch when left out), as a lightweight tag, under the repository's tag rulesets. draft keeps it from everyone without the Write role until it is published; prerelease marks it not ready for everyone, so it is never the latest. One release per tag. Needs the Write role.",
-            AboutOp::UpdateRelease => "Change a release's name, body, draft or prerelease; fields left out stay as they are, and an empty release_name clears it. Setting draft to false publishes it (published_at is set the first time). Needs the Write role.",
-            AboutOp::DeleteRelease => "Delete a release. Its tag stays: delete that with git (git push origin :refs/tags/<tag>). Needs the Write role.",
+            AboutOp::GetRelease => {
+                "One release by its id (rel_…), with its tag, target commit, title, notes and whether it is a draft, a prerelease or the latest. A draft is found only by those with the Write role."
+            }
+            AboutOp::CreateRelease => {
+                "Publish a release of a tag, with a title (release_name; name in the answer) and notes (body, Markdown). A tag that does not exist yet is made at target (a branch or commit; the default branch when left out), as a lightweight tag, under the repository's tag rulesets. draft keeps it from everyone without the Write role until it is published; prerelease marks it not ready for everyone, so it is never the latest. One release per tag. Needs the Write role."
+            }
+            AboutOp::UpdateRelease => {
+                "Change a release's name, body, draft or prerelease; fields left out stay as they are, and an empty release_name clears it. Setting draft to false publishes it (published_at is set the first time). Needs the Write role."
+            }
+            AboutOp::DeleteRelease => {
+                "Delete a release. Its tag stays: delete that with git (git push origin :refs/tags/<tag>). Needs the Write role."
+            }
         }
     }
 
@@ -160,15 +184,13 @@ impl AboutOp {
             | AboutOp::Unstar
             | AboutOp::ListReleases
             | AboutOp::GetLatestRelease => (json!({ "repo": repo() }), &["repo"]),
-            AboutOp::ListStargazers => (
-                json!({ "repo": repo(), "page": { "type": "integer", "description": "The page, from 1; 100 a page." } }),
-                &["repo"],
-            ),
+            AboutOp::ListStargazers => {
+                (json!({ "repo": repo(), "page": { "type": "integer", "description": "The page, from 1; 100 a page." } }), &["repo"])
+            }
             AboutOp::ListStarred => (json!({}), &[]),
-            AboutOp::GetReleaseByTag => (
-                json!({ "repo": repo(), "tag": { "type": "string", "description": "The tag's name, such as v1.2.0." } }),
-                &["repo", "tag"],
-            ),
+            AboutOp::GetReleaseByTag => {
+                (json!({ "repo": repo(), "tag": { "type": "string", "description": "The tag's name, such as v1.2.0." } }), &["repo", "tag"])
+            }
             AboutOp::GetRelease | AboutOp::DeleteRelease => (json!({ "repo": repo(), "id": id() }), &["repo", "id"]),
             AboutOp::CreateRelease => (
                 release_fields(json!({
@@ -236,14 +258,21 @@ pub async fn run(op: AboutOp, services: &Services, viewer: &Viewer, input: &Valu
     let actor = || viewer.clone().unwrap_or_default();
     if op == AboutOp::ListStarred {
         let username = actor().username;
-        let starred: Vec<StarredRepo> = g1t_kit::call(&services.repos, "starred", &StarredArgs { username, viewer: viewer.clone() }).await?;
+        let starred: Vec<StarredRepo> =
+            g1t_kit::call(&services.repos, "starred", &StarredArgs { username, viewer: viewer.clone() }).await?;
         return ok(&starred);
     }
     let Some(path) = crate::operations::repo_path(input) else {
         return Ok(Outcome::fail(FailureCode::Invalid, "Give the repository as \"owner/name\"."));
     };
     let view = |path: RepoPath| RepoViewArgs { path, viewer: viewer.clone() };
-    let release = |path: RepoPath, id: Option<String>, tag: Option<String>, latest: bool| ReleaseArgs { path, viewer: viewer.clone(), id, tag, latest };
+    let release = |path: RepoPath, id: Option<String>, tag: Option<String>, latest: bool| ReleaseArgs {
+        path,
+        viewer: viewer.clone(),
+        id,
+        tag,
+        latest,
+    };
     match op {
         AboutOp::GetLanguages => out(call::<_, Languages>(services, "languages", &view(path)).await?),
         AboutOp::ListContributors => out(call::<_, Contributors>(services, "contributors", &view(path)).await?),
@@ -255,9 +284,12 @@ pub async fn run(op: AboutOp, services: &Services, viewer: &Viewer, input: &Valu
             )),
             Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
         },
-        AboutOp::ListStargazers => {
-            out(call::<_, Vec<Stargazer>>(services, "stargazers", &StargazersArgs { path, viewer: viewer.clone(), page: number(input, "page") }).await?)
-        }
+        AboutOp::ListStargazers => out(call::<_, Vec<Stargazer>>(
+            services,
+            "stargazers",
+            &StargazersArgs { path, viewer: viewer.clone(), page: number(input, "page") },
+        )
+        .await?),
         AboutOp::CheckStarred => out(call::<_, Stars>(services, "stars", &view(path)).await?),
         AboutOp::Star | AboutOp::Unstar => {
             out(call::<_, Stars>(services, "star", &StarArgs { path, actor: actor(), starred: op == AboutOp::Star }).await?)

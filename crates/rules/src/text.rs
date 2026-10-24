@@ -24,14 +24,10 @@ pub struct Compiled {
 pub fn compile(rule: &PatternRule) -> Result<Compiled, String> {
     let regex = match rule.operator {
         PatternOperator::Regex => Some(
-            RegexBuilder::new(&rule.pattern)
-                .size_limit(SIZE_LIMIT)
-                .dfa_size_limit(SIZE_LIMIT)
-                .build()
-                .map_err(|error| match error {
-                    regex::Error::CompiledTooBig(_) => "The regular expression is too large.".to_owned(),
-                    other => format!("The regular expression is not valid: {}", first_line(&other.to_string())),
-                })?,
+            RegexBuilder::new(&rule.pattern).size_limit(SIZE_LIMIT).dfa_size_limit(SIZE_LIMIT).build().map_err(|error| match error {
+                regex::Error::CompiledTooBig(_) => "The regular expression is too large.".to_owned(),
+                other => format!("The regular expression is not valid: {}", first_line(&other.to_string())),
+            })?,
         ),
         _ => None,
     };
@@ -73,11 +69,7 @@ pub fn describe(rule: &PatternRule) -> String {
         PatternOperator::Contains => format!("{not}contain \"{pattern}\""),
         PatternOperator::Regex => format!("{not}match /{pattern}/"),
     };
-    if rule.name.trim().is_empty() {
-        what
-    } else {
-        format!("{what} ({})", rule.name.trim())
-    }
+    if rule.name.trim().is_empty() { what } else { format!("{what} ({})", rule.name.trim()) }
 }
 
 /// At most [`MAX_TEXT`] bytes of `text`, cut on a character boundary.

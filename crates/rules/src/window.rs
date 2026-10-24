@@ -96,8 +96,7 @@ fn open_at(rule: &MergeWindowRule, local: i64) -> bool {
             window.days.contains(&weekday(day)) && start <= minute && minute < end
         } else {
             // Past midnight: the evening of a listed day, or the morning after.
-            (window.days.contains(&weekday(day)) && minute >= start)
-                || (window.days.contains(&weekday(day - 1)) && minute < end)
+            (window.days.contains(&weekday(day)) && minute >= start) || (window.days.contains(&weekday(day - 1)) && minute < end)
         }
     })
 }
@@ -168,15 +167,9 @@ mod tests {
     fn outside_it_says_when_it_opens() {
         let rule = weekdays("09:00", "17:00");
         // Wednesday evening: Thursday morning.
-        assert_eq!(
-            closed(&rule, at("2026-10-07T18:00:00Z")),
-            Some(Closed::Outside { opens: Some("2026-10-08T09:00:00.000Z".into()) })
-        );
+        assert_eq!(closed(&rule, at("2026-10-07T18:00:00Z")), Some(Closed::Outside { opens: Some("2026-10-08T09:00:00.000Z".into()) }));
         // Friday: the next Monday.
-        assert_eq!(
-            closed(&rule, at("2026-10-09T10:00:00Z")),
-            Some(Closed::Outside { opens: Some("2026-10-12T09:00:00.000Z".into()) })
-        );
+        assert_eq!(closed(&rule, at("2026-10-09T10:00:00Z")), Some(Closed::Outside { opens: Some("2026-10-12T09:00:00.000Z".into()) }));
     }
 
     #[test]
@@ -201,15 +194,20 @@ mod tests {
     #[test]
     fn freezes_close_it_and_exceptions_open_it() {
         let mut rule = weekdays("00:00", "24:00");
-        rule.freezes.push(Period { start: "2026-10-07T00:00:00Z".into(), end: Some("2026-10-08T00:00:00Z".into()), reason: "Release".into() });
+        rule.freezes.push(Period {
+            start: "2026-10-07T00:00:00Z".into(),
+            end: Some("2026-10-08T00:00:00Z".into()),
+            reason: "Release".into(),
+        });
         rule.freezes.push(Period { start: "2026-10-12T00:00:00Z".into(), end: None, reason: String::new() });
-        assert_eq!(
-            explain(&closed(&rule, at("2026-10-07T10:00:00Z")).unwrap()),
-            "Merging is frozen (Release) until 2026-10-08T00:00:00Z."
-        );
+        assert_eq!(explain(&closed(&rule, at("2026-10-07T10:00:00Z")).unwrap()), "Merging is frozen (Release) until 2026-10-08T00:00:00Z.");
         assert_eq!(closed(&rule, at("2026-10-08T10:00:00Z")), None);
         assert_eq!(explain(&closed(&rule, at("2026-10-13T10:00:00Z")).unwrap()), "Merging is frozen until the freeze is lifted.");
-        rule.exceptions.push(Period { start: "2026-10-07T12:00:00Z".into(), end: Some("2026-10-07T13:00:00Z".into()), reason: "Hotfix".into() });
+        rule.exceptions.push(Period {
+            start: "2026-10-07T12:00:00Z".into(),
+            end: Some("2026-10-07T13:00:00Z".into()),
+            reason: "Hotfix".into(),
+        });
         assert_eq!(closed(&rule, at("2026-10-07T12:30:00Z")), None);
     }
 }

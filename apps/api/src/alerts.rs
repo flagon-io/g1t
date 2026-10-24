@@ -6,8 +6,7 @@
 //! (see `g1t_contracts::security`); this is the public form of both.
 
 use g1t_contracts::security::{
-    AlertChange, AlertState, DismissReason, SecretFinding, SecretStatus, SecurityUpdate, UpdateState,
-    Vulnerability,
+    AlertChange, AlertState, DismissReason, SecretFinding, SecretStatus, SecurityUpdate, UpdateState, Vulnerability,
 };
 use serde::{Deserialize, Serialize};
 
@@ -51,11 +50,7 @@ impl AlertKind {
 
     /// The reasons that dismiss an alert of this kind, as words.
     pub fn reasons(self) -> Vec<&'static str> {
-        DismissReason::ALL
-            .into_iter()
-            .filter(|reason| self.takes(*reason))
-            .map(DismissReason::as_str)
-            .collect()
+        DismissReason::ALL.into_iter().filter(|reason| self.takes(*reason)).map(DismissReason::as_str).collect()
     }
 }
 
@@ -213,10 +208,7 @@ impl From<Vulnerability> for SecurityAlert {
 impl SecurityAlert {
     /// The alert `dismiss` or `reopen` changed, if it names one.
     pub fn from_change(change: AlertChange) -> Option<SecurityAlert> {
-        change
-            .secret
-            .map(SecurityAlert::from)
-            .or_else(|| change.vulnerability.map(SecurityAlert::from))
+        change.secret.map(SecurityAlert::from).or_else(|| change.vulnerability.map(SecurityAlert::from))
     }
 }
 
@@ -353,10 +345,7 @@ mod tests {
     #[test]
     fn each_kind_takes_its_own_reasons() {
         assert_eq!(AlertKind::Secret.reasons(), ["false_positive", "used_in_tests", "revoked", "wont_fix"]);
-        assert_eq!(
-            AlertKind::Dependency.reasons(),
-            ["fix_started", "no_bandwidth", "tolerable_risk", "inaccurate", "not_used"]
-        );
+        assert_eq!(AlertKind::Dependency.reasons(), ["fix_started", "no_bandwidth", "tolerable_risk", "inaccurate", "not_used"]);
         assert_eq!(AlertKind::of_id("sec_9"), Some(AlertKind::Secret));
         assert_eq!(AlertKind::of_id("vul_9"), Some(AlertKind::Dependency));
         assert_eq!(AlertKind::of_id("x"), None);

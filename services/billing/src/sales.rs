@@ -3,8 +3,8 @@
 //! it. Staff only, through sudo.g1t.sh.
 
 use g1t_contracts::billing::{
-    AdminAddNoteArgs, AdminOverviewArgs, AdminOveragesArgs, AdminSalesArgs, AdminSetSalesArgs, AdminSignalsArgs, GivenFigures,
-    InternalUse, KindFigures, LimitState, MonthFigures, Overview, SalesNote, SalesRecord, Signal, SignalKind, TermsKind, Trust,
+    AdminAddNoteArgs, AdminOveragesArgs, AdminOverviewArgs, AdminSalesArgs, AdminSetSalesArgs, AdminSignalsArgs, GivenFigures, InternalUse,
+    KindFigures, LimitState, MonthFigures, Overview, SalesNote, SalesRecord, Signal, SignalKind, TermsKind, Trust,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, new_id};
@@ -206,11 +206,7 @@ impl Billing {
     }
 
     async fn record_row(&self, workspace: &str) -> Result<Option<RecordRow>> {
-        self.db
-            .prepare("SELECT * FROM sales_records WHERE workspace = ?")
-            .bind(&[workspace.into()])?
-            .first::<RecordRow>(None)
-            .await
+        self.db.prepare("SELECT * FROM sales_records WHERE workspace = ?").bind(&[workspace.into()])?.first::<RecordRow>(None).await
     }
 
     pub(crate) async fn admin_sales(&self, a: AdminSalesArgs) -> Result<SalesRecord> {
@@ -236,15 +232,9 @@ impl Billing {
                 notes,
                 updated_at: Some(row.updated_at),
             },
-            None => SalesRecord {
-                workspace,
-                stage: "none".to_owned(),
-                owner: None,
-                next_step: None,
-                next_at: None,
-                notes,
-                updated_at: None,
-            },
+            None => {
+                SalesRecord { workspace, stage: "none".to_owned(), owner: None, next_step: None, next_at: None, notes, updated_at: None }
+            }
         })
     }
 
@@ -365,24 +355,28 @@ impl Billing {
             } else if limit.state == LimitState::Stopped {
                 push(SignalKind::AtLimit, limit.message.clone().unwrap_or_default(), limit.exposure_micros.max(limit.spent_micros));
             } else if let Some(available) = limit.available_micros.filter(|a| *a > 0)
-                && limit.exposure_micros * 5 >= available * 4 {
-                    push(
-                        SignalKind::NearCeiling,
-                        format!(
-                            "{} unpaid of the {} g1t allows it ({:?}); a call could raise it before it stops.",
-                            dollars(limit.exposure_micros),
-                            dollars(available),
-                            limit.trust
-                        ),
-                        limit.exposure_micros,
-                    );
-                }
+                && limit.exposure_micros * 5 >= available * 4
+            {
+                push(
+                    SignalKind::NearCeiling,
+                    format!(
+                        "{} unpaid of the {} g1t allows it ({:?}); a call could raise it before it stops.",
+                        dollars(limit.exposure_micros),
+                        dollars(available),
+                        limit.trust
+                    ),
+                    limit.exposure_micros,
+                );
+            }
             if last_month >= HIGH_SPEND_MICROS {
                 let terms = self.terms_of(&row.workspace).await?;
                 if terms.kind == TermsKind::Standard && !limit.account.starts_with("ent_") {
                     push(
                         SignalKind::HighSpend,
-                        format!("Spent {} last month on standard terms: worth offering custom terms or an enterprise.", dollars(last_month)),
+                        format!(
+                            "Spent {} last month on standard terms: worth offering custom terms or an enterprise.",
+                            dollars(last_month)
+                        ),
                         last_month,
                     );
                 }
@@ -419,14 +413,26 @@ impl Billing {
             let record = self.record_row(&workspace).await?;
             let (stage, owner, next_step, next_at) =
                 record.map_or((None, None, None, None), |r| (Some(r.stage), r.owner, r.next_step, r.next_at));
-            signals.push(Signal { workspace, kind: SignalKind::CostOverRevenue, detail, value_micros: value, stage, owner, next_step, next_at });
+            signals.push(Signal {
+                workspace,
+                kind: SignalKind::CostOverRevenue,
+                detail,
+                value_micros: value,
+                stage,
+                owner,
+                next_step,
+                next_at,
+            });
         }
         signals.sort_by(|a, b| urgency(a.kind).cmp(&urgency(b.kind)).then(b.value_micros.cmp(&a.value_micros)));
         Ok(signals)
     }
 
     /// Every invoice g1t has sent, workspaces' and enterprises'.
-    pub(crate) async fn admin_invoices(&self, a: g1t_contracts::billing::AdminInvoicesArgs) -> Result<Vec<g1t_contracts::billing::InvoiceSummary>> {
+    pub(crate) async fn admin_invoices(
+        &self,
+        a: g1t_contracts::billing::AdminInvoicesArgs,
+    ) -> Result<Vec<g1t_contracts::billing::InvoiceSummary>> {
         #[derive(Deserialize)]
         struct Row {
             invoice_id: String,
@@ -568,9 +574,7 @@ impl Billing {
         }
         let count = |sql: &'static str, args: Vec<JsValue>| {
             let db = &self.db;
-            async move {
-                Ok::<i64, worker::Error>(db.prepare(sql).bind(&args)?.first::<Count>(None).await?.and_then(|c| c.n).unwrap_or(0))
-            }
+            async move { Ok::<i64, worker::Error>(db.prepare(sql).bind(&args)?.first::<Count>(None).await?.and_then(|c| c.n).unwrap_or(0)) }
         };
         let paying = count(
             "SELECT COUNT(DISTINCT workspace) AS n FROM ledger
@@ -592,11 +596,8 @@ impl Billing {
         let signals = self.admin_signals(AdminSignalsArgs {}).await?;
         let tally = |kind: SignalKind| signals.iter().filter(|s| s.kind == kind).count() as u32;
         let this = months.last().cloned().unwrap_or_default();
-        let active_plans = count(
-            "SELECT COUNT(*) AS n FROM subscriptions WHERE feature = 'plan' AND status IN ('active', 'canceling')",
-            vec![],
-        )
-        .await?;
+        let active_plans =
+            count("SELECT COUNT(*) AS n FROM subscriptions WHERE feature = 'plan' AND status IN ('active', 'canceling')", vec![]).await?;
         let open_requests = count("SELECT COUNT(*) AS n FROM limit_requests WHERE status = 'open'", vec![]).await?;
         let open_spikes = count("SELECT COUNT(*) AS n FROM spikes WHERE status = 'open'", vec![]).await?;
         let overages = self.admin_overages(AdminOveragesArgs {}).await?.len() as u32;

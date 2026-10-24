@@ -277,12 +277,7 @@ pub(crate) fn for_framework(dir: &Path, framework: &str) -> Option<Server> {
 /// A server g1t recognises in a project with no framework it knows, and
 /// the Dockerfile it writes for it.
 pub(crate) fn server(dir: &Path) -> Option<Server> {
-    node_server(dir)
-        .or_else(|| python(dir))
-        .or_else(|| go(dir))
-        .or_else(|| ruby(dir))
-        .or_else(|| php(dir))
-        .or_else(|| rust(dir))
+    node_server(dir).or_else(|| python(dir)).or_else(|| go(dir)).or_else(|| ruby(dir)).or_else(|| php(dir)).or_else(|| rust(dir))
 }
 
 /// Crates that make a Rust program a web server.
@@ -411,9 +406,8 @@ fn python(dir: &Path) -> Option<Server> {
 
 /// Whether a Go file is `package main`.
 fn is_main(path: &Path) -> bool {
-    std::fs::read_to_string(path).is_ok_and(|text| {
-        text.lines().map(str::trim).find(|line| line.starts_with("package ")).is_some_and(|line| line == "package main")
-    })
+    std::fs::read_to_string(path)
+        .is_ok_and(|text| text.lines().map(str::trim).find(|line| line.starts_with("package ")).is_some_and(|line| line == "package main"))
 }
 
 fn has_main(dir: &Path) -> bool {
@@ -582,14 +576,20 @@ mod tests {
 
     #[test]
     fn rust_servers_are_recognised() {
-        let axum = project("axum", &[("Cargo.toml", "[package]\nname = \"todo-api\"\n\n[dependencies]\naxum = \"0.8\"\n"), ("src/main.rs", "fn main() {}")]);
+        let axum = project(
+            "axum",
+            &[("Cargo.toml", "[package]\nname = \"todo-api\"\n\n[dependencies]\naxum = \"0.8\"\n"), ("src/main.rs", "fn main() {}")],
+        );
         let found = server(&axum).unwrap();
         assert_eq!((found.id, found.name), ("rust", "Rust"));
         assert!(found.dockerfile.contains("--bin todo-api"));
         assert!(found.dockerfile.contains("ENTRYPOINT [\"/app\"]"));
         let lib = project("rust-lib", &[("Cargo.toml", "[package]\nname = \"x\"\n[dependencies]\nserde = \"1\"\n"), ("src/main.rs", "")]);
         assert_eq!(server(&lib), None, "not a web server");
-        let two = project("rust-two", &[("Cargo.toml", "[package]\nname = \"x\"\n[dependencies]\naxum = \"0.8\"\n[[bin]]\nname = \"a\"\n[[bin]]\nname = \"b\"\n")]);
+        let two = project(
+            "rust-two",
+            &[("Cargo.toml", "[package]\nname = \"x\"\n[dependencies]\naxum = \"0.8\"\n[[bin]]\nname = \"a\"\n[[bin]]\nname = \"b\"\n")],
+        );
         assert_eq!(server(&two), None, "which program runs is the project's to say");
     }
 
@@ -625,7 +625,13 @@ mod tests {
 
     #[test]
     fn node_servers_are_recognised_and_static_sites_are_not() {
-        let express = project("express", &[("package.json", r#"{ "scripts": { "start": "node server.js" }, "dependencies": { "express": "5" } }"#), ("package-lock.json", "{}")]);
+        let express = project(
+            "express",
+            &[
+                ("package.json", r#"{ "scripts": { "start": "node server.js" }, "dependencies": { "express": "5" } }"#),
+                ("package-lock.json", "{}"),
+            ],
+        );
         let found = server(&express).unwrap();
         assert_eq!((found.id, found.name), ("node", "Node.js"));
         assert!(found.dockerfile.contains("FROM node:22-slim"));
@@ -634,7 +640,8 @@ mod tests {
         assert!(found.dockerfile.contains("EXPOSE 8080"));
         assert!(!found.dockerfile.contains("npm run build"));
         // A server package without a start script runs its main file.
-        let main = project("main", &[("package.json", r#"{ "main": "src/app.js", "dependencies": { "fastify": "5" } }"#), (".nvmrc", "v20.11\n")]);
+        let main =
+            project("main", &[("package.json", r#"{ "main": "src/app.js", "dependencies": { "fastify": "5" } }"#), (".nvmrc", "v20.11\n")]);
         let found = server(&main).unwrap();
         assert!(found.dockerfile.contains("CMD [\"node\", \"src/app.js\"]"));
         assert!(found.dockerfile.contains("FROM node:20-slim"));
@@ -698,7 +705,10 @@ mod tests {
 
     #[test]
     fn frameworks_that_need_a_server_get_one() {
-        let next = project("next", &[("package.json", r#"{ "scripts": { "build": "next build", "start": "next start" }, "dependencies": { "next": "16" } }"#)]);
+        let next = project(
+            "next",
+            &[("package.json", r#"{ "scripts": { "build": "next build", "start": "next start" }, "dependencies": { "next": "16" } }"#)],
+        );
         let found = for_framework(&next, "nextjs").unwrap();
         assert!(found.dockerfile.contains("RUN npm run build\n"));
         assert!(found.dockerfile.contains("CMD [\"npm\", \"start\"]"));
@@ -706,9 +716,16 @@ mod tests {
         let found = for_framework(&bare, "nextjs").unwrap();
         assert!(found.dockerfile.contains("RUN npx next build\n"));
         assert!(found.dockerfile.contains("CMD [\"npx\", \"next\", \"start\"]"));
-        let astro = project("astro-node", &[("package.json", r#"{ "scripts": { "build": "astro build", "start": "astro dev" }, "dependencies": { "astro": "5", "@astrojs/node": "9" } }"#)]);
+        let astro = project(
+            "astro-node",
+            &[(
+                "package.json",
+                r#"{ "scripts": { "build": "astro build", "start": "astro dev" }, "dependencies": { "astro": "5", "@astrojs/node": "9" } }"#,
+            )],
+        );
         assert!(for_framework(&astro, "astro").unwrap().dockerfile.contains("CMD [\"node\", \"./dist/server/entry.mjs\"]"));
-        let kit = project("kit-auto", &[("package.json", r#"{ "devDependencies": { "@sveltejs/kit": "2", "@sveltejs/adapter-auto": "6" } }"#)]);
+        let kit =
+            project("kit-auto", &[("package.json", r#"{ "devDependencies": { "@sveltejs/kit": "2", "@sveltejs/adapter-auto": "6" } }"#)]);
         assert_eq!(for_framework(&kit, "sveltekit"), None, "adapter-auto has no server to run");
         let rr = project("rr", &[("package.json", r#"{ "devDependencies": { "@react-router/dev": "7" } }"#)]);
         let found = for_framework(&rr, "react-router").unwrap();

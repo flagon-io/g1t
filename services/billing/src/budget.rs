@@ -30,9 +30,7 @@
 //!
 //! Zero for either variable turns that cap off.
 
-use g1t_contracts::billing::{
-    AdminLiftBreakerArgs, BillingAccount, CompedBudget, ComputeKind, PlanKind, SpendBucket, SpendCaps,
-};
+use g1t_contracts::billing::{AdminLiftBreakerArgs, BillingAccount, CompedBudget, ComputeKind, PlanKind, SpendBucket, SpendCaps};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
@@ -61,9 +59,8 @@ pub(crate) struct Caps {
 
 impl Caps {
     pub(crate) fn from_env(env: &Env) -> Self {
-        let number = |name: &str, default: i64| {
-            env.var(name).ok().and_then(|v| v.to_string().trim().parse::<i64>().ok()).unwrap_or(default).max(0)
-        };
+        let number =
+            |name: &str, default: i64| env.var(name).ok().and_then(|v| v.to_string().trim().parse::<i64>().ok()).unwrap_or(default).max(0);
         Caps {
             comped_monthly: number("COMPED_MONTHLY_CEILING_MICROS", 150_000_000),
             daily: number("PLATFORM_DAILY_SPEND_CAP_MICROS", 75_000_000),
@@ -147,11 +144,12 @@ pub(crate) fn breaker_applies(_kind: ComputeKind) -> bool {
 /// leaves it alone: live payments, not comped, and on the plan it pays for
 /// (not given it by staff) or an enterprise contract.
 pub(crate) fn covered_by_revenue(plan: PlanKind, comped: bool, plan_given: bool, live: bool) -> bool {
-    live && !comped && match plan {
-        PlanKind::Enterprise => true,
-        PlanKind::Paid => !plan_given,
-        _ => false,
-    }
+    live && !comped
+        && match plan {
+            PlanKind::Enterprise => true,
+            PlanKind::Paid => !plan_given,
+            _ => false,
+        }
 }
 
 /// The alert to send now: the level reached, if higher than any sent this
@@ -303,7 +301,14 @@ impl Billing {
         if let Some(by) = lifted {
             lines.insert(1, format!("{by} had already lifted it for today, so nothing is paused."));
         }
-        match crate::margin::email_staff(&self.env, &self.caps.alert_to, &format!("g1t: the daily spend breaker tripped at {}", cents(total)), &lines).await {
+        match crate::margin::email_staff(
+            &self.env,
+            &self.caps.alert_to,
+            &format!("g1t: the daily spend breaker tripped at {}", cents(total)),
+            &lines,
+        )
+        .await
+        {
             Ok(()) => {
                 self.db
                     .prepare("UPDATE spend_breaker SET told_at = ? WHERE day = ?")
@@ -317,12 +322,7 @@ impl Billing {
     }
 
     /// Why a start is refused by the breaker, if it is.
-    pub(crate) async fn breaker_refuses(
-        &self,
-        plan: PlanKind,
-        account: &BillingAccount,
-        kind: ComputeKind,
-    ) -> Result<Option<String>> {
+    pub(crate) async fn breaker_refuses(&self, plan: PlanKind, account: &BillingAccount, kind: ComputeKind) -> Result<Option<String>> {
         if self.caps.daily <= 0 || !breaker_applies(kind) {
             return Ok(None);
         }
@@ -369,7 +369,8 @@ impl Billing {
             return Ok(None);
         }
         let budget = self.comped_budget(account).await?;
-        Ok(used_up(budget.used_micros, budget.ceiling_micros).then(|| comped_refusal(&account.name, budget.used_micros, budget.ceiling_micros)))
+        Ok(used_up(budget.used_micros, budget.ceiling_micros)
+            .then(|| comped_refusal(&account.name, budget.used_micros, budget.ceiling_micros)))
     }
 
     /// Every 15 minutes: comped budgets' alerts, once each level a month,
@@ -512,13 +513,7 @@ impl Billing {
             account: String,
             micros: Option<i64>,
         }
-        let reset = self
-            .db
-            .prepare(RESET_SPEND_SQL)
-            .bind(&[month_start.as_str().into()])?
-            .all()
-            .await?
-            .results::<Reset>()?;
+        let reset = self.db.prepare(RESET_SPEND_SQL).bind(&[month_start.as_str().into()])?.all().await?.results::<Reset>()?;
         let reset_micros = reset.iter().filter_map(|r| r.micros).sum();
         let reset_workspaces = reset.into_iter().map(|r| r.account.strip_prefix("ws_").unwrap_or(&r.account).to_owned()).collect();
         let fixed = self.fixed_monthly(self.caps.fixed_monthly).await?;
@@ -662,7 +657,9 @@ mod tests {
         let mut sent = 0;
         let mut emailed = vec![];
         // Spend climbs through the month, checked every 15 minutes.
-        for used in [10_000_000, 74_000_000, 75_000_000, 80_000_000, 112_500_000, 120_000_000, 135_000_000, 140_000_000, 150_000_000, 170_000_000] {
+        for used in
+            [10_000_000, 74_000_000, 75_000_000, 80_000_000, 112_500_000, 120_000_000, 135_000_000, 140_000_000, 150_000_000, 170_000_000]
+        {
             if let Some(level) = alert_to_send(alert_level(used, ceiling), sent) {
                 emailed.push(level);
                 sent = level;

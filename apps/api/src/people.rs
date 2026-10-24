@@ -21,8 +21,7 @@ const MOST: usize = 200;
 /// Whether `object` is a person (or another principal) named by `username`,
 /// rather than a set of credentials that happens to carry one.
 fn names_someone(object: &serde_json::Map<String, Value>) -> bool {
-    matches!(object.get("username"), Some(Value::String(name)) if !name.is_empty())
-        && !object.contains_key("password")
+    matches!(object.get("username"), Some(Value::String(name)) if !name.is_empty()) && !object.contains_key("password")
 }
 
 /// The lowercased usernames in `value`, each once, at most [`MOST`].
@@ -62,11 +61,7 @@ pub fn fill(value: &mut Value, chosen: &HashMap<String, String>) {
                     .and_then(Value::as_str)
                     .filter(|display| display.eq_ignore_ascii_case(&username))
                     .map(str::to_owned);
-                let shown = chosen
-                    .get(&username.to_lowercase())
-                    .cloned()
-                    .or(carried)
-                    .unwrap_or(username);
+                let shown = chosen.get(&username.to_lowercase()).cloned().or(carried).unwrap_or(username);
                 object.insert("display_username".to_owned(), Value::String(shown));
             }
             object.values_mut().for_each(|value| fill(value, chosen));
@@ -85,9 +80,7 @@ pub async fn name_people(services: &Services, mut value: Value) -> Value {
         return value;
     }
     let chosen: HashMap<String, String> =
-        g1t_kit::call(&services.identity, "display_usernames", &DisplayUsernamesArgs { usernames })
-            .await
-            .unwrap_or_default();
+        g1t_kit::call(&services.identity, "display_usernames", &DisplayUsernamesArgs { usernames }).await.unwrap_or_default();
     fill(&mut value, &chosen);
     value
 }

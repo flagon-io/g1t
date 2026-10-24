@@ -231,7 +231,12 @@ impl Work {
     /// item of the repository's workspace, and a pull request of the
     /// repository. A pull request for a work item names that item when no
     /// item was given.
-    async fn session_subjects(&self, repo: &Repo, item: Option<u32>, pull: Option<u32>) -> Result<Outcome<(Option<(String, u32)>, Option<u32>)>> {
+    async fn session_subjects(
+        &self,
+        repo: &Repo,
+        item: Option<u32>,
+        pull: Option<u32>,
+    ) -> Result<Outcome<(Option<(String, u32)>, Option<u32>)>> {
         let workspace = repo.namespace.to_lowercase();
         let mut found_item = None;
         if let Some(number) = item.filter(|number| *number > 0) {
@@ -349,29 +354,26 @@ impl Work {
         }
         .at(now);
         let started = |session: &Session| g1t_contracts::events::marked(SessionEvent::of(session), Some(&a.actor));
-        let mut statements = vec![self
-            .db
-            .prepare(insert_session_sql())
-            .bind(&[
-                id.as_str().into(),
-                repo.id.as_str().into(),
-                fields.item.as_ref().map_or(JsValue::NULL, |(id, _)| JsValue::from(id.as_str())),
-                number_or_null(fields.pull),
-                text_or_null(&fields.branch),
-                a.actor.id.as_str().into(),
-                a.actor.username.as_str().into(),
-                a.harness.as_str().into(),
-                text_or_null(&harness_session_id),
-                text_or_null(&fields.title),
-                text_or_null(&fields.head_commit),
-                at.as_str().into(),
-                at.as_str().into(),
-                text_or_null(&parent_id),
-                text_or_null(&fields.agent_type),
-                text_or_null(&fields.task),
-                text_or_null(&fields.prompt),
-                text_or_null(&fields.model),
-            ])?];
+        let mut statements = vec![self.db.prepare(insert_session_sql()).bind(&[
+            id.as_str().into(),
+            repo.id.as_str().into(),
+            fields.item.as_ref().map_or(JsValue::NULL, |(id, _)| JsValue::from(id.as_str())),
+            number_or_null(fields.pull),
+            text_or_null(&fields.branch),
+            a.actor.id.as_str().into(),
+            a.actor.username.as_str().into(),
+            a.harness.as_str().into(),
+            text_or_null(&harness_session_id),
+            text_or_null(&fields.title),
+            text_or_null(&fields.head_commit),
+            at.as_str().into(),
+            at.as_str().into(),
+            text_or_null(&parent_id),
+            text_or_null(&fields.agent_type),
+            text_or_null(&fields.task),
+            text_or_null(&fields.prompt),
+            text_or_null(&fields.model),
+        ])?];
         // Started at the same moment by another call: none, and no update.
         let sent = push_delivery(
             &mut statements,
@@ -447,7 +449,11 @@ impl Work {
                 branch: fields.branch.clone().or(row.branch.clone()),
                 head_commit: fields.head_commit.clone().or(row.head_commit.clone()),
                 title: if pinned { row.title.clone() } else { fields.title.clone().or(row.title.clone()) },
-                title_source: if pinned { row.title_source.clone() } else { given.map(|source| source.as_str().to_owned()).or(row.title_source.clone()) },
+                title_source: if pinned {
+                    row.title_source.clone()
+                } else {
+                    given.map(|source| source.as_str().to_owned()).or(row.title_source.clone())
+                },
                 agent_type: fields.agent_type.clone().or(row.agent_type.clone()),
                 task: fields.task.clone().or(row.task.clone()),
                 prompt: fields.prompt.clone().or(row.prompt.clone()),
@@ -536,12 +542,7 @@ impl Work {
             .first::<NumberRow>(None)
             .await?
             .map_or(0, |row| row.n);
-        let moved = self
-            .db
-            .prepare(MOVE_ENTRIES)
-            .bind(&[pull.id.as_str().into(), base.into(), session_id.into()])?
-            .run()
-            .await;
+        let moved = self.db.prepare(MOVE_ENTRIES).bind(&[pull.id.as_str().into(), base.into(), session_id.into()])?.run().await;
         // An entry recorded on the pull request at the same moment took a
         // number these needed: they stay the session's alone.
         if let Err(error) = moved {
@@ -605,7 +606,10 @@ impl Work {
         Ok(if may_end_session(&row.actor_id, &actor.id, can_push) {
             Outcome::Ok(row)
         } else {
-            Outcome::fail(FailureCode::Forbidden, "Only whoever runs this session, or someone with write access to the repository, can end it.")
+            Outcome::fail(
+                FailureCode::Forbidden,
+                "Only whoever runs this session, or someone with write access to the repository, can end it.",
+            )
         })
     }
 
@@ -661,16 +665,17 @@ impl Work {
             .at(now)
         };
         let guard = "EXISTS (SELECT 1 FROM sessions WHERE id = ?7 AND state = 'ended' AND ended_at = ?8)";
-        let mut statements = vec![self
-            .db
-            .prepare(format!(
-                "UPDATE sessions SET state = 'ended', ended_at = ?1, end_reason = ?2, last_seen_at = ?1, result = COALESCE(?3, result),
+        let mut statements = vec![
+            self.db
+                .prepare(format!(
+                    "UPDATE sessions SET state = 'ended', ended_at = ?1, end_reason = ?2, last_seen_at = ?1, result = COALESCE(?3, result),
                    {final_due}
                  WHERE id = ?4 AND state = 'active'
                  RETURNING {SESSION_COLUMNS}",
-                final_due = titles::final_due("?1"),
-            ))
-            .bind(&[at.as_str().into(), reason.as_str().into(), text_or_null(&result), row.id.as_str().into()])?];
+                    final_due = titles::final_due("?1"),
+                ))
+                .bind(&[at.as_str().into(), reason.as_str().into(), text_or_null(&result), row.id.as_str().into()])?,
+        ];
         let expected = end_one(row.clone(), &reason, result.clone());
         let sent = push_delivery(
             &mut statements,
@@ -743,7 +748,10 @@ impl Work {
         };
         let can_push = matches!(crate::allowed(Some(&a.actor), &repo, g1t_contracts::access::Capability::Push), Outcome::Ok(()));
         if !may_end_session(&row.actor_id, &a.actor.id, can_push) {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only whoever runs this session, or someone with write access to the repository, can name it."));
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                "Only whoever runs this session, or someone with write access to the repository, can name it.",
+            ));
         }
         let at = rfc3339(now_ms());
         let title = tidy(a.title.as_deref().map(shown::clean).as_deref(), MAX_TITLE_CHARS);
@@ -760,7 +768,12 @@ impl Work {
             "session.progressed",
             &repo.id,
             Some(a.actor.id.clone()),
-            SessionProgressed { repo_id: repo.id.clone(), number: session.pull.or(session.item), session_id: session.id.clone(), root_id: None },
+            SessionProgressed {
+                repo_id: repo.id.clone(),
+                number: session.pull.or(session.item),
+                session_id: session.id.clone(),
+                root_id: None,
+            },
         )
         .await?;
         let mut sessions = [session];
@@ -973,10 +986,7 @@ impl Work {
             return Ok(Outcome::fail(FailureCode::Invalid, "Acknowledge at most 100 update IDs."));
         }
         if a.entries.len() > crate::MAX_ENTRY_BATCH {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                format!("Send at most {} entries at a time.", crate::MAX_ENTRY_BATCH),
-            ));
+            return Ok(Outcome::fail(FailureCode::Invalid, format!("Send at most {} entries at a time.", crate::MAX_ENTRY_BATCH)));
         }
         if a.touched.len() > MAX_TOUCHES {
             return Ok(Outcome::fail(FailureCode::Invalid, format!("Say at most {MAX_TOUCHES} things touched at a time.")));
@@ -1032,20 +1042,16 @@ impl Work {
             // Each takes the next number of the session, and of its pull
             // request when it has one, itself, so two batches at once
             // cannot collide; a key already recorded is skipped.
-            statements.push(
-                self.db
-                    .prepare(INSERT_ENTRY)
-                    .bind(&[
-                        pull_id.clone(),
-                        kind.as_str().unwrap_or("note").into(),
-                        text.into(),
-                        text_or_null(&entry.tool),
-                        text_or_null(&entry.commit.or_else(|| session.head_commit.clone())),
-                        at.as_str().into(),
-                        session.id.as_str().into(),
-                        text_or_null(&key),
-                    ])?,
-            );
+            statements.push(self.db.prepare(INSERT_ENTRY).bind(&[
+                pull_id.clone(),
+                kind.as_str().unwrap_or("note").into(),
+                text.into(),
+                text_or_null(&entry.tool),
+                text_or_null(&entry.commit.or_else(|| session.head_commit.clone())),
+                at.as_str().into(),
+                session.id.as_str().into(),
+                text_or_null(&key),
+            ])?);
         }
         let mut recorded = 0;
         let mut prompted = 0;

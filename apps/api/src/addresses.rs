@@ -50,12 +50,7 @@ impl Addresses {
     pub fn from_settings(site: Option<String>, api: Option<String>, mcp: Option<String>) -> Addresses {
         let site = setting(site, HOSTED_SITE);
         let usercontent = if site == HOSTED_SITE { HOSTED_USERCONTENT.to_owned() } else { format!("{site}/-/usercontent") };
-        Addresses {
-            api: setting(api, HOSTED_API),
-            mcp: setting(mcp, HOSTED_MCP),
-            usercontent,
-            site,
-        }
+        Addresses { api: setting(api, HOSTED_API), mcp: setting(mcp, HOSTED_MCP), usercontent, site }
     }
 
     /// With USERCONTENT_URL, when it is set: the site's own origin is
@@ -121,10 +116,7 @@ mod tests {
     fn hosted_is_the_default() {
         let hosted = Addresses::from_settings(None, Some(String::new()), Some("  ".into()));
         assert_eq!(hosted, Addresses::default());
-        assert_eq!(
-            hosted.mcp_challenge(),
-            "Bearer resource_metadata=\"https://mcp.g1t.sh/.well-known/oauth-protected-resource\""
-        );
+        assert_eq!(hosted.mcp_challenge(), "Bearer resource_metadata=\"https://mcp.g1t.sh/.well-known/oauth-protected-resource\"");
         assert_eq!(hosted.git_remote("acme", "rocket"), "https://g1t.sh/acme/rocket.git");
         assert_eq!(hosted.usercontent, "https://g1tusercontent.com");
         let on_mcp = Url::parse("https://mcp.g1t.sh/").unwrap();
@@ -141,10 +133,7 @@ mod tests {
             Some("http://localhost:8789/mcp".into()),
         );
         assert_eq!(own.site, "http://localhost:8787");
-        assert_eq!(
-            own.protected_resource(),
-            "http://localhost:8789/.well-known/oauth-protected-resource/mcp"
-        );
+        assert_eq!(own.protected_resource(), "http://localhost:8789/.well-known/oauth-protected-resource/mcp");
         let url = |text: &str| Url::parse(text).unwrap();
         assert_eq!(own.mcp_path(&url("http://localhost:8789/mcp")).as_deref(), Some("/"));
         assert_eq!(own.mcp_path(&url("http://localhost:8789/mcp/")).as_deref(), Some("/"));

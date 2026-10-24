@@ -26,11 +26,20 @@ pub enum Value {
     Array(Vec<Value>),
     Hash(Vec<(Value, Value)>),
     /// An object of `class` with these instance variables (`@name`).
-    Object { class: String, ivars: Vec<(String, Value)> },
+    Object {
+        class: String,
+        ivars: Vec<(String, Value)>,
+    },
     /// What `class#marshal_dump` returned, for `class.marshal_load`.
-    UserMarshal { class: String, data: Box<Value> },
+    UserMarshal {
+        class: String,
+        data: Box<Value>,
+    },
     /// The bytes `class#_dump` returned, for `class._load`.
-    UserDef { class: String, data: Vec<u8> },
+    UserDef {
+        class: String,
+        data: Vec<u8>,
+    },
 }
 
 impl Value {
@@ -177,10 +186,7 @@ mod tests {
         assert_eq!(dump(&Value::Int(-257)), b"\x04\x08i\xfe\xff\xfe");
         assert_eq!(dump(&Value::str("hi")), b"\x04\x08I\"\x07hi\x06:\x06ET");
         // The second `:a` is a link to the first.
-        assert_eq!(
-            dump(&Value::Array(vec![Value::Symbol("a".into()), Value::Symbol("a".into())])),
-            b"\x04\x08[\x07:\x06a;\x00"
-        );
+        assert_eq!(dump(&Value::Array(vec![Value::Symbol("a".into()), Value::Symbol("a".into())])), b"\x04\x08[\x07:\x06a;\x00");
         assert_eq!(dump(&Value::Hash(vec![(Value::Int(1), Value::Nil)])), b"\x04\x08{\x06i\x060");
         // Gem::Version.new("1.0")
         assert_eq!(

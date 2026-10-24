@@ -167,9 +167,7 @@ impl Events {
         let order = if a.after.is_some() { "seq ASC" } else { "id DESC" };
         let rows = self
             .db
-            .prepare(format!(
-                "SELECT * FROM events {filter} ORDER BY {order} LIMIT ?"
-            ))
+            .prepare(format!("SELECT * FROM events {filter} ORDER BY {order} LIMIT ?"))
             .bind(&values)?
             .all()
             .await?
@@ -231,10 +229,7 @@ impl Events {
         let mut reached: Vec<String> = Vec::new();
         let mut failed = None;
         for name in Object::keys(bindings.unchecked_ref::<Object>()).iter() {
-            let Some(name) = name
-                .as_string()
-                .filter(|name| name.starts_with(SUBSCRIBER_PREFIX))
-            else {
+            let Some(name) = name.as_string().filter(|name| name.starts_with(SUBSCRIBER_PREFIX)) else {
                 continue;
             };
             let routed: Vec<&Event> = events
@@ -257,35 +252,21 @@ impl Events {
             self.note_reached(events, &sent, &reached).await?;
             return Err(error);
         }
-        let (work, repos, identity) = (
-            self.env.service("WORK")?,
-            self.env.service("REPOS")?,
-            self.env.service("IDENTITY")?,
-        );
+        let (work, repos, identity) = (self.env.service("WORK")?, self.env.service("REPOS")?, self.env.service("IDENTITY")?);
         // Optional: without it the inbox still fills, nobody is told live.
         let notify = self.env.service("NOTIFY").ok();
         // Pages open on the repositories: told first, as nobody waits longer.
         if let Some(notify) = notify.as_ref() {
             live::tell(notify, &repos, events).await;
         }
-        let sources = inbox::Sources {
-            work: &work,
-            repos: &repos,
-            identity: &identity,
-            notify: notify.as_ref(),
-        };
+        let sources = inbox::Sources { work: &work, repos: &repos, identity: &identity, notify: notify.as_ref() };
         inbox::deliver(&self.db, &sources, events).await;
         Ok(())
     }
 
     /// Writes down which queues each event of a batch has reached, with
     /// those it had reached before, for the batch's retry.
-    async fn note_reached(
-        &self,
-        events: &[Event],
-        sent: &HashMap<String, HashSet<String>>,
-        reached: &[String],
-    ) -> Result<()> {
+    async fn note_reached(&self, events: &[Event], sent: &HashMap<String, HashSet<String>>, reached: &[String]) -> Result<()> {
         let now = rfc3339(now_ms());
         let mut statements = Vec::with_capacity(events.len());
         for event in events {
@@ -315,10 +296,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         return Response::error("Not found", 404);
     };
     let body: serde_json::Value = request.json().await?;
-    let events = Events {
-        db: env.d1("DB")?,
-        env,
-    };
+    let events = Events { db: env.d1("DB")?, env };
     match method.as_str() {
         "publish" => reply(&events.publish(args(body)?).await?),
         "list" => reply(&events.list(args(body)?).await?),
@@ -378,21 +356,15 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
 async fn queue(batch: MessageBatch<serde_json::Value>, env: Env, _ctx: Context) -> Result<()> {
     let db = env.d1("DB")?;
     if batch.queue() == dead_letters::QUEUE {
-        let letters: Vec<dead_letters::DeadLetter> = batch
-            .messages()?
-            .into_iter()
-            .map(|message| dead_letters::DeadLetter { id: message.id(), body: message.into_body() })
-            .collect();
+        let letters: Vec<dead_letters::DeadLetter> =
+            batch.messages()?.into_iter().map(|message| dead_letters::DeadLetter { id: message.id(), body: message.into_body() }).collect();
         dead_letters::record(&db, &letters, now_ms()).await?;
         batch.ack_all();
         return Ok(());
     }
     let events = Events { db, env };
-    let delivered: Vec<Event> = batch
-        .messages()?
-        .into_iter()
-        .map(|message| serde_json::from_value(message.into_body()))
-        .collect::<std::result::Result<_, _>>()?;
+    let delivered: Vec<Event> =
+        batch.messages()?.into_iter().map(|message| serde_json::from_value(message.into_body())).collect::<std::result::Result<_, _>>()?;
     match events.deliver(&delivered).await {
         Ok(()) => batch.ack_all(),
         Err(error) => {
@@ -429,11 +401,7 @@ async fn scheduled(event: worker::ScheduledEvent, env: Env, _ctx: worker::Schedu
         return;
     }
     let days = |name: &str, default: u32| {
-        env.var(name)
-            .ok()
-            .and_then(|v| v.to_string().trim().parse::<u32>().ok())
-            .filter(|days| *days > 0)
-            .unwrap_or(default)
+        env.var(name).ok().and_then(|v| v.to_string().trim().parse::<u32>().ok()).filter(|days| *days > 0).unwrap_or(default)
     };
     let max_days = days("AUDIT_MAX_DAYS", audit::DEFAULT_MAX_DAYS);
     let min_days = days("AUDIT_MIN_DAYS", audit::DEFAULT_MIN_DAYS).min(max_days);
@@ -469,9 +437,7 @@ async fn scheduled(event: worker::ScheduledEvent, env: Env, _ctx: worker::Schedu
     let billing = match env.service("BILLING") {
         Ok(billing) => billing,
         Err(error) => {
-            worker::console_error!(
-                "audit entries kept past their plan's days: no billing: {error}"
-            );
+            worker::console_error!("audit entries kept past their plan's days: no billing: {error}");
             return;
         }
     };
@@ -534,9 +500,7 @@ fn list_filter(a: &ListArgs) -> (String, Vec<Bind>) {
         // A work item's or pull request's own events name it as `number`; a
         // comment, review or link on it names it as `item`.
         let marks = vec!["?"; a.numbers.len()].join(", ");
-        conditions.push(format!(
-            "(json_extract(data, '$.number') IN ({marks}) OR json_extract(data, '$.item') IN ({marks}))"
-        ));
+        conditions.push(format!("(json_extract(data, '$.number') IN ({marks}) OR json_extract(data, '$.item') IN ({marks}))"));
         for _ in 0..2 {
             values.extend(a.numbers.iter().map(|number| Bind::Number(f64::from(*number))));
         }
@@ -558,11 +522,7 @@ fn list_filter(a: &ListArgs) -> (String, Vec<Bind>) {
         values.push(Bind::Text(after.clone()));
         values.push(Bind::Text(after.clone()));
     }
-    let filter = if conditions.is_empty() {
-        String::new()
-    } else {
-        format!("WHERE {}", conditions.join(" AND "))
-    };
+    let filter = if conditions.is_empty() { String::new() } else { format!("WHERE {}", conditions.join(" AND ")) };
     (filter, values)
 }
 

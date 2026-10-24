@@ -41,14 +41,18 @@ pub fn https(url: &str) -> Option<Url> {
 pub fn endpoints_from(document: &Value, issuer: &str) -> Result<Endpoints, String> {
     let said = document["issuer"].as_str().unwrap_or_default();
     if said.trim_end_matches('/') != issuer.trim_end_matches('/') {
-        return Err(format!("The provider's discovery document names the issuer {said:?}, not {issuer:?}. Use the issuer exactly as it says."));
+        return Err(format!(
+            "The provider's discovery document names the issuer {said:?}, not {issuer:?}. Use the issuer exactly as it says."
+        ));
     }
     let endpoint = |field: &str| document[field].as_str().filter(|url| https(url).is_some()).map(str::to_owned);
     let (Some(authorize), Some(token)) = (endpoint("authorization_endpoint"), endpoint("token_endpoint")) else {
         return Err("The provider's discovery document has no https authorization and token endpoints.".to_owned());
     };
     let Some(jwks) = endpoint("jwks_uri") else {
-        return Err("The provider's discovery document publishes no signing keys (jwks_uri), so its ID tokens cannot be verified.".to_owned());
+        return Err(
+            "The provider's discovery document publishes no signing keys (jwks_uri), so its ID tokens cannot be verified.".to_owned()
+        );
     };
     let methods: Vec<&str> = document["token_endpoint_auth_methods_supported"]
         .as_array()
@@ -165,9 +169,7 @@ pub async fn exchange(a: &Exchange<'_>) -> Result<Value, String> {
         let user = url_form(&[("", a.client_id)]);
         let pass = url_form(&[("", a.client_secret)]);
         let credentials = format!("{}:{}", &user[1..], &pass[1..]);
-        headers
-            .set("authorization", &format!("Basic {}", STANDARD.encode(credentials)))
-            .map_err(|_| UNREACHABLE.to_owned())?;
+        headers.set("authorization", &format!("Basic {}", STANDARD.encode(credentials))).map_err(|_| UNREACHABLE.to_owned())?;
     } else {
         form.push('&');
         form.push_str(&url_form(&[("client_id", a.client_id), ("client_secret", a.client_secret)]));
@@ -206,7 +208,14 @@ pub async fn userinfo(url: &str, access_token: &str) -> Result<Value, String> {
 
 /// The claims of an ID token: its signature verified with the issuer's
 /// keys (jwt.rs), then what it says checked against this sign-in.
-pub fn id_token_claims(id_token: &str, keys: &Value, issuer: &str, client_id: &str, nonce: &str, now_seconds: u64) -> Result<Value, String> {
+pub fn id_token_claims(
+    id_token: &str,
+    keys: &Value,
+    issuer: &str,
+    client_id: &str,
+    nonce: &str,
+    now_seconds: u64,
+) -> Result<Value, String> {
     let claims = super::jwt::verify(id_token, keys)?;
     check_claims(claims, issuer, client_id, nonce, now_seconds)
 }
@@ -272,7 +281,8 @@ mod tests {
         assert_eq!(found.issuer.as_deref(), Some("https://acme.okta.com"));
         assert!(!found.basic);
         assert!(endpoints_from(&document, "https://globex.okta.com").unwrap_err().contains("names the issuer"));
-        let plain = json!({ "issuer": "https://a.test", "authorization_endpoint": "http://a.test/auth", "token_endpoint": "https://a.test/token" });
+        let plain =
+            json!({ "issuer": "https://a.test", "authorization_endpoint": "http://a.test/auth", "token_endpoint": "https://a.test/token" });
         assert!(endpoints_from(&plain, "https://a.test").is_err());
         let defaults = json!({ "issuer": "https://a.test", "authorization_endpoint": "https://a.test/auth", "token_endpoint": "https://a.test/token", "jwks_uri": "https://a.test/keys" });
         assert!(endpoints_from(&defaults, "https://a.test").unwrap().basic);
@@ -292,7 +302,14 @@ mod tests {
     fn the_authorize_url_carries_pkce_and_the_nonce() {
         let url = authorize_url(
             "https://idp.test/authorize?tenant=1",
-            &Authorize { client_id: "c", redirect_uri: "https://g1t.sh/auth/sso/acme/callback", scopes: "openid", state: "s", nonce: Some("n"), challenge: "x" },
+            &Authorize {
+                client_id: "c",
+                redirect_uri: "https://g1t.sh/auth/sso/acme/callback",
+                scopes: "openid",
+                state: "s",
+                nonce: Some("n"),
+                challenge: "x",
+            },
         )
         .unwrap();
         let pairs: std::collections::HashMap<String, String> = Url::parse(&url).unwrap().query_pairs().into_owned().collect();
@@ -300,13 +317,20 @@ mod tests {
         assert_eq!(pairs["code_challenge_method"], "S256");
         assert_eq!(pairs["nonce"], "n");
         assert_eq!(pairs["redirect_uri"], "https://g1t.sh/auth/sso/acme/callback");
-        assert!(authorize_url("http://idp.test/authorize", &Authorize { client_id: "c", redirect_uri: "r", scopes: "", state: "s", nonce: None, challenge: "x" }).is_none());
+        assert!(
+            authorize_url(
+                "http://idp.test/authorize",
+                &Authorize { client_id: "c", redirect_uri: "r", scopes: "", state: "s", nonce: None, challenge: "x" }
+            )
+            .is_none()
+        );
     }
 
     #[test]
     fn an_id_token_must_be_for_this_sign_in() {
         let now = 1_800_000_000;
-        let good = json!({ "iss": "https://idp.test", "aud": "client", "exp": now + 60, "nonce": "n", "sub": "u1", "email": "ada@acme.test" });
+        let good =
+            json!({ "iss": "https://idp.test", "aud": "client", "exp": now + 60, "nonce": "n", "sub": "u1", "email": "ada@acme.test" });
         let claims = check_claims(good.clone(), "https://idp.test", "client", "n", now).unwrap();
         assert_eq!(claim(&claims, "sub").as_deref(), Some("u1"));
         let with = |field: &str, value: Value| {
@@ -335,7 +359,17 @@ mod tests {
         // Signed, but for another sign-in.
         assert!(id_token_claims(token, &fixtures["jwks"], "https://idp.example.test", "client", "other", 1_800_000_100).is_err());
         // Not signed with the issuer's keys.
-        assert!(id_token_claims(token, &json!({ "keys": [fixtures["jwks"]["keys"][1].clone()] }), "https://idp.example.test", "client", "n", 1_800_000_100).is_err());
+        assert!(
+            id_token_claims(
+                token,
+                &json!({ "keys": [fixtures["jwks"]["keys"][1].clone()] }),
+                "https://idp.example.test",
+                "client",
+                "n",
+                1_800_000_100
+            )
+            .is_err()
+        );
     }
 
     #[test]

@@ -210,7 +210,11 @@ pub(crate) fn zip64_extra(size: Option<u64>, compressed: Option<u64>, offset: Op
 pub(crate) fn central_header(entry: &Entry) -> Vec<u8> {
     let big = |v: u64| v >= MAX32;
     let extra = if big(entry.size) || big(entry.compressed) || big(entry.offset) {
-        zip64_extra(big(entry.size).then_some(entry.size), big(entry.compressed).then_some(entry.compressed), big(entry.offset).then_some(entry.offset))
+        zip64_extra(
+            big(entry.size).then_some(entry.size),
+            big(entry.compressed).then_some(entry.compressed),
+            big(entry.offset).then_some(entry.offset),
+        )
     } else {
         Vec::new()
     };
@@ -300,7 +304,11 @@ fn bad(message: impl Into<String>) -> io::Error {
 /// bytes are `tail`, starting at `tail_at` in the file: its entry count,
 /// size and offset. When the classic record says to, the ZIP64 end record
 /// is read with `read_at`.
-pub(crate) fn find_directory(tail: &[u8], tail_at: u64, mut read_at: impl FnMut(u64, usize) -> io::Result<Vec<u8>>) -> io::Result<(u64, u64, u64)> {
+pub(crate) fn find_directory(
+    tail: &[u8],
+    tail_at: u64,
+    mut read_at: impl FnMut(u64, usize) -> io::Result<Vec<u8>>,
+) -> io::Result<(u64, u64, u64)> {
     let end = (0..=tail.len().saturating_sub(22)).rev().find(|&i| get32(tail, i) == END).ok_or_else(|| bad("it is not a ZIP file"))?;
     let mut count = u64::from(get16(tail, end + 10));
     let mut size = u64::from(get32(tail, end + 12));

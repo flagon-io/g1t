@@ -104,12 +104,8 @@ pub(crate) async fn brought_in<R: GitRepo>(git: &R, a: PushedArgs) -> Result<Pus
         held.insert(commit.hash.as_str());
         held.extend(commit.parents.iter().map(String::as_str));
     }
-    let mut known: HashMap<String, Commit> = git
-        .log(&a.after, MAX_PUSHED as u32 + 1)
-        .await?
-        .into_iter()
-        .map(|commit| (commit.hash.clone(), commit))
-        .collect();
+    let mut known: HashMap<String, Commit> =
+        git.log(&a.after, MAX_PUSHED as u32 + 1).await?.into_iter().map(|commit| (commit.hash.clone(), commit)).collect();
     let mut seen: HashSet<String> = HashSet::new();
     let mut new: Vec<Commit> = Vec::new();
     let mut queue: VecDeque<String> = VecDeque::from([a.after.clone()]);

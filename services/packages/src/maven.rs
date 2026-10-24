@@ -135,14 +135,19 @@ pub fn route(path: &str) -> Option<(String, MavenPath)> {
     let parts: Vec<&str> = rest.split('/').collect();
     let last = *parts.last()?;
     let (base, checksum) = split_checksum(last);
-    let group_of = |parts: &[&str]| -> Option<String> { (!parts.is_empty() && parts.iter().all(|p| valid_group_part(p))).then(|| parts.join(".")) };
+    let group_of =
+        |parts: &[&str]| -> Option<String> { (!parts.is_empty() && parts.iter().all(|p| valid_group_part(p))).then(|| parts.join(".")) };
     let n = parts.len();
     if base == METADATA {
-        if n >= 4 && is_snapshot(parts[n - 2]) && valid_version(parts[n - 2]) && valid_artifact(parts[n - 3])
-            && let Some(group) = group_of(&parts[..n - 3]) {
-                let (artifact, version) = (parts[n - 3].to_owned(), parts[n - 2].to_owned());
-                return Some((workspace, MavenPath::VersionMetadata { group, artifact, version, checksum }));
-            }
+        if n >= 4
+            && is_snapshot(parts[n - 2])
+            && valid_version(parts[n - 2])
+            && valid_artifact(parts[n - 3])
+            && let Some(group) = group_of(&parts[..n - 3])
+        {
+            let (artifact, version) = (parts[n - 3].to_owned(), parts[n - 2].to_owned());
+            return Some((workspace, MavenPath::VersionMetadata { group, artifact, version, checksum }));
+        }
         if n == 2 && valid_group_part(parts[0]) {
             return Some((workspace, MavenPath::GroupMetadata { group: parts[0].to_owned(), checksum }));
         }
@@ -191,7 +196,12 @@ impl FileName {
 /// `20261006.120000-3`: a SNAPSHOT build's time and number.
 fn snapshot_build(text: &str) -> Option<(String, u32, usize)> {
     let bytes = text.as_bytes();
-    if bytes.len() < 17 || !bytes[..8].iter().all(u8::is_ascii_digit) || bytes[8] != b'.' || !bytes[9..15].iter().all(u8::is_ascii_digit) || bytes[15] != b'-' {
+    if bytes.len() < 17
+        || !bytes[..8].iter().all(u8::is_ascii_digit)
+        || bytes[8] != b'.'
+        || !bytes[9..15].iter().all(u8::is_ascii_digit)
+        || bytes[15] != b'-'
+    {
         return None;
     }
     let digits = bytes[16..].iter().take_while(|b| b.is_ascii_digit()).count();
@@ -333,7 +343,11 @@ pub fn artifact_metadata(group: &str, artifact: &str, versions: &[String], updat
     let latest = sorted.last();
     let release = sorted.iter().rev().find(|v| !is_snapshot(v));
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<metadata>\n");
-    xml.push_str(&format!("  <groupId>{}</groupId>\n  <artifactId>{}</artifactId>\n  <versioning>\n", xml::escape(group), xml::escape(artifact)));
+    xml.push_str(&format!(
+        "  <groupId>{}</groupId>\n  <artifactId>{}</artifactId>\n  <versioning>\n",
+        xml::escape(group),
+        xml::escape(artifact)
+    ));
     if let Some(latest) = latest {
         xml.push_str(&format!("    <latest>{}</latest>\n", xml::escape(latest)));
     }
@@ -350,10 +364,7 @@ pub fn artifact_metadata(group: &str, artifact: &str, versions: &[String], updat
 
 /// The newest build among a SNAPSHOT's files: its timestamp and number.
 pub fn newest_build(artifact: &str, version: &str, files: &[String]) -> Option<(String, u32)> {
-    files
-        .iter()
-        .filter_map(|file| parse_file(artifact, version, file)?.build)
-        .max_by(|a, b| (a.1, &a.0).cmp(&(b.1, &b.0)))
+    files.iter().filter_map(|file| parse_file(artifact, version, file)?.build).max_by(|a, b| (a.1, &a.0).cmp(&(b.1, &b.0)))
 }
 
 /// A SNAPSHOT version's `maven-metadata.xml`, from its files' names: the
@@ -384,7 +395,9 @@ pub fn snapshot_metadata(group: &str, artifact: &str, version: &str, files: &[St
         xml::escape(artifact),
         xml::escape(version)
     ));
-    xml.push_str(&format!("    <snapshot>\n      <timestamp>{timestamp}</timestamp>\n      <buildNumber>{build}</buildNumber>\n    </snapshot>\n"));
+    xml.push_str(&format!(
+        "    <snapshot>\n      <timestamp>{timestamp}</timestamp>\n      <buildNumber>{build}</buildNumber>\n    </snapshot>\n"
+    ));
     xml.push_str(&format!("    <lastUpdated>{}</lastUpdated>\n    <snapshotVersions>\n", updated(&timestamp)));
     for (name, _) in &newest {
         xml.push_str("      <snapshotVersion>\n");
@@ -480,8 +493,10 @@ pub struct Plugin {
 pub fn plugins_block(plugins: &[Plugin]) -> String {
     let mut sorted: Vec<&Plugin> = plugins.iter().collect();
     sorted.sort_by(|a, b| (&a.prefix, &a.artifact).cmp(&(&b.prefix, &b.artifact)));
-    let mut xml = String::from("  <plugins>
-");
+    let mut xml = String::from(
+        "  <plugins>
+",
+    );
     for plugin in sorted {
         xml.push_str(&format!(
             "    <plugin>
@@ -495,8 +510,10 @@ pub fn plugins_block(plugins: &[Plugin]) -> String {
             xml::escape(&plugin.artifact)
         ));
     }
-    xml.push_str("  </plugins>
-");
+    xml.push_str(
+        "  </plugins>
+",
+    );
     xml
 }
 
@@ -509,10 +526,12 @@ pub fn group_metadata(artifact_xml: Option<String>, plugins: &[Plugin]) -> Strin
             Some(at) => format!("{}{block}{}", &xml[..at], &xml[at..]),
             None => xml,
         },
-        None => format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+        None => format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <metadata>
 {block}</metadata>
-"),
+"
+        ),
     }
 }
 
@@ -548,13 +567,21 @@ mod tests {
         );
         assert_eq!(
             route("/-/maven/acme/com/acme/web/maven-metadata.xml.md5"),
-            Some(("acme".into(), MavenPath::ArtifactMetadata { group: "com.acme".into(), artifact: "web".into(), checksum: Some(Checksum::Md5) }))
+            Some((
+                "acme".into(),
+                MavenPath::ArtifactMetadata { group: "com.acme".into(), artifact: "web".into(), checksum: Some(Checksum::Md5) }
+            ))
         );
         assert_eq!(
             route("/-/maven/acme/com/acme/web/1.0-SNAPSHOT/maven-metadata.xml"),
             Some((
                 "acme".into(),
-                MavenPath::VersionMetadata { group: "com.acme".into(), artifact: "web".into(), version: "1.0-SNAPSHOT".into(), checksum: None }
+                MavenPath::VersionMetadata {
+                    group: "com.acme".into(),
+                    artifact: "web".into(),
+                    version: "1.0-SNAPSHOT".into(),
+                    checksum: None
+                }
             ))
         );
         // Not a file of the artifact, or not in the layout.
@@ -601,7 +628,8 @@ mod tests {
 
     #[test]
     fn artifact_metadata_lists_versions_with_latest_and_release() {
-        let xml = artifact_metadata("com.acme", "web", &["1.1.0".into(), "1.0.0".into(), "1.2.0-SNAPSHOT".into()], "2026-10-06T12:30:05.000Z");
+        let xml =
+            artifact_metadata("com.acme", "web", &["1.1.0".into(), "1.0.0".into(), "1.2.0-SNAPSHOT".into()], "2026-10-06T12:30:05.000Z");
         let doc = xml::parse(&xml).unwrap();
         let versioning = doc.child("versioning").unwrap();
         assert_eq!(doc.child_text("groupId").as_deref(), Some("com.acme"));

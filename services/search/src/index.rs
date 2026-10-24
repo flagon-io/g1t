@@ -14,8 +14,7 @@ use std::collections::{HashMap, HashSet};
 use g1t_contracts::events::{Event, ProjectUpdated, WorkMigrated};
 use g1t_contracts::identity::{DirectoryArgs, DirectoryEntry, DirectoryPage, Profile, SlugArgs, UsernameArgs, Workspace};
 use g1t_contracts::repos::{
-    AllIdsArgs, BlobText, ChangedFilesArgs, FileList, IdPage, ListFilesArgs, PathByIdArgs, ReadBlobsArgs, RepoPath, TreeArgs,
-    TreeView,
+    AllIdsArgs, BlobText, ChangedFilesArgs, FileList, IdPage, ListFilesArgs, PathByIdArgs, ReadBlobsArgs, RepoPath, TreeArgs, TreeView,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::{
@@ -312,12 +311,8 @@ impl Search {
         let Some(actor) = self.actor(&path.namespace).await? else {
             return Ok(None);
         };
-        let tree: Outcome<TreeView> = g1t_kit::call(
-            &self.repos,
-            "tree",
-            &TreeArgs { path, viewer: Some(actor), git_ref: None, tree_path: String::new() },
-        )
-        .await?;
+        let tree: Outcome<TreeView> =
+            g1t_kit::call(&self.repos, "tree", &TreeArgs { path, viewer: Some(actor), git_ref: None, tree_path: String::new() }).await?;
         let Outcome::Ok(tree) = tree else {
             return Ok(None);
         };
@@ -406,7 +401,13 @@ impl Search {
         let listed: FileList = g1t_kit::call(
             &self.repos,
             "list_files",
-            &ListFilesArgs { repo_id: repo_id.to_owned(), git_ref: None, skip_dirs: Self::skip_dirs(), limit: MAX_REPO_FILES, links: false },
+            &ListFilesArgs {
+                repo_id: repo_id.to_owned(),
+                git_ref: None,
+                skip_dirs: Self::skip_dirs(),
+                limit: MAX_REPO_FILES,
+                links: false,
+            },
         )
         .await?;
         let stored: HashMap<String, String> = store::all::<Stored>(
@@ -483,12 +484,9 @@ impl Search {
                 break;
             }
             let hashes: Vec<String> = group.iter().filter_map(|file| file.blob.clone()).collect();
-            let texts: Vec<BlobText> = g1t_kit::call(
-                &self.repos,
-                "read_blobs",
-                &ReadBlobsArgs { repo_id: repo_id.to_owned(), hashes, max_bytes: MAX_FILE_BYTES },
-            )
-            .await?;
+            let texts: Vec<BlobText> =
+                g1t_kit::call(&self.repos, "read_blobs", &ReadBlobsArgs { repo_id: repo_id.to_owned(), hashes, max_bytes: MAX_FILE_BYTES })
+                    .await?;
             let by_hash: HashMap<&str, &BlobText> = texts.iter().map(|text| (text.hash.as_str(), text)).collect();
             for file in group {
                 let blob = file.blob.as_deref().unwrap_or_default();
@@ -528,11 +526,9 @@ impl Search {
     /// Records a repository's size and language once its queue is empty.
     async fn finish(&self, repo_id: &str) -> Result<()> {
         let data: Vec<&str> = rules::DATA_LANGUAGES.to_vec();
-        let state = store::all::<RepoState>(
-            &self.db,
-            &Sql { text: "SELECT state FROM repos WHERE repo_id = ?".into(), params: vec![p(repo_id)] },
-        )
-        .await?;
+        let state =
+            store::all::<RepoState>(&self.db, &Sql { text: "SELECT state FROM repos WHERE repo_id = ?".into(), params: vec![p(repo_id)] })
+                .await?;
         let partial = state.first().is_some_and(|row| row.state == "partial");
         store::run_all(
             &self.db,
@@ -694,11 +690,9 @@ impl Search {
     }
 
     async fn known(&self, repo_id: &str) -> Result<bool> {
-        let found = store::count(
-            &self.db,
-            &Sql { text: "SELECT count(*) AS n FROM repos WHERE repo_id = ?".into(), params: vec![p(repo_id)] },
-        )
-        .await?;
+        let found =
+            store::count(&self.db, &Sql { text: "SELECT count(*) AS n FROM repos WHERE repo_id = ?".into(), params: vec![p(repo_id)] })
+                .await?;
         Ok(found > 0)
     }
 
@@ -801,7 +795,16 @@ impl Search {
         let pulls: Outcome<Vec<Pull>> = g1t_kit::call(
             &self.work,
             "list_pulls",
-            &ListPullsArgs { repo: path.clone(), viewer: Some(actor), state: None, label: None, milestone: None, base: None, before: None, merged_since: None },
+            &ListPullsArgs {
+                repo: path.clone(),
+                viewer: Some(actor),
+                state: None,
+                label: None,
+                milestone: None,
+                base: None,
+                before: None,
+                merged_since: None,
+            },
         )
         .await?;
         let Outcome::Ok(pulls) = pulls else { return Ok(()) };
@@ -996,8 +999,15 @@ impl Search {
                     self.enqueue(migrated_jobs(&migrated)).await?;
                 }
             }
-            "pull.opened" | "pull.ready" | "pull.updated" | "pull.closed" | "pull.reopened"
-            | "pull.converted_to_draft" | "pull.merged" | "pull.labeled" | "pull.unlabeled" => {
+            "pull.opened"
+            | "pull.ready"
+            | "pull.updated"
+            | "pull.closed"
+            | "pull.reopened"
+            | "pull.converted_to_draft"
+            | "pull.merged"
+            | "pull.labeled"
+            | "pull.unlabeled" => {
                 if let Ok(pull) = serde_json::from_value::<NumberEvent>(data.clone()) {
                     self.index_pull(&pull.repo_id, pull.number).await?;
                 }
@@ -1032,12 +1042,7 @@ impl Search {
                 }
             }
             "workspace.deleted" => {
-                g1t_kit::deleted::on_event(
-                    &self.db,
-                    event,
-                    &["DELETE FROM people WHERE kind = 'workspace' AND slug = ?1"],
-                )
-                .await?;
+                g1t_kit::deleted::on_event(&self.db, event, &["DELETE FROM people WHERE kind = 'workspace' AND slug = ?1"]).await?;
             }
             "workspace.renamed" => {
                 g1t_kit::rename::on_event(
@@ -1113,8 +1118,7 @@ impl Search {
                 if changed.truncated || changed.commit.is_none() {
                     return self.reconcile(&repo_id).await;
                 }
-                let files: Vec<(String, Option<String>)> =
-                    changed.files.into_iter().map(|file| (file.path, file.hash)).collect();
+                let files: Vec<(String, Option<String>)> = changed.files.into_iter().map(|file| (file.path, file.hash)).collect();
                 self.queue_files(&repo_id, &files).await?;
                 store::run_all(
                     &self.db,
@@ -1125,12 +1129,8 @@ impl Search {
             }
             Job::Drain { repo_id } => self.drain(&repo_id).await,
             Job::Directory { kind, after } => {
-                let page: DirectoryPage = g1t_kit::call(
-                    &self.identity,
-                    "directory",
-                    &DirectoryArgs { kind: kind.clone(), after, limit: DIRECTORY_PAGE },
-                )
-                .await?;
+                let page: DirectoryPage =
+                    g1t_kit::call(&self.identity, "directory", &DirectoryArgs { kind: kind.clone(), after, limit: DIRECTORY_PAGE }).await?;
                 let mut statements = Vec::new();
                 for entry in &page.entries {
                     let reference = if kind == "workspace" { entry.id.clone() } else { entry.slug.to_lowercase() };

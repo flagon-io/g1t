@@ -54,10 +54,7 @@ pub const PROVIDERS: [Spec; 5] = [
 
 impl Provider {
     pub fn spec(self) -> &'static Spec {
-        PROVIDERS
-            .iter()
-            .find(|spec| spec.provider == self)
-            .expect("every provider is in the catalogue")
+        PROVIDERS.iter().find(|spec| spec.provider == self).expect("every provider is in the catalogue")
     }
 
     pub fn all() -> impl Iterator<Item = Provider> {
@@ -85,7 +82,6 @@ impl Provider {
     pub fn receives(self) -> bool {
         self.kind() == ProviderKind::Alerts
     }
-
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -136,15 +132,7 @@ fn yes() -> bool {
 
 impl Default for ConnectionConfig {
     fn default() -> Self {
-        ConnectionConfig {
-            repo: None,
-            label: None,
-            write_back: true,
-            organization: None,
-            site: None,
-            email: None,
-            keys: Vec::new(),
-        }
+        ConnectionConfig { repo: None, label: None, write_back: true, organization: None, site: None, email: None, keys: Vec::new() }
     }
 }
 

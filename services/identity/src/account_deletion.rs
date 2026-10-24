@@ -150,7 +150,8 @@ pub fn staff_steps(deletion: &AccountDeletion, with_sole_workspaces: bool, confi
     if !confirms_username(&deletion.username, confirm) {
         return Err((FailureCode::Invalid, format!("Type {} to confirm.", deletion.username)));
     }
-    let mut steps: Vec<Step> = if with_sole_workspaces { sole.iter().map(|workspace| Step::Workspace(workspace.slug.clone())).collect() } else { Vec::new() };
+    let mut steps: Vec<Step> =
+        if with_sole_workspaces { sole.iter().map(|workspace| Step::Workspace(workspace.slug.clone())).collect() } else { Vec::new() };
     steps.push(Step::Account);
     Ok(steps)
 }
@@ -177,7 +178,12 @@ pub fn stopped_at(username: &str, deleted: &[WorkspaceDeletedWith], failed: &str
 /// account with `account`, given the workspaces that went. The first
 /// workspace that fails stops it, before the account is deleted, saying
 /// which ([`stopped_at`]).
-pub async fn run_steps<W, WF, A, AF>(username: &str, steps: &[Step], mut workspace: W, account: A) -> Result<Outcome<Vec<WorkspaceDeletedWith>>>
+pub async fn run_steps<W, WF, A, AF>(
+    username: &str,
+    steps: &[Step],
+    mut workspace: W,
+    account: A,
+) -> Result<Outcome<Vec<WorkspaceDeletedWith>>>
 where
     W: FnMut(String) -> WF,
     WF: Future<Output = Result<Outcome<WorkspaceDeletedWith>>>,
@@ -224,10 +230,7 @@ pub(crate) enum AskBilling<'a> {
 /// Whether staff may restore a deleted account, now `now`.
 pub fn may_restore(username: &str, purge_after: &str, now: &str) -> std::result::Result<(), Refusal> {
     if !restorable(purge_after, now) {
-        return Err((
-            FailureCode::Conflict,
-            format!("{username} is being purged and can no longer be restored."),
-        ));
+        return Err((FailureCode::Conflict, format!("{username} is being purged and can no longer be restored.")));
     }
     Ok(())
 }
@@ -608,9 +611,7 @@ impl Identity {
             &live.username,
             &steps,
             move |slug| async move { self.staff_delete_workspace(&slug, owner_id, owner, staff, reason).await },
-            move |workspaces| async move {
-                self.soft_delete(live_ref, deletion_ref, None, Some((staff, reason)), workspaces).await
-            },
+            move |workspaces| async move { self.soft_delete(live_ref, deletion_ref, None, Some((staff, reason)), workspaces).await },
         )
         .await?;
         let workspaces = match done {
@@ -623,13 +624,8 @@ impl Identity {
             let slugs: Vec<&str> = workspaces.iter().map(|workspace| workspace.slug.as_str()).collect();
             format!(" and the workspaces it alone owned ({})", slugs.join(", "))
         };
-        self.record_for_staff(
-            &live.username,
-            "account_deleted",
-            &format!("Deleted the account {}{with}: {reason}", live.username),
-            staff,
-        )
-        .await;
+        self.record_for_staff(&live.username, "account_deleted", &format!("Deleted the account {}{with}: {reason}", live.username), staff)
+            .await;
         Ok(Outcome::Ok(true))
     }
 
@@ -655,7 +651,9 @@ impl Identity {
         self.audit_account(&person, action, &format!("Deleted the account {}", live.username)).await;
         // The person hears of it while their addresses are still there.
         for address in self.notice_recipients(id, false).await.unwrap_or_default() {
-            if let Err(error) = crate::email::send_account_deleted(&self.env, &address, &live.username, by_staff, ACCOUNT_RESTORE_DAYS).await {
+            if let Err(error) =
+                crate::email::send_account_deleted(&self.env, &address, &live.username, by_staff, ACCOUNT_RESTORE_DAYS).await
+            {
                 worker::console_error!("account deleted notice failed: {error}");
             }
         }
@@ -734,22 +732,14 @@ impl Identity {
 
     /// Deleted accounts not purged yet, newest first. Staff only.
     pub async fn admin_deleted_accounts(&self) -> Result<Vec<DeletedAccount>> {
-        let rows = self
-            .db
-            .prepare(format!("SELECT {DELETED_COLUMNS} ORDER BY deleted_at DESC LIMIT 500"))
-            .all()
-            .await?
-            .results::<DeletedRow>()?;
+        let rows =
+            self.db.prepare(format!("SELECT {DELETED_COLUMNS} ORDER BY deleted_at DESC LIMIT 500")).all().await?.results::<DeletedRow>()?;
         let now = rfc3339(now_ms());
         Ok(rows.iter().map(|row| row.listed(&now)).collect())
     }
 
     async fn deleted_account_row(&self, column: &str, value: &str) -> Result<Option<DeletedRow>> {
-        self.db
-            .prepare(format!("SELECT {DELETED_COLUMNS} AND {column} = ?"))
-            .bind(&[value.into()])?
-            .first::<DeletedRow>(None)
-            .await
+        self.db.prepare(format!("SELECT {DELETED_COLUMNS} AND {column} = ?")).bind(&[value.into()])?.first::<DeletedRow>(None).await
     }
 
     /// The deletion of `user_id`, when it is deleted and not purged.
@@ -834,10 +824,8 @@ impl Identity {
         }
         self.db.batch(statements).await?;
         self.log_security(id, "account_restored", None, Some((staff, "Restored by g1t's staff"))).await;
-        self.record_for_staff(&row.username, "account_restored", &format!("Restored the account {}", row.username), staff)
-            .await;
-        self.announce("user.restored", None, UserRestored { user_id: row.id.clone(), username: row.username.clone() })
-            .await;
+        self.record_for_staff(&row.username, "account_restored", &format!("Restored the account {}", row.username), staff).await;
+        self.announce("user.restored", None, UserRestored { user_id: row.id.clone(), username: row.username.clone() }).await;
         Ok(Outcome::Ok(true))
     }
 
@@ -855,8 +843,7 @@ impl Identity {
             return Ok(Outcome::fail(code, message));
         }
         self.purge_account(&row).await?;
-        self.record_for_staff(&row.username, "account_purged", &format!("Purged the account {} now", row.username), staff)
-            .await;
+        self.record_for_staff(&row.username, "account_purged", &format!("Purged the account {} now", row.username), staff).await;
         Ok(Outcome::Ok(true))
     }
 
@@ -864,9 +851,7 @@ impl Identity {
     pub async fn purge_due_accounts(&self) -> Result<u32> {
         let due = self
             .db
-            .prepare(format!(
-                "SELECT {DELETED_COLUMNS} AND purge_after <= ? ORDER BY purge_after LIMIT {PURGES_PER_SWEEP}"
-            ))
+            .prepare(format!("SELECT {DELETED_COLUMNS} AND purge_after <= ? ORDER BY purge_after LIMIT {PURGES_PER_SWEEP}"))
             .bind(&[rfc3339(now_ms()).into()])?
             .all()
             .await?
@@ -889,22 +874,10 @@ impl Identity {
     /// Removes a deleted account for good: see the module docs.
     async fn purge_account(&self, row: &DeletedRow) -> Result<()> {
         let now = rfc3339(now_ms());
-        let values = [
-            row.id.as_str(),
-            row.username.as_str(),
-            row.deleted_at.as_str(),
-            now.as_str(),
-        ];
-        let mut batch = self.purge_job_statements(
-            "user",
-            &row.id,
-            serde_json::json!({"username": row.username, "avatar": row.avatar}),
-        )?;
+        let values = [row.id.as_str(), row.username.as_str(), row.deleted_at.as_str(), now.as_str()];
+        let mut batch = self.purge_job_statements("user", &row.id, serde_json::json!({"username": row.username, "avatar": row.avatar}))?;
         for (sql, binds) in purge_statements() {
-            let binds: Vec<JsValue> = values[..binds]
-                .iter()
-                .map(|value| JsValue::from(*value))
-                .collect();
+            let binds: Vec<JsValue> = values[..binds].iter().map(|value| JsValue::from(*value)).collect();
             batch.push(self.db.prepare(sql).bind(&binds)?);
         }
         self.db.batch(batch).await?;
@@ -991,10 +964,7 @@ mod tests {
         let owner = AccountDeletion { sole_owner_of: vec![sole("acme")], ..deletion("ada") };
         assert_eq!(
             staff_steps(&owner, false, "ada").unwrap_err(),
-            (
-                FailureCode::Conflict,
-                "ada is the only owner of acme. Make someone else an owner of it, or delete it, first.".to_owned()
-            )
+            (FailureCode::Conflict, "ada is the only owner of acme. Make someone else an owner of it, or delete it, first.".to_owned())
         );
     }
 
@@ -1012,7 +982,10 @@ mod tests {
 
     #[test]
     fn billing_that_cannot_settle_refuses_the_whole_deletion_before_anything_goes() {
-        let owing = SoleOwnedWorkspace { billing: Some("ada-labs has an unpaid invoice. Pay it from the workspace's Billing page first.".into()), ..sole("ada-labs") };
+        let owing = SoleOwnedWorkspace {
+            billing: Some("ada-labs has an unpaid invoice. Pay it from the workspace's Billing page first.".into()),
+            ..sole("ada-labs")
+        };
         let owner = AccountDeletion { sole_owner_of: vec![sole("ada"), owing], ..deletion("ada") };
         let (code, message) = staff_steps(&owner, true, "ada").unwrap_err();
         assert_eq!(code, FailureCode::PaymentRequired);
@@ -1028,7 +1001,8 @@ mod tests {
 
     #[test]
     fn a_workspace_failing_on_the_way_stops_before_the_account() {
-        let steps = vec![Step::Workspace("ada".into()), Step::Workspace("ada-labs".into()), Step::Workspace("ada-old".into()), Step::Account];
+        let steps =
+            vec![Step::Workspace("ada".into()), Step::Workspace("ada-labs".into()), Step::Workspace("ada-old".into()), Step::Account];
         let (outcome, done) = run(&steps, &["ada-labs"]);
         // ada went; ada-labs refused; ada-old and the account were not tried.
         assert_eq!(done, vec!["workspace ada"]);
@@ -1192,7 +1166,17 @@ mod tests {
         let sql: Vec<String> = purge_statements().into_iter().map(|(sql, _)| sql).collect();
         assert!(sql[0].starts_with("INSERT OR REPLACE INTO deleted_users"));
         assert!(sql.iter().any(|s| s.starts_with("UPDATE workspaces SET created_by = 'usr_ghost' WHERE created_by = ?1")));
-        for table in ["user_emails", "github_accounts", "two_factor", "two_factor_recovery", "security_events", "ssh_keys", "dock_pins", "onboarding", "sound_settings"] {
+        for table in [
+            "user_emails",
+            "github_accounts",
+            "two_factor",
+            "two_factor_recovery",
+            "security_events",
+            "ssh_keys",
+            "dock_pins",
+            "onboarding",
+            "sound_settings",
+        ] {
             assert!(sql.iter().any(|s| s.starts_with(&format!("DELETE FROM {table} WHERE user_id = ?1"))), "{table}");
         }
         // The row goes last, and everything before it only while the

@@ -410,18 +410,12 @@ mod tests {
     #[test]
     fn references_in_text_are_found_once_each() {
         let text = "See #4, acme/web#7 and acme#9; not &#39;, #4a or `#5`. #4 again.";
-        assert_eq!(
-            refs_in_text(text),
-            vec![here(4), repo("acme", "web", 7), Ref { scope: RefScope::Workspace("acme".into()), number: 9 }]
-        );
+        assert_eq!(refs_in_text(text), vec![here(4), repo("acme", "web", 7), Ref { scope: RefScope::Workspace("acme".into()), number: 9 }]);
     }
 
     #[test]
     fn in_a_repository_its_own_pull_requests_and_old_issues_come_first() {
-        assert_eq!(
-            lookup_order(true),
-            [Lookup::PullInRepo, Lookup::LegacyItem, Lookup::Item, Lookup::PullInWorkspace]
-        );
+        assert_eq!(lookup_order(true), [Lookup::PullInRepo, Lookup::LegacyItem, Lookup::Item, Lookup::PullInWorkspace]);
         assert_eq!(lookup_order(false), [Lookup::Item, Lookup::PullInWorkspace]);
         // An old issue of the repository wins over the workspace's item of
         // the same number; a pull request of the repository over both.

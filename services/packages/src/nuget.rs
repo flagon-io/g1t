@@ -44,9 +44,7 @@ struct Parsed {
 
 fn parse(version: &str) -> Option<Parsed> {
     let version = version.trim();
-    let core = version.split_once('+').map_or(version, |(core, build)| {
-        if build.is_empty() { "" } else { core }
-    });
+    let core = version.split_once('+').map_or(version, |(core, build)| if build.is_empty() { "" } else { core });
     let (numbers, release) = core.split_once('-').map_or((core, None), |(n, r)| (n, Some(r)));
     let parts: Vec<&str> = numbers.split('.').collect();
     if parts.is_empty() || parts.len() > 4 {
@@ -393,7 +391,10 @@ pub fn read_nuspec(text: &str) -> Result<Nuspec, String> {
         description: metadata.child_text("description"),
         summary: metadata.child_text("summary"),
         authors: metadata.child_text("authors"),
-        tags: metadata.child_text("tags").map(|t| t.split([' ', ',', ';']).filter(|t| !t.is_empty()).map(str::to_owned).collect()).unwrap_or_default(),
+        tags: metadata
+            .child_text("tags")
+            .map(|t| t.split([' ', ',', ';']).filter(|t| !t.is_empty()).map(str::to_owned).collect())
+            .unwrap_or_default(),
         project_url: metadata.child_text("projectUrl"),
         repository_url: metadata.child("repository").and_then(|r| r.attribute("url")).map(str::to_owned).filter(|u| !u.is_empty()),
         license_expression: license
@@ -593,7 +594,8 @@ pub fn search_result(base: &str, id: &str, versions: &[Listed<'_>]) -> Option<Va
     let newest = shown.iter().max_by(|a, b| compare(a.version, b.version))?;
     let m = newest.metadata;
     let at = addresses(base, id, newest.version);
-    let authors: Vec<&str> = m["authors"].as_str().map(|a| a.split(',').map(str::trim).filter(|a| !a.is_empty()).collect()).unwrap_or_default();
+    let authors: Vec<&str> =
+        m["authors"].as_str().map(|a| a.split(',').map(str::trim).filter(|a| !a.is_empty()).collect()).unwrap_or_default();
     Some(json!({
         "@id": at.registration,
         "@type": "Package",
@@ -665,10 +667,16 @@ mod tests {
         );
         assert_eq!(route("/-/nuget/acme/v3/flatcontainer/acme.web/1.0.0/other.1.0.0.nupkg"), None);
         assert_eq!(route("/-/nuget/acme/v3/registration/acme.web/index.json"), at(NugetRoute::Registration { id: "acme.web".into() }));
-        assert_eq!(route("/-/nuget/acme/v3/registration/acme.web/1.0.0.json"), at(NugetRoute::Leaf { id: "acme.web".into(), version: "1.0.0".into() }));
+        assert_eq!(
+            route("/-/nuget/acme/v3/registration/acme.web/1.0.0.json"),
+            at(NugetRoute::Leaf { id: "acme.web".into(), version: "1.0.0".into() })
+        );
         assert_eq!(route("/-/nuget/acme/api/v2/package"), at(NugetRoute::Push));
         assert_eq!(route("/-/nuget/acme/api/v2/package/"), at(NugetRoute::Push));
-        assert_eq!(route("/-/nuget/acme/api/v2/package/Acme.Web/1.0.0"), at(NugetRoute::Listing { id: "Acme.Web".into(), version: "1.0.0".into() }));
+        assert_eq!(
+            route("/-/nuget/acme/api/v2/package/Acme.Web/1.0.0"),
+            at(NugetRoute::Listing { id: "Acme.Web".into(), version: "1.0.0".into() })
+        );
         assert_eq!(route("/-/nuget/acme/v3/flatcontainer/a..b/index.json"), None);
         assert_eq!(
             route("/-/nuget/acme/v3/flatcontainer/acme.web/1.0.0/acme.web.1.0.0.snupkg"),
@@ -733,7 +741,10 @@ mod tests {
         assert_eq!(package.readme.as_deref(), Some("# Acme.Web\n"));
         assert_eq!(spec.groups.len(), 2);
         assert_eq!(spec.groups[0].target_framework.as_deref(), Some("net8.0"));
-        assert_eq!(spec.groups[0].dependencies, [("Newtonsoft.Json".into(), "[13.0.1, )".into()), ("Acme.Core".into(), "[1.0.0, 2.0.0)".into())]);
+        assert_eq!(
+            spec.groups[0].dependencies,
+            [("Newtonsoft.Json".into(), "[13.0.1, )".into()), ("Acme.Core".into(), "[1.0.0, 2.0.0)".into())]
+        );
         assert!(spec.groups[1].dependencies.is_empty());
         assert!(read_package(b"not a zip").is_err());
         let empty = crate::composer::zip(&[("lib/a.dll".to_owned(), b"MZ".to_vec())]);
@@ -745,7 +756,9 @@ mod tests {
     fn the_documents_are_nugets_shape() {
         let index = service_index("https://g1t.sh/-/nuget/acme");
         let kinds: Vec<&str> = index["resources"].as_array().unwrap().iter().map(|r| r["@type"].as_str().unwrap()).collect();
-        for kind in ["PackageBaseAddress/3.0.0", "RegistrationsBaseUrl", "SearchQueryService", "PackagePublish/2.0.0", "SymbolPackagePublish/4.9.0"] {
+        for kind in
+            ["PackageBaseAddress/3.0.0", "RegistrationsBaseUrl", "SearchQueryService", "PackagePublish/2.0.0", "SymbolPackagePublish/4.9.0"]
+        {
             assert!(kinds.contains(&kind), "{kind}");
         }
         let spec = read_nuspec(NUSPEC).unwrap();

@@ -140,7 +140,12 @@ pub fn qemu_args(arch: &str, paths: &Paths, resources: &Resources) -> Vec<String
         CMDLINE.into(),
     ];
     for (id, path) in [("system", &paths.system), ("state", &paths.state), ("seed", &paths.seed)] {
-        args.extend(["-drive".into(), format!("id={id},file={},format=raw,if=none", p(path)), "-device".into(), format!("virtio-blk-device,drive={id}")]);
+        args.extend([
+            "-drive".into(),
+            format!("id={id},file={},format=raw,if=none", p(path)),
+            "-device".into(),
+            format!("virtio-blk-device,drive={id}"),
+        ]);
     }
     args.extend([
         "-netdev".into(),
@@ -229,7 +234,8 @@ impl DiskVm {
     #[cfg(unix)]
     fn send_stop(&self) -> Result<()> {
         use std::io::{Read, Write};
-        let mut socket = std::os::unix::net::UnixStream::connect(self.paths().control).context("could not reach the VM's control socket")?;
+        let mut socket =
+            std::os::unix::net::UnixStream::connect(self.paths().control).context("could not reach the VM's control socket")?;
         socket.set_read_timeout(Some(Duration::from_secs(5)))?;
         socket.write_all(&stop_request(self.hypervisor))?;
         let mut answer = [0u8; 512];
@@ -258,7 +264,11 @@ impl Backend for DiskVm {
     fn availability(&self) -> Availability {
         let needs = match self.hypervisor {
             Hypervisor::Vfkit => {
-                let macos = Command::new("sw_vers").arg("-productVersion").output().ok().and_then(|o| needs::macos_major(&String::from_utf8_lossy(&o.stdout)));
+                let macos = Command::new("sw_vers")
+                    .arg("-productVersion")
+                    .output()
+                    .ok()
+                    .and_then(|o| needs::macos_major(&String::from_utf8_lossy(&o.stdout)));
                 let homebrew = answers("brew") || needs::HOMEBREW_BINS.iter().any(|bin| Path::new(bin).join("brew").exists());
                 needs::vfkit_needs(macos, answers(&vfkit_program()), homebrew)
             }
@@ -499,10 +509,16 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("g1t-vm-seed-{}", std::process::id()));
         let vm = DiskVm { hypervisor: Hypervisor::Qemu, dir: dir.clone() };
         std::fs::create_dir_all(dir.join("vm")).unwrap();
-        let settings = Settings { url: Some("https://g1t.sh".into()), token: Some("g1trt_x".into()), runner_image: "img@sha256:ab".into(), ..Settings::default() };
+        let settings = Settings {
+            url: Some("https://g1t.sh".into()),
+            token: Some("g1trt_x".into()),
+            runner_image: "img@sha256:ab".into(),
+            ..Settings::default()
+        };
         std::fs::write(vm.paths().seed, guest::write_seed(&settings, SEED_BYTES).unwrap()).unwrap();
         // The console says the runner is registered and running.
-        let status = GuestStatus { state: "running".into(), runner: Some(crate::selfhosted::RunnerStatus::default()), ..GuestStatus::default() };
+        let status =
+            GuestStatus { state: "running".into(), runner: Some(crate::selfhosted::RunnerStatus::default()), ..GuestStatus::default() };
         std::fs::write(vm.paths().console, format!("boot\n{}{}\n", guest::STATUS_PREFIX, serde_json::to_string(&status).unwrap())).unwrap();
         assert!(vm.guest_status().is_some_and(|s| s.runner.is_some()));
         let kept = guest::read_seed(&std::fs::read(vm.paths().seed).unwrap()).unwrap();

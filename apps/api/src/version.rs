@@ -14,6 +14,8 @@ mod tests {
         assert!(supported(None));
         assert!(supported(Some("1")));
         assert!(supported(Some(" 1 ")));
-        for value in ["", "2", "latest", "1, 2"] { assert!(!supported(Some(value))); }
+        for value in ["", "2", "latest", "1, 2"] {
+            assert!(!supported(Some(value)));
+        }
     }
 }

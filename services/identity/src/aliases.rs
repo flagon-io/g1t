@@ -52,7 +52,8 @@ pub fn check(alias: &str, note: &str, facts: &Facts) -> std::result::Result<(Str
     let Some(alias) = aliasable_name(alias) else {
         return refuse(
             FailureCode::Invalid,
-            "An alias uses lowercase letters, digits and single hyphens, up to 39 characters, and cannot be one of the site's routes.".into(),
+            "An alias uses lowercase letters, digits and single hyphens, up to 39 characters, and cannot be one of the site's routes."
+                .into(),
         );
     };
     let note = note.trim();
@@ -130,11 +131,7 @@ struct Id {
 
 impl Identity {
     async fn alias_row(&self, alias: &str) -> Result<Option<AliasRow>> {
-        self.db
-            .prepare(format!("{ALIAS_ROWS} WHERE a.alias = ?"))
-            .bind(&[alias.into()])?
-            .first::<AliasRow>(None)
-            .await
+        self.db.prepare(format!("{ALIAS_ROWS} WHERE a.alias = ?")).bind(&[alias.into()])?.first::<AliasRow>(None).await
     }
 
     /// `resolve_alias`: the slug now of the workspace `slug` is an alias of.
@@ -242,8 +239,7 @@ impl Identity {
                     ])?,
             ])
             .await?;
-        self.record_for_staff(&workspace, "alias_added", &format!("Alias {alias} leads to {workspace}: {note}"), staff)
-            .await;
+        self.record_for_staff(&workspace, "alias_added", &format!("Alias {alias} leads to {workspace}: {note}"), staff).await;
         Ok(match self.alias_row(&alias).await? {
             Some(row) => Outcome::Ok(row.into()),
             None => Outcome::fail(FailureCode::NotFound, "There is no workspace with that slug."),
@@ -261,27 +257,14 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Invalid, "Say why the alias is being removed."));
         }
         if reason.chars().count() > MAX_NOTE_LENGTH {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                format!("Keep the reason to {MAX_NOTE_LENGTH} characters."),
-            ));
+            return Ok(Outcome::fail(FailureCode::Invalid, format!("Keep the reason to {MAX_NOTE_LENGTH} characters.")));
         }
         let alias = a.alias.trim().to_lowercase();
         let Some(row) = self.alias_row(&alias).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "There is no alias by that name."));
         };
-        self.db
-            .prepare("DELETE FROM workspace_aliases WHERE alias = ?")
-            .bind(&[alias.as_str().into()])?
-            .run()
-            .await?;
-        self.record_for_staff(
-            &row.slug,
-            "alias_removed",
-            &format!("Alias {alias} no longer leads to {}: {reason}", row.slug),
-            staff,
-        )
-        .await;
+        self.db.prepare("DELETE FROM workspace_aliases WHERE alias = ?").bind(&[alias.as_str().into()])?.run().await?;
+        self.record_for_staff(&row.slug, "alias_removed", &format!("Alias {alias} no longer leads to {}: {reason}", row.slug), staff).await;
         Ok(Outcome::Ok(true))
     }
 }
@@ -292,10 +275,7 @@ mod tests {
     use std::collections::HashMap;
 
     fn facts<'a>() -> Facts<'a> {
-        Facts {
-            target: Some("wsp_flagon"),
-            ..Facts::default()
-        }
+        Facts { target: Some("wsp_flagon"), ..Facts::default() }
     }
 
     fn refused(alias: &str, facts: &Facts) -> FailureCode {
@@ -335,10 +315,7 @@ mod tests {
         assert_eq!(refused("acme", &workspace), FailureCode::Conflict);
         let purged = Facts { purged: true, ..facts() };
         assert_eq!(refused("initech", &purged), FailureCode::Conflict);
-        let aliased = Facts {
-            alias_of: Some("globex"),
-            ..facts()
-        };
+        let aliased = Facts { alias_of: Some("globex"), ..facts() };
         let (code, message) = check("g1t", "x", &aliased).unwrap_err();
         assert_eq!(code, FailureCode::Conflict);
         assert_eq!(message, "g1t is already an alias of globex.");
@@ -346,15 +323,9 @@ mod tests {
 
     #[test]
     fn only_its_own_old_slug_can_become_a_workspaces_alias() {
-        let others = Facts {
-            held_for: Some("wsp_other"),
-            ..facts()
-        };
+        let others = Facts { held_for: Some("wsp_other"), ..facts() };
         assert_eq!(refused("acme", &others), FailureCode::Conflict);
-        let own = Facts {
-            held_for: Some("wsp_flagon"),
-            ..facts()
-        };
+        let own = Facts { held_for: Some("wsp_flagon"), ..facts() };
         assert!(check("flagon", "Its old name, for good", &own).is_ok());
     }
 
@@ -372,9 +343,8 @@ mod tests {
     fn an_alias_follows_its_workspace_through_renames() {
         let mut slugs: HashMap<&str, &str> = HashMap::from([("wsp_flagon", "flagon-io")]);
         let aliases: HashMap<&str, &str> = HashMap::from([("g1t", "wsp_flagon")]);
-        let lookup = |slugs: &HashMap<&str, &str>, alias: &str| {
-            aliases.get(alias).and_then(|id| slugs.get(id)).map(|slug| (*slug).to_owned())
-        };
+        let lookup =
+            |slugs: &HashMap<&str, &str>, alias: &str| aliases.get(alias).and_then(|id| slugs.get(id)).map(|slug| (*slug).to_owned());
         assert_eq!(lookup(&slugs, "g1t").as_deref(), Some("flagon-io"));
         slugs.insert("wsp_flagon", "flagon");
         assert_eq!(lookup(&slugs, "g1t").as_deref(), Some("flagon"));

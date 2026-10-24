@@ -163,7 +163,13 @@ pub fn go_mod(text: &str) -> Vec<Declared> {
             block = true;
             continue;
         }
-        let line = if block { line } else if let Some(rest) = line.strip_prefix("require ") { rest.trim() } else { continue };
+        let line = if block {
+            line
+        } else if let Some(rest) = line.strip_prefix("require ") {
+            rest.trim()
+        } else {
+            continue;
+        };
         let mut words = line.split_whitespace();
         if let (Some(module), Some(version)) = (words.next(), words.next()) {
             let kind = if comment.trim() == "indirect" { DependencyType::Indirect } else { DependencyType::Production };
@@ -265,10 +271,7 @@ mod tests {
     use super::*;
 
     fn names(found: &[Declared]) -> Vec<String> {
-        found
-            .iter()
-            .map(|d| format!("{}@{}:{}", d.name, d.requirement.as_deref().unwrap_or("-"), d.kind.label()))
-            .collect()
+        found.iter().map(|d| format!("{}@{}:{}", d.name, d.requirement.as_deref().unwrap_or("-"), d.kind.label())).collect()
     }
 
     #[test]
@@ -326,7 +329,8 @@ libc = "0.2"
 
     #[test]
     fn python_manifests() {
-        let requirements = "# web\nDjango==3.2.0\nrequests[security] >= 2.19, < 3 ; python_version >= '3'\nflask\n-r base.txt\nhttps://x/y.whl\n";
+        let requirements =
+            "# web\nDjango==3.2.0\nrequests[security] >= 2.19, < 3 ; python_version >= '3'\nflask\n-r base.txt\nhttps://x/y.whl\n";
         assert_eq!(
             names(&requirements_txt(requirements)),
             ["django@==3.2.0:direct:production", "requests@>=2.19,<3:direct:production", "flask@-:direct:production"]
@@ -358,7 +362,9 @@ pytest = "^7"
 
     #[test]
     fn dependency_types_as_rules_name_them() {
-        assert!(DependencyType::Production.is("direct") && DependencyType::Production.is("production") && DependencyType::Production.is("all"));
+        assert!(
+            DependencyType::Production.is("direct") && DependencyType::Production.is("production") && DependencyType::Production.is("all")
+        );
         assert!(!DependencyType::Development.is("production") && DependencyType::Development.is("development"));
         assert!(DependencyType::Indirect.is("indirect") && !DependencyType::Indirect.is("direct"));
         assert_eq!(manifest_names("pip"), ["requirements.txt", "pyproject.toml"]);

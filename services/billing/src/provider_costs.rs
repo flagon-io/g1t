@@ -55,8 +55,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use g1t_contracts::billing::{
-    ConnectProviderArgs, CostProvider, CostUnit, DisconnectProviderArgs, ProviderConnection, ProviderConnectionsArgs,
-    ProviderCostDay, ProviderCosts, ProviderCostsArgs, ProviderPersonCosts, ProviderPersonCostsArgs, ProviderPersonDay,
+    ConnectProviderArgs, CostProvider, CostUnit, DisconnectProviderArgs, ProviderConnection, ProviderConnectionsArgs, ProviderCostDay,
+    ProviderCosts, ProviderCostsArgs, ProviderPersonCosts, ProviderPersonCostsArgs, ProviderPersonDay,
 };
 use g1t_contracts::identity::{MemberEmail, MembersByEmailArgs};
 use g1t_contracts::time::{parse_rfc3339, rfc3339};
@@ -109,20 +109,17 @@ const LIST_SQL: &str = "SELECT provider, hint, connected_by, connected_at, last_
      FROM provider_connections WHERE workspace = ? ORDER BY provider";
 
 /// One read's days replaced: those the provider answered for, `?3` to `?4`.
-pub(crate) const DELETE_DAYS: &str =
-    "DELETE FROM provider_costs WHERE workspace = ?1 AND provider = ?2 AND day >= ?3 AND day <= ?4";
+pub(crate) const DELETE_DAYS: &str = "DELETE FROM provider_costs WHERE workspace = ?1 AND provider = ?2 AND day >= ?3 AND day <= ?4";
 
 /// One day's line item, written again if it is there already.
-pub(crate) const UPSERT_COST: &str =
-    "INSERT INTO provider_costs (workspace, provider, day, item, scope, micros, currency, synced_at)
+pub(crate) const UPSERT_COST: &str = "INSERT INTO provider_costs (workspace, provider, day, item, scope, micros, currency, synced_at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'USD', ?7)
      ON CONFLICT (workspace, provider, day, item, scope) DO UPDATE SET
        micros = excluded.micros, currency = excluded.currency, synced_at = excluded.synced_at";
 
 /// One day's use of one model, for a provider whose days are its
 /// people's: in `?8`, US dollars (`USD`) or the provider's own unit.
-pub(crate) const UPSERT_COST_IN: &str =
-    "INSERT INTO provider_costs (workspace, provider, day, item, scope, micros, currency, synced_at)
+pub(crate) const UPSERT_COST_IN: &str = "INSERT INTO provider_costs (workspace, provider, day, item, scope, micros, currency, synced_at)
      VALUES (?1, ?2, ?3, ?4, '', ?5, ?6, ?7)
      ON CONFLICT (workspace, provider, day, item, scope) DO UPDATE SET
        micros = excluded.micros, currency = excluded.currency, synced_at = excluded.synced_at";
@@ -133,12 +130,10 @@ pub(crate) const NOTE_SYNCED: &str = "UPDATE provider_connections SET last_synce
      WHERE id = ?4";
 
 /// One read's day of the per-person report, replaced.
-pub(crate) const DELETE_PERSON_DAY: &str =
-    "DELETE FROM provider_person_costs WHERE workspace = ?1 AND provider = ?2 AND day = ?3";
+pub(crate) const DELETE_PERSON_DAY: &str = "DELETE FROM provider_person_costs WHERE workspace = ?1 AND provider = ?2 AND day = ?3";
 
 /// One read's day of the conversations, replaced with the per-person rows.
-pub(crate) const DELETE_CONVERSATION_DAY: &str =
-    "DELETE FROM provider_conversations WHERE workspace = ?1 AND provider = ?2 AND day = ?3";
+pub(crate) const DELETE_CONVERSATION_DAY: &str = "DELETE FROM provider_conversations WHERE workspace = ?1 AND provider = ?2 AND day = ?3";
 
 /// One day's charge of one conversation, written again if it is there
 /// already.
@@ -218,12 +213,8 @@ struct SealedRow {
 /// Only an owner, as a person, connects or disconnects a provider: the
 /// key reads the whole organization's spend.
 pub(crate) fn owner_only<T>(actor: &User, workspace: &str) -> Option<Outcome<T>> {
-    (actor.role_in(workspace) != Some(Role::Owner) || actor.kind != PrincipalKind::User).then(|| {
-        Outcome::fail(
-            FailureCode::Forbidden,
-            "Only an owner of the workspace can connect or disconnect a provider.",
-        )
-    })
+    (actor.role_in(workspace) != Some(Role::Owner) || actor.kind != PrincipalKind::User)
+        .then(|| Outcome::fail(FailureCode::Forbidden, "Only an owner of the workspace can connect or disconnect a provider."))
 }
 
 /// `YYYY-MM-DD` of an instant, UTC.
@@ -335,11 +326,7 @@ fn check_url(provider: CostProvider, now: u64) -> Option<String> {
             encode(&format!("{}Z", &rfc3339(yesterday)[..19])),
             encode(&format!("{}Z", &rfc3339(today)[..19]))
         ),
-        CostProvider::Openai => format!(
-            "{OPENAI_COSTS}?start_time={}&end_time={}&bucket_width=1d&limit=1",
-            yesterday / 1000,
-            today / 1000
-        ),
+        CostProvider::Openai => format!("{OPENAI_COSTS}?start_time={}&end_time={}&bucket_width=1d&limit=1", yesterday / 1000, today / 1000),
         CostProvider::Cursor | CostProvider::Amp | CostProvider::Devin => return None,
     })
 }
@@ -408,17 +395,11 @@ pub(crate) fn parse_anthropic(body: &Value) -> std::result::Result<Page, String>
     let buckets = body["data"].as_array().ok_or("Anthropic's cost report had no data.")?;
     let mut page = Page::default();
     for bucket in buckets {
-        let start = bucket["starting_at"]
-            .as_str()
-            .filter(|s| s.len() >= 10)
-            .ok_or("A bucket in Anthropic's cost report had no start.")?;
+        let start = bucket["starting_at"].as_str().filter(|s| s.len() >= 10).ok_or("A bucket in Anthropic's cost report had no start.")?;
         let day = start[..10].to_owned();
         for result in bucket["results"].as_array().into_iter().flatten() {
-            let amount = result["amount"]
-                .as_str()
-                .ok_or("A cost in Anthropic's report had no amount.")?;
-            let micros = cents_to_micros(amount)
-                .ok_or_else(|| format!("Anthropic reported an amount g1t can't read: {amount}"))?;
+            let amount = result["amount"].as_str().ok_or("A cost in Anthropic's report had no amount.")?;
+            let micros = cents_to_micros(amount).ok_or_else(|| format!("Anthropic reported an amount g1t can't read: {amount}"))?;
             let item = [&result["description"], &result["model"], &result["cost_type"]]
                 .into_iter()
                 .find_map(|v| v.as_str().filter(|s| !s.is_empty()))
@@ -449,15 +430,11 @@ pub(crate) fn parse_openai(body: &Value) -> std::result::Result<Page, String> {
     let buckets = body["data"].as_array().ok_or("OpenAI's costs had no data.")?;
     let mut page = Page::default();
     for bucket in buckets {
-        let start = bucket["start_time"]
-            .as_u64()
-            .ok_or("A bucket in OpenAI's costs had no start.")?;
+        let start = bucket["start_time"].as_u64().ok_or("A bucket in OpenAI's costs had no start.")?;
         let day = day_of(start * 1000);
         let results = bucket["results"].as_array().or_else(|| bucket["result"].as_array());
         for result in results.into_iter().flatten() {
-            let value = result["amount"]["value"]
-                .as_f64()
-                .ok_or("A cost in OpenAI's report had no amount.")?;
+            let value = result["amount"]["value"].as_f64().ok_or("A cost in OpenAI's report had no amount.")?;
             let micros = dollars_to_micros(value).ok_or("OpenAI reported an amount g1t can't read.")?;
             page.rows.push(CostRow {
                 day: day.clone(),
@@ -522,26 +499,15 @@ pub(crate) struct PersonPage {
 /// `amount` a number of cents. An actor of a kind g1t doesn't know is
 /// left out.
 pub(crate) fn parse_claude_code(body: &Value) -> std::result::Result<PersonPage, String> {
-    let rows = body["data"]
-        .as_array()
-        .ok_or("Anthropic's Claude Code report had no data.")?;
+    let rows = body["data"].as_array().ok_or("Anthropic's Claude Code report had no data.")?;
     let mut page = PersonPage::default();
     for row in rows {
-        let day = row["date"]
-            .as_str()
-            .filter(|s| s.len() >= 10)
-            .ok_or("A row in Anthropic's Claude Code report had no date.")?[..10]
-            .to_owned();
+        let day =
+            row["date"].as_str().filter(|s| s.len() >= 10).ok_or("A row in Anthropic's Claude Code report had no date.")?[..10].to_owned();
         let actor = &row["actor"];
         let (kind, name) = match actor["type"].as_str() {
-            Some("user_actor") => (
-                ActorKind::User,
-                actor["email_address"].as_str().map(|email| email.trim().to_lowercase()),
-            ),
-            Some("api_actor") => (
-                ActorKind::ApiKey,
-                actor["api_key_name"].as_str().map(|name| name.trim().to_owned()),
-            ),
+            Some("user_actor") => (ActorKind::User, actor["email_address"].as_str().map(|email| email.trim().to_lowercase())),
+            Some("api_actor") => (ActorKind::ApiKey, actor["api_key_name"].as_str().map(|name| name.trim().to_owned())),
             _ => continue,
         };
         let Some(name) = name.filter(|name| !name.is_empty()) else {
@@ -557,22 +523,15 @@ pub(crate) fn parse_claude_code(body: &Value) -> std::result::Result<PersonPage,
                 Value::Null => continue,
                 other => return Err(format!("Anthropic reported a cost g1t can't read: {other}")),
             };
-            let micros = cents_to_micros(&amount)
-                .ok_or_else(|| format!("Anthropic reported a cost g1t can't read: {amount}"))?;
-            models.push((
-                text(&model["model"]),
-                micros,
-                cost["currency"].as_str().unwrap_or("USD").to_owned(),
-            ));
+            let micros = cents_to_micros(&amount).ok_or_else(|| format!("Anthropic reported a cost g1t can't read: {amount}"))?;
+            models.push((text(&model["model"]), micros, cost["currency"].as_str().unwrap_or("USD").to_owned()));
         }
         page.uses.push(PersonUse {
             day,
             kind,
             actor: name,
             customer_type: text(&row["customer_type"]),
-            sessions: row["core_metrics"]["num_sessions"]
-                .as_u64()
-                .map_or(0, |n| u32::try_from(n).unwrap_or(u32::MAX)),
+            sessions: row["core_metrics"]["num_sessions"].as_u64().map_or(0, |n| u32::try_from(n).unwrap_or(u32::MAX)),
             models,
         });
     }
@@ -611,9 +570,7 @@ pub(crate) fn aggregate_people(uses: &[PersonUse]) -> (Vec<PersonCost>, BTreeSet
     let mut days: BTreeMap<(String, ActorKind, String), Day> = BTreeMap::new();
     let mut other = BTreeSet::new();
     for item in uses {
-        let day = days
-            .entry((item.day.clone(), item.kind, item.actor.clone()))
-            .or_default();
+        let day = days.entry((item.day.clone(), item.kind, item.actor.clone())).or_default();
         day.sessions = day.sessions.saturating_add(item.sessions);
         if !item.customer_type.is_empty() {
             day.types.insert(item.customer_type.clone());
@@ -655,14 +612,8 @@ pub(crate) fn aggregate_people(uses: &[PersonUse]) -> (Vec<PersonCost>, BTreeSet
 /// Whose provider costs a viewer may see: their own (no one named, or
 /// themselves), or, for an owner or billing manager, anyone's. The user
 /// id, or why not.
-pub(crate) fn whose<'a>(
-    viewer: Option<&'a User>,
-    workspace: &str,
-    user_id: Option<&'a str>,
-) -> std::result::Result<&'a str, &'static str> {
-    let viewer = viewer
-        .filter(|viewer| viewer.is_member(workspace))
-        .ok_or(MEMBERS_ONLY)?;
+pub(crate) fn whose<'a>(viewer: Option<&'a User>, workspace: &str, user_id: Option<&'a str>) -> std::result::Result<&'a str, &'static str> {
+    let viewer = viewer.filter(|viewer| viewer.is_member(workspace)).ok_or(MEMBERS_ONLY)?;
     match user_id.map(str::trim).filter(|id| !id.is_empty()) {
         None => Ok(viewer.id.as_str()),
         Some(id) if id == viewer.id => Ok(viewer.id.as_str()),
@@ -706,9 +657,7 @@ pub(crate) fn unlinked(actors: &[ActorTotal], linked: &HashSet<String>) -> (i64,
 pub(crate) fn organization_days(rows: &[&PersonRow]) -> BTreeMap<(String, String, CostUnit), i64> {
     let mut days = BTreeMap::new();
     for row in rows {
-        *days
-            .entry((row.day.clone(), row.model.clone(), row.unit))
-            .or_insert(0i64) += row.micros;
+        *days.entry((row.day.clone(), row.model.clone(), row.unit)).or_insert(0i64) += row.micros;
     }
     days
 }
@@ -724,9 +673,7 @@ pub(crate) fn aggregate(rows: &[CostRow]) -> (BTreeMap<(String, String, String),
             other.insert(row.currency.to_uppercase());
             continue;
         }
-        *sums
-            .entry((row.day.clone(), row.item.clone(), row.scope.clone()))
-            .or_insert(0i64) += row.micros;
+        *sums.entry((row.day.clone(), row.item.clone(), row.scope.clone())).or_insert(0i64) += row.micros;
     }
     (sums, other)
 }
@@ -856,14 +803,7 @@ fn read_back(last_synced_at: Option<&str>, last_error: Option<&str>, synced_from
 /// Whether what the providers said covers every day from `since`.
 pub(crate) fn complete(connections: &[ProviderConnection], since: &str) -> bool {
     !connections.is_empty()
-        && connections.iter().all(|c| {
-            read_back(
-                c.last_synced_at.as_deref(),
-                c.last_error.as_deref(),
-                c.synced_from.as_deref(),
-                since,
-            )
-        })
+        && connections.iter().all(|c| read_back(c.last_synced_at.as_deref(), c.last_error.as_deref(), c.synced_from.as_deref(), since))
 }
 
 /// Asks a provider for one page of its report: the answer, or why not.
@@ -898,20 +838,12 @@ async fn send(provider: CostProvider, credential: &str, url: &str) -> std::resul
     match sent.await {
         Ok(answer) => Ok(answer),
         // Never the error itself: it could carry the request.
-        Err(_) => Err(format!(
-            "g1t couldn't reach {}. It tries again at the next daily read.",
-            provider.label()
-        )),
+        Err(_) => Err(format!("g1t couldn't reach {}. It tries again at the next daily read.", provider.label())),
     }
 }
 
 /// Every page of a provider's report from `from` to `until`.
-async fn read_report(
-    provider: CostProvider,
-    credential: &str,
-    from: &str,
-    until: u64,
-) -> std::result::Result<Page, String> {
+async fn read_report(provider: CostProvider, credential: &str, from: &str, until: u64) -> std::result::Result<Page, String> {
     let mut all = Page::default();
     let mut token: Option<String> = None;
     for _ in 0..MAX_PAGES {
@@ -966,8 +898,7 @@ async fn read_claude_code(credential: &str, from: &str, until: u64) -> PeopleRea
     let mut cut = false;
     let mut problem: Option<String> = None;
     for days in wanted.chunks(DAYS_AT_ONCE) {
-        let answers =
-            futures_util::future::join_all(days.iter().map(|day| read_claude_code_day(credential, day))).await;
+        let answers = futures_util::future::join_all(days.iter().map(|day| read_claude_code_day(credential, day))).await;
         for (day, answer) in days.iter().zip(answers) {
             match answer {
                 Ok((day_uses, more)) => {
@@ -989,38 +920,20 @@ async fn read_claude_code(credential: &str, from: &str, until: u64) -> PeopleRea
         Some("Anthropic's Claude Code report had more people on some days than g1t reads at once; some may be missing.".to_owned())
     } else if !other.is_empty() {
         let currencies: Vec<String> = other.into_iter().collect();
-        Some(format!(
-            "Some Claude Code costs were reported in {}, not US dollars, and are left out.",
-            currencies.join(", ")
-        ))
+        Some(format!("Some Claude Code costs were reported in {}, not US dollars, and are left out.", currencies.join(", ")))
     } else {
         None
     };
-    PeopleRead {
-        days: read,
-        rows: costs.into_iter().map(PersonRow::claude_code).collect(),
-        conversations: Vec::new(),
-        note,
-        problem,
-    }
+    PeopleRead { days: read, rows: costs.into_iter().map(PersonRow::claude_code).collect(), conversations: Vec::new(), note, problem }
 }
 
 impl Billing {
     async fn listed(&self, workspace: &str) -> Result<Vec<ProviderConnection>> {
-        let rows = self
-            .db
-            .prepare(LIST_SQL)
-            .bind(&[workspace.into()])?
-            .all()
-            .await?
-            .results::<ListedRow>()?;
+        let rows = self.db.prepare(LIST_SQL).bind(&[workspace.into()])?.all().await?.results::<ListedRow>()?;
         Ok(rows.into_iter().filter_map(to_connection).collect())
     }
 
-    pub(crate) async fn provider_connections(
-        &self,
-        a: ProviderConnectionsArgs,
-    ) -> Result<Outcome<Vec<ProviderConnection>>> {
+    pub(crate) async fn provider_connections(&self, a: ProviderConnectionsArgs) -> Result<Outcome<Vec<ProviderConnection>>> {
         let workspace = a.workspace.to_lowercase();
         if !a.viewer.is_some_and(|viewer| viewer.is_member(&workspace)) {
             return Ok(Outcome::fail(FailureCode::Forbidden, MEMBERS_ONLY));
@@ -1097,10 +1010,7 @@ impl Billing {
             people_synced_at: None,
         };
         if let Err(error) = self.sync_connection(&row, now).await {
-            worker::console_error!(
-                "provider costs: {workspace} {}: writing the first read failed: {error}",
-                provider.name()
-            );
+            worker::console_error!("provider costs: {workspace} {}: writing the first read failed: {error}", provider.name());
         }
         let listed = self.listed(&workspace).await?;
         Ok(match listed.into_iter().find(|c| c.provider == provider) {
@@ -1115,31 +1025,19 @@ impl Billing {
             return Ok(refused);
         }
         let was = self.listed(&workspace).await?.iter().any(|c| c.provider == a.provider);
-        let bind =
-            || -> Vec<worker::wasm_bindgen::JsValue> { vec![workspace.as_str().into(), a.provider.name().into()] };
+        let bind = || -> Vec<worker::wasm_bindgen::JsValue> { vec![workspace.as_str().into(), a.provider.name().into()] };
         self.db
             .batch(vec![
-                self.db
-                    .prepare("DELETE FROM provider_connections WHERE workspace = ?1 AND provider = ?2")
-                    .bind(&bind())?,
-                self.db
-                    .prepare("DELETE FROM provider_costs WHERE workspace = ?1 AND provider = ?2")
-                    .bind(&bind())?,
-                self.db
-                    .prepare("DELETE FROM provider_person_costs WHERE workspace = ?1 AND provider = ?2")
-                    .bind(&bind())?,
-                self.db
-                    .prepare("DELETE FROM provider_conversations WHERE workspace = ?1 AND provider = ?2")
-                    .bind(&bind())?,
+                self.db.prepare("DELETE FROM provider_connections WHERE workspace = ?1 AND provider = ?2").bind(&bind())?,
+                self.db.prepare("DELETE FROM provider_costs WHERE workspace = ?1 AND provider = ?2").bind(&bind())?,
+                self.db.prepare("DELETE FROM provider_person_costs WHERE workspace = ?1 AND provider = ?2").bind(&bind())?,
+                self.db.prepare("DELETE FROM provider_conversations WHERE workspace = ?1 AND provider = ?2").bind(&bind())?,
             ])
             .await?;
         Ok(Outcome::Ok(was))
     }
 
-    pub(crate) async fn provider_person_costs(
-        &self,
-        a: ProviderPersonCostsArgs,
-    ) -> Result<Outcome<ProviderPersonCosts>> {
+    pub(crate) async fn provider_person_costs(&self, a: ProviderPersonCostsArgs) -> Result<Outcome<ProviderPersonCosts>> {
         let workspace = a.workspace.to_lowercase();
         let person = match whose(a.viewer.as_ref(), &workspace, a.user_id.as_deref()) {
             Ok(person) => person.to_owned(),
@@ -1149,10 +1047,7 @@ impl Billing {
         let since = a.since.get(..10).unwrap_or_default().to_owned();
         let until = a.until.get(..10).unwrap_or_default().to_owned();
         if day_start(&since).is_none() || day_start(&until).is_none() || since > until {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                "Give since and until as days, YYYY-MM-DD, since first.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Invalid, "Give since and until as days, YYYY-MM-DD, since first."));
         }
         #[derive(Deserialize)]
         struct ReadRow {
@@ -1178,28 +1073,16 @@ impl Billing {
             .filter_map(|read| {
                 Some((
                     CostProvider::parse(&read.provider)?,
-                    read_back(
-                        read.people_synced_at.as_deref(),
-                        read.people_error.as_deref(),
-                        read.people_synced_from.as_deref(),
-                        &since,
-                    ),
+                    read_back(read.people_synced_at.as_deref(), read.people_error.as_deref(), read.people_synced_from.as_deref(), &since),
                 ))
             })
             .collect();
         if reads.is_empty() {
             return Ok(Outcome::Ok(ProviderPersonCosts::default()));
         }
-        let span = || -> Vec<worker::wasm_bindgen::JsValue> {
-            vec![workspace.as_str().into(), since.as_str().into(), until.as_str().into()]
-        };
-        let actors = self
-            .db
-            .prepare(ACTOR_TOTALS)
-            .bind(&span())?
-            .all()
-            .await?
-            .results::<ActorTotal>()?;
+        let span =
+            || -> Vec<worker::wasm_bindgen::JsValue> { vec![workspace.as_str().into(), since.as_str().into(), until.as_str().into()] };
+        let actors = self.db.prepare(ACTOR_TOTALS).bind(&span())?.all().await?.results::<ActorTotal>()?;
         // The addresses in the span that members have confirmed: identity
         // decides, and nothing else links a row to a person.
         let emails: Vec<String> = actors
@@ -1212,21 +1095,14 @@ impl Billing {
         let mut members: Vec<MemberEmail> = Vec::new();
         if !emails.is_empty() {
             let Some(identity) = &self.identity else {
-                return Ok(Outcome::fail(
-                    FailureCode::Conflict,
-                    "g1t can't match the report's addresses to members here.",
-                ));
+                return Ok(Outcome::fail(FailureCode::Conflict, "g1t can't match the report's addresses to members here."));
             };
             for chunk in emails.chunks(MAX_EMAILS) {
                 let args = MembersByEmailArgs { workspace: workspace.clone(), emails: chunk.to_vec() };
                 members.extend(g1t_kit::call::<_, Vec<MemberEmail>>(identity, "members_by_email", &args).await?);
             }
         }
-        let theirs: Vec<&str> = members
-            .iter()
-            .filter(|member| member.user_id == person)
-            .map(|member| member.email.as_str())
-            .collect();
+        let theirs: Vec<&str> = members.iter().filter(|member| member.user_id == person).map(|member| member.email.as_str()).collect();
         #[derive(Deserialize)]
         struct DayRow {
             day: String,
@@ -1244,12 +1120,7 @@ impl Billing {
             let mut bind = span();
             bind.push(serde_json::to_string(&theirs)?.into());
             bind.push(((MAX_ROWS + 1) as f64).into());
-            self.db
-                .prepare(PERSON_DAYS)
-                .bind(&bind)?
-                .all()
-                .await?
-                .results::<DayRow>()?
+            self.db.prepare(PERSON_DAYS).bind(&bind)?.all().await?.results::<DayRow>()?
         };
         let cut = rows.len() > MAX_ROWS;
         let days = rows
@@ -1311,11 +1182,7 @@ impl Billing {
                  WHERE workspace = ?1 AND day >= ?2
                  GROUP BY day, provider, item, currency ORDER BY day, provider, item LIMIT ?3",
             )
-            .bind(&[
-                workspace.as_str().into(),
-                since.as_str().into(),
-                ((MAX_ROWS + 1) as f64).into(),
-            ])?
+            .bind(&[workspace.as_str().into(), since.as_str().into(), ((MAX_ROWS + 1) as f64).into()])?
             .all()
             .await?
             .results::<DayRow>()?;
@@ -1336,11 +1203,7 @@ impl Billing {
             })
             .collect();
         let complete = !cut && complete(&connections, &since);
-        Ok(Outcome::Ok(ProviderCosts {
-            connections,
-            days,
-            complete,
-        }))
+        Ok(Outcome::Ok(ProviderCosts { connections, days, complete }))
     }
 
     /// Reads one connection's report and keeps it. A provider's refusal is
@@ -1401,31 +1264,18 @@ impl Billing {
             self.db.batch(statements.by_ref().take(BATCH).collect()).await?;
         }
         let note = if page.next.is_some() {
-            Some(format!(
-                "{} had more pages than g1t reads at once; the earliest days may be missing.",
-                provider.label()
-            ))
+            Some(format!("{} had more pages than g1t reads at once; the earliest days may be missing.", provider.label()))
         } else if !other.is_empty() {
             let currencies: Vec<String> = other.into_iter().collect();
-            Some(format!(
-                "Some costs were reported in {}, not US dollars, and are left out.",
-                currencies.join(", ")
-            ))
+            Some(format!("Some costs were reported in {}, not US dollars, and are left out.", currencies.join(", ")))
         } else {
             None
         };
         // Reaching back further than before only once the provider said so.
-        let from = days
-            .first()
-            .map_or(from.clone(), |first| (*first).clone().min(from.clone()));
+        let from = days.first().map_or(from.clone(), |first| (*first).clone().min(from.clone()));
         self.db
             .prepare(NOTE_SYNCED)
-            .bind(&[
-                at.as_str().into(),
-                crate::optional(note.as_deref()),
-                from.as_str().into(),
-                row.id.as_str().into(),
-            ])?
+            .bind(&[at.as_str().into(), crate::optional(note.as_deref()), from.as_str().into(), row.id.as_str().into()])?
             .run()
             .await?;
         // The per-person report, with the same key. Its failing is kept on
@@ -1436,11 +1286,7 @@ impl Billing {
                 worker::console_error!("provider costs: {} {} people: {message}", row.workspace, row.provider)
             }
             Err(error) => {
-                worker::console_error!(
-                    "provider costs: {} {} people: writing failed: {error}",
-                    row.workspace,
-                    row.provider
-                )
+                worker::console_error!("provider costs: {} {} people: writing failed: {error}", row.workspace, row.provider)
             }
         }
         Ok(match note {
@@ -1543,11 +1389,7 @@ impl Billing {
             } else {
                 "UPDATE provider_connections SET people_error = ?1 WHERE id = ?2"
             };
-            self.db
-                .prepare(sql)
-                .bind(&[problem.as_str().into(), row.id.as_str().into()])?
-                .run()
-                .await?;
+            self.db.prepare(sql).bind(&[problem.as_str().into(), row.id.as_str().into()])?.run().await?;
             return Ok(Err(problem));
         }
         // The first day read: where a read cut short stopped.
@@ -1559,12 +1401,7 @@ impl Billing {
         for sql in notes {
             self.db
                 .prepare(sql)
-                .bind(&[
-                    at.as_str().into(),
-                    crate::optional(read.note.as_deref()),
-                    first.as_str().into(),
-                    row.id.as_str().into(),
-                ])?
+                .bind(&[at.as_str().into(), crate::optional(read.note.as_deref()), first.as_str().into(), row.id.as_str().into()])?
                 .run()
                 .await?;
         }
@@ -1598,11 +1435,7 @@ impl Billing {
                 }
                 Err(error) => {
                     failed += 1;
-                    worker::console_error!(
-                        "provider costs: {} {}: writing failed: {error}",
-                        row.workspace,
-                        row.provider
-                    );
+                    worker::console_error!("provider costs: {} {}: writing failed: {error}", row.workspace, row.provider);
                 }
             }
         }
@@ -1716,13 +1549,7 @@ mod tests {
         assert_eq!(page.days, ["2024-11-01"]);
         assert_eq!(
             page.rows,
-            [CostRow {
-                day: "2024-11-01".into(),
-                item: "".into(),
-                scope: "".into(),
-                micros: 60_000,
-                currency: "usd".into()
-            }]
+            [CostRow { day: "2024-11-01".into(), item: "".into(), scope: "".into(), micros: 60_000, currency: "usd".into() }]
         );
         assert_eq!(page.next, None);
         // The schema names the list `result`; grouped, a line item and a project.
@@ -1763,12 +1590,8 @@ mod tests {
             micros,
             currency: currency.into(),
         };
-        let (sums, other) = aggregate(&[
-            row("Opus input", 10, "USD"),
-            row("Opus input", 5, "USD"),
-            row("Opus output", 7, "usd"),
-            row("x", 9, "eur"),
-        ]);
+        let (sums, other) =
+            aggregate(&[row("Opus input", 10, "USD"), row("Opus input", 5, "USD"), row("Opus output", 7, "usd"), row("x", 9, "eur")]);
         assert_eq!(sums.len(), 2);
         assert_eq!(sums[&("2026-10-01".into(), "Opus input".into(), "".into())], 15);
         assert_eq!(other.into_iter().collect::<Vec<_>>(), ["EUR"]);
@@ -1812,22 +1635,10 @@ mod tests {
 
     #[test]
     fn the_wrong_kind_of_key_is_named_before_anything_is_sent() {
-        assert!(
-            precheck(CostProvider::Anthropic, "sk-ant-api03-abcd")
-                .unwrap_err()
-                .contains("Admin API key")
-        );
+        assert!(precheck(CostProvider::Anthropic, "sk-ant-api03-abcd").unwrap_err().contains("Admin API key"));
         assert!(precheck(CostProvider::Anthropic, "sk-ant-admin01-abcd").is_ok());
-        assert!(
-            precheck(CostProvider::Openai, "sk-proj-abcd")
-                .unwrap_err()
-                .contains("admin key")
-        );
-        assert!(
-            precheck(CostProvider::Openai, "sk-ant-admin01-abcd")
-                .unwrap_err()
-                .contains("Anthropic")
-        );
+        assert!(precheck(CostProvider::Openai, "sk-proj-abcd").unwrap_err().contains("admin key"));
+        assert!(precheck(CostProvider::Openai, "sk-ant-admin01-abcd").unwrap_err().contains("Anthropic"));
         assert!(precheck(CostProvider::Openai, "sk-admin-abcd").is_ok());
         assert!(precheck(CostProvider::Openai, "").is_err());
         assert!(precheck(CostProvider::Openai, "sk-admin abcd").is_err());
@@ -1843,13 +1654,9 @@ mod tests {
     #[test]
     fn a_refusal_says_why_and_never_repeats_the_key() {
         let key = "sk-ant-admin01-SECRETSECRETwxyz";
-        let body =
-            json!({ "error": { "type": "authentication_error", "message": format!("invalid x-api-key {key}") } });
+        let body = json!({ "error": { "type": "authentication_error", "message": format!("invalid x-api-key {key}") } });
         let said = explain(CostProvider::Anthropic, 401, &body, key);
-        assert!(
-            said.starts_with("Anthropic didn't accept this key. Use an Admin API key"),
-            "{said}"
-        );
+        assert!(said.starts_with("Anthropic didn't accept this key. Use an Admin API key"), "{said}");
         assert!(!said.contains("SECRET"), "{said}");
         assert!(said.contains("…wxyz"), "{said}");
         assert!(explain(CostProvider::Openai, 403, &Value::Null, key).contains("not a project or user API key"));
@@ -1891,24 +1698,12 @@ mod tests {
             connected_by: "ada".into(),
             connected_at: "2026-10-18T00:00:00.000Z".into(),
             last_synced_at: None,
-            last_error: Some(explain(
-                CostProvider::Openai,
-                401,
-                &json!({ "error": { "message": key } }),
-                key,
-            )),
+            last_error: Some(explain(CostProvider::Openai, 401, &json!({ "error": { "message": key } }), key)),
             synced_from: None,
         })
         .unwrap();
-        let costs = ProviderCosts {
-            connections: vec![connection.clone()],
-            days: vec![],
-            complete: false,
-        };
-        for json in [
-            serde_json::to_string(&connection).unwrap(),
-            serde_json::to_string(&costs).unwrap(),
-        ] {
+        let costs = ProviderCosts { connections: vec![connection.clone()], days: vec![], complete: false };
+        for json in [serde_json::to_string(&connection).unwrap(), serde_json::to_string(&costs).unwrap()] {
             assert!(!json.contains("SECRET"), "{json}");
             assert!(!json.contains("credential"), "{json}");
         }
@@ -1937,33 +1732,19 @@ mod tests {
         assert!(!complete(&[], "2026-10-01"));
         assert!(complete(&[connection(Some("2026-07-21"), None)], "2026-10-01"));
         assert!(!complete(&[connection(Some("2026-10-05"), None)], "2026-10-01"));
-        assert!(!complete(
-            &[connection(Some("2026-07-21"), Some("Anthropic didn't answer"))],
-            "2026-10-01"
-        ));
+        assert!(!complete(&[connection(Some("2026-07-21"), Some("Anthropic didn't answer"))], "2026-10-01"));
     }
 
     #[test]
     fn a_read_replaces_its_days_and_reading_twice_changes_nothing() {
         let db = rusqlite::Connection::open_in_memory().unwrap();
-        db.execute_batch(include_str!("../migrations/0067_provider_costs.sql"))
-            .unwrap();
+        db.execute_batch(include_str!("../migrations/0067_provider_costs.sql")).unwrap();
         let write = |day: &str, item: &str, micros: i64, at: &str| {
-            db.execute(
-                UPSERT_COST,
-                rusqlite::params!["acme", "anthropic", day, item, "", micros, at],
-            )
-            .unwrap();
+            db.execute(UPSERT_COST, rusqlite::params!["acme", "anthropic", day, item, "", micros, at]).unwrap();
         };
         let read = || -> Vec<(String, String, i64)> {
-            let mut statement = db
-                .prepare("SELECT day, item, micros FROM provider_costs ORDER BY day, item")
-                .unwrap();
-            statement
-                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
-                .unwrap()
-                .map(Result::unwrap)
-                .collect()
+            let mut statement = db.prepare("SELECT day, item, micros FROM provider_costs ORDER BY day, item").unwrap();
+            statement.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap().map(Result::unwrap).collect()
         };
         write("2026-10-16", "Opus input", 100, "t1");
         write("2026-10-17", "Opus input", 200, "t1");
@@ -1973,19 +1754,9 @@ mod tests {
         assert_eq!(read().len(), 3);
         // The provider revised the 17th: the output line went away and the
         // input grew. The 16th is outside this read and stays.
-        db.execute(
-            DELETE_DAYS,
-            rusqlite::params!["acme", "anthropic", "2026-10-17", "2026-10-18"],
-        )
-        .unwrap();
+        db.execute(DELETE_DAYS, rusqlite::params!["acme", "anthropic", "2026-10-17", "2026-10-18"]).unwrap();
         write("2026-10-17", "Opus input", 250, "t2");
-        assert_eq!(
-            read(),
-            [
-                ("2026-10-16".into(), "Opus input".into(), 100),
-                ("2026-10-17".into(), "Opus input".into(), 250)
-            ]
-        );
+        assert_eq!(read(), [("2026-10-16".into(), "Opus input".into(), 100), ("2026-10-17".into(), "Opus input".into(), 250)]);
         // A successful read moves the first day back, never forward.
         db.execute(
             "INSERT INTO provider_connections (id, workspace, provider, credential, hint, connected_by, connected_at) VALUES ('pcn_1', 'acme', 'anthropic', 'v1:x', '…abcd', 'ada', 't0')",
@@ -1993,15 +1764,8 @@ mod tests {
         )
         .unwrap();
         let note = |from: &str| {
-            db.execute(
-                NOTE_SYNCED,
-                rusqlite::params!["t3", Option::<String>::None, from, "pcn_1"],
-            )
-            .unwrap();
-            db.query_row("SELECT synced_from FROM provider_connections", [], |r| {
-                r.get::<_, String>(0)
-            })
-            .unwrap()
+            db.execute(NOTE_SYNCED, rusqlite::params!["t3", Option::<String>::None, from, "pcn_1"]).unwrap();
+            db.query_row("SELECT synced_from FROM provider_connections", [], |r| r.get::<_, String>(0)).unwrap()
         };
         assert_eq!(note("2026-07-21"), "2026-07-21");
         assert_eq!(note("2026-10-12"), "2026-07-21");
@@ -2120,10 +1884,7 @@ mod tests {
         // 186 cents is $1.86; half a cent reads exactly.
         assert_eq!(
             page.uses[0].models,
-            [
-                ("claude-sonnet-4-5".to_owned(), 1_860_000, "USD".to_owned()),
-                ("claude-opus-5-5".to_owned(), 505_000, "USD".to_owned())
-            ]
+            [("claude-sonnet-4-5".to_owned(), 1_860_000, "USD".to_owned()), ("claude-opus-5-5".to_owned(), 505_000, "USD".to_owned())]
         );
         assert_eq!((page.uses[2].kind, page.uses[2].actor.as_str()), (ActorKind::ApiKey, "ci-bot"));
         assert_eq!(page.next.as_deref(), Some("page_MjAyNS0wNS0xNFQwMDowMDowMFo="));
@@ -2169,15 +1930,18 @@ mod tests {
         assert_eq!(odd.uses.len(), 2);
         assert_eq!(odd.next, None);
         let (costs, other) = aggregate_people(&odd.uses);
-        assert_eq!(costs, [PersonCost {
-            day: "2025-09-02".into(),
-            kind: ActorKind::User,
-            actor: "bo@example.com".into(),
-            model: "".into(),
-            micros: 0,
-            sessions: 1,
-            customer_type: "subscription".into(),
-        }]);
+        assert_eq!(
+            costs,
+            [PersonCost {
+                day: "2025-09-02".into(),
+                kind: ActorKind::User,
+                actor: "bo@example.com".into(),
+                model: "".into(),
+                micros: 0,
+                sessions: 1,
+                customer_type: "subscription".into(),
+            }]
+        );
         assert_eq!(other.into_iter().collect::<Vec<_>>(), ["EUR"]);
         assert!(parse_claude_code(&json!({ "error": { "type": "not_found_error" } })).is_err());
     }
@@ -2269,12 +2033,9 @@ mod tests {
     #[test]
     fn a_persons_days_add_their_addresses_and_count_sessions_once() {
         let db = rusqlite::Connection::open_in_memory().unwrap();
-        db.execute_batch(include_str!("../migrations/0067_provider_costs.sql"))
-            .unwrap();
-        db.execute_batch(include_str!("../migrations/0068_provider_person_costs.sql"))
-            .unwrap();
-        db.execute_batch(include_str!("../migrations/0069_provider_people.sql"))
-            .unwrap();
+        db.execute_batch(include_str!("../migrations/0067_provider_costs.sql")).unwrap();
+        db.execute_batch(include_str!("../migrations/0068_provider_person_costs.sql")).unwrap();
+        db.execute_batch(include_str!("../migrations/0069_provider_people.sql")).unwrap();
         let write = |cost: &PersonCost, at: &str| {
             db.execute(
                 UPSERT_PERSON_COST,
@@ -2322,10 +2083,9 @@ mod tests {
         let days = |since: &str, until: &str, emails: &[&str]| -> Vec<(String, String, String, i64, i64)> {
             let mut statement = db.prepare(PERSON_DAYS).unwrap();
             statement
-                .query_map(
-                    rusqlite::params!["acme", since, until, serde_json::to_string(emails).unwrap(), 1000],
-                    |r| Ok((r.get(0)?, r.get(2)?, r.get(3)?, r.get(6)?, r.get(7)?)),
-                )
+                .query_map(rusqlite::params!["acme", since, until, serde_json::to_string(emails).unwrap(), 1000], |r| {
+                    Ok((r.get(0)?, r.get(2)?, r.get(3)?, r.get(6)?, r.get(7)?))
+                })
                 .unwrap()
                 .map(Result::unwrap)
                 .collect()
@@ -2348,12 +2108,7 @@ mod tests {
             let mut statement = db.prepare(&format!("{ACTOR_TOTALS} ORDER BY actor_kind, actor")).unwrap();
             statement
                 .query_map(rusqlite::params!["acme", "2025-09-01", "2025-09-02"], |r| {
-                    Ok(ActorTotal {
-                        actor_kind: r.get(1)?,
-                        actor: r.get(2)?,
-                        unit: r.get(3)?,
-                        micros: Some(r.get::<_, i64>(4)? as f64),
-                    })
+                    Ok(ActorTotal { actor_kind: r.get(1)?, actor: r.get(2)?, unit: r.get(3)?, micros: Some(r.get::<_, i64>(4)? as f64) })
                 })
                 .unwrap()
                 .map(Result::unwrap)
@@ -2364,8 +2119,7 @@ mod tests {
         assert_eq!(unlinked(&totals, &linked), (9_030_000, 2));
 
         // The provider revised the 1st: one day's rows replaced, the 2nd kept.
-        db.execute(DELETE_PERSON_DAY, rusqlite::params!["acme", "anthropic", "2025-09-01"])
-            .unwrap();
+        db.execute(DELETE_PERSON_DAY, rusqlite::params!["acme", "anthropic", "2025-09-01"]).unwrap();
         write(&more("2025-09-01", "developer@company.com", "claude-opus-5-5", 1, 1), "t2");
         assert_eq!(
             days("2025-09-01", "2025-09-02", &theirs),
@@ -2383,16 +2137,10 @@ mod tests {
         )
         .unwrap();
         let note = |from: &str| {
-            db.execute(
-                NOTE_PEOPLE_SYNCED,
-                rusqlite::params!["t3", Option::<String>::None, from, "pcn_1"],
-            )
-            .unwrap();
-            db.query_row(
-                "SELECT people_synced_from, synced_from FROM provider_connections",
-                [],
-                |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?)),
-            )
+            db.execute(NOTE_PEOPLE_SYNCED, rusqlite::params!["t3", Option::<String>::None, from, "pcn_1"]).unwrap();
+            db.query_row("SELECT people_synced_from, synced_from FROM provider_connections", [], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+            })
             .unwrap()
         };
         assert_eq!(note("2026-07-21"), ("2026-07-21".into(), None));
@@ -2405,13 +2153,7 @@ mod tests {
         for statement in crate::rename::STATEMENTS.iter().filter(|s| s.contains("provider_")) {
             db.execute(statement, rusqlite::params!["acme-co", "acme"]).unwrap();
         }
-        let moved: i64 = db
-            .query_row(
-                "SELECT COUNT(*) FROM provider_person_costs WHERE workspace = 'acme-co'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
+        let moved: i64 = db.query_row("SELECT COUNT(*) FROM provider_person_costs WHERE workspace = 'acme-co'", [], |r| r.get(0)).unwrap();
         assert_eq!(moved, 3);
     }
 }

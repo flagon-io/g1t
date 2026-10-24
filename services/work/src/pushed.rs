@@ -180,13 +180,8 @@ impl Work {
             }
             // Waiting in the merge queue: it has nothing left to land.
             if self.leave(repo_id, &recorded, QueueState::Removed, Some("A push merged it.")).await? {
-                self.publish_as(
-                    "queue.changed",
-                    repo_id,
-                    None,
-                    g1t_contracts::events::QueueChanged { repo_id: repo_id.to_owned() },
-                )
-                .await?;
+                self.publish_as("queue.changed", repo_id, None, g1t_contracts::events::QueueChanged { repo_id: repo_id.to_owned() })
+                    .await?;
             }
             merged.push(recorded.id);
         }
@@ -275,11 +270,8 @@ mod tests {
 
     fn candidates(db: &Connection, base: Option<&str>, landed: Option<u32>) -> Vec<String> {
         let mut statement = db.prepare(CANDIDATES).unwrap();
-        let mut ids: Vec<String> = statement
-            .query_map(params!["repo", base, landed, MAX_CANDIDATES], |row| row.get(0))
-            .unwrap()
-            .map(Result::unwrap)
-            .collect();
+        let mut ids: Vec<String> =
+            statement.query_map(params!["repo", base, landed, MAX_CANDIDATES], |row| row.get(0)).unwrap().map(Result::unwrap).collect();
         ids.sort();
         ids
     }
@@ -388,9 +380,8 @@ mod tests {
         assert_eq!(caller("wki_7", "g1t", "ana").as_deref(), Some("ses_new"));
         assert_eq!(caller("wki_9", "ana", "ana").as_deref(), Some("ses_claimed"));
         assert_eq!(caller("wki_7", "cy", "cy"), None);
-        let in_repo = |id: &str| -> Option<String> {
-            db.query_row(SESSION_IN_REPO, params![id, "repo"], |row| row.get(0)).optional().unwrap()
-        };
+        let in_repo =
+            |id: &str| -> Option<String> { db.query_row(SESSION_IN_REPO, params![id, "repo"], |row| row.get(0)).optional().unwrap() };
         assert_eq!(in_repo("ses_old").as_deref(), Some("ses_old"));
         assert_eq!(in_repo("ses_nowhere"), None);
     }

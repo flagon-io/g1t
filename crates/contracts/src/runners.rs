@@ -774,7 +774,9 @@ pub fn runner_labels(given: &[String], os: &str, arch: &str) -> Result<Vec<Strin
     let mut labels: Vec<String> = Vec::new();
     for label in [SELF_HOSTED, os, arch].iter().map(|s| s.to_string()).chain(given.iter().cloned()) {
         let Some(clean) = clean_label(&label) else {
-            return Err(format!("`{label}` is not a label: use letters, digits, `-`, `_`, `.`, `:` and `/`, up to {MAX_LABEL_LEN} characters."));
+            return Err(format!(
+                "`{label}` is not a label: use letters, digits, `-`, `_`, `.`, `:` and `/`, up to {MAX_LABEL_LEN} characters."
+            ));
         };
         if !labels.contains(&clean) {
             labels.push(clean);
@@ -1022,7 +1024,9 @@ pub fn on_own_runner_note(runner: &str, size: Option<&OfferedSize>, isolation: O
         Some("host") => format!("{runs}, directly on its machine: host mode sets no limits. {why}"),
         _ if sandbox == size.room() => format!("{runs}, in g1t's machine image, in a sandbox of exactly that size. {why}"),
         _ if sandbox.cpus == size.vcpu && sandbox.memory_mib < size.room().memory_mib => {
-            format!("{runs}, in g1t's machine image: its sandbox has less memory than the size, and a job that runs out of it runs again on g1t's machines. {why}")
+            format!(
+                "{runs}, in g1t's machine image: its sandbox has less memory than the size, and a job that runs out of it runs again on g1t's machines. {why}"
+            )
         }
         _ => format!("{runs}, in g1t's machine image, which gives {} jobs a sandbox of {}. {why}", size.name, sandbox.words()),
     }
@@ -1035,7 +1039,9 @@ pub fn fallback_note(why: Fallback) -> &'static str {
         Fallback::NoneFree => {
             "This job runs on g1t's machines: the workspace prefers its own runners, and none that fits this job (its OS and architecture, a runner that takes its size, and Docker if it uses services or a container) was free."
         }
-        Fallback::NotTaken => "This job runs on g1t's machines: the workspace prefers its own runners, and none of them took it within 15 seconds.",
+        Fallback::NotTaken => {
+            "This job runs on g1t's machines: the workspace prefers its own runners, and none of them took it within 15 seconds."
+        }
     }
 }
 
@@ -1156,7 +1162,10 @@ pub fn sizes() -> Vec<Size> {
             continue;
         }
         let name = SIZE_NAMES.iter().find(|(key, _)| *key == instance.machine).map_or(instance.machine, |(_, name)| *name);
-        let least = SIZE_LEAST_MEMORY.iter().find(|(key, _)| *key == instance.machine).map_or(instance.memory_gib, |(_, gib)| gib.min(instance.memory_gib));
+        let least = SIZE_LEAST_MEMORY
+            .iter()
+            .find(|(key, _)| *key == instance.machine)
+            .map_or(instance.memory_gib, |(_, gib)| gib.min(instance.memory_gib));
         out.push(Size { machine: instance.machine, name, vcpu: instance.vcpu, memory_gib: instance.memory_gib, least_memory_gib: least });
     }
     out.sort_by(|a, b| a.vcpu.total_cmp(&b.vcpu).then(a.memory_gib.total_cmp(&b.memory_gib)));
@@ -1223,7 +1232,12 @@ impl OfferedSize {
         if let Some(memory) = self.memory_mib
             && memory < size.least().memory_mib
         {
-            return Err(format!("{} jobs get at least {}, the least it runs with, not {}.", size.name, gb(size.least().memory_mib), gb(memory)));
+            return Err(format!(
+                "{} jobs get at least {}, the least it runs with, not {}.",
+                size.name,
+                gb(size.least().memory_mib),
+                gb(memory)
+            ));
         }
         Ok(())
     }
@@ -1662,7 +1676,8 @@ mod tests {
         assert_eq!(assignment["timeout_minutes"], 60);
         assert_eq!(assignment["visibility"], "private");
         // An older runner's registration, without an isolation level.
-        let register: RegisterArgs = serde_json::from_value(serde_json::json!({ "token": "g1trt_x", "name": "a", "os": "linux", "arch": "x64" })).unwrap();
+        let register: RegisterArgs =
+            serde_json::from_value(serde_json::json!({ "token": "g1trt_x", "name": "a", "os": "linux", "arch": "x64" })).unwrap();
         assert_eq!(register.isolation, None);
         assert_eq!((register.cpus, register.memory_mib, register.docker), (None, None, None), "an older runner says nothing of its size");
         let poll: PollArgs = serde_json::from_value(serde_json::json!({
@@ -1675,7 +1690,10 @@ mod tests {
             "runner": "rnr_1", "credential": "c", "sizes": [{ "size": "1-core" }, { "size": "2-core", "cpus": 4, "memory_mib": 16384 }]
         }))
         .unwrap();
-        assert_eq!(poll.sizes, Some(vec![OfferedSize::of("1-core"), OfferedSize { size: "2-core".into(), cpus: Some(4.0), memory_mib: Some(16384) }]));
+        assert_eq!(
+            poll.sizes,
+            Some(vec![OfferedSize::of("1-core"), OfferedSize { size: "2-core".into(), cpus: Some(4.0), memory_mib: Some(16384) }])
+        );
         let assignment: Value = serde_json::to_value(OfferedSize::of("2-core").assigned()).unwrap();
         assert_eq!(assignment, serde_json::json!({ "size": "2-core", "cpus": 2.0, "memory_mib": 8192 }));
     }
@@ -1728,7 +1746,14 @@ mod tests {
         // Offered anyway, it is matched: the warning refuses nothing.
         let offered = [OfferedSize::of("4-core")];
         let large_machine = crate::actions::instance_named("g1t-4core").unwrap();
-        assert!(stands_in_for(Capacity { hosted_image: Some(true), ..Capacity::default() }, Some(&offered), Some("nested-container"), None, &large_machine, false));
+        assert!(stands_in_for(
+            Capacity { hosted_image: Some(true), ..Capacity::default() },
+            Some(&offered),
+            Some("nested-container"),
+            None,
+            &large_machine,
+            false
+        ));
     }
 
     #[test]
@@ -1751,7 +1776,9 @@ mod tests {
         assert!(size_warning(share(7), large.sandbox().unwrap()).unwrap().contains("More than the sandbox's"));
         // CPUs are never fewer, and a runner can't offer less memory than the least.
         assert!(OfferedSize { size: "4-core".into(), cpus: Some(2.0), memory_mib: None }.check().is_err());
-        assert!(OfferedSize { size: "4-core".into(), cpus: None, memory_mib: Some(7 * 1024) }.check().unwrap_err().contains("at least 8 GB"));
+        assert!(
+            OfferedSize { size: "4-core".into(), cpus: None, memory_mib: Some(7 * 1024) }.check().unwrap_err().contains("at least 8 GB")
+        );
         assert_eq!(at_least.assigned().unwrap().memory_mib, Some(8 * 1024), "the job is handed what it gets");
     }
 
@@ -1778,11 +1805,21 @@ mod tests {
     fn a_share_beyond_half_the_computer_or_its_vm_warns_and_is_not_refused() {
         let computer = machine(32, 64);
         assert_eq!(share_warning(computer, Room { cpus: 16.0, memory_mib: 16 * 1024 }, None), None);
-        assert!(share_warning(computer, Room { cpus: 17.0, memory_mib: 16 * 1024 }, None).unwrap().contains("More than half this computer's 32 CPUs and 64 GB"));
-        assert!(share_warning(machine(4, 8), Room { cpus: 4.0, memory_mib: 9 * 1024 }, None).unwrap().contains("More than this computer's"));
+        assert!(
+            share_warning(computer, Room { cpus: 17.0, memory_mib: 16 * 1024 }, None)
+                .unwrap()
+                .contains("More than half this computer's 32 CPUs and 64 GB")
+        );
+        assert!(
+            share_warning(machine(4, 8), Room { cpus: 4.0, memory_mib: 9 * 1024 }, None).unwrap().contains("More than this computer's")
+        );
         let vm = Room { cpus: 16.0, memory_mib: 32 * 1024 };
         assert_eq!(share_warning(computer, Room { cpus: 8.0, memory_mib: 13 * 1024 }, Some(vm)), None);
-        assert!(share_warning(computer, Room { cpus: 8.0, memory_mib: 40 * 1024 }, Some(vm)).unwrap().contains("More than the Linux VM's 16 vCPU, 32 GB"));
+        assert!(
+            share_warning(computer, Room { cpus: 8.0, memory_mib: 40 * 1024 }, Some(vm))
+                .unwrap()
+                .contains("More than the Linux VM's 16 vCPU, 32 GB")
+        );
     }
 
     #[test]
@@ -1796,7 +1833,10 @@ mod tests {
         assert!(less.check().unwrap_err().contains("at least 2 vCPU"));
         assert!(OfferedSize { cpus: None, ..less.clone() }.check().unwrap_err().contains("at least 6 GB"));
         assert_eq!(less.sandbox(), Some(Room { cpus: 2.0, memory_mib: 6144 }), "raised to its least");
-        assert_eq!(kept_sizes(std::slice::from_ref(&less)), vec![OfferedSize { size: "2-core".into(), cpus: None, memory_mib: Some(6144) }]);
+        assert_eq!(
+            kept_sizes(std::slice::from_ref(&less)),
+            vec![OfferedSize { size: "2-core".into(), cpus: None, memory_mib: Some(6144) }]
+        );
         assert!(OfferedSize::of("16-core").check().unwrap_err().contains("not a size"));
         // Kept once each, smallest first, unknown ones dropped.
         let given = [more.clone(), OfferedSize::of("1-core"), OfferedSize::of("2-core"), OfferedSize::of("gpu")];
@@ -1832,7 +1872,9 @@ mod tests {
         assert!(!stands_in_for(older, None, Some("nested-container"), None, &standard, false), "by its resources too");
         let without = Capacity { hosted_image: Some(false), ..sandbox };
         assert!(!stands_in_for(without, Some(&offered), Some("nested-container"), None, &standard, false), "one with no such image");
-        let register: RegisterArgs = serde_json::from_value(serde_json::json!({ "token": "t", "name": "a", "os": "linux", "arch": "x64", "hosted_image": true })).unwrap();
+        let register: RegisterArgs =
+            serde_json::from_value(serde_json::json!({ "token": "t", "name": "a", "os": "linux", "arch": "x64", "hosted_image": true }))
+                .unwrap();
         assert_eq!(register.hosted_image, Some(true));
         let poll: PollArgs = serde_json::from_value(serde_json::json!({ "runner": "rnr_1", "credential": "c" })).unwrap();
         assert_eq!(poll.hosted_image, None, "an older runner says nothing of it");

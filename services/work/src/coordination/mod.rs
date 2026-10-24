@@ -10,7 +10,6 @@
 //! claims that went quiet are found when the repository's coordination is
 //! next touched (`sweep`), and announced then as ended or expired.
 
-pub(crate) mod updates;
 mod claims;
 mod context;
 mod dependencies;
@@ -19,10 +18,11 @@ mod overlaps;
 mod sessions;
 pub(crate) mod shown;
 mod telemetry;
-pub(crate) mod titles;
-mod workspace;
 #[cfg(test)]
 mod tests;
+pub(crate) mod titles;
+pub(crate) mod updates;
+mod workspace;
 
 use g1t_contracts::credentials::Principal;
 use g1t_contracts::repos::{Repo, RepoPath};
@@ -308,20 +308,16 @@ impl Work {
         let mut statements = Vec::new();
         let mut sessions = Vec::new();
         for row in quiet {
-            statements.push(
-                self.db
-                    .prepare(time_out_sessions_sql())
-                    .bind(&[repo_id.into(), quiet_since.as_str().into(), row.id.as_str().into()])?,
-            );
+            statements.push(self.db.prepare(time_out_sessions_sql()).bind(&[
+                repo_id.into(),
+                quiet_since.as_str().into(),
+                row.id.as_str().into(),
+            ])?);
             let index = statements.len() - 1;
             let ended_at = row.last_seen_at.clone();
-            let expected = SessionRow {
-                state: "ended".to_owned(),
-                ended_at: Some(ended_at.clone()),
-                end_reason: Some("timed_out".to_owned()),
-                ..row
-            }
-            .at(now);
+            let expected =
+                SessionRow { state: "ended".to_owned(), ended_at: Some(ended_at.clone()), end_reason: Some("timed_out".to_owned()), ..row }
+                    .at(now);
             let delivery = self.delivery(
                 "session.ended",
                 repo_id,
@@ -334,9 +330,7 @@ impl Work {
         }
         let mut claims = Vec::new();
         for row in lapsed {
-            statements.push(
-                self.db.prepare(expire_claims_sql()).bind(&[repo_id.into(), at.as_str().into(), row.id.as_str().into()])?,
-            );
+            statements.push(self.db.prepare(expire_claims_sql()).bind(&[repo_id.into(), at.as_str().into(), row.id.as_str().into()])?);
             let index = statements.len() - 1;
             let held = Claim::from(row);
             let expected = Claim {
@@ -358,7 +352,8 @@ impl Work {
         let results = self.db.batch(statements).await?;
         let returned = |index: usize| results.get(index);
         for (index, sent) in sessions {
-            let Some(row) = returned(index).map(|result| result.results::<SessionRow>()).transpose()?.and_then(|rows| rows.into_iter().next())
+            let Some(row) =
+                returned(index).map(|result| result.results::<SessionRow>()).transpose()?.and_then(|rows| rows.into_iter().next())
             else {
                 continue;
             };
@@ -366,7 +361,8 @@ impl Work {
             self.delivered(sent, "session.ended", repo_id, None, serde_json::to_value(SessionEvent::of(&session))?).await?;
         }
         for (index, sent) in claims {
-            let Some(row) = returned(index).map(|result| result.results::<ClaimRow>()).transpose()?.and_then(|rows| rows.into_iter().next())
+            let Some(row) =
+                returned(index).map(|result| result.results::<ClaimRow>()).transpose()?.and_then(|rows| rows.into_iter().next())
             else {
                 continue;
             };

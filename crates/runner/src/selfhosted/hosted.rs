@@ -37,7 +37,12 @@ pub fn pulled_in_job(size: Option<u64>) -> String {
 
 /// Whether Docker has `image` here.
 pub fn present(image: &str) -> bool {
-    super::exec::docker().args(["image", "inspect", "--format", "{{.Id}}", image]).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success())
+    super::exec::docker()
+        .args(["image", "inspect", "--format", "{{.Id}}", image])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
 }
 
 /// The repository of an image reference: without its tag or digest.
@@ -60,7 +65,11 @@ fn prune_others(image: &str) {
         let repo = repository(image);
         let listed = super::exec::docker().args(["image", "ls", "--no-trunc", "--format", "{{.ID}}", repo]).output();
         let Ok(listed) = listed else { return };
-        let keep = super::exec::docker().args(["image", "inspect", "--format", "{{.Id}}", image]).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned());
+        let keep = super::exec::docker()
+            .args(["image", "inspect", "--format", "{{.Id}}", image])
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned());
         for id in String::from_utf8_lossy(&listed.stdout).lines().map(str::trim).filter(|id| !id.is_empty()) {
             if Some(id) != keep.as_deref() {
                 let _ = super::exec::docker().args(["image", "rm", id]).stdout(Stdio::null()).stderr(Stdio::null()).status();
@@ -96,10 +105,18 @@ impl Ready {
             let mut wait = Duration::from_secs(60);
             loop {
                 let started = Instant::now();
-                let pulled = super::exec::docker().args(["pull", "-q", &image]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped()).output();
+                let pulled = super::exec::docker()
+                    .args(["pull", "-q", &image])
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::piped())
+                    .output();
                 match pulled {
                     Ok(out) if out.status.success() || present(&image) => {
-                        log(&format!("Pulled g1t's machine image in {}: this runner takes jobs asking for g1t's machines now.", took(started.elapsed())));
+                        log(&format!(
+                            "Pulled g1t's machine image in {}: this runner takes jobs asking for g1t's machines now.",
+                            took(started.elapsed())
+                        ));
                         flag.store(true, Ordering::SeqCst);
                         prune_others(&image);
                         return;
@@ -109,7 +126,10 @@ impl Ready {
                         String::from_utf8_lossy(&out.stderr).trim(),
                         wait.as_secs() / 60
                     )),
-                    Err(error) => log(&format!("Could not run docker to pull g1t's machine image ({error}); trying again in {} min.", wait.as_secs() / 60)),
+                    Err(error) => log(&format!(
+                        "Could not run docker to pull g1t's machine image ({error}); trying again in {} min.",
+                        wait.as_secs() / 60
+                    )),
                 }
                 std::thread::sleep(wait);
                 wait = (wait * 2).min(Duration::from_secs(15 * 60));

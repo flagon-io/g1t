@@ -208,9 +208,8 @@ impl Work {
             Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
         };
         // What they wrote is checked now, not when it merges.
-        if let Err(message) = self
-            .merge_message_for(&repo, &pull, &settings, method, a.commit_title.as_deref(), a.commit_message.as_deref())
-            .await?
+        if let Err(message) =
+            self.merge_message_for(&repo, &pull, &settings, method, a.commit_title.as_deref(), a.commit_message.as_deref()).await?
         {
             return Ok(Outcome::fail(FailureCode::Invalid, message));
         }
@@ -218,7 +217,9 @@ impl Work {
             let named = if files.is_empty() { String::new() } else { format!(" in {}", files.join(", ")) };
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
-                format!("This branch has conflicts with {base}{named} that must be resolved first. Merge {base} into it, fix them and push."),
+                format!(
+                    "This branch has conflicts with {base}{named} that must be resolved first. Merge {base} into it, fix them and push."
+                ),
             ));
         }
         // One that may merge already merges now.
@@ -300,12 +301,8 @@ impl Work {
         let who = stored.actor.username.clone();
         // As whoever turned it on: a repository they can no longer read is
         // one they can no longer merge into.
-        let repo: Outcome<Repo> = g1t_kit::call(
-            &self.repos,
-            "get_by_id",
-            &GetByIdArgs { id: pull.repo_id.clone(), viewer: Some(stored.actor.clone()) },
-        )
-        .await?;
+        let repo: Outcome<Repo> =
+            g1t_kit::call(&self.repos, "get_by_id", &GetByIdArgs { id: pull.repo_id.clone(), viewer: Some(stored.actor.clone()) }).await?;
         let repo = match crate::retired::unless_archived(repo) {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) if failure.code == FailureCode::NotFound => {
@@ -452,7 +449,10 @@ mod tests {
     #[test]
     fn what_may_still_come_is_waited_for() {
         assert_eq!(step(&Facts { status: Some(PullStatus::Draft), ..ready() }, "ana", "main"), Step::Wait);
-        assert_eq!(step(&Facts { gate_refusal: Some("The required check CI has not finished.".into()), ..ready() }, "ana", "main"), Step::Wait);
+        assert_eq!(
+            step(&Facts { gate_refusal: Some("The required check CI has not finished.".into()), ..ready() }, "ana", "main"),
+            Step::Wait
+        );
         assert_eq!(step(&Facts { behind: true, require_up_to_date: true, ..ready() }, "ana", "main"), Step::Wait);
         // Behind is no reason to wait where it need not be up to date.
         assert_eq!(step(&Facts { behind: true, ..ready() }, "ana", "main"), Step::Merge);

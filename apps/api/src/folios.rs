@@ -118,23 +118,57 @@ impl FoliosOp {
 
     pub fn description(self) -> &'static str {
         match self {
-            FoliosOp::List => "List the artifacts (docs, slides, designs and dashboards) in a workspace that you can open, most recently edited first: each with its id (fol_…), kind, title, icon, space (null in its owner's Private), parent_id, owner, your role (viewer_role: view, comment, edit or manage), general_access, private, excerpt, edited_at and html_url. tab is all (the default), yours (you own them) or shared (shared with you). Narrow with kind, space (its slug or id), project (owner/name), q (words or meaning) and limit (at most 100); next_cursor pages on. With state trashed, the artifacts in the trash you can restore instead. Not workflow runs' artifacts.",
-            FoliosOp::Search => "Search the artifacts in a workspace that you can open, by words and by meaning: each hit is the artifact with the passage that matched (snippet, and the heading it is under), its space_name and edited_at. Narrow with kind, space, project and limit (at most 50). Only what you can read now is found.",
-            FoliosOp::Get => "Get one artifact by its id (fol_…) or its address (`/acme/-/library/artifacts/q4-roadmap-fol_…`): its kind, title, space, parent_id, owner, who made it, your role, general_access, whether it is private, how many it is shared with, its excerpt, whether it may be out of date with the code it cites (stale), and html_url. Not found when you cannot open it, as for one that does not exist. Opening a link-shared artifact this way counts as following its link.",
-            FoliosOp::GetContent => "Get an artifact's content in the form agents read and write: for a doc, its Markdown in content, and its top-level blocks (id, type, level and Markdown) to target an edit at; with can (read, suggest, edit): what you may do to it. Slides, designs and dashboards answer that they are not here yet.",
-            FoliosOp::ListVersions => "List an artifact's saved versions, newest first: each with its id (ver_…), created_at, kind (created, edit, agent, suggestion, proposal or restore), note, and the people and agents who made it.",
-            FoliosOp::GetAccess => "Who can open an artifact and how: its owner, each person, agent and team it is shared with (principal, role, and inherited_from when the access comes from a doc it is under), general_access (none, workspace or link) with general_role, whether it follows its space or parent (inherit), agent_mode, and whether you may change it (can_share).",
-            FoliosOp::ListTemplates => "The templates an artifact can start from: the built-in ones and those saved in the workspace, each with its id, kind, name, description and body (Markdown, or a JSON spec). Narrow with kind.",
-            FoliosOp::ListSpaces => "The spaces in your Library sidebar: the General space, open spaces you joined, your teams' spaces and Members-only spaces you are in. Each with its id, slug, name, kind (workspace for an open space, team or private), your role in it (viewer_role) and how many artifacts it holds you can open.",
-            FoliosOp::QueryDataset => "Run a dataset query (work items, pull requests, workflow runs, deployments, spend or agent sessions) as you, over what you can read: rows of the measure, grouped and filtered as asked, with truncated when more rows matched, and partial true when some of it was left out because you cannot read it. Answers that dashboards are not here yet until they ship.",
-            FoliosOp::Create => "Make an artifact. kind is doc (the default); slides, designs and dashboards answer that they are not here yet. It lands in space (a slug or id you can edit in), under parent_id (a doc you can edit), or, with neither, in your Private, where only you can open it. Start it from markdown, or from a template (template_id), with an optional title and icon. You own it. Returns the artifact.",
-            FoliosOp::Update => "Rename an artifact (title), change its icon (null clears it), or move it: to space (a slug or id; `private` for your Private, yours only), under parent_id (a doc), before before_id among its new siblings. Moving changes who can open it when it follows its space or parent. Takes the edit role on it, and on where it goes. Returns the artifact.",
-            FoliosOp::Edit => "Change an artifact's content. For a doc: markdown with a target: append (add to the end), document (replace it all), section (with heading: that heading and everything under it) or blocks (from_block through to_block, block ids from its content). With the edit role the change is made, as a new version; with the comment role, or suggest_only, it is filed as a suggestion its editors accept or reject. note says why; marks_current says it brings the doc up to date with the code it cites. Returns mode (applied or suggested), version_id or the suggestion, and the artifact.",
-            FoliosOp::Trash => "Move an artifact, and everything under it, to the trash: nobody can open it until it is restored, and it is deleted for good after 30 days. Takes the edit role. Returns the artifact, with trashed_at.",
-            FoliosOp::Restore => "Bring an artifact back from the trash, with what went to the trash with it, where it was (at the top of its space or your Private when the doc it was under is gone). Takes the edit role. Returns the artifact.",
-            FoliosOp::RestoreVersion => "Make an earlier version (version_id) an artifact's content again, as a new version: nothing in between is lost. Takes the edit role. Returns the new version.",
-            FoliosOp::SetAccess => "Change who can open an artifact. Share it with a person (username), a team (team: its slug) or an agent (agent: its id), or a principal from its access list, at role view, comment, edit or manage (full access), with an optional notify message; role none takes theirs away. Set general_access to none (only people invited), workspace (everyone in the workspace) or link (anyone in the workspace with the link), with general_role view, comment or edit. inherit false stops it following its space or parent; true follows again. agent_mode suggest or edit says how agents change it (null follows its space). Takes full access (manage). Returns who can open it now.",
-            FoliosOp::Purge => "Delete an artifact in the trash, and everything under it, for good: its content and versions are gone and cannot be restored. Move it to the trash first. Takes full access (manage).",
+            FoliosOp::List => {
+                "List the artifacts (docs, slides, designs and dashboards) in a workspace that you can open, most recently edited first: each with its id (fol_…), kind, title, icon, space (null in its owner's Private), parent_id, owner, your role (viewer_role: view, comment, edit or manage), general_access, private, excerpt, edited_at and html_url. tab is all (the default), yours (you own them) or shared (shared with you). Narrow with kind, space (its slug or id), project (owner/name), q (words or meaning) and limit (at most 100); next_cursor pages on. With state trashed, the artifacts in the trash you can restore instead. Not workflow runs' artifacts."
+            }
+            FoliosOp::Search => {
+                "Search the artifacts in a workspace that you can open, by words and by meaning: each hit is the artifact with the passage that matched (snippet, and the heading it is under), its space_name and edited_at. Narrow with kind, space, project and limit (at most 50). Only what you can read now is found."
+            }
+            FoliosOp::Get => {
+                "Get one artifact by its id (fol_…) or its address (`/acme/-/library/artifacts/q4-roadmap-fol_…`): its kind, title, space, parent_id, owner, who made it, your role, general_access, whether it is private, how many it is shared with, its excerpt, whether it may be out of date with the code it cites (stale), and html_url. Not found when you cannot open it, as for one that does not exist. Opening a link-shared artifact this way counts as following its link."
+            }
+            FoliosOp::GetContent => {
+                "Get an artifact's content in the form agents read and write: for a doc, its Markdown in content, and its top-level blocks (id, type, level and Markdown) to target an edit at; with can (read, suggest, edit): what you may do to it. Slides, designs and dashboards answer that they are not here yet."
+            }
+            FoliosOp::ListVersions => {
+                "List an artifact's saved versions, newest first: each with its id (ver_…), created_at, kind (created, edit, agent, suggestion, proposal or restore), note, and the people and agents who made it."
+            }
+            FoliosOp::GetAccess => {
+                "Who can open an artifact and how: its owner, each person, agent and team it is shared with (principal, role, and inherited_from when the access comes from a doc it is under), general_access (none, workspace or link) with general_role, whether it follows its space or parent (inherit), agent_mode, and whether you may change it (can_share)."
+            }
+            FoliosOp::ListTemplates => {
+                "The templates an artifact can start from: the built-in ones and those saved in the workspace, each with its id, kind, name, description and body (Markdown, or a JSON spec). Narrow with kind."
+            }
+            FoliosOp::ListSpaces => {
+                "The spaces in your Library sidebar: the General space, open spaces you joined, your teams' spaces and Members-only spaces you are in. Each with its id, slug, name, kind (workspace for an open space, team or private), your role in it (viewer_role) and how many artifacts it holds you can open."
+            }
+            FoliosOp::QueryDataset => {
+                "Run a dataset query (work items, pull requests, workflow runs, deployments, spend or agent sessions) as you, over what you can read: rows of the measure, grouped and filtered as asked, with truncated when more rows matched, and partial true when some of it was left out because you cannot read it. Answers that dashboards are not here yet until they ship."
+            }
+            FoliosOp::Create => {
+                "Make an artifact. kind is doc (the default); slides, designs and dashboards answer that they are not here yet. It lands in space (a slug or id you can edit in), under parent_id (a doc you can edit), or, with neither, in your Private, where only you can open it. Start it from markdown, or from a template (template_id), with an optional title and icon. You own it. Returns the artifact."
+            }
+            FoliosOp::Update => {
+                "Rename an artifact (title), change its icon (null clears it), or move it: to space (a slug or id; `private` for your Private, yours only), under parent_id (a doc), before before_id among its new siblings. Moving changes who can open it when it follows its space or parent. Takes the edit role on it, and on where it goes. Returns the artifact."
+            }
+            FoliosOp::Edit => {
+                "Change an artifact's content. For a doc: markdown with a target: append (add to the end), document (replace it all), section (with heading: that heading and everything under it) or blocks (from_block through to_block, block ids from its content). With the edit role the change is made, as a new version; with the comment role, or suggest_only, it is filed as a suggestion its editors accept or reject. note says why; marks_current says it brings the doc up to date with the code it cites. Returns mode (applied or suggested), version_id or the suggestion, and the artifact."
+            }
+            FoliosOp::Trash => {
+                "Move an artifact, and everything under it, to the trash: nobody can open it until it is restored, and it is deleted for good after 30 days. Takes the edit role. Returns the artifact, with trashed_at."
+            }
+            FoliosOp::Restore => {
+                "Bring an artifact back from the trash, with what went to the trash with it, where it was (at the top of its space or your Private when the doc it was under is gone). Takes the edit role. Returns the artifact."
+            }
+            FoliosOp::RestoreVersion => {
+                "Make an earlier version (version_id) an artifact's content again, as a new version: nothing in between is lost. Takes the edit role. Returns the new version."
+            }
+            FoliosOp::SetAccess => {
+                "Change who can open an artifact. Share it with a person (username), a team (team: its slug) or an agent (agent: its id), or a principal from its access list, at role view, comment, edit or manage (full access), with an optional notify message; role none takes theirs away. Set general_access to none (only people invited), workspace (everyone in the workspace) or link (anyone in the workspace with the link), with general_role view, comment or edit. inherit false stops it following its space or parent; true follows again. agent_mode suggest or edit says how agents change it (null follows its space). Takes full access (manage). Returns who can open it now."
+            }
+            FoliosOp::Purge => {
+                "Delete an artifact in the trash, and everything under it, for good: its content and versions are gone and cannot be restored. Move it to the trash first. Takes full access (manage)."
+            }
         }
     }
 
@@ -193,9 +227,13 @@ impl FoliosOp {
                 }),
                 vec!["workspace", "q"],
             ),
-            FoliosOp::Get | FoliosOp::GetContent | FoliosOp::ListVersions | FoliosOp::GetAccess | FoliosOp::Trash | FoliosOp::Restore | FoliosOp::Purge => {
-                (with(json!({})), one.to_vec())
-            }
+            FoliosOp::Get
+            | FoliosOp::GetContent
+            | FoliosOp::ListVersions
+            | FoliosOp::GetAccess
+            | FoliosOp::Trash
+            | FoliosOp::Restore
+            | FoliosOp::Purge => (with(json!({})), one.to_vec()),
             FoliosOp::ListTemplates => (json!({ "workspace": workspace, "kind": kind }), vec!["workspace"]),
             FoliosOp::ListSpaces => (json!({ "workspace": workspace }), vec!["workspace"]),
             FoliosOp::QueryDataset => (
@@ -278,10 +316,7 @@ fn text(input: &Value, key: &str) -> Option<String> {
 
 /// A whole number given as one, or as digits (a REST query).
 fn number(input: &Value, key: &str) -> Option<u32> {
-    input[key]
-        .as_u64()
-        .or_else(|| text(input, key).and_then(|given| given.parse().ok()))
-        .map(|n| u32::try_from(n).unwrap_or(u32::MAX))
+    input[key].as_u64().or_else(|| text(input, key).and_then(|given| given.parse().ok())).map(|n| u32::try_from(n).unwrap_or(u32::MAX))
 }
 
 fn invalid(message: impl Into<String>) -> Outcome<Value> {
@@ -366,7 +401,9 @@ pub(crate) fn access_changes(input: &Value, principal: Option<String>) -> std::r
         let role = match (access, text(input, "general_role")) {
             (GeneralAccess::None, _) => None,
             (_, None) => Some(FolioRole::View),
-            (_, Some(role)) => Some(parse_role(&role.to_lowercase()).ok_or_else(|| format!("{role} is not a role: view, comment or edit."))?),
+            (_, Some(role)) => {
+                Some(parse_role(&role.to_lowercase()).ok_or_else(|| format!("{role} is not a role: view, comment or edit."))?)
+            }
         };
         changes.push(FolioAccessChange::General { access, role });
     }
@@ -443,7 +480,9 @@ pub(crate) fn ref_json(folio: &Value, site: &str) -> Value {
 /// An artifact as the API shows one.
 pub(crate) fn folio_json(folio: &Value, site: &str) -> Value {
     let space = match &folio["space"] {
-        Value::Object(space) => json!({ "id": space.get("id"), "slug": space.get("slug"), "name": space.get("name"), "kind": space.get("kind") }),
+        Value::Object(space) => {
+            json!({ "id": space.get("id"), "slug": space.get("slug"), "name": space.get("name"), "kind": space.get("kind") })
+        }
         _ => Value::Null,
     };
     json!({
@@ -544,7 +583,9 @@ fn access_json(list: &Value) -> Value {
         })
         .unwrap_or_default();
     let inherited_from = match &list["inherited_from"] {
-        Value::Object(from) => json!({ "type": from.get("kind").and_then(Value::as_str).map(|kind| if kind == "folio" { "artifact" } else { kind }), "id": from.get("id"), "name": from.get("name") }),
+        Value::Object(from) => {
+            json!({ "type": from.get("kind").and_then(Value::as_str).map(|kind| if kind == "folio" { "artifact" } else { kind }), "id": from.get("id"), "name": from.get("name") })
+        }
         _ => Value::Null,
     };
     json!({
@@ -616,17 +657,21 @@ async fn call<T: DeserializeOwned>(services: &Services, method: &str, args: &imp
 pub(crate) fn person(viewer: &Viewer) -> std::result::Result<User, Outcome<Value>> {
     match viewer {
         None => Err(Outcome::fail(FailureCode::Unauthenticated, "This needs a g1t access token.")),
-        Some(user) if user.kind == PrincipalKind::Workspace => Err(Outcome::fail(
-            FailureCode::Forbidden,
-            "Artifacts belong to people: use a personal access token.",
-        )),
+        Some(user) if user.kind == PrincipalKind::Workspace => {
+            Err(Outcome::fail(FailureCode::Forbidden, "Artifacts belong to people: use a personal access token."))
+        }
         Some(user) => Ok(user.clone()),
     }
 }
 
 /// A space's id from its slug or id, among the spaces in the person's
 /// sidebar; an id passes as given. `Ok(None)` for `private`.
-async fn space_id(services: &Services, workspace: &str, viewer: &User, given: &str) -> Result<std::result::Result<Option<String>, Outcome<Value>>> {
+async fn space_id(
+    services: &Services,
+    workspace: &str,
+    viewer: &User,
+    given: &str,
+) -> Result<std::result::Result<Option<String>, Outcome<Value>>> {
     let given = given.trim();
     if given.eq_ignore_ascii_case("private") {
         return Ok(Ok(None));
@@ -694,7 +739,9 @@ pub async fn run(op: FoliosOp, services: &Services, viewer: &Viewer, input: &Val
         };
     }
     let folio_id = match op {
-        FoliosOp::List | FoliosOp::Search | FoliosOp::ListTemplates | FoliosOp::ListSpaces | FoliosOp::QueryDataset | FoliosOp::Create => String::new(),
+        FoliosOp::List | FoliosOp::Search | FoliosOp::ListTemplates | FoliosOp::ListSpaces | FoliosOp::QueryDataset | FoliosOp::Create => {
+            String::new()
+        }
         _ => match text(input, "artifact_id").as_deref().and_then(artifact_id) {
             Some(id) => id,
             None => return Ok(invalid("Give the artifact_id: its id (fol_…) or its address.")),
@@ -706,7 +753,10 @@ pub async fn run(op: FoliosOp, services: &Services, viewer: &Viewer, input: &Val
         FoliosOp::List => {
             if text(input, "state").as_deref() == Some("trashed") {
                 let found: Outcome<Value> = call(services, "folio_trash", &json!({ "workspace": workspace, "viewer": viewer })).await?;
-                return Ok(mapped(found, |list| json!({ "items": list.as_array().map(|list| list.iter().map(shown).collect::<Vec<_>>()).unwrap_or_default(), "next_cursor": null })));
+                return Ok(mapped(
+                    found,
+                    |list| json!({ "items": list.as_array().map(|list| list.iter().map(shown).collect::<Vec<_>>()).unwrap_or_default(), "next_cursor": null }),
+                ));
             }
             let tab = match text(input, "tab").map(|tab| tab.to_lowercase()).as_deref() {
                 None | Some("all") => FolioListTab::All,
@@ -747,7 +797,15 @@ pub async fn run(op: FoliosOp, services: &Services, viewer: &Viewer, input: &Val
                 None => None,
             };
             let limit = number(input, "limit").map(|l| l.clamp(1, 50));
-            let query = FolioSearchQuery { q, kinds: kind.map(|kind| vec![kind]), space_id, project: text(input, "project"), owner: None, mode: Some("hybrid".to_owned()), limit };
+            let query = FolioSearchQuery {
+                q,
+                kinds: kind.map(|kind| vec![kind]),
+                space_id,
+                project: text(input, "project"),
+                owner: None,
+                mode: Some("hybrid".to_owned()),
+                limit,
+            };
             let found: Outcome<Value> = call(services, "search_folios", &SearchFoliosArgs { workspace, viewer, query }).await?;
             listed(found, |hit| hit_json(hit, &site))
         }
@@ -761,7 +819,9 @@ pub async fn run(op: FoliosOp, services: &Services, viewer: &Viewer, input: &Val
         }
         FoliosOp::ListSpaces => {
             let found: Outcome<Value> = call(services, "folio_sidebar", &json!({ "workspace": workspace, "viewer": viewer })).await?;
-            mapped(found, |sidebar| Value::Array(sidebar["spaces"].as_array().map(|spaces| spaces.iter().map(space_json).collect()).unwrap_or_default()))
+            mapped(found, |sidebar| {
+                Value::Array(sidebar["spaces"].as_array().map(|spaces| spaces.iter().map(space_json).collect()).unwrap_or_default())
+            })
         }
         FoliosOp::QueryDataset => {
             let query: DatasetQuery = match serde_json::from_value(input["query"].clone()) {
@@ -813,7 +873,12 @@ pub async fn run(op: FoliosOp, services: &Services, viewer: &Viewer, input: &Val
             }
             let mut answer: Option<Outcome<Value>> = None;
             if change != FolioChange::default() {
-                let changed: Outcome<Value> = call(services, "update_folio", &UpdateFolioArgs { workspace: workspace.clone(), viewer: viewer.clone(), folio_id: folio_id.clone(), change }).await?;
+                let changed: Outcome<Value> = call(
+                    services,
+                    "update_folio",
+                    &UpdateFolioArgs { workspace: workspace.clone(), viewer: viewer.clone(), folio_id: folio_id.clone(), change },
+                )
+                .await?;
                 if let Outcome::Fail(_) = changed {
                     return Ok(changed);
                 }
@@ -835,7 +900,9 @@ pub async fn run(op: FoliosOp, services: &Services, viewer: &Viewer, input: &Val
                 Ok(edit) => edit,
                 Err(message) => return Ok(invalid(message)),
             };
-            mapped(call(services, "edit_folio", &EditFolioArgs { workspace, viewer, folio_id, edit }).await?, |result| edit_json(result, &site))
+            mapped(call(services, "edit_folio", &EditFolioArgs { workspace, viewer, folio_id, edit }).await?, |result| {
+                edit_json(result, &site)
+            })
         }
         FoliosOp::Trash => mapped(call(services, "trash_folio", &one()).await?, shown),
         FoliosOp::Restore => mapped(call(services, "restore_folio", &one()).await?, shown),
@@ -925,7 +992,10 @@ mod tests {
         let id = "fol_0123456789abcdefghjkmnpqrs";
         assert_eq!(artifact_id(id).as_deref(), Some(id));
         assert_eq!(artifact_id("q4-roadmap-fol_0123456789abcdefghjkmnpqrs").as_deref(), Some(id));
-        assert_eq!(artifact_id("https://g1t.sh/acme/-/library/artifacts/q4-roadmap-fol_0123456789abcdefghjkmnpqrs?x=1#h").as_deref(), Some(id));
+        assert_eq!(
+            artifact_id("https://g1t.sh/acme/-/library/artifacts/q4-roadmap-fol_0123456789abcdefghjkmnpqrs?x=1#h").as_deref(),
+            Some(id)
+        );
         assert_eq!(artifact_id("/acme/-/library/artifacts/q4-roadmap-fol_0123456789abcdefghjkmnpqrs/").as_deref(), Some(id));
         assert_eq!(artifact_id("q4-roadmap"), None);
         assert_eq!(artifact_id("../fol_x"), None);
@@ -941,7 +1011,10 @@ mod tests {
         assert_eq!(edit["suggest_only"], true);
         let edit = agent_edit(&json!({ "markdown": "x", "target": { "kind": "section", "heading": "Risks" } })).unwrap();
         assert_eq!(edit["target"]["heading"], "Risks");
-        assert_eq!(agent_edit(&json!({ "markdown": "x", "target": { "kind": "section" } })), Err("A section target names its heading.".to_owned()));
+        assert_eq!(
+            agent_edit(&json!({ "markdown": "x", "target": { "kind": "section" } })),
+            Err("A section target names its heading.".to_owned())
+        );
         assert!(agent_edit(&json!({})).unwrap_err().contains("markdown"));
         // Other kinds carry ops, which the artifacts service checks (and refuses
         // until each kind ships).
@@ -1028,9 +1101,19 @@ mod tests {
         );
         assert_eq!(content["artifact"]["html_url"], "https://g1t.sh/acme/-/library/artifacts/t-fol_1");
         assert!(content.get("audience_can_read").is_none());
-        let edit = edit_json(&json!({ "mode": "applied", "version_id": "ver_1", "folio": { "id": "fol_1", "path": "/acme/-/library/artifacts/t-fol_1" }, "summary": "Added a section." }), site);
+        let edit = edit_json(
+            &json!({ "mode": "applied", "version_id": "ver_1", "folio": { "id": "fol_1", "path": "/acme/-/library/artifacts/t-fol_1" }, "summary": "Added a section." }),
+            site,
+        );
         assert_eq!(edit["version_id"], "ver_1");
-        for shown in [access, content, edit, version_json(&json!({ "id": "ver_1", "folio_id": "fol_1", "authors": [{ "kind": "user", "id": "usr_1", "name": "ana", "display_name": "Ana" }] }))] {
+        for shown in [
+            access,
+            content,
+            edit,
+            version_json(
+                &json!({ "id": "ver_1", "folio_id": "fol_1", "authors": [{ "kind": "user", "id": "usr_1", "name": "ana", "display_name": "Ana" }] }),
+            ),
+        ] {
             assert!(g1t_kit::wire::camel_case_keys(&shown).is_empty(), "{shown}");
         }
     }

@@ -19,9 +19,7 @@ const NO_SUCH_MEMBER: &str = "There is no member with that username.";
 /// What someone owns, from its stored JSON; nothing when it is missing or
 /// not a list of words.
 pub fn owns_from(json: Option<&str>) -> Vec<String> {
-    json.and_then(|json| serde_json::from_str::<Vec<String>>(json).ok())
-        .map(|owns| clean_owns(&owns))
-        .unwrap_or_default()
+    json.and_then(|json| serde_json::from_str::<Vec<String>>(json).ok()).map(|owns| clean_owns(&owns)).unwrap_or_default()
 }
 
 /// One member's row, as the directory reads it.
@@ -142,10 +140,7 @@ impl Identity {
                 description: row.description.clone(),
                 visibility: row.visibility(),
                 parent: match (&row.parent_slug, &row.parent_name) {
-                    (Some(slug), Some(name)) => Some(TeamRef {
-                        slug: slug.clone(),
-                        name: name.clone(),
-                    }),
+                    (Some(slug), Some(name)) => Some(TeamRef { slug: slug.clone(), name: name.clone() }),
                     _ => None,
                 },
                 lead: row.lead(),
@@ -177,10 +172,7 @@ impl Identity {
     pub async fn set_member_profile(&self, a: SetMemberProfileArgs) -> Result<Outcome<DirectoryPerson>> {
         let workspace = a.workspace.trim().to_lowercase();
         if !crate::security::is_person(&a.actor) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only a person can change a profile, signed in as themselves.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only a person can change a profile, signed in as themselves."));
         }
         let Some(role) = role_of(&a.actor, &workspace) else {
             return Ok(Outcome::fail(FailureCode::Forbidden, MEMBERS_ONLY));
@@ -203,10 +195,7 @@ impl Identity {
         let mut binds: Vec<JsValue> = Vec::new();
         let mut changed: Vec<&str> = Vec::new();
         let refused = |what: &str| {
-            Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                format!("Only owners of {workspace} can change {what} for someone else."),
-            ))
+            Ok(Outcome::fail(FailureCode::Forbidden, format!("Only owners of {workspace} can change {what} for someone else.")))
         };
         if let Some(title) = &a.title {
             if !may_edit_profile(ProfileField::Title, is_self, owner) {
@@ -261,8 +250,7 @@ impl Identity {
 
     /// Every team of a workspace, as `viewer_id` stands in each.
     async fn workspace_team_rows(&self, workspace: &str, viewer_id: &str) -> Result<Vec<TeamRow>> {
-        self.team_rows("WHERE w.slug = ?2 ORDER BY lower(t.name)", &[viewer_id.into(), workspace.into()])
-            .await
+        self.team_rows("WHERE w.slug = ?2 ORDER BY lower(t.name)", &[viewer_id.into(), workspace.into()]).await
     }
 }
 

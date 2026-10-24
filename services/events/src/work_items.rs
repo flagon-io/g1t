@@ -219,9 +219,8 @@ mod tests {
     type ItemState = (String, String, String, Option<u32>, String, u32, Option<String>);
 
     fn items(db: &Connection) -> Vec<ItemState> {
-        let mut statement = db
-            .prepare("SELECT id, username, thread, number, workspace, activity, read_at FROM inbox_items ORDER BY id")
-            .unwrap();
+        let mut statement =
+            db.prepare("SELECT id, username, thread, number, workspace, activity, read_at FROM inbox_items ORDER BY id").unwrap();
         statement
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?)))
             .unwrap()
@@ -241,10 +240,14 @@ mod tests {
                 .collect();
             // Never the whole log, nor every event of the page's repositories.
             assert!(
-                plan.iter().all(|step| !step.starts_with("SCAN events") && !step.starts_with("SCAN e") && !step.contains("INDEX events_repo")),
+                plan.iter()
+                    .all(|step| !step.starts_with("SCAN events") && !step.starts_with("SCAN e") && !step.contains("INDEX events_repo")),
                 "{sql}\n{plan:#?}"
             );
-            assert!(plan.iter().any(|step| step.contains("INDEX events_issue") || step.contains("INDEX events_other_issue")), "{sql}\n{plan:#?}");
+            assert!(
+                plan.iter().any(|step| step.contains("INDEX events_issue") || step.contains("INDEX events_other_issue")),
+                "{sql}\n{plan:#?}"
+            );
         }
     }
 
@@ -266,9 +269,12 @@ mod tests {
             )
             .unwrap();
         }
-        for (user, thread, state) in
-            [("ana", "rep_1#3", "subscribed"), ("ana", "rep_1#4", "ignored"), ("bo", "rep_1#5", "ignored"), ("bo", "item:iss_5", "subscribed")]
-        {
+        for (user, thread, state) in [
+            ("ana", "rep_1#3", "subscribed"),
+            ("ana", "rep_1#4", "ignored"),
+            ("bo", "rep_1#5", "ignored"),
+            ("bo", "item:iss_5", "subscribed"),
+        ] {
             db.execute(
                 "INSERT INTO inbox_subscriptions (username, thread, repo_id, state, created_at) VALUES (?1, ?2, 'rep_1', ?3, 't')",
                 params![user, thread, state],

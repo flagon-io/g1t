@@ -8,21 +8,12 @@ use crate::error::Result;
 use crate::output::{Output, ago, s};
 
 fn search_pulls(client: &Client, me: &str) -> Result<Vec<Value>> {
-    let found = client
-        .op("search")
-        .query("q", format!("is:pr is:open author:{me}"))
-        .query("type", "pulls")
-        .query("per_page", 20)
-        .send()?;
+    let found = client.op("search").query("q", format!("is:pr is:open author:{me}")).query("type", "pulls").query("per_page", 20).send()?;
     Ok(super::items(found, "hits"))
 }
 
 fn notifications(client: &Client, reason: &str) -> Result<Vec<Value>> {
-    let found = client
-        .op("list_notifications")
-        .query("reason", reason)
-        .query("per_page", 20)
-        .send()?;
+    let found = client.op("list_notifications").query("reason", reason).query("per_page", 20).send()?;
     Ok(super::items(found, "items"))
 }
 
@@ -33,17 +24,11 @@ fn with_checks(client: &Client, pulls: Vec<Value>) -> Vec<Value> {
             .into_iter()
             .map(|hit| {
                 scope.spawn(move || {
-                    let repo = hit["repo"]
-                        .as_str()
-                        .and_then(|r| crate::repo::Repo::parse(r, &client.host.name).ok());
+                    let repo = hit["repo"].as_str().and_then(|r| crate::repo::Repo::parse(r, &client.host.name).ok());
                     let number = hit["number"].as_u64();
                     let mut hit = hit;
                     if let (Some(repo), Some(n)) = (repo, number)
-                        && let Ok(found) = client
-                            .op("get_pull_request")
-                            .repo(&repo)
-                            .arg("number", n)
-                            .send()
+                        && let Ok(found) = client.op("get_pull_request").repo(&repo).arg("number", n).send()
                     {
                         let pull = found.get("pull").cloned().unwrap_or(found);
                         hit["check_status"] = pull["check_status"].clone();
@@ -91,13 +76,7 @@ fn here(ctx: &Ctx, me: &str) -> (Option<String>, Vec<Value>, Vec<Value>) {
     (Some(repo.to_string()), sessions, claims)
 }
 
-fn section(
-    out: &Output,
-    title: &str,
-    items: &[Value],
-    empty: &str,
-    line: impl Fn(&Value) -> String,
-) {
+fn section(out: &Output, title: &str, items: &[Value], empty: &str, line: impl Fn(&Value) -> String) {
     println!("{}", out.bold(title));
     if items.is_empty() {
         println!("  {}", out.dim(empty));
@@ -126,20 +105,9 @@ pub fn run(ctx: &Ctx) -> Result<()> {
     let pulls = unwrap(pulls)?;
     let reviews = unwrap(reviews)?;
     let assigned = unwrap(assigned)?;
-    let ci: Vec<Value> = unwrap(ci)?
-        .into_iter()
-        .filter(|n| n["severity"] == "error")
-        .collect();
-    let failing: Vec<Value> = pulls
-        .iter()
-        .filter(|p| {
-            matches!(
-                p["check_status"].as_str(),
-                Some("failed" | "failure" | "error")
-            )
-        })
-        .cloned()
-        .collect();
+    let ci: Vec<Value> = unwrap(ci)?.into_iter().filter(|n| n["severity"] == "error").collect();
+    let failing: Vec<Value> =
+        pulls.iter().filter(|p| matches!(p["check_status"].as_str(), Some("failed" | "failure" | "error"))).cloned().collect();
     if ctx.out.structured() {
         return ctx.out.emit(&json!({
             "user": me,
@@ -155,27 +123,15 @@ pub fn run(ctx: &Ctx) -> Result<()> {
     }
     let out = &ctx.out;
     let pull_line = |p: &Value| {
-        let checks = p["check_status"]
-            .as_str()
-            .map(|c| format!(" {}", out.state(c)))
-            .unwrap_or_default();
-        format!(
-            "{} {}{checks}",
-            out.cyan(&format!("{}#{}", s(p, "repo"), p["number"])),
-            s(p, "title")
-        )
+        let checks = p["check_status"].as_str().map(|c| format!(" {}", out.state(c))).unwrap_or_default();
+        format!("{} {}{checks}", out.cyan(&format!("{}#{}", s(p, "repo"), p["number"])), s(p, "title"))
     };
     let note_line = |n: &Value| {
         let place = match n["number"].as_u64() {
             Some(num) => format!("{}#{num}", s(n, "repo")),
             None => s(n, "repo").to_owned(),
         };
-        format!(
-            "{} {} {}",
-            out.cyan(&place),
-            s(n, "title"),
-            out.dim(&ago(s(n, "updated_at")))
-        )
+        format!("{} {} {}", out.cyan(&place), s(n, "title"), out.dim(&ago(s(n, "updated_at"))))
     };
     section(out, "Your open pull requests", &pulls, "None.", pull_line);
     section(out, "Reviews asked of you", &reviews, "None.", note_line);
@@ -192,17 +148,12 @@ pub fn run(ctx: &Ctx) -> Result<()> {
     if let Some(repo) = repo {
         println!();
         section(out, &format!("Your sessions in {repo}"), &sessions, "None.", |session| {
-            let on = [
-                session["item"].as_u64().map(|n| format!("#{n}")),
-                session["branch"].as_str().map(str::to_owned),
-            ]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>()
-            .join(" ");
-            format!("{} {} {} {}", s(session, "id"), out.state(s(session, "state")), s(session, "harness"), on)
-                .trim_end()
-                .to_owned()
+            let on = [session["item"].as_u64().map(|n| format!("#{n}")), session["branch"].as_str().map(str::to_owned)]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!("{} {} {} {}", s(session, "id"), out.state(s(session, "state")), s(session, "harness"), on).trim_end().to_owned()
         });
         println!("{}", out.bold(&format!("Your claims in {repo}")));
         if claims.is_empty() {

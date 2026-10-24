@@ -16,9 +16,9 @@ use std::time::{Duration, Instant};
 use g1t_actions::expr;
 use serde_json::{Map, Value, json};
 
+use super::Job;
 use super::files::StepFiles;
 use super::process::{self, Commands, Ended};
-use super::Job;
 
 /// Set in a job a self-hosted runner started inside its `container:` image.
 pub(crate) const IN_JOB_CONTAINER: &str = "G1T_JOB_CONTAINER";
@@ -190,7 +190,14 @@ pub(crate) fn docker_name(text: &str) -> String {
 /// (`-e NAME`), its values in the command's environment, so secrets never
 /// stand on a command line. `keep_alive`: a job container, which waits
 /// while steps run in it.
-pub(crate) fn create_args(name: &str, network: Option<&str>, alias: Option<&str>, spec: &ContainerSpec, mounts: &[(String, String)], keep_alive: bool) -> Vec<String> {
+pub(crate) fn create_args(
+    name: &str,
+    network: Option<&str>,
+    alias: Option<&str>,
+    spec: &ContainerSpec,
+    mounts: &[(String, String)],
+    keep_alive: bool,
+) -> Vec<String> {
     let mut args: Vec<String> = vec!["create".into(), "--name".into(), name.into(), "--label".into(), "g1t-job".into()];
     if let Some(network) = network {
         args.extend(["--network".into(), network.into()]);
@@ -314,9 +321,11 @@ impl Job {
                 child.wait_with_output()
             });
         let ok = match login {
-            Ok(output) if output.status.success() => {
-                self.docker(&["--config".into(), config_text.clone(), "pull".into(), image.into()], &BTreeMap::new(), Duration::from_secs(1800))
-            }
+            Ok(output) if output.status.success() => self.docker(
+                &["--config".into(), config_text.clone(), "pull".into(), image.into()],
+                &BTreeMap::new(),
+                Duration::from_secs(1800),
+            ),
             Ok(output) => {
                 self.log.line(&format!("##[error]Could not sign in to {registry}: {}", String::from_utf8_lossy(&output.stderr).trim()));
                 false
@@ -342,10 +351,15 @@ impl Job {
     /// Starts the job's services and its container, before its steps:
     /// GitHub's "Initialize containers". Returns whether they all started.
     pub(crate) fn start_containers(&mut self) -> bool {
-        let services: Vec<(String, Value)> = self.spec["spec"]["services"].as_object().map(|s| s.iter().map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default();
+        let services: Vec<(String, Value)> =
+            self.spec["spec"]["services"].as_object().map(|s| s.iter().map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default();
         let container = self.spec["spec"].get("container").filter(|c| !c.is_null()).cloned();
         let container = container.map(|c| self.read_container(&c)).filter(|c| !c.image.is_empty());
-        let services: Vec<(String, ContainerSpec)> = services.into_iter().map(|(name, value)| (name, self.read_container(&value))).filter(|(_, spec)| !spec.image.is_empty()).collect();
+        let services: Vec<(String, ContainerSpec)> = services
+            .into_iter()
+            .map(|(name, value)| (name, self.read_container(&value)))
+            .filter(|(_, spec)| !spec.image.is_empty())
+            .collect();
         // A self-hosted runner in Docker mode started this job in its
         // `container:` image already (selfhosted/exec.rs).
         let container = container.filter(|_| std::env::var_os(IN_JOB_CONTAINER).is_none());
@@ -367,7 +381,11 @@ impl Job {
     fn start_containers_now(&mut self, services: Vec<(String, ContainerSpec)>, container: Option<ContainerSpec>) -> bool {
         let job_id = docker_name(&format!("{}_{:x}", self.spec["name"].as_str().unwrap_or("job"), super::rand_id() & 0xffff_ffff));
         let network = format!("g1t_{job_id}");
-        if !self.docker(&["network".into(), "create".into(), "--label".into(), "g1t-job".into(), network.clone()], &BTreeMap::new(), Duration::from_secs(60)) {
+        if !self.docker(
+            &["network".into(), "create".into(), "--label".into(), "g1t-job".into(), network.clone()],
+            &BTreeMap::new(),
+            Duration::from_secs(60),
+        ) {
             self.log.line("##[error]Could not make the job's network.");
             return false;
         }
@@ -409,14 +427,18 @@ impl Job {
             let mut args = create_args(&name, Some(&network), None, &spec, &mounts, true);
             // Steps start in the workspace.
             args.splice(1..1, ["-w".to_owned(), self.workspace.display().to_string()]);
-            if !self.docker(&args, &spec.env, Duration::from_secs(300)) || !self.docker(&["start".into(), name.clone()], &BTreeMap::new(), Duration::from_secs(300)) {
+            if !self.docker(&args, &spec.env, Duration::from_secs(300))
+                || !self.docker(&["start".into(), name.clone()], &BTreeMap::new(), Duration::from_secs(300))
+            {
                 self.log.line("##[error]Could not start the job's container.");
                 return false;
             }
             let id = self.docker_output(&["inspect", "--format", "{{.Id}}", &name]).unwrap_or_default();
             let has_bash = self.docker_output(&["exec", &name, "sh", "-c", "command -v bash"]).is_some_and(|out| !out.is_empty());
             let node = self.docker_output(&["exec", &name, CONTAINER_NODE, "--version"]).is_some();
-            let path = self.docker_output(&["exec", &name, "sh", "-c", "printf %s \"$PATH\""]).unwrap_or_else(|| "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".into());
+            let path = self
+                .docker_output(&["exec", &name, "sh", "-c", "printf %s \"$PATH\""])
+                .unwrap_or_else(|| "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".into());
             if !node {
                 self.log.line("##[warning]The runner's Node does not run in this image (it needs glibc and libstdc++), so JavaScript actions run beside the container, on g1t's image, with the same files.");
             }
@@ -470,7 +492,9 @@ impl Job {
         let until = Instant::now() + limit;
         let mut wait = Duration::from_secs(1);
         loop {
-            let status = self.docker_output(&["inspect", "--format", "{{if .Config.Healthcheck}}{{print .State.Health.Status}}{{end}}", name]).unwrap_or_default();
+            let status = self
+                .docker_output(&["inspect", "--format", "{{if .Config.Healthcheck}}{{print .State.Health.Status}}{{end}}", name])
+                .unwrap_or_default();
             match status.as_str() {
                 "" => return true,
                 "healthy" => {
@@ -531,10 +555,17 @@ impl Job {
     /// The variables a process inside a container is given: the step's,
     /// GitHub's and the job's, but not the sandbox's own (its `PATH`,
     /// `HOME` and the like, which mean nothing in another image).
-    pub(crate) fn container_env(&self, step_env: &BTreeMap<String, String>, full: BTreeMap<String, String>, image_path: &str) -> BTreeMap<String, String> {
+    pub(crate) fn container_env(
+        &self,
+        step_env: &BTreeMap<String, String>,
+        full: BTreeMap<String, String>,
+        image_path: &str,
+    ) -> BTreeMap<String, String> {
         let mut out: BTreeMap<String, String> = full
             .into_iter()
-            .filter(|(name, _)| step_env.contains_key(name) || !self.host_env.contains(name) || name.starts_with("GITHUB_") || name.starts_with("RUNNER_"))
+            .filter(|(name, _)| {
+                step_env.contains_key(name) || !self.host_env.contains(name) || name.starts_with("GITHUB_") || name.starts_with("RUNNER_")
+            })
             .collect();
         if !step_env.contains_key("PATH") {
             out.remove("PATH");
@@ -583,7 +614,9 @@ impl Job {
         let mut env = self.container_env(&run.env, full, "");
         env.remove("PATH");
         // Paths as the container sees them.
-        let moved = |path: &Path| format!("{GITHUB_FILE_COMMANDS}/{}", path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
+        let moved = |path: &Path| {
+            format!("{GITHUB_FILE_COMMANDS}/{}", path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
+        };
         env.insert("GITHUB_OUTPUT".into(), moved(&files.output));
         env.insert("GITHUB_ENV".into(), moved(&files.env));
         env.insert("GITHUB_PATH".into(), moved(&files.path));
@@ -594,7 +627,8 @@ impl Job {
         env.insert("HOME".into(), GITHUB_HOME.into());
         env.remove("GITHUB_ACTION_PATH");
 
-        let mut args: Vec<String> = vec!["run".into(), "--rm".into(), "--label".into(), "g1t-job".into(), "--workdir".into(), GITHUB_WORKSPACE.into()];
+        let mut args: Vec<String> =
+            vec!["run".into(), "--rm".into(), "--label".into(), "g1t-job".into(), "--workdir".into(), GITHUB_WORKSPACE.into()];
         if let Some(network) = &self.network {
             args.extend(["--network".into(), network.clone()]);
         }
@@ -686,7 +720,9 @@ impl Job {
         let platforms = inspect
             .lines()
             .find_map(|line| line.trim().strip_prefix("Platforms:"))
-            .map(|p| p.split(',').map(|s| s.trim().trim_end_matches('*').to_owned()).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(","))
+            .map(|p| {
+                p.split(',').map(|s| s.trim().trim_end_matches('*').to_owned()).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(",")
+            })
             .unwrap_or_else(|| "linux/amd64".into());
         self.log.line(&format!("Builder: default (this job's Docker Engine), platforms {platforms}"));
         let mut outputs = BTreeMap::new();
@@ -734,7 +770,10 @@ mod tests {
             split_words(r#"--health-cmd "pg_isready -U postgres" --health-interval 10s --health-retries=5"#),
             vec!["--health-cmd", "pg_isready -U postgres", "--health-interval", "10s", "--health-retries=5"]
         );
-        assert_eq!(split_words("--health-cmd 'redis-cli ping' --tmpfs /var/lib/x"), vec!["--health-cmd", "redis-cli ping", "--tmpfs", "/var/lib/x"]);
+        assert_eq!(
+            split_words("--health-cmd 'redis-cli ping' --tmpfs /var/lib/x"),
+            vec!["--health-cmd", "redis-cli ping", "--tmpfs", "/var/lib/x"]
+        );
         assert_eq!(split_words(r#"a\ b "c\"d" ''"#), vec!["a b", "c\"d", ""]);
         assert!(split_words("   ").is_empty());
     }
@@ -789,12 +828,33 @@ mod tests {
         assert_eq!(
             args,
             vec![
-                "create", "--name", "postgres_job", "--label", "g1t-job", "--network", "g1t_job", "--network-alias", "postgres", "-p", "5432:5432", "-e",
-                "POSTGRES_PASSWORD", "--health-cmd", "pg_isready", "postgres:17"
+                "create",
+                "--name",
+                "postgres_job",
+                "--label",
+                "g1t-job",
+                "--network",
+                "g1t_job",
+                "--network-alias",
+                "postgres",
+                "-p",
+                "5432:5432",
+                "-e",
+                "POSTGRES_PASSWORD",
+                "--health-cmd",
+                "pg_isready",
+                "postgres:17"
             ]
         );
         assert!(!args.iter().any(|a| a.contains("secret")));
-        let job = create_args("job_x", Some("g1t_job"), None, &container_spec(&json!("node:24")), &[("/home/runner/work".into(), "/home/runner/work".into())], true);
+        let job = create_args(
+            "job_x",
+            Some("g1t_job"),
+            None,
+            &container_spec(&json!("node:24")),
+            &[("/home/runner/work".into(), "/home/runner/work".into())],
+            true,
+        );
         assert!(job.ends_with(&["--entrypoint".into(), "tail".into(), "node:24".into(), "-f".into(), "/dev/null".into()]));
         assert!(job.contains(&"/home/runner/work:/home/runner/work".to_owned()));
     }

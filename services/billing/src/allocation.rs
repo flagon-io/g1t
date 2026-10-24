@@ -1,6 +1,6 @@
 //! Allowances and the usage entry that consumes them commit together.
-use worker::Result;
 use crate::{Billing, credits::Eligible};
+use worker::Result;
 
 pub(crate) const PLAN: &str = "INSERT INTO allowance_use (kind, scope, month, used)
     SELECT 'plan_credit', workspace, ?2, credit_micros FROM ledger WHERE id=?1 AND credit_micros > 0
@@ -20,26 +20,56 @@ pub(crate) const OSS_REPO: &str = "INSERT INTO allowance_use (kind, scope, month
 impl Billing {
     pub(crate) async fn posted_allocation(&self, reference: &str) -> Result<(i64, crate::credits::Drawn)> {
         #[derive(serde::Deserialize)]
-        struct Row { amount_micros: i64, credit_micros: i64, gift_micros: i64, trial_micros: i64, oss_micros: i64, given_micros: i64 }
-        let row = self.db.prepare("SELECT amount_micros, credit_micros, gift_micros, trial_micros, oss_micros, given_micros FROM ledger WHERE reference = ?")
-            .bind(&[reference.into()])?.first::<Row>(None).await?
+        struct Row {
+            amount_micros: i64,
+            credit_micros: i64,
+            gift_micros: i64,
+            trial_micros: i64,
+            oss_micros: i64,
+            given_micros: i64,
+        }
+        let row = self
+            .db
+            .prepare(
+                "SELECT amount_micros, credit_micros, gift_micros, trial_micros, oss_micros, given_micros FROM ledger WHERE reference = ?",
+            )
+            .bind(&[reference.into()])?
+            .first::<Row>(None)
+            .await?
             .ok_or_else(|| worker::Error::RustError("Posted usage is missing".into()))?;
-        Ok((-row.amount_micros, crate::credits::Drawn {
-            credit: row.credit_micros, gift: row.gift_micros, trial: row.trial_micros, oss: row.oss_micros, given: row.given_micros,
-        }))
+        Ok((
+            -row.amount_micros,
+            crate::credits::Drawn {
+                credit: row.credit_micros,
+                gift: row.gift_micros,
+                trial: row.trial_micros,
+                oss: row.oss_micros,
+                given: row.given_micros,
+            },
+        ))
     }
 
-    pub(crate) async fn allocation_statements(&self, id: &str, workspace: &str, month: &str, eligible: &Eligible, plan: bool)
-        -> Result<Vec<worker::D1PreparedStatement>> {
+    pub(crate) async fn allocation_statements(
+        &self,
+        id: &str,
+        workspace: &str,
+        month: &str,
+        eligible: &Eligible,
+        plan: bool,
+    ) -> Result<Vec<worker::D1PreparedStatement>> {
         let repo = eligible.repo.as_deref().unwrap_or("").to_lowercase();
         let public = !repo.is_empty() && self.is_public(&repo).await;
         let repo_cap = if public { self.oss_repo_cap(workspace).await? } else { 0 };
         Ok(vec![
             self.db.prepare(include_str!("allocate_usage.sql")).bind(&[
-                id.into(), workspace.into(), month.into(),
+                id.into(),
+                workspace.into(),
+                month.into(),
                 (if plan { self.plans.plan_included_micros } else { 0 } as f64).into(),
-                i32::from(eligible.trial).into(), repo.as_str().into(),
-                (if public { self.plans.oss_pool_micros } else { 0 } as f64).into(), (repo_cap as f64).into(),
+                i32::from(eligible.trial).into(),
+                repo.as_str().into(),
+                (if public { self.plans.oss_pool_micros } else { 0 } as f64).into(),
+                (repo_cap as f64).into(),
                 i32::from(eligible.cover_rest && !plan).into(),
             ])?,
             self.db.prepare(PLAN).bind(&[id.into(), month.into()])?,

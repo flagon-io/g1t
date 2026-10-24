@@ -40,13 +40,7 @@ impl Identity {
             }
             _ => return Ok(DirectoryPage::default()),
         };
-        let rows = self
-            .db
-            .prepare(sql)
-            .bind(&[a.after.unwrap_or_default().into(), limit.into()])?
-            .all()
-            .await?
-            .results::<Row>()?;
+        let rows = self.db.prepare(sql).bind(&[a.after.unwrap_or_default().into(), limit.into()])?.all().await?.results::<Row>()?;
         let next = (rows.len() == limit as usize).then(|| rows.last().map(|row| row.slug.clone())).flatten();
         Ok(DirectoryPage {
             entries: rows
@@ -67,27 +61,12 @@ impl Identity {
     /// Tells other services that what an account's profile shows changed.
     /// Best effort: the change has happened, so a failure is logged.
     pub async fn announce_user(&self, username: &str, actor: Option<&str>) {
-        self.announce(
-            "user.updated",
-            actor,
-            UserUpdated {
-                username: username.to_owned(),
-            },
-        )
-        .await;
+        self.announce("user.updated", actor, UserUpdated { username: username.to_owned() }).await;
     }
 
     /// Tells other services a workspace was made or changed.
     pub async fn announce_workspace(&self, workspace_id: &str, slug: &str, actor: Option<&str>) {
-        self.announce(
-            "workspace.updated",
-            actor,
-            WorkspaceUpdated {
-                workspace_id: workspace_id.to_owned(),
-                slug: slug.to_owned(),
-            },
-        )
-        .await;
+        self.announce("workspace.updated", actor, WorkspaceUpdated { workspace_id: workspace_id.to_owned(), slug: slug.to_owned() }).await;
     }
 
     pub(crate) async fn announce<T: Serialize>(&self, kind: &'static str, actor: Option<&str>, data: T) {
@@ -98,15 +77,7 @@ impl Identity {
                 return;
             }
         };
-        let publish = Publish {
-            events: vec![NewEvent {
-                kind,
-                source: SOURCE,
-                repo_id: None,
-                actor: actor.map(str::to_owned),
-                data,
-            }],
-        };
+        let publish = Publish { events: vec![NewEvent { kind, source: SOURCE, repo_id: None, actor: actor.map(str::to_owned), data }] };
         if let Err(error) = g1t_kit::call::<_, serde_json::Value>(&events, "publish", &publish).await {
             worker::console_error!("{kind} not published: {error}");
         }

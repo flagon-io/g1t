@@ -153,7 +153,8 @@ fn a_provider_started_sign_in_is_refused() {
 #[test]
 fn no_dtd_is_read() {
     let certificates = certs("cert");
-    let xml = "<!DOCTYPE r [<!ENTITY a \"aaaa\">]><samlp:Response xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\">&a;</samlp:Response>";
+    let xml =
+        "<!DOCTYPE r [<!ENTITY a \"aaaa\">]><samlp:Response xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\">&a;</samlp:Response>";
     assert!(verify_response(&STANDARD.encode(xml), &expect(&certificates)).unwrap_err().contains("not valid XML"));
 }
 
@@ -225,10 +226,6 @@ fn text_is_read_whole() {
 #[test]
 fn deep_nesting_is_refused_before_canonicalization() {
     let certificates = certs("cert");
-    let deep = format!(
-        "<samlp:Response xmlns:samlp=\"{PROTOCOL}\">{}{}</samlp:Response>",
-        "<x>".repeat(100),
-        "</x>".repeat(100)
-    );
+    let deep = format!("<samlp:Response xmlns:samlp=\"{PROTOCOL}\">{}{}</samlp:Response>", "<x>".repeat(100), "</x>".repeat(100));
     assert!(verify_response(&STANDARD.encode(deep), &expect(&certificates)).unwrap_err().contains("nests too deeply"));
 }

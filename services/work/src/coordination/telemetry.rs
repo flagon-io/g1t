@@ -370,10 +370,8 @@ mod tests {
 
     fn database() -> Connection {
         let db = crate::migrated::database_at(":memory:");
-        db.execute_batch(
-            "INSERT INTO repo_workspaces (repo_id, workspace, path, private) VALUES ('rep_1', 'acme', 'acme/web', 1);",
-        )
-        .unwrap();
+        db.execute_batch("INSERT INTO repo_workspaces (repo_id, workspace, path, private) VALUES ('rep_1', 'acme', 'acme/web', 1);")
+            .unwrap();
         db
     }
 
@@ -382,8 +380,24 @@ mod tests {
         db.query_row(
             &insert_session_sql(),
             params![
-                id, "rep_1", None::<String>, None::<u32>, "main", "usr_1", "ana", "claude_code", harness_id, None::<String>,
-                None::<String>, AT, AT, parent, None::<String>, None::<String>, None::<String>, None::<String>
+                id,
+                "rep_1",
+                None::<String>,
+                None::<u32>,
+                "main",
+                "usr_1",
+                "ana",
+                "claude_code",
+                harness_id,
+                None::<String>,
+                None::<String>,
+                AT,
+                AT,
+                parent,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<String>
             ],
             |row| row.get::<_, String>(0),
         )
@@ -396,7 +410,21 @@ mod tests {
         db.execute(
             ADD_TELEMETRY,
             params![
-                "usr_1", "claude_code", "abc", signal, model, "", input, output, 0, 0, cache_read, cost, None::<String>, AT, AT,
+                "usr_1",
+                "claude_code",
+                "abc",
+                signal,
+                model,
+                "",
+                input,
+                output,
+                0,
+                0,
+                cache_read,
+                cost,
+                None::<String>,
+                AT,
+                AT,
                 u8::from(cumulative)
             ],
         )
@@ -481,7 +509,8 @@ mod tests {
         assert!(close(cost.unwrap(), 1.75 + 0.5));
         assert_eq!(usage.len(), 2, "a cost alone adds no usage");
         assert_eq!(model.as_deref(), Some("gpt-5.3-codex"));
-        let (_, cost, _) = session_usage(&[TelemetryRow { signal: "logs".into(), model: "mystery-1".into(), output_tokens: 7, ..Default::default() }]);
+        let (_, cost, _) =
+            session_usage(&[TelemetryRow { signal: "logs".into(), model: "mystery-1".into(), output_tokens: 7, ..Default::default() }]);
         assert_eq!(cost, None);
     }
 
@@ -507,8 +536,9 @@ mod tests {
         db.execute(SET_USAGE, params!["[]", 3.0, "ses_1"]).unwrap();
         let changed = db.execute(SET_TELEMETRY_USAGE, params!["[]", 9.0, None::<String>, AT, "ses_1"]).unwrap();
         assert_eq!(changed, 0);
-        let (cost, source): (f64, Option<String>) =
-            db.query_row("SELECT cost_usd, usage_source FROM sessions WHERE id = 'ses_1'", [], |row| Ok((row.get(0)?, row.get(1)?))).unwrap();
+        let (cost, source): (f64, Option<String>) = db
+            .query_row("SELECT cost_usd, usage_source FROM sessions WHERE id = 'ses_1'", [], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap();
         assert_eq!((cost, source), (3.0, None));
     }
 
@@ -522,7 +552,9 @@ mod tests {
         db.execute("UPDATE sessions SET state = 'ended' WHERE id = 'ses_1'", []).unwrap();
         db.execute(SET_TELEMETRY_USAGE, params!["[]", 2.0, None::<String>, "2026-10-22T18:30:00.000Z", "ses_1"]).unwrap();
         let (seen, state, cost): (String, String, f64) = db
-            .query_row("SELECT last_seen_at, state, cost_usd FROM sessions WHERE id = 'ses_1'", [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .query_row("SELECT last_seen_at, state, cost_usd FROM sessions WHERE id = 'ses_1'", [], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
             .unwrap();
         assert_eq!((seen.as_str(), state.as_str(), cost), ("2026-10-22T18:09:00.000Z", "ended", 2.0));
     }

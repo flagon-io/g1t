@@ -218,9 +218,8 @@ impl Held {
 /// Whether `viewer` may read repository `repo_id`, as `repo_workspaces`
 /// records it (its `workspace` and `private`): one not recorded is not.
 pub(crate) fn repo_readable(viewer: Option<&User>, repo_id: &str, workspace: Option<&str>, private: Option<u8>) -> bool {
-    workspace.is_some_and(|namespace| {
-        access::can(viewer, RepoRef { id: repo_id, namespace, private: private != Some(0) }, Capability::Read)
-    })
+    workspace
+        .is_some_and(|namespace| access::can(viewer, RepoRef { id: repo_id, namespace, private: private != Some(0) }, Capability::Read))
 }
 
 pub(crate) fn no_item<T>() -> Outcome<T> {
@@ -252,10 +251,8 @@ impl ItemRow {
             let namespace = link.workspace.clone()?;
             Some((link.repo_id.clone(), namespace, link.private != Some(0)))
         });
-        let known: Vec<(String, String, bool)> = links
-            .iter()
-            .filter_map(|link| Some((link.repo_id.clone(), link.workspace.clone()?, link.private != Some(0))))
-            .collect();
+        let known: Vec<(String, String, bool)> =
+            links.iter().filter_map(|link| Some((link.repo_id.clone(), link.workspace.clone()?, link.private != Some(0)))).collect();
         let mut repos: Vec<ItemRepo> = links
             .into_iter()
             .map(|link| ItemRepo {

@@ -51,24 +51,13 @@ fn call<'a>(client: &'a Client, owner: &Owner, repo_op: &str, workspace_op: &str
 }
 
 fn rows(client: &Client, owner: &Owner) -> Result<Vec<Value>> {
-    let found = call(
-        client,
-        owner,
-        "list_actions_secrets",
-        "list_actions_secrets_for_workspace",
-    )
-    .send()?;
-    Ok(super::items(found, "secrets")
-        .into_iter()
-        .filter(|r| r["kind"].as_str().is_none_or(|k| k == "secret"))
-        .collect())
+    let found = call(client, owner, "list_actions_secrets", "list_actions_secrets_for_workspace").send()?;
+    Ok(super::items(found, "secrets").into_iter().filter(|r| r["kind"].as_str().is_none_or(|k| k == "secret")).collect())
 }
 
 fn for_env(row: &Value, env: &str) -> bool {
     match row["environments"].as_array() {
-        Some(list) if !list.is_empty() => list
-            .iter()
-            .any(|e| e.as_str().is_some_and(|e| e.eq_ignore_ascii_case(env))),
+        Some(list) if !list.is_empty() => list.iter().any(|e| e.as_str().is_some_and(|e| e.eq_ignore_ascii_case(env))),
         _ => true,
     }
 }
@@ -88,17 +77,8 @@ fn list(ctx: &Ctx, scope: SecretScope) -> Result<()> {
     }
     let out = &ctx.out;
     let joined = |v: &Value, empty: &str| {
-        let list: Vec<&str> = v
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .collect();
-        if list.is_empty() {
-            empty.to_owned()
-        } else {
-            list.join(", ")
-        }
+        let list: Vec<&str> = v.as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+        if list.is_empty() { empty.to_owned() } else { list.join(", ") }
     };
     let table: Vec<Vec<Cell>> = secrets
         .iter()
@@ -112,16 +92,7 @@ fn list(ctx: &Ctx, scope: SecretScope) -> Result<()> {
             ]
         })
         .collect();
-    out.table(
-        &[
-            "name",
-            "environments",
-            "available to",
-            "brokered for",
-            "updated",
-        ],
-        &table,
-    )
+    out.table(&["name", "environments", "available to", "brokered for", "updated"], &table)
 }
 
 /// The value: --body, or stdin, or typed at a hidden prompt.
@@ -138,11 +109,7 @@ fn value(given: Option<String>) -> Result<String> {
     let mut text = String::new();
     std::io::stdin().read_to_string(&mut text)?;
     // A file or `echo` ends with a newline that is not part of the secret.
-    let text = text
-        .strip_suffix('\n')
-        .map(|t| t.strip_suffix('\r').unwrap_or(t))
-        .unwrap_or(&text)
-        .to_owned();
+    let text = text.strip_suffix('\n').map(|t| t.strip_suffix('\r').unwrap_or(t)).unwrap_or(&text).to_owned();
     Ok(text)
 }
 
@@ -153,14 +120,8 @@ fn set(ctx: &Ctx, args: SecretSetArgs) -> Result<()> {
         return Err(Error::usage("The value is empty."));
     }
     let name = args.name.to_uppercase();
-    let mut call = call(
-        &client,
-        &owner,
-        "set_actions_secret",
-        "set_actions_secret_for_workspace",
-    )
-    .arg("setting", &name)
-    .field("value", value);
+    let mut call =
+        call(&client, &owner, "set_actions_secret", "set_actions_secret_for_workspace").arg("setting", &name).field("value", value);
     if let Some(env) = &args.scope.env {
         call = call.field("environments", json!([env]));
     }
@@ -177,63 +138,33 @@ fn set(ctx: &Ctx, args: SecretSetArgs) -> Result<()> {
     if ctx.out.structured() {
         return ctx.out.emit(&row);
     }
-    let env = args
-        .scope
-        .env
-        .map(|e| format!(" for {e}"))
-        .unwrap_or_default();
-    eprintln!(
-        "{} Set {name}{env} in {}.",
-        ctx.out.green("✓"),
-        owner.label()
-    );
+    let env = args.scope.env.map(|e| format!(" for {e}")).unwrap_or_default();
+    eprintln!("{} Set {name}{env} in {}.", ctx.out.green("✓"), owner.label());
     Ok(())
 }
 
 fn delete(ctx: &Ctx, args: SecretDeleteArgs) -> Result<()> {
     let (owner, client) = owner(ctx, &args.scope)?;
     let name = args.name.to_uppercase();
-    let mut call = call(
-        &client,
-        &owner,
-        "delete_actions_secret",
-        "delete_actions_secret_for_workspace",
-    )
-    .arg("setting", &name);
+    let mut call = call(&client, &owner, "delete_actions_secret", "delete_actions_secret_for_workspace").arg("setting", &name);
     if let Some(env) = &args.scope.env {
         // One environment's value: that row, by its id.
         let row = rows(&client, &owner)?
             .into_iter()
             .find(|r| {
                 s(r, "name").eq_ignore_ascii_case(&name)
-                    && r["environments"].as_array().is_some_and(|l| {
-                        l.iter()
-                            .any(|e| e.as_str().is_some_and(|e| e.eq_ignore_ascii_case(env)))
-                    })
+                    && r["environments"]
+                        .as_array()
+                        .is_some_and(|l| l.iter().any(|e| e.as_str().is_some_and(|e| e.eq_ignore_ascii_case(env))))
             })
-            .ok_or_else(|| {
-                Error::failed(format!(
-                    "{name} has no value for {env} in {}.",
-                    owner.label()
-                ))
-            })?;
+            .ok_or_else(|| Error::failed(format!("{name} has no value for {env} in {}.", owner.label())))?;
         call = call.field("id", s(&row, "id"));
     }
     let gone = call.send()?;
     if ctx.out.structured() {
-        return ctx
-            .out
-            .emit(&json!({ "deleted": gone != Value::Bool(false), "name": name }));
+        return ctx.out.emit(&json!({ "deleted": gone != Value::Bool(false), "name": name }));
     }
-    let env = args
-        .scope
-        .env
-        .map(|e| format!(" for {e}"))
-        .unwrap_or_default();
-    eprintln!(
-        "{} Deleted {name}{env} from {}.",
-        ctx.out.green("✓"),
-        owner.label()
-    );
+    let env = args.scope.env.map(|e| format!(" for {e}")).unwrap_or_default();
+    eprintln!("{} Deleted {name}{env} from {}.", ctx.out.green("✓"), owner.label());
     Ok(())
 }

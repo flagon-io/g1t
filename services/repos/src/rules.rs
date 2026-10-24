@@ -13,8 +13,8 @@ use std::collections::HashMap;
 use g1t_contracts::accounts::{EmailOwner, EmailOwnersArgs};
 use g1t_contracts::repos::Repo;
 use g1t_contracts::rules::{
-    Action, Applicable, CommitFacts, Enforcement, FileChange, InspectCommitsArgs, InspectedCommits,
-    RecordEvaluationsArgs, RefRules, RefRulesArgs, Rule, Target,
+    Action, Applicable, CommitFacts, Enforcement, FileChange, InspectCommitsArgs, InspectedCommits, RecordEvaluationsArgs, RefRules,
+    RefRulesArgs, Rule, Target,
 };
 use g1t_contracts::{FailureCode, Outcome, User};
 use g1t_rules::push::{RefChange, judge};
@@ -76,18 +76,14 @@ fn who(actor: Option<&User>, repo: &Repo) -> ActorFacts {
 /// Whether any ruleset that is evaluated (active, or evaluate) has a rule
 /// about commits that holds for this actor.
 fn needs_commits(rulesets: &[Applicable], kind: Who) -> bool {
-    rulesets.iter().filter(|ruleset| ruleset.enforcement != Enforcement::Disabled).any(|ruleset| {
-        ruleset
-            .rules
-            .iter()
-            .any(|entry| entry.applies_to.covers(kind.is_agent()) && content::about_content(&entry.rule))
-    })
+    rulesets
+        .iter()
+        .filter(|ruleset| ruleset.enforcement != Enforcement::Disabled)
+        .any(|ruleset| ruleset.rules.iter().any(|entry| entry.applies_to.covers(kind.is_agent()) && content::about_content(&entry.rule)))
 }
 
 fn needs_ancestry(rulesets: &[Applicable]) -> bool {
-    rulesets
-        .iter()
-        .any(|ruleset| ruleset.rules.iter().any(|entry| matches!(entry.rule, Rule::NonFastForward(_))))
+    rulesets.iter().any(|ruleset| ruleset.rules.iter().any(|entry| matches!(entry.rule, Rule::NonFastForward(_))))
 }
 
 /// Where the rules of a ref are shown.
@@ -143,11 +139,8 @@ impl<S: GitStore> Repos<S> {
             worker::console_error!("ssh_key_owners failed: {error}");
             HashMap::new()
         });
-        let owners = owners
-            .unwrap_or_default()
-            .into_iter()
-            .map(|(email, owner)| (email.to_lowercase(), (owner.id, owner.username)))
-            .collect();
+        let owners =
+            owners.unwrap_or_default().into_iter().map(|(email, owner)| (email.to_lowercase(), (owner.id, owner.username))).collect();
         (keys, owners)
     }
 
@@ -172,10 +165,8 @@ impl<S: GitStore> Repos<S> {
             return Ok(Ruled::Allowed);
         }
         let facts = who(Some(actor), repo);
-        let judged: Vec<Judged> = changes
-            .iter()
-            .flat_map(|change| judge(&rules.rulesets, &rules.default_branch, facts.kind, change))
-            .collect();
+        let judged: Vec<Judged> =
+            changes.iter().flat_map(|change| judge(&rules.rulesets, &rules.default_branch, facts.kind, change)).collect();
         let sha = changes.iter().find_map(|change| change.new.clone());
         self.record_judged(repo, &judged, action, &facts, sha.as_deref()).await;
         if !outcome::refused(&judged) {
@@ -203,10 +194,7 @@ impl<S: GitStore> Repos<S> {
             Ok(None) => {
                 let protected = repo.protected.then(|| repo.default_branch.clone());
                 PushRules::Answered(
-                    protected
-                        .and_then(|branch| crate::git_http::refusal(body, &branch))
-                        .map(crate::git_http::report_response)
-                        .transpose(),
+                    protected.and_then(|branch| crate::git_http::refusal(body, &branch)).map(crate::git_http::report_response).transpose(),
                 )
             }
             Err(error) => {
@@ -242,17 +230,18 @@ impl<S: GitStore> Repos<S> {
         let ancestry = needs_ancestry(&rules.rulesets);
         // The pack, used when a rule needs what it holds.
         let pack = pack.filter(|_| content || ancestry);
-        let signatures = rules
-            .rulesets
-            .iter()
-            .any(|ruleset| ruleset.rules.iter().any(|entry| matches!(entry.rule, Rule::RequiredSignatures(_))));
+        let signatures =
+            rules.rulesets.iter().any(|ruleset| ruleset.rules.iter().any(|entry| matches!(entry.rule, Rule::RequiredSignatures(_))));
         // Each ref's facts are read at once.
         let changes = futures_util::future::try_join_all(updates.into_iter().map(|(git_ref, old, new)| async move {
-            let mut change = RefChange { git_ref, old: old.clone(), new: new.clone(), fast_forward: None, commits: Vec::new(), complete: false };
+            let mut change =
+                RefChange { git_ref, old: old.clone(), new: new.clone(), fast_forward: None, commits: Vec::new(), complete: false };
             if let (Some(pack), Some(new)) = (pack, &new) {
                 let fast_forward = async {
                     match &old {
-                        Some(old) if ancestry => Ok::<_, worker::Error>(Some(rule_facts::contains(pack, git, new, old, MAX_ANCESTRY).await?)),
+                        Some(old) if ancestry => {
+                            Ok::<_, worker::Error>(Some(rule_facts::contains(pack, git, new, old, MAX_ANCESTRY).await?))
+                        }
                         _ => Ok(None),
                     }
                 };
@@ -282,10 +271,8 @@ impl<S: GitStore> Repos<S> {
             Ok::<_, worker::Error>(change)
         }))
         .await?;
-        let judged: Vec<Judged> = changes
-            .iter()
-            .flat_map(|change| judge(&rules.rulesets, &rules.default_branch, facts.kind, change))
-            .collect();
+        let judged: Vec<Judged> =
+            changes.iter().flat_map(|change| judge(&rules.rulesets, &rules.default_branch, facts.kind, change)).collect();
         let sha = changes.iter().find_map(|change| change.new.clone());
         let refusal = if outcome::refused(&judged) {
             let refused_ref = judged.iter().find(|one| one.blocks()).map(|one| one.git_ref.clone()).unwrap_or_default();
@@ -309,7 +296,8 @@ impl<S: GitStore> Repos<S> {
         if judged.judged.is_empty() {
             return;
         }
-        let evaluations = g1t_rules::evaluations(&judged.judged, &repo.id, &repo.namespace, Action::Push, &judged.facts, None, judged.sha.as_deref());
+        let evaluations =
+            g1t_rules::evaluations(&judged.judged, &repo.id, &repo.namespace, Action::Push, &judged.facts, None, judged.sha.as_deref());
         self.deferred.spawn(async move {
             let recorded: Result<u32> = g1t_kit::call(&work, "record_evaluations", &RecordEvaluationsArgs { evaluations }).await;
             if let Err(error) = recorded {
@@ -334,7 +322,8 @@ impl<S: GitStore> Repos<S> {
             None => {
                 let target_git = self.store.open(&store_key(&target)).await?;
                 let (history, base_history) =
-                    futures_util::future::try_join(source_git.log(&a.head, MAX_ANCESTRY), target_git.log(&a.base_branch, MAX_ANCESTRY)).await?;
+                    futures_util::future::try_join(source_git.log(&a.head, MAX_ANCESTRY), target_git.log(&a.base_branch, MAX_ANCESTRY))
+                        .await?;
                 let shared: std::collections::HashSet<String> = base_history.iter().map(|commit| commit.hash.clone()).collect();
                 let found = crate::merge_base::merge_base(&source_git, &history, &target_git, &base_history, &shared).await?;
                 let merge_base = found.map(|found| found.hash);
@@ -434,7 +423,13 @@ mod tests {
 
     #[test]
     fn a_commit_g1t_makes_is_unsigned_and_lists_its_files() {
-        let made = made_commit("abc", "Add CI", "ada@acme.com", 1, vec![FileChange { path: ".g1t/workflows/ci.yml".into(), size: Some(12), deleted: false }]);
+        let made = made_commit(
+            "abc",
+            "Add CI",
+            "ada@acme.com",
+            1,
+            vec![FileChange { path: ".g1t/workflows/ci.yml".into(), size: Some(12), deleted: false }],
+        );
         assert_eq!(made.signature, g1t_contracts::rules::Signature::Unsigned);
         assert!(made.files_complete);
     }

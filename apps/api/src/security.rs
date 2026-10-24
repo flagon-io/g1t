@@ -12,11 +12,13 @@
 //! reads the input and gives each answer its public shape.
 
 use g1t_contracts::advisories::{
-    Advisory, AdvisoryInput, CreateAdvisoryArgs, GetAdvisoryArgs, ListAdvisoriesArgs, ListReportsArgs, ReportVulnerabilityArgs, ReviewReportArgs,
-    SetAdvisoryStateArgs, UpdateAdvisoryArgs,
+    Advisory, AdvisoryInput, CreateAdvisoryArgs, GetAdvisoryArgs, ListAdvisoriesArgs, ListReportsArgs, ReportVulnerabilityArgs,
+    ReviewReportArgs, SetAdvisoryStateArgs, UpdateAdvisoryArgs,
 };
 use g1t_contracts::repos::RepoPath;
-use g1t_contracts::security::{AlertChange, AlertState, DismissArgs, DismissReason, ReopenArgs, SecretFinding, SecurityOverview, Vulnerability};
+use g1t_contracts::security::{
+    AlertChange, AlertState, DismissArgs, DismissReason, ReopenArgs, SecretFinding, SecurityOverview, Vulnerability,
+};
 use g1t_contracts::security_suite::*;
 use g1t_contracts::{FailureCode, Outcome, Viewer};
 use serde::Serialize;
@@ -207,45 +209,115 @@ impl SecurityOp {
 
     pub fn description(self) -> &'static str {
         match self {
-            SecurityOp::ListSecretAlerts => "List secret scanning alerts: secrets found in pushes (blocked) and in history (open), newest first, in a repository or (with workspace) across a workspace. Filter by state (open, dismissed, fixed), secret_type, validity (active, inactive, unknown, unsupported) and bypassed. The secret itself is never returned: a preview and a fingerprint-based id only.",
-            SecurityOp::GetSecretAlert => "Get one secret scanning alert by id (sec_…), with every place it was found, its activity, its bypass requests, and whether you may bypass it or only ask to.",
-            SecurityOp::UpdateSecretAlert => "Dismiss a secret scanning alert (state dismissed, with a reason: false_positive, used_in_tests, revoked or wont_fix, and an optional comment) or reopen it (state open). Revoked marks it fixed; the others let pushes carrying it through. Takes the Write role, or a security manager of the workspace.",
-            SecurityOp::ListSecretLocations => "List every place a secret was found: file, line, commit and whether a push or the history scan found it.",
-            SecurityOp::BypassPushProtection => "Push past push protection for a blocked secret, with a reason: false_positive or used_in_tests (the alert is closed with that reason) or will_fix_later (it stays open, to be rotated). Recorded on the alert and in the audit log. With delegated bypass on, someone who does not review bypasses makes a request instead, which owners and the repository's admins approve or deny; the answer says which happened. Push again once it is bypassed or approved.",
-            SecurityOp::CheckSecretValidity => "Ask a landed secret's issuer whether it still works, and mark the alert active or inactive. The check is the issuer's own read-only identity call over HTTPS; the secret goes nowhere else. Needs validity checks on for the workspace (and the g1t plan on a private repository). Formats with no safe check answer unsupported.",
-            SecurityOp::ListBypassRequests => "List a workspace's push protection bypass requests, pending first. Owners and repository admins see every request; anyone else their own. Filter by state (pending, approved, denied, cancelled) or repo.",
-            SecurityOp::ReviewBypassRequest => "Approve or deny a bypass request (owners, security managers and the repository's admins, never your own), or cancel your own. An approved request bypasses push protection for that secret, as its requester asked.",
-            SecurityOp::ListCustomPatterns => "List custom secret patterns: a repository's own and the ones it inherits from its workspace (with repo), or a workspace's (with workspace).",
-            SecurityOp::CreateCustomPattern => "Create a custom secret pattern: a name, a regular expression for the secret, optional regular expressions for what comes right before and after it, and test strings. Patterns run in linear time (no look-around or back-references) and within size limits. With publish true, push protection and scans use it at once and the history is scanned again for it; otherwise it is a draft. A repository's takes Admin; a workspace's, an owner. On a private repository it needs the g1t plan.",
-            SecurityOp::UpdateCustomPattern => "Change a custom pattern, publish it, or turn it back into a draft (publish false). Returns where it matched each test string.",
+            SecurityOp::ListSecretAlerts => {
+                "List secret scanning alerts: secrets found in pushes (blocked) and in history (open), newest first, in a repository or (with workspace) across a workspace. Filter by state (open, dismissed, fixed), secret_type, validity (active, inactive, unknown, unsupported) and bypassed. The secret itself is never returned: a preview and a fingerprint-based id only."
+            }
+            SecurityOp::GetSecretAlert => {
+                "Get one secret scanning alert by id (sec_…), with every place it was found, its activity, its bypass requests, and whether you may bypass it or only ask to."
+            }
+            SecurityOp::UpdateSecretAlert => {
+                "Dismiss a secret scanning alert (state dismissed, with a reason: false_positive, used_in_tests, revoked or wont_fix, and an optional comment) or reopen it (state open). Revoked marks it fixed; the others let pushes carrying it through. Takes the Write role, or a security manager of the workspace."
+            }
+            SecurityOp::ListSecretLocations => {
+                "List every place a secret was found: file, line, commit and whether a push or the history scan found it."
+            }
+            SecurityOp::BypassPushProtection => {
+                "Push past push protection for a blocked secret, with a reason: false_positive or used_in_tests (the alert is closed with that reason) or will_fix_later (it stays open, to be rotated). Recorded on the alert and in the audit log. With delegated bypass on, someone who does not review bypasses makes a request instead, which owners and the repository's admins approve or deny; the answer says which happened. Push again once it is bypassed or approved."
+            }
+            SecurityOp::CheckSecretValidity => {
+                "Ask a landed secret's issuer whether it still works, and mark the alert active or inactive. The check is the issuer's own read-only identity call over HTTPS; the secret goes nowhere else. Needs validity checks on for the workspace (and the g1t plan on a private repository). Formats with no safe check answer unsupported."
+            }
+            SecurityOp::ListBypassRequests => {
+                "List a workspace's push protection bypass requests, pending first. Owners and repository admins see every request; anyone else their own. Filter by state (pending, approved, denied, cancelled) or repo."
+            }
+            SecurityOp::ReviewBypassRequest => {
+                "Approve or deny a bypass request (owners, security managers and the repository's admins, never your own), or cancel your own. An approved request bypasses push protection for that secret, as its requester asked."
+            }
+            SecurityOp::ListCustomPatterns => {
+                "List custom secret patterns: a repository's own and the ones it inherits from its workspace (with repo), or a workspace's (with workspace)."
+            }
+            SecurityOp::CreateCustomPattern => {
+                "Create a custom secret pattern: a name, a regular expression for the secret, optional regular expressions for what comes right before and after it, and test strings. Patterns run in linear time (no look-around or back-references) and within size limits. With publish true, push protection and scans use it at once and the history is scanned again for it; otherwise it is a draft. A repository's takes Admin; a workspace's, an owner. On a private repository it needs the g1t plan."
+            }
+            SecurityOp::UpdateCustomPattern => {
+                "Change a custom pattern, publish it, or turn it back into a draft (publish false). Returns where it matched each test string."
+            }
             SecurityOp::DeleteCustomPattern => "Delete a custom pattern. Alerts it found stay.",
-            SecurityOp::DryRunCustomPattern => "Run a pattern over the default branch without saving it: of the repository, or (with workspace) of up to ten of its repositories, or those named in repos. Returns the files read and up to fifty matches each, masked.",
-            SecurityOp::ListCodeAlerts => "List code scanning alerts: problems a tool reported on the default branch, one per tool, category and fingerprint, open first and worst first. In a repository, or (with workspace) across a workspace. Filter by state, severity, tool and rule_id.",
-            SecurityOp::GetCodeAlert => "Get one code scanning alert by number, with its rule, location, activity and the analyses that reported it.",
-            SecurityOp::UpdateCodeAlert => "Dismiss a code scanning alert (state dismissed, dismissed_reason false_positive, wont_fix or used_in_tests, optional dismissed_comment) or reopen it (state open). A fixed alert reopens by itself when an analysis reports it again.",
-            SecurityOp::ListAnalyses => "List code scanning analyses, newest first: each upload's run of one tool on one commit, with how many results it had and the alerts it opened and fixed.",
-            SecurityOp::UploadSarif => "Upload a SARIF 2.1.0 file: sarif is the file gzipped and base64-encoded; commit_sha the full commit; ref refs/heads/<branch> or refs/pull/<number>/head. For the default branch, new results open alerts and results no longer reported fix theirs. For a pull request, its results new to it on lines it changes become review comments and the Code scanning check, which fails at the repository's threshold. Read at once; the answer says complete or failed and why. Needs the g1t plan on a private repository.",
-            SecurityOp::GetSarifUpload => "Get a SARIF upload by id (sar_…): whether it was read, the analyses it made, and what was wrong.",
-            SecurityOp::ListVulnerabilityAlerts => "List vulnerability alerts: a package a lockfile resolves with a known advisory, open first and worst first, with the security update g1t opened for it. In a repository, or (with workspace) across a workspace. Filter by state, severity, ecosystem and package.",
+            SecurityOp::DryRunCustomPattern => {
+                "Run a pattern over the default branch without saving it: of the repository, or (with workspace) of up to ten of its repositories, or those named in repos. Returns the files read and up to fifty matches each, masked."
+            }
+            SecurityOp::ListCodeAlerts => {
+                "List code scanning alerts: problems a tool reported on the default branch, one per tool, category and fingerprint, open first and worst first. In a repository, or (with workspace) across a workspace. Filter by state, severity, tool and rule_id."
+            }
+            SecurityOp::GetCodeAlert => {
+                "Get one code scanning alert by number, with its rule, location, activity and the analyses that reported it."
+            }
+            SecurityOp::UpdateCodeAlert => {
+                "Dismiss a code scanning alert (state dismissed, dismissed_reason false_positive, wont_fix or used_in_tests, optional dismissed_comment) or reopen it (state open). A fixed alert reopens by itself when an analysis reports it again."
+            }
+            SecurityOp::ListAnalyses => {
+                "List code scanning analyses, newest first: each upload's run of one tool on one commit, with how many results it had and the alerts it opened and fixed."
+            }
+            SecurityOp::UploadSarif => {
+                "Upload a SARIF 2.1.0 file: sarif is the file gzipped and base64-encoded; commit_sha the full commit; ref refs/heads/<branch> or refs/pull/<number>/head. For the default branch, new results open alerts and results no longer reported fix theirs. For a pull request, its results new to it on lines it changes become review comments and the Code scanning check, which fails at the repository's threshold. Read at once; the answer says complete or failed and why. Needs the g1t plan on a private repository."
+            }
+            SecurityOp::GetSarifUpload => {
+                "Get a SARIF upload by id (sar_…): whether it was read, the analyses it made, and what was wrong."
+            }
+            SecurityOp::ListVulnerabilityAlerts => {
+                "List vulnerability alerts: a package a lockfile resolves with a known advisory, open first and worst first, with the security update g1t opened for it. In a repository, or (with workspace) across a workspace. Filter by state, severity, ecosystem and package."
+            }
             SecurityOp::GetVulnerabilityAlert => "Get one vulnerability alert by id (vul_…).",
-            SecurityOp::UpdateVulnerabilityAlert => "Dismiss a vulnerability alert (state dismissed, with a reason: fix_started, no_bandwidth, tolerable_risk, inaccurate or not_used, and an optional comment) or reopen it (state open).",
-            SecurityOp::GetDependencyGraph => "Get the dependency graph: every package the lockfiles on the default branch resolve, per lockfile, with whether it is direct or transitive (where the lockfile says), for development, its license when recorded, its package URL and its open vulnerability alerts.",
-            SecurityOp::GetSbom => "Export the dependency graph as an SPDX 2.3 JSON document, in sbom. Every package is named by its package URL.",
-            SecurityOp::CompareDependencies => "Compare the dependencies at two commits, branches or tags (basehead, as base...head): what was added and removed per lockfile, with the known vulnerabilities of what was added and whether it passes the repository's dependency review policy. Needs the g1t plan on a private repository.",
-            SecurityOp::RerunDependencyReview => "Run the Dependency review check again on an open pull request's head, with the advisories known now: its status is set again and its one comment on the pull request is changed in place (or added, when it has dependency changes to show and none is there yet). Returns the review. g1t reviews a pull request by itself when it opens and when its head moves, carrying the result over when the head's lockfile changes are the ones reviewed before. Takes the Write role. Needs the g1t plan on a private repository.",
-            SecurityOp::GetSettings => "Get a repository's security settings: when the Code scanning check fails, dependency review and its policy, whether secrets in the history open alerts, whether it takes private vulnerability reports, its workspace's settings, and whether the paid features are on for it.",
-            SecurityOp::UpdateSettings => "Change a repository's security settings: code_scanning_gate (none, errors, critical, high, medium or any), dependency_review, review_fail_on (critical, high, medium, low or none), review_deny_licenses (SPDX ids), review_comment, history_alerts (whether secrets found in the history open alerts; push protection stays on) and private_vulnerability_reporting. Takes the Admin role, or a security manager of the workspace. Require the Code scanning and Dependency review checks in branch protection to gate merges on them.",
-            SecurityOp::GetWorkspaceSettings => "Get a workspace's security settings (delegated bypass, validity checks) and whether it has Security and quality, which comes with the g1t plan.",
+            SecurityOp::UpdateVulnerabilityAlert => {
+                "Dismiss a vulnerability alert (state dismissed, with a reason: fix_started, no_bandwidth, tolerable_risk, inaccurate or not_used, and an optional comment) or reopen it (state open)."
+            }
+            SecurityOp::GetDependencyGraph => {
+                "Get the dependency graph: every package the lockfiles on the default branch resolve, per lockfile, with whether it is direct or transitive (where the lockfile says), for development, its license when recorded, its package URL and its open vulnerability alerts."
+            }
+            SecurityOp::GetSbom => {
+                "Export the dependency graph as an SPDX 2.3 JSON document, in sbom. Every package is named by its package URL."
+            }
+            SecurityOp::CompareDependencies => {
+                "Compare the dependencies at two commits, branches or tags (basehead, as base...head): what was added and removed per lockfile, with the known vulnerabilities of what was added and whether it passes the repository's dependency review policy. Needs the g1t plan on a private repository."
+            }
+            SecurityOp::RerunDependencyReview => {
+                "Run the Dependency review check again on an open pull request's head, with the advisories known now: its status is set again and its one comment on the pull request is changed in place (or added, when it has dependency changes to show and none is there yet). Returns the review. g1t reviews a pull request by itself when it opens and when its head moves, carrying the result over when the head's lockfile changes are the ones reviewed before. Takes the Write role. Needs the g1t plan on a private repository."
+            }
+            SecurityOp::GetSettings => {
+                "Get a repository's security settings: when the Code scanning check fails, dependency review and its policy, whether secrets in the history open alerts, whether it takes private vulnerability reports, its workspace's settings, and whether the paid features are on for it."
+            }
+            SecurityOp::UpdateSettings => {
+                "Change a repository's security settings: code_scanning_gate (none, errors, critical, high, medium or any), dependency_review, review_fail_on (critical, high, medium, low or none), review_deny_licenses (SPDX ids), review_comment, history_alerts (whether secrets found in the history open alerts; push protection stays on) and private_vulnerability_reporting. Takes the Admin role, or a security manager of the workspace. Require the Code scanning and Dependency review checks in branch protection to gate merges on them."
+            }
+            SecurityOp::GetWorkspaceSettings => {
+                "Get a workspace's security settings (delegated bypass, validity checks) and whether it has Security and quality, which comes with the g1t plan."
+            }
             SecurityOp::UpdateWorkspaceSettings => "Turn delegated bypass and validity checks on or off for a workspace. Owners only.",
-            SecurityOp::GetOverview => "Get a workspace's security overview: open alerts by type and severity, how many opened and closed in the last days (7 to 90, 30 by default), a daily trend, and for each repository which features are on and what is open, most in need first. Private repositories count only on the g1t plan.",
-            SecurityOp::ListAdvisories => "List a repository's security advisories, newest first: what it says about vulnerabilities in what it ships. Anyone who can see the repository sees the published ones; those who see its findings (Write, or a security manager) see drafts and withdrawn ones too. Filter by state (draft, published, withdrawn).",
+            SecurityOp::GetOverview => {
+                "Get a workspace's security overview: open alerts by type and severity, how many opened and closed in the last days (7 to 90, 30 by default), a daily trend, and for each repository which features are on and what is open, most in need first. Private repositories count only on the g1t plan."
+            }
+            SecurityOp::ListAdvisories => {
+                "List a repository's security advisories, newest first: what it says about vulnerabilities in what it ships. Anyone who can see the repository sees the published ones; those who see its findings (Write, or a security manager) see drafts and withdrawn ones too. Filter by state (draft, published, withdrawn)."
+            }
             SecurityOp::GetAdvisory => "Get one security advisory by its adv_… id or its G1TSA-… id, with the same visibility as the list.",
-            SecurityOp::CreateAdvisory => "Create a draft security advisory: title, description (Markdown), severity (critical, high, medium or low), and optionally cvss_vector and cvss_score, cve_id, the package affected (ecosystem, package, affected_versions, patched_versions) and credits. Admin on the repository, or a security manager of its workspace. Nobody is told of a draft.",
-            SecurityOp::UpdateAdvisory => "Change an advisory's fields, in any state; what is not given stays as it is. A published advisory's change is visible at once. Admin, or a security manager.",
-            SecurityOp::SetAdvisoryState => "Publish a draft (state published), withdraw a published advisory (state withdrawn), or publish a withdrawn one again. Publishing needs a description, tells webhooks (security_advisory.published) and the repository's watchers who chose security alerts, and makes the advisory visible to anyone who can see the repository. Admin, or a security manager.",
-            SecurityOp::ListReports => "List the vulnerability reports people sent the repository's maintainers privately, new ones first. Those who see findings (Write, or a security manager). Filter by state (new, accepted, declined). Reporters never see this list.",
-            SecurityOp::ReportVulnerability => "Report a vulnerability privately to a repository's maintainers: title, description and, if you like, severity. Needs private vulnerability reporting on for the repository. Anyone who can see the repository may report; on a public one you may report without a token by giving an email the maintainers can answer at. At most 5 reports a day per reporter and repository. The workspace's owners and security managers are told at once. You see only your own report.",
-            SecurityOp::ReviewReport => "Accept a report (decision accept), which makes a draft advisory from it crediting the reporter, or decline it (decision decline), with an optional note. Admin, or a security manager.",
+            SecurityOp::CreateAdvisory => {
+                "Create a draft security advisory: title, description (Markdown), severity (critical, high, medium or low), and optionally cvss_vector and cvss_score, cve_id, the package affected (ecosystem, package, affected_versions, patched_versions) and credits. Admin on the repository, or a security manager of its workspace. Nobody is told of a draft."
+            }
+            SecurityOp::UpdateAdvisory => {
+                "Change an advisory's fields, in any state; what is not given stays as it is. A published advisory's change is visible at once. Admin, or a security manager."
+            }
+            SecurityOp::SetAdvisoryState => {
+                "Publish a draft (state published), withdraw a published advisory (state withdrawn), or publish a withdrawn one again. Publishing needs a description, tells webhooks (security_advisory.published) and the repository's watchers who chose security alerts, and makes the advisory visible to anyone who can see the repository. Admin, or a security manager."
+            }
+            SecurityOp::ListReports => {
+                "List the vulnerability reports people sent the repository's maintainers privately, new ones first. Those who see findings (Write, or a security manager). Filter by state (new, accepted, declined). Reporters never see this list."
+            }
+            SecurityOp::ReportVulnerability => {
+                "Report a vulnerability privately to a repository's maintainers: title, description and, if you like, severity. Needs private vulnerability reporting on for the repository. Anyone who can see the repository may report; on a public one you may report without a token by giving an email the maintainers can answer at. At most 5 reports a day per reporter and repository. The workspace's owners and security managers are told at once. You see only your own report."
+            }
+            SecurityOp::ReviewReport => {
+                "Accept a report (decision accept), which makes a draft advisory from it crediting the reporter, or decline it (decision decline), with an optional note. Admin, or a security manager."
+            }
         }
     }
 
@@ -281,7 +353,8 @@ impl SecurityOp {
         let number = || json!({ "type": "integer", "description": "The code scanning alert's number." });
         let state = || json!({ "type": "string", "enum": ["open", "dismissed", "fixed"], "description": "Only alerts in this state." });
         let severity = || json!({ "type": "string", "enum": ["critical", "high", "medium", "low", "unknown"], "description": "Only alerts of this severity." });
-        let set_state = || json!({ "type": "string", "enum": ["open", "dismissed"], "description": "dismissed, with a reason, or open to reopen." });
+        let set_state =
+            || json!({ "type": "string", "enum": ["open", "dismissed"], "description": "dismissed, with a reason, or open to reopen." });
         let comment = || json!({ "type": "string", "description": "Why, in a sentence; kept with the alert. At most 500 characters." });
         let pattern_fields = |mut properties: Value| {
             properties["pattern_name"] = json!({ "type": "string", "description": "What people call it: \"Acme API key\"." });
@@ -292,15 +365,18 @@ impl SecurityOp {
         };
         let workspace = || json!({ "type": "string", "description": "The workspace's slug, e.g. \"flagon-io\"." });
         let advisory_fields = |mut properties: Value| {
-            properties["title"] = json!({ "type": "string", "description": "One line: what the vulnerability is. At most 200 characters." });
+            properties["title"] =
+                json!({ "type": "string", "description": "One line: what the vulnerability is. At most 200 characters." });
             properties["description"] = json!({ "type": "string", "description": "Markdown: what is affected, how it is exploited, what to do. At most 20,000 characters." });
-            properties["severity"] = json!({ "type": "string", "enum": ["critical", "high", "medium", "low"], "description": "How bad it is." });
+            properties["severity"] =
+                json!({ "type": "string", "enum": ["critical", "high", "medium", "low"], "description": "How bad it is." });
             properties["cvss_vector"] = json!({ "type": "string", "description": "A CVSS vector string, when scored: CVSS:3.1/AV:N/…" });
             properties["cvss_score"] = json!({ "type": "number", "description": "The CVSS base score, 0 to 10." });
             properties["cve_id"] = json!({ "type": "string", "description": "CVE-2026-12345, when one was issued elsewhere." });
             properties["ecosystem"] = json!({ "type": "string", "description": "How the affected package is distributed: npm, crates.io, Go, PyPI, or how the project ships." });
             properties["package"] = json!({ "type": "string", "description": "The package affected." });
-            properties["affected_versions"] = json!({ "type": "string", "description": "The versions affected, as a range: >= 1.2.0, < 1.4.1" });
+            properties["affected_versions"] =
+                json!({ "type": "string", "description": "The versions affected, as a range: >= 1.2.0, < 1.4.1" });
             properties["patched_versions"] = json!({ "type": "string", "description": "The versions that fix it: >= 1.4.1" });
             properties["credits"] = json!({ "type": "array", "items": { "type": "string" }, "description": "Who found or fixed it: usernames or names, up to 20." });
             properties
@@ -371,7 +447,9 @@ impl SecurityOp {
                 }))),
                 &["id", "pattern_name", "pattern"],
             ),
-            SecurityOp::DeleteCustomPattern => (either(json!({ "id": { "type": "string", "description": "The pattern's id: pat_…" } })), &["id"]),
+            SecurityOp::DeleteCustomPattern => {
+                (either(json!({ "id": { "type": "string", "description": "The pattern's id: pat_…" } })), &["id"])
+            }
             SecurityOp::DryRunCustomPattern => (
                 either(pattern_fields(json!({
                     "repos": { "type": "array", "items": { "type": "string" }, "description": "With workspace: repository names to run it on; the first ten when empty." },
@@ -411,7 +489,9 @@ impl SecurityOp {
                 }),
                 &["repo", "commit_sha", "ref", "sarif"],
             ),
-            SecurityOp::GetSarifUpload => (json!({ "repo": repo(), "id": { "type": "string", "description": "The upload's id: sar_…" } }), &["repo", "id"]),
+            SecurityOp::GetSarifUpload => {
+                (json!({ "repo": repo(), "id": { "type": "string", "description": "The upload's id: sar_…" } }), &["repo", "id"])
+            }
             SecurityOp::ListVulnerabilityAlerts => (
                 either(json!({
                     "state": state(),
@@ -421,7 +501,9 @@ impl SecurityOp {
                 })),
                 &[],
             ),
-            SecurityOp::GetVulnerabilityAlert => (json!({ "repo": repo(), "id": { "type": "string", "description": "The alert's id: vul_…" } }), &["repo", "id"]),
+            SecurityOp::GetVulnerabilityAlert => {
+                (json!({ "repo": repo(), "id": { "type": "string", "description": "The alert's id: vul_…" } }), &["repo", "id"])
+            }
             SecurityOp::UpdateVulnerabilityAlert => (
                 json!({
                     "repo": repo(),
@@ -559,11 +641,7 @@ fn one_of(input: &Value, key: &str, allowed: &[&str]) -> std::result::Result<Opt
         None => Ok(None),
         Some(given) => {
             let lower = given.to_lowercase();
-            if allowed.contains(&lower.as_str()) {
-                Ok(Some(lower))
-            } else {
-                Err(format!("{key} is {}, not {given}.", allowed.join(", ")))
-            }
+            if allowed.contains(&lower.as_str()) { Ok(Some(lower)) } else { Err(format!("{key} is {}, not {given}.", allowed.join(", "))) }
         }
     }
 }
@@ -661,7 +739,11 @@ pub(crate) fn base_head(text: &str) -> Option<(String, String)> {
 
 /// What dismissing or reopening an alert of `kind` asks: the reason, if
 /// dismissing, checked against the reasons that kind takes.
-pub(crate) fn state_change(input: &Value, reason_key: &str, reasons: &[DismissReason]) -> std::result::Result<Option<DismissReason>, String> {
+pub(crate) fn state_change(
+    input: &Value,
+    reason_key: &str,
+    reasons: &[DismissReason],
+) -> std::result::Result<Option<DismissReason>, String> {
     match text(input, "state").as_deref() {
         Some("open") => Ok(None),
         Some("dismissed") => {
@@ -676,7 +758,8 @@ pub(crate) fn state_change(input: &Value, reason_key: &str, reasons: &[DismissRe
     }
 }
 
-const SECRET_REASONS: [DismissReason; 4] = [DismissReason::FalsePositive, DismissReason::UsedInTests, DismissReason::Revoked, DismissReason::WontFix];
+const SECRET_REASONS: [DismissReason; 4] =
+    [DismissReason::FalsePositive, DismissReason::UsedInTests, DismissReason::Revoked, DismissReason::WontFix];
 const CODE_REASONS: [DismissReason; 3] = [DismissReason::FalsePositive, DismissReason::WontFix, DismissReason::UsedInTests];
 const DEPENDENCY_REASONS: [DismissReason; 5] = [
     DismissReason::FixStarted,
@@ -769,8 +852,10 @@ pub async fn run(op: SecurityOp, services: &Services, viewer: &Viewer, input: &V
                     .await?;
                     match found {
                         Outcome::Ok(found) => {
-                            let alerts: Vec<WorkspaceAlert> =
-                                found.into_iter().filter(|alert| alert.secret.as_ref().is_some_and(|secret| filters.keeps(secret))).collect();
+                            let alerts: Vec<WorkspaceAlert> = found
+                                .into_iter()
+                                .filter(|alert| alert.secret.as_ref().is_some_and(|secret| filters.keeps(secret)))
+                                .collect();
                             ok(&alerts)
                         }
                         Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
@@ -782,7 +867,8 @@ pub async fn run(op: SecurityOp, services: &Services, viewer: &Viewer, input: &V
         SecurityOp::GetSecretAlert | SecurityOp::ListSecretLocations => {
             let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };
             let id = text(input, "id").unwrap_or_default();
-            let detail: Outcome<SecretAlertDetail> = call(services, "secret_alert", &SecretAlertArgs { viewer: viewer.clone(), repo, id }).await?;
+            let detail: Outcome<SecretAlertDetail> =
+                call(services, "secret_alert", &SecretAlertArgs { viewer: viewer.clone(), repo, id }).await?;
             match (detail, op) {
                 (Outcome::Ok(detail), SecurityOp::ListSecretLocations) => ok(&detail.locations),
                 (Outcome::Ok(detail), _) => ok(&detail),
@@ -822,7 +908,13 @@ pub async fn run(op: SecurityOp, services: &Services, viewer: &Viewer, input: &V
             let Some(reason) = text(input, "reason").as_deref().and_then(BypassReason::parse) else {
                 return failed(FailureCode::Invalid, "reason is false_positive, used_in_tests or will_fix_later.");
             };
-            let args = BypassArgs { actor: actor(), repo, id: text(input, "id").unwrap_or_default(), reason, comment: text(input, "comment").unwrap_or_default() };
+            let args = BypassArgs {
+                actor: actor(),
+                repo,
+                id: text(input, "id").unwrap_or_default(),
+                reason,
+                comment: text(input, "comment").unwrap_or_default(),
+            };
             pass(services, "bypass", &args).await
         }
         SecurityOp::CheckSecretValidity => {
@@ -900,13 +992,15 @@ pub async fn run(op: SecurityOp, services: &Services, viewer: &Viewer, input: &V
                 Err(message) => return failed(FailureCode::Invalid, &message),
             };
             match (scope_repo, workspace) {
-                (Some(repo), _) => match call::<_, CodeScanning>(services, "code_scanning", &CodeScanningArgs { viewer: viewer.clone(), repo }).await? {
-                    Outcome::Ok(scanning) => {
-                        let alerts: Vec<CodeAlert> = scanning.alerts.into_iter().filter(|alert| filters.keeps(alert)).collect();
-                        ok(&alerts)
+                (Some(repo), _) => {
+                    match call::<_, CodeScanning>(services, "code_scanning", &CodeScanningArgs { viewer: viewer.clone(), repo }).await? {
+                        Outcome::Ok(scanning) => {
+                            let alerts: Vec<CodeAlert> = scanning.alerts.into_iter().filter(|alert| filters.keeps(alert)).collect();
+                            ok(&alerts)
+                        }
+                        Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
                     }
-                    Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
-                },
+                }
                 (None, Some(workspace)) => {
                     let found: Outcome<Vec<WorkspaceAlert>> = call(
                         services,
@@ -955,7 +1049,8 @@ pub async fn run(op: SecurityOp, services: &Services, viewer: &Viewer, input: &V
         }
         SecurityOp::UploadSarif => {
             let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };
-            let (Some(commit_sha), Some(git_ref), Some(sarif)) = (text(input, "commit_sha"), text(input, "ref"), text(input, "sarif")) else {
+            let (Some(commit_sha), Some(git_ref), Some(sarif)) = (text(input, "commit_sha"), text(input, "ref"), text(input, "sarif"))
+            else {
                 return failed(FailureCode::Invalid, "Give commit_sha, ref and sarif (the file gzipped and base64-encoded).");
             };
             if sarif.len() > g1t_scan_limits::MAX_UPLOAD_BYTES {
@@ -975,7 +1070,8 @@ pub async fn run(op: SecurityOp, services: &Services, viewer: &Viewer, input: &V
         }
         SecurityOp::GetSarifUpload => {
             let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };
-            pass(services, "sarif_status", &SarifStatusArgs { viewer: viewer.clone(), repo, id: text(input, "id").unwrap_or_default() }).await
+            pass(services, "sarif_status", &SarifStatusArgs { viewer: viewer.clone(), repo, id: text(input, "id").unwrap_or_default() })
+                .await
         }
         SecurityOp::ListVulnerabilityAlerts => {
             let filters = match vulnerability_filters(input) {
@@ -988,7 +1084,8 @@ pub async fn run(op: SecurityOp, services: &Services, viewer: &Viewer, input: &V
                         call(services, "overview", &g1t_contracts::security::OverviewArgs { repo, viewer: viewer.clone() }).await?;
                     match overview {
                         Outcome::Ok(overview) => {
-                            let alerts: Vec<Vulnerability> = overview.vulnerabilities.into_iter().filter(|vuln| filters.keeps(vuln)).collect();
+                            let alerts: Vec<Vulnerability> =
+                                overview.vulnerabilities.into_iter().filter(|vuln| filters.keeps(vuln)).collect();
                             ok(&alerts)
                         }
                         Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
@@ -1003,8 +1100,10 @@ pub async fn run(op: SecurityOp, services: &Services, viewer: &Viewer, input: &V
                     .await?;
                     match found {
                         Outcome::Ok(found) => {
-                            let alerts: Vec<WorkspaceAlert> =
-                                found.into_iter().filter(|alert| alert.vulnerability.as_ref().is_some_and(|vuln| filters.keeps(vuln))).collect();
+                            let alerts: Vec<WorkspaceAlert> = found
+                                .into_iter()
+                                .filter(|alert| alert.vulnerability.as_ref().is_some_and(|vuln| filters.keeps(vuln)))
+                                .collect();
                             ok(&alerts)
                         }
                         Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
@@ -1099,7 +1198,8 @@ pub async fn run(op: SecurityOp, services: &Services, viewer: &Viewer, input: &V
         }
         SecurityOp::GetAdvisory => {
             let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };
-            pass(services, "get_advisory", &GetAdvisoryArgs { viewer: viewer.clone(), repo, id: text(input, "id").unwrap_or_default() }).await
+            pass(services, "get_advisory", &GetAdvisoryArgs { viewer: viewer.clone(), repo, id: text(input, "id").unwrap_or_default() })
+                .await
         }
         SecurityOp::CreateAdvisory => {
             let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };
@@ -1110,7 +1210,8 @@ pub async fn run(op: SecurityOp, services: &Services, viewer: &Viewer, input: &V
             let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };
             let id = text(input, "id").unwrap_or_default();
             // What is not given stays as it is.
-            let current: Outcome<Advisory> = call(services, "get_advisory", &GetAdvisoryArgs { viewer: viewer.clone(), repo: repo.clone(), id: id.clone() }).await?;
+            let current: Outcome<Advisory> =
+                call(services, "get_advisory", &GetAdvisoryArgs { viewer: viewer.clone(), repo: repo.clone(), id: id.clone() }).await?;
             let current = match current {
                 Outcome::Ok(advisory) => advisory,
                 Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
@@ -1125,7 +1226,12 @@ pub async fn run(op: SecurityOp, services: &Services, viewer: &Viewer, input: &V
                 Ok(None) => return failed(FailureCode::Invalid, "state is published or withdrawn."),
                 Err(message) => return failed(FailureCode::Invalid, &message),
             };
-            pass(services, "set_advisory_state", &SetAdvisoryStateArgs { actor: actor(), repo, id: text(input, "id").unwrap_or_default(), state }).await
+            pass(
+                services,
+                "set_advisory_state",
+                &SetAdvisoryStateArgs { actor: actor(), repo, id: text(input, "id").unwrap_or_default(), state },
+            )
+            .await
         }
         SecurityOp::ListReports => {
             let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };
@@ -1164,8 +1270,12 @@ pub async fn run(op: SecurityOp, services: &Services, viewer: &Viewer, input: &V
         }
         SecurityOp::UpdateWorkspaceSettings => {
             let Some(workspace) = workspace else { return failed(FailureCode::Invalid, "Give the workspace.") };
-            let current: Outcome<WorkspaceSecurityView> =
-                call(services, "workspace_security_settings", &WorkspaceSecuritySettingsArgs { viewer: viewer.clone(), workspace: workspace.clone() }).await?;
+            let current: Outcome<WorkspaceSecurityView> = call(
+                services,
+                "workspace_security_settings",
+                &WorkspaceSecuritySettingsArgs { viewer: viewer.clone(), workspace: workspace.clone() },
+            )
+            .await?;
             let mut settings = match current {
                 Outcome::Ok(view) => view.settings,
                 Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
@@ -1176,11 +1286,13 @@ pub async fn run(op: SecurityOp, services: &Services, viewer: &Viewer, input: &V
             if let Some(on) = flag(input, "validity_checks") {
                 settings.validity_checks = on;
             }
-            pass(services, "set_workspace_security_settings", &SetWorkspaceSecuritySettingsArgs { actor: actor(), workspace, settings }).await
+            pass(services, "set_workspace_security_settings", &SetWorkspaceSecuritySettingsArgs { actor: actor(), workspace, settings })
+                .await
         }
         SecurityOp::GetOverview => {
             let Some(workspace) = workspace else { return failed(FailureCode::Invalid, "Give the workspace.") };
-            pass(services, "security_overview", &WorkspaceOverviewArgs { viewer: viewer.clone(), workspace, days: whole(input, "days") }).await
+            pass(services, "security_overview", &WorkspaceOverviewArgs { viewer: viewer.clone(), workspace, days: whole(input, "days") })
+                .await
         }
     }
 }
@@ -1212,7 +1324,8 @@ mod tests {
 
     #[test]
     fn secret_filters_are_read_as_words() {
-        let filters = secret_filters(&json!({ "state": "OPEN", "validity": "active", "bypassed": "true", "secret_type": "github_token" })).unwrap();
+        let filters =
+            secret_filters(&json!({ "state": "OPEN", "validity": "active", "bypassed": "true", "secret_type": "github_token" })).unwrap();
         assert_eq!(filters.state, Some(AlertState::Open));
         assert_eq!(filters.validity.as_deref(), Some("active"));
         assert_eq!(filters.bypassed, Some(true));
@@ -1228,8 +1341,16 @@ mod tests {
             state_change(&json!({ "state": "dismissed", "reason": "revoked" }), "reason", &SECRET_REASONS),
             Ok(Some(DismissReason::Revoked))
         );
-        assert!(state_change(&json!({ "state": "dismissed", "reason": "not_used" }), "reason", &SECRET_REASONS).unwrap_err().contains("reason is false_positive"));
-        assert!(state_change(&json!({ "state": "dismissed" }), "dismissed_reason", &CODE_REASONS).unwrap_err().starts_with("Give dismissed_reason"));
+        assert!(
+            state_change(&json!({ "state": "dismissed", "reason": "not_used" }), "reason", &SECRET_REASONS)
+                .unwrap_err()
+                .contains("reason is false_positive")
+        );
+        assert!(
+            state_change(&json!({ "state": "dismissed" }), "dismissed_reason", &CODE_REASONS)
+                .unwrap_err()
+                .starts_with("Give dismissed_reason")
+        );
         assert!(state_change(&json!({ "state": "fixed" }), "reason", &CODE_REASONS).is_err());
     }
 

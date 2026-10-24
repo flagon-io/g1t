@@ -75,10 +75,8 @@ pub fn parse(text: &str) -> Option<Url> {
 
 /// Reads the saved server, or takes g1t.sh, and the saved settings.
 pub fn load(app: &AppHandle) {
-    let file: File = path(app)
-        .and_then(|path| fs::read(path).ok())
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-        .unwrap_or_default();
+    let file: File =
+        path(app).and_then(|path| fs::read(path).ok()).and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default();
     let server = file.server.as_deref().and_then(parse).unwrap_or_else(|| Url::parse(DEFAULT_SERVER).expect("the default server is a URL"));
     let state = app.state::<State>();
     *state.server.lock().unwrap() = Some(server);
@@ -88,10 +86,7 @@ pub fn load(app: &AppHandle) {
 /// Writes the server and the settings as they are now.
 fn save(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<State>();
-    let file = File {
-        server: state.server.lock().unwrap().as_ref().map(Url::to_string),
-        settings: state.settings.lock().unwrap().clone(),
-    };
+    let file = File { server: state.server.lock().unwrap().as_ref().map(Url::to_string), settings: state.settings.lock().unwrap().clone() };
     let path = path(app).ok_or("The app has no folder to keep its settings in.")?;
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|error| error.to_string())?;
@@ -110,12 +105,7 @@ pub fn set_settings(app: &AppHandle, settings: Settings) -> Result<(), String> {
 }
 
 pub fn server(app: &AppHandle) -> Url {
-    app.state::<State>()
-        .server
-        .lock()
-        .unwrap()
-        .clone()
-        .unwrap_or_else(|| Url::parse(DEFAULT_SERVER).expect("the default server is a URL"))
+    app.state::<State>().server.lock().unwrap().clone().unwrap_or_else(|| Url::parse(DEFAULT_SERVER).expect("the default server is a URL"))
 }
 
 /// Saves a new server and lets its pages talk to the app.

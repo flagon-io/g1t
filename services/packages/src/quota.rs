@@ -81,11 +81,8 @@ pub fn message(workspace: &str, refusal: &Refusal) -> String {
 mod tests {
     use super::*;
 
-    const FREE: Allowance = Allowance {
-        has_plan: false,
-        package_public_free_bytes: 10_000_000_000,
-        package_private_free_bytes: 500_000_000,
-    };
+    const FREE: Allowance =
+        Allowance { has_plan: false, package_public_free_bytes: 10_000_000_000, package_private_free_bytes: 500_000_000 };
 
     #[test]
     fn a_free_workspace_is_refused_past_each_free_amount() {

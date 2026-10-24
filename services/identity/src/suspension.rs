@@ -36,7 +36,11 @@ pub fn normalize_domain(input: &str) -> Option<String> {
     let well_formed = domain.len() <= 253
         && domain.contains('.')
         && domain.split('.').all(|label| {
-            !label.is_empty() && label.len() <= 63 && !label.starts_with('-') && !label.ends_with('-') && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+            !label.is_empty()
+                && label.len() <= 63
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
         });
     well_formed.then_some(domain)
 }
@@ -90,9 +94,7 @@ impl Identity {
 
     /// What `user_suspension` reads, to batch with other reads.
     pub(crate) fn user_suspension_statement(&self, user_id: &str) -> Result<worker::D1PreparedStatement> {
-        self.db
-            .prepare("SELECT suspended_at, suspended_reason, suspended_by FROM users WHERE id = ?")
-            .bind(&[user_id.into()])
+        self.db.prepare("SELECT suspended_at, suspended_reason, suspended_by FROM users WHERE id = ?").bind(&[user_id.into()])
     }
 
     /// The workspace's suspension, if it has one, by slug.

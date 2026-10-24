@@ -49,7 +49,7 @@
 
 use g1t_contracts::billing::{
     AdminComplimentaryArgs, AdminEndComplimentaryArgs, AdminSetComplimentaryArgs, CardCheckArgs, ComplimentaryMonth, ComplimentaryPeriod,
-    ComplimentaryStanding, Conversion, ConvertToPaidArgs, Feature, UsageAlert, MAX_COMPLIMENTARY_FEE_CENTS, MAX_COMPLIMENTARY_MICROS,
+    ComplimentaryStanding, Conversion, ConvertToPaidArgs, Feature, MAX_COMPLIMENTARY_FEE_CENTS, MAX_COMPLIMENTARY_MICROS, UsageAlert,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, new_id};
@@ -166,8 +166,18 @@ pub(crate) fn invalid(a: &AdminSetComplimentaryArgs) -> Option<String> {
 
 /// A month's standing from its figures. `remaining` is what new work may
 /// still hold: what is left after used, pending and held usage.
-pub(crate) fn month_standing(month: &str, row: &Row, used: i64, pending: i64, held: i64, overrun: i64, has_card: bool) -> ComplimentaryMonth {
-    let remaining = if row.unlimited() { crate::credits::left(g1t_contracts::billing::UNLIMITED_MICROS, used) } else {
+pub(crate) fn month_standing(
+    month: &str,
+    row: &Row,
+    used: i64,
+    pending: i64,
+    held: i64,
+    overrun: i64,
+    has_card: bool,
+) -> ComplimentaryMonth {
+    let remaining = if row.unlimited() {
+        crate::credits::left(g1t_contracts::billing::UNLIMITED_MICROS, used)
+    } else {
         crate::credits::left(row.allowance_micros, used + pending.max(0) + held.max(0))
     };
     ComplimentaryMonth {
@@ -304,8 +314,11 @@ impl Billing {
             &overrun_args,
         );
         let has_card = async { Ok(row.charges_past() && self.has_card(&row.workspace).await?) };
-        let ((used, pending, held), (overrun, has_card)) =
-            futures_util::future::try_join(futures_util::future::try_join3(used, pending, held), futures_util::future::try_join(overrun, has_card)).await?;
+        let ((used, pending, held), (overrun, has_card)) = futures_util::future::try_join(
+            futures_util::future::try_join3(used, pending, held),
+            futures_util::future::try_join(overrun, has_card),
+        )
+        .await?;
         Ok(month_standing(&month, row, used, pending, held, overrun, has_card))
     }
 
@@ -428,7 +441,10 @@ impl Billing {
             return Ok(Outcome::fail(FailureCode::Invalid, why));
         }
         let Some(stripe) = &self.stripe else {
-            return Ok(Outcome::fail(FailureCode::Conflict, "Payments are not set up on this g1t: an enrollment needs a Stripe subscription."));
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "Payments are not set up on this g1t: an enrollment needs a Stripe subscription.",
+            ));
         };
         let workspace = a.workspace.trim().to_lowercase();
         let by = a.by.trim();
@@ -543,7 +559,10 @@ impl Billing {
             Some(_) => {
                 let row = existing.as_ref().expect("matched an existing row");
                 if matches!(Op::parse(row.pending_op.as_deref()), Some(Op::Convert { .. } | Op::Create)) {
-                    return Ok(Outcome::fail(FailureCode::Conflict, "The owner is converting this workspace to the plan; wait for that to finish."));
+                    return Ok(Outcome::fail(
+                        FailureCode::Conflict,
+                        "The owner is converting this workspace to the plan; wait for that to finish.",
+                    ));
                 }
                 // One batch: the open period closes and the next opens with
                 // the new terms. What this month used stays used.
@@ -618,7 +637,10 @@ impl Billing {
             return Ok(Outcome::fail(FailureCode::NotFound, "The workspace has no enrollment to end."));
         };
         if matches!(Op::parse(row.pending_op.as_deref()), Some(Op::Convert { .. })) {
-            return Ok(Outcome::fail(FailureCode::Conflict, "The owner is converting this workspace to the plan; wait for that to finish."));
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "The owner is converting this workspace to the plan; wait for that to finish.",
+            ));
         }
         self.end(&row, "revoked", a.by.trim(), a.note.trim()).await?;
         self.drive_logged(&workspace).await;
@@ -637,7 +659,8 @@ impl Billing {
         if row.status == "active" {
             self.post_pending_under_allowance(row, now_ms).await?;
         }
-        let op = if reason == "revoked" && (row.subscription_id.is_some() || row.status == "pending") { Some(Op::Cancel.text()) } else { None };
+        let op =
+            if reason == "revoked" && (row.subscription_id.is_some() || row.status == "pending") { Some(Op::Cancel.text()) } else { None };
         self.db
             .batch(vec![
                 self.db
@@ -660,7 +683,8 @@ impl Billing {
             ])
             .await?;
         let account = self.account_of(&row.workspace).await?;
-        self.audit(&account.id, "complimentary", &format!("{} enrollment {} ended ({reason}): {note}", row.workspace, row.grant_id), by).await
+        self.audit(&account.id, "complimentary", &format!("{} enrollment {} ended ({reason}): {note}", row.workspace, row.grant_id), by)
+            .await
     }
 
     /// Month-end meters (storage, git operations…) run up so far this month
@@ -719,11 +743,7 @@ impl Billing {
             }
             let base = crate::credits::with_margin(cost, self.margin_percent);
             let (charge, terms_note, discount) = self.charged(&row.workspace, base).await?;
-            let description = format!(
-                "{} in {} while enrolled{terms_note}",
-                crate::storage::title(&pending.source),
-                pending.month
-            );
+            let description = format!("{} in {} while enrolled{terms_note}", crate::storage::title(&pending.source), pending.month);
             let reference = format!("{}/{}/{}/{}", pending.source, row.workspace, pending.month, row.grant_id);
             let eligible = crate::credits::Eligible::default();
             let line = crate::storage::UsageLine {
@@ -749,8 +769,11 @@ impl Billing {
     async fn drive_logged(&self, workspace: &str) {
         if let Err(error) = self.drive(workspace).await {
             worker::console_error!("{workspace}: complimentary Stripe step failed; tried again next tick: {error}");
-            let noted = match self.db.prepare("UPDATE complimentary SET last_error = ?2 WHERE workspace = ?1")
-                .bind(&[workspace.into(), crate::stripe::friendly(&error).into()]) {
+            let noted = match self
+                .db
+                .prepare("UPDATE complimentary SET last_error = ?2 WHERE workspace = ?1")
+                .bind(&[workspace.into(), crate::stripe::friendly(&error).into()])
+            {
                 Ok(statement) => statement.run().await.map(|_| ()),
                 Err(error) => Err(error),
             };
@@ -825,7 +848,9 @@ impl Billing {
                             .await?;
                     }
                     self.db
-                        .prepare("UPDATE complimentary SET pending_op = NULL WHERE workspace = ?1 AND pending_op = ?2 AND status = 'active'")
+                        .prepare(
+                            "UPDATE complimentary SET pending_op = NULL WHERE workspace = ?1 AND pending_op = ?2 AND status = 'active'",
+                        )
                         .bind(&[row.workspace.as_str().into(), row.pending_op.clone().unwrap_or_default().into()])?
                         .run()
                         .await?;
@@ -865,7 +890,8 @@ impl Billing {
                         struct Customer {
                             id: String,
                         }
-                        let key = if old { format!("cmp/{}/customer/late", row.grant_id) } else { format!("cmp/{}/customer", row.grant_id) };
+                        let key =
+                            if old { format!("cmp/{}/customer/late", row.grant_id) } else { format!("cmp/{}/customer", row.grant_id) };
                         let made: Customer = stripe.post_idempotent("/customers", &fields, &key).await?;
                         made.id
                     }
@@ -874,9 +900,11 @@ impl Billing {
         };
         self.db
             .batch(vec![
-                self.db
-                    .prepare("UPDATE complimentary SET customer_id = ?2 WHERE workspace = ?1 AND grant_id = ?3")
-                    .bind(&[row.workspace.as_str().into(), customer.as_str().into(), row.grant_id.as_str().into()])?,
+                self.db.prepare("UPDATE complimentary SET customer_id = ?2 WHERE workspace = ?1 AND grant_id = ?3").bind(&[
+                    row.workspace.as_str().into(),
+                    customer.as_str().into(),
+                    row.grant_id.as_str().into(),
+                ])?,
                 self.db
                     .prepare(
                         "INSERT INTO accounts (workspace, balance_micros, customer_id, created_at) VALUES (?1, 0, ?2, ?3)
@@ -944,7 +972,8 @@ impl Billing {
                 }
                 let product = stripe.product(Feature::Plan.as_str(), &format!("{} plan", Feature::Plan.title())).await?;
                 let fields = create_fields(row, &customer, &product, self.plans.plan_monthly_cents, fully);
-                let key = if old { format!("cmp/{}/subscription/late", row.grant_id) } else { format!("cmp/{}/subscription", row.grant_id) };
+                let key =
+                    if old { format!("cmp/{}/subscription/late", row.grant_id) } else { format!("cmp/{}/subscription", row.grant_id) };
                 stripe.post_idempotent("/subscriptions", &owned(&fields), &key).await?
             }
         };
@@ -1047,7 +1076,9 @@ impl Billing {
             // A creation may still land under its key: make it now so it can
             // be canceled, rather than leave one behind.
             if row.customer_id.is_some() {
-                return Err(worker::Error::RustError("waiting for Stripe to show the enrollment's subscription before canceling it".into()));
+                return Err(worker::Error::RustError(
+                    "waiting for Stripe to show the enrollment's subscription before canceling it".into(),
+                ));
             }
         }
         self.db
@@ -1153,8 +1184,13 @@ impl Billing {
         if fully_discounted(&row, self.internal_terms(&workspace).await?) {
             return Ok(Outcome::fail(FailureCode::Conflict, "This enrollment is g1t's own and is not converted."));
         }
-        let (Some(subscription_id), Some(item), Some(customer)) = (row.subscription_id.clone(), row.item_id.clone(), row.customer_id.clone()) else {
-            return Ok(Outcome::fail(FailureCode::Conflict, "The enrollment's Stripe subscription is not set up yet; try again in a few minutes."));
+        let (Some(subscription_id), Some(item), Some(customer)) =
+            (row.subscription_id.clone(), row.item_id.clone(), row.customer_id.clone())
+        else {
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "The enrollment's Stripe subscription is not set up yet; try again in a few minutes.",
+            ));
         };
         // Where the subscription stands now decides: converted already, or
         // a payment waiting on the bank, is answered, never started again.
@@ -1172,7 +1208,10 @@ impl Billing {
                 attempt + 1
             }
             Some(_) => {
-                return Ok(Outcome::fail(FailureCode::Conflict, "g1t is still updating this enrollment at Stripe; try again in a few minutes."));
+                return Ok(Outcome::fail(
+                    FailureCode::Conflict,
+                    "g1t is still updating this enrollment at Stripe; try again in a few minutes.",
+                ));
             }
             None => 1,
         };
@@ -1198,7 +1237,10 @@ impl Billing {
             .first::<serde_json::Value>(None)
             .await?;
         if claimed.is_none() {
-            return Ok(Outcome::fail(FailureCode::Conflict, "g1t is still updating this enrollment at Stripe; try again in a few minutes."));
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "g1t is still updating this enrollment at Stripe; try again in a few minutes.",
+            ));
         }
         // Charged automatically from now, taxed: both change nothing on a
         // $0 subscription, and neither can wait on a payment.
@@ -1213,7 +1255,9 @@ impl Billing {
             worker::console_error!("{workspace}: preparing the conversion failed: {error}");
             self.clear_op(&row, &op).await?;
             if crate::stripe::is_tax_location_error(&error) {
-                return self.needs_card(&a, "Add your billing address with a card so tax can be worked out; nothing is charged until you confirm.").await;
+                return self
+                    .needs_card(&a, "Add your billing address with a card so tax can be worked out; nothing is charged until you confirm.")
+                    .await;
             }
             return Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error)));
         }
@@ -1234,7 +1278,8 @@ impl Billing {
                 // nothing pending; a pending update (its invoice can still
                 // be paid for 23 hours) or anything else is settled later.
                 let refused = crate::invoices::is_decline(&error.to_string()) || error.to_string().contains("answered 400");
-                let waiting = stripe.subscription(&subscription_id).await.map_or(true, |s| s.pending_update.as_ref().is_some_and(|p| !p.is_null()));
+                let waiting =
+                    stripe.subscription(&subscription_id).await.map_or(true, |s| s.pending_update.as_ref().is_some_and(|p| !p.is_null()));
                 if refused && !waiting {
                     self.clear_op(&row, &op).await?;
                 }
@@ -1276,11 +1321,12 @@ impl Billing {
             .card_check(CardCheckArgs { actor: a.actor.clone(), workspace: a.workspace.clone(), return_url: a.return_url.clone() })
             .await?;
         Ok(match page {
-            Outcome::Ok(checkout) => Outcome::Ok(Conversion { status: "needs_card".into(), url: Some(checkout.url), message: message.to_owned() }),
+            Outcome::Ok(checkout) => {
+                Outcome::Ok(Conversion { status: "needs_card".into(), url: Some(checkout.url), message: message.to_owned() })
+            }
             Outcome::Fail(failure) => Outcome::Fail(failure),
         })
     }
-
 }
 
 /// The conversion itself: the one item to the plan's price, a new cycle
@@ -1340,7 +1386,6 @@ pub(crate) fn alert(workspace: &str, month: &ComplimentaryMonth) -> Option<Usage
         },
     })
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1448,21 +1493,35 @@ mod tests {
         let item = |price: &str| serde_json::json!({"data": [{"id": "si_1", "price": {"id": price, "unit_amount": 2100}}]});
         let converted = |price: Option<&str>, s: &StripeSubscription| converted(price, s, 2_100, true);
         // Paid: the item has the plan's price and nothing waits.
-        assert!(converted(Some("price_comp"), &subscription(serde_json::json!({"id": "sub_1", "status": "active", "items": item("price_plan")}))));
+        assert!(converted(
+            Some("price_comp"),
+            &subscription(serde_json::json!({"id": "sub_1", "status": "active", "items": item("price_plan")}))
+        ));
         // A staff terms change gives the item a new price too: never a
         // conversion without one in progress, nor at another amount.
         let terms = subscription(serde_json::json!({"id": "sub_1", "status": "active", "items": item("price_plan")}));
         assert!(!super::converted(Some("price_comp"), &terms, 2_100, false));
-        let fee = subscription(serde_json::json!({"id": "sub_1", "status": "active", "items": {"data": [{"id": "si_1", "price": {"id": "price_fee", "unit_amount": 2500}}]}}));
+        let fee = subscription(
+            serde_json::json!({"id": "sub_1", "status": "active", "items": {"data": [{"id": "si_1", "price": {"id": "price_fee", "unit_amount": 2500}}]}}),
+        );
         assert!(!super::converted(Some("price_comp"), &fee, 2_100, true));
         // 3DS or declined: Stripe keeps the old price behind a pending update.
-        let waiting = subscription(serde_json::json!({"id": "sub_1", "status": "active", "items": item("price_comp"), "pending_update": {"subscription_items": []}}));
+        let waiting = subscription(
+            serde_json::json!({"id": "sub_1", "status": "active", "items": item("price_comp"), "pending_update": {"subscription_items": []}}),
+        );
         assert!(!converted(Some("price_comp"), &waiting));
-        let pending_new = subscription(serde_json::json!({"id": "sub_1", "status": "active", "items": item("price_plan"), "pending_update": {"x": 1}}));
+        let pending_new =
+            subscription(serde_json::json!({"id": "sub_1", "status": "active", "items": item("price_plan"), "pending_update": {"x": 1}}));
         assert!(!converted(Some("price_comp"), &pending_new));
         // Unchanged, canceled, or nothing known to compare with.
-        assert!(!converted(Some("price_comp"), &subscription(serde_json::json!({"id": "sub_1", "status": "active", "items": item("price_comp")}))));
-        assert!(!converted(Some("price_comp"), &subscription(serde_json::json!({"id": "sub_1", "status": "canceled", "items": item("price_plan")}))));
+        assert!(!converted(
+            Some("price_comp"),
+            &subscription(serde_json::json!({"id": "sub_1", "status": "active", "items": item("price_comp")}))
+        ));
+        assert!(!converted(
+            Some("price_comp"),
+            &subscription(serde_json::json!({"id": "sub_1", "status": "canceled", "items": item("price_plan")}))
+        ));
         assert!(!converted(None, &subscription(serde_json::json!({"id": "sub_1", "status": "active", "items": item("price_plan")}))));
     }
 
@@ -1490,7 +1549,9 @@ mod tests {
 
     #[test]
     fn owed_steps_round_trip() {
-        for op in [Op::Create, Op::Cancel, Op::Terms { period: "cmpp_1".into() }, Op::Convert { attempt: 2, by: "ana".into(), started_ms: 5 }] {
+        for op in
+            [Op::Create, Op::Cancel, Op::Terms { period: "cmpp_1".into() }, Op::Convert { attempt: 2, by: "ana".into(), started_ms: 5 }]
+        {
             assert_eq!(Op::parse(Some(&op.text())), Some(op));
         }
         assert_eq!(Op::Create.text(), r#"{"op":"create"}"#);

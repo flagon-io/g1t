@@ -198,8 +198,7 @@ impl Billing {
         .await?;
         // The saved card and trial must survive before checkout is complete.
         // All preceding writes are repeatable after a partial failure.
-        self.db.prepare("UPDATE checkouts SET status = 'paid' WHERE id = ? AND status = 'open'")
-            .bind(&[session_id.into()])?.run().await?;
+        self.db.prepare("UPDATE checkouts SET status = 'paid' WHERE id = ? AND status = 'open'").bind(&[session_id.into()])?.run().await?;
         Ok(Ok(format!("{workspace}: card checked; {trial}")))
     }
 

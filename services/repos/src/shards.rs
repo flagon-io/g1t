@@ -99,11 +99,7 @@ const SLACK_SHARE: f64 = 0.05;
 pub fn limits(config: Option<&str>) -> std::collections::HashMap<String, u64> {
     config
         .and_then(|text| serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(text).ok())
-        .map(|map| {
-            map.into_iter()
-                .filter_map(|(namespace, limit)| Some((namespace, limit.get("max_repos")?.as_u64()?)))
-                .collect()
-        })
+        .map(|map| map.into_iter().filter_map(|(namespace, limit)| Some((namespace, limit.get("max_repos")?.as_u64()?))).collect())
         .unwrap_or_default()
 }
 

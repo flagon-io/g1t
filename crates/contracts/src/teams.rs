@@ -33,9 +33,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Role, User};
 use crate::access::RepoRole;
 use crate::repos::RepoPath;
+use crate::{Role, User};
 
 /// The most teams one workspace can have.
 pub const MAX_TEAMS: u32 = 500;

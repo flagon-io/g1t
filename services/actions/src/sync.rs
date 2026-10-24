@@ -75,10 +75,7 @@ impl Actions {
     /// managed workflows installed in it and its workspace's that target
     /// it, as managed.rs puts them together.
     pub async fn read_for(&self, repo: &Repo, actor: &User, git_ref: Option<&str>) -> Result<Read> {
-        let path = RepoPath {
-            namespace: repo.namespace.clone(),
-            name: repo.name.clone(),
-        };
+        let path = RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() };
         let mut read = self.read_workflows(&path, actor, git_ref).await?;
         // And the managed workflows beside them (managed.rs).
         read.files = self.with_managed(repo, read.files).await?;
@@ -119,12 +116,7 @@ impl Actions {
             // repository's dozen workflows took 4 s of every push.
             let repos = &self.repos;
             let blobs: Vec<Result<Outcome<BlobView>>> = stream::iter(file_paths.iter().map(|file_path| {
-                let args = BlobArgs {
-                    path: path.clone(),
-                    viewer: viewer.clone(),
-                    git_ref: at.clone(),
-                    file_path: file_path.clone(),
-                };
+                let args = BlobArgs { path: path.clone(), viewer: viewer.clone(), git_ref: at.clone(), file_path: file_path.clone() };
                 async move { g1t_kit::call(repos, "blob", &args).await }
             }))
             .buffered(BLOBS_AT_ONCE)
@@ -210,9 +202,7 @@ impl Actions {
             );
         }
         statements.push(
-            self.db
-                .prepare("INSERT OR REPLACE INTO synced (repo_id, at) VALUES (?, ?)")
-                .bind(&[repo.id.as_str().into(), now.into()])?,
+            self.db.prepare("INSERT OR REPLACE INTO synced (repo_id, at) VALUES (?, ?)").bind(&[repo.id.as_str().into(), now.into()])?,
         );
         self.db.batch(statements).await?;
         Ok(read)

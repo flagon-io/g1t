@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use futures_util::future::{try_join, try_join3};
 use g1t_contracts::billing::{
-    Allowance, MeterLine, PlanKind, ProductUsage, ProjectUsage, UsageDay, UsageReport, UsageReportArgs, UsageTotals, PRODUCTS,
+    Allowance, MeterLine, PRODUCTS, PlanKind, ProductUsage, ProjectUsage, UsageDay, UsageReport, UsageReportArgs, UsageTotals,
 };
 use g1t_contracts::time::{parse_rfc3339, rfc3339};
 use g1t_contracts::{FailureCode, Outcome};
@@ -267,15 +267,11 @@ pub(crate) fn shape(
         .filter(|(key, _)| wanted_product(key))
         .map(|(key, label)| {
             let meters: Vec<MeterLine> = lines.iter().filter(|l| l.product == key).cloned().collect();
-            ProductUsage {
-                key: key.to_owned(),
-                label: label.to_owned(),
-                micros: meters.iter().map(|m| m.micros).sum(),
-                meters,
-            }
+            ProductUsage { key: key.to_owned(), label: label.to_owned(), micros: meters.iter().map(|m| m.micros).sum(), meters }
         })
         .collect();
-    let days_out = by_day.into_iter().filter(|(_, micros)| *micros != 0).map(|((day, product), micros)| UsageDay { day, product, micros }).collect();
+    let days_out =
+        by_day.into_iter().filter(|(_, micros)| *micros != 0).map(|((day, product), micros)| UsageDay { day, product, micros }).collect();
     (products_out, days_out, totals, all_projects.into_iter().collect())
 }
 
@@ -339,7 +335,12 @@ impl Billing {
         let pending: Vec<Pending> = pending
             .into_iter()
             .zip(splits)
-            .map(|(p, split)| Pending { meter: meter_of_pending(&p.source), micros: split.price, covered: split.covered, discount: split.discount })
+            .map(|(p, split)| Pending {
+                meter: meter_of_pending(&p.source),
+                micros: split.price,
+                covered: split.covered,
+                discount: split.discount,
+            })
             .filter(|p| p.micros > 0)
             .collect();
         let (mut products, days_out, mut totals, all_projects) = shape(&days, &cells, &pending, &a.products, &a.projects);
@@ -353,9 +354,7 @@ impl Billing {
         let mut trial = None;
         if this_month {
             let (used, stored, operations) = futures_util::future::try_join3(
-                async {
-                    if plan == PlanKind::Paid { self.allowance_used("plan_credit", &workspace, &month).await } else { Ok(0) }
-                },
+                async { if plan == PlanKind::Paid { self.allowance_used("plan_credit", &workspace, &month).await } else { Ok(0) } },
                 self.private_storage(&workspace),
                 self.git_operations_this_month(&workspace),
             )
@@ -368,11 +367,16 @@ impl Billing {
                     match meter.key.as_str() {
                         "storage" => {
                             meter.quantity = stored as f64;
-                            meter.allowance = Some(Allowance { used: stored as f64, of: self.plans.free_storage_bytes as f64, unit: "bytes".to_owned() });
+                            meter.allowance =
+                                Some(Allowance { used: stored as f64, of: self.plans.free_storage_bytes as f64, unit: "bytes".to_owned() });
                         }
                         "git" => {
                             meter.quantity = operations as f64;
-                            meter.allowance = Some(Allowance { used: operations as f64, of: self.plans.git_included as f64, unit: "operations".to_owned() });
+                            meter.allowance = Some(Allowance {
+                                used: operations as f64,
+                                of: self.plans.git_included as f64,
+                                unit: "operations".to_owned(),
+                            });
                         }
                         _ => {}
                     }
@@ -437,7 +441,10 @@ mod tests {
         let pending = vec![Pending { meter: "git", micros: 40_000, ..Pending::default() }];
         let (products, by_day, totals, projects) = shape(&days, &cells, &pending, &[], &[]);
         // Every product family with meters, in order; no Other without usage on it.
-        assert_eq!(products.iter().map(|p| p.key.as_str()).collect::<Vec<_>>(), ["sandboxes", "deployments", "git_storage", "packages", "security", "search", "observability"]);
+        assert_eq!(
+            products.iter().map(|p| p.key.as_str()).collect::<Vec<_>>(),
+            ["sandboxes", "deployments", "git_storage", "packages", "security", "search", "observability"]
+        );
         let deployments = &products[1];
         assert_eq!(deployments.micros, 3_000_000);
         let requests = deployments.meters.iter().find(|m| m.key == "requests").unwrap();
@@ -458,7 +465,8 @@ mod tests {
     #[test]
     fn runner_minutes_are_by_machine_beside_older_sandbox_time() {
         let days = days_between("2026-10-01", "2026-10-01").unwrap();
-        let minutes = |meter: &str, quantity: f64, price: f64| Cell { quantity: Some(quantity), ..cell("2026-10-01", meter, "acme/web", price) };
+        let minutes =
+            |meter: &str, quantity: f64, price: f64| Cell { quantity: Some(quantity), ..cell("2026-10-01", meter, "acme/web", price) };
         let cells = vec![
             minutes("runner_2-core", 12.0, 48_000.0),
             minutes("runner_4-core", 3.0, 21_000.0),
@@ -471,7 +479,10 @@ mod tests {
         let sandboxes = &products[0];
         let line = |key: &str| sandboxes.meters.iter().find(|m| m.key == key).unwrap();
         let two = line("runner_2-core");
-        assert_eq!((two.label.as_str(), two.unit.as_str(), two.quantity, two.micros), ("Runner minutes, 2-core (2 vCPU, 8 GiB, 16 GB)", "minutes", 12.0, 48_000));
+        assert_eq!(
+            (two.label.as_str(), two.unit.as_str(), two.quantity, two.micros),
+            ("Runner minutes, 2-core (2 vCPU, 8 GiB, 16 GB)", "minutes", 12.0, 48_000)
+        );
         // 4-core's minutes from when they were charged as 4-core keep a
         // line of their own.
         assert_eq!((line("runner_4-core").quantity, line("runner_4-core").micros), (3.0, 21_000));
@@ -511,7 +522,11 @@ mod tests {
     #[test]
     fn filters_keep_only_the_products_and_projects_asked_for() {
         let days = days_between("2026-10-01", "2026-10-01").unwrap();
-        let cells = vec![cell("2026-10-01", "sandbox", "acme/web", 100.0), cell("2026-10-01", "sandbox", "acme/api", 50.0), cell("2026-10-01", "requests", "acme/web", 10.0)];
+        let cells = vec![
+            cell("2026-10-01", "sandbox", "acme/web", 100.0),
+            cell("2026-10-01", "sandbox", "acme/api", 50.0),
+            cell("2026-10-01", "requests", "acme/web", 10.0),
+        ];
         let pending = vec![Pending { meter: "git", micros: 7, ..Pending::default() }];
         let (products, _, totals, projects) = shape(&days, &cells, &pending, &["sandboxes".into()], &["acme/web".into()]);
         assert_eq!(products.len(), 1);

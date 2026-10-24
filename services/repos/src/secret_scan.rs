@@ -22,10 +22,11 @@ use g1t_contracts::User;
 use g1t_contracts::accounts::{CommitIdentityArgs, PushEmailGuard, mask_email};
 use g1t_contracts::repos::{EntryKind, Repo, RepoPath};
 use g1t_contracts::security::{
-    FindLockfilesArgs, HistoryPage, LockfileText, Lockfiles, NewSecret, PushBlockedArgs, PushVerdict,
-    ScanHistoryArgs,
+    FindLockfilesArgs, HistoryPage, LockfileText, Lockfiles, NewSecret, PushBlockedArgs, PushVerdict, ScanHistoryArgs,
 };
-use g1t_contracts::security_suite::{CheckSecretArgs, MatchPatternArgs, PatternMatch, PatternMatches, PatternSpec, PatternsForArgs, SecretValidity};
+use g1t_contracts::security_suite::{
+    CheckSecretArgs, MatchPatternArgs, PatternMatch, PatternMatches, PatternSpec, PatternsForArgs, SecretValidity,
+};
 use g1t_scan::custom::{self, Compiled};
 use g1t_scan::lockfiles::Lockfile;
 use g1t_scan::pack::{ObjectKind, Pack, TreeItem, encode_tree};
@@ -147,11 +148,7 @@ async fn changed_files<R: GitRepo>(objects: &Objects<'_, R>, old_root: Option<St
                 if item.is_tree() {
                     next.push((format!("{path}/"), before.filter(|b| b.is_tree()).map(|b| b.id.clone()), item.id.clone()));
                 } else if item.is_file() && changes.len() < MAX_FILES_PER_COMMIT {
-                    changes.push(Change {
-                        path,
-                        old: before.filter(|b| b.is_file()).map(|b| b.id.clone()),
-                        new: item.id.clone(),
-                    });
+                    changes.push(Change { path, old: before.filter(|b| b.is_file()).map(|b| b.id.clone()), new: item.id.clone() });
                 }
             }
         }
@@ -221,12 +218,14 @@ pub fn scan_file(path: &str, bytes: &[u8], commit: &str, patterns: &[Compiled]) 
 }
 
 /// The secrets each change adds, found `READS_AT_ONCE` files at a time.
-async fn scan_changes<R: GitRepo>(objects: &Objects<'_, R>, commit: &str, changes: Vec<Change>, patterns: &[Compiled]) -> Result<Vec<NewSecret>> {
+async fn scan_changes<R: GitRepo>(
+    objects: &Objects<'_, R>,
+    commit: &str,
+    changes: Vec<Change>,
+    patterns: &[Compiled],
+) -> Result<Vec<NewSecret>> {
     let mut found = Vec::new();
-    let changes: Vec<Change> = changes
-        .into_iter()
-        .filter(|change| !g1t_scan::secrets::skipped_path(&change.path))
-        .collect();
+    let changes: Vec<Change> = changes.into_iter().filter(|change| !g1t_scan::secrets::skipped_path(&change.path)).collect();
     for batch in changes.chunks(READS_AT_ONCE) {
         // A change's old and new contents at once: the new is nearly always
         // in the pack, the old in the repository.
@@ -386,7 +385,12 @@ pub async fn scan_push<R: GitRepo>(repo: &R, body: &[u8], patterns: &[Compiled])
 
 /// [`scan_push`] for a push of `size` bytes whose pack was read already,
 /// with its bases supplied (push_checks.rs).
-pub(crate) async fn scan_pack<R: GitRepo>(repo: &R, size: usize, pack: &std::result::Result<Pack, String>, patterns: &[Compiled]) -> Result<Vec<NewSecret>> {
+pub(crate) async fn scan_pack<R: GitRepo>(
+    repo: &R,
+    size: usize,
+    pack: &std::result::Result<Pack, String>,
+    patterns: &[Compiled],
+) -> Result<Vec<NewSecret>> {
     if size > MAX_SCANNED_PUSH {
         return Err(worker::Error::RustError(format!("{UNSCANNABLE} {size} bytes")));
     }
@@ -405,26 +409,16 @@ pub(crate) async fn scan_pack<R: GitRepo>(repo: &R, size: usize, pack: &std::res
     }
     let objects = Objects { pack, repo, reads: Cell::new(0) };
     let objects = &objects;
-    let commits: Vec<(String, g1t_scan::pack::CommitInfo)> = pack
-        .commits()
-        .iter()
-        .take(MAX_PUSH_COMMITS)
-        .filter_map(|id| Some((id.clone(), pack.commit(id)?)))
-        .collect();
+    let commits: Vec<(String, g1t_scan::pack::CommitInfo)> =
+        pack.commits().iter().take(MAX_PUSH_COMMITS).filter_map(|id| Some((id.clone(), pack.commit(id)?))).collect();
     // The trees of the parents the pack does not hold, all read up front:
     // usually the one commit the push builds on.
-    let mut outside: Vec<&String> = commits
-        .iter()
-        .filter_map(|(_, commit)| commit.parents.first())
-        .filter(|parent| !pack.contains(parent))
-        .collect();
+    let mut outside: Vec<&String> =
+        commits.iter().filter_map(|(_, commit)| commit.parents.first()).filter(|parent| !pack.contains(parent)).collect();
     outside.sort();
     outside.dedup();
-    let outside_trees: std::collections::HashMap<&String, Option<String>> = outside
-        .iter()
-        .copied()
-        .zip(try_join_all(outside.iter().map(|parent| objects.commit_tree(parent))).await?)
-        .collect();
+    let outside_trees: std::collections::HashMap<&String, Option<String>> =
+        outside.iter().copied().zip(try_join_all(outside.iter().map(|parent| objects.commit_tree(parent))).await?).collect();
     let outside_trees = &outside_trees;
     // What each commit changes, all read at once.
     let changed = try_join_all(commits.iter().map(|(_, commit)| async move {
@@ -485,10 +479,7 @@ pub(crate) fn exposed_in(pack: &Pack, guard: &PushEmailGuard) -> Option<(String,
 pub fn exposed_message(commit: &str, email: &str, noreply: &str) -> Vec<String> {
     let short: String = commit.chars().take(7).collect();
     vec![
-        format!(
-            "push declined: commit {short} would publish {} while your email is private.",
-            mask_email(&email.to_lowercase())
-        ),
+        format!("push declined: commit {short} would publish {} while your email is private.", mask_email(&email.to_lowercase())),
         format!("Commit with {noreply} (git config user.email {noreply}) and amend,"),
         format!("or change this in {}/settings/emails.", SITE.trim_start_matches("https://")),
     ]
@@ -563,9 +554,8 @@ impl<S: GitStore> crate::Repos<S> {
                     line: secret.line,
                     commit: secret.commit.clone(),
                     // Where it can be bypassed with a reason, or allowed.
-                    allow_url: id.map(|(_, id)| {
-                        format!("{SITE}/{}/{}/security/secret-scanning/{id}", owner_path.namespace, owner_path.name)
-                    }),
+                    allow_url: id
+                        .map(|(_, id)| format!("{SITE}/{}/{}/security/secret-scanning/{id}", owner_path.namespace, owner_path.name)),
                 })
             })
             .collect()
@@ -692,7 +682,9 @@ impl<S: GitStore> crate::Repos<S> {
             for entry in git.read_tree(&tree).await?.unwrap_or_default() {
                 let path = format!("{prefix}{}", entry.name);
                 match entry.kind {
-                    EntryKind::Tree if !SKIPPED_DIRECTORIES.contains(&entry.name.as_str()) => queue.push_back((format!("{path}/"), entry.hash)),
+                    EntryKind::Tree if !SKIPPED_DIRECTORIES.contains(&entry.name.as_str()) => {
+                        queue.push_back((format!("{path}/"), entry.hash))
+                    }
                     EntryKind::Blob | EntryKind::Exec if !g1t_scan::secrets::skipped_path(&path) => {
                         if files.len() == MATCH_FILES {
                             result.truncated = true;
@@ -724,7 +716,11 @@ impl<S: GitStore> crate::Repos<S> {
                         break;
                     }
                     let line = lines.get(hit.line as usize - 1).copied().unwrap_or_default();
-                    result.matches.push(PatternMatch { path: path.clone(), line: hit.line, preview: custom::masked_line(line, &hit.value) });
+                    result.matches.push(PatternMatch {
+                        path: path.clone(),
+                        line: hit.line,
+                        preview: custom::masked_line(line, &hit.value),
+                    });
                 }
             }
         }
@@ -769,7 +765,8 @@ impl<S: GitStore> crate::Repos<S> {
         let answer = async {
             let mut response = worker::Fetch::Request(worker::Request::new_with_init(probe.url, &init)?).send().await?;
             let status = response.status_code();
-            let body = if probe.reader == g1t_scan::validity::Reader::SlackOk { response.text().await.unwrap_or_default() } else { String::new() };
+            let body =
+                if probe.reader == g1t_scan::validity::Reader::SlackOk { response.text().await.unwrap_or_default() } else { String::new() };
             Ok::<_, worker::Error>((status, body))
         }
         .await;
@@ -933,10 +930,7 @@ mod tests {
     }
 
     fn raw_id(id: &str) -> Vec<u8> {
-        id.as_bytes()
-            .chunks(2)
-            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
-            .collect()
+        id.as_bytes().chunks(2).map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap()).collect()
     }
 
     enum Entry {
@@ -1011,7 +1005,8 @@ mod tests {
         let second = format!("AK{}", "IAQ9W8E7R6T5Y4U3I2");
         let new = [old.clone(), format!("second={second}\n").into_bytes()].concat();
         let base_tree = vec![TreeEntry { name: "app.env".into(), hash: old_id.clone(), kind: EntryKind::Blob }];
-        let base_tree_id = object_id(ObjectKind::Tree, &encode_tree(&[TreeItem { mode: "100644".into(), name: "app.env".into(), id: old_id.clone() }]));
+        let base_tree_id =
+            object_id(ObjectKind::Tree, &encode_tree(&[TreeItem { mode: "100644".into(), name: "app.env".into(), id: old_id.clone() }]));
         let parent_id = "c71546fcd893ef8b0f57388b65e620d759705dda".to_owned();
         let mut repo = FakeRepo::default();
         repo.blobs.insert(old_id.clone(), old.clone());
@@ -1049,13 +1044,16 @@ mod tests {
         // A file's old version, which no tree in the pack names: asked for
         // as a blob and as a tree together, and found as a blob.
         let old = b"one
-".to_vec();
+"
+        .to_vec();
         let old_id = object_id(ObjectKind::Blob, &old);
         let mut repo = FakeRepo::default();
         repo.blobs.insert(old_id.clone(), old.clone());
         let mut delta = vec![old.len() as u8, (old.len() + 4) as u8, 0x80 | 0x10, old.len() as u8, 4];
-        delta.extend_from_slice(b"two
-");
+        delta.extend_from_slice(
+            b"two
+",
+        );
         let body = push(&[Entry::Delta(old_id.clone(), delta)]);
         let mut pack = crate::push_checks::read_pack(&body).unwrap();
         run(supply_bases(&mut pack, &repo)).unwrap();
@@ -1083,10 +1081,15 @@ mod tests {
         // What git sends when told `no-thin`: a delta's base is in the pack
         // with it. Here the second file is a delta on the first.
         let first = b"REGION=eu
-".to_vec();
+"
+        .to_vec();
         let first_id = object_id(ObjectKind::Blob, &first);
-        let added = format!("AWS_KEY={}
-", key()).into_bytes();
+        let added = format!(
+            "AWS_KEY={}
+",
+            key()
+        )
+        .into_bytes();
         let second = [first.clone(), added.clone()].concat();
         let mut delta = vec![first.len() as u8, second.len() as u8, 0x80 | 0x10, first.len() as u8, added.len() as u8];
         delta.extend_from_slice(&added);
@@ -1116,9 +1119,7 @@ mod tests {
 
     /// A pack of `count` deltas, each on a different base outside it.
     fn thin_pack(count: usize) -> Pack {
-        let entries: Vec<Entry> = (1..=count)
-            .map(|at| Entry::Delta(format!("{at:040x}"), vec![1, 2, 0x02, b'h', b'i']))
-            .collect();
+        let entries: Vec<Entry> = (1..=count).map(|at| Entry::Delta(format!("{at:040x}"), vec![1, 2, 0x02, b'h', b'i'])).collect();
         crate::push_checks::read_pack(&push(&entries)).unwrap()
     }
 
@@ -1167,9 +1168,22 @@ mod tests {
             },
         );
         let mut entries = Vec::new();
-        for (name, line) in [("a.env", format!("KEY={}
-", key())), ("b.txt", "nothing here
-".to_owned())] {
+        for (name, line) in [
+            (
+                "a.env",
+                format!(
+                    "KEY={}
+",
+                    key()
+                ),
+            ),
+            (
+                "b.txt",
+                "nothing here
+"
+                .to_owned(),
+            ),
+        ] {
             let blob = line.into_bytes();
             let tree = encode_tree(&[TreeItem { mode: "100644".into(), name: name.into(), id: object_id(ObjectKind::Blob, &blob) }]);
             entries.push(Entry::Whole(ObjectKind::Commit, commit(&object_id(ObjectKind::Tree, &tree), Some(&parent_id))));
@@ -1187,10 +1201,8 @@ mod tests {
         let body = vec![0u8; MAX_SCANNED_PUSH + 1];
         let error = run(scan_push(&FakeRepo::default(), &body, &[])).unwrap_err();
         assert!(unscannable(&error));
-        let (reason, messages) = crate::git_http::size_refusal(&crate::git_http::SizeViolation::Unscannable {
-            size: body.len() as u64,
-            cap: MAX_SCANNED_PUSH,
-        });
+        let (reason, messages) =
+            crate::git_http::size_refusal(&crate::git_http::SizeViolation::Unscannable { size: body.len() as u64, cap: MAX_SCANNED_PUSH });
         assert_eq!(reason, "the push is too large to check for secrets");
         assert!(messages.iter().any(|line| line.contains("100.0 MB")));
         assert!(messages.iter().any(|line| line.contains("Push in parts")));
@@ -1248,12 +1260,15 @@ mod tests {
     fn a_push_carrying_the_pushers_private_address_is_declined_with_a_masked_address() {
         let tree = encode_tree(&[]);
         let tree_id = object_id(ObjectKind::Tree, &tree);
-        let mine = format!("tree {tree_id}
+        let mine = format!(
+            "tree {tree_id}
 author S <Sam@Gmail.com> 0 +0000
 committer S <sam@gmail.com> 0 +0000
 
 x
-").into_bytes();
+"
+        )
+        .into_bytes();
         let mine_id = object_id(ObjectKind::Commit, &mine);
         let guard = PushEmailGuard { emails: vec!["sam@gmail.com".into()], noreply: "1abc2def+sam@users.noreply.g1t.sh".into() };
         let body = push(&[Entry::Whole(ObjectKind::Commit, mine), Entry::Whole(ObjectKind::Tree, tree.clone())]);

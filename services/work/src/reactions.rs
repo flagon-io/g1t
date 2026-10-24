@@ -5,13 +5,13 @@
 //! batch ([`THREAD_SQL`], [`ITEM_THREAD_SQL`]), and grouped onto them
 //! ([`attach`]).
 
+use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::{Comment, ReactArgs, ReactionContent, ReactionGroup, group_reactions};
 use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
-use g1t_contracts::time::rfc3339;
-use worker::wasm_bindgen::JsValue;
 use serde::Deserialize;
 use worker::Result;
+use worker::wasm_bindgen::JsValue;
 
 use crate::retired::writable;
 use crate::{On, Thread, Work};
@@ -110,9 +110,11 @@ impl Work {
             On::Item(item_id) => (JsValue::NULL, JsValue::NULL, JsValue::from(item_id)),
         };
         let statement = if a.remove {
-            self.db
-                .prepare("DELETE FROM reactions WHERE subject = ? AND user_id = ? AND content = ?")
-                .bind(&[subject.as_str().into(), a.actor.id.as_str().into(), a.content.as_str().into()])?
+            self.db.prepare("DELETE FROM reactions WHERE subject = ? AND user_id = ? AND content = ?").bind(&[
+                subject.as_str().into(),
+                a.actor.id.as_str().into(),
+                a.content.as_str().into(),
+            ])?
         } else {
             self.db
                 .prepare(

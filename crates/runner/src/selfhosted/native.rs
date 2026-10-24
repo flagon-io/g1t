@@ -288,7 +288,10 @@ pub fn sweep(folder: &Path) {
     let note = noted(folder);
     if let Ok(id) = std::fs::read_to_string(&note) {
         let id = id.trim();
-        if parse_list(&String::from_utf8_lossy(&wsb().args(["list", "--raw"]).output().map(|o| o.stdout).unwrap_or_default())).iter().any(|running| running == id) {
+        if parse_list(&String::from_utf8_lossy(&wsb().args(["list", "--raw"]).output().map(|o| o.stdout).unwrap_or_default()))
+            .iter()
+            .any(|running| running == id)
+        {
             let _ = wsb().args(["stop", "--id", id]).stdout(Stdio::null()).stderr(Stdio::null()).status();
         }
         let _ = std::fs::remove_file(&note);
@@ -457,7 +460,10 @@ mod tests {
         let run = MacVm::run_args("g1t-job_1");
         assert!(run.iter().any(|a| a == "--no-graphics") && run.iter().any(|a| a == "--no-clipboard"));
         assert!(!run.iter().any(|a| a.starts_with("--dir")), "no folder of the Mac's");
-        assert_eq!(MacVm::clone_args("g1t.sh/flagon-io/macos@sha256:ab", "g1t-job_1"), vec!["clone", "g1t.sh/flagon-io/macos@sha256:ab", "g1t-job_1"]);
+        assert_eq!(
+            MacVm::clone_args("g1t.sh/flagon-io/macos@sha256:ab", "g1t-job_1"),
+            vec!["clone", "g1t.sh/flagon-io/macos@sha256:ab", "g1t-job_1"]
+        );
         assert_eq!(MacVm::delete_args("x"), vec!["delete", "x"]);
         assert_eq!(MacVm::exec_args("x", "echo hi")[0], "exec");
         assert!(MacVm.preflight().is_err());

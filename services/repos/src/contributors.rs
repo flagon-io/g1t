@@ -57,7 +57,14 @@ pub fn tally(commits: &[Authored], owners: &HashMap<String, EmailOwner>) -> (Vec
         let (key, kind, name, username, avatar, agent) = if is_g1t(commit) {
             ("g1t".to_owned(), ContributorKind::G1t, "g1t".to_owned(), None, None, None)
         } else if let Some(owner) = owners.get(&email) {
-            (format!("user:{}", owner.id), ContributorKind::User, owner.username.clone(), Some(owner.username.clone()), owner.avatar.clone(), None)
+            (
+                format!("user:{}", owner.id),
+                ContributorKind::User,
+                owner.username.clone(),
+                Some(owner.username.clone()),
+                owner.avatar.clone(),
+                None,
+            )
         } else if let Some(agent) = coding_agent_for(&email) {
             // One contributor per agent, whichever of its addresses a commit carries.
             (format!("agent:{agent}"), ContributorKind::Agent, commit.name.trim().to_owned(), None, None, Some(agent.to_owned()))
@@ -67,7 +74,16 @@ pub fn tally(commits: &[Authored], owners: &HashMap<String, EmailOwner>) -> (Vec
         };
         let tally = by_key.entry(key).or_default();
         if tally.kind.is_none() {
-            *tally = Tally { kind: Some(kind), name, username, avatar, agent, first_at: commit.at.clone(), last_at: commit.at.clone(), ..Tally::default() };
+            *tally = Tally {
+                kind: Some(kind),
+                name,
+                username,
+                avatar,
+                agent,
+                first_at: commit.at.clone(),
+                last_at: commit.at.clone(),
+                ..Tally::default()
+            };
         }
         tally.commits += 1;
         if commit.at < tally.first_at {

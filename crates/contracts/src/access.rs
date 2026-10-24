@@ -69,13 +69,7 @@ pub enum RepoRole {
 }
 
 impl RepoRole {
-    pub const ALL: [RepoRole; 5] = [
-        RepoRole::Read,
-        RepoRole::Triage,
-        RepoRole::Write,
-        RepoRole::Maintain,
-        RepoRole::Admin,
-    ];
+    pub const ALL: [RepoRole; 5] = [RepoRole::Read, RepoRole::Triage, RepoRole::Write, RepoRole::Maintain, RepoRole::Admin];
 
     pub fn as_str(self) -> &'static str {
         match self {
@@ -88,9 +82,7 @@ impl RepoRole {
     }
 
     pub fn parse(text: &str) -> Option<RepoRole> {
-        RepoRole::ALL
-            .into_iter()
-            .find(|role| role.as_str() == text.trim().to_ascii_lowercase())
+        RepoRole::ALL.into_iter().find(|role| role.as_str() == text.trim().to_ascii_lowercase())
     }
 
     /// How people are shown it: "Read", "Triage"...
@@ -128,12 +120,7 @@ impl BasePermission {
     /// made before 2026-10-08 kept the Write they had.
     pub const FOR_NEW_WORKSPACES: BasePermission = BasePermission::Read;
 
-    pub const ALL: [BasePermission; 4] = [
-        BasePermission::None,
-        BasePermission::Read,
-        BasePermission::Write,
-        BasePermission::Admin,
-    ];
+    pub const ALL: [BasePermission; 4] = [BasePermission::None, BasePermission::Read, BasePermission::Write, BasePermission::Admin];
 
     pub fn as_str(self) -> &'static str {
         match self {
@@ -145,9 +132,7 @@ impl BasePermission {
     }
 
     pub fn parse(text: &str) -> Option<BasePermission> {
-        BasePermission::ALL
-            .into_iter()
-            .find(|base| base.as_str() == text.trim().to_ascii_lowercase())
+        BasePermission::ALL.into_iter().find(|base| base.as_str() == text.trim().to_ascii_lowercase())
     }
 
     /// The repository role it gives, if any.
@@ -247,20 +232,52 @@ pub struct CapabilityRow {
 pub const CAPABILITIES: [CapabilityRow; 16] = [
     CapabilityRow { capability: Capability::Read, role: RepoRole::Read, about: "See code, work items and pull requests; clone and fetch" },
     CapabilityRow { capability: Capability::Participate, role: RepoRole::Read, about: "Open work items and pull requests, and comment" },
-    CapabilityRow { capability: Capability::Triage, role: RepoRole::Triage, about: "Apply labels and milestones; assign, close and reopen work items and pull requests" },
+    CapabilityRow {
+        capability: Capability::Triage,
+        role: RepoRole::Triage,
+        about: "Apply labels and milestones; assign, close and reopen work items and pull requests",
+    },
     CapabilityRow { capability: Capability::Push, role: RepoRole::Write, about: "Push to branches that are not protected" },
     CapabilityRow { capability: Capability::Merge, role: RepoRole::Write, about: "Merge pull requests and use the merge queue" },
     CapabilityRow { capability: Capability::ManageLabels, role: RepoRole::Write, about: "Create, edit and delete labels and milestones" },
     CapabilityRow { capability: Capability::SecurityAlerts, role: RepoRole::Write, about: "See and dismiss security alerts" },
     CapabilityRow { capability: Capability::Run, role: RepoRole::Write, about: "Assign agents and start runs, plans and workflows" },
-    CapabilityRow { capability: Capability::ManageSettings, role: RepoRole::Maintain, about: "Change the topics, website, and pull request and agent settings" },
-    CapabilityRow { capability: Capability::ManageProtection, role: RepoRole::Admin, about: "Change branch protection, rulesets and guardrails" },
-    CapabilityRow { capability: Capability::ManageSecurity, role: RepoRole::Admin, about: "Change security settings, custom patterns and bypass reviews" },
-    CapabilityRow { capability: Capability::ManageIntegrations, role: RepoRole::Admin, about: "Manage webhooks, secrets, variables, deployments and domains" },
-    CapabilityRow { capability: Capability::ManageAccess, role: RepoRole::Admin, about: "Manage who has access, invitations and deploy keys" },
+    CapabilityRow {
+        capability: Capability::ManageSettings,
+        role: RepoRole::Maintain,
+        about: "Change the topics, website, and pull request and agent settings",
+    },
+    CapabilityRow {
+        capability: Capability::ManageProtection,
+        role: RepoRole::Admin,
+        about: "Change branch protection, rulesets and guardrails",
+    },
+    CapabilityRow {
+        capability: Capability::ManageSecurity,
+        role: RepoRole::Admin,
+        about: "Change security settings, custom patterns and bypass reviews",
+    },
+    CapabilityRow {
+        capability: Capability::ManageIntegrations,
+        role: RepoRole::Admin,
+        about: "Manage webhooks, secrets, variables, deployments and domains",
+    },
+    CapabilityRow {
+        capability: Capability::ManageAccess,
+        role: RepoRole::Admin,
+        about: "Manage who has access, invitations and deploy keys",
+    },
     CapabilityRow { capability: Capability::Administer, role: RepoRole::Admin, about: "Rename, archive and change the default branch" },
-    CapabilityRow { capability: Capability::ChangeVisibility, role: RepoRole::Admin, about: "Change visibility (owners only, unless member privileges allow admins)" },
-    CapabilityRow { capability: Capability::Delete, role: RepoRole::Admin, about: "Transfer or delete the repository (owners only, unless member privileges allow admins)" },
+    CapabilityRow {
+        capability: Capability::ChangeVisibility,
+        role: RepoRole::Admin,
+        about: "Change visibility (owners only, unless member privileges allow admins)",
+    },
+    CapabilityRow {
+        capability: Capability::Delete,
+        role: RepoRole::Admin,
+        about: "Transfer or delete the repository (owners only, unless member privileges allow admins)",
+    },
 ];
 
 /// Capabilities that also need an owner of the repository's workspace,
@@ -286,10 +303,7 @@ pub fn owner_only(capability: Capability, privileges: &crate::MemberPrivileges) 
 
 /// The least role that has `capability`.
 pub fn least_role(capability: Capability) -> RepoRole {
-    CAPABILITIES
-        .iter()
-        .find(|row| row.capability == capability)
-        .map_or(RepoRole::Admin, |row| row.role)
+    CAPABILITIES.iter().find(|row| row.capability == capability).map_or(RepoRole::Admin, |row| row.role)
 }
 
 /// Whether `role` has `capability`, going by the table alone.
@@ -321,11 +335,7 @@ pub struct RepoRef<'a> {
 
 impl<'a> From<&'a Repo> for RepoRef<'a> {
     fn from(repo: &'a Repo) -> Self {
-        RepoRef {
-            id: &repo.id,
-            namespace: &repo.namespace,
-            private: repo.is_private,
-        }
+        RepoRef { id: &repo.id, namespace: &repo.namespace, private: repo.is_private }
     }
 }
 
@@ -349,11 +359,7 @@ fn membership_role(user: &User, membership: &Membership) -> Option<RepoRole> {
         Role::Member => {
             let base = membership.base_permission.unwrap_or_default().role();
             // A security manager reads every repository.
-            if membership.has(crate::OrgRole::SecurityManager) {
-                base.max(Some(RepoRole::Read))
-            } else {
-                base
-            }
+            if membership.has(crate::OrgRole::SecurityManager) { base.max(Some(RepoRole::Read)) } else { base }
         }
     }
 }
@@ -371,12 +377,7 @@ pub fn granted(user: &User, repo: RepoRef<'_>) -> Option<RepoRole> {
         .iter()
         .find(|membership| membership.slug.eq_ignore_ascii_case(&namespace))
         .and_then(|membership| membership_role(user, membership));
-    let direct = user
-        .grants
-        .iter()
-        .filter(|grant| grant.repo_id == repo.id)
-        .map(|grant| grant.role)
-        .max();
+    let direct = user.grants.iter().filter(|grant| grant.repo_id == repo.id).map(|grant| grant.role).max();
     from_membership.max(direct)
 }
 
@@ -385,11 +386,7 @@ pub fn granted(user: &User, repo: RepoRef<'_>) -> Option<RepoRole> {
 pub fn permission<'a>(viewer: Option<&User>, repo: impl Into<RepoRef<'a>>) -> Option<RepoRole> {
     let repo = repo.into();
     let role = viewer.and_then(|user| granted(user, repo));
-    if repo.private {
-        role
-    } else {
-        role.max(Some(RepoRole::Read))
-    }
+    if repo.private { role } else { role.max(Some(RepoRole::Read)) }
 }
 
 /// Whether the viewer may do `capability` in the repository. Owner-only
@@ -403,16 +400,13 @@ pub fn can<'a>(viewer: Option<&User>, repo: impl Into<RepoRef<'a>>, capability: 
     };
     // Where a narrowed token does not reach, it only reads.
     if capability != Capability::Read
-        && viewer
-            .and_then(|user| user.token.as_deref())
-            .is_some_and(|token| !token.covers_repo(repo.id, repo.namespace))
+        && viewer.and_then(|user| user.token.as_deref()).is_some_and(|token| !token.covers_repo(repo.id, repo.namespace))
     {
         return false;
     }
     let namespace = repo.namespace.to_lowercase();
     if !allows(role, capability) {
-        return SECURITY_MANAGER.contains(&capability)
-            && viewer.is_some_and(|user| is_security_manager(user, &namespace));
+        return SECURITY_MANAGER.contains(&capability) && viewer.is_some_and(|user| is_security_manager(user, &namespace));
     }
     if OWNER_ONLY.contains(&capability) {
         return viewer.is_some_and(|user| match user.membership(&namespace) {
@@ -429,10 +423,7 @@ pub fn can<'a>(viewer: Option<&User>, repo: impl Into<RepoRef<'a>>, capability: 
 /// Whether `user` is a security manager of the workspace `namespace`
 /// (a person, not a token acting for one).
 pub fn is_security_manager(user: &User, namespace: &str) -> bool {
-    user.kind == PrincipalKind::User
-        && user
-            .membership(namespace)
-            .is_some_and(|membership| membership.has(crate::OrgRole::SecurityManager))
+    user.kind == PrincipalKind::User && user.membership(namespace).is_some_and(|membership| membership.has(crate::OrgRole::SecurityManager))
 }
 
 /// What a refusal answers: a repository the viewer cannot read is not
@@ -446,20 +437,12 @@ pub enum Denied {
 
 /// `Ok` when the viewer may do `capability`; otherwise whether to answer
 /// not found or forbidden.
-pub fn check<'a>(
-    viewer: Option<&User>,
-    repo: impl Into<RepoRef<'a>>,
-    capability: Capability,
-) -> Result<(), Denied> {
+pub fn check<'a>(viewer: Option<&User>, repo: impl Into<RepoRef<'a>>, capability: Capability) -> Result<(), Denied> {
     let repo = repo.into();
     if permission(viewer, repo).is_none() {
         return Err(Denied::NotFound);
     }
-    if can(viewer, repo, capability) {
-        Ok(())
-    } else {
-        Err(Denied::Forbidden)
-    }
+    if can(viewer, repo, capability) { Ok(()) } else { Err(Denied::Forbidden) }
 }
 
 // --- Work items -------------------------------------------------------------
@@ -521,11 +504,7 @@ pub fn check_item(viewer: Option<&User>, workspace: &str, origin: Option<RepoRef
     if item_role(viewer, workspace, origin).is_none() {
         return Err(Denied::NotFound);
     }
-    if can_item(viewer, workspace, origin, capability) {
-        Ok(())
-    } else {
-        Err(Denied::Forbidden)
-    }
+    if can_item(viewer, workspace, origin, capability) { Ok(()) } else { Err(Denied::Forbidden) }
 }
 
 /// The sentence a refusal of `capability` on a work item of `workspace`
@@ -543,10 +522,7 @@ pub fn needs(capability: Capability, repo: &str) -> String {
             role.label()
         );
     }
-    format!(
-        "You need the {} role or higher on {repo} to do that.",
-        role.label()
-    )
+    format!("You need the {} role or higher on {repo} to do that.", role.label())
 }
 
 /// Whether the user has any way into the workspace `namespace`: a member,
@@ -724,11 +700,7 @@ pub struct PermissionInfo {
 
 /// The capabilities `role` has, in the table's order.
 pub fn capabilities_of(role: Option<RepoRole>) -> Vec<Capability> {
-    CAPABILITIES
-        .iter()
-        .filter(|row| role.is_some_and(|role| role >= row.role))
-        .map(|row| row.capability)
-        .collect()
+    CAPABILITIES.iter().filter(|row| role.is_some_and(|role| role >= row.role)).map(|row| row.capability).collect()
 }
 
 /// An outside collaborator of a workspace, and what they can reach.
@@ -958,7 +930,11 @@ mod item_tests {
     fn a_narrowed_token_reaches_only_what_it_was_made_for() {
         let mut member = person(&[("acme", Role::Member, Some(BasePermission::Write))], &[]);
         member.token = Some(Box::new(TokenAccess {
-            reach: Some(TokenReach { workspace: Some("acme".into()), repositories: RepositorySelection::Selected, repo_ids: vec!["rep_2".into()] }),
+            reach: Some(TokenReach {
+                workspace: Some("acme".into()),
+                repositories: RepositorySelection::Selected,
+                repo_ids: vec!["rep_2".into()],
+            }),
             ..TokenAccess::full()
         }));
         // Not the whole workspace: no member's view of it.
@@ -997,12 +973,7 @@ mod tests {
                 .collect(),
             grants: grants
                 .iter()
-                .map(|(id, workspace, role)| RepoGrant {
-                    repo_id: (*id).into(),
-                    workspace: (*workspace).into(),
-                    role: *role,
-                    team: None,
-                })
+                .map(|(id, workspace, role)| RepoGrant { repo_id: (*id).into(), workspace: (*workspace).into(), role: *role, team: None })
                 .collect(),
             ..User::default()
         }
@@ -1020,15 +991,25 @@ mod tests {
             (RepoRole::Read, &[Read, Participate]),
             (RepoRole::Triage, &[Read, Participate, Triage]),
             (RepoRole::Write, &[Read, Participate, Triage, Push, Merge, ManageLabels, SecurityAlerts, Run]),
-            (
-                RepoRole::Maintain,
-                &[Read, Participate, Triage, Push, Merge, ManageLabels, SecurityAlerts, Run, ManageSettings],
-            ),
+            (RepoRole::Maintain, &[Read, Participate, Triage, Push, Merge, ManageLabels, SecurityAlerts, Run, ManageSettings]),
             (
                 RepoRole::Admin,
                 &[
-                    Read, Participate, Triage, Push, Merge, ManageLabels, SecurityAlerts, Run, ManageSettings,
-                    ManageProtection, ManageSecurity, ManageIntegrations, ManageAccess, Administer, ChangeVisibility,
+                    Read,
+                    Participate,
+                    Triage,
+                    Push,
+                    Merge,
+                    ManageLabels,
+                    SecurityAlerts,
+                    Run,
+                    ManageSettings,
+                    ManageProtection,
+                    ManageSecurity,
+                    ManageIntegrations,
+                    ManageAccess,
+                    Administer,
+                    ChangeVisibility,
                     Delete,
                 ],
             ),
@@ -1105,12 +1086,7 @@ mod tests {
             role: RepoRole::Maintain,
             team: Some("backend".into()),
         });
-        member.grants.push(RepoGrant {
-            repo_id: "rep_1".into(),
-            workspace: "acme".into(),
-            role: RepoRole::Triage,
-            team: None,
-        });
+        member.grants.push(RepoGrant { repo_id: "rep_1".into(), workspace: "acme".into(), role: RepoRole::Triage, team: None });
         assert_eq!(permission(Some(&member), repo("rep_1", "acme", true)), Some(RepoRole::Maintain));
         assert!(can(Some(&member), repo("rep_1", "acme", true), Capability::ManageSettings));
         assert!(!can(Some(&member), repo("rep_1", "acme", true), Capability::ManageProtection));
@@ -1328,7 +1304,11 @@ mod tests {
         let mut person = user(&[("acme", Role::Owner, None), ("globex", Role::Member, None)], &[("rep_9", "initech", RepoRole::Write)]);
         let reach = |workspace: Option<&str>, repositories, ids: &[&str]| {
             Some(Box::new(TokenAccess {
-                reach: Some(TokenReach { workspace: workspace.map(str::to_owned), repositories, repo_ids: ids.iter().map(|id| (*id).to_owned()).collect() }),
+                reach: Some(TokenReach {
+                    workspace: workspace.map(str::to_owned),
+                    repositories,
+                    repo_ids: ids.iter().map(|id| (*id).to_owned()).collect(),
+                }),
                 ..TokenAccess::default()
             }))
         };
@@ -1391,31 +1371,22 @@ mod tests {
                 Some((capability.to_owned(), role.to_owned()))
             })
             .collect();
-        let expected: Vec<(String, String)> = CAPABILITIES
-            .iter()
-            .map(|row| (row.capability.as_str().to_owned(), row.role.as_str().to_owned()))
-            .collect();
+        let expected: Vec<(String, String)> =
+            CAPABILITIES.iter().map(|row| (row.capability.as_str().to_owned(), row.role.as_str().to_owned())).collect();
         assert_eq!(rows, expected);
         let owner_only = ts
             .split_once("export const OWNER_ONLY = [")
             .and_then(|(_, rest)| rest.split_once(']'))
             .map(|(list, _)| list)
             .expect("OWNER_ONLY in access.ts");
-        let mirrored: Vec<&str> = owner_only
-            .split(',')
-            .map(|item| item.trim().trim_matches('"'))
-            .filter(|item| !item.is_empty())
-            .collect();
+        let mirrored: Vec<&str> = owner_only.split(',').map(|item| item.trim().trim_matches('"')).filter(|item| !item.is_empty()).collect();
         let expected: Vec<&str> = OWNER_ONLY.iter().map(|capability| capability.as_str()).collect();
         assert_eq!(mirrored, expected);
     }
 
     #[test]
     fn affiliation_lists_only_roles_given_here_by_default() {
-        let person = |username: &str,
-                      source: AccessSource,
-                      direct: Option<RepoRole>,
-                      workspace_role: Option<Role>| Collaborator {
+        let person = |username: &str, source: AccessSource, direct: Option<RepoRole>, workspace_role: Option<Role>| Collaborator {
             username: username.into(),
             name: None,
             avatar: None,
@@ -1430,20 +1401,10 @@ mod tests {
             repo: "acme/web".into(),
             base_permission: BasePermission::Write,
             people: vec![
-                person(
-                    "owner",
-                    AccessSource::Owner,
-                    Some(RepoRole::Admin),
-                    Some(Role::Owner),
-                ),
+                person("owner", AccessSource::Owner, Some(RepoRole::Admin), Some(Role::Owner)),
                 person("member", AccessSource::Base, None, Some(Role::Member)),
                 person("teamed", AccessSource::Team, None, Some(Role::Member)),
-                person(
-                    "raised",
-                    AccessSource::Direct,
-                    Some(RepoRole::Maintain),
-                    Some(Role::Member),
-                ),
+                person("raised", AccessSource::Direct, Some(RepoRole::Maintain), Some(Role::Member)),
                 person("guest", AccessSource::Direct, Some(RepoRole::Read), None),
             ],
             teams: vec![],
@@ -1452,13 +1413,7 @@ mod tests {
             can_manage: true,
         };
         let names = |affiliation: Affiliation| -> Vec<String> {
-            access
-                .clone()
-                .affiliated(affiliation)
-                .people
-                .into_iter()
-                .map(|person| person.username)
-                .collect()
+            access.clone().affiliated(affiliation).people.into_iter().map(|person| person.username).collect()
         };
         assert_eq!(names(Affiliation::default()), ["raised", "guest"]);
         assert_eq!(names(Affiliation::Outside), ["guest"]);

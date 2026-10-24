@@ -121,12 +121,8 @@ fn checked(what: &str, source: &str) -> Result<(), String> {
 }
 
 fn build(source: &str) -> Result<Regex, String> {
-    RegexBuilder::new(source)
-        .size_limit(COMPILED_SIZE_LIMIT)
-        .dfa_size_limit(COMPILED_SIZE_LIMIT)
-        .nest_limit(MAX_NEST)
-        .build()
-        .map_err(|error| match error {
+    RegexBuilder::new(source).size_limit(COMPILED_SIZE_LIMIT).dfa_size_limit(COMPILED_SIZE_LIMIT).nest_limit(MAX_NEST).build().map_err(
+        |error| match error {
             regex::Error::CompiledTooBig(_) => "The pattern is too complex: simplify its repetitions.".to_owned(),
             regex::Error::Syntax(text) => {
                 // The crate's message is several lines with a caret under
@@ -135,7 +131,8 @@ fn build(source: &str) -> Result<Regex, String> {
                 format!("The pattern is not a valid regular expression: {}", last.trim_start_matches("error:").trim())
             }
             other => format!("The pattern could not be compiled: {other}"),
-        })
+        },
+    )
 }
 
 /// Compiles a pattern, or says what is wrong with it.
@@ -160,12 +157,7 @@ pub fn compile(spec: &PatternSpec) -> Result<Compiled, String> {
     if pattern.is_match("") {
         return Err("The pattern matches an empty string, so it would match everywhere.".to_owned());
     }
-    let combined = format!(
-        "(?:{})(?P<secret>{})(?:{})",
-        before.unwrap_or(DEFAULT_BEFORE),
-        spec.pattern,
-        after.unwrap_or(DEFAULT_AFTER)
-    );
+    let combined = format!("(?:{})(?P<secret>{})(?:{})", before.unwrap_or(DEFAULT_BEFORE), spec.pattern, after.unwrap_or(DEFAULT_AFTER));
     Ok(Compiled { id: spec.id.clone(), name: spec.name.trim().to_owned(), regex: build(&combined)? })
 }
 

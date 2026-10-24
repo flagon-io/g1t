@@ -80,9 +80,7 @@ pub fn chunks<'a>(events: &[&'a Event]) -> Vec<Vec<&'a Event>> {
     let mut bytes = 0;
     for event in events {
         let event_bytes = size(event);
-        let full = chunks
-            .last()
-            .is_none_or(|chunk| chunk.len() >= MAX_BATCH_MESSAGES || bytes + event_bytes > MAX_BATCH_BYTES);
+        let full = chunks.last().is_none_or(|chunk| chunk.len() >= MAX_BATCH_MESSAGES || bytes + event_bytes > MAX_BATCH_BYTES);
         if full {
             chunks.push(Vec::new());
             bytes = 0;

@@ -50,10 +50,18 @@ impl CachesOp {
 
     pub fn description(self) -> &'static str {
         match self {
-            CachesOp::ListCaches => "List the entries actions/cache has saved in a repository (total_count, actions_caches): each with its id (a number), key, ref (the ref whose run saved it; a pull request from outside saves under untrusted:<ref>), version (the hash of its paths; empty for one g1t's own actions/cache saved), size_in_bytes, created_at and last_accessed_at (its last restore or lookup). Narrow with key (entries whose key starts with it) and ref; order with sort (last_accessed_at, created_at or size_in_bytes; last_accessed_at by default) and direction (asc or desc; desc by default); page with page and per_page (30 by default, at most 100). Needs the Read role.",
-            CachesOp::GetCacheUsage => "What a repository's saved cache entries hold together: active_caches_size_in_bytes and active_caches_count, and quota_bytes, the most they may hold (10 GiB, or 100 GiB in a workspace on the g1t plan). Saving past it evicts the entries restored longest ago. Needs the Read role.",
-            CachesOp::DeleteCachesByKey => "Delete every cache entry whose key is exactly key, or only ref's when you give ref. Answers with the entries deleted, in list_caches' shape. Their bytes go at once, and a run that restores the key finds nothing until one saves it again. Needs the Write role.",
-            CachesOp::DeleteCache => "Delete one cache entry by its id, as list_caches gives it. Over REST it answers 204 with no body, as GitHub does. Needs the Write role.",
+            CachesOp::ListCaches => {
+                "List the entries actions/cache has saved in a repository (total_count, actions_caches): each with its id (a number), key, ref (the ref whose run saved it; a pull request from outside saves under untrusted:<ref>), version (the hash of its paths; empty for one g1t's own actions/cache saved), size_in_bytes, created_at and last_accessed_at (its last restore or lookup). Narrow with key (entries whose key starts with it) and ref; order with sort (last_accessed_at, created_at or size_in_bytes; last_accessed_at by default) and direction (asc or desc; desc by default); page with page and per_page (30 by default, at most 100). Needs the Read role."
+            }
+            CachesOp::GetCacheUsage => {
+                "What a repository's saved cache entries hold together: active_caches_size_in_bytes and active_caches_count, and quota_bytes, the most they may hold (10 GiB, or 100 GiB in a workspace on the g1t plan). Saving past it evicts the entries restored longest ago. Needs the Read role."
+            }
+            CachesOp::DeleteCachesByKey => {
+                "Delete every cache entry whose key is exactly key, or only ref's when you give ref. Answers with the entries deleted, in list_caches' shape. Their bytes go at once, and a run that restores the key finds nothing until one saves it again. Needs the Write role."
+            }
+            CachesOp::DeleteCache => {
+                "Delete one cache entry by its id, as list_caches gives it. Over REST it answers 204 with no body, as GitHub does. Needs the Write role."
+            }
         }
     }
 
@@ -139,7 +147,8 @@ pub async fn run(op: CachesOp, services: &Services, viewer: &Viewer, input: &Val
             shown(found)
         }
         CachesOp::GetCacheUsage => {
-            let found: Outcome<CacheUsage> = g1t_kit::call(actions, "cache_usage", &CacheUsageArgs { repo: repo.clone(), viewer: viewer.clone() }).await?;
+            let found: Outcome<CacheUsage> =
+                g1t_kit::call(actions, "cache_usage", &CacheUsageArgs { repo: repo.clone(), viewer: viewer.clone() }).await?;
             match found {
                 Outcome::Ok(usage) => Outcome::Ok(json!({
                     "full_name": format!("{}/{}", repo.namespace, repo.name),

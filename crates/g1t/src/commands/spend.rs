@@ -58,8 +58,7 @@ pub fn run(ctx: &Ctx, args: SpendArgs) -> Result<()> {
 /// Days since 1970 of a `YYYY-MM-DD` day, when it is one.
 fn day_number(day: &str) -> Option<i64> {
     let day = day.trim();
-    let shaped = day.len() == 10
-        && day.bytes().enumerate().all(|(i, b)| if i == 4 || i == 7 { b == b'-' } else { b.is_ascii_digit() });
+    let shaped = day.len() == 10 && day.bytes().enumerate().all(|(i, b)| if i == 4 || i == 7 { b == b'-' } else { b.is_ascii_digit() });
     if !shaped {
         return None;
     }
@@ -269,10 +268,7 @@ fn print_spend(out: &Output, spend: &Value, by: SpendBy) -> Result<()> {
                 .collect();
             out.table(&["person", "sessions", "cost"], &table)?;
         }
-        println!(
-            "{}",
-            out.dim(&format!("For budgets and plan fit: {} each person's spend.", who_sees(s(spend, "visibility"))))
-        );
+        println!("{}", out.dim(&format!("For budgets and plan fit: {} each person's spend.", who_sees(s(spend, "visibility")))));
     }
     if let Some(total) = spend["workspace_usd"].as_f64() {
         println!();

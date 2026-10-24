@@ -123,7 +123,10 @@ pub fn machine(isolation: Isolation) -> Machine {
     let cpus = std::thread::available_parallelism().map_or(1, |n| n.get()) as u32;
     let memory_mib = super::launcher::total_memory_mib().unwrap_or(4096);
     // A container's limit, where /proc/meminfo says the whole VM's.
-    let memory_mib = std::fs::read_to_string("/sys/fs/cgroup/memory.max").ok().and_then(|text| cgroup_limit_mib(&text)).map_or(memory_mib, |limit| limit.min(memory_mib));
+    let memory_mib = std::fs::read_to_string("/sys/fs/cgroup/memory.max")
+        .ok()
+        .and_then(|text| cgroup_limit_mib(&text))
+        .map_or(memory_mib, |limit| limit.min(memory_mib));
     let here = Machine { cpus, memory_mib, share: None };
     match (isolation, computer()) {
         (Isolation::Host, _) | (_, None) => here,
@@ -308,7 +311,10 @@ mod tests {
             offered(&choices).unwrap(),
             vec![OfferedSize::of("1-core"), OfferedSize { size: "2-core".into(), cpus: Some(4.0), memory_mib: Some(16 * 1024) }]
         );
-        assert_eq!(parse_list("2-core::12g").unwrap(), vec![SizeChoice::Given { size: "2-core".into(), cpus: None, memory: Some("12g".into()) }]);
+        assert_eq!(
+            parse_list("2-core::12g").unwrap(),
+            vec![SizeChoice::Given { size: "2-core".into(), cpus: None, memory: Some("12g".into()) }]
+        );
         assert_eq!(parse_list("").unwrap(), vec![]);
         assert_eq!(serde_json::to_string(&choices).unwrap(), r#"["1-core",{"size":"2-core","cpus":4.0,"memory":"16g"}]"#);
     }
@@ -358,10 +364,20 @@ mod tests {
 
     #[test]
     fn a_containers_memory_limit_is_read_from_its_cgroup() {
-        assert_eq!(cgroup_limit_mib("8589934592
-"), Some(8192));
-        assert_eq!(cgroup_limit_mib("max
-"), None);
+        assert_eq!(
+            cgroup_limit_mib(
+                "8589934592
+"
+            ),
+            Some(8192)
+        );
+        assert_eq!(
+            cgroup_limit_mib(
+                "max
+"
+            ),
+            None
+        );
         assert_eq!(cgroup_limit_mib(""), None);
     }
 

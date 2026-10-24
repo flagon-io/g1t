@@ -157,10 +157,7 @@ impl Work {
             let settled = match row.mergeable.as_deref() {
                 Some("clean" | "conflicting" | "unknown") => true,
                 // A probe that is still being waited for.
-                Some("checking") => row
-                    .mergeable_until
-                    .as_deref()
-                    .is_some_and(|until| until > rfc3339(now).as_str()),
+                Some("checking") => row.mergeable_until.as_deref().is_some_and(|until| until > rfc3339(now).as_str()),
                 _ => false,
             };
             if settled {
@@ -191,12 +188,7 @@ impl Work {
                      mergeable_token_hash = NULL, mergeable_until = ?
                  WHERE id = ?",
             )
-            .bind(&[
-                key.as_str().into(),
-                behind.into(),
-                rfc3339(now + PROBE_MINUTES * 60 * 1000).into(),
-                pull.id.as_str().into(),
-            ])?
+            .bind(&[key.as_str().into(), behind.into(), rfc3339(now + PROBE_MINUTES * 60 * 1000).into(), pull.id.as_str().into()])?
             .run()
             .await?;
         self.ask_for_probe(pull, &divergence.head).await?;
@@ -208,10 +200,7 @@ impl Work {
             "pull.mergecheck",
             &pull.repo_id,
             None,
-            g1t_contracts::events::PullEvent {
-                commit: Some(head.to_owned()),
-                ..Self::pull_event(pull)
-            },
+            g1t_contracts::events::PullEvent { commit: Some(head.to_owned()), ..Self::pull_event(pull) },
         )
         .await
     }
@@ -219,8 +208,7 @@ impl Work {
     /// Says that a pull request's mergeability settled, so that the runner
     /// looks again at one g1t is seeing through.
     async fn announce_mergeability(&self, pull: &Pull) -> Result<()> {
-        self.publish_as("pull.mergeability", &pull.repo_id, None, Self::pull_event(pull))
-            .await
+        self.publish_as("pull.mergeability", &pull.repo_id, None, Self::pull_event(pull)).await
     }
 
     /// Works out mergeability again after a push: for the pull requests
@@ -343,8 +331,7 @@ impl Work {
         let now = rfc3339(now_ms());
         let stale = row.as_ref().is_none_or(|row| {
             row.mergeable_key.is_none()
-                || (row.mergeable.as_deref() == Some("checking")
-                    && row.mergeable_until.as_deref().is_none_or(|until| until < now.as_str()))
+                || (row.mergeable.as_deref() == Some("checking") && row.mergeable_until.as_deref().is_none_or(|until| until < now.as_str()))
         });
         let row = if stale {
             if let Err(error) = self.assess_mergeability(pull).await {
@@ -369,10 +356,7 @@ impl Work {
             return Ok((Mergeable::Checking, Vec::new()));
         }
         let conflicts = if state == Mergeable::Conflicting {
-            row.conflicts
-                .as_deref()
-                .and_then(|conflicts| serde_json::from_str(conflicts).ok())
-                .unwrap_or_default()
+            row.conflicts.as_deref().and_then(|conflicts| serde_json::from_str(conflicts).ok()).unwrap_or_default()
         } else {
             Vec::new()
         };
@@ -400,12 +384,7 @@ impl Work {
         if !current {
             return Ok(None);
         }
-        Ok(Some(
-            row.conflicts
-                .as_deref()
-                .and_then(|conflicts| serde_json::from_str(conflicts).ok())
-                .unwrap_or_default(),
-        ))
+        Ok(Some(row.conflicts.as_deref().and_then(|conflicts| serde_json::from_str(conflicts).ok()).unwrap_or_default()))
     }
 
     /// Claims the probe a `pull.mergecheck` event asked for, and returns
@@ -415,10 +394,7 @@ impl Work {
             return Ok(Outcome::fail(FailureCode::NotFound, "Pull request not found."));
         };
         if !pull.status.is_active() {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                format!("This pull request is already {}.", pull.status.as_str()),
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, format!("This pull request is already {}.", pull.status.as_str())));
         }
         let Some(row) = self.merge_row(&pull.id).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Pull request not found."));
@@ -430,10 +406,7 @@ impl Work {
             .and_then(|key| key.split_once(".."))
             .map(|(head, base)| (head.to_owned(), base.to_owned()))
         else {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                "Nothing is waiting to be checked for this pull request.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, "Nothing is waiting to be checked for this pull request."));
         };
         let now = now_ms();
         let timestamp = rfc3339(now);
@@ -450,10 +423,7 @@ impl Work {
             .map_or(0, |row| row.n);
         if running >= MAX_PROBES {
             // It waits, and starts when one of those reports.
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                "This repository has as many merge checks running as it may.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, "This repository has as many merge checks running as it may."));
         }
         let token = new_token();
         let claimed = self
@@ -474,29 +444,17 @@ impl Work {
             .first::<ValueRow>(None)
             .await?;
         if claimed.is_none() {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                "This pull request is already being checked.",
-            ));
+            return Ok(Outcome::fail(FailureCode::Conflict, "This pull request is already being checked."));
         }
         // Its owner (whoever asked g1t for it, or its author) can read both
         // the repository and the change.
-        let repo: Outcome<Repo> = g1t_kit::call(
-            &self.repos,
-            "get_by_id",
-            &GetByIdArgs {
-                id: pull.repo_id.clone(),
-                viewer: self.owner_viewer(&pull).await?,
-            },
-        )
-        .await?;
+        let repo: Outcome<Repo> =
+            g1t_kit::call(&self.repos, "get_by_id", &GetByIdArgs { id: pull.repo_id.clone(), viewer: self.owner_viewer(&pull).await? })
+                .await?;
         let Outcome::Ok(repo) = crate::retired::unless_archived(repo) else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Pull request not found."));
         };
-        let path = RepoPath {
-            namespace: repo.namespace.clone(),
-            name: repo.name.clone(),
-        };
+        let path = RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() };
         Ok(Outcome::Ok(MergecheckJob {
             pull_id: pull.id.clone(),
             token,
@@ -608,10 +566,7 @@ mod tests {
 
     #[test]
     fn a_comparison_cut_short_is_probed() {
-        let cut = Divergence {
-            truncated: true,
-            ..divergence(true, &["a.rs"], &["c.rs"])
-        };
+        let cut = Divergence { truncated: true, ..divergence(true, &["a.rs"], &["c.rs"]) };
         assert!(needs_probe(&cut));
     }
 

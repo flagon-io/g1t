@@ -191,7 +191,9 @@ pub(crate) fn id_token_permitted(workflow: &Value, job: &Value) -> bool {
 pub(crate) fn environment_name(job: &Value) -> Option<String> {
     match job.get("environment") {
         Some(Value::String(name)) if !name.contains("${{") && !name.trim().is_empty() => Some(name.trim().to_owned()),
-        Some(Value::Object(env)) => env.get("name").and_then(Value::as_str).filter(|n| !n.contains("${{") && !n.trim().is_empty()).map(|n| n.trim().to_owned()),
+        Some(Value::Object(env)) => {
+            env.get("name").and_then(Value::as_str).filter(|n| !n.contains("${{") && !n.trim().is_empty()).map(|n| n.trim().to_owned())
+        }
         _ => None,
     }
 }
@@ -280,7 +282,9 @@ impl Actions {
         }
         let row = self.db.prepare("SELECT * FROM jobs WHERE id = ?").bind(&[job.into()])?.first::<JobRow>(None).await?;
         Ok(match row {
-            Some(row) if row.status == "in_progress" && row.token_hash.as_deref().is_some_and(|hash| same(hash, &sha256_hex(token))) => Outcome::Ok(row),
+            Some(row) if row.status == "in_progress" && row.token_hash.as_deref().is_some_and(|hash| same(hash, &sha256_hex(token))) => {
+                Outcome::Ok(row)
+            }
             _ => fail(FailureCode::Unauthenticated, "That job is not running, or the token is not its."),
         })
     }
@@ -404,14 +408,23 @@ impl Actions {
     /// An upload token for an entry whose R2 upload has been started.
     pub(crate) fn upload_token(&self, kind: &str, id: &str, object: &str, upload: &str) -> Option<String> {
         let key = self.blob_signing_key()?;
-        let claims = BlobClaims { k: kind.to_owned(), i: id.to_owned(), o: object.to_owned(), u: Some(upload.to_owned()), e: now_ms() / 1000 + UPLOAD_SECONDS };
+        let claims = BlobClaims {
+            k: kind.to_owned(),
+            i: id.to_owned(),
+            o: object.to_owned(),
+            u: Some(upload.to_owned()),
+            e: now_ms() / 1000 + UPLOAD_SECONDS,
+        };
         Some(sign_blob(&key, &claims))
     }
 
     /// A download token for an entry, good for `seconds`.
     pub(crate) fn download_token(&self, kind: &str, id: &str, object: &str, seconds: u64) -> Option<String> {
         let key = self.blob_signing_key()?;
-        Some(sign_blob(&key, &BlobClaims { k: kind.to_owned(), i: id.to_owned(), o: object.to_owned(), u: None, e: now_ms() / 1000 + seconds }))
+        Some(sign_blob(
+            &key,
+            &BlobClaims { k: kind.to_owned(), i: id.to_owned(), o: object.to_owned(), u: None, e: now_ms() / 1000 + seconds },
+        ))
     }
 
     fn opened(&self, token: &str) -> Option<BlobClaims> {
@@ -462,7 +475,8 @@ impl Actions {
                     .await?;
                 match row {
                     Some(row) => {
-                        let (extension, kind) = if row.format == "tgz" { ("tar.gz", "application/gzip") } else { ("zip", "application/zip") };
+                        let (extension, kind) =
+                            if row.format == "tgz" { ("tar.gz", "application/gzip") } else { ("zip", "application/zip") };
                         (true, Some(format!("{}.{extension}", row.name)), Some(kind.to_owned()))
                     }
                     None => (false, None, None),
@@ -489,12 +503,8 @@ impl Actions {
         struct Row {
             upload: String,
         }
-        let row = self
-            .db
-            .prepare(BLOB_START)
-            .bind(&[a.upload.as_str().into(), i.as_str().into(), o.as_str().into()])?
-            .first::<Row>(None)
-            .await?;
+        let row =
+            self.db.prepare(BLOB_START).bind(&[a.upload.as_str().into(), i.as_str().into(), o.as_str().into()])?.first::<Row>(None).await?;
         Ok(match row {
             Some(row) => Outcome::Ok(row.upload),
             None => fail(FailureCode::NotFound, "That is gone: it expired, was deleted, or its upload finished."),
@@ -511,7 +521,13 @@ impl Actions {
                 "INSERT INTO blob_parts (upload, part, etag, size, created_at) VALUES (?1, ?2, ?3, ?4, ?5)
                  ON CONFLICT (upload, part) DO UPDATE SET etag = ?3, size = ?4, created_at = ?5",
             )
-            .bind(&[upload.as_str().into(), f64::from(a.part).into(), a.etag.as_str().into(), (a.size as f64).into(), rfc3339(now_ms()).into()])?
+            .bind(&[
+                upload.as_str().into(),
+                f64::from(a.part).into(),
+                a.etag.as_str().into(),
+                (a.size as f64).into(),
+                rfc3339(now_ms()).into(),
+            ])?
             .run()
             .await?;
         Ok(Outcome::Ok(true))
@@ -628,7 +644,13 @@ mod tests {
 
     #[test]
     fn parts_are_recorded_under_their_upload_or_else_their_entry() {
-        let claims = |u: Option<&str>| BlobClaims { k: "cache".into(), i: "cache_1".into(), o: "c/repo_1/cache_1".into(), u: u.map(str::to_owned), e: 1_000 };
+        let claims = |u: Option<&str>| BlobClaims {
+            k: "cache".into(),
+            i: "cache_1".into(),
+            o: "c/repo_1/cache_1".into(),
+            u: u.map(str::to_owned),
+            e: 1_000,
+        };
         assert_eq!(parts_key(&claims(Some("up_1"))).as_deref(), Some("up_1"));
         // Started after its token was signed: every block's token is the same.
         assert_eq!(parts_key(&claims(Some(""))).as_deref(), Some("cache:cache_1"));

@@ -95,7 +95,10 @@ fn tighten(dir: &Path) -> Result<()> {
 
 fn fix(dir: &Path) -> String {
     if cfg!(windows) {
-        format!("in {}'s Properties, Security, Advanced, turn off inheritance and leave only yourself, SYSTEM and Administrators", dir.display())
+        format!(
+            "in {}'s Properties, Security, Advanced, turn off inheritance and leave only yourself, SYSTEM and Administrators",
+            dir.display()
+        )
     } else {
         format!("run `chmod 700 {}` as its owner", dir.display())
     }
@@ -213,7 +216,13 @@ mod windows {
             sacl: *mut Handle,
             descriptor: *mut Handle,
         ) -> u32;
-        fn ConvertSecurityDescriptorToStringSecurityDescriptorW(descriptor: Handle, revision: u32, info: u32, text: *mut *mut u16, length: *mut u32) -> i32;
+        fn ConvertSecurityDescriptorToStringSecurityDescriptorW(
+            descriptor: Handle,
+            revision: u32,
+            info: u32,
+            text: *mut *mut u16,
+            length: *mut u32,
+        ) -> i32;
         fn OpenProcessToken(process: Handle, access: u32, token: *mut Handle) -> i32;
         fn GetTokenInformation(token: Handle, class: i32, info: *mut core::ffi::c_void, length: u32, returned: *mut u32) -> i32;
         fn ConvertSidToStringSidW(sid: Handle, text: *mut *mut u16) -> i32;
@@ -241,13 +250,30 @@ mod windows {
         let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
         let mut descriptor: Handle = null_mut();
         let error = unsafe {
-            GetNamedSecurityInfoW(wide.as_ptr(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, null_mut(), null_mut(), null_mut(), null_mut(), &mut descriptor)
+            GetNamedSecurityInfoW(
+                wide.as_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                null_mut(),
+                null_mut(),
+                null_mut(),
+                null_mut(),
+                &mut descriptor,
+            )
         };
         if error != 0 || descriptor.is_null() {
             return None;
         }
         let mut text: *mut u16 = null_mut();
-        let converted = unsafe { ConvertSecurityDescriptorToStringSecurityDescriptorW(descriptor, SDDL_REVISION_1, DACL_SECURITY_INFORMATION, &mut text, null_mut()) };
+        let converted = unsafe {
+            ConvertSecurityDescriptorToStringSecurityDescriptorW(
+                descriptor,
+                SDDL_REVISION_1,
+                DACL_SECURITY_INFORMATION,
+                &mut text,
+                null_mut(),
+            )
+        };
         unsafe { LocalFree(descriptor) };
         (converted != 0 && !text.is_null()).then(|| unsafe { take(text) })
     }
@@ -261,7 +287,9 @@ mod windows {
         // TOKEN_USER and the SID after it; usize keeps its pointer aligned.
         let mut buffer = vec![0usize; 64];
         let mut returned = 0u32;
-        let ok = unsafe { GetTokenInformation(token, TOKEN_USER, buffer.as_mut_ptr().cast(), (buffer.len() * size_of::<usize>()) as u32, &mut returned) };
+        let ok = unsafe {
+            GetTokenInformation(token, TOKEN_USER, buffer.as_mut_ptr().cast(), (buffer.len() * size_of::<usize>()) as u32, &mut returned)
+        };
         unsafe { CloseHandle(token) };
         if ok == 0 {
             return None;
@@ -306,7 +334,17 @@ mod tests {
     #[test]
     fn a_folder_is_left_to_its_owner_system_and_administrators() {
         let [grant, remove] = &icacls_args(r"C:\runner", "S-1-5-21-1-2-3-1001")[..] else { panic!() };
-        assert_eq!(grant, &[r"C:\runner", "/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "*S-1-5-21-1-2-3-1001:(OI)(CI)F"]);
+        assert_eq!(
+            grant,
+            &[
+                r"C:\runner",
+                "/inheritance:r",
+                "/grant:r",
+                "*S-1-5-18:(OI)(CI)F",
+                "*S-1-5-32-544:(OI)(CI)F",
+                "*S-1-5-21-1-2-3-1001:(OI)(CI)F"
+            ]
+        );
         assert_eq!(remove[..2], [r"C:\runner", "/remove:g"]);
         for sid in ["*S-1-1-0", "*S-1-5-32-545", "*S-1-5-11"] {
             assert!(remove.iter().any(|a| a == sid), "{sid}");

@@ -17,9 +17,9 @@ use serde_json::{Value, json};
 use worker::{Context, Headers, Method, Request, Response, ResponseBody, Result, Url};
 
 use crate::access::Action;
-use crate::limits;
 use crate::db::{NewFile, NewVersion, PackageRow, UploadRow};
 use crate::digest::{Digest, Sha256};
+use crate::limits;
 use crate::manifest::{self, Kind};
 use crate::names::{self, ImageName, Reference, Route};
 use crate::range;
@@ -161,10 +161,8 @@ impl Packages {
             // and password in the body, and the scopes beside them.
             if method == Method::Post {
                 let form = request.text().await.unwrap_or_default();
-                let fields: Vec<(String, String)> = Url::parse(&format!("http://form/?{form}"))?
-                    .query_pairs()
-                    .map(|(k, v)| (k.into_owned(), v.into_owned()))
-                    .collect();
+                let fields: Vec<(String, String)> =
+                    Url::parse(&format!("http://form/?{form}"))?.query_pairs().map(|(k, v)| (k.into_owned(), v.into_owned())).collect();
                 let field = |key: &str| fields.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone());
                 let credentials = match (field("grant_type").as_deref(), field("username"), field("password")) {
                     (Some("password"), Some(username), Some(password)) => match self.viewer_for(&username, &password).await? {
@@ -181,17 +179,23 @@ impl Packages {
             return self.issue(url, credentials, &scopes).await;
         }
         let (name, action) = match &route {
-            Route::Manifest { name, .. } => (name, match method {
-                Method::Get | Method::Head => Action::Pull,
-                Method::Put => Action::Push,
-                Method::Delete => Action::Delete,
-                _ => return error(405, "UNSUPPORTED", "Not a method manifests take."),
-            }),
-            Route::Blob { name, .. } => (name, match method {
-                Method::Get | Method::Head => Action::Pull,
-                Method::Delete => Action::Delete,
-                _ => return error(405, "UNSUPPORTED", "Not a method blobs take."),
-            }),
+            Route::Manifest { name, .. } => (
+                name,
+                match method {
+                    Method::Get | Method::Head => Action::Pull,
+                    Method::Put => Action::Push,
+                    Method::Delete => Action::Delete,
+                    _ => return error(405, "UNSUPPORTED", "Not a method manifests take."),
+                },
+            ),
+            Route::Blob { name, .. } => (
+                name,
+                match method {
+                    Method::Get | Method::Head => Action::Pull,
+                    Method::Delete => Action::Delete,
+                    _ => return error(405, "UNSUPPORTED", "Not a method blobs take."),
+                },
+            ),
             Route::Uploads { name } | Route::Upload { name, .. } => (name, Action::Push),
             Route::Tags { name } | Route::Referrers { name, .. } => (name, Action::Pull),
             Route::Base | Route::Token => unreachable!("answered above"),
@@ -212,7 +216,11 @@ impl Packages {
             return match &found {
                 _ if action == Action::Pull => error(404, "NAME_UNKNOWN", format!("There is no image {}.", name.full())),
                 Some(package) => error(403, "DENIED", Packages::hidden_refusal(package)),
-                None => error(403, "DENIED", format!("The workspace {} is deleted; nothing can be pushed to it or deleted from it.", name.workspace)),
+                None => error(
+                    403,
+                    "DENIED",
+                    format!("The workspace {} is deleted; nothing can be pushed to it or deleted from it.", name.workspace),
+                ),
             };
         }
         let caller = match self.authorize(url, &credentials, &name, found.as_ref(), action).await? {
@@ -287,7 +295,9 @@ impl Packages {
                     429,
                     "TOOMANYREQUESTS",
                     match limit {
-                        limits::Limit::Anonymous => format!("Too many requests from this address. Wait a minute, or sign in with {sign_in} for a higher limit."),
+                        limits::Limit::Anonymous => {
+                            format!("Too many requests from this address. Wait a minute, or sign in with {sign_in} for a higher limit.")
+                        }
                         limits::Limit::Signed => "Too many requests. Wait a minute and try again.".to_owned(),
                     },
                 )?;
@@ -336,14 +346,22 @@ impl Packages {
         found: Option<&PackageRow>,
         action: Action,
     ) -> Result<std::result::Result<Caller, Response>> {
-        let scope = Some(format!("repository:{}:{}", name.full(), match action {
-            Action::Pull => "pull",
-            Action::Push => "pull,push",
-            Action::Delete | Action::Admin | Action::Settings => "delete",
-        }));
+        let scope = Some(format!(
+            "repository:{}:{}",
+            name.full(),
+            match action {
+                Action::Pull => "pull",
+                Action::Push => "pull,push",
+                Action::Delete | Action::Admin | Action::Settings => "delete",
+            }
+        ));
         let viewer = match credentials {
             Credentials::Bad => {
-                return Ok(Err(unauthorized(url, scope, "The token or password is not right, or has expired. Sign in again with `docker login`.")?));
+                return Ok(Err(unauthorized(
+                    url,
+                    scope,
+                    "The token or password is not right, or has expired. Sign in again with `docker login`.",
+                )?));
             }
             Credentials::Token(claims) => {
                 let caller = || Caller { actor: claims.actor.clone(), viewer: claims.viewer.as_deref().cloned() };
@@ -566,7 +584,11 @@ impl Packages {
                 let mut layer = 0;
                 for blob in &parsed.blobs {
                     let Some(stored) = self.db.package_blob(&package.id, &blob.digest).await? else {
-                        return error(400, "MANIFEST_BLOB_UNKNOWN", format!("Blob {} is not in {}: push it first.", blob.digest, name.full()));
+                        return error(
+                            400,
+                            "MANIFEST_BLOB_UNKNOWN",
+                            format!("Blob {} is not in {}: push it first.", blob.digest, name.full()),
+                        );
                     };
                     let file_name = if blob.role == "config" {
                         "config".to_owned()
@@ -574,13 +596,22 @@ impl Packages {
                         layer += 1;
                         format!("layer:{layer}")
                     };
-                    files.push(NewFile { name: file_name, digest: blob.digest.to_string(), size: stored.size, media_type: blob.media_type.clone() });
+                    files.push(NewFile {
+                        name: file_name,
+                        digest: blob.digest.to_string(),
+                        size: stored.size,
+                        media_type: blob.media_type.clone(),
+                    });
                 }
             }
             Kind::Index => {
                 for child in &parsed.manifests {
                     if self.db.version_by_digest(&package.id, child.digest.as_str()).await?.is_none() {
-                        return error(400, "MANIFEST_UNKNOWN", format!("Manifest {} is not in {}: push it first.", child.digest, name.full()));
+                        return error(
+                            400,
+                            "MANIFEST_UNKNOWN",
+                            format!("Manifest {} is not in {}: push it first.", child.digest, name.full()),
+                        );
                     }
                 }
             }
@@ -593,9 +624,7 @@ impl Packages {
             self.store.put(&digest.object_key(), bytes.clone()).await?;
         }
         let now = now_ms();
-        self.db
-            .keep_blob(&package.id, &digest, bytes.len() as u64, Some(&parsed.media_type), &digest.object_key(), now)
-            .await?;
+        self.db.keep_blob(&package.id, &digest, bytes.len() as u64, Some(&parsed.media_type), &digest.object_key(), now).await?;
         let size = files.iter().map(|file| file.size).sum();
         let metadata = json!({
             "media_type": parsed.media_type,
@@ -627,14 +656,8 @@ impl Packages {
             .await?;
         self.db.measure(&package.workspace).await?;
         if changed {
-            let tags: Vec<String> = self
-                .db
-                .tags(&package.id)
-                .await?
-                .into_iter()
-                .filter(|row| row.version_id == version.id)
-                .map(|row| row.tag)
-                .collect();
+            let tags: Vec<String> =
+                self.db.tags(&package.id).await?.into_iter().filter(|row| row.version_id == version.id).map(|row| row.tag).collect();
             let event = PackageEvent {
                 version: Some(version.version.clone()),
                 digest: Some(version.digest.clone()),
@@ -643,13 +666,10 @@ impl Packages {
                 ..self.event_of(&package)
             };
             self.announce("package.published", &package, event, caller).await;
-            self.audit(caller, "package.publish", &package, Some(&format!("{}@{}", name.full(), version.digest)), None)
-                .await;
+            self.audit(caller, "package.publish", &package, Some(&format!("{}@{}", name.full(), version.digest)), None).await;
         }
-        let mut headers = vec![
-            ("location", format!("/v2/{}/manifests/{digest}", name.full())),
-            ("docker-content-digest", digest.to_string()),
-        ];
+        let mut headers =
+            vec![("location", format!("/v2/{}/manifests/{digest}", name.full())), ("docker-content-digest", digest.to_string())];
         if let Some(subject) = &parsed.subject {
             headers.push(("oci-subject", subject.to_string()));
         }
@@ -758,10 +778,10 @@ impl Packages {
                 return error(403, "DENIED", refused);
             }
             self.db.link_blob(&package.id, &digest, now_ms()).await?;
-            return empty(201, &[
-                ("location", format!("/v2/{}/blobs/{digest}", name.full())),
-                ("docker-content-digest", digest.to_string()),
-            ]);
+            return empty(
+                201,
+                &[("location", format!("/v2/{}/blobs/{digest}", name.full())), ("docker-content-digest", digest.to_string())],
+            );
         }
         let id = new_id("upl", now_ms());
         let row = UploadRow {
@@ -851,11 +871,14 @@ impl Packages {
             match range::parse_content_range(&header) {
                 Some(chunk) if chunk.start == progress.offset => {}
                 _ => {
-                    return empty(416, &[
-                        ("location", format!("/v2/{}/blobs/uploads/{}", name.full(), row.id)),
-                        ("range", range::upload_range(progress.offset)),
-                        ("docker-upload-uuid", row.id.clone()),
-                    ]);
+                    return empty(
+                        416,
+                        &[
+                            ("location", format!("/v2/{}/blobs/uploads/{}", name.full(), row.id)),
+                            ("range", range::upload_range(progress.offset)),
+                            ("docker-upload-uuid", row.id.clone()),
+                        ],
+                    );
                 }
             }
         }
@@ -902,7 +925,13 @@ impl Packages {
     /// Ends an upload whose bytes are all in: checks the digest and the
     /// workspace's free storage, and keeps the blob unless it was already
     /// kept. Anything refused is let go.
-    async fn complete<S: BlobStore>(&self, writer: Writer<'_, S>, name: &ImageName, package: &PackageRow, digest: &Digest) -> Result<Response> {
+    async fn complete<S: BlobStore>(
+        &self,
+        writer: Writer<'_, S>,
+        name: &ImageName,
+        package: &PackageRow,
+        digest: &Digest,
+    ) -> Result<Response> {
         let package_id = package.id.as_str();
         let refused = self.storage_refusal(package, &[(digest.to_string(), writer.received())]).await;
         match refused {
@@ -938,10 +967,7 @@ impl Packages {
             Finished::Duplicate { .. } => self.db.link_blob(package_id, digest, now).await?,
             Finished::Stored { key, size } => self.db.keep_blob(package_id, digest, size, None, &key, now).await?,
         }
-        empty(201, &[
-            ("location", format!("/v2/{}/blobs/{digest}", name.full())),
-            ("docker-content-digest", digest.to_string()),
-        ])
+        empty(201, &[("location", format!("/v2/{}/blobs/{digest}", name.full())), ("docker-content-digest", digest.to_string())])
     }
 
     async fn cancel_upload(&self, row: UploadRow) -> Result<Response> {
@@ -963,9 +989,7 @@ impl Packages {
         if tags.len() as u32 == n
             && let Some(final_tag) = tags.last()
         {
-            response
-                .headers_mut()
-                .set("link", &format!("</v2/{}/tags/list?n={n}&last={final_tag}>; rel=\"next\"", name.full()))?;
+            response.headers_mut().set("link", &format!("</v2/{}/tags/list?n={n}&last={final_tag}>; rel=\"next\"", name.full()))?;
         }
         Ok(response)
     }
@@ -1031,12 +1055,15 @@ fn upload_status(name: &ImageName, row: &UploadRow) -> Result<Response> {
 }
 
 fn upload_status_with(name: &ImageName, id: &str, offset: u64, status: u16) -> Result<Response> {
-    empty(status, &[
-        ("location", format!("/v2/{}/blobs/uploads/{id}", name.full())),
-        ("range", range::upload_range(offset)),
-        ("docker-upload-uuid", id.to_owned()),
-        ("content-length", "0".to_owned()),
-    ])
+    empty(
+        status,
+        &[
+            ("location", format!("/v2/{}/blobs/uploads/{id}", name.full())),
+            ("range", range::upload_range(offset)),
+            ("docker-upload-uuid", id.to_owned()),
+            ("content-length", "0".to_owned()),
+        ],
+    )
 }
 
 #[cfg(test)]

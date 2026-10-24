@@ -80,7 +80,8 @@ pub fn ask_in(event: &Event) -> Option<Ask> {
         return None;
     }
     let number = event.data["number"].as_u64().and_then(|n| u32::try_from(n).ok())?;
-    let item = || event.data["workspace"].as_str().filter(|slug| !slug.is_empty()).map(|slug| On::Item { workspace: slug.to_lowercase(), number });
+    let item =
+        || event.data["workspace"].as_str().filter(|slug| !slug.is_empty()).map(|slug| On::Item { workspace: slug.to_lowercase(), number });
     match event.kind.as_str() {
         "work_item.assigned" => {
             let added = event.data["added"].as_array()?;
@@ -206,7 +207,9 @@ impl Integrations {
         let (comment, url) = match &ask {
             Ask::Assigned { .. } => (None, thread.url.clone()),
             Ask::Commented { comment_id, .. } => {
-                let Some(comment) = thread.comments.iter().find(|comment| &comment.id == comment_id && comment.kind == CommentKind::Comment) else {
+                let Some(comment) =
+                    thread.comments.iter().find(|comment| &comment.id == comment_id && comment.kind == CommentKind::Comment)
+                else {
                     return Ok(());
                 };
                 if !mentions_g1t(&comment.body) {
@@ -278,7 +281,9 @@ impl Integrations {
             let mut body = format!("@{}, I can't take this on: {}.", actor.username, failure.message.trim().trim_end_matches('.'));
             // No Anthropic account to start on: where to add one.
             if failure.code == FailureCode::Conflict {
-                body.push_str(&format!(" Add an Anthropic key in [the workspace's AI settings]({site}/{workspace}/-/settings/ai), then ask again."));
+                body.push_str(&format!(
+                    " Add an Anthropic key in [the workspace's AI settings]({site}/{workspace}/-/settings/ai), then ask again."
+                ));
             }
             self.comment(&system, &workspace, in_repo.as_ref(), number, body).await?;
         }
@@ -358,7 +363,15 @@ impl Integrations {
     /// Passes `text` to `actor`'s own session on `numbers` in `workspace`
     /// (in `repo`, for a pull request's) that g1t started and is still
     /// going. Whether there was one.
-    async fn tell_running(&self, workspace: &str, repo: Option<&RepoPath>, actor: &User, numbers: &[u32], text: &str, url: &str) -> Result<bool> {
+    async fn tell_running(
+        &self,
+        workspace: &str,
+        repo: Option<&RepoPath>,
+        actor: &User,
+        numbers: &[u32],
+        text: &str,
+        url: &str,
+    ) -> Result<bool> {
         let repo_name = repo.map(|repo| format!("{}/{}", repo.namespace.to_lowercase(), repo.name));
         let running = self
             .db
@@ -368,7 +381,12 @@ impl Integrations {
                    AND item IN (SELECT value FROM json_each(?4))
                  ORDER BY created_at DESC LIMIT 1",
             )
-            .bind(&[workspace.into(), crate::optional(repo_name.as_deref()), actor.id.as_str().into(), serde_json::to_string(numbers)?.into()])?
+            .bind(&[
+                workspace.into(),
+                crate::optional(repo_name.as_deref()),
+                actor.id.as_str().into(),
+                serde_json::to_string(numbers)?.into(),
+            ])?
             .first::<Running>(None)
             .await?;
         let Some(running) = running else { return Ok(false) };
@@ -380,7 +398,12 @@ impl Integrations {
             text.trim()
         );
         let sent = self
-            .call_anthropic(&key, worker::Method::Post, &format!("/v1/sessions/{}/events", running.provider_session_id), Some(crate::agent_sessions::message_event(&message)))
+            .call_anthropic(
+                &key,
+                worker::Method::Post,
+                &format!("/v1/sessions/{}/events", running.provider_session_id),
+                Some(crate::agent_sessions::message_event(&message)),
+            )
             .await?;
         Ok(sent.is_ok())
     }
@@ -431,7 +454,11 @@ mod tests {
     fn assigning_g1t_and_commenting_ask_and_nothing_g1t_does_does() {
         let item = On::Item { workspace: "acme".into(), number: 4 };
         assert_eq!(
-            ask_in(&event("work_item.assigned", "usr_ana", json!({ "itemId": "wki_1", "workspace": "acme", "number": 4, "added": ["g1t"] }))),
+            ask_in(&event(
+                "work_item.assigned",
+                "usr_ana",
+                json!({ "itemId": "wki_1", "workspace": "acme", "number": 4, "added": ["g1t"] })
+            )),
             Some(Ask::Assigned { on: item.clone() })
         );
         assert_eq!(ask_in(&event("work_item.assigned", "usr_ana", json!({ "workspace": "acme", "number": 4, "added": ["bo"] }))), None);
@@ -440,7 +467,11 @@ mod tests {
             Some(Ask::Commented { on: On::Pull { number: 4 }, comment_id: "cmt_1".into() })
         );
         assert_eq!(
-            ask_in(&event("comment.created", "usr_ana", json!({ "number": 4, "commentId": "cmt_1", "itemId": "wki_1", "workspace": "Acme" }))),
+            ask_in(&event(
+                "comment.created",
+                "usr_ana",
+                json!({ "number": 4, "commentId": "cmt_1", "itemId": "wki_1", "workspace": "Acme" })
+            )),
             Some(Ask::Commented { on: item, comment_id: "cmt_1".into() })
         );
         assert_eq!(ask_in(&event("comment.created", "g1t", json!({ "number": 4, "commentId": "cmt_1" }))), None);

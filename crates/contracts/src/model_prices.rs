@@ -253,7 +253,15 @@ pub fn parse_usage(value: &Value) -> Result<Vec<ModelUsage>, String> {
             };
         }
         let [input_tokens, output_tokens, cache_write_5m_tokens, cache_write_1h_tokens, cache_read_tokens] = counts;
-        let one = ModelUsage { model: model.to_owned(), tier, input_tokens, output_tokens, cache_write_5m_tokens, cache_write_1h_tokens, cache_read_tokens };
+        let one = ModelUsage {
+            model: model.to_owned(),
+            tier,
+            input_tokens,
+            output_tokens,
+            cache_write_5m_tokens,
+            cache_write_1h_tokens,
+            cache_read_tokens,
+        };
         match out.iter_mut().find(|known| known.model == one.model && known.tier == one.tier) {
             Some(known) => {
                 known.input_tokens = known.input_tokens.saturating_add(one.input_tokens);
@@ -317,7 +325,16 @@ mod tests {
     fn other_models_are_priced_as_unknown() {
         // Codex's own review model has no list price.
         // Gemini CLI's gemini-3-pro-preview and gemini-3.5-flash have no list price.
-        for model in ["gpt-5.1-codex", "codex-auto-review", "claude-opus-3", "o3", "<synthetic>", "claude-opus-5-5x", "gemini-3-pro-preview", "gemini-3.5-flash"] {
+        for model in [
+            "gpt-5.1-codex",
+            "codex-auto-review",
+            "claude-opus-3",
+            "o3",
+            "<synthetic>",
+            "claude-opus-5-5x",
+            "gemini-3-pro-preview",
+            "gemini-3.5-flash",
+        ] {
             assert_eq!(model_price(model, None), None, "{model}");
         }
     }
@@ -325,7 +342,15 @@ mod tests {
     #[test]
     fn a_sessions_cost_is_the_sum_of_the_models_priced() {
         let usage = vec![
-            ModelUsage { model: "claude-opus-5-5".into(), input_tokens: 1_000_000, output_tokens: 100_000, cache_write_5m_tokens: 200_000, cache_write_1h_tokens: 100_000, cache_read_tokens: 10_000_000, ..Default::default() },
+            ModelUsage {
+                model: "claude-opus-5-5".into(),
+                input_tokens: 1_000_000,
+                output_tokens: 100_000,
+                cache_write_5m_tokens: 200_000,
+                cache_write_1h_tokens: 100_000,
+                cache_read_tokens: 10_000_000,
+                ..Default::default()
+            },
             ModelUsage { model: "claude-haiku-5-5".into(), tier: Some("long".into()), input_tokens: 2_000_000, ..Default::default() },
         ];
         // Opus 5.5: 4 + 2 + 1 (5m: 0.2M × 5) + 0.8 (1h: 0.1M × 8) + 2 = 9.8; Haiku 5.5 long: 2M × 0.5 = 1.

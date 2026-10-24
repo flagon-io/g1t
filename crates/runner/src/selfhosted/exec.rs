@@ -313,7 +313,11 @@ fn in_native_vm(config: &Config, folder: &Path, work: &Assignment, env: BTreeMap
 
 /// ` as Standard`, for a job taken for one of g1t's machines' sizes.
 fn sized_as(work: &Assignment) -> String {
-    work.size.as_ref().and_then(|size| g1t_contracts::runners::size_named(&size.size)).map(|size| format!(" as {}", size.name)).unwrap_or_default()
+    work.size
+        .as_ref()
+        .and_then(|size| g1t_contracts::runners::size_named(&size.size))
+        .map(|size| format!(" as {}", size.name))
+        .unwrap_or_default()
 }
 
 /// Host mode does not take a public repository's work: anyone can propose
@@ -323,7 +327,10 @@ fn refuse_public_on_host(work: &Assignment) -> Result<()> {
         Some("public") => bail!("{}", sandbox::host_mode_refuses(&work.repo)),
         Some(_) => Ok(()),
         None => {
-            log(&format!("g1t did not say whether {} is public (an older g1t), so it runs; host mode refuses public repositories' work once it does.", work.repo));
+            log(&format!(
+                "g1t did not say whether {} is public (an older g1t), so it runs; host mode refuses public repositories' work once it does.",
+                work.repo
+            ));
             Ok(())
         }
     }
@@ -379,8 +386,18 @@ pub fn capacity(memory: Option<&str>, cpus: Option<&str>, job_docker: bool, isol
     let machine_cpus = std::thread::available_parallelism().map_or(1, |n| n.get()) as u32;
     let given_cpus = cpus.and_then(|c| c.trim().parse::<f64>().ok()).map(|c| c.floor() as u32).filter(|c| *c > 0);
     match isolation {
-        Isolation::Host => Capacity { cpus: Some(machine_cpus), memory_mib: super::launcher::total_memory_mib(), docker: docker_ready(), hosted_image: false },
-        Isolation::Vm => Capacity { cpus: Some(machine_cpus), memory_mib: Some(memory.and_then(mib).unwrap_or(4096)), docker: false, hosted_image: false },
+        Isolation::Host => Capacity {
+            cpus: Some(machine_cpus),
+            memory_mib: super::launcher::total_memory_mib(),
+            docker: docker_ready(),
+            hosted_image: false,
+        },
+        Isolation::Vm => Capacity {
+            cpus: Some(machine_cpus),
+            memory_mib: Some(memory.and_then(mib).unwrap_or(4096)),
+            docker: false,
+            hosted_image: false,
+        },
         Isolation::NestedContainer | Isolation::Container => {
             let memory = memory
                 .map(str::to_owned)
@@ -428,7 +445,10 @@ pub fn run_args(plan: &Plan) -> Vec<String> {
         add(&mut args, &["--cap-add", cap]);
     }
     let pids = plan.limits.pids.to_string();
-    add(&mut args, &["--pids-limit", &pids, "--memory", &plan.limits.memory, "--memory-swap", &plan.limits.memory, "--cpus", &plan.limits.cpus]);
+    add(
+        &mut args,
+        &["--pids-limit", &pids, "--memory", &plan.limits.memory, "--memory-swap", &plan.limits.memory, "--cpus", &plan.limits.cpus],
+    );
     add(&mut args, &["--network", plan.network, "--ipc", "private"]);
     // The job is in its `container:` image already: the harness inside
     // does not start it again (actions/containers.rs).
@@ -464,7 +484,9 @@ pub fn job_image(config: &Config, work: &Assignment, hosted: Option<String>) -> 
     }
     if work.size.is_some() {
         let Some(image) = hosted else {
-            bail!("this job asked for one of g1t's machines, and this runner has no g1t runner image to run it in: it should not have been given it");
+            bail!(
+                "this job asked for one of g1t's machines, and this runner has no g1t runner image to run it in: it should not have been given it"
+            );
         };
         return Ok((image.clone(), format!("g1t's machine image ({image})")));
     }
@@ -505,7 +527,13 @@ fn wants_job_engine(config: &Config, isolation: Isolation) -> bool {
     isolation == Isolation::NestedContainer && config.job_docker && cfg!(unix)
 }
 
-fn in_docker(config: &Config, isolation: Isolation, folder: &Path, work: &Assignment, mut env: BTreeMap<String, String>) -> Result<Running> {
+fn in_docker(
+    config: &Config,
+    isolation: Isolation,
+    folder: &Path,
+    work: &Assignment,
+    mut env: BTreeMap<String, String>,
+) -> Result<Running> {
     let (image, image_said) = job_image(config, work, hosted_image(config))?;
     #[cfg(unix)]
     if super::engine::in_use() {
@@ -861,7 +889,12 @@ mod tests {
 
     #[test]
     fn a_job_with_docker_gets_a_socket_of_its_own_not_the_runners() {
-        let engine_args = vec!["-v".into(), "/run/g1t-runner/jobs/g1t-job_1/proxy:/run/g1t-docker:ro".into(), "-e".into(), "DOCKER_HOST=unix:///run/g1t-docker/docker.sock".into()];
+        let engine_args = vec![
+            "-v".into(),
+            "/run/g1t-runner/jobs/g1t-job_1/proxy:/run/g1t-docker:ro".into(),
+            "-e".into(),
+            "DOCKER_HOST=unix:///run/g1t-docker/docker.sock".into(),
+        ];
         let (args, _) = args_for("workflow", engine_args);
         let mounts = value_of(&args, "-v");
         assert!(mounts.contains(&"/run/g1t-runner/jobs/g1t-job_1/proxy:/run/g1t-docker:ro"));
@@ -946,7 +979,11 @@ mod tests {
         config.image = Some("node:24-bookworm-slim".into());
         let mut work = assignment("workflow");
         let hosted = Some("g1t.sh/flagon-io/g1t-runner-hosted@sha256:ab".to_owned());
-        assert_eq!(job_image(&config, &work, hosted.clone()).unwrap().0, "node:24-bookworm-slim", "a self-hosted job keeps the runner's image");
+        assert_eq!(
+            job_image(&config, &work, hosted.clone()).unwrap().0,
+            "node:24-bookworm-slim",
+            "a self-hosted job keeps the runner's image"
+        );
         work.size = g1t_contracts::runners::OfferedSize::of("2-core").assigned();
         let (image, said) = job_image(&config, &work, hosted.clone()).unwrap();
         assert_eq!(image, "g1t.sh/flagon-io/g1t-runner-hosted@sha256:ab");

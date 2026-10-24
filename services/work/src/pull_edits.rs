@@ -208,9 +208,7 @@ impl Work {
             Some(_) => item.as_ref().map(|held| held.item.number),
             None => pull.item,
         };
-        let Some(changes) =
-            changes((&pull.title, pull.body.as_deref(), pull.item), (&title, body.as_deref(), item_after))
-        else {
+        let Some(changes) = changes((&pull.title, pull.body.as_deref(), pull.item), (&title, body.as_deref(), item_after)) else {
             return Ok(());
         };
         if title != pull.title {

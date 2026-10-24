@@ -60,10 +60,15 @@ pub fn schedule(app: AppHandle) {
             if config::settings(&app).auto_update {
                 let at_start = first && started.elapsed() < AT_START;
                 let found = look(&app, false, at_start).await;
-                if at_start && let Some(version) = found.ok().as_deref().and_then(|answer| answer.strip_prefix("ready:")).map(str::to_owned) {
+                if at_start && let Some(version) = found.ok().as_deref().and_then(|answer| answer.strip_prefix("ready:")).map(str::to_owned)
+                {
                     // Only a job the restart would cut short holds it back: a sandbox's runs on.
                     if runner::leaving(&app, Going::Restart).1 {
-                        tell(&app, "g1t is ready to update", &format!("Version {version} is downloaded. Restart g1t from the tray to use it."));
+                        tell(
+                            &app,
+                            "g1t is ready to update",
+                            &format!("Version {version} is downloaded. Restart g1t from the tray to use it."),
+                        );
                     } else {
                         tell(&app, "Updating g1t", &format!("g1t opens again on version {version} in a moment."));
                         let _ = restart(&app);
@@ -248,7 +253,10 @@ fn leave(app: &AppHandle, going: Going, doing: &'static str, then: impl FnOnce(&
                 let _ = window.hide();
             }
             let after_job = answer == Answer::WhenDone;
-            tray::leaving(&app, Some(if after_job { format!("{} when the job finishes…", doing.trim_end_matches('…')) } else { doing.to_owned() }));
+            tray::leaving(
+                &app,
+                Some(if after_job { format!("{} when the job finishes…", doing.trim_end_matches('…')) } else { doing.to_owned() }),
+            );
             runner::shut(&app, going, after_job, || {
                 if after_job {
                     log(&app, "The job finished.");

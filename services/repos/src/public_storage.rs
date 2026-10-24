@@ -283,7 +283,12 @@ impl<S: crate::store::GitStore> crate::Repos<S> {
     /// Reserves `bytes` for `repo` and keeps the reservation in `slot`: an
     /// admission for copy.rs, which asks once with the pack's size.
     pub(crate) async fn hold_into(
-        &self, slot: &RefCell<Option<Reservation>>, repo: &Repo, bytes: u64, operation: Operation, actor: Option<&str>,
+        &self,
+        slot: &RefCell<Option<Reservation>>,
+        repo: &Repo,
+        bytes: u64,
+        operation: Operation,
+        actor: Option<&str>,
     ) -> Result<std::result::Result<(), Refusal>> {
         let reservation = self.registry.reserve_public(repo, bytes, self.free_public_bytes, operation, actor).await?;
         Ok(reservation.map(|reservation| *slot.borrow_mut() = Some(reservation)))
@@ -300,8 +305,15 @@ impl<S: crate::store::GitStore> crate::Repos<S> {
     /// ended for staff.
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn push_reserved(
-        &self, repo: &Repo, operation: Operation, actor: Option<&str>, access: &g1t_contracts::repos::GitAccess,
-        branch: &str, old: Option<&str>, new: &str, pack: Vec<u8>,
+        &self,
+        repo: &Repo,
+        operation: Operation,
+        actor: Option<&str>,
+        access: &g1t_contracts::repos::GitAccess,
+        branch: &str,
+        old: Option<&str>,
+        new: &str,
+        pack: Vec<u8>,
     ) -> Result<std::result::Result<std::result::Result<(), String>, Refusal>> {
         let bytes = pack.len() as u64;
         let reservation = match self.registry.reserve_public(repo, bytes, self.free_public_bytes, operation, actor).await? {
@@ -522,20 +534,39 @@ pub(crate) fn may_still_run(error: &str) -> bool {
 impl Registry {
     pub(crate) async fn copy_size(&self, repo: &Repo) -> Result<(u64, u64)> {
         #[derive(Deserialize)]
-        struct Size { stored_bytes: f64, storage_reserved_bytes: f64 }
-        let row = self.db.prepare("SELECT stored_bytes, storage_reserved_bytes FROM repos WHERE id = ?")
-            .bind(&[repo.id.as_str().into()])?.first::<Size>(None).await?
+        struct Size {
+            stored_bytes: f64,
+            storage_reserved_bytes: f64,
+        }
+        let row = self
+            .db
+            .prepare("SELECT stored_bytes, storage_reserved_bytes FROM repos WHERE id = ?")
+            .bind(&[repo.id.as_str().into()])?
+            .first::<Size>(None)
+            .await?
             .ok_or_else(|| worker::Error::RustError("Copy source disappeared".into()))?;
         Ok((row.stored_bytes.max(0.0) as u64, row.storage_reserved_bytes.max(0.0) as u64))
     }
     pub(crate) async fn lock_copy(&self, source: &Repo, destination: &Repo) -> Result<bool> {
         #[derive(Deserialize)]
-        struct Locked { #[serde(rename = "repo_id")] _id: String }
+        struct Locked {
+            #[serde(rename = "repo_id")]
+            _id: String,
+        }
         let now = now_ms();
-        Ok(self.db.prepare(LOCK_COPY)
-            .bind(&[source.id.as_str().into(), destination.id.as_str().into(), destination.created_at.as_str().into(),
-                (now as f64).into(), ((now + LEASE_MS) as f64).into()])?
-            .first::<Locked>(None).await?.is_some())
+        Ok(self
+            .db
+            .prepare(LOCK_COPY)
+            .bind(&[
+                source.id.as_str().into(),
+                destination.id.as_str().into(),
+                destination.created_at.as_str().into(),
+                (now as f64).into(),
+                ((now + LEASE_MS) as f64).into(),
+            ])?
+            .first::<Locked>(None)
+            .await?
+            .is_some())
     }
 
     /// Why a native fork's copy lock refuses writes to `repo`'s root, if
@@ -551,14 +582,24 @@ impl Registry {
     /// already: staff released it while the copy ran (storage_holds.rs).
     pub(crate) async fn unlock_copy(&self, source: &Repo, destination: &Repo) -> Result<bool> {
         #[derive(Deserialize)]
-        struct Unlocked { #[serde(rename = "repo_id")] _id: String }
-        Ok(self.db.prepare(UNLOCK_COPY)
+        struct Unlocked {
+            #[serde(rename = "repo_id")]
+            _id: String,
+        }
+        Ok(self
+            .db
+            .prepare(UNLOCK_COPY)
             .bind(&[source.id.as_str().into(), destination.id.as_str().into()])?
-            .first::<Unlocked>(None).await?.is_some())
+            .first::<Unlocked>(None)
+            .await?
+            .is_some())
     }
     pub(crate) async fn make_public(&self, repo: &Repo, cap: i64) -> Result<bool> {
         #[derive(Deserialize)]
-        struct Changed { #[serde(rename = "id")] _id: String }
+        struct Changed {
+            #[serde(rename = "id")]
+            _id: String,
+        }
         let results = self.db.batch(vec![
             self.db.prepare(MAKE_PUBLIC).bind(&[repo.id.as_str().into(), (cap as f64).into()])?,
             self.db.prepare("UPDATE repos SET is_private = 0 WHERE fork_of = ?1 AND EXISTS (SELECT 1 FROM repos root WHERE root.id = ?1 AND root.is_private = 0)")
@@ -572,7 +613,12 @@ impl Registry {
     /// the root is being copied into a fork, or the workspace cannot fit
     /// the write.
     pub(crate) async fn reserve_public(
-        &self, repo: &Repo, bytes: u64, cap: i64, operation: Operation, actor: Option<&str>,
+        &self,
+        repo: &Repo,
+        bytes: u64,
+        cap: i64,
+        operation: Operation,
+        actor: Option<&str>,
     ) -> Result<std::result::Result<Reservation, Refusal>> {
         let now = now_ms();
         let mut reservation = Reservation {
@@ -590,32 +636,50 @@ impl Registry {
 
     /// Reserves `bytes` more under `reservation`, while its lease lasts.
     pub(crate) async fn grow_public(
-        &self, reservation: &mut Reservation, bytes: u64, cap: i64,
+        &self,
+        reservation: &mut Reservation,
+        bytes: u64,
+        cap: i64,
     ) -> Result<std::result::Result<(), Refusal>> {
         self.grant(reservation, bytes, cap, now_ms()).await
     }
 
-    async fn grant(
-        &self, reservation: &mut Reservation, bytes: u64, cap: i64, now: u64,
-    ) -> Result<std::result::Result<(), Refusal>> {
+    async fn grant(&self, reservation: &mut Reservation, bytes: u64, cap: i64, now: u64) -> Result<std::result::Result<(), Refusal>> {
         #[derive(Deserialize)]
-        struct Held { #[serde(rename = "id")] _id: String }
+        struct Held {
+            #[serde(rename = "id")]
+            _id: String,
+        }
         let grant = new_id("grt", now);
         let actor: worker::wasm_bindgen::JsValue = match &reservation.actor {
             Some(actor) => actor.as_str().into(),
             None => worker::wasm_bindgen::JsValue::NULL,
         };
-        let results = self.db.batch(vec![
-            self.db.prepare(HOLD).bind(&[
-                reservation.root.as_str().into(), (bytes as f64).into(), (cap as f64).into(), reservation.id.as_str().into(),
-                reservation.target.as_str().into(), reservation.operation.as_str().into(), actor, grant.as_str().into(),
-                reservation.created_at.as_str().into(), (now as f64).into(), (reservation.lease_until_ms as f64).into(),
-            ])?,
-            self.db.prepare(HOLD_SUM).bind(&[
-                reservation.root.as_str().into(), (bytes as f64).into(), reservation.id.as_str().into(), grant.as_str().into(),
-            ])?,
-            self.db.prepare(COPY_LOCKED).bind(&[reservation.root.as_str().into(), (now as f64).into()])?,
-        ]).await?;
+        let results = self
+            .db
+            .batch(vec![
+                self.db.prepare(HOLD).bind(&[
+                    reservation.root.as_str().into(),
+                    (bytes as f64).into(),
+                    (cap as f64).into(),
+                    reservation.id.as_str().into(),
+                    reservation.target.as_str().into(),
+                    reservation.operation.as_str().into(),
+                    actor,
+                    grant.as_str().into(),
+                    reservation.created_at.as_str().into(),
+                    (now as f64).into(),
+                    (reservation.lease_until_ms as f64).into(),
+                ])?,
+                self.db.prepare(HOLD_SUM).bind(&[
+                    reservation.root.as_str().into(),
+                    (bytes as f64).into(),
+                    reservation.id.as_str().into(),
+                    grant.as_str().into(),
+                ])?,
+                self.db.prepare(COPY_LOCKED).bind(&[reservation.root.as_str().into(), (now as f64).into()])?,
+            ])
+            .await?;
         if !results[0].results::<Held>()?.is_empty() {
             reservation.bytes = reservation.bytes.saturating_add(bytes);
             return Ok(Ok(()));
@@ -640,11 +704,13 @@ impl Registry {
 
     async fn settle(&self, reservation: &Reservation, measured: u64) -> Result<()> {
         let args = [reservation.root.as_str().into(), reservation.id.as_str().into(), (measured as f64).into()];
-        self.db.batch(vec![
-            self.db.prepare(SETTLE_RELEASED).bind(&args)?,
-            self.db.prepare(SETTLE).bind(&args)?,
-            self.db.prepare(SETTLE_ROW).bind(&[reservation.id.as_str().into()])?,
-        ]).await?;
+        self.db
+            .batch(vec![
+                self.db.prepare(SETTLE_RELEASED).bind(&args)?,
+                self.db.prepare(SETTLE).bind(&args)?,
+                self.db.prepare(SETTLE_ROW).bind(&[reservation.id.as_str().into()])?,
+            ])
+            .await?;
         Ok(())
     }
 
@@ -657,9 +723,11 @@ impl Registry {
         let refs = serde_json::to_string(refs).unwrap_or_else(|_| "[]".to_owned());
         let outcome: String = outcome.chars().take(500).collect();
         let ended = async {
-            self.db.prepare(END)
+            self.db
+                .prepare(END)
                 .bind(&[reservation.id.as_str().into(), (now_ms() as f64).into(), outcome.as_str().into(), refs.as_str().into()])?
-                .run().await
+                .run()
+                .await
         };
         if let Err(error) = ended.await {
             worker::console_error!("repos: reservation {} could not be marked ended: {error}", reservation.id);
@@ -841,14 +909,10 @@ mod tests {
         }
         // What a landing on a repository being copied into a fork is told:
         // the lock, as a merge g1t makes stalls with it.
-        let g1t_contracts::Outcome::Fail(locked) = Refusal::Locked.outcome::<g1t_contracts::repos::Landed>() else {
-            panic!("refused")
-        };
+        let g1t_contracts::Outcome::Fail(locked) = Refusal::Locked.outcome::<g1t_contracts::repos::Landed>() else { panic!("refused") };
         assert_eq!(locked.code, g1t_contracts::FailureCode::Unavailable);
         assert_eq!(locked.message, LOCKED_MESSAGE);
-        let g1t_contracts::Outcome::Fail(full) = Refusal::Full.outcome::<g1t_contracts::repos::SyncedFork>() else {
-            panic!("refused")
-        };
+        let g1t_contracts::Outcome::Fail(full) = Refusal::Full.outcome::<g1t_contracts::repos::SyncedFork>() else { panic!("refused") };
         assert_eq!((full.code, full.message.as_str()), (g1t_contracts::FailureCode::Forbidden, FULL_MESSAGE));
     }
 
@@ -882,7 +946,10 @@ mod tests {
         }
         // A ref that moved stores the pack, beside one that did not (a
         // hidden ref g1t refused, hidden_refs.rs).
-        assert_eq!(settle(banded(&["unpack ok", "ok refs/heads/main", "ng refs/pull/1/head deny updating a hidden ref"])), Settlement::Finish);
+        assert_eq!(
+            settle(banded(&["unpack ok", "ok refs/heads/main", "ng refs/pull/1/head deny updating a hidden ref"])),
+            Settlement::Finish
+        );
         assert_eq!(settle(report(&["unpack ok", "ok refs/heads/main"])), Settlement::Finish);
         // A 200 whose report cannot be read is counted, as before.
         assert_eq!(settle(b"0000".to_vec()), Settlement::Finish);
@@ -894,7 +961,8 @@ mod tests {
         let answer = body_of(include_str!("lib.rs"), "answer_git");
         let read = answer.find("match response.bytes().await").expect("the report is read");
         let parsed = answer.find("land::read_answer(report)").expect("read once");
-        let settles = answer.find("public_storage::push_settlement(status, forwarded.rate_limited, reply.as_ref())").expect("settled by it");
+        let settles =
+            answer.find("public_storage::push_settlement(status, forwarded.rate_limited, reply.as_ref())").expect("settled by it");
         assert!(read < parsed && parsed < settles);
     }
 
@@ -965,12 +1033,23 @@ mod tests {
             [main, tag, pull].into_iter().filter(|git_ref| read.records(git_ref)).collect::<Vec<_>>()
         };
         // Every ref refused, a tag among them: none.
-        assert!(recorded(report(&["unpack ok", "ng refs/heads/main non-fast-forward", "ng refs/tags/v1 already exists", "ng refs/pull/1/head x"])).is_empty());
+        assert!(
+            recorded(report(&[
+                "unpack ok",
+                "ng refs/heads/main non-fast-forward",
+                "ng refs/tags/v1 already exists",
+                "ng refs/pull/1/head x"
+            ]))
+            .is_empty()
+        );
         // The unpack failed: none, whatever the refs say.
         assert!(recorded(report(&["unpack error: invalid pack", "ok refs/heads/main"])).is_empty());
         // One moved beside one refused (a hidden ref): all but the refused.
         assert_eq!(recorded(banded(&["unpack ok", "ok refs/heads/main", "ng refs/pull/1/head deny updating a hidden ref"])), [main, tag]);
-        assert_eq!(recorded(report(&["unpack ok", "ok refs/heads/main", "option refname refs/heads/main", "ng refs/tags/v1 already exists"])), [main, pull]);
+        assert_eq!(
+            recorded(report(&["unpack ok", "ok refs/heads/main", "option refname refs/heads/main", "ng refs/tags/v1 already exists"])),
+            [main, pull]
+        );
         // A report that mentions only some refs, or none (just `unpack ok`,
         // or cut short): the rest are left to record_push's store checks.
         assert_eq!(recorded(report(&["unpack ok", "ok refs/heads/main"])), [main, tag, pull]);
@@ -1115,7 +1194,12 @@ mod tests {
         assert_eq!(crate::git_ops::PLAIN_TEXT, "text/plain; charset=utf-8");
         assert!(message.ends_with('\n') && !message.contains("full"));
         let stalled = crate::git_ops::copy_locked_message("acme", "rocket", Refusal::Stalled);
-        assert!(stalled.starts_with("acme/rocket is being copied into a fork, and the copy has taken longer than it should, or did not finish cleanly"), "{stalled}");
+        assert!(
+            stalled.starts_with(
+                "acme/rocket is being copied into a fork, and the copy has taken longer than it should, or did not finish cleanly"
+            ),
+            "{stalled}"
+        );
         assert!(stalled.contains("until it ends or g1t staff have checked it"));
         assert!(stalled.contains("a few hours") && !stalled.contains("few minutes") && stalled.ends_with('\n'));
     }

@@ -142,11 +142,15 @@ pub fn target(entry: &Entry, comments: &[IgnoreCondition], candidate: &Candidate
         }
         let level = ranges::update_level(&candidate.current, to);
         let kind = format!("version-update:semver-{level}");
-        if rules.iter().any(|rule| rule.versions.iter().any(|versions| ranges::ignored_by(versions, to)) || rule.update_types.contains(&kind)) {
+        if rules
+            .iter()
+            .any(|rule| rule.versions.iter().any(|versions| ranges::ignored_by(versions, to)) || rule.update_types.contains(&kind))
+        {
             continue;
         }
         if mine.iter().any(|condition| {
-            condition.versions.as_deref().is_some_and(|versions| ranges::ignored_by(versions, to)) || condition.update_type.as_deref() == Some(&kind)
+            condition.versions.as_deref().is_some_and(|versions| ranges::ignored_by(versions, to))
+                || condition.update_type.as_deref() == Some(&kind)
         }) {
             continue;
         }
@@ -201,7 +205,8 @@ impl PullPlan {
 
     /// The versions it reaches, to tell a plan from an older one.
     pub fn signature(&self) -> String {
-        let mut parts: Vec<String> = self.updates.iter().map(|update| format!("{}{}@{}", update.directory, update.name, update.to)).collect();
+        let mut parts: Vec<String> =
+            self.updates.iter().map(|update| format!("{}{}@{}", update.directory, update.name, update.to)).collect();
         parts.sort();
         parts.join(",")
     }
@@ -257,7 +262,8 @@ mod tests {
     const NOW: u64 = 1_800_000_000_000;
 
     fn entry(extra: &str) -> Entry {
-        let source = format!("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {{interval: daily}}\n{extra}");
+        let source =
+            format!("version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule: {{interval: daily}}\n{extra}");
         let found = read(&source);
         assert!(found.problems.is_empty(), "{:?}", found.problems);
         found.config.updates.into_iter().next().unwrap()
@@ -284,7 +290,11 @@ mod tests {
 
     #[test]
     fn the_newest_release_past_the_default_cooldown() {
-        let found = candidate("lodash", "4.17.20", vec![release("4.17.20", 900), release("4.17.21", 30), release("4.18.0", 1), release("5.0.0-rc.1", 40)]);
+        let found = candidate(
+            "lodash",
+            "4.17.20",
+            vec![release("4.17.20", 900), release("4.17.21", 30), release("4.18.0", 1), release("5.0.0-rc.1", 40)],
+        );
         // 4.18.0 is a day old: the default three days hold it back. The release candidate is skipped.
         assert_eq!(to(&entry(""), &found), Ok("4.17.21".into()));
         let mut withdrawn = found.clone();
@@ -298,13 +308,21 @@ mod tests {
     #[test]
     fn cooldown_by_level_include_and_exclude() {
         let found = candidate("react", "18.2.0", vec![release("18.2.1", 2), release("18.3.0", 5), release("19.0.0", 10)]);
-        let cooled = entry("    cooldown:\n      default-days: 1\n      semver-major-days: 30\n      semver-minor-days: 3\n      semver-patch-days: 0\n");
+        let cooled = entry(
+            "    cooldown:\n      default-days: 1\n      semver-major-days: 30\n      semver-minor-days: 3\n      semver-patch-days: 0\n",
+        );
         assert_eq!(to(&cooled, &found), Ok("18.3.0".into()));
         let excluded = entry("    cooldown:\n      default-days: 30\n      exclude: [\"react\"]\n");
         assert_eq!(to(&excluded, &found), Ok("19.0.0".into()));
         let others = entry("    cooldown:\n      default-days: 30\n      include: [\"vue*\"]\n");
         assert_eq!(to(&others, &found), Ok("19.0.0".into()));
-        let unknown_date = Candidate { package: Package { releases: vec![Release { version: "18.4.0".into(), published_ms: None, withdrawn: false }], ..Package::default() }, ..found };
+        let unknown_date = Candidate {
+            package: Package {
+                releases: vec![Release { version: "18.4.0".into(), published_ms: None, withdrawn: false }],
+                ..Package::default()
+            },
+            ..found
+        };
         assert_eq!(to(&entry(""), &unknown_date), Ok("18.4.0".into()));
     }
 
@@ -312,7 +330,10 @@ mod tests {
     fn ignore_rules_and_comments() {
         let found = candidate("react", "18.2.0", vec![release("18.3.1", 10), release("19.0.0", 10)]);
         assert_eq!(to(&entry("    ignore:\n      - dependency-name: react\n"), &found), Err(Skip::Ignored));
-        assert_eq!(to(&entry("    ignore:\n      - dependency-name: \"rea*\"\n        versions: [\">=19\"]\n"), &found), Ok("18.3.1".into()));
+        assert_eq!(
+            to(&entry("    ignore:\n      - dependency-name: \"rea*\"\n        versions: [\">=19\"]\n"), &found),
+            Ok("18.3.1".into())
+        );
         assert_eq!(
             to(&entry("    ignore:\n      - dependency-name: \"*\"\n        update-types: [\"version-update:semver-major\"]\n"), &found),
             Ok("18.3.1".into())
@@ -359,7 +380,17 @@ mod tests {
     }
 
     fn planned(name: &str, directory: &str, kind: DependencyType, level: &'static str) -> Planned {
-        Planned { name: name.into(), directory: directory.into(), kind, from: "1.0.0".into(), to: "1.1.0".into(), level, source: None, changelog: None, page: None }
+        Planned {
+            name: name.into(),
+            directory: directory.into(),
+            kind,
+            from: "1.0.0".into(),
+            to: "1.1.0".into(),
+            level,
+            source: None,
+            changelog: None,
+            page: None,
+        }
     }
 
     #[test]
@@ -379,7 +410,13 @@ mod tests {
         let plans = gather(&entry.groups, "version-updates", updates);
         let shown: Vec<String> = plans
             .iter()
-            .map(|plan| format!("{} {}", plan.subject(), plan.updates.iter().map(|u| format!("{}{}", u.directory, u.name)).collect::<Vec<_>>().join(",")))
+            .map(|plan| {
+                format!(
+                    "{} {}",
+                    plan.subject(),
+                    plan.updates.iter().map(|u| format!("{}{}", u.directory, u.name)).collect::<Vec<_>>().join(",")
+                )
+            })
             .collect();
         assert_eq!(
             shown,
@@ -395,7 +432,11 @@ mod tests {
         assert_eq!(plans[2].directories(), ["/admin", "/web"]);
         assert_eq!(plans[0].signature(), "/eslint@1.1.0");
         // Security groups are their own.
-        let security = gather(&entry.groups, "security-updates", vec![planned("a", "/", DependencyType::Production, "patch"), planned("b", "/", DependencyType::Production, "patch")]);
+        let security = gather(
+            &entry.groups,
+            "security-updates",
+            vec![planned("a", "/", DependencyType::Production, "patch"), planned("b", "/", DependencyType::Production, "patch")],
+        );
         assert_eq!(security.len(), 1);
         assert_eq!(security[0].group.as_deref(), Some("fixes"));
     }

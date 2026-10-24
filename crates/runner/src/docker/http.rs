@@ -270,10 +270,7 @@ pub(crate) fn with_length(mut head: Head, body: &[u8]) -> Vec<u8> {
 /// A whole JSON response, as the Engine words its errors.
 pub(crate) fn json_response(status: u16, reason: &str, body: &serde_json::Value) -> Vec<u8> {
     let text = body.to_string();
-    let head = Head {
-        start: format!("HTTP/1.1 {status} {reason}"),
-        headers: vec![("Content-Type".into(), "application/json".into())],
-    };
+    let head = Head { start: format!("HTTP/1.1 {status} {reason}"), headers: vec![("Content-Type".into(), "application/json".into())] };
     with_length(head, text.as_bytes())
 }
 

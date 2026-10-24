@@ -286,11 +286,7 @@ struct Namespace {
 #[derive(Clone)]
 enum Target {
     Js(JsValue),
-    Fallback {
-        settings: Rc<fallback::Settings>,
-        namespace: String,
-        repo: Option<String>,
-    },
+    Fallback { settings: Rc<fallback::Settings>, namespace: String, repo: Option<String> },
 }
 
 impl Target {
@@ -561,13 +557,7 @@ fn shared_key(key: &str, scope: Scope, using: Use) -> String {
 /// `now`; with when it was made.
 fn shared_credential(bytes: &[u8], now: u64, using: Use) -> Option<(GitAccess, u64)> {
     let kept: SharedCredential = serde_json::from_slice(bytes).ok()?;
-    (now.saturating_sub(kept.made) < using.reuse_ms()).then_some((
-        GitAccess {
-            remote: kept.remote,
-            token: kept.token,
-        },
-        kept.made,
-    ))
+    (now.saturating_sub(kept.made) < using.reuse_ms()).then_some((GitAccess { remote: kept.remote, token: kept.token }, kept.made))
 }
 
 /// Credentials made a while ago, by repository, scope and use. Making one
@@ -590,8 +580,7 @@ impl Credentials {
     pub fn keep(&mut self, key: &str, scope: Scope, using: Use, access: GitAccess, made: u64, now: u64) {
         // Expired ones go first, so the map stays as small as the isolate's
         // recent repositories.
-        self.kept
-            .retain(|(_, _, kept_use), (_, at)| now.saturating_sub(*at) < kept_use.reuse_ms());
+        self.kept.retain(|(_, _, kept_use), (_, at)| now.saturating_sub(*at) < kept_use.reuse_ms());
         self.kept.insert((key.to_owned(), scope, using), (access, made));
     }
 
@@ -621,11 +610,7 @@ async fn keep(shared: Option<&crate::shared::Shared>, key: &str, scope: Scope, u
     let now = g1t_kit::now_ms();
     CREDENTIALS.with(|kept| kept.borrow_mut().keep(key, scope, using, access.clone(), now, now));
     if let Some(shared) = shared {
-        let value = SharedCredential {
-            remote: access.remote.clone(),
-            token: access.token.clone(),
-            made: now,
-        };
+        let value = SharedCredential { remote: access.remote.clone(), token: access.token.clone(), made: now };
         if let Ok(bytes) = serde_json::to_vec(&value) {
             shared.put(&shared_key(key, scope, using), &bytes, using.reuse_ms() / 1000).await;
         }
@@ -1049,11 +1034,9 @@ impl ArtifactsRepo {
         let handle = match &self.binding {
             Target::Js(_) => Target::Js(found),
             // The fallback store said the repository is there.
-            Target::Fallback { settings, namespace, .. } => Target::Fallback {
-                settings: settings.clone(),
-                namespace: namespace.clone(),
-                repo: Some(self.name.clone()),
-            },
+            Target::Fallback { settings, namespace, .. } => {
+                Target::Fallback { settings: settings.clone(), namespace: namespace.clone(), repo: Some(self.name.clone()) }
+            }
         };
         *self.handle.borrow_mut() = Some(handle.clone());
         Ok(handle)
@@ -1224,16 +1207,8 @@ impl GitRepo for ArtifactsRepo {
             return Ok(Some(entries));
         }
         let entries: Option<Vec<RawEntry>> = js::from_js(&self.call("readTree", &[tree_hash.into()], true).await?)?;
-        let entries: Option<Vec<TreeEntry>> = entries.map(|entries| {
-            entries
-                .into_iter()
-                .map(|entry| TreeEntry {
-                    name: entry.name,
-                    hash: entry.hash,
-                    kind: entry.kind,
-                })
-                .collect()
-        });
+        let entries: Option<Vec<TreeEntry>> = entries
+            .map(|entries| entries.into_iter().map(|entry| TreeEntry { name: entry.name, hash: entry.hash, kind: entry.kind }).collect());
         if let Some(entries) = &entries
             && let Ok(bytes) = serde_json::to_vec(entries)
         {
@@ -1288,10 +1263,8 @@ impl GitRepo for ArtifactsRepo {
         // store, which can be behind.
         let remember_absent = !self.binding.is_fallback();
         if let Some(key) = &key {
-            let (found, absent) = futures_util::future::join(self.get_key(key), async {
-                remember_absent && self.known_absent(key).await
-            })
-            .await;
+            let (found, absent) =
+                futures_util::future::join(self.get_key(key), async { remember_absent && self.known_absent(key).await }).await;
             if let Some(bytes) = found {
                 return Ok(Some(bytes));
             }
@@ -1430,10 +1403,7 @@ mod tests {
     }
 
     fn access(token: &str) -> GitAccess {
-        GitAccess {
-            remote: "https://store.example/acme--rocket.git".to_owned(),
-            token: token.to_owned(),
-        }
+        GitAccess { remote: "https://store.example/acme--rocket.git".to_owned(), token: token.to_owned() }
     }
 
     #[test]

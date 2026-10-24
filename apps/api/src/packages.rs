@@ -12,8 +12,8 @@
 
 use g1t_contracts::packages::*;
 use g1t_contracts::{FailureCode, Outcome, User, Viewer};
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use worker::Result;
 
@@ -112,23 +112,57 @@ impl PackagesOp {
 
     pub fn description(self) -> &'static str {
         match self {
-            PackagesOp::ListPackages => "List a workspace's packages you may pull, most recently updated first: each with its id, name, package_type, address (what a client is given, such as g1t.sh/acme/web), visibility, the repository it is linked to, version_count, latest, size_in_bytes, download_count, inherit_access and html_url. Narrow with package_type and q (part of the name). With state deleted, its deleted packages that can still be restored instead, those you administer, each with deleted_at, deleted_by and purge_at. Public packages are open to anyone.",
-            PackagesOp::GetPackage => "Get one package by its package_type and package_name (URL-encode a slash in a REST path: web%2Fworker). Not found when you may not pull it, as for one that does not exist.",
-            PackagesOp::ListVersions => "List a package's versions, newest first: each with its id (ver_…), name (the version, or for a container image its digest), digest, size_in_bytes, download_count, tags, media_type, platforms, published_by and created_at. With state deleted, its deleted versions that can still be restored, with deleted_at, deleted_by and purge_at: for the package's admins only.",
-            PackagesOp::GetVersion => "Get one version of a package by its id (ver_…), its version, its digest, or a tag that points to it.",
-            PackagesOp::ListAccess => "Who has a role on a package itself (read pulls, write publishes, admin deletes, restores and changes its settings), people and teams, with inherit_access: whether a linked package also takes its repository's roles. Owners of the workspace administer every package. For the package's admins.",
-            PackagesOp::ListActionsAccess => "Which repositories' workflows may use a package with their job token (G1T_TOKEN), with the read or write role: its linked repository (linked, always write) and those added under Manage Actions access. A job's token from any other repository is refused. For the package's admins.",
-            PackagesOp::UpdatePackage => "Change a package's visibility (public or private: an unlinked package only, as a linked one has its repository's) or, for a linked package, inherit_access: whether it takes its repository's roles. Off, only the roles given on the package itself and the workspace's owners count. Takes the Admin role on the package. Returns the package.",
-            PackagesOp::LinkPackage => "Link a package to a repository of its workspace (repository: its name or owner/name): it then has that repository's visibility and, unless inherit_access is off, its roles, and the repository's workflows may publish it. Takes the Admin role on the package and on the repository. Returns the package.",
-            PackagesOp::UnlinkPackage => "Unlink a package from its repository: it is then the workspace's, private until someone makes it public, and the repository's workflows lose their access unless it is added under Manage Actions access. Takes the Admin role on the package. Returns the package.",
-            PackagesOp::SetAccess => "Give a person (username) or a team of the workspace (team: its slug) the read, write or admin role on a package, or change theirs. It adds to what its repository or workspace gives them. Takes the Admin role on the package. Returns everyone with a role on it.",
-            PackagesOp::RemoveAccess => "Take a person's (username) or team's (team) role on a package away. What its repository or workspace gives them stays. Takes the Admin role on the package. Returns everyone left with a role on it.",
-            PackagesOp::SetActionsAccess => "Let a repository of the package's workspace (repository: its name or owner/name) use the package from its workflows, with the read or write role, or change its role. Takes the Admin role on the package. Returns the package's Actions access.",
-            PackagesOp::RemoveActionsAccess => "Stop a repository's workflows using a package. The linked repository's access cannot be removed: unlink the package instead. Takes the Admin role on the package. Returns the package's Actions access.",
-            PackagesOp::DeletePackage => "Delete a package and every version: it is gone from the registries at once, and can be restored for 30 days, during which its name cannot be taken. Takes the Admin role on the package.",
-            PackagesOp::RestorePackage => "Restore a deleted package, with the versions it had, while it can be (30 days after it was deleted). Takes the Admin role on it. Returns the package.",
-            PackagesOp::DeleteVersion => "Delete one version by its id, version, digest or a tag that points to it: it is gone from the registries at once, with its tags, and can be restored for 30 days. Its version (or digest) cannot be published again until then. Composer versions follow their repository's tags: delete the tag instead. Takes the Admin role on the package.",
-            PackagesOp::RestoreVersion => "Restore a deleted version by its id or version, while it can be (30 days after it was deleted), with the tags that still pointed to it. Takes the Admin role on the package. Returns the version.",
+            PackagesOp::ListPackages => {
+                "List a workspace's packages you may pull, most recently updated first: each with its id, name, package_type, address (what a client is given, such as g1t.sh/acme/web), visibility, the repository it is linked to, version_count, latest, size_in_bytes, download_count, inherit_access and html_url. Narrow with package_type and q (part of the name). With state deleted, its deleted packages that can still be restored instead, those you administer, each with deleted_at, deleted_by and purge_at. Public packages are open to anyone."
+            }
+            PackagesOp::GetPackage => {
+                "Get one package by its package_type and package_name (URL-encode a slash in a REST path: web%2Fworker). Not found when you may not pull it, as for one that does not exist."
+            }
+            PackagesOp::ListVersions => {
+                "List a package's versions, newest first: each with its id (ver_…), name (the version, or for a container image its digest), digest, size_in_bytes, download_count, tags, media_type, platforms, published_by and created_at. With state deleted, its deleted versions that can still be restored, with deleted_at, deleted_by and purge_at: for the package's admins only."
+            }
+            PackagesOp::GetVersion => {
+                "Get one version of a package by its id (ver_…), its version, its digest, or a tag that points to it."
+            }
+            PackagesOp::ListAccess => {
+                "Who has a role on a package itself (read pulls, write publishes, admin deletes, restores and changes its settings), people and teams, with inherit_access: whether a linked package also takes its repository's roles. Owners of the workspace administer every package. For the package's admins."
+            }
+            PackagesOp::ListActionsAccess => {
+                "Which repositories' workflows may use a package with their job token (G1T_TOKEN), with the read or write role: its linked repository (linked, always write) and those added under Manage Actions access. A job's token from any other repository is refused. For the package's admins."
+            }
+            PackagesOp::UpdatePackage => {
+                "Change a package's visibility (public or private: an unlinked package only, as a linked one has its repository's) or, for a linked package, inherit_access: whether it takes its repository's roles. Off, only the roles given on the package itself and the workspace's owners count. Takes the Admin role on the package. Returns the package."
+            }
+            PackagesOp::LinkPackage => {
+                "Link a package to a repository of its workspace (repository: its name or owner/name): it then has that repository's visibility and, unless inherit_access is off, its roles, and the repository's workflows may publish it. Takes the Admin role on the package and on the repository. Returns the package."
+            }
+            PackagesOp::UnlinkPackage => {
+                "Unlink a package from its repository: it is then the workspace's, private until someone makes it public, and the repository's workflows lose their access unless it is added under Manage Actions access. Takes the Admin role on the package. Returns the package."
+            }
+            PackagesOp::SetAccess => {
+                "Give a person (username) or a team of the workspace (team: its slug) the read, write or admin role on a package, or change theirs. It adds to what its repository or workspace gives them. Takes the Admin role on the package. Returns everyone with a role on it."
+            }
+            PackagesOp::RemoveAccess => {
+                "Take a person's (username) or team's (team) role on a package away. What its repository or workspace gives them stays. Takes the Admin role on the package. Returns everyone left with a role on it."
+            }
+            PackagesOp::SetActionsAccess => {
+                "Let a repository of the package's workspace (repository: its name or owner/name) use the package from its workflows, with the read or write role, or change its role. Takes the Admin role on the package. Returns the package's Actions access."
+            }
+            PackagesOp::RemoveActionsAccess => {
+                "Stop a repository's workflows using a package. The linked repository's access cannot be removed: unlink the package instead. Takes the Admin role on the package. Returns the package's Actions access."
+            }
+            PackagesOp::DeletePackage => {
+                "Delete a package and every version: it is gone from the registries at once, and can be restored for 30 days, during which its name cannot be taken. Takes the Admin role on the package."
+            }
+            PackagesOp::RestorePackage => {
+                "Restore a deleted package, with the versions it had, while it can be (30 days after it was deleted). Takes the Admin role on it. Returns the package."
+            }
+            PackagesOp::DeleteVersion => {
+                "Delete one version by its id, version, digest or a tag that points to it: it is gone from the registries at once, with its tags, and can be restored for 30 days. Its version (or digest) cannot be published again until then. Composer versions follow their repository's tags: delete the tag instead. Takes the Admin role on the package."
+            }
+            PackagesOp::RestoreVersion => {
+                "Restore a deleted version by its id or version, while it can be (30 days after it was deleted), with the tags that still pointed to it. Takes the Admin role on the package. Returns the version."
+            }
         }
     }
 
@@ -159,7 +193,8 @@ impl PackagesOp {
             "description": "The registry: container (also docker), npm, cargo, maven, nuget, rubygems or composer.",
         });
         let package_name = json!({ "type": "string", "description": "The package's name without the workspace: web for g1t.sh/acme/web, web/worker for an image with more parts, group:artifact for Maven." });
-        let version_id = json!({ "type": "string", "description": "The version's id (ver_…), its version, its digest, or a tag that points to it." });
+        let version_id =
+            json!({ "type": "string", "description": "The version's id (ver_…), its version, its digest, or a tag that points to it." });
         let role = |roles: &[&str]| json!({ "type": "string", "enum": roles, "description": "read pulls, write publishes, admin deletes, restores and changes its settings." });
         let package = |mut properties: Value| {
             properties["workspace"] = workspace.clone();
@@ -201,7 +236,9 @@ impl PackagesOp {
                 base.to_vec(),
             ),
             PackagesOp::LinkPackage => (
-                package(json!({ "repository": { "type": "string", "description": "A repository of the package's workspace: its name, or owner/name." } })),
+                package(
+                    json!({ "repository": { "type": "string", "description": "A repository of the package's workspace: its name, or owner/name." } }),
+                ),
                 [base.as_slice(), &["repository"]].concat(),
             ),
             PackagesOp::SetAccess => (
@@ -250,13 +287,7 @@ pub(crate) fn ecosystem(text: &str) -> Option<Ecosystem> {
 
 /// The page of a package on the site.
 fn html_url(site: &str, package: &PackageSummary) -> String {
-    format!(
-        "{}/{}/-/packages/{}/{}",
-        site.trim_end_matches('/'),
-        package.workspace,
-        package.ecosystem.as_str(),
-        package.name
-    )
+    format!("{}/{}/-/packages/{}/{}", site.trim_end_matches('/'), package.workspace, package.ecosystem.as_str(), package.name)
 }
 
 /// A package as the API shows one.
@@ -353,7 +384,12 @@ pub async fn run(op: PackagesOp, services: &Services, viewer: &Viewer, input: &V
         let ecosystem = match text(input, "package_type") {
             Some(given) => match ecosystem(&given) {
                 Some(found) => Some(found),
-                None => return Ok(Outcome::fail(FailureCode::Invalid, format!("{given} is not a package type: container, npm, cargo, maven, nuget, rubygems or composer."))),
+                None => {
+                    return Ok(Outcome::fail(
+                        FailureCode::Invalid,
+                        format!("{given} is not a package type: container, npm, cargo, maven, nuget, rubygems or composer."),
+                    ));
+                }
             },
             None => None,
         };
@@ -368,10 +404,16 @@ pub async fn run(op: PackagesOp, services: &Services, viewer: &Viewer, input: &V
         }));
     }
     let Some(given) = text(input, "package_type") else {
-        return Ok(Outcome::fail(FailureCode::Invalid, "Give the package_type: container, npm, cargo, maven, nuget, rubygems or composer."));
+        return Ok(Outcome::fail(
+            FailureCode::Invalid,
+            "Give the package_type: container, npm, cargo, maven, nuget, rubygems or composer.",
+        ));
     };
     let Some(ecosystem) = ecosystem(&given) else {
-        return Ok(Outcome::fail(FailureCode::Invalid, format!("{given} is not a package type: container, npm, cargo, maven, nuget, rubygems or composer.")));
+        return Ok(Outcome::fail(
+            FailureCode::Invalid,
+            format!("{given} is not a package type: container, npm, cargo, maven, nuget, rubygems or composer."),
+        ));
     };
     let Some(name) = text(input, "package_name") else {
         return Ok(Outcome::fail(FailureCode::Invalid, "Give the package_name."));
@@ -393,7 +435,8 @@ pub async fn run(op: PackagesOp, services: &Services, viewer: &Viewer, input: &V
     Ok(match op {
         PackagesOp::ListPackages => unreachable!("answered above"),
         PackagesOp::GetPackage => {
-            let found: Outcome<PackageDetail> = call(services, "get_package", &GetPackageArgs { workspace, ecosystem, name, viewer: viewer.clone() }).await?;
+            let found: Outcome<PackageDetail> =
+                call(services, "get_package", &GetPackageArgs { workspace, ecosystem, name, viewer: viewer.clone() }).await?;
             mapped(found, |detail| package_json(&detail.package, &site))
         }
         PackagesOp::ListVersions => {
@@ -403,7 +446,8 @@ pub async fn run(op: PackagesOp, services: &Services, viewer: &Viewer, input: &V
             mapped(found, |list| Value::Array(list.iter().map(version_json).collect()))
         }
         PackagesOp::GetVersion => {
-            let found: Outcome<PackageVersion> = call(services, "get_version", &GetVersionArgs { workspace, ecosystem, name, viewer: viewer.clone(), version }).await?;
+            let found: Outcome<PackageVersion> =
+                call(services, "get_version", &GetVersionArgs { workspace, ecosystem, name, viewer: viewer.clone(), version }).await?;
             mapped(found, |v| version_json(&v))
         }
         PackagesOp::ListAccess | PackagesOp::ListActionsAccess => {
@@ -428,18 +472,48 @@ pub async fn run(op: PackagesOp, services: &Services, viewer: &Viewer, input: &V
             if visibility.is_none() && inherit_access.is_none() {
                 return Ok(Outcome::fail(FailureCode::Invalid, "Give visibility or inherit_access."));
             }
-            let args = SetPackageArgs { actor: actor!(), workspace, ecosystem, name, visibility, link: None, unlink: false, inherit_access, surface };
+            let args = SetPackageArgs {
+                actor: actor!(),
+                workspace,
+                ecosystem,
+                name,
+                visibility,
+                link: None,
+                unlink: false,
+                inherit_access,
+                surface,
+            };
             changed(call(services, "set_package", &args).await?)
         }
         PackagesOp::LinkPackage => {
             let Some(repository) = text(input, "repository") else {
                 return Ok(Outcome::fail(FailureCode::Invalid, "Give the repository: its name, or owner/name."));
             };
-            let args = SetPackageArgs { actor: actor!(), workspace, ecosystem, name, visibility: None, link: Some(repository), unlink: false, inherit_access: None, surface };
+            let args = SetPackageArgs {
+                actor: actor!(),
+                workspace,
+                ecosystem,
+                name,
+                visibility: None,
+                link: Some(repository),
+                unlink: false,
+                inherit_access: None,
+                surface,
+            };
             changed(call(services, "set_package", &args).await?)
         }
         PackagesOp::UnlinkPackage => {
-            let args = SetPackageArgs { actor: actor!(), workspace, ecosystem, name, visibility: None, link: None, unlink: true, inherit_access: None, surface };
+            let args = SetPackageArgs {
+                actor: actor!(),
+                workspace,
+                ecosystem,
+                name,
+                visibility: None,
+                link: None,
+                unlink: true,
+                inherit_access: None,
+                surface,
+            };
             changed(call(services, "set_package", &args).await?)
         }
         PackagesOp::SetAccess => {
@@ -464,14 +538,20 @@ pub async fn run(op: PackagesOp, services: &Services, viewer: &Viewer, input: &V
                 _ => return Ok(Outcome::fail(FailureCode::Invalid, "Give the role: read or write.")),
             };
             let args = SetActionsAccessArgs { actor: actor!(), workspace, ecosystem, name, repo, role, surface };
-            mapped(call(services, "set_actions_access", &args).await?, |list: Vec<ActionsAccess>| json!({ "repositories": actions_json(&list) }))
+            mapped(
+                call(services, "set_actions_access", &args).await?,
+                |list: Vec<ActionsAccess>| json!({ "repositories": actions_json(&list) }),
+            )
         }
         PackagesOp::RemoveActionsAccess => {
             let Some(repo) = text(input, "repository") else {
                 return Ok(Outcome::fail(FailureCode::Invalid, "Give the repository: its name, or owner/name."));
             };
             let args = RemoveActionsAccessArgs { actor: actor!(), workspace, ecosystem, name, repo, surface };
-            mapped(call(services, "remove_actions_access", &args).await?, |list: Vec<ActionsAccess>| json!({ "repositories": actions_json(&list) }))
+            mapped(
+                call(services, "remove_actions_access", &args).await?,
+                |list: Vec<ActionsAccess>| json!({ "repositories": actions_json(&list) }),
+            )
         }
         PackagesOp::DeletePackage => {
             let args = DeletePackageArgs { actor: actor!(), workspace, ecosystem, name, surface };

@@ -45,12 +45,8 @@ const GOODWILL_REPEAT_MS: u64 = 2 * 60 * 1000;
 /// workspace and the two minutes it was asked in, so that a request sent
 /// twice gives one credit.
 pub(crate) fn goodwill_reference(workspace: &str, request_key: Option<&str>, now_ms: u64) -> String {
-    let key: String = request_key
-        .unwrap_or_default()
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
-        .take(64)
-        .collect();
+    let key: String =
+        request_key.unwrap_or_default().chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').take(64).collect();
     if key.is_empty() {
         format!("{GOODWILL_PREFIX}{workspace}_{}", now_ms / GOODWILL_REPEAT_MS)
     } else {
@@ -85,7 +81,13 @@ pub(crate) fn goodwill(this_month: i64, typical: i64, margin_percent: u32, cap: 
     let cost = cost.min(overage);
     let margin = overage - cost;
     let absorbed = cost.min(cap.max(0));
-    Goodwill { overage_micros: overage, margin_micros: margin, cost_micros: cost, credit_micros: margin + absorbed, absorbed_micros: absorbed }
+    Goodwill {
+        overage_micros: overage,
+        margin_micros: margin,
+        cost_micros: cost,
+        credit_micros: margin + absorbed,
+        absorbed_micros: absorbed,
+    }
 }
 
 /// What a credit of `amount` costs g1t in real money, given the overage's
@@ -129,11 +131,8 @@ impl Billing {
         let get = |m: &str| rows.iter().find(|r| r.month == m).and_then(|r| r.charged).unwrap_or(0).max(0);
         // Months before the workspace's first are not "typical" zeros.
         let first = rows.iter().map(|r| r.month.clone()).min();
-        let history: Vec<i64> = earlier
-            .iter()
-            .filter(|m| first.as_deref().is_some_and(|first| m.as_str() >= first))
-            .map(|m| get(m))
-            .collect();
+        let history: Vec<i64> =
+            earlier.iter().filter(|m| first.as_deref().is_some_and(|first| m.as_str() >= first)).map(|m| get(m)).collect();
         Ok((get(&this), history))
     }
 
@@ -282,7 +281,10 @@ impl Billing {
         let quote = overage.goodwill;
         let amount = a.amount_micros.unwrap_or(quote.credit_micros);
         if amount <= 0 {
-            return Ok(Outcome::fail(FailureCode::Invalid, "This month is not above the workspace's typical month, so the one-click credit is $0. Give an amount, with a reason."));
+            return Ok(Outcome::fail(
+                FailureCode::Invalid,
+                "This month is not above the workspace's typical month, so the one-click credit is $0. Give an amount, with a reason.",
+            ));
         }
         if amount > 10_000 * g1t_contracts::billing::MICROS_PER_DOLLAR {
             return Ok(Outcome::fail(FailureCode::Invalid, "A goodwill credit is at most $10,000."));
@@ -310,7 +312,18 @@ impl Billing {
         // Two at once with the same reference: the grant's own key lets one
         // in, and the other answers with it.
         if let Err(error) = self
-            .grant_credit(&workspace, CreditKind::Goodwill, amount, &note, a.by.trim(), None, None, None, Some(reference.clone()), Some(description))
+            .grant_credit(
+                &workspace,
+                CreditKind::Goodwill,
+                amount,
+                &note,
+                a.by.trim(),
+                None,
+                None,
+                None,
+                Some(reference.clone()),
+                Some(description),
+            )
             .await
         {
             return match self.goodwill_given(&workspace, &reference, false, now).await? {
@@ -334,8 +347,15 @@ impl Billing {
             a.by.trim(),
         )
         .await?;
-        self.tell_owners_of_credit(&workspace, CreditKind::Goodwill, amount, &format!("It is for the accidental usage on {day}."), None, None)
-            .await;
+        self.tell_owners_of_credit(
+            &workspace,
+            CreditKind::Goodwill,
+            amount,
+            &format!("It is for the accidental usage on {day}."),
+            None,
+            None,
+        )
+        .await;
         // An open overage request is answered by the credit.
         if let Some(request) = &overage.request {
             self.db

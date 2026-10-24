@@ -15,23 +15,23 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use g1t_contracts::repos::{BlobArgs, BlobView, CompareArgs, Comparison, GetArgs, LineKind, Repo, RepoPath};
 use g1t_contracts::security::{AlertActivity, AlertState, DismissReason};
+use g1t_contracts::security_suite::MAX_SUMMARY_IDS;
 use g1t_contracts::security_suite::{
-    AlertType, CODE_SCANNING_CHECK, CodeAlert, CodeAlertArgs, CodeAlertDetail, CodeScanning, CodeScanningArgs, PaidFeature,
-    PullResult, PullScanning, PullScanningArgs, STARTER_WORKFLOW_PATH, SarifStatusArgs, SarifUpload, SecurityEvent,
-    SetCodeAlertStateArgs, UploadSarifArgs,
+    AlertType, CODE_SCANNING_CHECK, CodeAlert, CodeAlertArgs, CodeAlertDetail, CodeScanning, CodeScanningArgs, PaidFeature, PullResult,
+    PullScanning, PullScanningArgs, STARTER_WORKFLOW_PATH, SarifStatusArgs, SarifUpload, SecurityEvent, SetCodeAlertStateArgs,
+    UploadSarifArgs,
 };
 use g1t_contracts::work::{AddCommentArgs, Pull, PullDetail, SetCommitStatusArgs, ViewArgs};
-use g1t_contracts::security_suite::MAX_SUMMARY_IDS;
 use g1t_contracts::{FailureCode, Outcome, User};
 use g1t_scan::sarif::{self, Finding, Gate};
 use serde_json::{Value, json};
 use worker::Result;
 
 use crate::Security;
-use crate::summaries::Changed;
 use crate::store::{Activity, RepoRow};
 use crate::suite::link;
 use crate::suite_store::NewCodeAlert;
+use crate::summaries::Changed;
 
 const SITE: &str = "https://g1t.sh";
 /// Review comments one analysis of a pull request leaves, at most.
@@ -85,16 +85,19 @@ pub fn added_lines(comparison: &Comparison) -> BTreeMap<String, BTreeSet<u32>> {
 
 /// A pull request's results, judged: new to it or not, on a line it
 /// changes or not, failing the check or not.
-pub fn judge_pull(found: &[Finding], on_default: &BTreeSet<String>, changed: &BTreeMap<String, BTreeSet<u32>>, gate: Gate) -> Vec<PullResult> {
+pub fn judge_pull(
+    found: &[Finding],
+    on_default: &BTreeSet<String>,
+    changed: &BTreeMap<String, BTreeSet<u32>>,
+    gate: Gate,
+) -> Vec<PullResult> {
     let mut results: Vec<PullResult> = found
         .iter()
         .map(|finding| {
             let location = finding.location.as_ref();
             let new = !on_default.contains(&finding.fingerprint);
             let on_changed_line = location.is_some_and(|location| {
-                changed
-                    .get(&location.path)
-                    .is_some_and(|lines| (location.start_line..=location.end_line).any(|line| lines.contains(&line)))
+                changed.get(&location.path).is_some_and(|lines| (location.start_line..=location.end_line).any(|line| lines.contains(&line)))
             });
             PullResult {
                 tool: String::new(),
@@ -166,7 +169,10 @@ impl Security {
         let found: Outcome<Repo> = g1t_kit::call(
             &self.repos,
             "get",
-            &GetArgs { path: RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() }, viewer: Some(User::system(&repo.namespace)) },
+            &GetArgs {
+                path: RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() },
+                viewer: Some(User::system(&repo.namespace)),
+            },
         )
         .await?;
         Ok(found.into_result().ok())
@@ -231,7 +237,8 @@ impl Security {
                 for (ids, action) in [(&opened, "created"), (&fixed, "fixed")] {
                     for alert_id in ids.iter().take(MAX_SUMMARY_IDS) {
                         if let Some(alert) = self.store.code_alert_by_id(&repo.repo_id, alert_id).await? {
-                            self.alert_event(AlertType::CodeScanning, action, &repo, code_event(&repo, &alert), Some(a.actor.id.clone())).await;
+                            self.alert_event(AlertType::CodeScanning, action, &repo, code_event(&repo, &alert), Some(a.actor.id.clone()))
+                                .await;
                         }
                     }
                 }
@@ -333,41 +340,54 @@ impl Security {
         let comment = (!comment.is_empty()).then_some(comment);
         let action = match a.state {
             AlertState::Dismissed => {
-                let Some(reason) = a.reason.filter(|reason| {
-                    matches!(reason, DismissReason::FalsePositive | DismissReason::WontFix | DismissReason::UsedInTests)
-                }) else {
-                    return Ok(fail(FailureCode::Invalid, "A code scanning alert is dismissed as false_positive, wont_fix or used_in_tests."));
+                let Some(reason) = a
+                    .reason
+                    .filter(|reason| matches!(reason, DismissReason::FalsePositive | DismissReason::WontFix | DismissReason::UsedInTests))
+                else {
+                    return Ok(fail(
+                        FailureCode::Invalid,
+                        "A code scanning alert is dismissed as false_positive, wont_fix or used_in_tests.",
+                    ));
                 };
                 if alert.state != AlertState::Open {
                     return Ok(fail(FailureCode::Conflict, "This alert is not open."));
                 }
                 self.store.set_code_alert(&repo.repo_id, &alert.id, Some((reason, comment.as_deref(), &a.actor.username))).await?;
                 self.store
-                    .record(&repo.repo_id, &[Activity {
-                        alert_id: &alert.id,
-                        action: "dismissed",
-                        actor: Some(&a.actor.username),
-                        reason: Some(reason),
-                        comment: comment.as_deref(),
-                        number: None,
-                    }])
+                    .record(
+                        &repo.repo_id,
+                        &[Activity {
+                            alert_id: &alert.id,
+                            action: "dismissed",
+                            actor: Some(&a.actor.username),
+                            reason: Some(reason),
+                            comment: comment.as_deref(),
+                            number: None,
+                        }],
+                    )
                     .await?;
                 "dismissed"
             }
             AlertState::Open => {
                 if alert.state != AlertState::Dismissed {
-                    return Ok(fail(FailureCode::Conflict, "Only a dismissed alert can be reopened; a fixed one reopens when it is found again."));
+                    return Ok(fail(
+                        FailureCode::Conflict,
+                        "Only a dismissed alert can be reopened; a fixed one reopens when it is found again.",
+                    ));
                 }
                 self.store.set_code_alert(&repo.repo_id, &alert.id, None).await?;
                 self.store
-                    .record(&repo.repo_id, &[Activity {
-                        alert_id: &alert.id,
-                        action: "reopened",
-                        actor: Some(&a.actor.username),
-                        reason: None,
-                        comment: None,
-                        number: None,
-                    }])
+                    .record(
+                        &repo.repo_id,
+                        &[Activity {
+                            alert_id: &alert.id,
+                            action: "reopened",
+                            actor: Some(&a.actor.username),
+                            reason: None,
+                            comment: None,
+                            number: None,
+                        }],
+                    )
                     .await?;
                 "reopened"
             }
@@ -474,10 +494,7 @@ impl Security {
         let (state, description) = verdict(&results);
         // Review comments on changed lines for results new to the pull
         // request, each once.
-        let mut commented: Vec<String> = previous
-            .as_ref()
-            .and_then(|row| serde_json::from_str(&row.commented).ok())
-            .unwrap_or_default();
+        let mut commented: Vec<String> = previous.as_ref().and_then(|row| serde_json::from_str(&row.commented).ok()).unwrap_or_default();
         let page = format!("{SITE}/{}/{}/security/pulls/{number}", repo.namespace, repo.name);
         let system = User::system(&repo.namespace);
         let path = RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() };
@@ -576,7 +593,9 @@ mod tests {
                 binary: false,
                 too_large: false,
                 omitted: false,
-                hunks: vec![Hunk { lines: vec![line(LineKind::Context, Some(11)), line(LineKind::Add, Some(12)), line(LineKind::Delete, None)] }],
+                hunks: vec![Hunk {
+                    lines: vec![line(LineKind::Context, Some(11)), line(LineKind::Add, Some(12)), line(LineKind::Delete, None)],
+                }],
             }],
         }
     }

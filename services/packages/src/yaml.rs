@@ -44,11 +44,7 @@ pub fn parse(text: &str) -> Result<Value, String> {
 
 /// The text after a leading tag: `!ruby/object:Gem::Version` alone is empty.
 fn strip_tag(text: &str) -> &str {
-    if text.starts_with('!') {
-        text.split_once(' ').map_or("", |(_, rest)| rest.trim_start())
-    } else {
-        text
-    }
+    if text.starts_with('!') { text.split_once(' ').map_or("", |(_, rest)| rest.trim_start()) } else { text }
 }
 
 /// Where a mapping key ends: the `:` followed by a space or the end of the
@@ -258,10 +254,8 @@ impl Parser {
             lines.pop();
         }
         let base = lines.iter().filter(|(_, t)| !t.is_empty()).map(|(i, _)| *i).min().unwrap_or(0);
-        let shown: Vec<String> = lines
-            .iter()
-            .map(|(i, t)| if t.is_empty() { String::new() } else { format!("{}{t}", " ".repeat(i - base)) })
-            .collect();
+        let shown: Vec<String> =
+            lines.iter().map(|(i, t)| if t.is_empty() { String::new() } else { format!("{}{t}", " ".repeat(i - base)) }).collect();
         let mut text = if literal {
             shown.join("\n")
         } else {

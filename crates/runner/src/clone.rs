@@ -85,11 +85,7 @@ pub(crate) fn has(dir: &Path, commit: &str) -> bool {
 }
 
 fn merge_base(dir: &Path, a: &str, b: &str) -> bool {
-    Command::new("git")
-        .current_dir(dir)
-        .args(["merge-base", a, b])
-        .output()
-        .is_ok_and(|output| output.status.success())
+    Command::new("git").current_dir(dir).args(["merge-base", a, b]).output().is_ok_and(|output| output.status.success())
 }
 
 /// Deepens a shallow clone until `a` and `b` (commits, or refs such as

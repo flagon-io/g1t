@@ -44,13 +44,7 @@ pub struct Cli {
 #[derive(Debug, Args, Clone, Default)]
 pub struct Global {
     /// The repository, as [HOST/]OWNER/NAME, instead of the current directory's.
-    #[arg(
-        short = 'R',
-        long,
-        global = true,
-        value_name = "[HOST/]OWNER/NAME",
-        env = "G1T_REPO"
-    )]
+    #[arg(short = 'R', long, global = true, value_name = "[HOST/]OWNER/NAME", env = "G1T_REPO")]
     pub repo: Option<String>,
     /// The g1t host, such as g1t.sh or git.example.com.
     #[arg(long, global = true, value_name = "HOST")]
@@ -66,12 +60,7 @@ pub struct Global {
     )]
     pub json: Option<String>,
     /// Run a jq expression over the JSON and print what it gives.
-    #[arg(
-        long,
-        global = true,
-        value_name = "EXPRESSION",
-        help_heading = "Output"
-    )]
+    #[arg(long, global = true, value_name = "EXPRESSION", help_heading = "Output")]
     pub jq: Option<String>,
 }
 
@@ -2284,36 +2273,21 @@ mod tests {
     /// with every value each flag is given there, parses here.
     #[test]
     fn the_plugin_hooks_commands_parse() {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../plugins/claude-code/test/cli-contract.json"
-        );
-        let contract: Value =
-            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../plugins/claude-code/test/cli-contract.json");
+        let contract: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
         let mut checked = 0;
         for command in contract["commands"].as_array().unwrap() {
-            let words: Vec<String> = command["command"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|w| w.as_str().unwrap().to_owned())
-                .collect();
+            let words: Vec<String> = command["command"].as_array().unwrap().iter().map(|w| w.as_str().unwrap().to_owned()).collect();
             let flags = command["flags"].as_object().unwrap();
             // One argv for each value of each flag, with every other flag too.
             let mut variants: Vec<Vec<(String, Option<String>)>> = vec![vec![]];
             for (flag, kind) in flags {
                 let values: Vec<Option<String>> = match kind {
-                    Value::Array(values) => values
-                        .iter()
-                        .map(|v| Some(v.as_str().unwrap().to_owned()))
-                        .collect(),
+                    Value::Array(values) => values.iter().map(|v| Some(v.as_str().unwrap().to_owned())).collect(),
                     Value::String(kind) => match kind.as_str() {
                         // Spaced, and as --flag=VALUE, which the hooks use for
                         // text that may start with a dash.
-                        "text" => vec![
-                            Some("a text, with spaces".into()),
-                            Some("=- a text that starts with a dash".into()),
-                        ],
+                        "text" => vec![Some("a text, with spaces".into()), Some("=- a text that starts with a dash".into())],
                         "number" => vec![Some("42".into())],
                         "switch" | "json" => vec![None],
                         other => panic!("{flag}: no type {other}"),
@@ -2379,25 +2353,16 @@ mod tests {
         }
         assert!(checked >= 10, "checked {checked}");
         // This CLI is at least the version the hooks ask for.
-        let version = |v: &str| {
-            v.split('.')
-                .map(|n| n.parse::<u32>().unwrap())
-                .collect::<Vec<_>>()
-        };
+        let version = |v: &str| v.split('.').map(|n| n.parse::<u32>().unwrap()).collect::<Vec<_>>();
         let minimum = contract["minimum_version"].as_str().unwrap();
-        assert!(
-            version(env!("CARGO_PKG_VERSION")) >= version(minimum),
-            "the hooks need {minimum}"
-        );
+        assert!(version(env!("CARGO_PKG_VERSION")) >= version(minimum), "the hooks need {minimum}");
     }
 
     #[test]
     fn entry_kinds_take_both_spellings() {
         for kind in ["tool_call", "tool-call"] {
             let cli = Cli::try_parse_from(["g1t", "session", "log", "--kind", kind, "x"]).unwrap();
-            let super::Command::Session(super::SessionCommand::Log(args)) = cli.command else {
-                panic!("not session log")
-            };
+            let super::Command::Session(super::SessionCommand::Log(args)) = cli.command else { panic!("not session log") };
             assert_eq!(args.kind.name(), "tool_call");
         }
     }
@@ -2427,9 +2392,7 @@ mod tests {
     #[test]
     fn a_session_takes_a_title_on_its_own() {
         let cli = Cli::try_parse_from(["g1t", "session", "attach", "--title", "Fix the preview builds"]).unwrap();
-        let super::Command::Session(super::SessionCommand::Attach(args)) = cli.command else {
-            panic!("not session attach")
-        };
+        let super::Command::Session(super::SessionCommand::Attach(args)) = cli.command else { panic!("not session attach") };
         assert_eq!(args.title.as_deref(), Some("Fix the preview builds"));
         assert!(Cli::try_parse_from(["g1t", "session", "attach"]).is_err());
     }
@@ -2439,11 +2402,12 @@ mod tests {
             vec!["g1t", "session", "updates", "--json"],
             vec!["g1t", "session", "updates", "ses_child", "--json"],
             vec!["g1t", "session", "acknowledge", "upd_a", "upd_b", "--session", "ses_child", "--note", "My scope is separate"],
-        ] { assert!(Cli::try_parse_from(args).is_ok()); }
+        ] {
+            assert!(Cli::try_parse_from(args).is_ok());
+        }
         assert!(Cli::try_parse_from(["g1t", "session", "acknowledge", "upd_a"]).is_err());
         assert!(Cli::try_parse_from(["g1t", "session", "acknowledge", "--note", "No IDs"]).is_err());
     }
-
 
     #[test]
     fn work_items_take_a_workspace_and_there_is_no_issue_command() {

@@ -5,8 +5,8 @@ use std::io::Write;
 use std::time::{Duration, Instant};
 
 use crate::cli::{
-    CommentArgs, PrCheckoutArgs, PrChecksArgs, PrCommand, PrCreateArgs, PrDiffArgs, PrListArgs,
-    PrEditArgs, PrMergeArgs, PrReadyArgs, PrReviewArgs, PrSelect, PrState, PrUpdateBranchArgs, PrViewArgs, TaskCheckArgs,
+    CommentArgs, PrCheckoutArgs, PrChecksArgs, PrCommand, PrCreateArgs, PrDiffArgs, PrEditArgs, PrListArgs, PrMergeArgs, PrReadyArgs,
+    PrReviewArgs, PrSelect, PrState, PrUpdateBranchArgs, PrViewArgs, TaskCheckArgs,
 };
 use crate::client::Client;
 use crate::context::Ctx;
@@ -42,11 +42,7 @@ pub fn pull_url(site: &str, repo: &Repo, number: u64) -> String {
 
 /// Where a pull request's changes come from: its branch, or its working copy.
 fn head_label(p: &Value) -> String {
-    match (
-        p["branch"].as_str(),
-        p["fork"]["namespace"].as_str(),
-        p["fork"]["name"].as_str(),
-    ) {
+    match (p["branch"].as_str(), p["fork"]["namespace"].as_str(), p["fork"]["name"].as_str()) {
         (Some(b), _, _) => b.to_owned(),
         (None, Some(ns), Some(name)) => format!("{ns}/{name}"),
         _ => String::new(),
@@ -59,21 +55,12 @@ pub fn number(ctx: &Ctx, client: &Client, repo: &Repo, given: Option<u64>) -> Re
         return Ok(n);
     }
     // In a pull request's working copy, it is that pull request.
-    let copy = ctx
-        .repo()
-        .ok()
-        .and_then(|r| r.pull_copy().map(str::to_owned));
+    let copy = ctx.repo().ok().and_then(|r| r.pull_copy().map(str::to_owned));
     let branch = git::current_branch();
     if copy.is_none() && branch.is_none() {
-        return Err(Error::usage(
-            "Which pull request? Give its number; HEAD is not on a branch.",
-        ));
+        return Err(Error::usage("Which pull request? Give its number; HEAD is not on a branch."));
     }
-    let found = client
-        .op("list_pull_requests")
-        .repo(repo)
-        .query("state", "open")
-        .send()?;
+    let found = client.op("list_pull_requests").repo(repo).query("state", "open").send()?;
     let pulls = super::items(found, "pulls");
     let hit = pulls.iter().find(|p| match &copy {
         Some(id) => p["id"].as_str() == Some(id) || p["fork"]["name"].as_str() == Some(id),
@@ -90,11 +77,7 @@ pub fn number(ctx: &Ctx, client: &Client, repo: &Repo, given: Option<u64>) -> Re
 
 /// The pull request, with its comments and the work item it is for.
 fn get(client: &Client, repo: &Repo, number: u64) -> Result<Value> {
-    client
-        .op("get_pull_request")
-        .repo(repo)
-        .arg("number", number)
-        .send()
+    client.op("get_pull_request").repo(repo).arg("number", number).send()
 }
 
 fn pull_of(found: &Value) -> Value {
@@ -124,11 +107,7 @@ fn list(ctx: &Ctx, args: PrListArgs) -> Result<()> {
     }
     if let Some(a) = &args.author {
         let who = super::who(ctx, &client, a)?;
-        pulls.retain(|p| {
-            p["author"]["username"]
-                .as_str()
-                .is_some_and(|n| n.eq_ignore_ascii_case(&who))
-        });
+        pulls.retain(|p| p["author"]["username"].as_str().is_some_and(|n| n.eq_ignore_ascii_case(&who)));
     }
     pulls.truncate(args.limit);
     if ctx.out.structured() {
@@ -149,14 +128,7 @@ pub fn print_list(out: &Output, pulls: &[Value]) -> Result<()> {
             let status = s(p, "status");
             let checks = s(p, "check_status");
             vec![
-                Cell::styled(
-                    number.clone(),
-                    if status == "open" {
-                        out.green(&number)
-                    } else {
-                        out.dim(&number)
-                    },
-                ),
+                Cell::styled(number.clone(), if status == "open" { out.green(&number) } else { out.dim(&number) }),
                 Cell::new(s(p, "title")),
                 Cell::styled(head_label(p), out.cyan(&head_label(p))),
                 Cell::styled(status, out.state(status)),
@@ -165,10 +137,7 @@ pub fn print_list(out: &Output, pulls: &[Value]) -> Result<()> {
             ]
         })
         .collect();
-    out.table(
-        &["number", "title", "branch", "status", "checks", "updated"],
-        &rows,
-    )
+    out.table(&["number", "title", "branch", "status", "checks", "updated"], &rows)
 }
 
 fn view(ctx: &Ctx, args: PrViewArgs) -> Result<()> {
@@ -181,28 +150,17 @@ fn view(ctx: &Ctx, args: PrViewArgs) -> Result<()> {
     let found = get(&client, &repo, n)?;
     let mut pull = pull_of(&found);
     if let Some(map) = pull.as_object_mut() {
-        map.insert(
-            "comments".into(),
-            found.get("comments").cloned().unwrap_or(json!([])),
-        );
+        map.insert("comments".into(), found.get("comments").cloned().unwrap_or(json!([])));
         map.insert("url".into(), Value::String(url.clone()));
     }
     if ctx.out.structured() {
         return ctx.out.emit(&pull);
     }
     let out = &ctx.out;
-    println!(
-        "{} {}",
-        out.bold(s(&pull, "title")),
-        out.dim(&format!("{repo}#{n}"))
-    );
+    println!("{} {}", out.bold(s(&pull, "title")), out.dim(&format!("{repo}#{n}")));
     let mut facts = vec![
         out.state(s(&pull, "status")),
-        format!(
-            "by {} {}",
-            s(&pull["author"], "username"),
-            ago(s(&pull, "created_at"))
-        ),
+        format!("by {} {}", s(&pull["author"], "username"), ago(s(&pull, "created_at"))),
         format!("{} ← {}", s(&pull, "base"), out.cyan(&head_label(&pull))),
     ];
     if let Some(c) = pull["check_status"].as_str() {
@@ -225,33 +183,19 @@ fn view(ctx: &Ctx, args: PrViewArgs) -> Result<()> {
     if let Some(files) = pull["files"].as_array().filter(|f| !f.is_empty()) {
         let adds: u64 = files.iter().filter_map(|f| f["additions"].as_u64()).sum();
         let dels: u64 = files.iter().filter_map(|f| f["deletions"].as_u64()).sum();
-        println!(
-            "{} {} file(s), {} {}",
-            out.dim("Changes:"),
-            files.len(),
-            out.green(&format!("+{adds}")),
-            out.red(&format!("-{dels}"))
-        );
+        println!("{} {} file(s), {} {}", out.dim("Changes:"), files.len(), out.green(&format!("+{adds}")), out.red(&format!("-{dels}")));
     }
     println!();
     match pull["body"].as_str().filter(|b| !b.trim().is_empty()) {
         Some(b) => println!("{}", b.trim_end()),
         None => println!("{}", out.dim("No description.")),
     }
-    let comments = pull["comments"]
-        .as_array()
-        .map(|c| c.iter().filter(|c| c["kind"] == "comment").count())
-        .unwrap_or(0);
+    let comments = pull["comments"].as_array().map(|c| c.iter().filter(|c| c["kind"] == "comment").count()).unwrap_or(0);
     if args.comments {
         super::print_comments(out, &pull["comments"]);
     } else if comments > 0 {
         println!();
-        println!(
-            "{}",
-            out.dim(&format!(
-                "{comments} comment(s): g1t pr view {n} --comments"
-            ))
-        );
+        println!("{}", out.dim(&format!("{comments} comment(s): g1t pr view {n} --comments")));
     }
     println!();
     println!("{}", out.dim(&url));
@@ -263,9 +207,7 @@ fn remote_for(repo: &Repo) -> Option<String> {
     git::remotes()
         .into_iter()
         .find(|(_, url)| {
-            repo::parse_remote(url).is_some_and(|r| {
-                r.owner.eq_ignore_ascii_case(&repo.owner) && r.name.eq_ignore_ascii_case(&repo.name)
-            })
+            repo::parse_remote(url).is_some_and(|r| r.owner.eq_ignore_ascii_case(&repo.owner) && r.name.eq_ignore_ascii_case(&repo.name))
         })
         .map(|(name, _)| name)
 }
@@ -276,15 +218,11 @@ fn fork_origin(repo: &Repo, remote: Option<&str>) -> Option<Repo> {
     if remote != Some("upstream") {
         return None;
     }
-    git::remotes()
-        .into_iter()
-        .filter(|(name, _)| name == "origin")
-        .find_map(|(_, url)| repo::parse_remote(&url))
-        .filter(|origin| {
-            origin.host == repo.host
-                && origin.pull_copy().is_none()
-                && !(origin.owner.eq_ignore_ascii_case(&repo.owner) && origin.name.eq_ignore_ascii_case(&repo.name))
-        })
+    git::remotes().into_iter().filter(|(name, _)| name == "origin").find_map(|(_, url)| repo::parse_remote(&url)).filter(|origin| {
+        origin.host == repo.host
+            && origin.pull_copy().is_none()
+            && !(origin.owner.eq_ignore_ascii_case(&repo.owner) && origin.name.eq_ignore_ascii_case(&repo.name))
+    })
 }
 
 /// A title and body from the branch's commits.
@@ -293,22 +231,14 @@ pub fn fill(commits: &[(String, String)], branch: &str) -> (String, String) {
         [(subject, body)] => (subject.clone(), body.clone()),
         [] => (humanize(branch), String::new()),
         many => {
-            let body = many
-                .iter()
-                .map(|(s, _)| format!("- {s}"))
-                .collect::<Vec<_>>()
-                .join("\n");
+            let body = many.iter().map(|(s, _)| format!("- {s}")).collect::<Vec<_>>().join("\n");
             (humanize(branch), body)
         }
     }
 }
 
 fn humanize(branch: &str) -> String {
-    let words = branch
-        .rsplit('/')
-        .next()
-        .unwrap_or(branch)
-        .replace(['-', '_'], " ");
+    let words = branch.rsplit('/').next().unwrap_or(branch).replace(['-', '_'], " ");
     let mut chars = words.chars();
     match chars.next() {
         Some(first) => first.to_uppercase().chain(chars).collect(),
@@ -328,15 +258,8 @@ fn create(ctx: &Ctx, args: PrCreateArgs) -> Result<()> {
         None => fork_origin(&repo, remote.as_deref()),
     };
     // A fork's own default branch can hold a change for the repository.
-    let on_default = head_repo.is_none()
-        && head
-            .as_deref()
-            .is_none_or(|h| h == default || Some(h) == args.base.as_deref());
-    let body_given = prompt::body(
-        args.body.body.clone(),
-        args.body.body_file.as_deref(),
-        false,
-    )?;
+    let on_default = head_repo.is_none() && head.as_deref().is_none_or(|h| h == default || Some(h) == args.base.as_deref());
+    let body_given = prompt::body(args.body.body.clone(), args.body.body_file.as_deref(), false)?;
 
     // For a work item, with no branch of its own: a draft with a working copy.
     if on_default {
@@ -361,10 +284,7 @@ fn create(ctx: &Ctx, args: PrCreateArgs) -> Result<()> {
             return ctx.out.emit(&made);
         }
         let remote = s(&made["git"], "remote");
-        eprintln!(
-            "{} Started draft {repo}#{n} for #{item}.",
-            ctx.out.green("✓")
-        );
+        eprintln!("{} Started draft {repo}#{n} for #{item}.", ctx.out.green("✓"));
         eprintln!("  Its working copy: {remote}");
         eprintln!("  Push your commits there, then: g1t pr ready {n} --summary '...'");
         println!("{}", pull_url(&client.host.site, &repo, n));
@@ -387,21 +307,14 @@ fn create(ctx: &Ctx, args: PrCreateArgs) -> Result<()> {
         let pushed = if git::current_branch().as_deref() == Some(head.as_str()) {
             git::run(&["push", "--set-upstream", remote, &refspec])
         } else {
-            git::run(&[
-                "push",
-                remote,
-                &format!("refs/heads/{head}:refs/heads/{head}"),
-            ])
+            git::run(&["push", remote, &format!("refs/heads/{head}:refs/heads/{head}")])
         };
         pushed?;
     }
     let base = args.base.clone().unwrap_or_else(|| default.clone());
     let (mut title, mut body) = (args.title.clone(), body_given);
     if args.fill || (title.is_none() && !prompt::interactive()) {
-        let upstream = remote
-            .as_deref()
-            .map(|r| format!("{r}/{base}"))
-            .filter(|r| git::ok(&["rev-parse", "--verify", "--quiet", r]));
+        let upstream = remote.as_deref().map(|r| format!("{r}/{base}")).filter(|r| git::ok(&["rev-parse", "--verify", "--quiet", r]));
         let commits = git::commits_between(upstream.as_deref().unwrap_or(&base), &head);
         let (t, b) = fill(&commits, &head);
         title = title.or(Some(t));
@@ -429,15 +342,7 @@ fn create(ctx: &Ctx, args: PrCreateArgs) -> Result<()> {
         .send()?;
     let pull = pull_of(&made);
     let n = pull["number"].as_u64().unwrap_or_default();
-    let pull = if args.draft {
-        client
-            .op("convert_pull_request_to_draft")
-            .repo(&repo)
-            .arg("number", n)
-            .send()?
-    } else {
-        pull
-    };
+    let pull = if args.draft { client.op("convert_pull_request_to_draft").repo(&repo).arg("number", n).send()? } else { pull };
     super::done(
         ctx,
         &pull,
@@ -454,21 +359,11 @@ fn checkout(ctx: &Ctx, args: PrCheckoutArgs) -> Result<()> {
     let pull = pull_of(&get(&client, &repo, args.number)?);
     let n = args.number;
     if let Some(branch) = pull["branch"].as_str() {
-        let remote =
-            remote_for(&repo).ok_or_else(|| Error::usage(format!("No remote here is {repo}.")))?;
+        let remote = remote_for(&repo).ok_or_else(|| Error::usage(format!("No remote here is {repo}.")))?;
         let local = args.branch.clone().unwrap_or_else(|| branch.to_owned());
         let tracking = format!("refs/remotes/{remote}/{branch}");
-        git::run(&[
-            "fetch",
-            &remote,
-            &format!("+refs/heads/{branch}:{tracking}"),
-        ])?;
-        if git::ok(&[
-            "rev-parse",
-            "--verify",
-            "--quiet",
-            &format!("refs/heads/{local}"),
-        ]) {
+        git::run(&["fetch", &remote, &format!("+refs/heads/{branch}:{tracking}")])?;
+        if git::ok(&["rev-parse", "--verify", "--quiet", &format!("refs/heads/{local}")]) {
             git::run(&["checkout", &local])?;
             if args.force {
                 git::run(&["reset", "--hard", &tracking])?;
@@ -476,13 +371,7 @@ fn checkout(ctx: &Ctx, args: PrCheckoutArgs) -> Result<()> {
                 git::run(&["merge", "--ff-only", &tracking])?;
             }
         } else {
-            git::run(&[
-                "checkout",
-                "-b",
-                &local,
-                "--track",
-                &format!("{remote}/{branch}"),
-            ])?;
+            git::run(&["checkout", "-b", &local, "--track", &format!("{remote}/{branch}")])?;
         }
         eprintln!("{} On {local}, at #{n}'s head.", ctx.out.green("✓"));
         return Ok(());
@@ -490,25 +379,14 @@ fn checkout(ctx: &Ctx, args: PrCheckoutArgs) -> Result<()> {
     // A working copy of its own: fetch its head from there, or from the
     // repository once the copy is gone.
     let id = s(&pull, "id").to_owned();
-    let copy = format!(
-        "{}/{}/{}.git",
-        client.host.site,
-        s(&pull["fork"], "namespace"),
-        s(&pull["fork"], "name")
-    );
+    let copy = format!("{}/{}/{}.git", client.host.site, s(&pull["fork"], "namespace"), s(&pull["fork"], "name"));
     let local = args.branch.clone().unwrap_or_else(|| format!("pr-{n}"));
     let fetched = pull["fork"].is_object() && git::run(&["fetch", &copy, "HEAD"]).is_ok();
     if !fetched {
-        let remote =
-            remote_for(&repo).ok_or_else(|| Error::usage(format!("No remote here is {repo}.")))?;
+        let remote = remote_for(&repo).ok_or_else(|| Error::usage(format!("No remote here is {repo}.")))?;
         git::run(&["fetch", &remote, &format!("refs/pull/{id}/head")])?;
     }
-    let exists = git::ok(&[
-        "rev-parse",
-        "--verify",
-        "--quiet",
-        &format!("refs/heads/{local}"),
-    ]);
+    let exists = git::ok(&["rev-parse", "--verify", "--quiet", &format!("refs/heads/{local}")]);
     if exists && !args.force {
         git::run(&["checkout", &local])?;
         git::run(&["merge", "--ff-only", "FETCH_HEAD"])?;
@@ -520,10 +398,7 @@ fn checkout(ctx: &Ctx, args: PrCheckoutArgs) -> Result<()> {
         let target = git::run(&["ls-remote", "--symref", &copy, "HEAD"])
             .ok()
             .and_then(|o| {
-                o.lines().find_map(|l| {
-                    l.strip_prefix("ref: refs/heads/")
-                        .map(|r| r.split_whitespace().next().unwrap_or("main").to_owned())
-                })
+                o.lines().find_map(|l| l.strip_prefix("ref: refs/heads/").map(|r| r.split_whitespace().next().unwrap_or("main").to_owned()))
             })
             .unwrap_or_else(|| "main".to_owned());
         eprintln!("  Push to it with: git push {copy} HEAD:{target}");
@@ -534,11 +409,7 @@ fn checkout(ctx: &Ctx, args: PrCheckoutArgs) -> Result<()> {
 /// The changes as a unified diff.
 pub fn render_diff(changes: &Value, out: &Output, color: bool, name_only: bool) -> String {
     let paint = |code: &str, t: &str| {
-        if color {
-            out.paint(code, t)
-        } else {
-            t.to_owned()
-        }
+        if color { out.paint(code, t) } else { t.to_owned() }
     };
     let mut text = String::new();
     for file in changes["files"].as_array().into_iter().flatten() {
@@ -548,10 +419,7 @@ pub fn render_diff(changes: &Value, out: &Output, color: bool, name_only: bool) 
             text.push('\n');
             continue;
         }
-        let old = file["old_path"]
-            .as_str()
-            .or(file["previous_path"].as_str())
-            .unwrap_or(path);
+        let old = file["old_path"].as_str().or(file["previous_path"].as_str()).unwrap_or(path);
         let status = s(file, "status");
         text.push_str(&paint("1", &format!("diff --git a/{old} b/{path}")));
         text.push('\n');
@@ -572,10 +440,7 @@ pub fn render_diff(changes: &Value, out: &Output, color: bool, name_only: bool) 
             let new_start = lines.iter().find_map(|l| l["new"].as_u64()).unwrap_or(0);
             let old_count = lines.iter().filter(|l| l["kind"] != "add").count();
             let new_count = lines.iter().filter(|l| l["kind"] != "delete").count();
-            text.push_str(&paint(
-                "36",
-                &format!("@@ -{old_start},{old_count} +{new_start},{new_count} @@"),
-            ));
+            text.push_str(&paint("36", &format!("@@ -{old_start},{old_count} +{new_start},{new_count} @@")));
             text.push('\n');
             for line in &lines {
                 let body = s(line, "text");
@@ -597,11 +462,7 @@ pub fn render_diff(changes: &Value, out: &Output, color: bool, name_only: bool) 
 fn diff(ctx: &Ctx, args: PrDiffArgs) -> Result<()> {
     let (repo, client) = ctx.repo_client()?;
     let n = number(ctx, &client, &repo, args.number)?;
-    let changes = client
-        .op("get_pull_request_changes")
-        .repo(&repo)
-        .arg("number", n)
-        .send()?;
+    let changes = client.op("get_pull_request_changes").repo(&repo).arg("number", n).send()?;
     if ctx.out.structured() {
         return ctx.out.emit(&changes);
     }
@@ -611,11 +472,7 @@ fn diff(ctx: &Ctx, args: PrDiffArgs) -> Result<()> {
         _ => ctx.out.color,
     };
     let mut stdout = std::io::stdout().lock();
-    write!(
-        stdout,
-        "{}",
-        render_diff(&changes, &ctx.out, color, args.name_only)
-    )?;
+    write!(stdout, "{}", render_diff(&changes, &ctx.out, color, args.name_only))?;
     Ok(())
 }
 
@@ -627,11 +484,7 @@ pub fn check_rows(runs: &Value, statuses: &Value) -> Vec<Value> {
             Some(w) => format!("{w} / {}", s(r, "name")),
             None => s(r, "name").to_owned(),
         };
-        let state = if r["status"] == "completed" {
-            s(r, "conclusion").to_owned()
-        } else {
-            s(r, "status").to_owned()
-        };
+        let state = if r["status"] == "completed" { s(r, "conclusion").to_owned() } else { s(r, "status").to_owned() };
         rows.push(json!({
             "name": name,
             "state": state,
@@ -664,8 +517,7 @@ pub fn bucket(state: &str) -> &'static str {
     match state {
         "success" | "neutral" => "pass",
         "skipped" => "skip",
-        "failure" | "error" | "timed_out" | "cancelled" | "action_required" | "startup_failure"
-        | "stale" => "fail",
+        "failure" | "error" | "timed_out" | "cancelled" | "action_required" | "startup_failure" | "stale" => "fail",
         _ => "pending",
     }
 }
@@ -687,10 +539,7 @@ fn print_checks(out: &Output, rows: &[Value]) -> Result<()> {
             };
             let took = elapsed(&r["started_at"], &r["completed_at"]);
             vec![
-                Cell::styled(
-                    format!("{} {}", plain_mark(s(r, "bucket")), s(r, "name")),
-                    format!("{mark} {}", s(r, "name")),
-                ),
+                Cell::styled(format!("{} {}", plain_mark(s(r, "bucket")), s(r, "name")), format!("{mark} {}", s(r, "name"))),
                 Cell::styled(state, out.state(state)),
                 Cell::new(took),
                 Cell::styled(s(r, "url"), out.dim(s(r, "url"))),
@@ -731,16 +580,8 @@ fn checks(ctx: &Ctx, args: PrChecksArgs) -> Result<()> {
             let Some(sha) = pull["head_commit"].as_str().map(str::to_owned) else {
                 return Ok(None);
             };
-            let runs = client
-                .op("list_check_runs_for_ref")
-                .repo(&repo)
-                .arg("ref", &sha)
-                .send()?;
-            let statuses = client
-                .op("get_combined_status")
-                .repo(&repo)
-                .arg("ref", &sha)
-                .send()?;
+            let runs = client.op("list_check_runs_for_ref").repo(&repo).arg("ref", &sha).send()?;
+            let statuses = client.op("get_combined_status").repo(&repo).arg("ref", &sha).send()?;
             Ok(Some((sha, check_rows(&runs, &statuses))))
         })();
         let Some(read) = super::polled(read, &mut failures, tries)? else {
@@ -758,19 +599,14 @@ fn checks(ctx: &Ctx, args: PrChecksArgs) -> Result<()> {
         let failing = count(&rows, "fail");
         let pending = count(&rows, "pending");
         // Right after a push, runs take a moment to appear.
-        let waiting_for_any =
-            rows.is_empty() && args.watch && started.elapsed() < Duration::from_secs(120);
+        let waiting_for_any = rows.is_empty() && args.watch && started.elapsed() < Duration::from_secs(120);
         let finished = !waiting_for_any && (pending == 0 || (args.fail_fast && failing > 0));
         if args.watch && !finished {
             if !ctx.out.structured() {
                 if ctx.out.tty {
                     // Redraw in place.
                     print!("\x1b[2J\x1b[H");
-                    println!(
-                        "{} {}",
-                        ctx.out.bold(&format!("Checks for #{n}")),
-                        ctx.out.dim(&format!("at {}", &sha[..sha.len().min(7)]))
-                    );
+                    println!("{} {}", ctx.out.bold(&format!("Checks for #{n}")), ctx.out.dim(&format!("at {}", &sha[..sha.len().min(7)])));
                     print_checks(&ctx.out, &rows)?;
                     println!();
                     println!("{}", summary(&rows));
@@ -793,10 +629,7 @@ fn checks(ctx: &Ctx, args: PrChecksArgs) -> Result<()> {
         if ctx.out.structured() {
             ctx.out.emit(&Value::Array(rows.clone()))?;
         } else if rows.is_empty() {
-            eprintln!(
-                "No checks reported for #{n} at {}.",
-                &sha[..sha.len().min(7)]
-            );
+            eprintln!("No checks reported for #{n} at {}.", &sha[..sha.len().min(7)]);
         } else if args.watch && !ctx.out.tty {
             for r in &rows {
                 let name = s(r, "name").to_owned();
@@ -831,40 +664,15 @@ fn review(ctx: &Ctx, args: PrReviewArgs) -> Result<()> {
     let (repo, client) = ctx.repo_client()?;
     let n = number(ctx, &client, &repo, args.number)?;
     let url = pull_url(&client.host.site, &repo, n);
-    let body = prompt::body(
-        args.body.body,
-        args.body.body_file.as_deref(),
-        args.comment || args.request_changes,
-    )?;
+    let body = prompt::body(args.body.body, args.body.body_file.as_deref(), args.comment || args.request_changes)?;
     if args.comment {
-        let text = body
-            .filter(|b| !b.trim().is_empty())
-            .ok_or_else(|| prompt::needed("The comment", "--body"))?;
-        let made = client
-            .op("add_comment")
-            .repo(&repo)
-            .arg("number", n)
-            .field("body", text)
-            .send()?;
+        let text = body.filter(|b| !b.trim().is_empty()).ok_or_else(|| prompt::needed("The comment", "--body"))?;
+        let made = client.op("add_comment").repo(&repo).arg("number", n).field("body", text).send()?;
         return super::done(ctx, &made, &format!("Commented on {repo}#{n}"), &url);
     }
-    let verdict = if args.approve {
-        "approve"
-    } else {
-        "request_changes"
-    };
-    let made = client
-        .op("review_pull_request")
-        .repo(&repo)
-        .arg("number", n)
-        .field("verdict", verdict)
-        .field_opt("body", body)
-        .send()?;
-    let said = if args.approve {
-        "Approved"
-    } else {
-        "Asked for changes on"
-    };
+    let verdict = if args.approve { "approve" } else { "request_changes" };
+    let made = client.op("review_pull_request").repo(&repo).arg("number", n).field("verdict", verdict).field_opt("body", body).send()?;
+    let said = if args.approve { "Approved" } else { "Asked for changes on" };
     super::done(ctx, &made, &format!("{said} {repo}#{n}"), &url)
 }
 
@@ -878,11 +686,7 @@ fn merge(ctx: &Ctx, args: PrMergeArgs) -> Result<()> {
     let n = number(ctx, &client, &repo, args.number)?;
     let url = pull_url(&client.host.site, &repo, n);
     if args.disable_auto {
-        let pull = client
-            .op("disable_pull_request_auto_merge")
-            .repo(&repo)
-            .arg("number", n)
-            .send()?;
+        let pull = client.op("disable_pull_request_auto_merge").repo(&repo).arg("number", n).send()?;
         return super::done(ctx, &pull, &format!("Turned off auto-merge for {repo}#{n}"), &url);
     }
     let method = if args.merge {
@@ -934,18 +738,11 @@ fn merge(ctx: &Ctx, args: PrMergeArgs) -> Result<()> {
         call = call.field("keep_item_open", true);
     }
     if args.admin {
-        call = call
-            .field("ignore_checks", true)
-            .field("bypass_rules", true);
+        call = call.field("ignore_checks", true).field("bypass_rules", true);
     }
     let merged = call.send()?;
     if merged["status"] != "merged" {
-        return super::done(
-            ctx,
-            &merged,
-            &format!("{repo}#{n} lands once it is brought up to date or through the merge queue"),
-            &url,
-        );
+        return super::done(ctx, &merged, &format!("{repo}#{n} lands once it is brought up to date or through the merge queue"), &url);
     }
     if let Some(branch) = merged["branch"].as_str() {
         if merged["head_branch_deleted"] == true && !ctx.out.structured() {
@@ -973,17 +770,13 @@ fn update_branch(ctx: &Ctx, args: PrUpdateBranchArgs) -> Result<()> {
             let how = if args.rebase { "Rebased" } else { "Updated" };
             super::done(ctx, &update, &format!("{how} the branch of {repo}#{n}"), &url)
         }
-        Some("up_to_date") => {
-            super::done(ctx, &update, &format!("{repo}#{n} is already up to date"), &url)
-        }
+        Some("up_to_date") => super::done(ctx, &update, &format!("{repo}#{n} is already up to date"), &url),
         _ => {
             if ctx.out.structured() {
                 ctx.out.emit(&update)?;
             }
-            let paths: Vec<&str> = update["paths"]
-                .as_array()
-                .map(|paths| paths.iter().filter_map(Value::as_str).collect())
-                .unwrap_or_default();
+            let paths: Vec<&str> =
+                update["paths"].as_array().map(|paths| paths.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
             let detail = update["detail"].as_str().unwrap_or("g1t could not update it here.");
             let mut message = format!("{repo}#{n} was not updated: {detail}");
             if !paths.is_empty() {
@@ -1000,11 +793,7 @@ fn ready(ctx: &Ctx, args: PrReadyArgs) -> Result<()> {
     let n = number(ctx, &client, &repo, args.number)?;
     let url = pull_url(&client.host.site, &repo, n);
     if args.undo {
-        let pull = client
-            .op("convert_pull_request_to_draft")
-            .repo(&repo)
-            .arg("number", n)
-            .send()?;
+        let pull = client.op("convert_pull_request_to_draft").repo(&repo).arg("number", n).send()?;
         return super::done(ctx, &pull, &format!("{repo}#{n} is a draft again"), &url);
     }
     let summary = match args.summary {
@@ -1015,22 +804,14 @@ fn ready(ctx: &Ctx, args: PrReadyArgs) -> Result<()> {
                 Some(b) => b.to_owned(),
                 None if prompt::interactive() => prompt::editor("")?,
                 None => {
-                    return Err(prompt::needed(
-                        "A summary of what changed and why",
-                        "--summary",
-                    ));
+                    return Err(prompt::needed("A summary of what changed and why", "--summary"));
                 }
             }
         }
     };
     // The images go after the summary, whether given or the current description.
     let summary = super::attach::with_attachments(&client, &repo, Some(summary), &args.attach)?.unwrap_or_default();
-    let pull = client
-        .op("mark_pull_request_ready")
-        .repo(&repo)
-        .arg("number", n)
-        .field("summary", summary)
-        .send()?;
+    let pull = client.op("mark_pull_request_ready").repo(&repo).arg("number", n).field("summary", summary).send()?;
     super::done(ctx, &pull, &format!("{repo}#{n} is ready for review"), &url)
 }
 
@@ -1083,19 +864,10 @@ fn check(ctx: &Ctx, args: TaskCheckArgs) -> Result<()> {
 fn close(ctx: &Ctx, args: PrSelect, closing: bool) -> Result<()> {
     let (repo, client) = ctx.repo_client()?;
     let n = number(ctx, &client, &repo, args.number)?;
-    let id = if closing {
-        "close_pull_request"
-    } else {
-        "reopen_pull_request"
-    };
+    let id = if closing { "close_pull_request" } else { "reopen_pull_request" };
     let pull = client.op(id).repo(&repo).arg("number", n).send()?;
     let said = if closing { "Closed" } else { "Reopened" };
-    super::done(
-        ctx,
-        &pull,
-        &format!("{said} {repo}#{n}"),
-        &pull_url(&client.host.site, &repo, n),
-    )
+    super::done(ctx, &pull, &format!("{said} {repo}#{n}"), &pull_url(&client.host.site, &repo, n))
 }
 
 #[cfg(test)]
@@ -1105,18 +877,9 @@ mod tests {
     #[test]
     fn titles_fill_from_commits() {
         let one = vec![("Trim the name".to_owned(), "Before greeting.".to_owned())];
-        assert_eq!(
-            fill(&one, "x"),
-            ("Trim the name".to_owned(), "Before greeting.".to_owned())
-        );
-        let two = vec![
-            ("a".to_owned(), String::new()),
-            ("b".to_owned(), String::new()),
-        ];
-        assert_eq!(
-            fill(&two, "ana/greet-by-name"),
-            ("Greet by name".to_owned(), "- a\n- b".to_owned())
-        );
+        assert_eq!(fill(&one, "x"), ("Trim the name".to_owned(), "Before greeting.".to_owned()));
+        let two = vec![("a".to_owned(), String::new()), ("b".to_owned(), String::new())];
+        assert_eq!(fill(&two, "ana/greet-by-name"), ("Greet by name".to_owned(), "- a\n- b".to_owned()));
         assert_eq!(fill(&[], "fix_typo").0, "Fix typo");
     }
 
@@ -1148,9 +911,6 @@ mod tests {
             text,
             "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -3,2 +3,2 @@\n fn main() {\n-    old();\n+    new();\n"
         );
-        assert_eq!(
-            render_diff(&changes, &Output::default(), false, true),
-            "src/main.rs\n"
-        );
+        assert_eq!(render_diff(&changes, &Output::default(), false, true), "src/main.rs\n");
     }
 }

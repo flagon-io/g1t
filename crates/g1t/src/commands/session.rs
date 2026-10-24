@@ -44,13 +44,11 @@ fn file() -> Option<PathBuf> {
 
 /// The session id in `G1T_SESSION`, else the one kept in `file`.
 fn chosen(env: Option<String>, file: Option<PathBuf>) -> Option<String> {
-    env.map(|id| id.trim().to_owned())
-        .filter(|id| !id.is_empty())
-        .or_else(|| {
-            let text = std::fs::read_to_string(file?).ok()?;
-            let id = text.lines().next()?.trim().to_owned();
-            (!id.is_empty()).then_some(id)
-        })
+    env.map(|id| id.trim().to_owned()).filter(|id| !id.is_empty()).or_else(|| {
+        let text = std::fs::read_to_string(file?).ok()?;
+        let id = text.lines().next()?.trim().to_owned();
+        (!id.is_empty()).then_some(id)
+    })
 }
 
 /// The current session's id, if there is one.
@@ -59,9 +57,7 @@ pub fn current() -> Option<String> {
 }
 
 fn required() -> Result<String> {
-    current().ok_or_else(|| {
-        Error::usage("No session here: start one with `g1t session start`, or set G1T_SESSION.")
-    })
+    current().ok_or_else(|| Error::usage("No session here: start one with `g1t session start`, or set G1T_SESSION."))
 }
 
 fn remember(id: &str) -> Result<()> {
@@ -136,9 +132,7 @@ fn working_changes() -> Vec<String> {
     if std::env::var("G1T_TOUCH").is_ok_and(|value| value.trim() == "0") {
         return Vec::new();
     }
-    crate::git::run(&["status", "--porcelain=v1", "-z", "--untracked-files=all"])
-        .map(|out| changed_paths(&out))
-        .unwrap_or_default()
+    crate::git::run(&["status", "--porcelain=v1", "-z", "--untracked-files=all"]).map(|out| changed_paths(&out)).unwrap_or_default()
 }
 
 /// The paths in `git status --porcelain=v1 -z` output, at most
@@ -184,8 +178,7 @@ fn say_changes(client: &crate::client::Client, repo: &crate::repo::Repo, id: &st
 /// Usage as `--usage-json` gives it: a JSON list of objects, each naming
 /// its model. The server checks the counts.
 fn usage_of(text: &str) -> Result<Value> {
-    let value: Value = serde_json::from_str(text.trim())
-        .map_err(|error| Error::usage(format!("--usage-json is not JSON: {error}.")))?;
+    let value: Value = serde_json::from_str(text.trim()).map_err(|error| Error::usage(format!("--usage-json is not JSON: {error}.")))?;
     let named = |row: &Value| row["model"].as_str().is_some_and(|model| !model.trim().is_empty());
     match &value {
         Value::Array(rows) if rows.iter().all(named) => Ok(value),
@@ -239,12 +232,7 @@ fn log(ctx: &Ctx, args: SessionLogArgs) -> Result<()> {
         entry["key"] = json!(key);
     }
     let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
-    let found = client
-        .op("record_session_entries")
-        .repo(&repo)
-        .arg("id", &id)
-        .field("entries", json!([entry]))
-        .send()?;
+    let found = client.op("record_session_entries").repo(&repo).arg("id", &id).field("entries", json!([entry])).send()?;
     if ctx.out.structured() {
         return ctx.out.emit(&found);
     }
@@ -369,7 +357,12 @@ fn list_workspace(ctx: &Ctx, args: SessionListArgs) -> Result<()> {
         Some(SessionState::Active | SessionState::Idle) => "live",
         Some(SessionState::Ended) => "ended",
     };
-    let mut call = place.client.op("list_workspace_sessions").arg("workspace", &place.workspace).query("state", state).query("limit", args.limit.clamp(1, 200));
+    let mut call = place
+        .client
+        .op("list_workspace_sessions")
+        .arg("workspace", &place.workspace)
+        .query("state", state)
+        .query("limit", args.limit.clamp(1, 200));
     if let Some(item) = args.item {
         call = call.query("item", item);
     }
@@ -430,7 +423,12 @@ fn list_workspace(ctx: &Ctx, args: SessionListArgs) -> Result<()> {
         }
     }
     ctx.out.table(&["session", "state", "who", "harness", "on", "last seen"], &rows)?;
-    let waiting: u64 = found["queue"].as_array().into_iter().flatten().map(|queue| queue["active"].as_array().map_or(0, |active| active.len() as u64)).sum();
+    let waiting: u64 = found["queue"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|queue| queue["active"].as_array().map_or(0, |active| active.len() as u64))
+        .sum();
     if waiting > 0 {
         eprintln!("{waiting} waiting in merge queues.");
     }
@@ -490,16 +488,23 @@ fn touch(ctx: &Ctx, args: SessionTouchArgs) -> Result<()> {
 }
 
 fn updates(ctx: &Ctx, args: SessionViewArgs) -> Result<()> {
-    let id = match args.id { Some(id) => id, None => required()? };
+    let id = match args.id {
+        Some(id) => id,
+        None => required()?,
+    };
     let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
     // First, so an overlap the changes make is among the updates read.
     say_changes(&client, &repo, &id);
     let found = client.op("get_session").repo(&repo).arg("id", &id).query("after", u32::MAX).send()?;
     // A server without inbox support must not masquerade as an empty inbox.
-    let updates = found.get("updates").and_then(Value::as_array)
-        .ok_or_else(|| Error::failed("This server does not expose session updates yet."))?;
-    if ctx.out.structured() { return ctx.out.emit(&json!({ "session_id": id, "updates": updates })); }
-    if updates.is_empty() { println!("No pending updates for {id}."); }
+    let updates =
+        found.get("updates").and_then(Value::as_array).ok_or_else(|| Error::failed("This server does not expose session updates yet."))?;
+    if ctx.out.structured() {
+        return ctx.out.emit(&json!({ "session_id": id, "updates": updates }));
+    }
+    if updates.is_empty() {
+        println!("No pending updates for {id}.");
+    }
     for update in updates {
         println!("{} {} {}", s(update, "id"), s(update, "kind"), s(update, "at"));
         println!("{}", serde_json::to_string_pretty(&update["data"]).expect("JSON values serialize"));
@@ -518,20 +523,31 @@ fn acknowledgement_entries(ids: &[String], note: &str) -> Value {
 }
 
 fn acknowledge(ctx: &Ctx, args: SessionAcknowledgeArgs) -> Result<()> {
-    if args.note.trim().is_empty() { return Err(Error::usage("Say what you decided in --note.")); }
-    let id = match args.session { Some(id) => id, None => required()? };
+    if args.note.trim().is_empty() {
+        return Err(Error::usage("Say what you decided in --note."));
+    }
+    let id = match args.session {
+        Some(id) => id,
+        None => required()?,
+    };
     let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
     let touched: Vec<Value> = working_changes().into_iter().map(|file| json!({ "kind": "file", "value": file })).collect();
-    let found = client.op("record_session_entries").repo(&repo).arg("id", &id)
+    let found = client
+        .op("record_session_entries")
+        .repo(&repo)
+        .arg("id", &id)
         .field("entries", acknowledgement_entries(&args.updates, &args.note))
         .field("touched", Value::Array(touched))
-        .field("acknowledge", json!(args.updates)).send()?;
+        .field("acknowledge", json!(args.updates))
+        .send()?;
     let mut given = args.updates.clone();
     given.sort();
     given.dedup();
     // An older server does not count; only a count that falls short is news.
     let missed = found.get("acknowledged").and_then(Value::as_u64).map(|n| given.len() as u64 - n.min(given.len() as u64)).unwrap_or(0);
-    if ctx.out.structured() { return ctx.out.emit(&found); }
+    if ctx.out.structured() {
+        return ctx.out.emit(&found);
+    }
     println!("Recorded your decision and acknowledged the named updates for {id}.");
     if missed > 0 {
         eprintln!("{missed} of those IDs are not updates of {id}: check them with `g1t session updates {id}`.");
@@ -626,7 +642,8 @@ fn view(ctx: &Ctx, args: SessionViewArgs) -> Result<()> {
             .collect();
         println!("{} {}", out.dim("Worked on:"), named.join(", "));
     }
-    let skills: Vec<String> = session["skills"].as_array().cloned().unwrap_or_default().iter().map(|skill| s(skill, "name").to_owned()).collect();
+    let skills: Vec<String> =
+        session["skills"].as_array().cloned().unwrap_or_default().iter().map(|skill| s(skill, "name").to_owned()).collect();
     if !skills.is_empty() {
         println!("{} {}", out.dim("Skills:"), skills.join(", "));
     }
@@ -745,5 +762,4 @@ mod tests {
         assert_ne!(first[0]["key"], acknowledgement_entries(&["upd_c".into()], "Scopes are separate")[0]["key"]);
         assert!(first[0]["text"].as_str().unwrap().contains("upd_a, upd_b"));
     }
-
 }

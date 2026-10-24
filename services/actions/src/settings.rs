@@ -23,8 +23,7 @@ use std::collections::BTreeMap;
 
 use g1t_contracts::access::Capability;
 use g1t_contracts::actions::{
-    CONSUMERS, DeleteSettingArgs, ResolveSettingsArgs, ResolvedSettings, SetSettingArgs, Setting, SettingsArgs,
-    SettingsOwner,
+    CONSUMERS, DeleteSettingArgs, ResolveSettingsArgs, ResolvedSettings, SetSettingArgs, Setting, SettingsArgs, SettingsOwner,
 };
 use g1t_contracts::guardrails::normalize_domain;
 use g1t_contracts::projects::{ByRepoArgs, ProjectRef};
@@ -253,7 +252,9 @@ impl Actions {
                 let role = actor.workspaces.iter().find(|m| m.slug.eq_ignore_ascii_case(&slug)).map(|m| m.role);
                 match role {
                     None => Ok(fail(FailureCode::Forbidden, format!("Only members of {slug} can see its secrets and variables."))),
-                    Some(Role::Member) if changing => Ok(fail(FailureCode::Forbidden, format!("Only owners of {slug} can change its secrets and variables."))),
+                    Some(Role::Member) if changing => {
+                        Ok(fail(FailureCode::Forbidden, format!("Only owners of {slug} can change its secrets and variables.")))
+                    }
                     Some(_) => Ok(Outcome::Ok(Place { scope: "workspace", owner: slug.clone(), namespace: slug, slug: String::new() })),
                 }
             }
@@ -264,8 +265,7 @@ impl Actions {
     /// A repository's primary project, with the rows kept under the
     /// repository before projects moved to it.
     pub(crate) async fn project_of(&self, repo_id: &str) -> Result<Option<ProjectRef>> {
-        let projects: Vec<ProjectRef> =
-            g1t_kit::call(&self.projects, "by_repo", &ByRepoArgs { repo_id: repo_id.to_owned() }).await?;
+        let projects: Vec<ProjectRef> = g1t_kit::call(&self.projects, "by_repo", &ByRepoArgs { repo_id: repo_id.to_owned() }).await?;
         let Some(project) = projects.into_iter().find(|p| p.primary) else {
             return Ok(None);
         };
@@ -386,13 +386,15 @@ impl Actions {
             None => None,
         };
         if existing.is_some_and(|row| row.kind == "secret" && kind == "variable") {
-            return Ok(fail(FailureCode::Invalid, "A secret cannot become config: its value is sealed. Add a config row and remove the secret."));
+            return Ok(fail(
+                FailureCode::Invalid,
+                "A secret cannot become config: its value is sealed. Add a config row and remove the secret.",
+            ));
         }
         let environments = environments.unwrap_or_else(|| existing.map(SettingRow::environments).unwrap_or_default());
         // A key's rows never apply to the same environment twice.
-        if let Some(clash) = same_key
-            .iter()
-            .find(|row| row.kind == kind && existing.is_none_or(|e| e.id != row.id) && row.overlaps(&environments))
+        if let Some(clash) =
+            same_key.iter().find(|row| row.kind == kind && existing.is_none_or(|e| e.id != row.id) && row.overlaps(&environments))
         {
             let at = if clash.environments.is_empty() { "all environments".to_owned() } else { clash.environments.replace(',', ", ") };
             let what = if kind == "secret" { "secret" } else { "config" };
@@ -420,10 +422,7 @@ impl Actions {
         // A new brokered secret is read by workflows alone, unless it says
         // otherwise, which is refused below.
         let default_readers = if brokered.is_empty() { CONSUMERS.join(",") } else { "workflows".to_owned() };
-        let available_to = readers
-            .map(|r| r.join(","))
-            .or_else(|| existing.map(|row| row.available_to.clone()))
-            .unwrap_or(default_readers);
+        let available_to = readers.map(|r| r.join(",")).or_else(|| existing.map(|row| row.available_to.clone())).unwrap_or(default_readers);
         if !brokered.is_empty() {
             if split(&available_to).iter().any(|r| r == "deployments") {
                 return Ok(fail(
@@ -495,18 +494,20 @@ impl Actions {
         let place = check!(self.place(&a.actor, &a.owner, true).await?);
         let name = a.name.trim().to_ascii_uppercase();
         let removed = match &a.id {
-            Some(id) => self
-                .db
-                .prepare("DELETE FROM settings WHERE owner = ? AND id = ? RETURNING id")
-                .bind(&[place.owner.as_str().into(), id.as_str().into()])?
-                .all()
-                .await?,
-            None => self
-                .db
-                .prepare("DELETE FROM settings WHERE owner = ? AND name = ? AND (?3 IS NULL OR kind = ?3) RETURNING id")
-                .bind(&[place.owner.as_str().into(), name.as_str().into(), kind.map_or(JsValue::NULL, JsValue::from)])?
-                .all()
-                .await?,
+            Some(id) => {
+                self.db
+                    .prepare("DELETE FROM settings WHERE owner = ? AND id = ? RETURNING id")
+                    .bind(&[place.owner.as_str().into(), id.as_str().into()])?
+                    .all()
+                    .await?
+            }
+            None => {
+                self.db
+                    .prepare("DELETE FROM settings WHERE owner = ? AND name = ? AND (?3 IS NULL OR kind = ?3) RETURNING id")
+                    .bind(&[place.owner.as_str().into(), name.as_str().into(), kind.map_or(JsValue::NULL, JsValue::from)])?
+                    .all()
+                    .await?
+            }
         };
         Ok(if removed.results::<Value>()?.is_empty() {
             fail(FailureCode::NotFound, format!("There is nothing called {} here.", a.name))
@@ -616,10 +617,7 @@ impl Actions {
                 .resolved(&project_id, &slug, &a.repo.namespace, "secret", &a.consumer, environment, a.trusted)
                 .await?
                 .unbrokered(),
-            variables: self
-                .resolved(&project_id, &slug, &a.repo.namespace, "variable", &a.consumer, environment, a.trusted)
-                .await?
-                .values,
+            variables: self.resolved(&project_id, &slug, &a.repo.namespace, "variable", &a.consumer, environment, a.trusted).await?.values,
         })
     }
 }
@@ -661,7 +659,10 @@ mod tests {
 
     #[test]
     fn environments_and_readers_are_checked() {
-        assert_eq!(valid_environments(&["Production".into(), "preview".into(), "production".into()]).unwrap(), vec!["preview", "production"]);
+        assert_eq!(
+            valid_environments(&["Production".into(), "preview".into(), "production".into()]).unwrap(),
+            vec!["preview", "production"]
+        );
         assert!(valid_environments(&["staging env".into()]).is_err());
         assert_eq!(consumers(&["Deployments".into(), "deployments".into()]).unwrap(), vec!["deployments"]);
         assert!(consumers(&["agents".into()]).is_err());
@@ -679,7 +680,8 @@ mod tests {
 
     #[test]
     fn brokered_hosts_are_domains_each_once() {
-        let hosts = valid_hosts(&["HTTPS://Registry.npmjs.org/".into(), "*.example.com".into(), "registry.npmjs.org".into(), " ".into()]).unwrap();
+        let hosts =
+            valid_hosts(&["HTTPS://Registry.npmjs.org/".into(), "*.example.com".into(), "registry.npmjs.org".into(), " ".into()]).unwrap();
         assert_eq!(hosts, ["registry.npmjs.org", "*.example.com"]);
         assert!(valid_hosts(&["localhost".into()]).is_err());
         assert!(valid_hosts(&(0..21).map(|n| format!("h{n}.example.com")).collect::<Vec<_>>()).is_err());

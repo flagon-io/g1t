@@ -25,7 +25,9 @@ fn re(pattern: &str) -> Regex {
 
 /// A key or token by its issuer's prefix: `ghp_…`, `sk-ant-…`, `g1t_…`.
 static PREFIXED: LazyLock<Regex> = LazyLock::new(|| {
-    re(r"\b(g1t|ghp|gho|ghu|ghs|ghr|github_pat|glpat|gloas|glrt|glptt|gldt|xox[abeprs]|sk-ant|sk-proj|sk-svcacct|sk-admin|sk|rk|whsec|npm|hf|pypi|dop_v1|shpat|shpss|sntrys|lin_api|figd)([-_])([A-Za-z0-9_-]{12,})")
+    re(
+        r"\b(g1t|ghp|gho|ghu|ghs|ghr|github_pat|glpat|gloas|glrt|glptt|gldt|xox[abeprs]|sk-ant|sk-proj|sk-svcacct|sk-admin|sk|rk|whsec|npm|hf|pypi|dop_v1|shpat|shpss|sntrys|lin_api|figd)([-_])([A-Za-z0-9_-]{12,})",
+    )
 });
 
 /// `AKIA…`, `AIza…`, `SG.….…`: formats whose prefix needs no separator.
@@ -41,12 +43,16 @@ static BEARER: LazyLock<Regex> = LazyLock::new(|| re(r"(?i)\b(bearer\s+)[A-Za-z0
 
 /// `G1T_TOKEN=…`, `$env:API_KEY='…'`, `"password": "…"`, `client_secret: …`.
 static ASSIGNED: LazyLock<Regex> = LazyLock::new(|| {
-    re(r#"(?i)([A-Za-z0-9_.-]*(?:token|secret|passw(?:or)?d|pwd|api[_-]?key|apikey|private[_-]?key|access[_-]?key|auth[_-]?key|signing[_-]?key|session[_-]?key|credentials?|webhook[_-]?url|dsn|connection[_-]?string)["']?\s*(?:=|:)\s*)("[^"\n]*"|'[^'\n]*'|`[^`\n]*`|[^\s,;&)}\]]+)"#)
+    re(
+        r#"(?i)([A-Za-z0-9_.-]*(?:token|secret|passw(?:or)?d|pwd|api[_-]?key|apikey|private[_-]?key|access[_-]?key|auth[_-]?key|signing[_-]?key|session[_-]?key|credentials?|webhook[_-]?url|dsn|connection[_-]?string)["']?\s*(?:=|:)\s*)("[^"\n]*"|'[^'\n]*'|`[^`\n]*`|[^\s,;&)}\]]+)"#,
+    )
 });
 
 /// `--token abc`, `--password=abc`, `--api-key abc`.
 static FLAG: LazyLock<Regex> = LazyLock::new(|| {
-    re(r"(?i)(--(?:token|password|passwd|secret|api-key|apikey|access-token|auth-token|client-secret|private-key)(?:=|\s+))(\x22[^\x22]*\x22|'[^']*'|\S+)")
+    re(
+        r"(?i)(--(?:token|password|passwd|secret|api-key|apikey|access-token|auth-token|client-secret|private-key)(?:=|\s+))(\x22[^\x22]*\x22|'[^']*'|\S+)",
+    )
 });
 
 /// `curl -u name:password`.
@@ -57,7 +63,9 @@ static USERINFO: LazyLock<Regex> = LazyLock::new(|| re(r"(?i)\b([a-z][a-z0-9+.-]
 
 /// `?token=…`, `&X-Amz-Signature=…`.
 static QUERY: LazyLock<Regex> = LazyLock::new(|| {
-    re(r"(?i)([?&](?:access_token|refresh_token|id_token|token|key|api_key|apikey|secret|client_secret|sig|signature|password|code|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&\s#\x22'`]+")
+    re(
+        r"(?i)([?&](?:access_token|refresh_token|id_token|token|key|api_key|apikey|secret|client_secret|sig|signature|password|code|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&\s#\x22'`]+",
+    )
 });
 
 /// A JSON Web Token.
@@ -146,9 +154,13 @@ pub fn redact(text: &str) -> String {
     }
     let out = PEM.replace_all(&out, REDACTED);
     let out = JWT.replace_all(&out, REDACTED);
-    let out = PREFIXED.replace_all(&out, |c: &Captures| {
-        if has_letter_and_digit(&c[3]) { format!("{}{}{REDACTED}", &c[1], &c[2]) } else { c[0].to_owned() }
-    });
+    let out =
+        PREFIXED.replace_all(
+            &out,
+            |c: &Captures| {
+                if has_letter_and_digit(&c[3]) { format!("{}{}{REDACTED}", &c[1], &c[2]) } else { c[0].to_owned() }
+            },
+        );
     let out = BARE.replace_all(&out, REDACTED);
     let out = AUTH_HEADER.replace_all(&out, |c: &Captures| {
         let value = &c[0][c[1].len()..];
@@ -160,28 +172,74 @@ pub fn redact(text: &str) -> String {
     });
     let out = USERINFO.replace_all(&out, format!("${{1}}{REDACTED}@").as_str());
     let out = QUERY.replace_all(&out, format!("${{1}}{REDACTED}").as_str());
-    let out = FLAG.replace_all(&out, |c: &Captures| {
-        if reference(&c[2]) { c[0].to_owned() } else { format!("{}{REDACTED}", &c[1]) }
-    });
+    let out = FLAG.replace_all(&out, |c: &Captures| if reference(&c[2]) { c[0].to_owned() } else { format!("{}{REDACTED}", &c[1]) });
     let out = USER_FLAG.replace_all(&out, format!("${{1}}{REDACTED}").as_str());
     let out = ASSIGNED.replace_all(&out, |c: &Captures| {
         let value = &c[2];
         // `token: string` in code is a type, not a token.
-        let typed = matches!(value, "string" | "String" | "str" | "&str" | "number" | "bool" | "boolean" | "null" | "None" | "undefined" | "true" | "false" | "Option<String>");
+        let typed = matches!(
+            value,
+            "string"
+                | "String"
+                | "str"
+                | "&str"
+                | "number"
+                | "bool"
+                | "boolean"
+                | "null"
+                | "None"
+                | "undefined"
+                | "true"
+                | "false"
+                | "Option<String>"
+        );
         if reference(value) || typed || prose(&c[1], value) { c[0].to_owned() } else { format!("{}{REDACTED}", &c[1]) }
     });
-    let out = LONG.replace_all(&out, |c: &Captures| {
-        if random_looking(&c[0]) { REDACTED.to_owned() } else { c[0].to_owned() }
-    });
+    let out = LONG.replace_all(&out, |c: &Captures| if random_looking(&c[0]) { REDACTED.to_owned() } else { c[0].to_owned() });
     out.into_owned()
 }
 
 /// Words that say how someone felt, not what they asked for.
 const SWEARING: &[&str] = &[
-    "fuck", "fucking", "fucked", "fucker", "fuckin", "motherfucker", "motherfucking", "shit", "shitty", "bullshit", "horseshit",
-    "damn", "damned", "dammit", "damnit", "goddamn", "goddamned", "goddammit", "wtf", "wth", "ffs", "stfu", "omfg", "asshole",
-    "bitch", "bitching", "crap", "crappy", "idiot", "idiotic", "moron", "moronic", "dumbass", "retard", "retarded", "bastard",
-    "pissed", "jfc", "fml",
+    "fuck",
+    "fucking",
+    "fucked",
+    "fucker",
+    "fuckin",
+    "motherfucker",
+    "motherfucking",
+    "shit",
+    "shitty",
+    "bullshit",
+    "horseshit",
+    "damn",
+    "damned",
+    "dammit",
+    "damnit",
+    "goddamn",
+    "goddamned",
+    "goddammit",
+    "wtf",
+    "wth",
+    "ffs",
+    "stfu",
+    "omfg",
+    "asshole",
+    "bitch",
+    "bitching",
+    "crap",
+    "crappy",
+    "idiot",
+    "idiotic",
+    "moron",
+    "moronic",
+    "dumbass",
+    "retard",
+    "retarded",
+    "bastard",
+    "pissed",
+    "jfc",
+    "fml",
 ];
 
 fn swearing(word: &str) -> bool {
@@ -279,7 +337,8 @@ mod tests {
         hidden("open https://x.com/cb?code=abc&state=1&token=t0k3n", "t0k3n");
         hidden("GET /file?X-Amz-Signature=deadbeef1234&x=1", "deadbeef1234");
         hidden("jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U", "dozjgNryP4J3");
-        let pem = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ\n-----END OPENSSH PRIVATE KEY-----\nafter"; // g1t:allow-secret
+        let pem =
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ\n-----END OPENSSH PRIVATE KEY-----\nafter"; // g1t:allow-secret
         let out = redact(pem);
         assert!(!out.contains("b3BlbnNzaC1"), "{out}");
         assert!(out.ends_with("after"));

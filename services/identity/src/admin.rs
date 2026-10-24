@@ -86,21 +86,14 @@ fn growth_sql() -> String {
              (SELECT created_at {live} ORDER BY created_at DESC LIMIT 1) AS {prefix}_newest_at"
         )
     };
-    format!(
-        "SELECT {}, {}",
-        part("people", "users", "coalesce(display_username, username)"),
-        part("workspaces", "workspaces", "slug")
-    )
+    format!("SELECT {}, {}", part("people", "users", "coalesce(display_username, username)"), part("workspaces", "workspaces", "slug"))
 }
 
 /// The workspaces, in their order, each with its owners.
 fn with_owners(rows: Vec<ListRow>, owners: Vec<OwnerRow>) -> Vec<AdminWorkspace> {
     let mut by_workspace: HashMap<String, Vec<AdminOwner>> = HashMap::new();
     for owner in owners {
-        by_workspace.entry(owner.workspace_id).or_default().push(AdminOwner {
-            username: owner.username,
-            email: owner.email,
-        });
+        by_workspace.entry(owner.workspace_id).or_default().push(AdminOwner { username: owner.username, email: owner.email });
     }
     rows.into_iter()
         .map(|row| AdminWorkspace {
@@ -260,12 +253,7 @@ impl Identity {
             .await?
             .results::<MemberRow>()?
             .into_iter()
-            .map(|m| AdminMember {
-                username: m.username,
-                email: m.email,
-                role: m.role,
-                joined: m.joined,
-            })
+            .map(|m| AdminMember { username: m.username, email: m.email, role: m.role, joined: m.joined })
             .collect();
         let protected = self.is_protected(&row.id, &row.slug, row.protected != 0).await?;
         let suspended = self.workspace_suspension(&row.slug).await?;

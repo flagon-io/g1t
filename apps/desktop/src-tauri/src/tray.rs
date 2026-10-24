@@ -62,11 +62,8 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             &quit,
         ],
     )?;
-    let mut tray = TrayIconBuilder::with_id(TRAY)
-        .menu(&menu)
-        .show_menu_on_left_click(false)
-        .tooltip("g1t")
-        .on_tray_icon_event(|tray, event| {
+    let mut tray =
+        TrayIconBuilder::with_id(TRAY).menu(&menu).show_menu_on_left_click(false).tooltip("g1t").on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
                 show(tray.app_handle());
             }

@@ -18,10 +18,10 @@ use g1t_actions::filter::Pattern;
 use g1t_actions::permissions::TokenDefault;
 use g1t_contracts::access::{self, AccessSource, Capability, CollaboratorPermissionArgs, PermissionInfo};
 use g1t_contracts::actions::{
-    APPROVAL_POLICIES, actions_enabled, ActionsSettings, ActionsSettingsArgs, SetWorkspaceActionsSettingsArgs, WorkspaceActionsSettings,
-    WorkspaceActionsSettingsArgs, BranchPattern, DeleteEnvironmentArgs, Environment, EnvironmentReviewer,
+    APPROVAL_POLICIES, ActionsSettings, ActionsSettingsArgs, BranchPattern, DeleteEnvironmentArgs, Environment, EnvironmentReviewer,
     EnvironmentsArgs, MAX_ENVIRONMENT_REVIEWERS, MAX_WAIT_MINUTES, PendingDeployment, PendingDeploymentsArgs, ReviewDeploymentsArgs,
-    RunActionArgs, RunApproval, SetActionsSettingsArgs, SetEnvironmentArgs, WorkflowRun,
+    RunActionArgs, RunApproval, SetActionsSettingsArgs, SetEnvironmentArgs, SetWorkspaceActionsSettingsArgs, WorkflowRun,
+    WorkspaceActionsSettings, WorkspaceActionsSettingsArgs, actions_enabled,
 };
 use g1t_contracts::repos::{Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
@@ -68,7 +68,12 @@ struct WorkspaceRow {
 /// else `write` for a repository made before restricted tokens
 /// (`grandfathered`), else its workspace's default; never more than the
 /// workspace's maximum.
-pub(crate) fn effective_default(chosen: Option<TokenDefault>, grandfathered: bool, workspace_default: TokenDefault, maximum: TokenDefault) -> TokenDefault {
+pub(crate) fn effective_default(
+    chosen: Option<TokenDefault>,
+    grandfathered: bool,
+    workspace_default: TokenDefault,
+    maximum: TokenDefault,
+) -> TokenDefault {
     let wanted = chosen.unwrap_or(if grandfathered { TokenDefault::Permissive } else { workspace_default });
     if maximum == TokenDefault::Restricted { TokenDefault::Restricted } else { wanted }
 }
@@ -158,7 +163,13 @@ pub(crate) fn environment_name(name: &str) -> std::result::Result<String, String
 
 /// Whether `git_ref` may deploy to an environment by its `policy`.
 /// `protected` says whether the branch is protected, for `protected`.
-pub(crate) fn branch_allowed(policy: &str, patterns: &[BranchPattern], git_ref: &str, protected: bool, environment: &str) -> std::result::Result<(), String> {
+pub(crate) fn branch_allowed(
+    policy: &str,
+    patterns: &[BranchPattern],
+    git_ref: &str,
+    protected: bool,
+    environment: &str,
+) -> std::result::Result<(), String> {
     let (kind, name) = match (git_ref.strip_prefix("refs/heads/"), git_ref.strip_prefix("refs/tags/")) {
         (Some(branch), _) => ("branch", branch),
         (_, Some(tag)) => ("tag", tag),
@@ -168,14 +179,13 @@ pub(crate) fn branch_allowed(policy: &str, patterns: &[BranchPattern], git_ref: 
         "protected" if kind == "branch" && protected => Ok(()),
         "protected" => Err(format!("{environment} takes deployments from protected branches only, and `{name}` is not one.")),
         "selected" => {
-            let allowed = patterns
-                .iter()
-                .filter(|pattern| pattern.kind == kind)
-                .any(|pattern| Pattern::parse(&pattern.name).matches(name));
+            let allowed = patterns.iter().filter(|pattern| pattern.kind == kind).any(|pattern| Pattern::parse(&pattern.name).matches(name));
             if allowed {
                 Ok(())
             } else {
-                Err(format!("The {kind} `{name}` may not deploy to {environment}: its deployment rules list the branches and tags that may."))
+                Err(format!(
+                    "The {kind} `{name}` may not deploy to {environment}: its deployment rules list the branches and tags that may."
+                ))
             }
         }
         _ => Ok(()),
@@ -291,11 +301,7 @@ impl Actions {
         struct Since {
             value: String,
         }
-        let since = self
-            .db
-            .prepare("SELECT value FROM actions_meta WHERE key = 'restricted_since'")
-            .first::<Since>(None)
-            .await?;
+        let since = self.db.prepare("SELECT value FROM actions_meta WHERE key = 'restricted_since'").first::<Since>(None).await?;
         Ok(since.is_some_and(|since| !repo.created_at.is_empty() && repo.created_at.as_str() < since.value.as_str()))
     }
 
@@ -386,7 +392,10 @@ impl Actions {
                     Some(TokenDefault::Permissive) if workspace.max_permissions == "read" => {
                         return Ok(fail(
                             FailureCode::Forbidden,
-                            format!("{} holds its repositories' tokens to read-only: an owner can change that in the workspace's Actions settings.", repo.namespace),
+                            format!(
+                                "{} holds its repositories' tokens to read-only: an owner can change that in the workspace's Actions settings.",
+                                repo.namespace
+                            ),
                         ));
                     }
                     Some(parsed) => Some(parsed.as_str().to_owned()),
@@ -405,7 +414,10 @@ impl Actions {
             if allow && !workspace.can_approve_pull_requests {
                 return Ok(fail(
                     FailureCode::Forbidden,
-                    format!("{} does not let its repositories' jobs open or approve pull requests: an owner can allow it in the workspace's Actions settings.", repo.namespace),
+                    format!(
+                        "{} does not let its repositories' jobs open or approve pull requests: an owner can allow it in the workspace's Actions settings.",
+                        repo.namespace
+                    ),
                 ));
             }
             row.can_approve_pulls = Some(u32::from(allow));
@@ -712,7 +724,10 @@ impl Actions {
                     )
                     .await?;
                     if !permission.into_result().ok().is_some_and(|info| info.role.is_some()) {
-                        return Ok(fail(FailureCode::Invalid, format!("{name} has no access to {}/{}, so cannot review.", repo.namespace, repo.name)));
+                        return Ok(fail(
+                            FailureCode::Invalid,
+                            format!("{name} has no access to {}/{}, so cannot review.", repo.namespace, repo.name),
+                        ));
                     }
                 }
                 "team" => {
@@ -737,13 +752,8 @@ impl Actions {
     /// Everyone in a team of `workspace` and its child teams, by username;
     /// `None` when there is no such team.
     async fn team_people(&self, workspace: &str, slug: &str) -> Result<Option<Vec<String>>> {
-        let resolved: Vec<Value> = g1t_kit::call(
-            &self.identity,
-            "resolve_teams",
-            &json!({ "teams": [format!("{workspace}/{slug}")] }),
-        )
-        .await
-        .unwrap_or_default();
+        let resolved: Vec<Value> =
+            g1t_kit::call(&self.identity, "resolve_teams", &json!({ "teams": [format!("{workspace}/{slug}")] })).await.unwrap_or_default();
         Ok(resolved.into_iter().next().map(|team| {
             ["members", "child_members"]
                 .iter()
@@ -845,13 +855,10 @@ impl Actions {
         let Some(branch) = run.git_ref.strip_prefix("refs/heads/") else { return Ok(false) };
         let path = crate::repo_path(&run.repo);
         let Some(ws) = self.workspace_actor(&path.namespace).await? else { return Ok(false) };
-        let rules: Outcome<Value> = g1t_kit::call(
-            &self.work,
-            "effective_rules",
-            &json!({ "viewer": ws, "repo": path, "name": branch, "target": "branch" }),
-        )
-        .await
-        .unwrap_or_else(|_| Outcome::Ok(Value::Null));
+        let rules: Outcome<Value> =
+            g1t_kit::call(&self.work, "effective_rules", &json!({ "viewer": ws, "repo": path, "name": branch, "target": "branch" }))
+                .await
+                .unwrap_or_else(|_| Outcome::Ok(Value::Null));
         Ok(match rules {
             Outcome::Ok(rules) => {
                 rules["default_branch"].as_bool() == Some(true)
@@ -928,10 +935,13 @@ impl Actions {
         let mut out = Vec::new();
         for gate in gates {
             let env = self.environment_rules(&run.repo_id, &gate.environment).await?;
-            let held: Vec<&JobRow> = jobs.iter().filter(|job| job.environment.as_deref().is_some_and(|e| e.eq_ignore_ascii_case(&gate.environment))).collect();
+            let held: Vec<&JobRow> =
+                jobs.iter().filter(|job| job.environment.as_deref().is_some_and(|e| e.eq_ignore_ascii_case(&gate.environment))).collect();
             let waiting = gate.state == "waiting" && held.iter().any(|job| job.status == "pending");
             let can_review = match (viewer, &repo, waiting) {
-                (Some(user), Some(repo), true) if user.kind == PrincipalKind::User && user.token.as_ref().is_none_or(|t| t.job.is_none()) => {
+                (Some(user), Some(repo), true)
+                    if user.kind == PrincipalKind::User && user.token.as_ref().is_none_or(|t| t.job.is_none()) =>
+                {
                     let teams = self.reviewer_teams(&repo.namespace, &env, &user.username).await?;
                     let admin = access::can(Some(user), repo, Capability::Administer);
                     may_review(&env, &user.username, &teams, admin, run.actor.as_deref()).is_ok()
@@ -1095,12 +1105,8 @@ impl Actions {
         struct Waiting {
             run_id: String,
         }
-        let runs = self
-            .db
-            .prepare("SELECT DISTINCT run_id FROM jobs WHERE status = 'pending' LIMIT 100")
-            .all()
-            .await?
-            .results::<Waiting>()?;
+        let runs =
+            self.db.prepare("SELECT DISTINCT run_id FROM jobs WHERE status = 'pending' LIMIT 100").all().await?.results::<Waiting>()?;
         for waiting in runs {
             let Some(run) = self.run_row(&waiting.run_id).await? else { continue };
             if self.release_gates_of(&run).await? {
@@ -1138,7 +1144,8 @@ impl Actions {
         }
         let can_push = info.as_ref().and_then(|info| info.role).is_some_and(|role| access::allows(role, Capability::Push));
         let first_time = !self.has_merged(repo, owner, ws).await?;
-        Ok(approval_reason(&policy, member, can_push, first_time).map(|why| format!("{} {why}, so someone with the Write role approves its runs first.", owner.username)))
+        Ok(approval_reason(&policy, member, can_push, first_time)
+            .map(|why| format!("{} {why}, so someone with the Write role approves its runs first.", owner.username)))
     }
 
     /// Whether a pull request of `owner`'s has been merged into `repo`.
@@ -1178,7 +1185,9 @@ impl Actions {
         approval.approved_by = Some(a.actor.username.clone());
         let started = self
             .db
-            .prepare("UPDATE runs SET status = 'queued', approval = ?, approved_by = ? WHERE id = ? AND status = 'action_required' RETURNING id")
+            .prepare(
+                "UPDATE runs SET status = 'queued', approval = ?, approved_by = ? WHERE id = ? AND status = 'action_required' RETURNING id",
+            )
             .bind(&[serde_json::to_string(&approval)?.into(), a.actor.username.as_str().into(), run.id.as_str().into()])?
             .first::<Value>(None)
             .await?;
@@ -1338,7 +1347,9 @@ mod tests {
     fn which_refs_may_deploy() {
         assert!(branch_allowed("all", &[], "refs/pull/3/merge", false, "production").is_ok());
         assert!(branch_allowed("protected", &[], "refs/heads/main", true, "production").is_ok());
-        assert!(branch_allowed("protected", &[], "refs/heads/feature", false, "production").unwrap_err().contains("protected branches only"));
+        assert!(
+            branch_allowed("protected", &[], "refs/heads/feature", false, "production").unwrap_err().contains("protected branches only")
+        );
         // A pull request's merge ref is never a protected branch.
         assert!(branch_allowed("protected", &[], "refs/pull/3/merge", true, "production").is_err());
         let selected = [pattern("main", "branch"), pattern("release/*", "branch"), pattern("v*", "tag")];

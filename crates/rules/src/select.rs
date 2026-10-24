@@ -4,8 +4,8 @@
 use g1t_contracts::access::{self, RepoRole};
 use g1t_contracts::repos::Repo;
 use g1t_contracts::rules::{
-    ALL, ActorKind, Applicable, BypassActor, BypassMode, DEFAULT_BRANCH, EffectiveRule, EffectiveRules, Enforcement,
-    Level, RefCondition, RepositoryCondition, Ruleset, RulesetSummary, Target, VisibilityCondition,
+    ALL, ActorKind, Applicable, BypassActor, BypassMode, DEFAULT_BRANCH, EffectiveRule, EffectiveRules, Enforcement, Level, RefCondition,
+    RepositoryCondition, Ruleset, RulesetSummary, Target, VisibilityCondition,
 };
 use g1t_contracts::{PrincipalKind, Role, User};
 
@@ -23,13 +23,7 @@ pub struct RepoFacts<'a> {
 
 impl<'a> From<&'a Repo> for RepoFacts<'a> {
     fn from(repo: &'a Repo) -> Self {
-        RepoFacts {
-            id: &repo.id,
-            name: &repo.name,
-            private: repo.is_private,
-            topics: &repo.topics,
-            default_branch: &repo.default_branch,
-        }
+        RepoFacts { id: &repo.id, name: &repo.name, private: repo.is_private, topics: &repo.topics, default_branch: &repo.default_branch }
     }
 }
 
@@ -70,10 +64,7 @@ pub fn repo_matches(condition: &RepositoryCondition, repo: RepoFacts<'_>) -> boo
         VisibilityCondition::Private => repo.private,
     };
     let topical = condition.topics.is_empty()
-        || condition
-            .topics
-            .iter()
-            .any(|topic| repo.topics.iter().any(|has| has.eq_ignore_ascii_case(topic.trim())));
+        || condition.topics.iter().any(|topic| repo.topics.iter().any(|has| has.eq_ignore_ascii_case(topic.trim())));
     condition.include.iter().any(named) && !condition.exclude.iter().any(named) && visible && topical
 }
 
@@ -197,32 +188,31 @@ fn names(entry: &BypassActor, who: &ActorFacts, workspace: &str) -> bool {
 /// `always` wins over `pull_requests` when both name them.
 pub fn bypass(actors: &[BypassActor], who: &ActorFacts, workspace: &str) -> Option<BypassMode> {
     let modes: Vec<BypassMode> = actors.iter().filter(|entry| names(entry, who, workspace)).map(|entry| entry.mode).collect();
-    if modes.contains(&BypassMode::Always) {
-        Some(BypassMode::Always)
-    } else {
-        modes.first().copied()
-    }
+    if modes.contains(&BypassMode::Always) { Some(BypassMode::Always) } else { modes.first().copied() }
 }
 
 /// Whether any bypass list names a team: only then are the actor's teams
 /// worth looking up.
 pub fn names_teams(rulesets: &[Ruleset]) -> bool {
-    rulesets
-        .iter()
-        .any(|ruleset| ruleset.spec.bypass_actors.iter().any(|entry| entry.kind == ActorKind::Team))
+    rulesets.iter().any(|ruleset| ruleset.spec.bypass_actors.iter().any(|entry| entry.kind == ActorKind::Team))
 }
 
 /// The rulesets that hold in `repo` for any of `refs` (full refs), as a
 /// service applies them, with how the actor may bypass each.
-pub fn applicable(rulesets: &[Ruleset], repo: RepoFacts<'_>, refs: &[String], who: Option<&ActorFacts>, workspace: &str) -> Vec<Applicable> {
+pub fn applicable(
+    rulesets: &[Ruleset],
+    repo: RepoFacts<'_>,
+    refs: &[String],
+    who: Option<&ActorFacts>,
+    workspace: &str,
+) -> Vec<Applicable> {
     rulesets
         .iter()
         .filter(|ruleset| holds_in(ruleset, repo))
         .filter(|ruleset| {
             refs.iter().any(|git_ref| match Target::of_ref(git_ref) {
                 Some((target, name)) => {
-                    target == ruleset.spec.target
-                        && ref_matches(&ruleset.spec.conditions.ref_name, target, name, repo.default_branch)
+                    target == ruleset.spec.target && ref_matches(&ruleset.spec.conditions.ref_name, target, name, repo.default_branch)
                 }
                 None => false,
             })
@@ -259,11 +249,7 @@ pub fn effective(rulesets: &[Ruleset], repo: RepoFacts<'_>, target: Target, name
         .collect();
     // Active before evaluate; workspace before repository; then by name.
     holding.sort_by_key(|ruleset| {
-        (
-            ruleset.spec.enforcement != Enforcement::Active,
-            ruleset.level != Level::Workspace,
-            ruleset.spec.name.to_lowercase(),
-        )
+        (ruleset.spec.enforcement != Enforcement::Active, ruleset.level != Level::Workspace, ruleset.spec.name.to_lowercase())
     });
     EffectiveRules {
         name: name.to_owned(),
@@ -399,10 +385,7 @@ mod tests {
         let list = [entry(ActorKind::Role, "maintain", BypassMode::PullRequests)];
         assert_eq!(bypass(&list, &person(RepoRole::Admin), "acme"), Some(BypassMode::PullRequests));
         assert_eq!(bypass(&list, &person(RepoRole::Write), "acme"), None);
-        let both = [
-            entry(ActorKind::Role, "write", BypassMode::PullRequests),
-            entry(ActorKind::User, "@Ada", BypassMode::Always),
-        ];
+        let both = [entry(ActorKind::Role, "write", BypassMode::PullRequests), entry(ActorKind::User, "@Ada", BypassMode::Always)];
         assert_eq!(bypass(&both, &person(RepoRole::Write), "acme"), Some(BypassMode::Always));
         let team = [entry(ActorKind::Team, "release", BypassMode::Always)];
         let mut ada = person(RepoRole::Read);
@@ -443,7 +426,13 @@ mod tests {
         evaluate.spec.enforcement = Enforcement::Evaluate;
         let rulesets = vec![
             evaluate,
-            ruleset("a-main", Level::Repository, &["~DEFAULT_BRANCH"], &[], vec![Rule::Deletion(NoParameters {}), Rule::NonFastForward(NoParameters {})]),
+            ruleset(
+                "a-main",
+                Level::Repository,
+                &["~DEFAULT_BRANCH"],
+                &[],
+                vec![Rule::Deletion(NoParameters {}), Rule::NonFastForward(NoParameters {})],
+            ),
             ruleset("org", Level::Workspace, &["~ALL"], &[], vec![Rule::Deletion(NoParameters {})]),
             ruleset("release", Level::Repository, &["release/*"], &[], vec![Rule::Creation(NoParameters {})]),
         ];

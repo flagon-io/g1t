@@ -69,9 +69,7 @@ pub fn slim(user: &User, workspaces: &[String]) -> User {
 
 impl Claims {
     pub fn allows(&self, name: &str, action: Action) -> bool {
-        self.access
-            .iter()
-            .any(|grant| grant.name == name && grant.actions.contains(&action))
+        self.access.iter().any(|grant| grant.name == name && grant.actions.contains(&action))
     }
 }
 
@@ -210,14 +208,8 @@ mod tests {
 
     #[test]
     fn scopes_are_read_as_docker_writes_them() {
-        assert_eq!(
-            parse_scope("repository:acme/web/api:pull,push"),
-            Some(("acme/web/api".into(), vec![Action::Pull, Action::Push]))
-        );
-        assert_eq!(
-            parse_scope("repository:acme/web:*"),
-            Some(("acme/web".into(), vec![Action::Pull, Action::Push, Action::Delete]))
-        );
+        assert_eq!(parse_scope("repository:acme/web/api:pull,push"), Some(("acme/web/api".into(), vec![Action::Pull, Action::Push])));
+        assert_eq!(parse_scope("repository:acme/web:*"), Some(("acme/web".into(), vec![Action::Pull, Action::Push, Action::Delete])));
         assert_eq!(parse_scope("repository:acme/web:pull,pull"), Some(("acme/web".into(), vec![Action::Pull])));
         assert_eq!(parse_scope("registry:catalog:*"), None);
         assert_eq!(parse_scope("repository:acme/web:unknown"), None);

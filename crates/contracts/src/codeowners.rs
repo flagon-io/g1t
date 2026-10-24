@@ -61,13 +61,7 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 
 /// Where a CODEOWNERS file may be, in the order they are looked for.
-pub const LOCATIONS: [&str; 5] = [
-    ".g1t/CODEOWNERS",
-    ".github/CODEOWNERS",
-    "CODEOWNERS",
-    "docs/CODEOWNERS",
-    ".gitlab/CODEOWNERS",
-];
+pub const LOCATIONS: [&str; 5] = [".g1t/CODEOWNERS", ".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS", ".gitlab/CODEOWNERS"];
 
 /// The largest file read; a larger one is ignored with an error.
 pub const MAX_BYTES: usize = 3 * 1024 * 1024;
@@ -126,18 +120,12 @@ impl Owner {
     pub fn parse(token: &str) -> Option<Owner> {
         if let Some(rest) = token.strip_prefix('@') {
             return match rest.split_once('/') {
-                None => is_name(rest).then(|| Owner::User {
-                    username: rest.to_ascii_lowercase(),
-                }),
-                Some((workspace, slug)) => (is_name(workspace) && is_name(slug)).then(|| Owner::Team {
-                    workspace: workspace.to_ascii_lowercase(),
-                    slug: slug.to_ascii_lowercase(),
-                }),
+                None => is_name(rest).then(|| Owner::User { username: rest.to_ascii_lowercase() }),
+                Some((workspace, slug)) => (is_name(workspace) && is_name(slug))
+                    .then(|| Owner::Team { workspace: workspace.to_ascii_lowercase(), slug: slug.to_ascii_lowercase() }),
             };
         }
-        is_email(token).then(|| Owner::Email {
-            email: token.to_lowercase(),
-        })
+        is_email(token).then(|| Owner::Email { email: token.to_lowercase() })
     }
 
     /// The owner as written in a file: `@ana`, `@acme/backend`,
@@ -311,17 +299,11 @@ fn parse_header(text: &str) -> Result<Header, String> {
             return Err("The approval count has no closing ]; write it as [Name][2].".into());
         };
         let count = after[..close].trim();
-        let parsed = if !count.is_empty() && count.bytes().all(|b| b.is_ascii_digit()) {
-            count.parse::<u32>().ok()
-        } else {
-            None
-        };
+        let parsed = if !count.is_empty() && count.bytes().all(|b| b.is_ascii_digit()) { count.parse::<u32>().ok() } else { None };
         match parsed {
             Some(n) if (1..=10).contains(&n) => approvals = Some(n),
             _ => {
-                return Err(format!(
-                    "The approval count [{count}] must be a whole number from 1 to 10."
-                ));
+                return Err(format!("The approval count [{count}] must be a whole number from 1 to 10."));
             }
         }
         rest = &after[close + 1..];
@@ -330,13 +312,7 @@ fn parse_header(text: &str) -> Result<Header, String> {
         return Err("Put a space between the section header and its owners.".into());
     }
     let (owners, bad_owners) = read_owners(&tokens(rest));
-    Ok(Header {
-        name: name.to_string(),
-        optional,
-        approvals,
-        owners,
-        bad_owners,
-    })
+    Ok(Header { name: name.to_string(), optional, approvals, owners, bad_owners })
 }
 
 fn bad_owner(line: u32, token: &str) -> LineError {
@@ -378,12 +354,9 @@ pub fn parse(text: &str) -> CodeOwners {
                     }
                     current = Some(file.add_section(line, header));
                 }
-                Err(message) => file.errors.push(LineError {
-                    line,
-                    kind: ErrorKind::BadSection,
-                    token: Some(trimmed.trim_end().to_string()),
-                    message,
-                }),
+                Err(message) => {
+                    file.errors.push(LineError { line, kind: ErrorKind::BadSection, token: Some(trimmed.trim_end().to_string()), message })
+                }
             }
             continue;
         }
@@ -408,32 +381,20 @@ pub fn parse(text: &str) -> CodeOwners {
         } else if compile(pattern).is_none() {
             Some((
                 ErrorKind::BadPattern,
-                format!(
-                    "{pattern} names no path; this line is skipped. Write a file or directory pattern, such as * or /docs/."
-                ),
+                format!("{pattern} names no path; this line is skipped. Write a file or directory pattern, such as * or /docs/."),
             ))
         } else {
             None
         };
         if let Some((kind, message)) = skip {
-            file.errors.push(LineError {
-                line,
-                kind,
-                token: Some(pattern.clone()),
-                message,
-            });
+            file.errors.push(LineError { line, kind, token: Some(pattern.clone()), message });
             continue;
         }
         let (owners, bad) = read_owners(owner_words);
         for token in &bad {
             file.errors.push(bad_owner(line, token));
         }
-        file.rules.push(Rule {
-            line,
-            pattern: pattern.clone(),
-            owners,
-            section: current,
-        });
+        file.rules.push(Rule { line, pattern: pattern.clone(), owners, section: current });
     }
     file
 }
@@ -484,11 +445,7 @@ impl CodeOwners {
                 found[slot] = Some(index);
             }
         }
-        found
-            .into_iter()
-            .enumerate()
-            .filter_map(|(slot, rule)| rule.map(|rule| (slot.checked_sub(1), rule)))
-            .collect()
+        found.into_iter().enumerate().filter_map(|(slot, rule)| rule.map(|rule| (slot.checked_sub(1), rule))).collect()
     }
 
     /// The owners a rule gives: its own, or its section's defaults when it
@@ -497,10 +454,7 @@ impl CodeOwners {
         if !rule.owners.is_empty() {
             return rule.owners.clone();
         }
-        rule.section
-            .and_then(|s| self.sections.get(s))
-            .map(|s| s.default_owners.clone())
-            .unwrap_or_default()
+        rule.section.and_then(|s| self.sections.get(s)).map(|s| s.default_owners.clone()).unwrap_or_default()
     }
 
     fn section_name(&self, section: Option<usize>) -> Option<String> {
@@ -550,11 +504,7 @@ impl CodeOwners {
                 }
                 let settings = section.and_then(|s| self.sections.get(s));
                 let optional = settings.is_some_and(|s| s.optional);
-                let approvals = if optional {
-                    0
-                } else {
-                    settings.map_or(1, |s| s.approvals)
-                };
+                let approvals = if optional { 0 } else { settings.map_or(1, |s| s.approvals) };
                 found.push((
                     section.map_or(0, |s| s + 1),
                     index,
@@ -713,13 +663,8 @@ fn compile(pattern: &str) -> Option<Compiled> {
             segs.push(Seg::Glob(glob_tokens(part)));
         }
     }
-    let files_only = !dir_only
-        && matches!(segs.last(), Some(Seg::Glob(toks)) if toks.iter().any(|t| matches!(t, Tok::Star | Tok::One)));
-    Some(Compiled {
-        segs,
-        dir_only,
-        files_only,
-    })
+    let files_only = !dir_only && matches!(segs.last(), Some(Seg::Glob(toks)) if toks.iter().any(|t| matches!(t, Tok::Star | Tok::One)));
+    Some(Compiled { segs, dir_only, files_only })
 }
 
 fn path_parts(path: &str) -> Vec<&str> {
@@ -746,9 +691,7 @@ fn match_segs(segs: &[Seg], parts: &[&str]) -> bool {
         None => parts.is_empty(),
         Some((Seg::Globstar, [])) => !parts.is_empty(),
         Some((Seg::Globstar, rest)) => (0..=parts.len()).any(|skip| match_segs(rest, &parts[skip..])),
-        Some((Seg::Glob(toks), rest)) => parts
-            .split_first()
-            .is_some_and(|(first, tail)| match_glob(toks, first) && match_segs(rest, tail)),
+        Some((Seg::Glob(toks), rest)) => parts.split_first().is_some_and(|(first, tail)| match_glob(toks, first) && match_segs(rest, tail)),
     }
 }
 
@@ -828,18 +771,13 @@ fn check_message(owner: &Owner, check: OwnerCheck) -> Option<(ErrorKind, String)
                 _ => format!("{text} is not a team."),
             },
         ),
-        OwnerCheck::UnknownEmail => (
-            ErrorKind::UnknownEmail,
-            format!("No g1t account has confirmed {}.", text.trim_start_matches('@')),
-        ),
-        OwnerCheck::NoWriteAccess => (
-            ErrorKind::NoWriteAccess,
-            format!("{text} cannot write to this repository; code owners need the Write role or higher."),
-        ),
-        OwnerCheck::TeamNoAccess => (
-            ErrorKind::TeamNoAccess,
-            format!("{text} has no access to this repository; give the team the Write role or higher."),
-        ),
+        OwnerCheck::UnknownEmail => (ErrorKind::UnknownEmail, format!("No g1t account has confirmed {}.", text.trim_start_matches('@'))),
+        OwnerCheck::NoWriteAccess => {
+            (ErrorKind::NoWriteAccess, format!("{text} cannot write to this repository; code owners need the Write role or higher."))
+        }
+        OwnerCheck::TeamNoAccess => {
+            (ErrorKind::TeamNoAccess, format!("{text} has no access to this repository; give the team the Write role or higher."))
+        }
     })
 }
 
@@ -854,12 +792,7 @@ pub fn check_owners(file: &CodeOwners, check: &dyn Fn(&Owner) -> OwnerCheck) -> 
             continue;
         };
         for line in file.lines_naming(&owner) {
-            errors.push(LineError {
-                line,
-                kind,
-                token: Some(owner.text()),
-                message: message.clone(),
-            });
+            errors.push(LineError { line, kind, token: Some(owner.text()), message: message.clone() });
         }
     }
     errors.sort_by(|a, b| (a.line, &a.token).cmp(&(b.line, &b.token)));
@@ -915,12 +848,7 @@ pub fn evaluate(
     requirements
         .iter()
         .map(|requirement| {
-            let allowed: BTreeSet<String> = requirement
-                .owners
-                .iter()
-                .flat_map(members)
-                .map(|name| name.to_lowercase())
-                .collect();
+            let allowed: BTreeSet<String> = requirement.owners.iter().flat_map(members).map(|name| name.to_lowercase()).collect();
             let mut approved_by: Vec<String> = Vec::new();
             let mut changes_requested_by: Vec<String> = Vec::new();
             for verdict in verdicts {
@@ -928,18 +856,13 @@ pub fn evaluate(
                 if name == author || !allowed.contains(&name) {
                     continue;
                 }
-                let list = if verdict.approved {
-                    &mut approved_by
-                } else {
-                    &mut changes_requested_by
-                };
+                let list = if verdict.approved { &mut approved_by } else { &mut changes_requested_by };
                 if !list.contains(&name) {
                     list.push(name);
                 }
             }
             let required = requirement.approvals;
-            let satisfied =
-                requirement.optional || (changes_requested_by.is_empty() && approved_by.len() >= required as usize);
+            let satisfied = requirement.optional || (changes_requested_by.is_empty() && approved_by.len() >= required as usize);
             OwnerReview {
                 section: requirement.section.clone(),
                 line: requirement.line,
@@ -975,8 +898,7 @@ pub fn missing(reviews: &[OwnerReview]) -> Option<String> {
     if open.is_empty() {
         return None;
     }
-    let (changes, approvals): (Vec<&OwnerReview>, Vec<&OwnerReview>) =
-        open.iter().partition(|r| !r.changes_requested_by.is_empty());
+    let (changes, approvals): (Vec<&OwnerReview>, Vec<&OwnerReview>) = open.iter().partition(|r| !r.changes_requested_by.is_empty());
     let more = open.len().saturating_sub(SHOWN);
     let mut sentences = Vec::new();
     let mut shown = 0;
@@ -986,11 +908,7 @@ pub fn missing(reviews: &[OwnerReview]) -> Option<String> {
         }
         shown += 1;
         let names: Vec<String> = review.changes_requested_by.iter().map(|n| format!("@{n}")).collect();
-        sentences.push(format!(
-            "{} asked for changes on {} (code owner).",
-            join(&names, "and"),
-            review.pattern
-        ));
+        sentences.push(format!("{} asked for changes on {} (code owner).", join(&names, "and"), review.pattern));
     }
     let mut items = Vec::new();
     for review in &approvals {
@@ -1000,11 +918,7 @@ pub fn missing(reviews: &[OwnerReview]) -> Option<String> {
         shown += 1;
         let mut item = format!("{} for {}", join(&review.owners, "or"), review.pattern);
         if review.required > 1 {
-            item.push_str(&format!(
-                " ({} of {} approvals)",
-                review.approved_by.len(),
-                review.required
-            ));
+            item.push_str(&format!(" ({} of {} approvals)", review.approved_by.len(), review.required));
         }
         items.push(item);
     }
@@ -1074,10 +988,7 @@ mod tests {
     }
 
     fn team(workspace: &str, slug: &str) -> Owner {
-        Owner::Team {
-            workspace: workspace.into(),
-            slug: slug.into(),
-        }
+        Owner::Team { workspace: workspace.into(), slug: slug.into() }
     }
 
     fn email(address: &str) -> Owner {
@@ -1091,12 +1002,7 @@ mod tests {
             .into_iter()
             .map(|applied| {
                 let owners: Vec<String> = applied.owners.iter().map(Owner::text).collect();
-                format!(
-                    "{}:{}:{}",
-                    applied.section.as_deref().unwrap_or("-"),
-                    applied.line,
-                    owners.join(" ")
-                )
+                format!("{}:{}:{}", applied.section.as_deref().unwrap_or("-"), applied.line, owners.join(" "))
             })
             .collect()
     }
@@ -1106,16 +1012,7 @@ mod tests {
         let paths: Vec<String> = paths.iter().map(|p| p.to_string()).collect();
         file.requirements(&paths)
             .into_iter()
-            .map(|r| {
-                format!(
-                    "{}:{}:{}:{}:{}",
-                    r.section.as_deref().unwrap_or("-"),
-                    r.line,
-                    r.pattern,
-                    r.approvals,
-                    r.files.join(",")
-                )
-            })
+            .map(|r| format!("{}:{}:{}:{}:{}", r.section.as_deref().unwrap_or("-"), r.line, r.pattern, r.approvals, r.files.join(",")))
             .collect()
     }
 
@@ -1219,15 +1116,7 @@ apps/ @octocat
         assert_eq!(
             needs(
                 &file,
-                &[
-                    "README.md",
-                    "src/app.js",
-                    "apps/github/x.go",
-                    "lib/util.js",
-                    "docs/a.md",
-                    "scripts/run.sh",
-                    "build/logs/today.log",
-                ]
+                &["README.md", "src/app.js", "apps/github/x.go", "lib/util.js", "docs/a.md", "scripts/run.sh", "build/logs/today.log",]
             ),
             vec![
                 "-:7:*:1:README.md",
@@ -1296,20 +1185,8 @@ Cargo.lock                 @acme/infra
             assert_eq!(who(&file, path), vec![expected.to_string()], "{path}");
         }
         assert_eq!(
-            needs(
-                &file,
-                &[
-                    "crates/contracts/src/generated/types.rs",
-                    "crates/contracts/src/a.rs",
-                    "README.md",
-                    "Cargo.lock"
-                ]
-            ),
-            vec![
-                "-:9:Cargo.lock:1:Cargo.lock",
-                "-:13:/crates/contracts/:1:crates/contracts/src/a.rs",
-                "-:22:*.md:1:README.md",
-            ]
+            needs(&file, &["crates/contracts/src/generated/types.rs", "crates/contracts/src/a.rs", "README.md", "Cargo.lock"]),
+            vec!["-:9:Cargo.lock:1:Cargo.lock", "-:13:/crates/contracts/:1:crates/contracts/src/a.rs", "-:22:*.md:1:README.md",]
         );
     }
 
@@ -1357,20 +1234,8 @@ docs/My\\ Notes.md @writer\r\n\
             assert_eq!(who(&file, path), vec![expected.to_string()], "{path}");
         }
         assert_eq!(
-            needs(
-                &file,
-                &[
-                    "src/components/legacy/Old.tsx",
-                    "package.json",
-                    "index.ts",
-                    "src/x.test.ts"
-                ]
-            ),
-            vec![
-                "-:2:*:1:index.ts",
-                "-:5:**/*.test.ts:1:src/x.test.ts",
-                "-:6:/package.json:1:package.json",
-            ]
+            needs(&file, &["src/components/legacy/Old.tsx", "package.json", "index.ts", "src/x.test.ts"]),
+            vec!["-:2:*:1:index.ts", "-:5:**/*.test.ts:1:src/x.test.ts", "-:6:/package.json:1:package.json",]
         );
     }
 
@@ -1415,20 +1280,8 @@ CONTRIBUTING.md @bo
                     approvals: 2,
                     default_owners: vec![team("acme", "writers"), user("lead")],
                 },
-                Section {
-                    name: "Frontend".into(),
-                    line: 9,
-                    optional: true,
-                    approvals: 1,
-                    default_owners: vec![],
-                },
-                Section {
-                    name: "Backend".into(),
-                    line: 13,
-                    optional: false,
-                    approvals: 1,
-                    default_owners: vec![team("acme", "backend")],
-                },
+                Section { name: "Frontend".into(), line: 9, optional: true, approvals: 1, default_owners: vec![] },
+                Section { name: "Backend".into(), line: 13, optional: false, approvals: 1, default_owners: vec![team("acme", "backend")] },
             ]
         );
         let contributing = file.rules.iter().find(|r| r.pattern == "CONTRIBUTING.md").unwrap();
@@ -1442,10 +1295,7 @@ CONTRIBUTING.md @bo
         let cases: &[(&str, &[&str])] = &[
             ("main.c", &["-:2:@admins"]),
             ("docs/guide.md", &["-:2:@admins", "Documentation:6:@acme/writers @lead"]),
-            (
-                "docs/img/a.png",
-                &["-:2:@admins", "Documentation:5:@acme/writers @lead"],
-            ),
+            ("docs/img/a.png", &["-:2:@admins", "Documentation:5:@acme/writers @lead"]),
             ("README.md", &["-:2:@admins", "Documentation:7:@ana"]),
             ("CONTRIBUTING.md", &["-:2:@admins", "Documentation:19:@bo"]),
             ("app/assets/x.css", &["-:2:@admins", "Frontend:11:@designer"]),
@@ -1453,14 +1303,7 @@ CONTRIBUTING.md @bo
             ("app/models/user.rb", &["-:2:@admins", "Backend:14:@acme/backend"]),
             ("lib/b.rb", &["-:2:@admins", "Backend:15:@acme/backend"]),
             ("lib/vendor/a.rb", &["-:2:@admins", "Backend:16:@vendor-keeper"]),
-            (
-                "lib/notes.md",
-                &[
-                    "-:2:@admins",
-                    "Documentation:6:@acme/writers @lead",
-                    "Backend:15:@acme/backend",
-                ],
-            ),
+            ("lib/notes.md", &["-:2:@admins", "Documentation:6:@acme/writers @lead", "Backend:15:@acme/backend"]),
         ];
         for (path, expected) in cases {
             assert_eq!(who(&file, path), *expected, "{path}");
@@ -1518,10 +1361,7 @@ CHANGELOG.md @scribe
         let file = parse(SECTIONED_SETTINGS);
         assert_eq!(
             kinds(&file),
-            vec![
-                (10, ErrorKind::BadSection, Some("[Database".into())),
-                (19, ErrorKind::BadSection, Some("[Release][0]".into())),
-            ]
+            vec![(10, ErrorKind::BadSection, Some("[Database".into())), (19, ErrorKind::BadSection, Some("[Release][0]".into())),]
         );
         let security = &file.sections[0];
         assert_eq!(security.name, "Security");
@@ -1723,12 +1563,7 @@ CHANGELOG.md @scribe
 
     #[test]
     fn patterns_naming_no_path() {
-        table(&[
-            ("/", "a", false),
-            ("//", "a", false),
-            ("", "a", false),
-            ("*", "", false),
-        ]);
+        table(&[("/", "a", false), ("//", "a", false), ("", "a", false), ("*", "", false)]);
     }
 
     // -----------------------------------------------------------------
@@ -1770,18 +1605,9 @@ CHANGELOG.md @scribe
     #[test]
     fn locations() {
         assert_eq!(pick_location(&[]), None);
-        assert_eq!(
-            pick_location(&["CODEOWNERS", ".github/CODEOWNERS"]),
-            Some(".github/CODEOWNERS")
-        );
-        assert_eq!(
-            pick_location(&[".gitlab/CODEOWNERS", "docs/CODEOWNERS"]),
-            Some("docs/CODEOWNERS")
-        );
-        assert_eq!(
-            pick_location(&[".gitlab/CODEOWNERS", ".g1t/CODEOWNERS"]),
-            Some(".g1t/CODEOWNERS")
-        );
+        assert_eq!(pick_location(&["CODEOWNERS", ".github/CODEOWNERS"]), Some(".github/CODEOWNERS"));
+        assert_eq!(pick_location(&[".gitlab/CODEOWNERS", "docs/CODEOWNERS"]), Some("docs/CODEOWNERS"));
+        assert_eq!(pick_location(&[".gitlab/CODEOWNERS", ".g1t/CODEOWNERS"]), Some(".g1t/CODEOWNERS"));
         assert_eq!(pick_location(&["src/CODEOWNERS"]), None);
         assert!(is_codeowners_path(".g1t/CODEOWNERS"));
         assert!(is_codeowners_path("CODEOWNERS"));
@@ -1800,14 +1626,8 @@ CHANGELOG.md @scribe
         assert_eq!(Owner::parse("@ana.b_c-d"), Some(user("ana.b_c-d")));
         assert_eq!(Owner::parse("@Acme/Back-End"), Some(team("acme", "back-end")));
         assert_eq!(Owner::parse("Ana@Example.COM"), Some(email("ana@example.com")));
-        assert_eq!(
-            Owner::parse("first.last+tag@mail.example.org"),
-            Some(email("first.last+tag@mail.example.org"))
-        );
-        for bad in [
-            "@", "@a/b/c", "foo", "@a/", "@/b", "@-ana", "@ana!", "a@b", "@a@b.com", "a@@b.com", "a@.com", "a@b.",
-            "a@b..com", "",
-        ] {
+        assert_eq!(Owner::parse("first.last+tag@mail.example.org"), Some(email("first.last+tag@mail.example.org")));
+        for bad in ["@", "@a/b/c", "foo", "@a/", "@/b", "@-ana", "@ana!", "a@b", "@a@b.com", "a@@b.com", "a@.com", "a@b.", "a@b..com", ""] {
             assert_eq!(Owner::parse(bad), None, "{bad}");
         }
         for owner in [user("ana"), team("acme", "backend"), email("ana@example.com")] {
@@ -1900,10 +1720,7 @@ lib/ @bo nobody @acme/a/b @cy
     #[test]
     fn owners_and_lines_naming() {
         let file = parse("* @bo ana@example.com\n[Docs] @acme/docs @bo\ndocs/\n*.md @bo\n");
-        assert_eq!(
-            file.owners(),
-            vec![user("bo"), team("acme", "docs"), email("ana@example.com")]
-        );
+        assert_eq!(file.owners(), vec![user("bo"), team("acme", "docs"), email("ana@example.com")]);
         assert_eq!(file.lines_naming(&user("bo")), vec![1, 2, 4]);
         assert_eq!(file.lines_naming(&team("acme", "docs")), vec![2]);
         assert!(file.lines_naming(&user("nobody")).is_empty());
@@ -1929,10 +1746,8 @@ ops/ @acme/ops
             _ => OwnerCheck::Ok,
         };
         let errors = check_owners(&file, &lookup);
-        let got: Vec<(u32, ErrorKind, &str, &str)> = errors
-            .iter()
-            .map(|e| (e.line, e.kind, e.token.as_deref().unwrap(), e.message.as_str()))
-            .collect();
+        let got: Vec<(u32, ErrorKind, &str, &str)> =
+            errors.iter().map(|e| (e.line, e.kind, e.token.as_deref().unwrap(), e.message.as_str())).collect();
         assert_eq!(
             got,
             vec![
@@ -1943,25 +1758,10 @@ ops/ @acme/ops
                     "@acme/docs",
                     "@acme/docs has no access to this repository; give the team the Write role or higher."
                 ),
-                (
-                    2,
-                    ErrorKind::UnknownTeam,
-                    "@acme/infra",
-                    "@acme/infra is not a team of acme."
-                ),
+                (2, ErrorKind::UnknownTeam, "@acme/infra", "@acme/infra is not a team of acme."),
                 (3, ErrorKind::UnknownUser, "@ghost", "@ghost is not a g1t account."),
-                (
-                    3,
-                    ErrorKind::UnknownEmail,
-                    "ana@example.com",
-                    "No g1t account has confirmed ana@example.com."
-                ),
-                (
-                    4,
-                    ErrorKind::NoWriteAccess,
-                    "@carl",
-                    "@carl cannot write to this repository; code owners need the Write role or higher."
-                ),
+                (3, ErrorKind::UnknownEmail, "ana@example.com", "No g1t account has confirmed ana@example.com."),
+                (4, ErrorKind::NoWriteAccess, "@carl", "@carl cannot write to this repository; code owners need the Write role or higher."),
             ]
         );
         assert!(check_owners(&file, &|_| OwnerCheck::Ok).is_empty());
@@ -1972,12 +1772,7 @@ ops/ @acme/ops
     // -----------------------------------------------------------------
 
     fn verdicts(list: &[(&str, bool)]) -> Vec<Verdict> {
-        list.iter()
-            .map(|(username, approved)| Verdict {
-                username: username.to_string(),
-                approved: *approved,
-            })
-            .collect()
+        list.iter().map(|(username, approved)| Verdict { username: username.to_string(), approved: *approved }).collect()
     }
 
     fn members(owner: &Owner) -> Vec<String> {
@@ -2006,10 +1801,8 @@ ops/ @acme/ops
 
     #[test]
     fn approvals_count_per_requirement() {
-        let reqs = vec![
-            requirement(None, 1, "src/api/**", vec![team("acme", "backend")], 2),
-            requirement(None, 2, "*.md", vec![user("ana")], 1),
-        ];
+        let reqs =
+            vec![requirement(None, 1, "src/api/**", vec![team("acme", "backend")], 2), requirement(None, 2, "*.md", vec![user("ana")], 1)];
         let reviews = evaluate(&reqs, &members, &verdicts(&[("bo", true), ("ANA", true)]), "eve");
         assert_eq!(reviews[0].approved_by, vec!["bo"]);
         assert!(!reviews[0].satisfied);
@@ -2018,12 +1811,7 @@ ops/ @acme/ops
         assert_eq!(reviews[0].owners, vec!["@acme/backend"]);
         assert_eq!(reviews[0].required, 2);
 
-        let both = evaluate(
-            &reqs,
-            &members,
-            &verdicts(&[("bo", true), ("dee", true), ("ana", true)]),
-            "eve",
-        );
+        let both = evaluate(&reqs, &members, &verdicts(&[("bo", true), ("dee", true), ("ana", true)]), "eve");
         assert_eq!(both[0].approved_by, vec!["bo", "dee"]);
         assert!(both.iter().all(|r| r.satisfied));
     }
@@ -2059,13 +1847,7 @@ ops/ @acme/ops
 
     #[test]
     fn team_members_and_emails_count() {
-        let reqs = vec![requirement(
-            None,
-            1,
-            "*",
-            vec![team("acme", "backend"), email("ana@example.com")],
-            2,
-        )];
+        let reqs = vec![requirement(None, 1, "*", vec![team("acme", "backend"), email("ana@example.com")], 2)];
         let reviews = evaluate(&reqs, &members, &verdicts(&[("dee", true), ("ana", true)]), "eve");
         assert_eq!(reviews[0].approved_by, vec!["dee", "ana"]);
         assert!(reviews[0].satisfied);
@@ -2078,10 +1860,7 @@ ops/ @acme/ops
         assert_eq!(reviews[0].approved_by, vec!["cy"]);
         assert_eq!(reviews[0].changes_requested_by, vec!["bo"]);
         assert!(!reviews[0].satisfied);
-        assert_eq!(
-            missing(&reviews).unwrap(),
-            "@bo asked for changes on docs/ (code owner)."
-        );
+        assert_eq!(missing(&reviews).unwrap(), "@bo asked for changes on docs/ (code owner).");
     }
 
     #[test]
@@ -2106,42 +1885,27 @@ ops/ @acme/ops
 
     #[test]
     fn missing_wording() {
-        let reqs = vec![
-            requirement(None, 1, "src/api/**", vec![team("acme", "backend")], 2),
-            requirement(None, 2, "*.md", vec![user("ana")], 1),
-        ];
+        let reqs =
+            vec![requirement(None, 1, "src/api/**", vec![team("acme", "backend")], 2), requirement(None, 2, "*.md", vec![user("ana")], 1)];
         let reviews = evaluate(&reqs, &members, &verdicts(&[("bo", true)]), "eve");
         assert_eq!(
             missing(&reviews).unwrap(),
             "Code owners have not approved: @acme/backend for src/api/** (1 of 2 approvals), @ana for *.md."
         );
 
-        let reqs = vec![
-            requirement(None, 1, "docs/", vec![user("bo")], 1),
-            requirement(None, 2, "*.md", vec![user("ana"), user("bo")], 1),
-        ];
+        let reqs = vec![requirement(None, 1, "docs/", vec![user("bo")], 1), requirement(None, 2, "*.md", vec![user("ana"), user("bo")], 1)];
         let reviews = evaluate(&reqs, &members, &verdicts(&[("bo", false)]), "eve");
-        assert_eq!(
-            missing(&reviews).unwrap(),
-            "@bo asked for changes on docs/ (code owner). @bo asked for changes on *.md (code owner)."
-        );
+        assert_eq!(missing(&reviews).unwrap(), "@bo asked for changes on docs/ (code owner). @bo asked for changes on *.md (code owner).");
 
         assert_eq!(missing(&[]), None);
     }
 
     #[test]
     fn missing_caps_at_three() {
-        let reqs: Vec<Requirement> = (1..=5)
-            .map(|n| requirement(None, n, &format!("p{n}/"), vec![user("ana")], 1))
-            .collect();
+        let reqs: Vec<Requirement> = (1..=5).map(|n| requirement(None, n, &format!("p{n}/"), vec![user("ana")], 1)).collect();
         let reviews = evaluate(&reqs, &members, &[], "eve");
-        assert_eq!(
-            missing(&reviews).unwrap(),
-            "Code owners have not approved: @ana for p1/, @ana for p2/, @ana for p3/, and 2 more."
-        );
-        let mut changes: Vec<Requirement> = (1..=4)
-            .map(|n| requirement(None, n, &format!("d{n}/"), vec![user("bo")], 1))
-            .collect();
+        assert_eq!(missing(&reviews).unwrap(), "Code owners have not approved: @ana for p1/, @ana for p2/, @ana for p3/, and 2 more.");
+        let mut changes: Vec<Requirement> = (1..=4).map(|n| requirement(None, n, &format!("d{n}/"), vec![user("bo")], 1)).collect();
         changes.push(requirement(None, 9, "z/", vec![user("ana")], 1));
         let reviews = evaluate(&changes, &members, &verdicts(&[("bo", false)]), "eve");
         assert_eq!(
@@ -2157,27 +1921,12 @@ ops/ @acme/ops
 
     #[test]
     fn serde_shapes() {
-        assert_eq!(
-            serde_json::to_string(&team("acme", "backend")).unwrap(),
-            r#"{"kind":"team","workspace":"acme","slug":"backend"}"#
-        );
-        assert_eq!(
-            serde_json::to_string(&user("ana")).unwrap(),
-            r#"{"kind":"user","username":"ana"}"#
-        );
-        assert_eq!(
-            serde_json::to_string(&email("a@b.co")).unwrap(),
-            r#"{"kind":"email","email":"a@b.co"}"#
-        );
-        assert_eq!(
-            serde_json::to_string(&ErrorKind::CharacterRange).unwrap(),
-            r#""character_range""#
-        );
+        assert_eq!(serde_json::to_string(&team("acme", "backend")).unwrap(), r#"{"kind":"team","workspace":"acme","slug":"backend"}"#);
+        assert_eq!(serde_json::to_string(&user("ana")).unwrap(), r#"{"kind":"user","username":"ana"}"#);
+        assert_eq!(serde_json::to_string(&email("a@b.co")).unwrap(), r#"{"kind":"email","email":"a@b.co"}"#);
+        assert_eq!(serde_json::to_string(&ErrorKind::CharacterRange).unwrap(), r#""character_range""#);
         assert_eq!(serde_json::to_string(&ErrorKind::TooLarge).unwrap(), r#""too_large""#);
-        assert_eq!(
-            serde_json::to_string(&OwnerCheck::TeamNoAccess).unwrap(),
-            r#""team_no_access""#
-        );
+        assert_eq!(serde_json::to_string(&OwnerCheck::TeamNoAccess).unwrap(), r#""team_no_access""#);
         assert_eq!(serde_json::to_string(&OwnerCheck::Ok).unwrap(), r#""ok""#);
         let file = parse("[Docs][2] @acme/writers\ndocs/\n");
         let json = serde_json::to_string(&file).unwrap();

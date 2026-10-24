@@ -42,11 +42,11 @@
 
 use std::collections::{HashMap, HashSet};
 
+use g1t_contracts::Outcome;
 use g1t_contracts::ai::{AiBriefArgs, MAX_BRIEF_INPUT_CHARS};
 use g1t_contracts::repos::{PathByIdArgs, RepoPath};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
-use g1t_contracts::Outcome;
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
@@ -400,38 +400,236 @@ pub(crate) fn intent_title(prompt: &str) -> Option<String> {
 /// Words a sentence starts with that say nothing of the work, taken off
 /// its front (longest first among those that share a start).
 const FILLERS: &[&str] = &[
-    "it would be great if you could", "it'd be great if you could", "i would like you to", "i'd like you to", "i want you to",
-    "i need you to", "would you please", "could you please", "can you please", "go ahead and", "i would like to", "i'd like to",
-    "i feel like", "i was thinking", "what i want is to", "i want to", "we need to", "we should", "you should", "i think", "i believe",
-    "i guess", "can you", "could you", "would you", "will you", "can we", "could we", "help me", "let's", "lets", "please", "so",
-    "ok", "okay", "alright", "all right", "well", "hey", "hi", "hello", "now", "basically", "actually", "also", "and", "but",
-    "then", "next", "right", "great", "thanks", "thank you", "cool", "nice", "perfect", "awesome", "yes", "yeah", "sure",
+    "it would be great if you could",
+    "it'd be great if you could",
+    "i would like you to",
+    "i'd like you to",
+    "i want you to",
+    "i need you to",
+    "would you please",
+    "could you please",
+    "can you please",
+    "go ahead and",
+    "i would like to",
+    "i'd like to",
+    "i feel like",
+    "i was thinking",
+    "what i want is to",
+    "i want to",
+    "we need to",
+    "we should",
+    "you should",
+    "i think",
+    "i believe",
+    "i guess",
+    "can you",
+    "could you",
+    "would you",
+    "will you",
+    "can we",
+    "could we",
+    "help me",
+    "let's",
+    "lets",
+    "please",
+    "so",
+    "ok",
+    "okay",
+    "alright",
+    "all right",
+    "well",
+    "hey",
+    "hi",
+    "hello",
+    "now",
+    "basically",
+    "actually",
+    "also",
+    "and",
+    "but",
+    "then",
+    "next",
+    "right",
+    "great",
+    "thanks",
+    "thank you",
+    "cool",
+    "nice",
+    "perfect",
+    "awesome",
+    "yes",
+    "yeah",
+    "sure",
 ];
 
 /// How a sentence starts when it sets the scene instead of asking.
 const PREAMBLES: &[&str] = &[
-    "this project", "this repo", "this repository", "this codebase", "this code", "this used to", "this was", "this is",
-    "it used to", "we used to", "i used to", "used to", "there is", "there are", "there was", "there were", "currently",
-    "right now", "at the moment", "as you know", "for context", "context", "background", "fyi", "i noticed", "i see", "i saw",
-    "i was", "i am", "i'm", "i have", "i've", "we have", "we've", "we were", "it looks like", "looks like", "it seems",
-    "it's", "it is", "the problem is", "the issue is", "here is", "here's", "you are", "you're", "my ", "our ",
+    "this project",
+    "this repo",
+    "this repository",
+    "this codebase",
+    "this code",
+    "this used to",
+    "this was",
+    "this is",
+    "it used to",
+    "we used to",
+    "i used to",
+    "used to",
+    "there is",
+    "there are",
+    "there was",
+    "there were",
+    "currently",
+    "right now",
+    "at the moment",
+    "as you know",
+    "for context",
+    "context",
+    "background",
+    "fyi",
+    "i noticed",
+    "i see",
+    "i saw",
+    "i was",
+    "i am",
+    "i'm",
+    "i have",
+    "i've",
+    "we have",
+    "we've",
+    "we were",
+    "it looks like",
+    "looks like",
+    "it seems",
+    "it's",
+    "it is",
+    "the problem is",
+    "the issue is",
+    "here is",
+    "here's",
+    "you are",
+    "you're",
+    "my ",
+    "our ",
 ];
 
 /// Verbs a sentence that asks for work starts with.
 const ASKS: &[&str] = &[
-    "add", "build", "make", "implement", "move", "migrate", "update", "remove", "delete", "refactor", "rename", "write",
-    "create", "review", "investigate", "debug", "fix", "set", "port", "convert", "replace", "improve", "clean", "support",
-    "ship", "deploy", "release", "design", "document", "test", "rewrite", "change", "extract", "split", "merge", "upgrade",
-    "bump", "enable", "disable", "find", "figure", "wire", "hook", "handle", "allow", "prevent", "stop", "show", "hide",
-    "finish", "audit", "harden", "optimize", "speed", "reduce", "drop", "introduce", "integrate", "connect", "publish",
-    "configure", "install", "generate", "redesign", "restructure", "consolidate", "unify", "simplify", "polish", "tighten",
-    "rework", "backfill", "track", "record", "settle", "teach", "let", "get", "go", "look", "check", "explain", "plan", "draft",
+    "add",
+    "build",
+    "make",
+    "implement",
+    "move",
+    "migrate",
+    "update",
+    "remove",
+    "delete",
+    "refactor",
+    "rename",
+    "write",
+    "create",
+    "review",
+    "investigate",
+    "debug",
+    "fix",
+    "set",
+    "port",
+    "convert",
+    "replace",
+    "improve",
+    "clean",
+    "support",
+    "ship",
+    "deploy",
+    "release",
+    "design",
+    "document",
+    "test",
+    "rewrite",
+    "change",
+    "extract",
+    "split",
+    "merge",
+    "upgrade",
+    "bump",
+    "enable",
+    "disable",
+    "find",
+    "figure",
+    "wire",
+    "hook",
+    "handle",
+    "allow",
+    "prevent",
+    "stop",
+    "show",
+    "hide",
+    "finish",
+    "audit",
+    "harden",
+    "optimize",
+    "speed",
+    "reduce",
+    "drop",
+    "introduce",
+    "integrate",
+    "connect",
+    "publish",
+    "configure",
+    "install",
+    "generate",
+    "redesign",
+    "restructure",
+    "consolidate",
+    "unify",
+    "simplify",
+    "polish",
+    "tighten",
+    "rework",
+    "backfill",
+    "track",
+    "record",
+    "settle",
+    "teach",
+    "let",
+    "get",
+    "go",
+    "look",
+    "check",
+    "explain",
+    "plan",
+    "draft",
 ];
 
 /// Short answers that steer, not ask: never the most telling prompt.
 const STEERS: &[&str] = &[
-    "yes", "no", "ok", "okay", "continue", "go on", "go ahead", "do it", "lgtm", "commit", "push", "commit it", "push it",
-    "thanks", "thank you", "sure", "proceed", "keep going", "retry", "try again", "done", "great", "perfect", "nice", "y", "n",
+    "yes",
+    "no",
+    "ok",
+    "okay",
+    "continue",
+    "go on",
+    "go ahead",
+    "do it",
+    "lgtm",
+    "commit",
+    "push",
+    "commit it",
+    "push it",
+    "thanks",
+    "thank you",
+    "sure",
+    "proceed",
+    "keep going",
+    "retry",
+    "try again",
+    "done",
+    "great",
+    "perfect",
+    "nice",
+    "y",
+    "n",
 ];
 
 fn lower_words(text: &str) -> String {
@@ -545,7 +743,10 @@ pub(crate) fn telling_prompt(prompts: &[String]) -> Option<&str> {
 
 /// The words of a title that carry meaning, lowercased.
 fn meaning(title: &str) -> HashSet<String> {
-    const SMALL: &[&str] = &["the", "and", "for", "with", "from", "into", "onto", "that", "this", "its", "our", "your", "a", "an", "of", "to", "in", "on", "at", "by"];
+    const SMALL: &[&str] = &[
+        "the", "and", "for", "with", "from", "into", "onto", "that", "this", "its", "our", "your", "a", "an", "of", "to", "in", "on", "at",
+        "by",
+    ];
     title
         .split(|c: char| !c.is_alphanumeric())
         .map(str::to_lowercase)
@@ -714,7 +915,14 @@ pub(crate) fn digest(record: &Record) -> String {
             out.push_str(&named(pull));
         }
     }
-    let prompts: Vec<String> = record.prompts.iter().filter_map(|prompt| readable(prompt)).map(|text| clipped(&text, DIGEST_PROMPT_CHARS)).filter(|text| !text.is_empty()).take(DIGEST_PROMPTS).collect();
+    let prompts: Vec<String> = record
+        .prompts
+        .iter()
+        .filter_map(|prompt| readable(prompt))
+        .map(|text| clipped(&text, DIGEST_PROMPT_CHARS))
+        .filter(|text| !text.is_empty())
+        .take(DIGEST_PROMPTS)
+        .collect();
     if !prompts.is_empty() {
         out.push_str("What the person asked, oldest first:\n");
         for (index, prompt) in prompts.iter().enumerate() {
@@ -753,7 +961,13 @@ pub(crate) fn areas(files: &[String]) -> Vec<(String, usize)> {
     let mut counts: HashMap<String, usize> = HashMap::new();
     for file in files {
         let parts: Vec<&str> = file.trim_start_matches("./").split('/').collect();
-        let area = if parts.len() > 2 { parts[..2].join("/") } else if parts.len() == 2 { parts[0].to_owned() } else { ".".to_owned() };
+        let area = if parts.len() > 2 {
+            parts[..2].join("/")
+        } else if parts.len() == 2 {
+            parts[0].to_owned()
+        } else {
+            ".".to_owned()
+        };
         *counts.entry(area).or_default() += 1;
     }
     let mut areas: Vec<(String, usize)> = counts.into_iter().collect();
@@ -896,7 +1110,8 @@ impl Work {
                 Err(error) => {
                     worker::console_error!("session {id}: its title was not settled: {error}");
                     // Not tried again at once: the next settle is the next change.
-                    let _ = self.db.prepare("UPDATE sessions SET title_due_at = NULL WHERE id = ?").bind(&[id.as_str().into()])?.run().await;
+                    let _ =
+                        self.db.prepare("UPDATE sessions SET title_due_at = NULL WHERE id = ?").bind(&[id.as_str().into()])?.run().await;
                 }
             }
         }
@@ -954,7 +1169,11 @@ impl Work {
             items: links.iter().filter(|link| link.kind == LinkKind::Item).map(tied).collect(),
             pulls: links.iter().filter(|link| link.kind == LinkKind::Pull).map(tied).collect(),
             prompts,
-            tasks: children.iter().filter(|child| child.parent_id.as_deref() == Some(row.id.as_str())).filter_map(|child| child.task.clone()).collect(),
+            tasks: children
+                .iter()
+                .filter(|child| child.parent_id.as_deref() == Some(row.id.as_str()))
+                .filter_map(|child| child.task.clone())
+                .collect(),
             areas: areas(&files),
             commits: touched.iter().filter(|touch| touch.kind == TouchKind::Commit).count(),
             result: session.result.as_deref().map(shown::clean),
@@ -1014,19 +1233,19 @@ impl Work {
             && let Some(title) = &row.title
         {
             let first = record.prompts.first().and_then(|prompt| intent_title(prompt));
-            source = Some(if first.as_deref().is_some_and(|first| same_words(first, title)) { TitleSource::Prompt } else { TitleSource::Agent });
+            source =
+                Some(if first.as_deref().is_some_and(|first| same_words(first, title)) { TitleSource::Prompt } else { TitleSource::Agent });
         }
         let stale = source == Some(TitleSource::Agent)
             && ended
             && match &row.title_settled_at {
-                Some(named) => {
-                    self.db
-                        .prepare("SELECT COUNT(*) AS n FROM session_links WHERE session_id = ? AND via <> 'ref' AND at > ?")
-                        .bind(&[row.id.as_str().into(), named.as_str().into()])?
-                        .first::<CountRow>(None)
-                        .await?
-                        .is_some_and(|count| count.n > 0)
-                }
+                Some(named) => self
+                    .db
+                    .prepare("SELECT COUNT(*) AS n FROM session_links WHERE session_id = ? AND via <> 'ref' AND at > ?")
+                    .bind(&[row.id.as_str().into(), named.as_str().into()])?
+                    .first::<CountRow>(None)
+                    .await?
+                    .is_some_and(|count| count.n > 0),
                 None => false,
             };
         let state = Due {
@@ -1041,7 +1260,9 @@ impl Work {
         };
         let mut asked = 0;
         let candidate = if needs_naming(&state, &record) {
-            let ask = !record.one_thing() && due.title_calls < MAX_AI_CALLS && (!record.prompts.is_empty() || !record.items.is_empty() || !record.pulls.is_empty());
+            let ask = !record.one_thing()
+                && due.title_calls < MAX_AI_CALLS
+                && (!record.prompts.is_empty() || !record.items.is_empty() || !record.pulls.is_empty());
             let workspace = path.as_ref().map(|path| path.namespace.to_lowercase()).unwrap_or_default();
             let ai = if ask && !workspace.is_empty() {
                 let before = budget.calls;
@@ -1063,7 +1284,8 @@ impl Work {
         // Its prompts as they are start the count to the next settle.
         let settled_prompts = due.prompts;
         let source_text = source.map(TitleSource::as_str);
-        let settled_at = if title.is_some() || row.title_settled_at.is_none() { at.clone() } else { row.title_settled_at.clone().unwrap_or(at.clone()) };
+        let settled_at =
+            if title.is_some() || row.title_settled_at.is_none() { at.clone() } else { row.title_settled_at.clone().unwrap_or(at.clone()) };
         self.db
             .prepare(SETTLE)
             .bind(&[
@@ -1102,7 +1324,10 @@ mod tests {
         assert_eq!(intent_title("fix the login redirect. It loops.").as_deref(), Some("Fix the login redirect"));
         assert_eq!(intent_title("/clear"), None);
         assert_eq!(intent_title("<command-name>/model</command-name>"), None);
-        assert_eq!(intent_title("<ide_opened_file>a.rs</ide_opened_file>\nship the runner setup").as_deref(), Some("Ship the runner setup"));
+        assert_eq!(
+            intent_title("<ide_opened_file>a.rs</ide_opened_file>\nship the runner setup").as_deref(),
+            Some("Ship the runner setup")
+        );
         assert_eq!(
             intent_title("<pasted_content id=\"5c50\">\nlog\n</pasted_content>\nship the runner setup").as_deref(),
             Some("Ship the runner setup")
@@ -1112,16 +1337,23 @@ mod tests {
         let long = intent_title(&"word ".repeat(40)).unwrap();
         assert!(long.ends_with('…') && long.chars().count() <= TITLE_CHARS, "{long}");
         // As the Claude Code plugin read them when it titled sessions itself.
-        assert_eq!(intent_title("Make preview builds faster. They time out on big repositories.").as_deref(), Some("Make preview builds faster"));
+        assert_eq!(
+            intent_title("Make preview builds faster. They time out on big repositories.").as_deref(),
+            Some("Make preview builds faster")
+        );
         assert_eq!(intent_title("Why does `src/app.ts` fail? It worked yesterday.").as_deref(), Some("Why does src/app.ts fail?"));
         assert_eq!(intent_title("```js\nconst a = 1;\n```\n## Clean **this** up\nmore").as_deref(), Some("Clean this up"));
-        assert_eq!(intent_title("\n\n- look at [the docs](https://docs.g1t.sh) for g1t.mjs").as_deref(), Some("Look at the docs for g1t.mjs"));
+        assert_eq!(
+            intent_title("\n\n- look at [the docs](https://docs.g1t.sh) for g1t.mjs").as_deref(),
+            Some("Look at the docs for g1t.mjs")
+        );
         assert_eq!(intent_title("  spread   over\tspaces  ").as_deref(), Some("Spread over spaces"));
         let tidy = "[TEST] Tidy up the README and then look at the CI pipeline, which keeps failing on the Windows runners";
         let clipped = intent_title(tidy).unwrap();
         assert!(clipped.ends_with('…') && !clipped.ends_with(" …") && tidy.starts_with(clipped.trim_end_matches('…')), "{clipped}");
         assert_eq!(
-            intent_title("<pasted_content id=\"5c50\">\nUncaught TypeError: x is undefined\n</pasted_content>\nAlso you broke the buttons").as_deref(),
+            intent_title("<pasted_content id=\"5c50\">\nUncaught TypeError: x is undefined\n</pasted_content>\nAlso you broke the buttons")
+                .as_deref(),
             Some("Also you broke the buttons")
         );
         assert_eq!(intent_title("[Image #1] the PR link is missing on Home").as_deref(), Some("The PR link is missing on Home"));
@@ -1131,14 +1363,29 @@ mod tests {
             intent_title("<ide_opened_file>The user opened the file c:\\a\\Dockerfile in the IDE.</ide_opened_file>\nWhether it's the desktop app or the page, it crashes").as_deref(),
             Some("Whether it's the desktop app or the page, it crashes")
         );
-        assert_eq!(intent_title("<ide_selection>const a = 1;</ide_selection>\n<ide_opened_file>a.ts</ide_opened_file>\nrename this").as_deref(), Some("Rename this"));
+        assert_eq!(
+            intent_title("<ide_selection>const a = 1;</ide_selection>\n<ide_opened_file>a.ts</ide_opened_file>\nrename this").as_deref(),
+            Some("Rename this")
+        );
         assert_eq!(intent_title("<ide_opened_file>a.ts</ide_opened_file>\n/clear"), None);
         // What Claude Code injects ahead of the prompt is not what it is for.
         assert_eq!(
-            intent_title("<browser_instruction># Claude in Chrome\n\nUse the tools.</browser_instruction>Fix the sidebar under the app bar").as_deref(),
+            intent_title(
+                "<browser_instruction># Claude in Chrome\n\nUse the tools.</browser_instruction>Fix the sidebar under the app bar"
+            )
+            .as_deref(),
             Some("Fix the sidebar under the app bar")
         );
-        for prompt in ["/clear", "/compact keep the plan", "/g1t:status 4", "<command-name>/clear</command-name>", "<local-command-stdout lang=\"en\">ok</local-command-stdout>", "```\ncode only\n```", "?", ""] {
+        for prompt in [
+            "/clear",
+            "/compact keep the plan",
+            "/g1t:status 4",
+            "<command-name>/clear</command-name>",
+            "<local-command-stdout lang=\"en\">ok</local-command-stdout>",
+            "```\ncode only\n```",
+            "?",
+            "",
+        ] {
             assert_eq!(intent_title(prompt), None, "{prompt}");
         }
     }
@@ -1149,7 +1396,10 @@ mod tests {
             cleaned_intent("This project used to be in syntaqx/g1t, but moved it finally in my directory. Migrate every remote and CI config to flagon-io/g1t.").as_deref(),
             Some("Migrate every remote and CI config to flagon-io/g1t")
         );
-        assert_eq!(cleaned_intent("So I think we should add retries to the webhook sender").as_deref(), Some("Add retries to the webhook sender"));
+        assert_eq!(
+            cleaned_intent("So I think we should add retries to the webhook sender").as_deref(),
+            Some("Add retries to the webhook sender")
+        );
         assert_eq!(cleaned_intent("Hey! Can you please fix the flaky queue test?").as_deref(), Some("Fix the flaky queue test"));
         assert_eq!(cleaned_intent("ok, now rename the crate").as_deref(), Some("Rename the crate"));
         assert_eq!(cleaned_intent("/compact"), None);
@@ -1157,7 +1407,8 @@ mod tests {
 
     #[test]
     fn the_telling_prompt_is_not_one_that_steers() {
-        let prompts: Vec<String> = ["continue", "This repo is a monorepo. Add a sessions view to Work.", "yes", "commit it"].map(String::from).to_vec();
+        let prompts: Vec<String> =
+            ["continue", "This repo is a monorepo. Add a sessions view to Work.", "yes", "commit it"].map(String::from).to_vec();
         assert_eq!(telling_prompt(&prompts), Some("This repo is a monorepo. Add a sessions view to Work."));
         let prompts: Vec<String> = ["Fix the deploy script", "Also fix the readme"].map(String::from).to_vec();
         assert_eq!(telling_prompt(&prompts), Some("Fix the deploy script"));
@@ -1167,7 +1418,10 @@ mod tests {
     fn an_ai_answer_is_a_title_only_when_it_reads_as_one() {
         assert_eq!(ai_title("\"Move sessions into Work.\"").as_deref(), Some("Move sessions into Work"));
         assert_eq!(ai_title("Title: settle session titles server-side").as_deref(), Some("Settle session titles server-side"));
-        assert_eq!(ai_title("**Repository migration to flagon-io**\n\nThis session…").as_deref(), Some("Repository migration to flagon-io"));
+        assert_eq!(
+            ai_title("**Repository migration to flagon-io**\n\nThis session…").as_deref(),
+            Some("Repository migration to flagon-io")
+        );
         assert_eq!(ai_title("Done"), None);
         assert_eq!(ai_title(&"long ".repeat(20)), None);
         assert_eq!(ai_title(""), None);
@@ -1228,7 +1482,10 @@ mod tests {
     fn a_pinned_title_is_never_replaced() {
         let record = Record { items: vec![tied(1, "Something else", true)], ..Record::default() };
         let pinned = Due { ended: true, stale: true, ..due("Mine", Some(TitleSource::Person)) };
-        assert_eq!(decide(&pinned, &record, Some(("Something else".into(), TitleSource::Item))), Settled::Keep { source: Some(TitleSource::Person) });
+        assert_eq!(
+            decide(&pinned, &record, Some(("Something else".into(), TitleSource::Item))),
+            Settled::Keep { source: Some(TitleSource::Person) }
+        );
     }
 
     #[test]
@@ -1247,17 +1504,32 @@ mod tests {
     #[test]
     fn a_settled_title_changes_only_when_the_scope_does_and_says_something_else() {
         let record = Record { items: vec![tied(57, "Move issues to Work items", true)], ..Record::default() };
-        let settled = Due { basis: Some("i57".into()), settled_before: true, settled_prompts: 3, prompts: 5, ..due("Move issues to Work items", Some(TitleSource::Item)) };
+        let settled = Due {
+            basis: Some("i57".into()),
+            settled_before: true,
+            settled_prompts: 3,
+            prompts: 5,
+            ..due("Move issues to Work items", Some(TitleSource::Item))
+        };
         // Nothing changed: not named again, not even asked.
         assert!(!needs_naming(&settled, &record));
-        assert_eq!(decide(&settled, &record, Some(("Anything".into(), TitleSource::Summary))), Settled::Keep { source: Some(TitleSource::Item) });
+        assert_eq!(
+            decide(&settled, &record, Some(("Anything".into(), TitleSource::Summary))),
+            Settled::Keep { source: Some(TitleSource::Item) }
+        );
         // Its prompts grew past twice as many: named again, but a title in
         // other words is not a change.
         let grown = Due { prompts: 8, ..settled.clone() };
         assert!(needs_naming(&grown, &record));
-        assert_eq!(decide(&grown, &record, Some(("Moving issues into work items".into(), TitleSource::Summary))), Settled::Keep { source: Some(TitleSource::Item) });
+        assert_eq!(
+            decide(&grown, &record, Some(("Moving issues into work items".into(), TitleSource::Summary))),
+            Settled::Keep { source: Some(TitleSource::Item) }
+        );
         // Another work item: a new title that says more.
-        let wider = Record { items: vec![tied(57, "Move issues to Work items", true), tied(61, "Sessions inside Work", true)], ..Record::default() };
+        let wider = Record {
+            items: vec![tied(57, "Move issues to Work items", true), tied(61, "Sessions inside Work", true)],
+            ..Record::default()
+        };
         assert!(needs_naming(&settled, &wider));
         assert_eq!(
             decide(&settled, &wider, Some(("Work items and the sessions view".into(), TitleSource::Summary))),
@@ -1278,7 +1550,12 @@ mod tests {
     #[test]
     fn it_is_finalized_from_everything_as_it_ends() {
         let record = Record { items: vec![tied(57, "Move issues to Work items", true)], ..Record::default() };
-        let settled = Due { basis: Some("i57".into()), settled_before: true, ended: true, ..due("Move issues to Work items", Some(TitleSource::Item)) };
+        let settled = Due {
+            basis: Some("i57".into()),
+            settled_before: true,
+            ended: true,
+            ..due("Move issues to Work items", Some(TitleSource::Item))
+        };
         assert!(needs_naming(&settled, &record));
         assert_eq!(decide(&settled, &record, fallback(&record)), Settled::Keep { source: Some(TitleSource::Item) });
     }
@@ -1289,7 +1566,10 @@ mod tests {
         assert_eq!(given_source("Fix the login redirect", Some("Fix the login redirect"), None), TitleSource::Prompt);
         assert_eq!(given_source("Rewrite auth", Some("Fix the login redirect"), Some(TitleSource::Prompt)), TitleSource::Agent);
         assert_eq!(given_source("Rewrite auth", None, None), TitleSource::Agent);
-        assert_eq!(given_source("move issues to work items", Some("Move issues to Work items"), Some(TitleSource::Item)), TitleSource::Item);
+        assert_eq!(
+            given_source("move issues to work items", Some("Move issues to Work items"), Some(TitleSource::Item)),
+            TitleSource::Item
+        );
     }
 
     #[test]

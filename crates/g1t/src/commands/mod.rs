@@ -6,10 +6,10 @@ pub mod attach;
 pub mod auth;
 pub mod browse;
 pub mod cache;
+pub mod cycle;
 pub mod deploy;
 pub mod logs;
 pub mod pr;
-pub mod cycle;
 pub mod project;
 pub mod repo;
 pub mod run;
@@ -65,21 +65,14 @@ pub fn dispatch(cli: Cli) -> Result<()> {
 
 /// `@me` is the signed-in account.
 pub fn who(ctx: &Ctx, client: &crate::client::Client, login: &str) -> Result<String> {
-    if login == "@me" {
-        ctx.me(client)
-    } else {
-        Ok(login.trim_start_matches('@').to_owned())
-    }
+    if login == "@me" { ctx.me(client) } else { Ok(login.trim_start_matches('@').to_owned()) }
 }
 
 /// The repository and a signed-in client for the coordination commands
 /// (`g1t session`, `g1t work`, `g1t why`). Agents' hooks run them in the
 /// background, so they fail at once without a token (exit code 4), never
 /// ask anything, and give up on a call after `read` rather than hang.
-pub fn coordination_client(
-    ctx: &Ctx,
-    read: std::time::Duration,
-) -> Result<(crate::repo::Repo, crate::client::Client)> {
+pub fn coordination_client(ctx: &Ctx, read: std::time::Duration) -> Result<(crate::repo::Repo, crate::client::Client)> {
     let (repo, client) = ctx.repo_client()?;
     if !client.has_token() {
         return Err(crate::context::not_signed_in(&client.host));
@@ -95,11 +88,8 @@ pub const QUICK: std::time::Duration = std::time::Duration::from_secs(15);
 pub fn login_of(value: &serde_json::Value) -> String {
     for key in ["actor", "user", "author"] {
         let who = &value[key];
-        if let Some(login) = who
-            .as_str()
-            .or_else(|| who["username"].as_str())
-            .or_else(|| who["login"].as_str())
-            .filter(|login| !login.is_empty())
+        if let Some(login) =
+            who.as_str().or_else(|| who["username"].as_str()).or_else(|| who["login"].as_str()).filter(|login| !login.is_empty())
         {
             return login.to_owned();
         }
@@ -157,11 +147,7 @@ pub fn task_checked(ctx: &Ctx, checked: &serde_json::Value, of: &str, url: &str)
     }
     let task = &checked["task"];
     let ticked = task["checked"].as_bool() == Some(true);
-    let what = format!(
-        "box {} of {of}: {}",
-        task["number"].as_u64().unwrap_or_default(),
-        task["text"].as_str().unwrap_or_default()
-    );
+    let what = format!("box {} of {of}: {}", task["number"].as_u64().unwrap_or_default(), task["text"].as_str().unwrap_or_default());
     let said = match (checked["changed"].as_bool() == Some(true), ticked) {
         (true, true) => format!("Ticked {what}"),
         (true, false) => format!("Unticked {what}"),
@@ -196,10 +182,7 @@ pub fn names(list: &serde_json::Value) -> Vec<String> {
 
 /// `current` with `add` put in and `remove` taken out, compared without case.
 pub fn adjust(current: Vec<String>, add: &[String], remove: &[String]) -> Vec<String> {
-    let mut out: Vec<String> = current
-        .into_iter()
-        .filter(|c| !remove.iter().any(|r| r.eq_ignore_ascii_case(c)))
-        .collect();
+    let mut out: Vec<String> = current.into_iter().filter(|c| !remove.iter().any(|r| r.eq_ignore_ascii_case(c))).collect();
     for a in add {
         if !out.iter().any(|c| c.eq_ignore_ascii_case(a)) {
             out.push(a.clone());
@@ -242,10 +225,7 @@ pub fn print_comments(out: &crate::output::Output, comments: &serde_json::Value)
         }
         println!();
         let verdict = match c["verdict"].as_str() {
-            Some(v) => format!(
-                " {}",
-                out.state(if v == "approve" { "approved" } else { v })
-            ),
+            Some(v) => format!(" {}", out.state(if v == "approve" { "approved" } else { v })),
             None => String::new(),
         };
         let place = match (c["path"].as_str(), c["line"].as_u64()) {
@@ -286,10 +266,7 @@ mod tests {
     #[test]
     fn lists_are_adjusted_without_case() {
         let have = vec!["bug".to_owned(), "docs".to_owned()];
-        assert_eq!(
-            adjust(have.clone(), &["Bug".into(), "p1".into()], &["DOCS".into()]),
-            vec!["bug".to_owned(), "p1".to_owned()]
-        );
+        assert_eq!(adjust(have.clone(), &["Bug".into(), "p1".into()], &["DOCS".into()]), vec!["bug".to_owned(), "p1".to_owned()]);
         assert_eq!(adjust(have, &[], &[]), vec!["bug".to_owned(), "docs".to_owned()]);
     }
 

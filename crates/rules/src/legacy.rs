@@ -4,8 +4,8 @@
 //! the API still takes for that branch are read from and written to it.
 
 use g1t_contracts::rules::{
-    Conditions, DEFAULT_BRANCH, Enforcement, MergeQueueRule, PullRequestRule, RefCondition, RequiredCheck, Rule,
-    RuleEntry, RulesetSpec, StatusChecksRule, Target,
+    Conditions, DEFAULT_BRANCH, Enforcement, MergeQueueRule, PullRequestRule, RefCondition, RequiredCheck, Rule, RuleEntry, RulesetSpec,
+    StatusChecksRule, Target,
 };
 use g1t_contracts::work::RepoSettings;
 
@@ -27,11 +27,7 @@ pub fn rules_of(settings: &RepoSettings, protected: bool) -> Vec<RuleEntry> {
     }
     if !settings.required_checks.is_empty() || settings.require_up_to_date {
         rules.push(RuleEntry::everyone(Rule::RequiredStatusChecks(StatusChecksRule {
-            checks: settings
-                .required_checks
-                .iter()
-                .map(|name| RequiredCheck { context: name.clone(), integration: None })
-                .collect(),
+            checks: settings.required_checks.iter().map(|name| RequiredCheck { context: name.clone(), integration: None }).collect(),
             strict: settings.require_up_to_date,
             paths: Vec::new(),
             allow_bypass_on_merge: settings.allow_ignoring_checks,
@@ -74,30 +70,24 @@ pub fn replace(existing: &[RuleEntry], settings: &RepoSettings, protected: bool)
     let mut fresh = rules_of(settings, protected);
     // Keep what the old settings did not have a say in.
     for entry in &mut fresh {
-        if let (Rule::PullRequest(new), Some(Rule::PullRequest(old))) = (
-            &mut entry.rule,
-            existing.iter().map(|entry| &entry.rule).find(|rule| matches!(rule, Rule::PullRequest(_))),
-        ) {
+        if let (Rule::PullRequest(new), Some(Rule::PullRequest(old))) =
+            (&mut entry.rule, existing.iter().map(|entry| &entry.rule).find(|rule| matches!(rule, Rule::PullRequest(_))))
+        {
             new.dismiss_stale_reviews_on_push = old.dismiss_stale_reviews_on_push;
             new.require_last_push_approval = old.require_last_push_approval;
             new.allowed_merge_methods = old.allowed_merge_methods.clone();
         }
-        if let (Rule::RequiredStatusChecks(new), Some(Rule::RequiredStatusChecks(old))) = (
-            &mut entry.rule,
-            existing.iter().map(|entry| &entry.rule).find(|rule| matches!(rule, Rule::RequiredStatusChecks(_))),
-        ) {
+        if let (Rule::RequiredStatusChecks(new), Some(Rule::RequiredStatusChecks(old))) =
+            (&mut entry.rule, existing.iter().map(|entry| &entry.rule).find(|rule| matches!(rule, Rule::RequiredStatusChecks(_))))
+        {
             for check in &mut new.checks {
-                check.integration = old
-                    .checks
-                    .iter()
-                    .find(|was| was.context.eq_ignore_ascii_case(&check.context))
-                    .and_then(|was| was.integration);
+                check.integration =
+                    old.checks.iter().find(|was| was.context.eq_ignore_ascii_case(&check.context)).and_then(|was| was.integration);
             }
         }
-        if let (Rule::MergeQueue(new), Some(Rule::MergeQueue(old))) = (
-            &mut entry.rule,
-            existing.iter().map(|entry| &entry.rule).find(|rule| matches!(rule, Rule::MergeQueue(_))),
-        ) {
+        if let (Rule::MergeQueue(new), Some(Rule::MergeQueue(old))) =
+            (&mut entry.rule, existing.iter().map(|entry| &entry.rule).find(|rule| matches!(rule, Rule::MergeQueue(_))))
+        {
             *new = old.clone();
         }
     }
@@ -223,7 +213,8 @@ mod tests {
         if let Rule::PullRequest(rule) = &mut rules[0].rule {
             rule.dismiss_stale_reviews_on_push = true;
         }
-        let changed = replace(&rules, &RepoSettings { required_approvals: 3, required_checks: vec!["CI".into()], ..RepoSettings::default() }, true);
+        let changed =
+            replace(&rules, &RepoSettings { required_approvals: 3, required_checks: vec!["CI".into()], ..RepoSettings::default() }, true);
         let kinds: Vec<&str> = changed.iter().map(|entry| entry.rule.kind()).collect();
         assert_eq!(kinds, vec!["pull_request", "required_status_checks", "non_fast_forward"]);
         let Rule::PullRequest(pull) = &changed[0].rule else { panic!() };

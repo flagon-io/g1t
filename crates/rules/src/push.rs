@@ -58,10 +58,9 @@ fn rule_problems(rule: &Rule, change: &RefChange) -> Vec<Problem> {
             format!("Only people this ruleset lets bypass it may push to {name}."),
             "Ask someone who may bypass it, or change it through a pull request.",
         )],
-        Rule::Deletion(_) if change.deleted() => vec![Problem::new(
-            format!("The {what} {name} cannot be deleted."),
-            "Ask someone who may bypass this ruleset.",
-        )],
+        Rule::Deletion(_) if change.deleted() => {
+            vec![Problem::new(format!("The {what} {name} cannot be deleted."), "Ask someone who may bypass this ruleset.")]
+        }
         Rule::NonFastForward(_) if change.updated() && change.fast_forward == Some(false) => vec![Problem::new(
             format!("Force pushes to {name} are blocked: the push would rewrite its history."),
             format!("Pull {name}, put your commits on top of it, and push without --force."),
@@ -70,18 +69,14 @@ fn rule_problems(rule: &Rule, change: &RefChange) -> Vec<Problem> {
             format!("Changes to {name} must be made through a pull request."),
             format!("Push a branch, open a pull request into {name}, and merge it."),
         )],
-        Rule::BranchNamePattern(pattern) | Rule::TagNamePattern(pattern) if change.created() => {
-            match text::compile(pattern) {
-                Ok(compiled) if !compiled.allows(name) => vec![Problem::new(
-                    format!("The {what} name {name} does not {}.", compiled.wants()),
-                    format!("Name the {what} so it does {}.", compiled.wants().trim_start_matches("not ")),
-                )],
-                _ => Vec::new(),
-            }
-        }
-        rule if content::about_content(rule) && !change.deleted() => {
-            content::problems(rule, &change.commits, change.complete)
-        }
+        Rule::BranchNamePattern(pattern) | Rule::TagNamePattern(pattern) if change.created() => match text::compile(pattern) {
+            Ok(compiled) if !compiled.allows(name) => vec![Problem::new(
+                format!("The {what} name {name} does not {}.", compiled.wants()),
+                format!("Name the {what} so it does {}.", compiled.wants().trim_start_matches("not ")),
+            )],
+            _ => Vec::new(),
+        },
+        rule if content::about_content(rule) && !change.deleted() => content::problems(rule, &change.commits, change.complete),
         _ => Vec::new(),
     }
 }
@@ -111,29 +106,22 @@ pub fn judge(rulesets: &[Applicable], default_branch: &str, who: Who, change: &R
 /// Whether any ruleset that is not bypassed has a rule that needs a
 /// change's commits read: if none, a push need not be parsed for rules.
 pub fn needs_content(rulesets: &[Applicable], who: Who) -> bool {
-    rulesets.iter().filter(|ruleset| ruleset.bypass.is_none()).any(|ruleset| {
-        ruleset
-            .rules
-            .iter()
-            .any(|entry| entry.applies_to.covers(who.is_agent()) && content::about_content(&entry.rule))
-    })
+    rulesets
+        .iter()
+        .filter(|ruleset| ruleset.bypass.is_none())
+        .any(|ruleset| ruleset.rules.iter().any(|entry| entry.applies_to.covers(who.is_agent()) && content::about_content(&entry.rule)))
 }
 
 /// Whether any ruleset asks for every push to be read whole.
 pub fn requires_scanning(rulesets: &[Applicable], who: Who) -> bool {
     rulesets.iter().any(|ruleset| {
-        ruleset
-            .rules
-            .iter()
-            .any(|entry| entry.applies_to.covers(who.is_agent()) && matches!(entry.rule, Rule::SecretScanning(_)))
+        ruleset.rules.iter().any(|entry| entry.applies_to.covers(who.is_agent()) && matches!(entry.rule, Rule::SecretScanning(_)))
     })
 }
 
 /// Whether any rule asks for signatures to be verified.
 pub fn needs_signatures(rulesets: &[Applicable]) -> bool {
-    rulesets
-        .iter()
-        .any(|ruleset| ruleset.rules.iter().any(|entry| matches!(entry.rule, Rule::RequiredSignatures(_))))
+    rulesets.iter().any(|ruleset| ruleset.rules.iter().any(|entry| matches!(entry.rule, Rule::RequiredSignatures(_))))
 }
 
 #[cfg(test)]
@@ -141,8 +129,8 @@ mod tests {
     use super::*;
     use crate::outcome::{blocking, refused, would_block};
     use g1t_contracts::rules::{
-        AppliesTo, BypassMode, Enforcement, FilePathRule, Level, NoParameters, PatternOperator, PatternRule,
-        PullRequestRule, RefCondition, RuleEntry, Verdict,
+        AppliesTo, BypassMode, Enforcement, FilePathRule, Level, NoParameters, PatternOperator, PatternRule, PullRequestRule, RefCondition,
+        RuleEntry, Verdict,
     };
 
     fn ruleset(id: &str, include: &[&str], rules: Vec<RuleEntry>) -> Applicable {

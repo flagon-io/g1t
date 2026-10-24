@@ -36,8 +36,8 @@ const ERROR_BAND: u8 = 3;
 /// A pack with no objects: what a push that only points a ref at a commit
 /// the repository already has sends.
 pub const EMPTY_PACK: &[u8] = &[
-    b'P', b'A', b'C', b'K', 0, 0, 0, 2, 0, 0, 0, 0, 0x02, 0x9d, 0x08, 0x82, 0x3b, 0xd8, 0xa8,
-    0xea, 0xb5, 0x10, 0xad, 0x6a, 0xc7, 0x5c, 0x82, 0x3c, 0xfd, 0x3e, 0xd3, 0x1e,
+    b'P', b'A', b'C', b'K', 0, 0, 0, 2, 0, 0, 0, 0, 0x02, 0x9d, 0x08, 0x82, 0x3b, 0xd8, 0xa8, 0xea, 0xb5, 0x10, 0xad, 0x6a, 0xc7, 0x5c,
+    0x82, 0x3c, 0xfd, 0x3e, 0xd3, 0x1e,
 ];
 
 fn pkt_line(payload: &str) -> Vec<u8> {
@@ -88,9 +88,7 @@ pub(crate) fn read_pkt_lines(bytes: &[u8]) -> (Vec<&[u8]>, usize) {
     let mut lines = Vec::new();
     let mut position = 0;
     while position + 4 <= bytes.len() {
-        let Some(length) = std::str::from_utf8(&bytes[position..position + 4])
-            .ok()
-            .and_then(|hex| usize::from_str_radix(hex, 16).ok())
+        let Some(length) = std::str::from_utf8(&bytes[position..position + 4]).ok().and_then(|hex| usize::from_str_radix(hex, 16).ok())
         else {
             break;
         };
@@ -136,20 +134,14 @@ pub(crate) fn unpack_sideband(response: &[u8]) -> Result<Vec<u8>> {
         match line.first() {
             Some(&PACK_BAND) => pack.extend_from_slice(&line[1..]),
             Some(&ERROR_BAND) => {
-                return Err(Error::RustError(format!(
-                    "the source refused the fetch: {}",
-                    String::from_utf8_lossy(&line[1..])
-                )));
+                return Err(Error::RustError(format!("the source refused the fetch: {}", String::from_utf8_lossy(&line[1..]))));
             }
             // ACK and NAK lines, and progress messages.
             _ => {}
         }
     }
     if !pack.starts_with(b"PACK") {
-        return Err(Error::RustError(format!(
-            "the source did not send a pack: {}",
-            String::from_utf8_lossy(response)
-        )));
+        return Err(Error::RustError(format!("the source did not send a pack: {}", String::from_utf8_lossy(response))));
     }
     Ok(pack)
 }
@@ -168,11 +160,7 @@ pub(crate) async fn push_pack(
 }
 
 /// Removes `branch` from the target, if it is still at `old`.
-pub(crate) async fn delete_ref(
-    target: &GitAccess,
-    branch: &str,
-    old: &str,
-) -> Result<std::result::Result<(), String>> {
+pub(crate) async fn delete_ref(target: &GitAccess, branch: &str, old: &str) -> Result<std::result::Result<(), String>> {
     push_ref(target, &format!("refs/heads/{branch}"), Some(old), ZERO_ID, None).await
 }
 
@@ -368,23 +356,11 @@ pub(crate) async fn push_ref(
 /// [`push_pack`], with the store's [`Verdict`]: whether it took the pack,
 /// refused it, or answered neither, for a write that settles a storage
 /// reservation by it (public_storage.rs `push_reserved`).
-pub(crate) async fn push_pack_judged(
-    target: &GitAccess,
-    branch: &str,
-    old: Option<&str>,
-    new: &str,
-    pack: Vec<u8>,
-) -> Result<Verdict> {
+pub(crate) async fn push_pack_judged(target: &GitAccess, branch: &str, old: Option<&str>, new: &str, pack: Vec<u8>) -> Result<Verdict> {
     push_ref_judged(target, &format!("refs/heads/{branch}"), old, new, Some(pack)).await
 }
 
-async fn push_ref_judged(
-    target: &GitAccess,
-    reference: &str,
-    old: Option<&str>,
-    new: &str,
-    pack: Option<Vec<u8>>,
-) -> Result<Verdict> {
+async fn push_ref_judged(target: &GitAccess, reference: &str, old: Option<&str>, new: &str, pack: Option<Vec<u8>>) -> Result<Verdict> {
     let sends_pack = pack.is_some();
     let mut body = command(reference, old, new, sends_pack);
     if let Some(pack) = pack {
@@ -402,7 +378,11 @@ async fn push_ref_judged(
 /// its workspace has no room, or the copy outlived its lease), as
 /// `push_reserved` answers; the inner result is the store's verdict.
 pub(crate) async fn fast_forward(
-    source: &GitAccess, target: &GitAccess, branch: &str, old: Option<&str>, new: &str,
+    source: &GitAccess,
+    target: &GitAccess,
+    branch: &str,
+    old: Option<&str>,
+    new: &str,
     quota: Option<Rc<crate::public_storage::StreamQuota>>,
 ) -> Result<std::result::Result<std::result::Result<(), String>, crate::public_storage::Refusal>> {
     let request = want_request(new, old);
@@ -429,27 +409,27 @@ pub(crate) async fn fast_forward(
             let quota = quota.clone();
             let delivered = delivered.clone();
             async move {
-            let chunk = chunk?;
-            let pack = demux.borrow_mut().feed(&chunk).map_err(|why| {
-                *failure.borrow_mut() = Some(why.clone());
-                Error::RustError(why)
-            })?;
-            if let Some(quota) = quota
-                && needs_grant(&pack)
-            {
-                // Refused past the copy's lease too: cut short, the push
-                // is refused whole (public_storage.rs).
-                if let Err(refusal) = quota.grow(pack.len() as u64).await? {
-                    let why = refusal.message();
+                let chunk = chunk?;
+                let pack = demux.borrow_mut().feed(&chunk).map_err(|why| {
                     *failure.borrow_mut() = Some(why.clone());
-                    refused.set(Some(refusal));
-                    return Err(Error::RustError(why));
+                    Error::RustError(why)
+                })?;
+                if let Some(quota) = quota
+                    && needs_grant(&pack)
+                {
+                    // Refused past the copy's lease too: cut short, the push
+                    // is refused whole (public_storage.rs).
+                    if let Err(refusal) = quota.grow(pack.len() as u64).await? {
+                        let why = refusal.message();
+                        *failure.borrow_mut() = Some(why.clone());
+                        refused.set(Some(refusal));
+                        return Err(Error::RustError(why));
+                    }
                 }
-            }
-            if demux.borrow().complete() {
-                delivered.set(true);
-            }
-            Ok(pack)
+                if demux.borrow().complete() {
+                    delivered.set(true);
+                }
+                Ok(pack)
             }
         })
     };
@@ -756,7 +736,10 @@ mod tests {
         assert_eq!(verdict(&lines(&["unpack ok", "ok refs/heads/main"]), main, true), Verdict::Moved);
         assert!(matches!(verdict(&lines(&["unpack ok", "ng refs/heads/main non-fast-forward"]), main, true), Verdict::Refused(_)));
         assert!(matches!(verdict(&lines(&["unpack ok", "ng refs/heads/main"]), main, true), Verdict::Refused(_)));
-        assert!(matches!(verdict(&lines(&["unpack error: bad pack", "ng refs/heads/main unpacker error"]), main, true), Verdict::Refused(_)));
+        assert!(matches!(
+            verdict(&lines(&["unpack error: bad pack", "ng refs/heads/main unpacker error"]), main, true),
+            Verdict::Refused(_)
+        ));
         // A failed unpack is a refusal even where the ref says ok.
         assert!(matches!(verdict(&lines(&["unpack error: bad pack", "ok refs/heads/main"]), main, true), Verdict::Refused(_)));
         // Another ref's refusal, or none at all, says nothing of this one.
@@ -764,7 +747,9 @@ mod tests {
         assert!(matches!(verdict(&lines(&["unpack ok"]), main, true), Verdict::Unclear(_)));
         assert_eq!(
             verdict(b"", main, true),
-            Verdict::Unclear("The store's answer said neither that refs/heads/main moved nor that it was refused: it said nothing".to_owned())
+            Verdict::Unclear(
+                "The store's answer said neither that refs/heads/main moved nor that it was refused: it said nothing".to_owned()
+            )
         );
         assert_eq!(
             verdict(&lines(&["unpack ok"]), main, true).reason(),

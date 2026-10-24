@@ -9,7 +9,9 @@
 
 use g1t_contracts::decisions::{Decision, ListDecisionsArgs, Why, WhyCommit, WhyItem, WhyPull};
 use g1t_contracts::repos::{Blame, BlameArgs, Commit, LogArgs, RepoPath};
-use g1t_contracts::work::{ListPullsArgs, Pull, PullStatus, SessionEntry, SessionEntryKind, State, ViewArgs, WorkItemDetail, WorkItemViewArgs};
+use g1t_contracts::work::{
+    ListPullsArgs, Pull, PullStatus, SessionEntry, SessionEntryKind, State, ViewArgs, WorkItemDetail, WorkItemViewArgs,
+};
 use g1t_contracts::{FailureCode, Outcome, Viewer};
 use serde_json::Value;
 use worker::Result;
@@ -35,10 +37,7 @@ pub(crate) fn commit_of_line(blame: &Blame, line: u32) -> Option<&Commit> {
 /// or else the one whose stretch of `history` (the default branch, newest
 /// first) holds it, from its head back to the commit it started from.
 pub(crate) fn pull_for_commit<'a>(merged: &'a [Pull], history: &[String], hash: &str) -> Option<&'a Pull> {
-    let merged: Vec<&Pull> = merged
-        .iter()
-        .filter(|pull| pull.status == PullStatus::Merged && pull.head_commit.is_some())
-        .collect();
+    let merged: Vec<&Pull> = merged.iter().filter(|pull| pull.status == PullStatus::Merged && pull.head_commit.is_some()).collect();
     if let Some(direct) = merged.iter().find(|pull| pull.head_commit.as_deref() == Some(hash)) {
         return Some(direct);
     }
@@ -76,9 +75,9 @@ pub(crate) fn steps_for(session: &[SessionEntry], hash: &str, file: &str) -> Vec
         let short: String = rest.chars().take_while(char::is_ascii_hexdigit).collect();
         (short.len() >= 7).then_some(short)
     };
-    let end = session.iter().position(|entry| {
-        entry.commit.as_deref() == Some(hash) || pushed(entry).is_some_and(|short| hash.starts_with(&short))
-    });
+    let end = session
+        .iter()
+        .position(|entry| entry.commit.as_deref() == Some(hash) || pushed(entry).is_some_and(|short| hash.starts_with(&short)));
     let window: &[SessionEntry] = match end {
         Some(end) => {
             let mut start = end;
@@ -131,12 +130,7 @@ pub(crate) async fn why(
     let blame: Outcome<Blame> = g1t_kit::call(
         &services.repos,
         "blame",
-        &BlameArgs {
-            path: repo.clone(),
-            viewer: viewer.clone(),
-            git_ref,
-            file_path: path.clone(),
-        },
+        &BlameArgs { path: repo.clone(), viewer: viewer.clone(), git_ref, file_path: path.clone() },
     )
     .await?;
     let blame = match blame {
@@ -145,10 +139,7 @@ pub(crate) async fn why(
     };
     let Some(found) = commit_of_line(&blame, line).cloned() else {
         let lines = blame.ranges.last().map_or(0, |range| range.end);
-        return Ok(Outcome::fail(
-            FailureCode::Invalid,
-            format!("{path} has {lines} lines at that ref: give a line from 1 to {lines}."),
-        ));
+        return Ok(Outcome::fail(FailureCode::Invalid, format!("{path} has {lines} lines at that ref: give a line from 1 to {lines}.")));
     };
 
     let closed: Outcome<Vec<Pull>> = g1t_kit::call(
@@ -179,12 +170,7 @@ pub(crate) async fn why(
         let log: Outcome<Vec<Commit>> = g1t_kit::call(
             &services.repos,
             "log",
-            &LogArgs {
-                path: repo.clone(),
-                viewer: viewer.clone(),
-                git_ref: None,
-                limit: HISTORY_READ,
-            },
+            &LogArgs { path: repo.clone(), viewer: viewer.clone(), git_ref: None, limit: HISTORY_READ },
         )
         .await?;
         if let Outcome::Ok(log) = log {
@@ -283,10 +269,7 @@ mod tests {
     fn a_line_is_found_in_its_range() {
         let blame = Blame {
             head: "h".into(),
-            ranges: vec![
-                BlameRange { start: 1, end: 3, commit: "aaa".into() },
-                BlameRange { start: 4, end: 4, commit: "bbb".into() },
-            ],
+            ranges: vec![BlameRange { start: 1, end: 3, commit: "aaa".into() }, BlameRange { start: 4, end: 4, commit: "bbb".into() }],
             commits: vec![commit("aaa"), commit("bbb")],
             partial: false,
         };

@@ -196,7 +196,9 @@ struct Group {
 fn standing(viewer: Option<&User>, workspace: &str) -> Result<(JsValue, JsValue)> {
     let member = viewer.and_then(|user| access::workspace_role(user, workspace)).is_some();
     let granted: Vec<&str> = viewer
-        .map(|user| user.grants.iter().filter(|grant| grant.workspace.eq_ignore_ascii_case(workspace)).map(|grant| grant.repo_id.as_str()).collect())
+        .map(|user| {
+            user.grants.iter().filter(|grant| grant.workspace.eq_ignore_ascii_case(workspace)).map(|grant| grant.repo_id.as_str()).collect()
+        })
         .unwrap_or_default();
     Ok((u32::from(member).into(), serde_json::to_string(&granted)?.into()))
 }
@@ -310,7 +312,13 @@ impl Work {
         struct Rank {
             rank: Option<String>,
         }
-        Ok(self.db.prepare("SELECT rank FROM work_items WHERE id = ?").bind(&[id.into()])?.first::<Rank>(None).await?.and_then(|row| row.rank))
+        Ok(self
+            .db
+            .prepare("SELECT rank FROM work_items WHERE id = ?")
+            .bind(&[id.into()])?
+            .first::<Rank>(None)
+            .await?
+            .and_then(|row| row.rank))
     }
 
     /// Gives `anchor` a rank, last on its horizon, if it has none, so
@@ -376,11 +384,16 @@ impl Work {
         // for what the workspace commits to.
         check!(held.allowed(Some(&a.actor), Capability::Triage));
         let reranked = positions > 0 || horizon != from;
-        let commits = (horizon.committed() && reranked) || (from.committed() && horizon != from) || a.urgent.is_some_and(|urgent| urgent != held.item.urgent);
+        let commits = (horizon.committed() && reranked)
+            || (from.committed() && horizon != from)
+            || a.urgent.is_some_and(|urgent| urgent != held.item.urgent);
         if commits && !access::can_item(Some(&a.actor), &workspace, None, Capability::ManageLabels) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
-                format!("Deciding what is in Now takes the right to manage milestones. {}", access::needs_on_item(Capability::ManageLabels, &workspace)),
+                format!(
+                    "Deciding what is in Now takes the right to manage milestones. {}",
+                    access::needs_on_item(Capability::ManageLabels, &workspace)
+                ),
             ));
         }
         // While cycles are on, Now is the current cycle (cycles.rs): moving
@@ -394,7 +407,9 @@ impl Work {
         {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
-                format!("Agents can't commit a cycle: a person moves work into Cycle {number}. A work item an agent files waits in Triage."),
+                format!(
+                    "Agents can't commit a cycle: a person moves work into Cycle {number}. A work item an agent files waits in Triage."
+                ),
             ));
         }
         let (cycle_changed, cycle_number) = match (horizon, current) {
@@ -471,7 +486,11 @@ impl Work {
             Some(path) => {
                 let repo = check!(self.repo(path, &a.viewer).await?);
                 if !repo.namespace.eq_ignore_ascii_case(&workspace) {
-                    return Ok(Outcome::Ok(Plan { workspace, now_cap: self.now_cap(&repo.namespace.to_lowercase()).await?, ..Plan::default() }));
+                    return Ok(Outcome::Ok(Plan {
+                        workspace,
+                        now_cap: self.now_cap(&repo.namespace.to_lowercase()).await?,
+                        ..Plan::default()
+                    }));
                 }
                 Some(repo.id)
             }
@@ -503,7 +522,11 @@ impl Work {
         let next = shown_rows(rows(1)?.results::<ItemRow>()?, &a.viewer);
         let counts = rows(2)?.results::<Count>()?;
         let total = |horizon: Horizon| {
-            counts.iter().filter(|row| row.horizon.as_deref().and_then(Horizon::parse).unwrap_or_default() == horizon).map(|row| row.count).sum()
+            counts
+                .iter()
+                .filter(|row| row.horizon.as_deref().and_then(Horizon::parse).unwrap_or_default() == horizon)
+                .map(|row| row.count)
+                .sum()
         };
         let later = rows(3)?.results::<Group>()?.into_iter().map(|group| PlanGroup { repo: group.repo, count: group.count }).collect();
         let landed = shown_rows(rows(4)?.results::<ItemRow>()?, &a.viewer);
@@ -564,14 +587,7 @@ impl Work {
         let rows = self
             .db
             .prepare(sql)
-            .bind(&[
-                workspace.as_str().into(),
-                member,
-                granted,
-                optional(&repo_id),
-                rfc3339(now_ms()).into(),
-                username.into(),
-            ])?
+            .bind(&[workspace.as_str().into(), member, granted, optional(&repo_id), rfc3339(now_ms()).into(), username.into()])?
             .all()
             .await?
             .results::<ItemRow>()?;
@@ -675,8 +691,15 @@ mod tests {
     }
 
     /// The ranks around a place, as `rank_for` reads them.
-    fn neighbours(db: &Connection, horizon: &str, leaving_out: &str, upper: Option<&str>, lower: Option<&str>) -> (Option<String>, Option<String>) {
-        db.query_row(NEIGHBOURS, rusqlite::params!["acme", horizon, leaving_out, upper, lower], |row| Ok((row.get(0)?, row.get(1)?))).unwrap()
+    fn neighbours(
+        db: &Connection,
+        horizon: &str,
+        leaving_out: &str,
+        upper: Option<&str>,
+        lower: Option<&str>,
+    ) -> (Option<String>, Option<String>) {
+        db.query_row(NEIGHBOURS, rusqlite::params!["acme", horizon, leaving_out, upper, lower], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
     }
 
     #[test]
@@ -819,9 +842,8 @@ mod tests {
         )
         .unwrap();
         let values: [&dyn ToSql; 6] = [&"acme", &1, &"[]", &None::<String>, &"2026-10-12T00:00:00Z", &"2026-09-20T00:00:00Z"];
-        let (waiting, recent): (u32, u32) = db
-            .query_row(&WAITING.replace("{OPEN_VISIBLE}", OPEN_VISIBLE), &values[..], |row| Ok((row.get(0)?, row.get(1)?)))
-            .unwrap();
+        let (waiting, recent): (u32, u32) =
+            db.query_row(&WAITING.replace("{OPEN_VISIBLE}", OPEN_VISIBLE), &values[..], |row| Ok((row.get(0)?, row.get(1)?))).unwrap();
         // #1 and #3 (and #2, made with no date) in Triage since before the line; #5 set aside lately.
         assert_eq!((waiting, recent), (3, 1));
     }
@@ -829,7 +851,10 @@ mod tests {
     #[test]
     fn a_move_says_what_changed() {
         assert_eq!(move_note(Horizon::Triage, Horizon::Next, false, false).as_deref(), Some("moved this from Triage to Next"));
-        assert_eq!(move_note(Horizon::Next, Horizon::Now, false, true).as_deref(), Some("moved this from Next to Now and marked this urgent"));
+        assert_eq!(
+            move_note(Horizon::Next, Horizon::Now, false, true).as_deref(),
+            Some("moved this from Next to Now and marked this urgent")
+        );
         assert_eq!(move_note(Horizon::Next, Horizon::Next, false, false), None);
         assert_eq!(valid_budget(Some(12.345)), Ok(Some(12.35)));
         assert!(valid_budget(Some(0.0)).is_err());

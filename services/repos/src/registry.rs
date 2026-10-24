@@ -136,10 +136,7 @@ pub fn refs_state(id: &str) -> Option<RefsState> {
 
 fn note_refs(id: &str, version: Option<f64>, open_until: Option<f64>) {
     if let Some(version) = version {
-        let state = RefsState {
-            version: version as u64,
-            open_until: open_until.unwrap_or(0.0) as u64,
-        };
+        let state = RefsState { version: version as u64, open_until: open_until.unwrap_or(0.0) as u64 };
         REFS.with(|refs| refs.borrow_mut().note(id, state));
     }
 }
@@ -200,10 +197,7 @@ impl Recent {
     }
 
     pub fn get(&self, path: &RepoPath, now: u64) -> Option<Repo> {
-        self.rows
-            .get(&Self::key(path))
-            .filter(|(_, read)| now.saturating_sub(*read) < RECENT_MS)
-            .map(|(repo, _)| repo.clone())
+        self.rows.get(&Self::key(path)).filter(|(_, read)| now.saturating_sub(*read) < RECENT_MS).map(|(repo, _)| repo.clone())
     }
 
     pub fn keep(&mut self, path: &RepoPath, repo: &Repo, now: u64) {
@@ -253,11 +247,7 @@ impl From<RepoRow> for Repo {
             max_ref_updates: row.max_ref_updates.filter(|limit| *limit > 0),
             protected: row.protected != 0,
             created_at: row.created_at,
-            topics: row
-                .topics
-                .as_deref()
-                .and_then(|topics| serde_json::from_str(topics).ok())
-                .unwrap_or_default(),
+            topics: row.topics.as_deref().and_then(|topics| serde_json::from_str(topics).ok()).unwrap_or_default(),
             website: row.website,
             archived_at: row.archived_at,
         };
@@ -273,9 +263,7 @@ impl From<RepoRow> for Repo {
 
 /// The key a repo is stored under in the git store.
 pub fn store_key(repo: &Repo) -> String {
-    let key = MOVED
-        .with(|moved| moved.borrow().get(&repo.id).cloned())
-        .unwrap_or_else(|| path_key(repo));
+    let key = MOVED.with(|moved| moved.borrow().get(&repo.id).cloned()).unwrap_or_else(|| path_key(repo));
     // Its interactions with the store are metered for its workspace.
     crate::meters::note_owner(&key, &repo.namespace);
     key
@@ -315,8 +303,7 @@ pub fn can_write(repo: &Repo, viewer: &Viewer) -> bool {
 /// author's Write.
 pub fn can(repo: &Repo, viewer: &Viewer, capability: Capability) -> bool {
     if repo.fork_of.is_some() {
-        return role(repo, viewer).is_some_and(|role| access::allows(role, capability))
-            && !access::OWNER_ONLY.contains(&capability);
+        return role(repo, viewer).is_some_and(|role| access::allows(role, capability)) && !access::OWNER_ONLY.contains(&capability);
     }
     access::can(viewer.as_ref(), repo, capability)
 }
@@ -334,10 +321,7 @@ impl Registry {
         Ok(self
             .db
             .prepare("SELECT * FROM repos WHERE namespace = ? AND name = ? AND deleted_at IS NULL")
-            .bind(&[
-                path.namespace.to_lowercase().into(),
-                path.name.to_lowercase().into(),
-            ])?
+            .bind(&[path.namespace.to_lowercase().into(), path.name.to_lowercase().into()])?
             .first::<RepoRow>(None)
             .await?
             .map(Repo::from))
@@ -397,16 +381,10 @@ impl Registry {
 
     /// The repository `id`, deleted or not, and when it was deleted.
     pub async fn by_id_any(&self, id: &str) -> Result<Option<(Repo, Option<String>)>> {
-        Ok(self
-            .db
-            .prepare("SELECT * FROM repos WHERE id = ?")
-            .bind(&[id.into()])?
-            .first::<RepoRow>(None)
-            .await?
-            .map(|mut row| {
-                let deleted_at = row.deleted_at.take();
-                (Repo::from(row), deleted_at)
-            }))
+        Ok(self.db.prepare("SELECT * FROM repos WHERE id = ?").bind(&[id.into()])?.first::<RepoRow>(None).await?.map(|mut row| {
+            let deleted_at = row.deleted_at.take();
+            (Repo::from(row), deleted_at)
+        }))
     }
 
     /// The repository at `path`, deleted or not: what holds the name.
@@ -414,10 +392,7 @@ impl Registry {
         Ok(self
             .db
             .prepare("SELECT * FROM repos WHERE namespace = ? AND name = ?")
-            .bind(&[
-                path.namespace.to_lowercase().into(),
-                path.name.to_lowercase().into(),
-            ])?
+            .bind(&[path.namespace.to_lowercase().into(), path.name.to_lowercase().into()])?
             .first::<RepoRow>(None)
             .await?
             .map(|mut row| {
@@ -428,18 +403,8 @@ impl Registry {
 
     /// Repos the viewer may see, newest first. Excludes pull request forks.
     /// With `member_only`, only repos in the viewer's own workspaces.
-    pub async fn list(
-        &self,
-        viewer: &Viewer,
-        query: Option<&str>,
-        namespace: Option<&str>,
-        member_only: bool,
-    ) -> Result<Vec<Repo>> {
-        let workspaces: Vec<&str> = viewer
-            .iter()
-            .flat_map(|user| &user.workspaces)
-            .map(|membership| membership.slug.as_str())
-            .collect();
+    pub async fn list(&self, viewer: &Viewer, query: Option<&str>, namespace: Option<&str>, member_only: bool) -> Result<Vec<Repo>> {
+        let workspaces: Vec<&str> = viewer.iter().flat_map(|user| &user.workspaces).map(|membership| membership.slug.as_str()).collect();
         // The workspaces whose private repositories the viewer reads all
         // of (an owner, or a base permission other than none), and the
         // repositories they were given a role on: see access.rs. A probe
@@ -458,9 +423,7 @@ impl Registry {
             .iter()
             .flat_map(|user| {
                 let token = user.token.as_deref();
-                user.grants
-                    .iter()
-                    .filter(move |grant| token.is_none_or(|token| token.covers_repo(&grant.repo_id, &grant.workspace)))
+                user.grants.iter().filter(move |grant| token.is_none_or(|token| token.covers_repo(&grant.repo_id, &grant.workspace)))
             })
             .map(|grant| grant.repo_id.as_str())
             .collect();
@@ -478,15 +441,9 @@ impl Registry {
                     .map(String::as_str),
             );
         }
-        let mut params: Vec<JsValue> = vec![
-            serde_json::to_string(&reading)?.into(),
-            serde_json::to_string(&granted)?.into(),
-        ];
+        let mut params: Vec<JsValue> = vec![serde_json::to_string(&reading)?.into(), serde_json::to_string(&granted)?.into()];
         let private_ok = "(namespace IN (SELECT value FROM json_each(?)) OR id IN (SELECT value FROM json_each(?)))";
-        let mut conditions = vec![
-            "fork_of IS NULL AND deleted_at IS NULL".to_owned(),
-            format!("(is_private = 0 OR {private_ok})"),
-        ];
+        let mut conditions = vec!["fork_of IS NULL AND deleted_at IS NULL".to_owned(), format!("(is_private = 0 OR {private_ok})")];
         if member_only {
             conditions.push("namespace IN (SELECT value FROM json_each(?))".to_owned());
             params.push(serde_json::to_string(&workspaces)?.into());
@@ -508,17 +465,8 @@ impl Registry {
             let pattern = format!("%{escaped}%");
             params.push(pattern.into());
         }
-        let sql = format!(
-            "SELECT * FROM repos WHERE {} ORDER BY created_at DESC, id DESC LIMIT 50",
-            conditions.join(" AND ")
-        );
-        let rows = self
-            .db
-            .prepare(sql)
-            .bind(&params)?
-            .all()
-            .await?
-            .results::<RepoRow>()?;
+        let sql = format!("SELECT * FROM repos WHERE {} ORDER BY created_at DESC, id DESC LIMIT 50", conditions.join(" AND "));
+        let rows = self.db.prepare(sql).bind(&params)?.all().await?.results::<RepoRow>()?;
         Ok(rows.into_iter().map(Repo::from).collect())
     }
 
@@ -539,11 +487,7 @@ impl Registry {
             .all()
             .await?
             .results::<RepoRow>()?;
-        Ok(rows
-            .into_iter()
-            .map(Repo::from)
-            .filter(|repo| can_read(repo, viewer))
-            .collect())
+        Ok(rows.into_iter().map(Repo::from).filter(|repo| can_read(repo, viewer)).collect())
     }
 
     /// The workspaces in which this account made a public repository.
@@ -651,10 +595,7 @@ impl Registry {
         let mut out = Vec::new();
         for path in paths.iter().take(50) {
             let Some((namespace, name)) = path.split_once('/') else { continue };
-            let Some(repo) = self
-                .by_path(&RepoPath { namespace: namespace.to_owned(), name: name.to_owned() })
-                .await?
-            else {
+            let Some(repo) = self.by_path(&RepoPath { namespace: namespace.to_owned(), name: name.to_owned() }).await? else {
                 continue;
             };
             let is_private = match &repo.fork_of {
@@ -728,11 +669,7 @@ impl Registry {
 
     /// Makes a fork an ordinary repository with no parent.
     pub async fn detach(&self, id: &str) -> Result<()> {
-        self.db
-            .prepare("UPDATE repos SET parent_id = NULL WHERE id = ?")
-            .bind(&[id.into()])?
-            .run()
-            .await?;
+        self.db.prepare("UPDATE repos SET parent_id = NULL WHERE id = ?").bind(&[id.into()])?.run().await?;
         Ok(())
     }
 
@@ -757,11 +694,7 @@ impl Registry {
 
     /// Forgets a repository that could not be filled.
     pub async fn remove(&self, id: &str) -> Result<()> {
-        self.db
-            .prepare("DELETE FROM repos WHERE id = ?")
-            .bind(&[id.into()])?
-            .run()
-            .await?;
+        self.db.prepare("DELETE FROM repos WHERE id = ?").bind(&[id.into()])?.run().await?;
         Ok(())
     }
 
@@ -792,7 +725,6 @@ impl Registry {
         Ok(key)
     }
 
-
     /// Moves a renamed workspace's repositories to its current slug, from
     /// any of `stale`. A repository whose name the current slug already has
     /// (one pushed there in the moment before this ran) stays where it is;
@@ -808,16 +740,8 @@ impl Registry {
         let results = self
             .db
             .batch(vec![
-                self.db
-                    .prepare(format!(
-                        "UPDATE OR IGNORE repos SET namespace = ? WHERE namespace IN ({marks})"
-                    ))
-                    .bind(&moved)?,
-                self.db
-                    .prepare(format!(
-                        "SELECT count(*) AS left FROM repos WHERE namespace IN ({marks})"
-                    ))
-                    .bind(&left)?,
+                self.db.prepare(format!("UPDATE OR IGNORE repos SET namespace = ? WHERE namespace IN ({marks})")).bind(&moved)?,
+                self.db.prepare(format!("SELECT count(*) AS left FROM repos WHERE namespace IN ({marks})")).bind(&left)?,
                 // Git operations follow the workspace, added together.
                 self.db
                     .prepare(format!(
@@ -826,16 +750,10 @@ impl Registry {
                          ON CONFLICT (namespace, hour) DO UPDATE SET operations = git_operations.operations + excluded.operations"
                     ))
                     .bind(&moved)?,
-                self.db
-                    .prepare(format!("DELETE FROM git_operations WHERE namespace IN ({marks})"))
-                    .bind(&left)?,
+                self.db.prepare(format!("DELETE FROM git_operations WHERE namespace IN ({marks})")).bind(&left)?,
                 // Paths repositories were transferred away from follow the
                 // workspace too, so the old slug's redirect then finds them.
-                self.db
-                    .prepare(format!(
-                        "UPDATE OR IGNORE repo_redirects SET namespace = ? WHERE namespace IN ({marks})"
-                    ))
-                    .bind(&moved)?,
+                self.db.prepare(format!("UPDATE OR IGNORE repo_redirects SET namespace = ? WHERE namespace IN ({marks})")).bind(&moved)?,
             ])
             .await?;
         #[derive(Deserialize)]
@@ -882,12 +800,7 @@ impl Registry {
             refs_version: Option<f64>,
             refs_open_until: Option<f64>,
         }
-        let bumped = self
-            .db
-            .prepare(sql)
-            .bind(params)?
-            .first::<Bumped>(None)
-            .await?;
+        let bumped = self.db.prepare(sql).bind(params)?.first::<Bumped>(None).await?;
         if let Some(bumped) = bumped {
             note_refs(id, bumped.refs_version, bumped.refs_open_until);
         }
@@ -1003,22 +916,13 @@ mod tests {
     #[test]
     fn a_repository_read_a_moment_ago_is_reused_for_a_few_seconds() {
         let mut recent = Recent::default();
-        let path = RepoPath {
-            namespace: "Acme".into(),
-            name: "Rocket".into(),
-        };
+        let path = RepoPath { namespace: "Acme".into(), name: "Rocket".into() };
         recent.keep(&path, &repo(false), 1_000);
         // Paths are matched as the table matches them, ignoring case.
-        let lower = RepoPath {
-            namespace: "acme".into(),
-            name: "rocket".into(),
-        };
+        let lower = RepoPath { namespace: "acme".into(), name: "rocket".into() };
         assert_eq!(recent.get(&lower, 1_000 + RECENT_MS - 1).unwrap().id, "rep_1");
         assert!(recent.get(&lower, 1_000 + RECENT_MS).is_none());
-        let other = RepoPath {
-            namespace: "acme".into(),
-            name: "booster".into(),
-        };
+        let other = RepoPath { namespace: "acme".into(), name: "booster".into() };
         assert!(recent.get(&other, 1_000).is_none());
         // Keeping another later drops the stale row.
         recent.keep(&other, &repo(true), 1_000 + RECENT_MS);

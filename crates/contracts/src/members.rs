@@ -108,11 +108,7 @@ impl MemberPrivileges {
     /// repository that is `private` or not.
     pub fn may_create(&self, role: Role, private: bool) -> bool {
         role == Role::Owner
-            || if private {
-                self.members_can_create_private_repositories
-            } else {
-                self.members_can_create_public_repositories
-            }
+            || if private { self.members_can_create_private_repositories } else { self.members_can_create_public_repositories }
     }
 
     /// The refusal for creating a repository, when there is one.
@@ -183,9 +179,7 @@ impl MemberPrivilegesPatch {
             members_can_create_private_repositories: self
                 .members_can_create_private_repositories
                 .unwrap_or(to.members_can_create_private_repositories),
-            members_can_change_repo_visibility: self
-                .members_can_change_repo_visibility
-                .unwrap_or(to.members_can_change_repo_visibility),
+            members_can_change_repo_visibility: self.members_can_change_repo_visibility.unwrap_or(to.members_can_change_repo_visibility),
             members_can_delete_repositories: self.members_can_delete_repositories.unwrap_or(to.members_can_delete_repositories),
             members_can_invite_outside_collaborators: self
                 .members_can_invite_outside_collaborators
@@ -229,9 +223,7 @@ pub struct PolicyHold {
 /// `None` when it would not. `owners` is how many owners it has now;
 /// `losing` is whether the change takes one away.
 pub fn last_owner_refusal(owners: usize, losing: bool) -> Option<&'static str> {
-    (losing && owners <= 1).then_some(
-        "A workspace needs at least one owner. Make another member an owner first, or delete the workspace.",
-    )
+    (losing && owners <= 1).then_some("A workspace needs at least one owner. Make another member an owner first, or delete the workspace.")
 }
 
 /// `update_member`: change a member's role (owner or member) and the roles

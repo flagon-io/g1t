@@ -123,18 +123,8 @@ pub fn clean_website(text: &str) -> Result<Option<String>, String> {
     } else {
         format!("https://{text}")
     };
-    let host = url
-        .split("://")
-        .nth(1)
-        .unwrap_or("")
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or("");
-    if url.chars().count() > MAX_WEBSITE_CHARS
-        || host.is_empty()
-        || !host.contains('.')
-        || url.chars().any(char::is_whitespace)
-    {
+    let host = url.split("://").nth(1).unwrap_or("").split(['/', '?', '#']).next().unwrap_or("");
+    if url.chars().count() > MAX_WEBSITE_CHARS || host.is_empty() || !host.contains('.') || url.chars().any(char::is_whitespace) {
         return Err("That is not a website address, such as https://example.com.".into());
     }
     Ok(Some(url))
@@ -157,9 +147,7 @@ pub fn is_valid_branch_name(name: &str) -> bool {
         && name != "@"
         && !name.starts_with(G1T_BRANCH_PREFIX)
         && !name.split('/').any(|part| part.starts_with('.'))
-        && name
-            .chars()
-            .all(|c| !c.is_control() && !matches!(c, ' ' | '~' | '^' | ':' | '?' | '*' | '[' | '\\'))
+        && name.chars().all(|c| !c.is_control() && !matches!(c, ' ' | '~' | '^' | ':' | '?' | '*' | '[' | '\\'))
 }
 
 /// The most topics a repository has.
@@ -174,12 +162,7 @@ pub const MAX_TOPIC_CHARS: usize = 35;
 pub fn clean_topics(topics: &[String]) -> Result<Vec<String>, String> {
     let mut kept: Vec<String> = Vec::new();
     for topic in topics {
-        let topic: String = topic
-            .trim()
-            .to_lowercase()
-            .chars()
-            .map(|c| if c == ' ' || c == '_' { '-' } else { c })
-            .collect();
+        let topic: String = topic.trim().to_lowercase().chars().map(|c| if c == ' ' || c == '_' { '-' } else { c }).collect();
         if topic.is_empty() {
             continue;
         }
@@ -187,9 +170,7 @@ pub fn clean_topics(topics: &[String]) -> Result<Vec<String>, String> {
             && topic.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
             && topic.chars().next().is_some_and(|c| c.is_ascii_alphanumeric());
         if !valid {
-            return Err(format!(
-                "\"{topic}\" is not a topic: use letters, digits and hyphens, at most {MAX_TOPIC_CHARS} characters."
-            ));
+            return Err(format!("\"{topic}\" is not a topic: use letters, digits and hyphens, at most {MAX_TOPIC_CHARS} characters."));
         }
         if !kept.contains(&topic) {
             kept.push(topic);
@@ -1098,11 +1079,7 @@ pub enum PullBranchUpdate {
     UpToDate { commit: String },
     /// Nothing was pushed; a sandbox has to merge it. `paths` are the
     /// files both sides changed, or that conflict, when known.
-    NeedsAgent {
-        reason: NeedsAgentReason,
-        detail: String,
-        paths: Vec<String>,
-    },
+    NeedsAgent { reason: NeedsAgentReason, detail: String, paths: Vec<String> },
 }
 
 /// `pull_merge_ref`: points `refs/pull/<number>/head` in the repository a
@@ -1799,9 +1776,7 @@ impl RepoStatus {
 /// What a person is told when something would change an archived
 /// repository.
 pub fn archived_message(namespace: &str, name: &str) -> String {
-    format!(
-        "{namespace}/{name} is archived, so it is read-only. An owner can unarchive it in its settings."
-    )
+    format!("{namespace}/{name} is archived, so it is read-only. An owner can unarchive it in its settings.")
 }
 
 /// The path a repository was transferred from, and when, as `transfer`
@@ -2116,11 +2091,7 @@ mod tests {
 
     #[test]
     fn a_pull_branch_update_reads_as_the_web_expects() {
-        let update = PullBranchUpdate::NeedsAgent {
-            reason: NeedsAgentReason::Overlap,
-            detail: "both".into(),
-            paths: vec!["a.rs".into()],
-        };
+        let update = PullBranchUpdate::NeedsAgent { reason: NeedsAgentReason::Overlap, detail: "both".into(), paths: vec!["a.rs".into()] };
         assert_eq!(
             serde_json::to_value(&update).unwrap(),
             serde_json::json!({ "outcome": "needs_agent", "reason": "overlap", "detail": "both", "paths": ["a.rs"] })

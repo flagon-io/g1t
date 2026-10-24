@@ -29,32 +29,20 @@ impl Reference {
             _ => (rest, "latest"),
         };
         if name.is_empty() || tag.is_empty() {
-            return Err(format!(
-                "`{text}` is not an image address, like g1t.sh/<workspace>/<name>:<tag>."
-            ));
+            return Err(format!("`{text}` is not an image address, like g1t.sh/<workspace>/<name>:<tag>."));
         }
         if !name.contains('/') && host == "g1t.sh" {
-            return Err(format!(
-                "`{text}`: images on g1t.sh start with a workspace, like g1t.sh/<workspace>/<name>:<tag>."
-            ));
+            return Err(format!("`{text}`: images on g1t.sh start with a workspace, like g1t.sh/<workspace>/<name>:<tag>."));
         }
         let valid = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit() || "._-/".contains(c);
         if !name.chars().all(valid) {
-            return Err(format!(
-                "`{name}`: image names are lowercase letters and digits, separated by `.`, `_`, `-` or `/`."
-            ));
+            return Err(format!("`{name}`: image names are lowercase letters and digits, separated by `.`, `_`, `-` or `/`."));
         }
         let valid_tag = |c: char| c.is_ascii_alphanumeric() || "._-".contains(c);
         if tag.len() > 128 || !tag.chars().all(valid_tag) {
-            return Err(format!(
-                "`{tag}` is not a tag: letters, digits, `.`, `_` and `-`, at most 128."
-            ));
+            return Err(format!("`{tag}` is not a tag: letters, digits, `.`, `_` and `-`, at most 128."));
         }
-        Ok(Some(Reference {
-            host: host.to_owned(),
-            name: name.to_owned(),
-            tag: tag.to_owned(),
-        }))
+        Ok(Some(Reference { host: host.to_owned(), name: name.to_owned(), tag: tag.to_owned() }))
     }
 
     /// Where the registry answers: plain HTTP on this machine, HTTPS elsewhere.
@@ -81,10 +69,7 @@ mod tests {
     #[test]
     fn addresses_split_into_host_name_and_tag() {
         let r = parse("g1t.sh/acme/web:1.4.0");
-        assert_eq!(
-            (r.host.as_str(), r.name.as_str(), r.tag.as_str()),
-            ("g1t.sh", "acme/web", "1.4.0")
-        );
+        assert_eq!((r.host.as_str(), r.name.as_str(), r.tag.as_str()), ("g1t.sh", "acme/web", "1.4.0"));
         assert_eq!(r.base_url(), "https://g1t.sh");
         assert_eq!(r.to_string(), "g1t.sh/acme/web:1.4.0");
     }
@@ -97,10 +82,7 @@ mod tests {
     #[test]
     fn a_host_with_a_port_is_not_a_tag() {
         let r = parse("localhost:8790/acme/web");
-        assert_eq!(
-            (r.host.as_str(), r.name.as_str(), r.tag.as_str()),
-            ("localhost:8790", "acme/web", "latest")
-        );
+        assert_eq!((r.host.as_str(), r.name.as_str(), r.tag.as_str()), ("localhost:8790", "acme/web", "latest"));
         assert_eq!(r.base_url(), "http://localhost:8790");
     }
 

@@ -5,8 +5,8 @@
 
 use std::collections::BTreeMap;
 
-use g1t_contracts::repos::{DiffLine, EntryKind, FileDiff, FileStatus, Hunk, LineKind, TreeEntry};
 use futures_util::future::{try_join, try_join_all};
+use g1t_contracts::repos::{DiffLine, EntryKind, FileDiff, FileStatus, Hunk, LineKind, TreeEntry};
 use similar::{ChangeTag, TextDiff};
 use worker::Result;
 
@@ -38,13 +38,7 @@ async fn entries<R: GitRepo>(repo: &R, tree: Option<&str>) -> Result<BTreeMap<St
     let Some(tree) = tree else {
         return Ok(BTreeMap::new());
     };
-    Ok(repo
-        .read_tree(tree)
-        .await?
-        .unwrap_or_default()
-        .into_iter()
-        .map(|entry| (entry.name.clone(), entry))
-        .collect())
+    Ok(repo.read_tree(tree).await?.unwrap_or_default().into_iter().map(|entry| (entry.name.clone(), entry)).collect())
 }
 
 /// How many files' contents are read at once.
@@ -53,11 +47,7 @@ const READS_AT_ONCE: usize = 16;
 /// Collects the files that differ between two trees. Each level of the
 /// trees is read at once, since every read is a round trip to the store
 /// and the levels' trees do not depend on each other.
-async fn changed_files<R: GitRepo>(
-    repo: &R,
-    old_root: Option<&str>,
-    new_root: &str,
-) -> Result<(Vec<Change>, bool)> {
+async fn changed_files<R: GitRepo>(repo: &R, old_root: Option<&str>, new_root: &str) -> Result<(Vec<Change>, bool)> {
     changed_files_up_to(repo, old_root, new_root, MAX_FILES).await
 }
 
@@ -69,18 +59,10 @@ async fn changed_files_up_to<R: GitRepo>(
     max_files: usize,
 ) -> Result<(Vec<Change>, bool)> {
     let mut changes = Vec::new();
-    let mut level = vec![(
-        String::new(),
-        old_root.map(str::to_owned),
-        Some(new_root.to_owned()),
-    )];
+    let mut level = vec![(String::new(), old_root.map(str::to_owned), Some(new_root.to_owned()))];
     while !level.is_empty() {
         let read = try_join_all(level.iter().map(|(_, old_tree, new_tree)| async move {
-            let (old, new) = try_join(
-                entries(repo, old_tree.as_deref()),
-                entries(repo, new_tree.as_deref()),
-            )
-            .await?;
+            let (old, new) = try_join(entries(repo, old_tree.as_deref()), entries(repo, new_tree.as_deref())).await?;
             Ok::<_, worker::Error>((old, new))
         }))
         .await?;
@@ -94,16 +76,9 @@ async fn changed_files_up_to<R: GitRepo>(
                     continue;
                 }
                 let path = format!("{prefix}{name}");
-                let subtree = |entry: Option<&TreeEntry>| {
-                    entry
-                        .filter(|entry| entry.kind == EntryKind::Tree)
-                        .map(|entry| entry.hash.clone())
-                };
-                let file = |entry: Option<&TreeEntry>| {
-                    entry
-                        .filter(|entry| entry.kind != EntryKind::Tree)
-                        .map(|entry| entry.hash.clone())
-                };
+                let subtree =
+                    |entry: Option<&TreeEntry>| entry.filter(|entry| entry.kind == EntryKind::Tree).map(|entry| entry.hash.clone());
+                let file = |entry: Option<&TreeEntry>| entry.filter(|entry| entry.kind != EntryKind::Tree).map(|entry| entry.hash.clone());
                 let file_kind = |entry: Option<&TreeEntry>| entry.map(|entry| entry.kind).filter(|kind| *kind != EntryKind::Tree);
                 let (old_dir, new_dir) = (subtree(before), subtree(after));
                 if old_dir.is_some() || new_dir.is_some() {
@@ -115,13 +90,7 @@ async fn changed_files_up_to<R: GitRepo>(
                         changes.sort_by(|a: &Change, b: &Change| a.path.cmp(&b.path));
                         return Ok((changes, true));
                     }
-                    changes.push(Change {
-                        path,
-                        old: old_file,
-                        new: new_file,
-                        old_kind: file_kind(before),
-                        new_kind: file_kind(after),
-                    });
+                    changes.push(Change { path, old: old_file, new: new_file, old_kind: file_kind(before), new_kind: file_kind(after) });
                 }
             }
         }
@@ -134,11 +103,7 @@ async fn changed_files_up_to<R: GitRepo>(
 /// The paths of the files that differ between two trees, without reading
 /// any file: what is needed to see whether two changes touch the same
 /// files. Returns the paths and whether the list was cut short.
-pub async fn changed_paths<R: GitRepo>(
-    repo: &R,
-    old_tree: Option<&str>,
-    new_tree: &str,
-) -> Result<(Vec<String>, bool)> {
+pub async fn changed_paths<R: GitRepo>(repo: &R, old_tree: Option<&str>, new_tree: &str) -> Result<(Vec<String>, bool)> {
     let (changes, truncated) = changed_files(repo, old_tree, new_tree).await?;
     Ok((changes.into_iter().map(|change| change.path).collect(), truncated))
 }
@@ -294,13 +259,9 @@ pub async fn compare_trees<R: GitRepo>(
     // Contents are read a batch at a time, all of a batch at once.
     let mut files_read: Vec<Read> = Vec::with_capacity(changes.len());
     for batch in changes.chunks(READS_AT_ONCE) {
-        let read = try_join_all(batch.iter().map(|change| async move {
-            try_join(
-                text(repo, change.old.as_deref()),
-                text(repo, change.new.as_deref()),
-            )
-            .await
-        }))
+        let read = try_join_all(
+            batch.iter().map(|change| async move { try_join(text(repo, change.old.as_deref()), text(repo, change.new.as_deref())).await }),
+        )
         .await?;
         for (old, new) in read {
             for side in [&old, &new] {
@@ -340,16 +301,7 @@ pub async fn compare_trees<R: GitRepo>(
             None => (Vec::new(), 0, 0, false, false),
         };
         lines += hunks.iter().map(|hunk| hunk.lines.len()).sum::<usize>();
-        files.push(FileDiff {
-            path: change.path,
-            status,
-            additions,
-            deletions,
-            binary,
-            too_large,
-            hunks,
-            omitted,
-        });
+        files.push(FileDiff { path: change.path, status, additions, deletions, binary, too_large, hunks, omitted });
     }
     Ok((files, truncated))
 }

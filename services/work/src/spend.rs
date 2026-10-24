@@ -191,8 +191,8 @@ impl Work {
         let everyone: Vec<PersonSpend> = people.results::<PersonSpend>()?.into_iter().filter(|row| is_person(&row.id)).collect();
         let workspace_people = u32::try_from(everyone.len()).unwrap_or(u32::MAX);
         let members = viewer.is_member(&workspace);
-        let workspace_usd = (members && (can_see_people || workspace_people >= MIN_ROLLUP_PEOPLE))
-            .then(|| everyone.iter().map(|row| row.cost_usd).sum());
+        let workspace_usd =
+            (members && (can_see_people || workspace_people >= MIN_ROLLUP_PEOPLE)).then(|| everyone.iter().map(|row| row.cost_usd).sum());
         Ok(Outcome::Ok(Spend {
             workspace,
             person,

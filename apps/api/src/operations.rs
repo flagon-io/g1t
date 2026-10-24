@@ -6,45 +6,43 @@
 
 use g1t_contracts::access::{
     AddCollaboratorArgs, Affiliation, BasePermission, Capability, CollaboratorPermissionArgs, MyRepoInvitationsArgs,
-    OutsideCollaboratorsArgs, RemoveCollaboratorArgs, RepoAccess, RepoAccessArgs, RepoInvitation, RepoRole,
-    RespondRepoInvitationArgs, RevokeRepoInvitationArgs, SetBasePermissionArgs, SetCollaboratorRoleArgs,
+    OutsideCollaboratorsArgs, RemoveCollaboratorArgs, RepoAccess, RepoAccessArgs, RepoInvitation, RepoRole, RespondRepoInvitationArgs,
+    RevokeRepoInvitationArgs, SetBasePermissionArgs, SetCollaboratorRoleArgs,
 };
 use g1t_contracts::codeowners::CodeOwnersErrorsArgs;
-use g1t_contracts::identity::AgentScope;
 use g1t_contracts::events::Event;
+use g1t_contracts::identity::AgentScope;
 use g1t_contracts::identity::{CreateWorkspaceArgs, UpdateWorkspaceArgs, Workspace};
 use g1t_contracts::repos::{
     CreateArgs, DetachForkArgs, ForkRepoArgs, ForksArgs, GetArgs, ListArgs as ListReposArgs, Repo, RepoPath, SyncForkArgs,
 };
+use g1t_contracts::security::{
+    AlertChange, AlertState, DismissArgs, DismissReason, OverviewArgs as SecurityOverviewArgs, ReopenArgs, SecurityOverview,
+};
 use g1t_contracts::teams::{
-    CreateTeamArgs, DeleteTeamArgs, ListTeamsArgs, RemoveTeamMemberArgs, RemoveTeamRepoArgs, ReviewAlgorithm,
-    ReviewAssignment, SetTeamCreationArgs, SetTeamMemberArgs, SetTeamRepoArgs, Team, TeamArgs, TeamCreation, TeamRole,
-    TeamVisibility, UpdateTeamArgs,
+    CreateTeamArgs, DeleteTeamArgs, ListTeamsArgs, RemoveTeamMemberArgs, RemoveTeamRepoArgs, ReviewAlgorithm, ReviewAssignment,
+    SetTeamCreationArgs, SetTeamMemberArgs, SetTeamRepoArgs, Team, TeamArgs, TeamCreation, TeamRole, TeamVisibility, UpdateTeamArgs,
     UserTeamsArgs,
 };
-use g1t_contracts::security::{
-    AlertChange, AlertState, DismissArgs, DismissReason, OverviewArgs as SecurityOverviewArgs, ReopenArgs,
-    SecurityOverview,
-};
 
-use crate::alerts::{AlertKind, SecurityAlert};
-use crate::checks::ChecksOp;
 use crate::about::AboutOp;
-use crate::run_artifacts::ArtifactsOp;
-use crate::caches::CachesOp;
+use crate::alerts::{AlertKind, SecurityAlert};
 use crate::archives::ArchiveOp;
+use crate::caches::CachesOp;
+use crate::checks::ChecksOp;
+use crate::coordination::CoordinationOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::deployments::DeploymentsOp;
-use crate::telemetry::TelemetryOp;
-use crate::packages::PackagesOp;
 use crate::folios::FoliosOp;
-use crate::coordination::CoordinationOp;
-use crate::protection::ProtectionOp;
-use crate::token_policy::TokenOp;
-use crate::sso::SsoOp;
 use crate::onboarding::OnboardingOp;
+use crate::packages::PackagesOp;
+use crate::protection::ProtectionOp;
 use crate::rules::RulesOp;
+use crate::run_artifacts::ArtifactsOp;
 use crate::security::SecurityOp;
+use crate::sso::SsoOp;
+use crate::telemetry::TelemetryOp;
+use crate::token_policy::TokenOp;
 use g1t_contracts::inbox::{Reason, Severity, WATCH_EVENTS, WatchLevel};
 use g1t_contracts::repos::UpdateMethod;
 use g1t_contracts::rules::MergeMethod;
@@ -413,11 +411,7 @@ fn ok<T: Serialize>(value: &T) -> Result<Outcome<Value>> {
 }
 
 /// Calls a method that returns an `Outcome`, decoding its value as `T`.
-async fn call<A: Serialize, T: DeserializeOwned>(
-    service: &Fetcher,
-    method: &str,
-    args: &A,
-) -> Result<Outcome<T>> {
+async fn call<A: Serialize, T: DeserializeOwned>(service: &Fetcher, method: &str, args: &A) -> Result<Outcome<T>> {
     g1t_kit::call(service, method, args).await
 }
 
@@ -446,10 +440,7 @@ fn text(input: &Value, key: &str) -> String {
 }
 
 fn optional_text(input: &Value, key: &str) -> Option<String> {
-    input[key]
-        .as_str()
-        .filter(|value| !value.is_empty())
-        .map(str::to_owned)
+    input[key].as_str().filter(|value| !value.is_empty()).map(str::to_owned)
 }
 
 /// A whole number given as a number or as digits.
@@ -548,10 +539,7 @@ pub(crate) fn repo_path(input: &Value) -> Option<RepoPath> {
     let mut parts = input["repo"].as_str()?.split('/');
     match (parts.next(), parts.next(), parts.next()) {
         (Some(namespace), Some(name), None) if !namespace.is_empty() && !name.is_empty() => {
-            Some(RepoPath {
-                namespace: namespace.to_owned(),
-                name: name.to_owned(),
-            })
+            Some(RepoPath { namespace: namespace.to_owned(), name: name.to_owned() })
         }
         _ => None,
     }
@@ -772,7 +760,12 @@ fn project_state_input(input: &Value) -> std::result::Result<Option<ProjectState
 
 /// A field that `null` clears: `Some(None)` for null, `None` when it was
 /// not given, or why the value is not one `parse` reads.
-fn clearable<T>(input: &Value, key: &str, parse: fn(&str) -> Option<T>, what: &'static str) -> std::result::Result<Option<Option<T>>, &'static str> {
+fn clearable<T>(
+    input: &Value,
+    key: &str,
+    parse: fn(&str) -> Option<T>,
+    what: &'static str,
+) -> std::result::Result<Option<Option<T>>, &'static str> {
     match input.get(key) {
         None => Ok(None),
         Some(Value::Null) => Ok(Some(None)),
@@ -971,13 +964,11 @@ const COMMIT_MESSAGE_DEFAULTS: [(&str, CommitMessageDefault); 5] = [
 fn commit_message_default(input: &Value, key: &str) -> std::result::Result<Option<CommitMessageDefault>, String> {
     match input[key].as_str().map(str::trim).filter(|given| !given.is_empty()) {
         None => Ok(None),
-        Some(given) => COMMIT_MESSAGE_DEFAULTS
-            .iter()
-            .find(|(name, _)| name.eq_ignore_ascii_case(given))
-            .map(|(_, value)| Some(*value))
-            .ok_or_else(|| {
-                format!("{key} must be default, pull_title, pull_title_and_description, pull_title_and_commits or custom, not {given}.")
-            }),
+        Some(given) => {
+            COMMIT_MESSAGE_DEFAULTS.iter().find(|(name, _)| name.eq_ignore_ascii_case(given)).map(|(_, value)| Some(*value)).ok_or_else(
+                || format!("{key} must be default, pull_title, pull_title_and_description, pull_title_and_commits or custom, not {given}."),
+            )
+        }
     }
 }
 
@@ -1752,9 +1743,7 @@ impl Op {
             Op::ResendInvite => {
                 "Send a pending invite to g1t again: the same email, with the same link, to the same address. Refused with `409` when it is no longer pending."
             }
-            Op::ListWorkspaceInvites => {
-                "The invites made for a workspace, newest first, with each pending one's `code`. Owners only."
-            }
+            Op::ListWorkspaceInvites => "The invites made for a workspace, newest first, with each pending one's `code`. Owners only.",
             Op::InviteMember => {
                 "Invite someone into a workspace, by `username` or by `email`. Nobody joins without saying yes: they get an invitation to accept or decline, and join with `role` (`member` unless you give `owner`) when they accept. By `username`, the account gets the invitation in its inbox and by email, and it costs nothing. By `email`, it always makes an invite bound to that address and emails it the link, so the answer never says whether the address has a g1t account. Without one, the link makes the account, which is invited once it confirms its address. Refused with `409` when the person is already a member or already has a pending invitation to the workspace. Owners only. A free workspace cannot invite anyone: this is refused with `payment_required` (402) until it starts the g1t plan, and an invite sent before cannot be accepted until then."
             }
@@ -2069,9 +2058,15 @@ impl Op {
             Op::MarkPullRequestReady => {
                 "Mark a draft pull request ready for review. Push your commits first. The summary becomes its description and should say what changed and why."
             }
-            Op::ClosePullRequest => "Close a pull request without merging it. Its author may close their own, and whoever asked g1t for one may close that one; anyone else needs the Triage role or higher.",
-            Op::ReopenPullRequest => "Reopen a closed pull request. It comes back as the draft it was if it was closed as one, and ready for review otherwise; a merged pull request cannot be reopened, nor one whose branch was deleted. Its author may reopen their own, and whoever asked g1t for one may reopen that one; anyone else needs the Triage role or higher. Publishes pull.reopened with its head commit.",
-            Op::ConvertPullRequestToDraft => "Turn a pull request that is ready for review back into a draft. A draft cannot be merged until it is marked ready again; it leaves the merge queue, and a merge waiting for it to catch up is called off. Its author may, and whoever asked g1t for it; anyone else needs the Triage role or higher. Publishes pull.converted_to_draft.",
+            Op::ClosePullRequest => {
+                "Close a pull request without merging it. Its author may close their own, and whoever asked g1t for one may close that one; anyone else needs the Triage role or higher."
+            }
+            Op::ReopenPullRequest => {
+                "Reopen a closed pull request. It comes back as the draft it was if it was closed as one, and ready for review otherwise; a merged pull request cannot be reopened, nor one whose branch was deleted. Its author may reopen their own, and whoever asked g1t for one may reopen that one; anyone else needs the Triage role or higher. Publishes pull.reopened with its head commit."
+            }
+            Op::ConvertPullRequestToDraft => {
+                "Turn a pull request that is ready for review back into a draft. A draft cannot be merged until it is marked ready again; it leaves the merge queue, and a merge waiting for it to catch up is called off. Its author may, and whoever asked g1t for it; anyone else needs the Triage role or higher. Publishes pull.converted_to_draft."
+            }
             Op::CheckPullRequestTask => {
                 "Tick or untick a box of a pull request's task list: the `- [ ]` and `- [x]` items of its description, numbered from 1 in the order they are written. It works as check_work_item_task does: task (the box's number) or text (words of it), checked (true by default), and expected (its text as you read it, so a box that moved is found or refused with `409`), changing only that box against the description as it is. Returns the box, whether it changed, the description after, and how many boxes are done of the total. Its author may, and whoever asked g1t for it; anyone else needs the Triage role or higher. A merged or closed pull request's boxes can still be ticked."
             }
@@ -2126,12 +2121,8 @@ impl Op {
             Op::UpdateIntegration => {
                 "Change an integration: its name, its config (replaced whole when given) or its secret (a new key replaces the old one, write-only). Use it to rotate a key. Fields left out are kept. Secrets are never returned. Owners only."
             }
-            Op::DisconnectIntegration => {
-                "Remove an integration and its secrets. Owners only."
-            }
-            Op::TestIntegration => {
-                "Check that an integration's credentials work, by calling the system it connects to. Owners only."
-            }
+            Op::DisconnectIntegration => "Remove an integration and its secrets. Owners only.",
+            Op::TestIntegration => "Check that an integration's credentials work, by calling the system it connects to. Owners only.",
             Op::ListAiProviders => {
                 "A workspace's AI providers: the keys it keeps for frontier labs (anthropic, openai, gemini, xai, mistral, deepseek), model platforms (azure_openai, openrouter, groq, together, fireworks, cerebras) and self-hosted endpoints (anthropic_endpoint, openai_endpoint), each with its group, its config, the models it offered when last checked and its last error. Keys are sealed and never returned; secret_hint shows a key's last four characters. g1t hosts no model and bills nothing for them: they run on the workspace's own account. Members only."
             }
@@ -2162,9 +2153,7 @@ impl Op {
             Op::CreateWebhook => {
                 "Register an HTTPS address to be sent events as they happen: a signed JSON POST for each, retried for hours if the receiver does not answer with a 2xx. events lists the event types, or leave it out for all. Without a secret, g1t makes one and returns it once. A ping is sent at once. The Admin role, for a repository; owners, for a workspace."
             }
-            Op::UpdateWebhook => {
-                "Change a webhook's address, its events, or whether it is active. Only the fields given change."
-            }
+            Op::UpdateWebhook => "Change a webhook's address, its events, or whether it is active. Only the fields given change.",
             Op::DeleteWebhook => "Remove a webhook and its delivery log.",
             Op::PingWebhook => "Send a webhook a ping, to check that its receiver answers.",
             Op::ListWebhookDeliveries => {
@@ -2288,9 +2277,7 @@ impl Op {
             Op::GetNotificationThread => {
                 "One of your threads: what it is about, its latest activity, its last 10 things that happened (`activity`, newest first), and for a work item or pull request your `subscription` to it."
             }
-            Op::MarkThreadRead => {
-                "Mark one thread read, or with `read` false, unread. Returns the thread."
-            }
+            Op::MarkThreadRead => "Mark one thread read, or with `read` false, unread. Returns the thread.",
             Op::MarkThreadDone => {
                 "Mark one thread done: it leaves your inbox for Done, read. New activity on it brings it back. With `done` false it moves back now. Done threads are removed after 30 days unless saved. Returns the thread."
             }
@@ -2327,9 +2314,7 @@ impl Op {
             Op::PinProject => {
                 "Pin a project you can see, at `position` (0 first) or at the end; pinning one already pinned moves it. At most 8 a workspace: unpin one first when you have 8. Returns your pins, in order."
             }
-            Op::UnpinProject => {
-                "Unpin a project. Unpinning one that is not pinned changes nothing. Returns your pins, in order."
-            }
+            Op::UnpinProject => "Unpin a project. Unpinning one that is not pinned changes nothing. Returns your pins, in order.",
             Op::ReorderPinnedProjects => {
                 "Put your pins in a workspace in a new order: `projects` names every pinned project's slug, once, in the order you want them. Returns your pins, in order."
             }
@@ -2369,9 +2354,7 @@ impl Op {
             Op::RemoveTeamMember => {
                 "Take someone out of a team. They lose the roles the team gave them on repositories, unless they have them otherwise. Owners of the workspace and the team's maintainers; anyone may leave a team themselves. People only. Returns true."
             }
-            Op::ListChildTeams => {
-                "The teams nested directly under a team, as list_teams describes them. Anyone who can see the team."
-            }
+            Op::ListChildTeams => "The teams nested directly under a team, as list_teams describes them. Anyone who can see the team.",
             Op::ListTeamRepos => {
                 "The repositories a team has a role on: each one's `repo` (`workspace/name`), the team's `role` there (read, triage, write, maintain or admin), and `inherited_from`, the parent team it comes from when the team inherits it, or null for its own. Everyone in the team gets the role; where someone has a higher one otherwise, the higher one counts. Anyone who can see the team."
             }
@@ -2520,10 +2503,9 @@ impl Op {
                 }),
                 &["email"],
             ),
-            Op::RevokeInvite | Op::ResendInvite => object(
-                json!({ "id": { "type": "string", "description": "The invite's id, such as inv_01kâ€¦" } }),
-                &["id"],
-            ),
+            Op::RevokeInvite | Op::ResendInvite => {
+                object(json!({ "id": { "type": "string", "description": "The invite's id, such as inv_01kâ€¦" } }), &["id"])
+            }
             Op::ListWorkspaceInvites => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
             Op::InviteMember => object(
                 json!({
@@ -2700,11 +2682,9 @@ impl Op {
                 &["workspace", "label"],
             ),
             Op::DeleteLabel => object(json!({ "workspace": workspace_schema(), "label": label_schema() }), &["workspace", "label"]),
-            Op::ListWorkItemLabels
-            | Op::GetWorkItem
-            | Op::ReopenWorkItem
-            | Op::ListWorkItemLinks
-            | Op::ListWorkItemDecisions => item_only(),
+            Op::ListWorkItemLabels | Op::GetWorkItem | Op::ReopenWorkItem | Op::ListWorkItemLinks | Op::ListWorkItemDecisions => {
+                item_only()
+            }
             Op::AddWorkItemLabels | Op::SetWorkItemLabels => object(
                 item_numbered(json!({
                     "labels": {
@@ -2726,10 +2706,7 @@ impl Op {
                 })),
                 &["number"],
             ),
-            Op::ListMilestones => object(
-                json!({ "workspace": workspace_schema(), "state": states }),
-                &["workspace"],
-            ),
+            Op::ListMilestones => object(json!({ "workspace": workspace_schema(), "state": states }), &["workspace"]),
             Op::GetMilestone | Op::DeleteMilestone => {
                 object(json!({ "workspace": workspace_schema(), "milestone": milestone_schema() }), &["workspace", "milestone"])
             }
@@ -2756,7 +2733,9 @@ impl Op {
                 }),
                 &["workspace"],
             ),
-            Op::GetWorkProject => object(json!({ "workspace": workspace_schema(), "project": project_schema() }), &["workspace", "project"]),
+            Op::GetWorkProject => {
+                object(json!({ "workspace": workspace_schema(), "project": project_schema() }), &["workspace", "project"])
+            }
             Op::CreateWorkProject | Op::UpdateWorkProject => {
                 let update = self == Op::UpdateWorkProject;
                 let clears = |what: &str| if update { format!("{what} An empty string clears it.") } else { what.to_owned() };
@@ -3110,10 +3089,7 @@ impl Op {
                 }),
                 &["repo"],
             ),
-            Op::GetPullRequest
-            | Op::ClosePullRequest
-            | Op::ReopenPullRequest
-            | Op::ConvertPullRequestToDraft => just_numbered(),
+            Op::GetPullRequest | Op::ClosePullRequest | Op::ReopenPullRequest | Op::ConvertPullRequestToDraft => just_numbered(),
             Op::GetPullRequestChanges => object(
                 numbered(json!({
                     "paths": {
@@ -3335,18 +3311,24 @@ impl Op {
                 })),
                 &["number", "sub_item"],
             ),
-            Op::CheckWorkItemTask => object(item_numbered(json!({
+            Op::CheckWorkItemTask => object(
+                item_numbered(json!({
                     "task": { "type": "integer", "minimum": 1, "description": "The box's number, from 1, in the order the boxes are written." },
                     "text": { "type": "string", "description": "Instead of task: words of the box's text. The box that says exactly this (ignoring case and spacing), else the one box whose text contains it." },
                     "checked": { "type": "boolean", "description": "true (the default) ticks it; false unticks it." },
                     "expected": { "type": "string", "description": "With task: the box's text as you read it. A box that moved is found by it, or the call is refused rather than ticking the wrong box." },
-                })), &["number"]),
-            Op::CheckPullRequestTask => object(numbered(json!({
+                })),
+                &["number"],
+            ),
+            Op::CheckPullRequestTask => object(
+                numbered(json!({
                     "task": { "type": "integer", "minimum": 1, "description": "The box's number, from 1, in the order the boxes are written." },
                     "text": { "type": "string", "description": "Instead of task: words of the box's text. The box that says exactly this (ignoring case and spacing), else the one box whose text contains it." },
                     "checked": { "type": "boolean", "description": "true (the default) ticks it; false unticks it." },
                     "expected": { "type": "string", "description": "With task: the box's text as you read it. A box that moved is found by it, or the call is refused rather than ticking the wrong box." },
-                })), &["repo", "number"]),
+                })),
+                &["repo", "number"],
+            ),
             Op::ResolveRef => object(
                 json!({
                     "repo": { "type": "string", "description": "The repository the reference is written in, \"owner/name\"." },
@@ -3377,10 +3359,7 @@ impl Op {
                 }),
                 &["repo", "comment_id", "body"],
             ),
-            Op::DeleteComment => object(
-                json!({ "repo": repo_schema(), "comment_id": comment_id_schema() }),
-                &["repo", "comment_id"],
-            ),
+            Op::DeleteComment => object(json!({ "repo": repo_schema(), "comment_id": comment_id_schema() }), &["repo", "comment_id"]),
             Op::React => object(
                 numbered(json!({
                     "content": {
@@ -3395,10 +3374,9 @@ impl Op {
                 })),
                 &["repo", "number", "content"],
             ),
-            Op::AddWorkItemComment => object(
-                item_numbered(json!({ "body": { "type": "string", "description": "Markdown." } })),
-                &["number", "body"],
-            ),
+            Op::AddWorkItemComment => {
+                object(item_numbered(json!({ "body": { "type": "string", "description": "Markdown." } })), &["number", "body"])
+            }
             Op::EditWorkItemComment => object(
                 json!({
                     "workspace": workspace_schema(),
@@ -3607,10 +3585,9 @@ impl Op {
                 }),
                 &["repo", "path", "line"],
             ),
-            Op::MarkPullRequestReady => object(
-                numbered(json!({ "summary": { "type": "string", "description": "Markdown." } })),
-                &["repo", "number", "summary"],
-            ),
+            Op::MarkPullRequestReady => {
+                object(numbered(json!({ "summary": { "type": "string", "description": "Markdown." } })), &["repo", "number", "summary"])
+            }
             Op::MergePullRequest => object(
                 numbered(json!({
                     "keep_item_open": {
@@ -3676,9 +3653,7 @@ impl Op {
             Op::GetPullRequestMergeOptions
             | Op::DisablePullRequestAutoMerge
             | Op::DeletePullRequestHeadBranch
-            | Op::RestorePullRequestHeadBranch => {
-                just_numbered()
-            }
+            | Op::RestorePullRequestHeadBranch => just_numbered(),
             Op::ListRepoCommitComments => object(
                 json!({
                     "repo": repo_schema(),
@@ -3686,10 +3661,7 @@ impl Op {
                 }),
                 &["repo"],
             ),
-            Op::ListCommitComments => object(
-                json!({ "repo": repo_schema(), "sha": commit_sha_schema() }),
-                &["repo", "sha"],
-            ),
+            Op::ListCommitComments => object(json!({ "repo": repo_schema(), "sha": commit_sha_schema() }), &["repo", "sha"]),
             Op::CreateCommitComment => object(
                 json!({
                     "repo": repo_schema(),
@@ -3715,10 +3687,9 @@ impl Op {
                 }),
                 &["repo", "comment_id", "body"],
             ),
-            Op::DeleteCommitComment => object(
-                json!({ "repo": repo_schema(), "comment_id": commit_comment_id_schema() }),
-                &["repo", "comment_id"],
-            ),
+            Op::DeleteCommitComment => {
+                object(json!({ "repo": repo_schema(), "comment_id": commit_comment_id_schema() }), &["repo", "comment_id"])
+            }
             Op::ListEvents => object(
                 json!({
                     "repo": repo_schema(),
@@ -3899,10 +3870,9 @@ impl Op {
                 })),
                 &[],
             ),
-            Op::RemoveRunner => object(
-                runners_owner(json!({ "id": { "type": "string", "description": "The runner's id, from a list." } })),
-                &["id"],
-            ),
+            Op::RemoveRunner => {
+                object(runners_owner(json!({ "id": { "type": "string", "description": "The runner's id, from a list." } })), &["id"])
+            }
             Op::ListRunnerGroups => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
             Op::CreateRunnerGroup | Op::UpdateRunnerGroup => object(
                 json!({
@@ -3959,10 +3929,9 @@ impl Op {
                 })),
                 &["id"],
             ),
-            Op::DeleteWebhook | Op::PingWebhook | Op::ListWebhookDeliveries => object(
-                hook_owner(json!({ "id": { "type": "string", "description": "The webhook's id." } })),
-                &["id"],
-            ),
+            Op::DeleteWebhook | Op::PingWebhook | Op::ListWebhookDeliveries => {
+                object(hook_owner(json!({ "id": { "type": "string", "description": "The webhook's id." } })), &["id"])
+            }
             Op::RedeliverWebhook => object(
                 hook_owner(json!({
                     "id": { "type": "string", "description": "The webhook's id." },
@@ -4077,10 +4046,9 @@ impl Op {
                 }),
                 &["repo", "username", "role"],
             ),
-            Op::RemoveCollaborator | Op::GetCollaboratorPermission => object(
-                json!({ "repo": repo_schema(), "username": username_schema() }),
-                &["repo", "username"],
-            ),
+            Op::RemoveCollaborator | Op::GetCollaboratorPermission => {
+                object(json!({ "repo": repo_schema(), "username": username_schema() }), &["repo", "username"])
+            }
             Op::RevokeRepoInvitation => object(
                 json!({
                     "repo": repo_schema(),
@@ -4188,18 +4156,16 @@ impl Op {
                 &[],
             ),
             Op::GetNotificationThread => object(json!({ "id": thread_id_schema() }), &["id"]),
-            Op::MarkThreadRead => object(
-                json!({ "id": thread_id_schema(), "read": { "type": "boolean", "description": "False marks it unread." } }),
-                &["id"],
-            ),
+            Op::MarkThreadRead => {
+                object(json!({ "id": thread_id_schema(), "read": { "type": "boolean", "description": "False marks it unread." } }), &["id"])
+            }
             Op::MarkThreadDone => object(
                 json!({ "id": thread_id_schema(), "done": { "type": "boolean", "description": "False moves it back to the inbox." } }),
                 &["id"],
             ),
-            Op::SaveThread => object(
-                json!({ "id": thread_id_schema(), "saved": { "type": "boolean", "description": "False unsaves it." } }),
-                &["id"],
-            ),
+            Op::SaveThread => {
+                object(json!({ "id": thread_id_schema(), "saved": { "type": "boolean", "description": "False unsaves it." } }), &["id"])
+            }
             Op::SnoozeThread => object(
                 json!({
                     "id": thread_id_schema(),
@@ -4319,9 +4285,7 @@ impl Op {
                 }),
                 &["workspace"],
             ),
-            Op::GetTeam | Op::DeleteTeam | Op::ListChildTeams | Op::ListTeamRepos => {
-                object(team_target(json!({})), &["workspace", "team"])
-            }
+            Op::GetTeam | Op::DeleteTeam | Op::ListChildTeams | Op::ListTeamRepos => object(team_target(json!({})), &["workspace", "team"]),
             Op::CreateTeam => object(
                 json!({
                     "workspace": workspace_schema(),
@@ -4364,18 +4328,14 @@ impl Op {
                 })),
                 &["workspace", "team"],
             ),
-            Op::ListTeamMembers => object(
-                team_target(json!({ "include_child_teams": include_child_teams_schema() })),
-                &["workspace", "team"],
-            ),
+            Op::ListTeamMembers => {
+                object(team_target(json!({ "include_child_teams": include_child_teams_schema() })), &["workspace", "team"])
+            }
             Op::SetTeamMember => object(
                 team_target(json!({ "username": username_schema(), "role": team_role_schema() })),
                 &["workspace", "team", "username"],
             ),
-            Op::RemoveTeamMember => object(
-                team_target(json!({ "username": username_schema() })),
-                &["workspace", "team", "username"],
-            ),
+            Op::RemoveTeamMember => object(team_target(json!({ "username": username_schema() })), &["workspace", "team", "username"]),
             Op::SetTeamRepo | Op::RemoveTeamRepo => {
                 let mut properties = team_target(json!({
                     "repo": {
@@ -4414,9 +4374,7 @@ impl Op {
                 }),
                 &["workspace"],
             ),
-            Op::GetBudget | Op::ListInvoices | Op::GetBillingDetails => {
-                object(json!({ "workspace": workspace_schema() }), &["workspace"])
-            }
+            Op::GetBudget | Op::ListInvoices | Op::GetBillingDetails => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
             Op::SetBudget => object(
                 json!({
                     "workspace": workspace_schema(),
@@ -4438,13 +4396,10 @@ impl Op {
                 }),
                 &["workspace"],
             ),
-            Op::ListUserTeams => object(
-                json!({ "workspace": workspace_schema(), "username": username_schema() }),
-                &["workspace", "username"],
-            ),
-            Op::RequestReviewers | Op::RemoveRequestedReviewers => {
-                object(requested_reviewers_properties(), &["repo", "number"])
+            Op::ListUserTeams => {
+                object(json!({ "workspace": workspace_schema(), "username": username_schema() }), &["workspace", "username"])
             }
+            Op::RequestReviewers | Op::RemoveRequestedReviewers => object(requested_reviewers_properties(), &["repo", "number"]),
             Op::GetCodeownersErrors => object(
                 json!({
                     "repo": repo_schema(),
@@ -4845,15 +4800,7 @@ impl Op {
     /// names, never on one that has moved away from it: moving, renaming,
     /// deleting, restoring and purging, and changing who can see it.
     fn names_the_repo_as_it_is(self) -> bool {
-        matches!(
-            self,
-            Op::TransferRepo
-                | Op::RenameRepo
-                | Op::SetRepoVisibility
-                | Op::DeleteRepo
-                | Op::RestoreRepo
-                | Op::PurgeRepo
-        )
+        matches!(self, Op::TransferRepo | Op::RenameRepo | Op::SetRepoVisibility | Op::DeleteRepo | Op::RestoreRepo | Op::PurgeRepo)
     }
 
     /// Runs the operation. One that found nothing, or was refused, under a
@@ -4861,12 +4808,7 @@ impl Op {
     /// set, runs again under the workspace's current slug, and one naming a
     /// repository by a path it was transferred away from runs again at its
     /// path now; neither outcome changed anything.
-    pub async fn run(
-        self,
-        services: &Services,
-        viewer: &Viewer,
-        input: &Value,
-    ) -> Result<Outcome<Value>> {
+    pub async fn run(self, services: &Services, viewer: &Viewer, input: &Value) -> Result<Outcome<Value>> {
         let outcome = self.run_once(services, viewer, input).await?;
         if let Outcome::Fail(failure) = &outcome
             && matches!(failure.code, FailureCode::NotFound | FailureCode::Forbidden)
@@ -4888,49 +4830,30 @@ impl Op {
         Ok(outcome)
     }
 
-    async fn run_once(
-        self,
-        services: &Services,
-        viewer: &Viewer,
-        input: &Value,
-    ) -> Result<Outcome<Value>> {
+    async fn run_once(self, services: &Services, viewer: &Viewer, input: &Value) -> Result<Outcome<Value>> {
         if self.needs_user() && viewer.is_none() {
-            return failed(
-                FailureCode::Unauthenticated,
-                "This needs a g1t access token.",
-            );
+            return failed(FailureCode::Unauthenticated, "This needs a g1t access token.");
         }
         // An agent's token does only what its scope lists, in its repository.
         if let Some(scope) = &services.scope {
             if !self.allowed_by(scope) {
-                return failed(
-                    FailureCode::Forbidden,
-                    &format!("A run's token cannot use {}.", self.name()),
-                );
+                return failed(FailureCode::Forbidden, &format!("A run's token cannot use {}.", self.name()));
             }
             let asked = repo_path(input);
             if self.needs_repo()
                 && !asked.is_some_and(|asked| {
-                    asked.namespace.eq_ignore_ascii_case(&scope.repo.namespace)
-                        && asked.name.eq_ignore_ascii_case(&scope.repo.name)
+                    asked.namespace.eq_ignore_ascii_case(&scope.repo.namespace) && asked.name.eq_ignore_ascii_case(&scope.repo.name)
                 })
             {
                 return failed(
                     FailureCode::Forbidden,
-                    &format!(
-                        "A run's token works in {}/{} only.",
-                        scope.repo.namespace, scope.repo.name
-                    ),
+                    &format!("A run's token works in {}/{} only.", scope.repo.namespace, scope.repo.name),
                 );
             }
             // Work items are its repository's workspace's, and no other's.
-            let workspace_op = self.in_a_workspace()
-                || matches!(self, Op::Coordination(op) if !op.needs_repo());
+            let workspace_op = self.in_a_workspace() || matches!(self, Op::Coordination(op) if !op.needs_repo());
             if workspace_op && !item_workspace(input).eq_ignore_ascii_case(&scope.repo.namespace) {
-                return failed(
-                    FailureCode::Forbidden,
-                    &format!("A run's token works in the {} workspace only.", scope.repo.namespace),
-                );
+                return failed(FailureCode::Forbidden, &format!("A run's token works in the {} workspace only.", scope.repo.namespace));
             }
         }
         // A field it does not take is refused, never silently ignored.
@@ -4942,23 +4865,13 @@ impl Op {
         let repo = match repo_path(input) {
             Some(repo) => repo,
             None if self.needs_repo() => {
-                return failed(
-                    FailureCode::Invalid,
-                    "Give the repository as \"owner/name\".",
-                );
+                return failed(FailureCode::Invalid, "Give the repository as \"owner/name\".");
             }
-            None => RepoPath {
-                namespace: String::new(),
-                name: String::new(),
-            },
+            None => RepoPath { namespace: String::new(), name: String::new() },
         };
         let number = integer(input, "number").unwrap_or_default();
-        let view = || ViewArgs {
-            repo: repo.clone(),
-            number,
-            viewer: viewer.clone(),
-            after_seq: integer(input, "after").unwrap_or_default(),
-        };
+        let view =
+            || ViewArgs { repo: repo.clone(), number, viewer: viewer.clone(), after_seq: integer(input, "after").unwrap_or_default() };
         let pull_action = || PullActionArgs {
             actor: actor(),
             repo: repo.clone(),
@@ -4974,16 +4887,7 @@ impl Op {
             delete_branch: None,
             update_method: None,
         };
-        let Services {
-            identity,
-            repos,
-            work,
-            events,
-            integrations,
-            webhooks,
-            actions,
-            ..
-        } = services;
+        let Services { identity, repos, work, events, integrations, webhooks, actions, .. } = services;
         let workspace = || text(input, "workspace").to_lowercase();
         // A work item, label or milestone is its workspace's: named by
         // slug, or by a repository of it.
@@ -7687,17 +7591,13 @@ impl Op {
 fn alert_filters(input: &Value) -> std::result::Result<(Option<AlertState>, Option<AlertKind>), String> {
     let state = match optional_text(input, "state") {
         None => None,
-        Some(state) => Some(
-            AlertState::parse(&state.to_lowercase())
-                .ok_or_else(|| format!("state is open, dismissed or fixed, not {state}."))?,
-        ),
+        Some(state) => {
+            Some(AlertState::parse(&state.to_lowercase()).ok_or_else(|| format!("state is open, dismissed or fixed, not {state}."))?)
+        }
     };
     let kind = match optional_text(input, "kind") {
         None => None,
-        Some(kind) => Some(
-            AlertKind::parse(&kind.to_lowercase())
-                .ok_or_else(|| format!("kind is secret or dependency, not {kind}."))?,
-        ),
+        Some(kind) => Some(AlertKind::parse(&kind.to_lowercase()).ok_or_else(|| format!("kind is secret or dependency, not {kind}."))?),
     };
     Ok((state, kind))
 }
@@ -7715,12 +7615,9 @@ fn dismiss_reason(input: &Value, id: &str) -> std::result::Result<DismissReason,
         });
     };
     match AlertKind::of_id(id) {
-        Some(kind) if !kind.takes(reason) => Err(format!(
-            "A {} alert is dismissed with {}, not {}.",
-            kind.as_str(),
-            kind.reasons().join(", "),
-            reason.as_str()
-        )),
+        Some(kind) if !kind.takes(reason) => {
+            Err(format!("A {} alert is dismissed with {}, not {}.", kind.as_str(), kind.reasons().join(", "), reason.as_str()))
+        }
         _ => Ok(reason),
     }
 }
@@ -7765,11 +7662,9 @@ fn team_slug(input: &Value) -> String {
 fn team_visibility(input: &Value) -> std::result::Result<Option<TeamVisibility>, String> {
     match input.get("visibility").filter(|value| !value.is_null()) {
         None => Ok(None),
-        Some(value) => value
-            .as_str()
-            .and_then(TeamVisibility::parse)
-            .map(Some)
-            .ok_or_else(|| "visibility is visible or secret.".to_owned()),
+        Some(value) => {
+            value.as_str().and_then(TeamVisibility::parse).map(Some).ok_or_else(|| "visibility is visible or secret.".to_owned())
+        }
     }
 }
 
@@ -7777,10 +7672,7 @@ fn team_visibility(input: &Value) -> std::result::Result<Option<TeamVisibility>,
 fn team_role(input: &Value) -> std::result::Result<TeamRole, String> {
     match input.get("role").filter(|value| !value.is_null()) {
         None => Ok(TeamRole::Member),
-        Some(value) => value
-            .as_str()
-            .and_then(TeamRole::parse)
-            .ok_or_else(|| "role is member or maintainer.".to_owned()),
+        Some(value) => value.as_str().and_then(TeamRole::parse).ok_or_else(|| "role is member or maintainer.".to_owned()),
     }
 }
 
@@ -7802,9 +7694,7 @@ fn review_assignment(given: &Value, current: ReviewAssignment) -> std::result::R
         if !present(key) {
             return Ok(now);
         }
-        integer(given, key)
-            .filter(|n| (1..=most).contains(n))
-            .ok_or_else(|| format!("{key} is a whole number from 1 to {most}."))
+        integer(given, key).filter(|n| (1..=most).contains(n)).ok_or_else(|| format!("{key} is a whole number from 1 to {most}."))
     };
     next.enabled = boolean("enabled", next.enabled)?;
     if present("algorithm") {
@@ -7829,10 +7719,7 @@ fn review_assignment(given: &Value, current: ReviewAssignment) -> std::result::R
 fn team_repo(input: &Value, workspace: &str) -> Option<RepoPath> {
     repo_path(input).or_else(|| {
         let name = input["repo"].as_str()?.trim();
-        (!name.is_empty() && !name.contains('/')).then(|| RepoPath {
-            namespace: workspace.to_owned(),
-            name: name.to_owned(),
-        })
+        (!name.is_empty() && !name.contains('/')).then(|| RepoPath { namespace: workspace.to_owned(), name: name.to_owned() })
     })
 }
 
@@ -7864,13 +7751,7 @@ fn reviewer_names(input: &Value, workspace: &str) -> (Vec<String>, Vec<String>) 
 
 /// Who is asked to review once `people` and `teams` are added (or, with
 /// `add` false, taken away), as update_pull takes it: people, then teams.
-fn reviewers_after(
-    current_people: &[String],
-    current_teams: &[String],
-    people: &[String],
-    teams: &[String],
-    add: bool,
-) -> Vec<String> {
+fn reviewers_after(current_people: &[String], current_teams: &[String], people: &[String], teams: &[String], add: bool) -> Vec<String> {
     let has = |list: &[String], name: &str| list.iter().any(|item| item.eq_ignore_ascii_case(name));
     let mut out = Vec::new();
     for (current, change) in [(current_people, people), (current_teams, teams)] {
@@ -7903,12 +7784,7 @@ impl Op {
     pub fn required(self) -> Vec<String> {
         self.input()["required"]
             .as_array()
-            .map(|names| {
-                names
-                    .iter()
-                    .filter_map(|name| name.as_str().map(str::to_owned))
-                    .collect()
-            })
+            .map(|names| names.iter().filter_map(|name| name.as_str().map(str::to_owned)).collect())
             .unwrap_or_default()
     }
 }
@@ -7950,10 +7826,7 @@ mod tests {
     #[test]
     fn a_repository_is_owner_slash_name() {
         let path = repo_path(&json!({ "repo": "flagon-io/hello" })).unwrap();
-        assert_eq!(
-            (path.namespace.as_str(), path.name.as_str()),
-            ("flagon-io", "hello")
-        );
+        assert_eq!((path.namespace.as_str(), path.name.as_str()), ("flagon-io", "hello"));
         for bad in ["flagon-io", "a/b/c", "/hello", "flagon-io/", ""] {
             assert!(repo_path(&json!({ "repo": bad })).is_none(), "{bad}");
         }
@@ -8030,17 +7903,20 @@ mod tests {
         assert_eq!(repo_role(&json!({ "role": "owner" })), None);
         assert_eq!(repo_role(&json!({})), None);
         assert_eq!(Op::AddCollaborator.input()["properties"]["role"]["enum"], json!(["read", "triage", "write", "maintain", "admin"]));
-        assert_eq!(
-            Op::SetBasePermission.input()["properties"]["base_permission"]["enum"],
-            json!(["none", "read", "write", "admin"])
-        );
+        assert_eq!(Op::SetBasePermission.input()["properties"]["base_permission"]["enum"], json!(["none", "read", "write", "admin"]));
     }
 
     /// The operations about one person's own invitations, and a
     /// workspace's settings, name no repository.
     #[test]
     fn access_operations_name_a_repository_only_when_they_are_about_one() {
-        for op in [Op::ListMyRepoInvitations, Op::AcceptRepoInvitation, Op::DeclineRepoInvitation, Op::SetBasePermission, Op::ListOutsideCollaborators] {
+        for op in [
+            Op::ListMyRepoInvitations,
+            Op::AcceptRepoInvitation,
+            Op::DeclineRepoInvitation,
+            Op::SetBasePermission,
+            Op::ListOutsideCollaborators,
+        ] {
             assert!(!op.needs_repo(), "{}", op.name());
         }
         for op in ACCESS {
@@ -8059,10 +7935,7 @@ mod tests {
         assert!(reason("", "sec_1").unwrap_err().starts_with("Give a reason"));
         assert!(reason("not_used", "sec_1").unwrap_err().contains("false_positive"));
         assert!(reason("revoked", "vul_1").unwrap_err().contains("fix_started"));
-        assert_eq!(
-            Op::DismissSecurityAlert.input()["properties"]["reason"]["enum"].as_array().unwrap().len(),
-            DismissReason::ALL.len()
-        );
+        assert_eq!(Op::DismissSecurityAlert.input()["properties"]["reason"]["enum"].as_array().unwrap().len(), DismissReason::ALL.len());
     }
 
     #[test]
@@ -8130,14 +8003,8 @@ mod tests {
         assert!(team_role(&json!({ "role": "admin" })).is_err());
         assert_eq!(Op::SetTeamMember.input()["properties"]["role"]["enum"], json!(["member", "maintainer"]));
         assert_eq!(Op::CreateTeam.input()["properties"]["visibility"]["enum"], json!(["visible", "secret"]));
-        assert_eq!(
-            Op::SetTeamRepo.input()["properties"]["role"]["enum"],
-            json!(["read", "triage", "write", "maintain", "admin"])
-        );
-        assert_eq!(
-            Op::SetTeamReviewAssignment.input()["properties"]["algorithm"]["enum"],
-            json!(["round_robin", "load_balance"])
-        );
+        assert_eq!(Op::SetTeamRepo.input()["properties"]["role"]["enum"], json!(["read", "triage", "write", "maintain", "admin"]));
+        assert_eq!(Op::SetTeamReviewAssignment.input()["properties"]["algorithm"]["enum"], json!(["round_robin", "load_balance"]));
         assert_eq!(yes(&json!({ "a": "true" }), "a"), Some(true));
         assert_eq!(yes(&json!({ "a": false }), "a"), Some(false));
         assert_eq!(yes(&json!({ "a": "maybe" }), "a"), None);
@@ -8192,10 +8059,7 @@ mod tests {
             reviewers_after(&current_people, &current_teams, &people, &teams, true),
             vec!["bo", "ana", "g1t", "acme/web", "acme/backend"]
         );
-        assert_eq!(
-            reviewers_after(&current_people, &current_teams, &["ANA".to_owned()], &["acme/web".to_owned()], false),
-            vec!["bo"]
-        );
+        assert_eq!(reviewers_after(&current_people, &current_teams, &["ANA".to_owned()], &["acme/web".to_owned()], false), vec!["bo"]);
         assert_eq!(reviewer_names(&json!({}), "acme"), (vec![], vec![]));
     }
 }

@@ -67,10 +67,8 @@ pub fn signal(system: &str, payload: &Value) -> std::result::Result<Signal, Stri
     if !payload.is_object() {
         return Err("The body is not a JSON object.".to_owned());
     }
-    let title = first(payload, &["title", "event_title", "summary", "name"])
-        .ok_or_else(|| "The payload has no title.".to_owned())?;
-    let external_id = first(payload, &["id", "alert_id", "aggregate", "incident_key", "dedup_key"])
-        .unwrap_or_else(|| title.clone());
+    let title = first(payload, &["title", "event_title", "summary", "name"]).ok_or_else(|| "The payload has no title.".to_owned())?;
+    let external_id = first(payload, &["id", "alert_id", "aggregate", "incident_key", "dedup_key"]).unwrap_or_else(|| title.clone());
     let state = first(payload, &["status", "transition", "alert_transition", "state"]).unwrap_or_default();
     let action = match state.to_ascii_lowercase().as_str() {
         "recovered" | "resolved" | "ok" | "closed" => Action::Recovered,

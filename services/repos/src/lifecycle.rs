@@ -18,23 +18,18 @@
 //! services with the same helper as `repo.transferred`
 //! (`g1t_kit::transfer`).
 
-use g1t_contracts::audit::{
-    AuditActor, AuditOutcome, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface,
-};
+use g1t_contracts::access::{self, Capability, RepoRole};
+use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface};
 use g1t_contracts::events::{
-    BranchRenamed, NewEvent, RepoArchived, RepoDefaultBranchChanged, RepoDeleted, RepoPurged,
-    RepoRenamed, RepoRestored, RepoUpdated, RepoVisibilityChanged, WorkspaceDeleted,
-    WorkspaceDeleting, WorkspaceRestored,
+    BranchRenamed, NewEvent, RepoArchived, RepoDefaultBranchChanged, RepoDeleted, RepoPurged, RepoRenamed, RepoRestored, RepoUpdated,
+    RepoVisibilityChanged, WorkspaceDeleted, WorkspaceDeleting, WorkspaceRestored,
 };
 use g1t_contracts::identity::TransferRepoScopesArgs;
 use g1t_contracts::repos::{
-    ArchiveArgs, Branch, CreateBranchArgs, DeleteArgs, DeletedArgs, DeletedRepo, DeletedRepoArgs,
-    PurgeDueArgs, RESTORE_DAYS, RemoveBranchArgs, RenameArgs, RenameBranchArgs, Repo, RepoPath,
-    RepoStatus, ResolveBranchArgs,
-    SetDefaultBranchArgs, SetVisibilityArgs, StatusByIdArgs, archived_message,
-    is_valid_branch_name,
+    ArchiveArgs, Branch, CreateBranchArgs, DeleteArgs, DeletedArgs, DeletedRepo, DeletedRepoArgs, PurgeDueArgs, RESTORE_DAYS,
+    RemoveBranchArgs, RenameArgs, RenameBranchArgs, Repo, RepoPath, RepoStatus, ResolveBranchArgs, SetDefaultBranchArgs, SetVisibilityArgs,
+    StatusByIdArgs, archived_message, is_valid_branch_name,
 };
-use g1t_contracts::access::{self, Capability, RepoRole};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, User, is_valid_repo_name, new_id};
 use g1t_kit::now_ms;
@@ -85,10 +80,7 @@ impl Asker {
 
     /// The asker, with their role on `repo`.
     pub fn on(user: &User, repo: &Repo) -> Self {
-        Asker {
-            repo_role: crate::registry::role(repo, &Some(user.clone())),
-            ..Asker::of(user, &repo.namespace)
-        }
+        Asker { repo_role: crate::registry::role(repo, &Some(user.clone())), ..Asker::of(user, &repo.namespace) }
     }
 }
 
@@ -98,16 +90,12 @@ impl Asker {
 /// transferring and deleting, an owner of the workspace as well, unless its
 /// member privileges let its members with Admin do it.
 pub fn admin_only(asker: Asker, namespace: &str, what: &str, capability: Capability) -> std::result::Result<(), Refusal> {
-    let admins_may = asker.role == Some(Role::Member)
-        && asker.repo_role == Some(RepoRole::Admin)
-        && !access::owner_only(capability, &asker.privileges);
+    let admins_may =
+        asker.role == Some(Role::Member) && asker.repo_role == Some(RepoRole::Admin) && !access::owner_only(capability, &asker.privileges);
     if access::OWNER_ONLY.contains(&capability) && !admins_may {
         // Someone who can see the repository is told why, not that it is missing.
         if asker.role.is_none() && asker.repo_role.is_some() && asker.person {
-            return Err((
-                FailureCode::Forbidden,
-                format!("Only an owner of {namespace} can {what} its repositories."),
-            ));
+            return Err((FailureCode::Forbidden, format!("Only an owner of {namespace} can {what} its repositories.")));
         }
         return owner_only(asker, namespace, what);
     }
@@ -115,18 +103,12 @@ pub fn admin_only(asker: Asker, namespace: &str, what: &str, capability: Capabil
         return Err((FailureCode::NotFound, "Repository not found.".into()));
     }
     if !asker.person {
-        return Err((
-            FailureCode::Forbidden,
-            format!("Only a person can {what} a repository. Sign in, or use a personal access token."),
-        ));
+        return Err((FailureCode::Forbidden, format!("Only a person can {what} a repository. Sign in, or use a personal access token.")));
     }
     if !asker.repo_role.is_some_and(|role| access::allows(role, capability)) {
         return Err((
             FailureCode::Forbidden,
-            format!(
-                "You need the {} role on a repository of {namespace} to {what} it.",
-                access::least_role(capability).label()
-            ),
+            format!("You need the {} role on a repository of {namespace} to {what} it.", access::least_role(capability).label()),
         ));
     }
     if !asker.verified {
@@ -153,16 +135,10 @@ pub fn owner_only(asker: Asker, namespace: &str, what: &str) -> std::result::Res
         return Err((FailureCode::NotFound, "Repository not found.".into()));
     }
     if !asker.person {
-        return Err((
-            FailureCode::Forbidden,
-            format!("Only a person can {what} a repository. Sign in, or use a personal access token."),
-        ));
+        return Err((FailureCode::Forbidden, format!("Only a person can {what} a repository. Sign in, or use a personal access token.")));
     }
     if asker.role != Some(Role::Owner) {
-        return Err((
-            FailureCode::Forbidden,
-            format!("Only an owner of {namespace} can {what} its repositories."),
-        ));
+        return Err((FailureCode::Forbidden, format!("Only an owner of {namespace} can {what} its repositories.")));
     }
     if !asker.verified {
         return Err((FailureCode::Forbidden, UNVERIFIED.into()));
@@ -177,10 +153,7 @@ pub fn confirmed(path: &RepoPath, typed: &str) -> bool {
 }
 
 fn confirm_refusal(path: &RepoPath) -> Refusal {
-    (
-        FailureCode::Invalid,
-        format!("Type {}/{} to confirm.", path.namespace, path.name),
-    )
+    (FailureCode::Invalid, format!("Type {}/{} to confirm.", path.namespace, path.name))
 }
 
 /// When a repository deleted at `now_ms` is purged.
@@ -245,20 +218,14 @@ pub enum Held {
 pub fn new_name(namespace: &str, current: &str, wanted: &str, held: Held) -> std::result::Result<String, Refusal> {
     let name = wanted.trim().to_lowercase();
     if !is_valid_repo_name(&name) {
-        return Err((
-            FailureCode::Invalid,
-            "Use letters, digits, dots, hyphens and underscores only.".into(),
-        ));
+        return Err((FailureCode::Invalid, "Use letters, digits, dots, hyphens and underscores only.".into()));
     }
     if name == current {
         return Err((FailureCode::Invalid, format!("It is already called {name}.")));
     }
     match held {
         Held::Free => Ok(name),
-        Held::ByRepo => Err((
-            FailureCode::Conflict,
-            format!("{namespace} already has a repository named {name}."),
-        )),
+        Held::ByRepo => Err((FailureCode::Conflict, format!("{namespace} already has a repository named {name}."))),
         Held::ByDeleted => Err((
             FailureCode::Conflict,
             format!(
@@ -270,8 +237,7 @@ pub fn new_name(namespace: &str, current: &str, wanted: &str, held: Held) -> std
 
 /// Why a write to `repo` is refused because it is archived, if it is.
 pub fn archived_refusal(repo: &Repo) -> Option<Refusal> {
-    repo.archived()
-        .then(|| (FailureCode::Forbidden, archived_message(&repo.namespace, &repo.name)))
+    repo.archived().then(|| (FailureCode::Forbidden, archived_message(&repo.namespace, &repo.name)))
 }
 
 /// Why a repository takes no pushes, merges or new work now: it is
@@ -296,10 +262,7 @@ pub struct VisibilityFacts {
 
 /// Whether the visibility change `facts` describe may happen.
 pub fn visibility_check(namespace: &str, facts: &VisibilityFacts) -> std::result::Result<(), Refusal> {
-    if facts.to_private
-        && facts.free
-        && git_ops::storage_full(facts.private_bytes + facts.bytes, facts.free_private_bytes)
-    {
+    if facts.to_private && facts.free && git_ops::storage_full(facts.private_bytes + facts.bytes, facts.free_private_bytes) {
         return Err((
             FailureCode::PaymentRequired,
             format!(
@@ -350,13 +313,10 @@ pub fn branch_creation(name: &str, branches: &[Branch]) -> std::result::Result<S
     if branches.iter().any(|branch| branch.name == name) {
         return Err((FailureCode::Conflict, format!("There is already a branch named {name}.")));
     }
-    if let Some(clash) = branches.iter().find(|branch| {
-        name.starts_with(&format!("{}/", branch.name)) || branch.name.starts_with(&format!("{name}/"))
-    }) {
-        return Err((
-            FailureCode::Conflict,
-            format!("{name} cannot sit beside {}: one name would be a folder of the other.", clash.name),
-        ));
+    if let Some(clash) =
+        branches.iter().find(|branch| name.starts_with(&format!("{}/", branch.name)) || branch.name.starts_with(&format!("{name}/")))
+    {
+        return Err((FailureCode::Conflict, format!("{name} cannot sit beside {}: one name would be a folder of the other.", clash.name)));
     }
     Ok(name)
 }
@@ -365,12 +325,7 @@ pub fn branch_creation(name: &str, branches: &[Branch]) -> std::result::Result<S
 /// whose default branch is `default_branch` and whose branches are
 /// `branches`: never the default, and, when the caller says which commit
 /// it saw (`head`), only while it still points there.
-pub fn branch_removal(
-    branch: &str,
-    default_branch: &str,
-    head: Option<&str>,
-    branches: &[Branch],
-) -> std::result::Result<String, Refusal> {
+pub fn branch_removal(branch: &str, default_branch: &str, head: Option<&str>, branches: &[Branch]) -> std::result::Result<String, Refusal> {
     if branch == default_branch {
         return Err((
             FailureCode::Forbidden,
@@ -418,8 +373,7 @@ impl From<DeletedRow> for DeletedRepo {
     }
 }
 
-const DELETED_COLUMNS: &str =
-    "id, namespace, name, is_private, deleted_at, deleted_by, purge_after, deleted_with";
+const DELETED_COLUMNS: &str = "id, namespace, name, is_private, deleted_at, deleted_by, purge_after, deleted_with";
 
 impl Registry {
     /// Deletes a repository and its pull requests' working copies, softly.
@@ -477,9 +431,7 @@ impl Registry {
     pub async fn deleted_with(&self, workspace_id: &str) -> Result<Vec<DeletedRepo>> {
         Ok(self
             .db
-            .prepare(format!(
-                "SELECT {DELETED_COLUMNS} FROM repos WHERE deleted_with = ? AND fork_of IS NULL"
-            ))
+            .prepare(format!("SELECT {DELETED_COLUMNS} FROM repos WHERE deleted_with = ? AND fork_of IS NULL"))
             .bind(&[workspace_id.into()])?
             .all()
             .await?
@@ -530,10 +482,7 @@ impl Registry {
                 "SELECT {DELETED_COLUMNS} FROM repos
                  WHERE namespace = ? AND name = ? AND deleted_at IS NOT NULL AND fork_of IS NULL"
             ))
-            .bind(&[
-                path.namespace.to_lowercase().into(),
-                path.name.to_lowercase().into(),
-            ])?
+            .bind(&[path.namespace.to_lowercase().into(), path.name.to_lowercase().into()])?
             .first::<DeletedRow>(None)
             .await?
             .map(DeletedRepo::from))
@@ -595,12 +544,8 @@ impl Registry {
                     .prepare("UPDATE repos SET parent_id = (SELECT parent_id FROM repos WHERE id = ?1) WHERE parent_id = ?1")
                     .bind(&[id.into()])?,
                 self.db.prepare("DELETE FROM repos WHERE id = ?1").bind(&[id.into()])?,
-                self.db
-                    .prepare("DELETE FROM repo_redirects WHERE repo_id = ?1")
-                    .bind(&[id.into()])?,
-                self.db
-                    .prepare("DELETE FROM branch_redirects WHERE repo_id = ?1")
-                    .bind(&[id.into()])?,
+                self.db.prepare("DELETE FROM repo_redirects WHERE repo_id = ?1").bind(&[id.into()])?,
+                self.db.prepare("DELETE FROM branch_redirects WHERE repo_id = ?1").bind(&[id.into()])?,
                 // Its About, stars and releases (about.rs).
                 self.db.prepare("DELETE FROM repo_stats WHERE repo_id = ?1").bind(&[id.into()])?,
                 self.db.prepare("DELETE FROM repo_stars WHERE repo_id = ?1").bind(&[id.into()])?,
@@ -616,9 +561,11 @@ impl Registry {
         let now = rfc3339(now_ms());
         self.db
             .batch(vec![
-                self.db
-                    .prepare("UPDATE repos SET name = ? WHERE id = ? AND name = ?")
-                    .bind(&[name.into(), repo.id.as_str().into(), repo.name.as_str().into()])?,
+                self.db.prepare("UPDATE repos SET name = ? WHERE id = ? AND name = ?").bind(&[
+                    name.into(),
+                    repo.id.as_str().into(),
+                    repo.name.as_str().into(),
+                ])?,
                 self.db
                     .prepare("DELETE FROM repo_redirects WHERE namespace = ? AND name = ?")
                     .bind(&[repo.namespace.as_str().into(), name.into()])?,
@@ -627,12 +574,7 @@ impl Registry {
                         "INSERT OR REPLACE INTO repo_redirects (namespace, name, repo_id, created_at)
                          VALUES (?, ?, ?, ?)",
                     )
-                    .bind(&[
-                        repo.namespace.as_str().into(),
-                        repo.name.as_str().into(),
-                        repo.id.as_str().into(),
-                        now.as_str().into(),
-                    ])?,
+                    .bind(&[repo.namespace.as_str().into(), repo.name.as_str().into(), repo.id.as_str().into(), now.as_str().into()])?,
             ])
             .await?;
         Ok(())
@@ -658,11 +600,7 @@ impl Registry {
     }
 
     pub async fn set_default_branch(&self, id: &str, branch: &str) -> Result<()> {
-        self.db
-            .prepare("UPDATE repos SET default_branch = ? WHERE id = ?")
-            .bind(&[branch.into(), id.into()])?
-            .run()
-            .await?;
+        self.db.prepare("UPDATE repos SET default_branch = ? WHERE id = ?").bind(&[branch.into(), id.into()])?.run().await?;
         Ok(())
     }
 
@@ -687,12 +625,12 @@ impl Registry {
         let now = rfc3339(now_ms());
         self.db
             .batch(vec![
-                self.db
-                    .prepare("DELETE FROM branch_redirects WHERE repo_id = ? AND branch = ?")
-                    .bind(&[repo_id.into(), to.into()])?,
-                self.db
-                    .prepare("UPDATE branch_redirects SET now = ? WHERE repo_id = ? AND now = ?")
-                    .bind(&[to.into(), repo_id.into(), from.into()])?,
+                self.db.prepare("DELETE FROM branch_redirects WHERE repo_id = ? AND branch = ?").bind(&[repo_id.into(), to.into()])?,
+                self.db.prepare("UPDATE branch_redirects SET now = ? WHERE repo_id = ? AND now = ?").bind(&[
+                    to.into(),
+                    repo_id.into(),
+                    from.into(),
+                ])?,
                 self.db
                     .prepare(
                         "INSERT OR REPLACE INTO branch_redirects (repo_id, branch, now, created_at)
@@ -727,22 +665,10 @@ impl Registry {
             #[serde(default)]
             deleted_at: Option<String>,
         }
-        Ok(self
-            .db
-            .prepare("SELECT archived_at, deleted_at FROM repos WHERE id = ?")
-            .bind(&[id.into()])?
-            .first::<Row>(None)
-            .await?
-            .map_or(
-                RepoStatus {
-                    archived: false,
-                    deleted: true,
-                },
-                |row| RepoStatus {
-                    archived: row.archived_at.is_some(),
-                    deleted: row.deleted_at.is_some(),
-                },
-            ))
+        Ok(self.db.prepare("SELECT archived_at, deleted_at FROM repos WHERE id = ?").bind(&[id.into()])?.first::<Row>(None).await?.map_or(
+            RepoStatus { archived: false, deleted: true },
+            |row| RepoStatus { archived: row.archived_at.is_some(), deleted: row.deleted_at.is_some() },
+        ))
     }
 }
 
@@ -775,16 +701,12 @@ fn fail<T>((code, message): Refusal) -> Outcome<T> {
 }
 
 fn path_of(repo: &Repo) -> RepoPath {
-    RepoPath {
-        namespace: repo.namespace.clone(),
-        name: repo.name.clone(),
-    }
+    RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() }
 }
 
 impl<S: GitStore> Repos<S> {
     pub(crate) async fn record(&self, entries: Vec<NewAuditEntry>) {
-        let recorded: Result<u32> =
-            g1t_kit::call(&self.events, "audit_record", &RecordAuditArgs { entries }).await;
+        let recorded: Result<u32> = g1t_kit::call(&self.events, "audit_record", &RecordAuditArgs { entries }).await;
         if let Err(error) = recorded {
             worker::console_error!("audit entries not recorded: {error}");
         }
@@ -793,13 +715,7 @@ impl<S: GitStore> Repos<S> {
     /// The repository at `path` an admin is acting on: found, not a
     /// working copy, and the actor allowed `capability` on it (Admin, and
     /// for deleting, an owner of its workspace).
-    async fn owned(
-        &self,
-        actor: &User,
-        path: &RepoPath,
-        what: &str,
-        capability: Capability,
-    ) -> Result<std::result::Result<Repo, Refusal>> {
+    async fn owned(&self, actor: &User, path: &RepoPath, what: &str, capability: Capability) -> Result<std::result::Result<Repo, Refusal>> {
         let viewer = Some(actor.clone());
         let Some(repo) = self.readable(path, &viewer).await? else {
             return Ok(Err((FailureCode::NotFound, "Repository not found.".into())));
@@ -826,9 +742,7 @@ impl<S: GitStore> Repos<S> {
         let now = now_ms();
         let at = rfc3339(now);
         let purge = purge_after(now);
-        self.registry
-            .soft_delete(&repo.id, &a.actor.username, &at, &purge)
-            .await?;
+        self.registry.soft_delete(&repo.id, &a.actor.username, &at, &purge).await?;
         self.publish(NewEvent {
             kind: "repo.deleted",
             source: SOURCE,
@@ -867,10 +781,7 @@ impl<S: GitStore> Repos<S> {
     /// `deleted`: see `g1t_contracts::repos::DeletedArgs`.
     pub(crate) async fn deleted(&self, a: DeletedArgs) -> Result<Vec<DeletedRepo>> {
         let namespace = a.namespace.to_lowercase();
-        let owner = a
-            .viewer
-            .as_ref()
-            .is_some_and(|user| user.role_in(&namespace) == Some(Role::Owner));
+        let owner = a.viewer.as_ref().is_some_and(|user| user.role_in(&namespace) == Some(Role::Owner));
         if !owner {
             return Ok(Vec::new());
         }
@@ -878,12 +789,7 @@ impl<S: GitStore> Repos<S> {
     }
 
     /// The deleted repository an owner is acting on.
-    async fn owned_deleted(
-        &self,
-        actor: &User,
-        path: &RepoPath,
-        what: &str,
-    ) -> Result<std::result::Result<DeletedRepo, Refusal>> {
+    async fn owned_deleted(&self, actor: &User, path: &RepoPath, what: &str) -> Result<std::result::Result<DeletedRepo, Refusal>> {
         if let Err(refusal) = owner_only(Asker::of(actor, &path.namespace), &path.namespace.to_lowercase(), what) {
             return Ok(Err(refusal));
         }
@@ -891,10 +797,7 @@ impl<S: GitStore> Repos<S> {
             Some(deleted) => Ok(deleted),
             None => Err((
                 FailureCode::NotFound,
-                format!(
-                    "{}/{} is not among the workspace's recently deleted repositories.",
-                    path.namespace, path.name
-                ),
+                format!("{}/{} is not among the workspace's recently deleted repositories.", path.namespace, path.name),
             )),
         })
     }
@@ -905,11 +808,7 @@ impl<S: GitStore> Repos<S> {
             Ok(deleted) => deleted,
             Err(refusal) => return Ok(fail(refusal)),
         };
-        let deleted_state = state(
-            None,
-            Some((&deleted.deleted_at, &deleted.purge_after)),
-            &rfc3339(now_ms()),
-        );
+        let deleted_state = state(None, Some((&deleted.deleted_at, &deleted.purge_after)), &rfc3339(now_ms()));
         if deleted_state == State::Due {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
@@ -952,10 +851,7 @@ impl<S: GitStore> Repos<S> {
             Ok(deleted) => deleted,
             Err(refusal) => return Ok(fail(refusal)),
         };
-        let path = RepoPath {
-            namespace: deleted.namespace.clone(),
-            name: deleted.name.clone(),
-        };
+        let path = RepoPath { namespace: deleted.namespace.clone(), name: deleted.name.clone() };
         if !confirmed(&path, a.confirm.as_deref().unwrap_or_default()) {
             return Ok(fail(confirm_refusal(&path)));
         }
@@ -981,14 +877,9 @@ impl<S: GitStore> Repos<S> {
         self.registry.erase(&deleted.id).await?;
         // Who had access to it goes with it.
         if let Some(identity) = &self.identity {
-            let forgotten: Result<bool> = g1t_kit::call(
-                identity,
-                "forget_repo_access",
-                &g1t_contracts::access::ForgetRepoAccessArgs {
-                    repo_id: deleted.id.clone(),
-                },
-            )
-            .await;
+            let forgotten: Result<bool> =
+                g1t_kit::call(identity, "forget_repo_access", &g1t_contracts::access::ForgetRepoAccessArgs { repo_id: deleted.id.clone() })
+                    .await;
             if let Err(error) = forgotten {
                 worker::console_error!("access to {} not forgotten: {error}", deleted.id);
             }
@@ -998,11 +889,7 @@ impl<S: GitStore> Repos<S> {
             source: SOURCE,
             repo_id: Some(deleted.id.clone()),
             actor: actor.map(str::to_owned),
-            data: RepoPurged {
-                repo_id: deleted.id.clone(),
-                namespace: deleted.namespace.clone(),
-                name: deleted.name.clone(),
-            },
+            data: RepoPurged { repo_id: deleted.id.clone(), namespace: deleted.namespace.clone(), name: deleted.name.clone() },
         })
         .await
     }
@@ -1016,10 +903,7 @@ impl<S: GitStore> Repos<S> {
             match self.purge_now(&deleted, None).await {
                 Ok(()) => {
                     purged += 1;
-                    let path = RepoPath {
-                        namespace: deleted.namespace.clone(),
-                        name: deleted.name.clone(),
-                    };
+                    let path = RepoPath { namespace: deleted.namespace.clone(), name: deleted.name.clone() };
                     self.record(vec![entry(
                         g1t_actor(),
                         "repo.purged",
@@ -1050,13 +934,7 @@ impl<S: GitStore> Repos<S> {
         }
         let marked = self
             .registry
-            .delete_with_workspace(
-                &namespace,
-                &deleting.workspace_id,
-                &deleting.by,
-                &rfc3339(now_ms()),
-                &deleting.purge_after,
-            )
+            .delete_with_workspace(&namespace, &deleting.workspace_id, &deleting.by, &rfc3339(now_ms()), &deleting.purge_after)
             .await?;
         for repo in marked {
             self.publish(NewEvent {
@@ -1116,9 +994,7 @@ impl<S: GitStore> Repos<S> {
             return Ok(());
         }
         let now = rfc3339(now_ms());
-        self.registry
-            .delete_with_workspace(&namespace, &deleted.workspace_id, "g1t", &now, &now)
-            .await?;
+        self.registry.delete_with_workspace(&namespace, &deleted.workspace_id, "g1t", &now, &now).await?;
         // A page at a time; one that fails is left to the hourly sweep.
         loop {
             let page = self.registry.deleted_ids_in(&namespace).await?;
@@ -1142,10 +1018,7 @@ impl<S: GitStore> Repos<S> {
             Ok(repo) => repo,
             Err(refusal) => return Ok(fail(refusal)),
         };
-        let wanted = RepoPath {
-            namespace: repo.namespace.clone(),
-            name: a.name.trim().to_lowercase(),
-        };
+        let wanted = RepoPath { namespace: repo.namespace.clone(), name: a.name.trim().to_lowercase() };
         let held = match self.registry.by_path_any(&wanted).await? {
             None => Held::Free,
             Some((_, None)) => Held::ByRepo,
@@ -1159,23 +1032,13 @@ impl<S: GitStore> Repos<S> {
         // change where it is read from.
         let key = store_key(&repo);
         self.registry.rename(&repo, &name).await?;
-        let renamed = Repo {
-            name: name.clone(),
-            ..repo.clone()
-        };
+        let renamed = Repo { name: name.clone(), ..repo.clone() };
         remember_store(&renamed, &key);
         let from = path_of(&repo);
         let to = path_of(&renamed);
         if let Some(identity) = &self.identity {
-            let moved: Result<bool> = g1t_kit::call(
-                identity,
-                "transfer_repo_scopes",
-                &TransferRepoScopesArgs {
-                    from: from.clone(),
-                    to: to.clone(),
-                },
-            )
-            .await;
+            let moved: Result<bool> =
+                g1t_kit::call(identity, "transfer_repo_scopes", &TransferRepoScopesArgs { from: from.clone(), to: to.clone() }).await;
             if let Err(error) = moved {
                 worker::console_error!("agent scopes for {} not moved: {error}", repo.id);
             }
@@ -1185,12 +1048,7 @@ impl<S: GitStore> Repos<S> {
             source: SOURCE,
             repo_id: Some(repo.id.clone()),
             actor: Some(a.actor.id.clone()),
-            data: RepoRenamed {
-                repo_id: repo.id.clone(),
-                namespace: repo.namespace.clone(),
-                from: repo.name.clone(),
-                to: name.clone(),
-            },
+            data: RepoRenamed { repo_id: repo.id.clone(), namespace: repo.namespace.clone(), from: repo.name.clone(), to: name.clone() },
         })
         .await?;
         self.record(vec![entry(
@@ -1217,10 +1075,7 @@ impl<S: GitStore> Repos<S> {
         }
         let at = a.archived.then(|| rfc3339(now_ms()));
         self.registry.set_archived(&repo.id, at.as_deref()).await?;
-        let changed = Repo {
-            archived_at: at,
-            ..repo
-        };
+        let changed = Repo { archived_at: at, ..repo };
         let kind = if a.archived { "repo.archived" } else { "repo.unarchived" };
         self.publish(NewEvent {
             kind,
@@ -1241,11 +1096,7 @@ impl<S: GitStore> Repos<S> {
             a.surface,
             &path_of(&changed),
             "owner",
-            if a.archived {
-                "Archived: read-only".to_owned()
-            } else {
-                "Unarchived".to_owned()
-            },
+            if a.archived { "Archived: read-only".to_owned() } else { "Unarchived".to_owned() },
         )])
         .await;
         Ok(Outcome::Ok(changed))
@@ -1305,16 +1156,16 @@ impl<S: GitStore> Repos<S> {
         if private {
             self.registry.set_private(&repo.id, true).await?;
         } else if !self.registry.make_public(&repo, self.free_public_bytes).await? {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "This repository would exceed the workspace's public storage limit. Make room before making it public."));
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                "This repository would exceed the workspace's public storage limit. Make room before making it public.",
+            ));
         }
         // Its forks keep who can see them, and leave its network.
         for fork_id in self.registry.detach_forks_of(&repo.id).await? {
             self.publish_detached(&fork_id, &repo.id).await?;
         }
-        let changed = Repo {
-            is_private: private,
-            ..repo
-        };
+        let changed = Repo { is_private: private, ..repo };
         self.publish(NewEvent {
             kind: "repo.updated",
             source: SOURCE,
@@ -1334,10 +1185,7 @@ impl<S: GitStore> Repos<S> {
             source: SOURCE,
             repo_id: Some(changed.id.clone()),
             actor: Some(actor.id.clone()),
-            data: RepoVisibilityChanged {
-                repo_id: changed.id.clone(),
-                is_private: private,
-            },
+            data: RepoVisibilityChanged { repo_id: changed.id.clone(), is_private: private },
         })
         .await?;
         self.record(vec![entry(
@@ -1356,21 +1204,13 @@ impl<S: GitStore> Repos<S> {
     /// found, not a working copy, the actor allowed `capability` on it
     /// (Push to rename a branch, Administer to change the default),
     /// verified, and not archived.
-    async fn writable_by(
-        &self,
-        actor: &User,
-        path: &RepoPath,
-        capability: Capability,
-    ) -> Result<std::result::Result<Repo, Refusal>> {
+    async fn writable_by(&self, actor: &User, path: &RepoPath, capability: Capability) -> Result<std::result::Result<Repo, Refusal>> {
         let viewer = Some(actor.clone());
         let Some(repo) = self.readable(path, &viewer).await? else {
             return Ok(Err((FailureCode::NotFound, "Repository not found.".into())));
         };
         if repo.fork_of.is_some() || !crate::registry::can(&repo, &viewer, capability) {
-            return Ok(Err((
-                FailureCode::Forbidden,
-                access::needs(capability, &format!("{}/{}", repo.namespace, repo.name)),
-            )));
+            return Ok(Err((FailureCode::Forbidden, access::needs(capability, &format!("{}/{}", repo.namespace, repo.name)))));
         }
         if !actor.verified {
             return Ok(Err((FailureCode::Forbidden, UNVERIFIED.into())));
@@ -1394,31 +1234,20 @@ impl<S: GitStore> Repos<S> {
         }
         let git = self.store.open(&store_key(&repo)).await?;
         if !git.branches().await?.iter().any(|b| b.name == branch) {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                format!("There is no branch named {branch}. Push it first."),
-            ));
+            return Ok(Outcome::fail(FailureCode::Invalid, format!("There is no branch named {branch}. Push it first.")));
         }
         self.registry.set_default_branch(&repo.id, &branch).await?;
         // HEAD in what git is told follows it.
         self.refs_moved(&repo.id).await;
         let from = repo.default_branch.clone();
-        let changed = Repo {
-            default_branch: branch.clone(),
-            ..repo
-        };
+        let changed = Repo { default_branch: branch.clone(), ..repo };
         self.forks_follow(&changed, &from, &branch, false).await;
         self.publish(NewEvent {
             kind: "repo.default_branch_changed",
             source: SOURCE,
             repo_id: Some(changed.id.clone()),
             actor: Some(a.actor.id.clone()),
-            data: RepoDefaultBranchChanged {
-                repo_id: changed.id.clone(),
-                from: from.clone(),
-                to: branch.clone(),
-                renamed: false,
-            },
+            data: RepoDefaultBranchChanged { repo_id: changed.id.clone(), from: from.clone(), to: branch.clone(), renamed: false },
         })
         .await?;
         self.record(vec![entry(
@@ -1442,12 +1271,8 @@ impl<S: GitStore> Repos<S> {
         let from = a.from.trim().to_owned();
         let is_default = from == repo.default_branch;
         if is_default
-            && let Err(refusal) = admin_only(
-                Asker::on(&a.actor, &repo),
-                &repo.namespace,
-                "rename the default branch of",
-                Capability::Administer,
-            )
+            && let Err(refusal) =
+                admin_only(Asker::on(&a.actor, &repo), &repo.namespace, "rename the default branch of", Capability::Administer)
         {
             return Ok(fail(refusal));
         }
@@ -1501,14 +1326,7 @@ impl<S: GitStore> Repos<S> {
             worker::console_error!("{from} not removed after renaming it to {to}: {reason}");
         }
         self.registry.add_branch_redirect(&repo.id, &from, &to).await?;
-        let changed = if is_default {
-            Repo {
-                default_branch: to.clone(),
-                ..repo
-            }
-        } else {
-            repo
-        };
+        let changed = if is_default { Repo { default_branch: to.clone(), ..repo } } else { repo };
         if is_default {
             self.forks_follow(&changed, &from, &to, true).await;
         }
@@ -1517,12 +1335,7 @@ impl<S: GitStore> Repos<S> {
             source: SOURCE,
             repo_id: Some(changed.id.clone()),
             actor: Some(a.actor.id.clone()),
-            data: BranchRenamed {
-                repo_id: changed.id.clone(),
-                from: from.clone(),
-                to: to.clone(),
-                default_branch: is_default,
-            },
+            data: BranchRenamed { repo_id: changed.id.clone(), from: from.clone(), to: to.clone(), default_branch: is_default },
         })
         .await?;
         if is_default {
@@ -1531,12 +1344,7 @@ impl<S: GitStore> Repos<S> {
                 source: SOURCE,
                 repo_id: Some(changed.id.clone()),
                 actor: Some(a.actor.id.clone()),
-                data: RepoDefaultBranchChanged {
-                    repo_id: changed.id.clone(),
-                    from: from.clone(),
-                    to: to.clone(),
-                    renamed: true,
-                },
+                data: RepoDefaultBranchChanged { repo_id: changed.id.clone(), from: from.clone(), to: to.clone(), renamed: true },
             })
             .await?;
         }
@@ -1734,10 +1542,7 @@ mod tests {
     }
 
     fn path() -> RepoPath {
-        RepoPath {
-            namespace: "acme".into(),
-            name: "rocket".into(),
-        }
+        RepoPath { namespace: "acme".into(), name: "rocket".into() }
     }
 
     #[test]
@@ -1770,12 +1575,18 @@ mod tests {
         // delete; the workspace's member privileges change both.
         assert!(admin_only(member_admin, "acme", "change the visibility of", Capability::ChangeVisibility).is_ok());
         let open = Asker {
-            privileges: g1t_contracts::MemberPrivileges { members_can_delete_repositories: true, ..g1t_contracts::MemberPrivileges::default() },
+            privileges: g1t_contracts::MemberPrivileges {
+                members_can_delete_repositories: true,
+                ..g1t_contracts::MemberPrivileges::default()
+            },
             ..member_admin
         };
         assert!(admin_only(open, "acme", "delete", Capability::Delete).is_ok());
         let closed = Asker {
-            privileges: g1t_contracts::MemberPrivileges { members_can_change_repo_visibility: false, ..g1t_contracts::MemberPrivileges::default() },
+            privileges: g1t_contracts::MemberPrivileges {
+                members_can_change_repo_visibility: false,
+                ..g1t_contracts::MemberPrivileges::default()
+            },
             ..member_admin
         };
         assert_eq!(
@@ -1783,7 +1594,10 @@ mod tests {
             FailureCode::Forbidden
         );
         // An outside collaborator with Admin never can.
-        assert_eq!(admin_only(Asker { privileges: open.privileges, ..admin }, "acme", "delete", Capability::Delete).unwrap_err().0, FailureCode::Forbidden);
+        assert_eq!(
+            admin_only(Asker { privileges: open.privileges, ..admin }, "acme", "delete", Capability::Delete).unwrap_err().0,
+            FailureCode::Forbidden
+        );
         let writer = Asker { role: Some(Role::Member), repo_role: Some(RepoRole::Write), ..owner() };
         let (code, message) = admin_only(writer, "acme", "rename", Capability::Administer).unwrap_err();
         assert_eq!(code, FailureCode::Forbidden);
@@ -1793,7 +1607,10 @@ mod tests {
         assert_eq!(admin_only(reader, "acme", "archive", Capability::Administer).unwrap_err().0, FailureCode::Forbidden);
         let stranger = Asker { role: None, repo_role: None, ..owner() };
         assert_eq!(admin_only(stranger, "acme", "archive", Capability::Administer).unwrap_err().0, FailureCode::NotFound);
-        assert_eq!(admin_only(Asker { person: false, ..owner() }, "acme", "rename", Capability::Administer).unwrap_err().0, FailureCode::Forbidden);
+        assert_eq!(
+            admin_only(Asker { person: false, ..owner() }, "acme", "rename", Capability::Administer).unwrap_err().0,
+            FailureCode::Forbidden
+        );
     }
 
     #[test]
@@ -1808,10 +1625,7 @@ mod tests {
     #[test]
     fn a_protected_workspace_keeps_its_repositories_whatever_is_published() {
         let protected = g1t_contracts::identity::protected_names(None);
-        assert_eq!(
-            may_go_with_workspace("flagon-io", &protected).unwrap_err(),
-            "flagon-io is protected and can never be deleted."
-        );
+        assert_eq!(may_go_with_workspace("flagon-io", &protected).unwrap_err(), "flagon-io is protected and can never be deleted.");
         assert!(may_go_with_workspace("FLAGON-IO", &protected).is_err());
         assert!(may_go_with_workspace("acme", &protected).is_ok());
         let configured = g1t_contracts::identity::protected_names(Some("acme"));
@@ -1918,13 +1732,7 @@ mod tests {
         };
         // Going public is never refused.
         assert!(visibility_check("acme", &VisibilityFacts { to_private: false, ..full }).is_ok());
-        let light = VisibilityFacts {
-            to_private: true,
-            free: true,
-            private_bytes: 1_000,
-            bytes: 1_000,
-            free_private_bytes: 1_000_000_000,
-        };
+        let light = VisibilityFacts { to_private: true, free: true, private_bytes: 1_000, bytes: 1_000, free_private_bytes: 1_000_000_000 };
         assert!(visibility_check("acme", &light).is_ok());
     }
 

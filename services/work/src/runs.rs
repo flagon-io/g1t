@@ -14,9 +14,9 @@ use g1t_contracts::agents::*;
 use g1t_contracts::repos::{Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::{PullStatus, SessionEntry, SessionEntryKind};
-use g1t_scan::redact::soften;
 use g1t_contracts::{FailureCode, Membership, Outcome, User, Viewer, new_id};
 use g1t_kit::now_ms;
+use g1t_scan::redact::soften;
 use serde::Deserialize;
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
@@ -39,9 +39,7 @@ pub(crate) const RENAMED: &[&str] = &[
 /// A repository transferred (see `g1t_kit::transfer`): its runs go with
 /// it, as its pull requests do by id. `?1`/`?2` the path now
 /// and before, `?3`/`?4` the workspaces, `?5` the repository's id.
-pub(crate) const TRANSFERRED: &[&str] = &[
-    "UPDATE agent_runs SET workspace = ?3, repo = ?1 WHERE repo_id = ?5 AND repo = ?2",
-];
+pub(crate) const TRANSFERRED: &[&str] = &["UPDATE agent_runs SET workspace = ?3, repo = ?1 WHERE repo_id = ?5 AND repo = ?2"];
 
 const NOTE_PREFIXES: [&str; 1] = ["Blocked: "];
 
@@ -171,17 +169,10 @@ impl RunRow {
         let on_item = self.on_item();
         let (namespace, name) = self.repo.split_once('/').unwrap_or((&self.repo, ""));
         AgentRun {
-            repo: RepoPath {
-                namespace: namespace.to_owned(),
-                name: name.to_owned(),
-            },
+            repo: RepoPath { namespace: namespace.to_owned(), name: name.to_owned() },
             status: self.status(),
             kind: RunKind::parse(&self.kind).unwrap_or(RunKind::Implement),
-            steps: self
-                .steps
-                .as_deref()
-                .and_then(|steps| serde_json::from_str(steps).ok())
-                .unwrap_or_default(),
+            steps: self.steps.as_deref().and_then(|steps| serde_json::from_str(steps).ok()).unwrap_or_default(),
             id: self.id,
             // An issue's old number is no pull request's.
             number: self.number.filter(|number| *number > 0 && !on_item),
@@ -222,10 +213,9 @@ pub(crate) fn member_of(actor: &User, namespace: &str) -> Viewer {
     let mut viewer = actor.clone();
     let slug = namespace.to_lowercase();
     if !viewer.is_member(&slug) {
-        viewer.workspaces.push(Membership {
-            base_permission: Some(g1t_contracts::access::BasePermission::Read),
-            ..Membership::member(slug)
-        });
+        viewer
+            .workspaces
+            .push(Membership { base_permission: Some(g1t_contracts::access::BasePermission::Read), ..Membership::member(slug) });
     }
     Some(viewer)
 }
@@ -234,9 +224,7 @@ pub(crate) fn member_of(actor: &User, namespace: &str) -> Viewer {
 /// and its budget are the workspace's business, not every reader's (an
 /// outside collaborator sees the work, not the bill).
 fn is_member(viewer: &Viewer, namespace: &str) -> bool {
-    viewer
-        .as_ref()
-        .is_some_and(|viewer| viewer.is_member(&namespace.to_lowercase()))
+    viewer.as_ref().is_some_and(|viewer| viewer.is_member(&namespace.to_lowercase()))
 }
 
 #[derive(Deserialize)]
@@ -275,21 +263,14 @@ impl Work {
     }
 
     async fn run_row(&self, id: &str) -> Result<Option<RunRow>> {
-        self.db
-            .prepare(format!("SELECT {COLUMNS}, steps FROM agent_runs WHERE id = ?"))
-            .bind(&[id.into()])?
-            .first::<RunRow>(None)
-            .await
+        self.db.prepare(format!("SELECT {COLUMNS}, steps FROM agent_runs WHERE id = ?")).bind(&[id.into()])?.first::<RunRow>(None).await
     }
 
     pub(crate) async fn open_run(&self, a: OpenRunArgs) -> Result<Outcome<AgentRunTicket>> {
         // Only sandboxes that are not agents are started now; earlier
         // kinds stay readable on the runs already recorded.
         if !matches!(a.kind, RunKind::Checks | RunKind::Queue | RunKind::Mergecheck) {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                format!("A {} run is no longer started.", a.kind.as_str()),
-            ));
+            return Ok(Outcome::fail(FailureCode::Invalid, format!("A {} run is no longer started.", a.kind.as_str())));
         }
         // The runner is trusted: it names the repository it is starting a
         // sandbox in, whoever the sandbox acts as. The run records where
@@ -298,12 +279,8 @@ impl Work {
         let (repo_id, path) = match &a.pull_id {
             Some(pull_id) => match self.pull_by_id(pull_id).await? {
                 Some(pull) => {
-                    let now: Option<RepoPath> = g1t_kit::call(
-                        &self.repos,
-                        "path_by_id",
-                        &g1t_contracts::repos::PathByIdArgs { id: pull.repo_id.clone() },
-                    )
-                    .await?;
+                    let now: Option<RepoPath> =
+                        g1t_kit::call(&self.repos, "path_by_id", &g1t_contracts::repos::PathByIdArgs { id: pull.repo_id.clone() }).await?;
                     (pull.repo_id, now.unwrap_or_else(|| a.repo.clone()))
                 }
                 None => return Ok(Outcome::fail(FailureCode::NotFound, "Pull request not found.")),
@@ -325,10 +302,7 @@ impl Work {
         let id = new_id("arn", now);
         let token = new_token();
         let timestamp = rfc3339(now);
-        let agent = a
-            .agent
-            .clone()
-            .unwrap_or_else(|| g1t_contracts::identity::AGENT_NAME.to_owned());
+        let agent = a.agent.clone().unwrap_or_else(|| g1t_contracts::identity::AGENT_NAME.to_owned());
         self.db
             .prepare(
                 "INSERT INTO agent_runs
@@ -375,11 +349,7 @@ impl Work {
     }
 
     pub(crate) async fn report_run(&self, a: ReportRunArgs) -> Result<Outcome<RunStatus>> {
-        let Some(run) = self
-            .run_row(&a.run_id)
-            .await?
-            .filter(|run| run.token_hash == hash(&a.token))
-        else {
+        let Some(run) = self.run_row(&a.run_id).await?.filter(|run| run.token_hash == hash(&a.token)) else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Run not found."));
         };
         // Finished, or stopped by a person: nothing more is taken, and the
@@ -390,32 +360,19 @@ impl Work {
         // It reached a cap of its guardrails (guardrails.rs).
         if let Some(halt) = a.halt {
             let pull_id = run.pull_id.as_deref();
-            return self
-                .halt_run(&run.id, &run.repo_id, pull_id, run.number, &run.kind, halt, a.error, a.cost_usd)
-                .await;
+            return self.halt_run(&run.id, &run.repo_id, pull_id, run.number, &run.kind, halt, a.error, a.cost_usd).await;
         }
         let now = rfc3339(now_ms());
-        let steps: Vec<String> = a
-            .steps
-            .iter()
-            .map(|step| one_line(step, MAX_STEP_CHARS))
-            .filter(|step| !step.is_empty())
-            .collect();
+        let steps: Vec<String> = a.steps.iter().map(|step| one_line(step, MAX_STEP_CHARS)).filter(|step| !step.is_empty()).collect();
         // A burst keeps its end: that is where the run is now.
         let skip = steps.len().saturating_sub(MAX_STEPS_PER_REPORT);
         let mut statements = Vec::new();
         for step in &steps[skip..] {
             statements.push(self.add_step(&run.id, &now, step)?);
         }
-        let current = a
-            .step
-            .as_deref()
-            .map(|step| one_line(step, MAX_STEP_CHARS))
-            .filter(|step| !step.is_empty())
-            .or_else(|| current_step(&steps));
-        let outcome = a
-            .outcome
-            .filter(|outcome| matches!(outcome, RunStatus::Succeeded | RunStatus::Failed));
+        let current =
+            a.step.as_deref().map(|step| one_line(step, MAX_STEP_CHARS)).filter(|step| !step.is_empty()).or_else(|| current_step(&steps));
+        let outcome = a.outcome.filter(|outcome| matches!(outcome, RunStatus::Succeeded | RunStatus::Failed));
         let cost = a.cost_usd.filter(|cost| cost.is_finite() && *cost >= 0.0);
         statements.push(
             self.db
@@ -466,10 +423,7 @@ impl Work {
         let (column, key, member) = if let Some(workspace) = &a.workspace {
             let slug = workspace.to_lowercase();
             if !is_member(&a.viewer, &slug) {
-                return Ok(Outcome::fail(
-                    FailureCode::Forbidden,
-                    "Only members of the workspace can see its fleet.",
-                ));
+                return Ok(Outcome::fail(FailureCode::Forbidden, "Only members of the workspace can see its fleet."));
             }
             ("workspace", slug, true)
         } else if let Some(path) = &a.repo {
@@ -553,12 +507,7 @@ impl Work {
         if repo_ids.is_empty() {
             return Ok(Vec::new());
         }
-        self.db
-            .prepare(RECORDED_IN)
-            .bind(&[serde_json::to_string(repo_ids)?.into(), limit.into()])?
-            .all()
-            .await?
-            .results::<RecordedRow>()
+        self.db.prepare(RECORDED_IN).bind(&[serde_json::to_string(repo_ids)?.into(), limit.into()])?.all().await?.results::<RecordedRow>()
     }
 
     pub(crate) async fn get_run(&self, a: GetRunArgs) -> Result<Outcome<AgentRun>> {
@@ -644,12 +593,14 @@ impl Work {
                         tools: row.tools,
                         // Someone's words to their agent: not for outsiders,
                         // and to members without credentials or swearing.
-                        prompt: row.prompt.filter(|_| member).map(|prompt| soften(&one_line(&prompt, 200))).filter(|prompt| !prompt.is_empty()),
+                        prompt: row
+                            .prompt
+                            .filter(|_| member)
+                            .map(|prompt| soften(&one_line(&prompt, 200)))
+                            .filter(|prompt| !prompt.is_empty()),
                         runs: mine.len() as u32,
                         cost_usd: (member && mine.iter().any(|run| run.cost_usd.is_some())).then_some(spent),
-                        active: mine
-                            .iter()
-                            .any(|run| RunStatus::parse(&run.status).is_some_and(RunStatus::is_active)),
+                        active: mine.iter().any(|run| RunStatus::parse(&run.status).is_some_and(RunStatus::is_active)),
                         kinds,
                         started_at: row.started_at,
                         last_at: row.last_at,
@@ -696,9 +647,7 @@ impl Work {
             .collect();
         let runs: Vec<AgentRun> = self
             .db
-            .prepare(format!(
-                "SELECT {COLUMNS}, steps FROM agent_runs WHERE pull_id = ? ORDER BY created_at DESC LIMIT 50"
-            ))
+            .prepare(format!("SELECT {COLUMNS}, steps FROM agent_runs WHERE pull_id = ? ORDER BY created_at DESC LIMIT 50"))
             .bind(&[pull.id.as_str().into()])?
             .all()
             .await?
@@ -706,14 +655,8 @@ impl Work {
             .into_iter()
             .map(|row| row.into_run(member))
             .collect();
-        let cost_usd = (member && runs.iter().any(|run| run.cost_usd.is_some()))
-            .then(|| runs.iter().filter_map(|run| run.cost_usd).sum());
-        Ok(Outcome::Ok(SessionView {
-            pull,
-            entries,
-            runs,
-            cost_usd,
-        }))
+        let cost_usd = (member && runs.iter().any(|run| run.cost_usd.is_some())).then(|| runs.iter().filter_map(|run| run.cost_usd).sum());
+        Ok(Outcome::Ok(SessionView { pull, entries, runs, cost_usd }))
     }
 }
 
@@ -742,7 +685,10 @@ mod tests {
     #[test]
     fn a_refused_host_is_noted_but_never_where_the_run_is() {
         let steps = |list: &[&str]| list.iter().map(|step| (*step).to_owned()).collect::<Vec<String>>();
-        assert_eq!(current_step(&steps(&["Running npm ci", "Blocked: sparrow.cloudflare.com (not an allowed domain)"])).as_deref(), Some("Running npm ci"));
+        assert_eq!(
+            current_step(&steps(&["Running npm ci", "Blocked: sparrow.cloudflare.com (not an allowed domain)"])).as_deref(),
+            Some("Running npm ci")
+        );
         assert_eq!(current_step(&steps(&["Blocked: a.com (not an allowed domain)"])), None);
         assert_eq!(current_step(&steps(&["Blocked: a.com (not an allowed domain)", "Typecheck"])).as_deref(), Some("Typecheck"));
         assert_eq!(current_step(&[]), None);

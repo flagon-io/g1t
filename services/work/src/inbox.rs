@@ -114,10 +114,7 @@ pub(crate) fn people_mentioned(body: &str) -> Vec<String> {
             let before = chars[at - 1];
             !(before.is_alphanumeric() || "._%+-/\\@`=".contains(before))
         };
-        let name: String = chars[at + 1..]
-            .iter()
-            .take_while(|c| c.is_ascii_alphanumeric() || **c == '-')
-            .collect();
+        let name: String = chars[at + 1..].iter().take_while(|c| c.is_ascii_alphanumeric() || **c == '-').collect();
         let end = at + 1 + name.chars().count();
         // A path or a package such as `@scope/name`, or a domain.
         let ends_clean = match chars.get(end) {
@@ -152,10 +149,7 @@ pub(crate) fn teams_mentioned(body: &str) -> Vec<String> {
             let before = chars[at - 1];
             !(before.is_alphanumeric() || "._%+-/\\@`=".contains(before))
         };
-        let name: String = chars[at + 1..]
-            .iter()
-            .take_while(|c| c.is_ascii_alphanumeric() || **c == '-' || **c == '/')
-            .collect();
+        let name: String = chars[at + 1..].iter().take_while(|c| c.is_ascii_alphanumeric() || **c == '-' || **c == '/').collect();
         let end = at + 1 + name.chars().count();
         let ends_clean = match chars.get(end) {
             None => true,
@@ -184,10 +178,7 @@ pub(crate) fn told_of(teams: &[g1t_contracts::teams::ResolvedTeam], writer: &str
         .map(|team| TeamMentioned {
             team: format!("{}/{}", team.workspace, team.slug),
             members: if team.notify && team.asker_sees {
-                team.everyone()
-                    .map(|person| person.username.clone())
-                    .filter(|name| !name.eq_ignore_ascii_case(writer))
-                    .collect()
+                team.everyone().map(|person| person.username.clone()).filter(|name| !name.eq_ignore_ascii_case(writer)).collect()
             } else {
                 Vec::new()
             },
@@ -197,11 +188,8 @@ pub(crate) fn told_of(teams: &[g1t_contracts::teams::ResolvedTeam], writer: &str
 
 /// The first line a comment says something on, cut to about a line.
 pub(crate) fn excerpt(body: &str) -> String {
-    let line = body
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty() && !line.starts_with("```") && !line.starts_with('>'))
-        .unwrap_or_default();
+    let line =
+        body.lines().map(str::trim).find(|line| !line.is_empty() && !line.starts_with("```") && !line.starts_with('>')).unwrap_or_default();
     let line = line.split_whitespace().collect::<Vec<_>>().join(" ");
     if line.chars().count() <= EXCERPT_CHARS {
         return line;
@@ -211,10 +199,7 @@ pub(crate) fn excerpt(body: &str) -> String {
 }
 
 fn principal(id: &str, username: &str) -> Principal {
-    Principal {
-        id: id.to_owned(),
-        username: username.to_lowercase(),
-    }
+    Principal { id: id.to_owned(), username: username.to_lowercase() }
 }
 
 fn of_item(item: WorkItem) -> InboxSubject {
@@ -296,8 +281,7 @@ impl Work {
                 let comment = Comment::from(row);
                 let teams = if comment.kind == CommentKind::Event { Vec::new() } else { teams_mentioned(&comment.body) };
                 let mut shown = of_comment(comment.clone());
-                shown.team_mentions =
-                    self.team_mentions(repo_id.as_deref(), &teams, &comment.author.id, &comment.author.username).await?;
+                shown.team_mentions = self.team_mentions(repo_id.as_deref(), &teams, &comment.author.id, &comment.author.username).await?;
                 subject.comment = Some(shown);
             }
         } else {
@@ -310,7 +294,13 @@ impl Work {
     }
 
     /// The teams named, resolved, with who each mention tells.
-    pub(crate) async fn team_mentions(&self, repo_id: Option<&str>, teams: &[String], writer_id: &str, writer: &str) -> Result<Vec<TeamMentioned>> {
+    pub(crate) async fn team_mentions(
+        &self,
+        repo_id: Option<&str>,
+        teams: &[String],
+        writer_id: &str,
+        writer: &str,
+    ) -> Result<Vec<TeamMentioned>> {
         if teams.is_empty() {
             return Ok(Vec::new());
         }
@@ -356,10 +346,7 @@ mod tests {
     #[test]
     fn a_team_mention_tells_its_people_when_it_may() {
         use g1t_contracts::teams::{ResolvedTeam, TeamPerson};
-        let person = |name: &str| TeamPerson {
-            id: format!("usr_{name}"),
-            username: name.to_owned(),
-        };
+        let person = |name: &str| TeamPerson { id: format!("usr_{name}"), username: name.to_owned() };
         let team = |notify: bool, sees: bool| ResolvedTeam {
             workspace: "acme".into(),
             slug: "backend".into(),

@@ -158,31 +158,32 @@ impl Work {
         let number = self.next_number(&workspace, origin.as_ref().map(|repo| repo.id.as_str())).await?;
         let timestamp = rfc3339(now);
         let (author, requested_by) = authorship(&a.actor);
-        let mut statements = vec![self
-            .db
-            .prepare(
-                "INSERT INTO work_items
+        let mut statements = vec![
+            self.db
+                .prepare(
+                    "INSERT INTO work_items
                    (id, workspace, number, title, body, labels, author_id, author_name, requested_by_id,
                     requested_by_name, created_at, updated_at, milestone, parent_id, project_id)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            )
-            .bind(&[
-                id.as_str().into(),
-                workspace.as_str().into(),
-                number.into(),
-                title.as_str().into(),
-                a.body.trim().into(),
-                serde_json::to_string(&labels)?.into(),
-                author.id.as_str().into(),
-                author.username.as_str().into(),
-                optional(&requested_by.as_ref().map(|user| user.id.clone())),
-                optional(&requested_by.as_ref().map(|user| user.username.clone())),
-                timestamp.as_str().into(),
-                timestamp.as_str().into(),
-                optional_number(milestone.as_ref().map(|milestone| milestone.number)),
-                optional(&parent_id),
-                optional(&project.as_ref().map(|project| project.id.clone())),
-            ])?];
+                )
+                .bind(&[
+                    id.as_str().into(),
+                    workspace.as_str().into(),
+                    number.into(),
+                    title.as_str().into(),
+                    a.body.trim().into(),
+                    serde_json::to_string(&labels)?.into(),
+                    author.id.as_str().into(),
+                    author.username.as_str().into(),
+                    optional(&requested_by.as_ref().map(|user| user.id.clone())),
+                    optional(&requested_by.as_ref().map(|user| user.username.clone())),
+                    timestamp.as_str().into(),
+                    timestamp.as_str().into(),
+                    optional_number(milestone.as_ref().map(|milestone| milestone.number)),
+                    optional(&parent_id),
+                    optional(&project.as_ref().map(|project| project.id.clone())),
+                ])?,
+        ];
         let links = origin.iter().map(|repo| (repo, LinkRole::Origin)).chain(targets.iter().map(|repo| (repo, LinkRole::Target)));
         for (repo, role) in links {
             statements.push(
@@ -205,8 +206,13 @@ impl Work {
         let Some(held) = self.item_by_id(&id).await? else {
             return Ok(no_item());
         };
-        self.publish_item("work_item.opened", &held, Some(&a.actor), WorkItemEvent { title: Some(held.item.title.clone()), ..Self::item_event(&held) })
-            .await?;
+        self.publish_item(
+            "work_item.opened",
+            &held,
+            Some(&a.actor),
+            WorkItemEvent { title: Some(held.item.title.clone()), ..Self::item_event(&held) },
+        )
+        .await?;
         // Opened with labels and a milestone: each is said, as it would be
         // if they were added afterwards, without notes in the conversation.
         for label in &held.item.labels {
@@ -228,7 +234,6 @@ impl Work {
         }
         Ok(Outcome::Ok(held.shown(Some(&a.actor))))
     }
-
 
     pub(crate) async fn update_work_item(&self, a: UpdateWorkItemArgs) -> Result<Outcome<WorkItem>> {
         let held = check!(self.manageable_item(&a.actor, &a.workspace, a.number).await?);
@@ -277,23 +282,24 @@ impl Work {
             Some(after) => self.dependency_change(&held, after, &a.actor).await?,
             None => None,
         };
-        let mut statements = vec![self
-            .db
-            .prepare(
-                "UPDATE work_items
+        let mut statements = vec![
+            self.db
+                .prepare(
+                    "UPDATE work_items
                  SET title = COALESCE(?, title), body = COALESCE(?, body),
                      assignees = COALESCE(?, assignees), blocked_by = COALESCE(?, blocked_by),
                      updated_at = ?
                  WHERE id = ?",
-            )
-            .bind(&[
-                optional(&title),
-                optional(&body),
-                optional(&assigned),
-                optional(&blocked_ids),
-                updated_at.as_str().into(),
-                held.item.id.as_str().into(),
-            ])?];
+                )
+                .bind(&[
+                    optional(&title),
+                    optional(&body),
+                    optional(&assigned),
+                    optional(&blocked_ids),
+                    updated_at.as_str().into(),
+                    held.item.id.as_str().into(),
+                ])?,
+        ];
         // A change to what it is blocked by reaches the sessions it concerns
         // with the change itself.
         let dependency_sent = match (&dependency, &blocked_ids) {
@@ -335,7 +341,6 @@ impl Work {
         }
         Ok(Outcome::Ok(held.shown(Some(&a.actor))))
     }
-
 
     pub(crate) async fn close_work_item(&self, args: CloseWorkItemArgs) -> Result<Outcome<WorkItem>> {
         let CloseWorkItemArgs { item: a, repo, commit, sub_items, move_to } = args;

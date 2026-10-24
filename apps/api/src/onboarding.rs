@@ -42,8 +42,12 @@ impl OnboardingOp {
 
     pub fn description(self) -> &'static str {
         match self {
-            OnboardingOp::GetOnboarding => "Your own state of a workspace's Getting started, the setup guide that opens on its Home for its owners: dismissed_at (when you dismissed it, so it no longer opens by itself; null while it does), skipped (the steps you chose to skip, in the guide's order: ai, ask, code, harness, people, runner) and updated_at (null when you never changed it). Whether a step is done is not here: it is the workspace's own state, such as its AI providers, repositories, members and runners. Members only, as people; each person's own.",
-            OnboardingOp::UpdateOnboarding => "Change your own Getting started in a workspace; fields left out stay as they are. dismissed true dismisses it, so it no longer opens by itself on the workspace's Home (dismissing it again keeps the first time); false makes it open by itself again. skipped replaces the steps you skipped: any of ai, ask, code, harness, people and runner. Opening the guide from Settings or the AI page changes nothing here. Members only, as people; each person's own.",
+            OnboardingOp::GetOnboarding => {
+                "Your own state of a workspace's Getting started, the setup guide that opens on its Home for its owners: dismissed_at (when you dismissed it, so it no longer opens by itself; null while it does), skipped (the steps you chose to skip, in the guide's order: ai, ask, code, harness, people, runner) and updated_at (null when you never changed it). Whether a step is done is not here: it is the workspace's own state, such as its AI providers, repositories, members and runners. Members only, as people; each person's own."
+            }
+            OnboardingOp::UpdateOnboarding => {
+                "Change your own Getting started in a workspace; fields left out stay as they are. dismissed true dismisses it, so it no longer opens by itself on the workspace's Home (dismissing it again keeps the first time); false makes it open by itself again. skipped replaces the steps you skipped: any of ai, ask, code, harness, people and runner. Opening the guide from Settings or the AI page changes nothing here. Members only, as people; each person's own."
+            }
         }
     }
 
@@ -92,7 +96,9 @@ fn dismissed(input: &Value) -> std::result::Result<Option<bool>, ()> {
 fn skipped(input: &Value) -> std::result::Result<Option<Vec<String>>, ()> {
     match &input["skipped"] {
         Value::Null => Ok(None),
-        Value::Array(items) => items.iter().map(|item| item.as_str().map(str::to_owned).ok_or(())).collect::<std::result::Result<Vec<_>, _>>().map(Some),
+        Value::Array(items) => {
+            items.iter().map(|item| item.as_str().map(str::to_owned).ok_or(())).collect::<std::result::Result<Vec<_>, _>>().map(Some)
+        }
         _ => Err(()),
     }
 }

@@ -146,26 +146,64 @@ impl TelemetryOp {
 
     pub fn description(self) -> &'static str {
         match self {
-            TelemetryOp::GetOverview => "A project's numbers over a period (the last 24 hours unless you say): totals (requests, errors, error_rate, and latency and CPU percentiles p50, p75, p95 and p99 in milliseconds) and the same for the period before it, to compare; points, one per step (step_s seconds), with requests, errors, counts by status class and percentiles; routes, by requests; deployments, each one's numbers newest first, so a regression points at the deployment it began with; services and regions. from and to are RFC 3339 times or Unix milliseconds. Narrow it by environment, service or deployment_id. Needs a role on the project's repository.",
-            TelemetryOp::ListRequests => "The requests (and other invocations) a project's software answered, newest first: each with its method, url, route (ids taken out), status, outcome, duration_us, cpu_ms, region, trace_id, log_count, error, and where it came from (service, environment, deployment_id, commit_sha, source). Apps on g1t.page send them with nothing to set up; software elsewhere, as OpenTelemetry server spans. Filter by words in q, status (2xx, 3xx, 4xx, 5xx or a status, comma-separated), errors_only (a 5xx or an outcome other than ok), route, min_duration_ms, environment, service and deployment_id, between from and to. A page holds limit; pass next back as cursor for the next. Needs a role on the project's repository.",
-            TelemetryOp::GetRequest => "One request by id, with every log line it wrote, oldest first. Needs a role on the project's repository.",
-            TelemetryOp::ListLogs => "Search a project's logs, newest first. q finds lines holding all of its words, or a phrase in quotes. level narrows to levels (trace, debug, info, warn, error, fatal, comma-separated); trace_id and request_id to one trace's or one request's lines; environment, service and deployment_id to where they ran; from and to to a period. Each line has its time_us, severity, body, attributes, trace_id, span_id and request_id. A page holds limit; pass next back as cursor for the next. Needs a role on the project's repository.",
-            TelemetryOp::ListTraces => "A project's traces, newest first: each its root span's name, start_us, duration_us, span_count, error_count, the services it crossed and its HTTP status. Filter by words in q, errors_only, min_duration_ms, environment and service, between from and to. A page holds limit; pass next back as cursor for the next. Needs a role on the project's repository.",
-            TelemetryOp::GetTrace => "One trace by its id (32 hex characters): every span, with its parent, kind, timing, status, attributes, resource, events and links, and the log lines written under it. Needs a role on the project's repository.",
-            TelemetryOp::ListErrors => "A project's errors, grouped: the same exception (its name, its message with numbers and ids taken out, and the top frame of its stack) is one group, with its count, first and last time seen, the deployment it was first seen on (what likely brought it in), its last request and trace, its state (open, resolved or ignored) and the work item made for it. Most recently seen first, at most 200. Filter by state, environment and service, between from and to. Needs a role on the project's repository.",
-            TelemetryOp::UpdateError => "Resolve, ignore or reopen an error group (state), or link it to the work item made for it (item_number; null unlinks it). A resolved group that happens again opens again. Needs the Triage role or higher.",
-            TelemetryOp::ListMetrics => "The metrics a project's software has sent: each with its name, kind (gauge, sum, histogram or summary), unit, description, the services that send it and when it last did. Needs a role on the project's repository.",
-            TelemetryOp::GetMetric => "One metric over time, one value per step: gauges averaged in each step (or min or max), sums added (a cumulative sum becomes its increase), histograms their mean or a percentile (p50, p95, p99) from their buckets. group_by splits it into a series per value of an attribute (or service). The last 24 hours unless from and to say. Needs a role on the project's repository.",
-            TelemetryOp::GetSettings => "How long a project's requests, logs and spans are kept (retention_days; charts are kept longer, as per-minute counts) and whether its apps on g1t.page send telemetry (deployments). Needs the Admin role.",
-            TelemetryOp::UpdateSettings => "Change how long a project's telemetry is kept (retention_days: 1, 3, 7, 14 or 30) and whether its apps on g1t.page send it (deployments; off keeps the tokens and history). Only what you give changes. Needs the Admin role.",
-            TelemetryOp::ListTokens => "A project's ingest tokens, which OpenTelemetry SDKs and collectors send with: each its name, hint (its first characters), who made it, when, and when it was last used. managed marks the one g1t made for its own deployments, which people cannot delete. Secrets are never returned. Needs the Admin role.",
-            TelemetryOp::CreateToken => "Make an ingest token for a project. Returns token and secret: the secret is shown this once, so keep it. Send it as `Authorization: Bearer <secret>` (or `x-g1t-token`) with OTLP over HTTP to the project's endpoint. Needs the Admin role.",
-            TelemetryOp::DeleteToken => "Delete an ingest token: what sends with it is refused from then on. The token g1t made for its own deployments cannot be deleted. Needs the Admin role.",
-            TelemetryOp::ListExports => "Where a project's telemetry is also sent as it arrives: each export's name, OTLP/HTTP endpoint, signals (traces, logs, metrics), header_names (values are never returned), whether it is enabled, and its last error and send. Needs the Admin role.",
-            TelemetryOp::CreateExport => "Send a project's telemetry on to any OTLP/HTTP endpoint as it arrives: a collector, or a vendor that takes OTLP. signals are traces, logs (requests go as log records) and metrics, all three unless you say; headers are sent with each request, such as an API key, and are written, never read back. Needs the Admin role.",
-            TelemetryOp::UpdateExport => "Change an export: its name, endpoint, signals and whether it is enabled. Only what you give changes. Headers given are set; a header given as \"\" is removed; those not given are kept. Needs the Admin role.",
+            TelemetryOp::GetOverview => {
+                "A project's numbers over a period (the last 24 hours unless you say): totals (requests, errors, error_rate, and latency and CPU percentiles p50, p75, p95 and p99 in milliseconds) and the same for the period before it, to compare; points, one per step (step_s seconds), with requests, errors, counts by status class and percentiles; routes, by requests; deployments, each one's numbers newest first, so a regression points at the deployment it began with; services and regions. from and to are RFC 3339 times or Unix milliseconds. Narrow it by environment, service or deployment_id. Needs a role on the project's repository."
+            }
+            TelemetryOp::ListRequests => {
+                "The requests (and other invocations) a project's software answered, newest first: each with its method, url, route (ids taken out), status, outcome, duration_us, cpu_ms, region, trace_id, log_count, error, and where it came from (service, environment, deployment_id, commit_sha, source). Apps on g1t.page send them with nothing to set up; software elsewhere, as OpenTelemetry server spans. Filter by words in q, status (2xx, 3xx, 4xx, 5xx or a status, comma-separated), errors_only (a 5xx or an outcome other than ok), route, min_duration_ms, environment, service and deployment_id, between from and to. A page holds limit; pass next back as cursor for the next. Needs a role on the project's repository."
+            }
+            TelemetryOp::GetRequest => {
+                "One request by id, with every log line it wrote, oldest first. Needs a role on the project's repository."
+            }
+            TelemetryOp::ListLogs => {
+                "Search a project's logs, newest first. q finds lines holding all of its words, or a phrase in quotes. level narrows to levels (trace, debug, info, warn, error, fatal, comma-separated); trace_id and request_id to one trace's or one request's lines; environment, service and deployment_id to where they ran; from and to to a period. Each line has its time_us, severity, body, attributes, trace_id, span_id and request_id. A page holds limit; pass next back as cursor for the next. Needs a role on the project's repository."
+            }
+            TelemetryOp::ListTraces => {
+                "A project's traces, newest first: each its root span's name, start_us, duration_us, span_count, error_count, the services it crossed and its HTTP status. Filter by words in q, errors_only, min_duration_ms, environment and service, between from and to. A page holds limit; pass next back as cursor for the next. Needs a role on the project's repository."
+            }
+            TelemetryOp::GetTrace => {
+                "One trace by its id (32 hex characters): every span, with its parent, kind, timing, status, attributes, resource, events and links, and the log lines written under it. Needs a role on the project's repository."
+            }
+            TelemetryOp::ListErrors => {
+                "A project's errors, grouped: the same exception (its name, its message with numbers and ids taken out, and the top frame of its stack) is one group, with its count, first and last time seen, the deployment it was first seen on (what likely brought it in), its last request and trace, its state (open, resolved or ignored) and the work item made for it. Most recently seen first, at most 200. Filter by state, environment and service, between from and to. Needs a role on the project's repository."
+            }
+            TelemetryOp::UpdateError => {
+                "Resolve, ignore or reopen an error group (state), or link it to the work item made for it (item_number; null unlinks it). A resolved group that happens again opens again. Needs the Triage role or higher."
+            }
+            TelemetryOp::ListMetrics => {
+                "The metrics a project's software has sent: each with its name, kind (gauge, sum, histogram or summary), unit, description, the services that send it and when it last did. Needs a role on the project's repository."
+            }
+            TelemetryOp::GetMetric => {
+                "One metric over time, one value per step: gauges averaged in each step (or min or max), sums added (a cumulative sum becomes its increase), histograms their mean or a percentile (p50, p95, p99) from their buckets. group_by splits it into a series per value of an attribute (or service). The last 24 hours unless from and to say. Needs a role on the project's repository."
+            }
+            TelemetryOp::GetSettings => {
+                "How long a project's requests, logs and spans are kept (retention_days; charts are kept longer, as per-minute counts) and whether its apps on g1t.page send telemetry (deployments). Needs the Admin role."
+            }
+            TelemetryOp::UpdateSettings => {
+                "Change how long a project's telemetry is kept (retention_days: 1, 3, 7, 14 or 30) and whether its apps on g1t.page send it (deployments; off keeps the tokens and history). Only what you give changes. Needs the Admin role."
+            }
+            TelemetryOp::ListTokens => {
+                "A project's ingest tokens, which OpenTelemetry SDKs and collectors send with: each its name, hint (its first characters), who made it, when, and when it was last used. managed marks the one g1t made for its own deployments, which people cannot delete. Secrets are never returned. Needs the Admin role."
+            }
+            TelemetryOp::CreateToken => {
+                "Make an ingest token for a project. Returns token and secret: the secret is shown this once, so keep it. Send it as `Authorization: Bearer <secret>` (or `x-g1t-token`) with OTLP over HTTP to the project's endpoint. Needs the Admin role."
+            }
+            TelemetryOp::DeleteToken => {
+                "Delete an ingest token: what sends with it is refused from then on. The token g1t made for its own deployments cannot be deleted. Needs the Admin role."
+            }
+            TelemetryOp::ListExports => {
+                "Where a project's telemetry is also sent as it arrives: each export's name, OTLP/HTTP endpoint, signals (traces, logs, metrics), header_names (values are never returned), whether it is enabled, and its last error and send. Needs the Admin role."
+            }
+            TelemetryOp::CreateExport => {
+                "Send a project's telemetry on to any OTLP/HTTP endpoint as it arrives: a collector, or a vendor that takes OTLP. signals are traces, logs (requests go as log records) and metrics, all three unless you say; headers are sent with each request, such as an API key, and are written, never read back. Needs the Admin role."
+            }
+            TelemetryOp::UpdateExport => {
+                "Change an export: its name, endpoint, signals and whether it is enabled. Only what you give changes. Headers given are set; a header given as \"\" is removed; those not given are kept. Needs the Admin role."
+            }
             TelemetryOp::DeleteExport => "Stop sending a project's telemetry to an export. Needs the Admin role.",
-            TelemetryOp::GetUsage => "What a project has sent and kept this month: ingested_bytes (what ingest is metered by), requests, logs, spans, metric_points and stored_bytes. Needs the Admin role.",
+            TelemetryOp::GetUsage => {
+                "What a project has sent and kept this month: ingested_bytes (what ingest is metered by), requests, logs, spans, metric_points and stored_bytes. Needs the Admin role."
+            }
         }
     }
 
@@ -216,7 +254,12 @@ impl TelemetryOp {
         };
         let place = |add: &mut dyn FnMut(&str, Value)| {
             add("environment", text("Only what ran in this environment, such as production or preview; several comma-separated."));
-            add("service", text("Only what this service sent (OpenTelemetry's service.name; an app on g1t.page is its project's name); several comma-separated."));
+            add(
+                "service",
+                text(
+                    "Only what this service sent (OpenTelemetry's service.name; an app on g1t.page is its project's name); several comma-separated.",
+                ),
+            );
         };
         let page = |add: &mut dyn FnMut(&str, Value)| {
             add("cursor", text("Where to carry on from: the last page's `next`."));
@@ -234,7 +277,10 @@ impl TelemetryOp {
                 period(&mut add);
                 add("q", text(words));
                 add("status", text("Only these statuses: 2xx, 3xx, 4xx, 5xx or a status such as 404, comma-separated."));
-                add("errors_only", json!({ "type": "boolean", "description": "Only those that failed: a 5xx, or an outcome other than ok." }));
+                add(
+                    "errors_only",
+                    json!({ "type": "boolean", "description": "Only those that failed: a 5xx, or an outcome other than ok." }),
+                );
                 add("route", text("Only this route, as the list shows it, such as /users/:id."));
                 add("min_duration_ms", integer("Only those that took at least this many milliseconds."));
                 place(&mut add);
@@ -248,7 +294,10 @@ impl TelemetryOp {
             TelemetryOp::ListLogs => {
                 period(&mut add);
                 add("q", text(words));
-                add("level", json!({ "type": "string", "description": "Only these levels: trace, debug, info, warn, error or fatal, comma-separated." }));
+                add(
+                    "level",
+                    json!({ "type": "string", "description": "Only these levels: trace, debug, info, warn, error or fatal, comma-separated." }),
+                );
                 add("trace_id", text("Only the lines written under this trace."));
                 add("request_id", text("Only the lines this request wrote."));
                 place(&mut add);
@@ -274,8 +323,14 @@ impl TelemetryOp {
             }
             TelemetryOp::UpdateError => {
                 add("fingerprint", text("The error group's fingerprint, as list_errors gives it."));
-                add("state", json!({ "type": "string", "enum": ERROR_STATES, "description": "Its state now: resolved, ignored, or open again." }));
-                add("item_number", json!({ "type": ["integer", "null"], "description": "The work item made for it, by its number in the workspace; null unlinks it." }));
+                add(
+                    "state",
+                    json!({ "type": "string", "enum": ERROR_STATES, "description": "Its state now: resolved, ignored, or open again." }),
+                );
+                add(
+                    "item_number",
+                    json!({ "type": ["integer", "null"], "description": "The work item made for it, by its number in the workspace; null unlinks it." }),
+                );
                 required.push("fingerprint");
             }
             TelemetryOp::ListMetrics
@@ -287,13 +342,19 @@ impl TelemetryOp {
                 add("metric", text("The metric's name, such as http.server.request.duration."));
                 required.push("metric");
                 period(&mut add);
-                add("aggregate", json!({ "type": "string", "enum": AGGREGATES, "description": "How each step's values are reduced: avg for gauges and sum for sums unless you say; a percentile for histograms." }));
+                add(
+                    "aggregate",
+                    json!({ "type": "string", "enum": AGGREGATES, "description": "How each step's values are reduced: avg for gauges and sum for sums unless you say; a percentile for histograms." }),
+                );
                 add("group_by", text("An attribute (or service) to split it into a series per value."));
                 add("step", integer("Seconds per point; chosen from the period unless you say."));
                 place(&mut add);
             }
             TelemetryOp::UpdateSettings => {
-                add("retention_days", json!({ "type": "integer", "enum": RETENTION_DAYS, "description": "Days requests, logs and spans are kept." }));
+                add(
+                    "retention_days",
+                    json!({ "type": "integer", "enum": RETENTION_DAYS, "description": "Days requests, logs and spans are kept." }),
+                );
                 add("deployments", json!({ "type": "boolean", "description": "Whether the project's apps on g1t.page send telemetry." }));
             }
             TelemetryOp::CreateToken => {
@@ -313,8 +374,14 @@ impl TelemetryOp {
                 }
                 add("name", text("Its name, for people."));
                 add("endpoint", text("The OTLP/HTTP base address, such as https://otlp.example.com; /v1/traces and the rest are added."));
-                add("signals", json!({ "type": "array", "items": { "type": "string", "enum": SIGNALS }, "description": "What it sends: traces, logs and metrics. All three unless you say." }));
-                add("headers", json!({ "type": "object", "additionalProperties": { "type": "string" }, "description": "Headers sent with each request, such as an API key. Written, never read back; \"\" removes one." }));
+                add(
+                    "signals",
+                    json!({ "type": "array", "items": { "type": "string", "enum": SIGNALS }, "description": "What it sends: traces, logs and metrics. All three unless you say." }),
+                );
+                add(
+                    "headers",
+                    json!({ "type": "object", "additionalProperties": { "type": "string" }, "description": "Headers sent with each request, such as an API key. Written, never read back; \"\" removes one." }),
+                );
                 add("enabled", json!({ "type": "boolean", "description": "Whether it sends. True unless you say." }));
             }
             TelemetryOp::DeleteExport => {
@@ -360,7 +427,9 @@ fn flag(input: &Value, key: &str) -> std::result::Result<Option<bool>, String> {
 /// A list given as an array or as comma-separated text.
 fn list(input: &Value, key: &str) -> Vec<String> {
     match &input[key] {
-        Value::Array(items) => items.iter().filter_map(Value::as_str).map(str::trim).filter(|item| !item.is_empty()).map(str::to_owned).collect(),
+        Value::Array(items) => {
+            items.iter().filter_map(Value::as_str).map(str::trim).filter(|item| !item.is_empty()).map(str::to_owned).collect()
+        }
         Value::String(text) => text.split(',').map(str::trim).filter(|item| !item.is_empty()).map(str::to_owned).collect(),
         _ => Vec::new(),
     }
@@ -611,9 +680,7 @@ async fn ask(services: &Services, method: &str, args: &Value) -> Result<Outcome<
     let headers = Headers::new();
     headers.set("content-type", "application/json")?;
     let mut init = RequestInit::new();
-    init.with_method(Method::Post)
-        .with_headers(headers)
-        .with_body(Some(serde_json::to_string(args)?.into()));
+    init.with_method(Method::Post).with_headers(headers).with_body(Some(serde_json::to_string(args)?.into()));
     let request = Request::new_with_init(&format!("https://service/rpc/{method}"), &init)?;
     let mut response = services.telemetry.fetch_request(request).await?;
     let text = response.text().await.unwrap_or_default();
@@ -751,10 +818,18 @@ mod tests {
         )
         .unwrap();
         assert_eq!(method, "requests");
-        assert_eq!((args["status"].clone(), args["errors_only"].clone(), args["min_duration_ms"].clone()), (json!(["5xx", "404"]), json!(true), json!(250)));
+        assert_eq!(
+            (args["status"].clone(), args["errors_only"].clone(), args["min_duration_ms"].clone()),
+            (json!(["5xx", "404"]), json!(true), json!(250))
+        );
         assert_eq!(args["services"], json!(["api"]));
 
-        let (method, args) = super::args(TelemetryOp::GetMetric, &json!({ "metric": "http.server.request.duration", "aggregate": "p95", "step": "60" }), None).unwrap();
+        let (method, args) = super::args(
+            TelemetryOp::GetMetric,
+            &json!({ "metric": "http.server.request.duration", "aggregate": "p95", "step": "60" }),
+            None,
+        )
+        .unwrap();
         assert_eq!((method, args["name"].clone(), args["step_s"].clone()), ("metric", json!("http.server.request.duration"), json!(60)));
         assert!(super::args(TelemetryOp::GetMetric, &json!({ "metric": "x", "aggregate": "median" }), None).is_err());
     }
@@ -775,7 +850,9 @@ mod tests {
         assert_eq!(args["headers"], json!({ "x-api-key": "" }));
         assert!(!args.contains_key("signals"));
         assert!(super::args(TelemetryOp::CreateExport, &json!({ "name": "vendor" }), None).is_err());
-        assert!(super::args(TelemetryOp::CreateExport, &json!({ "name": "v", "endpoint": "https://x", "signals": ["spans"] }), None).is_err());
+        assert!(
+            super::args(TelemetryOp::CreateExport, &json!({ "name": "v", "endpoint": "https://x", "signals": ["spans"] }), None).is_err()
+        );
     }
 
     #[test]

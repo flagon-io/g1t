@@ -118,8 +118,7 @@ impl Packages {
                 self.maven_metadata(workspace, &group, &artifact, Some(&version), checksum, viewer, head).await
             }
             (MavenPath::File { group, artifact, version, file, checksum }, Method::Get | Method::Head) => {
-                self.maven_file(workspace, &maven::package_name(&group, &artifact), &version, &file, checksum, viewer, head, ctx)
-                    .await
+                self.maven_file(workspace, &maven::package_name(&group, &artifact), &version, &file, checksum, viewer, head, ctx).await
             }
             (MavenPath::File { group, artifact, version, file, checksum: None }, Method::Put) => {
                 self.maven_upload(&mut request, workspace, &group, &artifact, &version, &file, viewer).await
@@ -128,9 +127,10 @@ impl Packages {
                 let name = maven::package_name(&group, &artifact);
                 self.maven_checksum(&mut request, workspace, &name, &version, &file, checksum, viewer).await
             }
-            (path @ (MavenPath::ArtifactMetadata { .. } | MavenPath::VersionMetadata { .. } | MavenPath::GroupMetadata { .. }), Method::Put) => {
-                self.maven_metadata_upload(&mut request, workspace, &path, viewer).await
-            }
+            (
+                path @ (MavenPath::ArtifactMetadata { .. } | MavenPath::VersionMetadata { .. } | MavenPath::GroupMetadata { .. }),
+                Method::Put,
+            ) => self.maven_metadata_upload(&mut request, workspace, &path, viewer).await,
             _ => error(405, "Not a method this address takes. Versions are deleted on the package's page."),
         }
     }
@@ -238,7 +238,8 @@ impl Packages {
             // The highest version that is a plugin says its prefix and name.
             let mut versions = self.db.versions(&package.id, MAX_VERSIONS).await?;
             versions.sort_by(|a, b| maven::compare(&b.version, &a.version));
-            let Some(meta) = versions.iter().map(VersionRow::meta).find(|m| m["packaging"] == "maven-plugin" || m["plugin"].is_object()) else {
+            let Some(meta) = versions.iter().map(VersionRow::meta).find(|m| m["packaging"] == "maven-plugin" || m["plugin"].is_object())
+            else {
                 continue;
             };
             let text = |value: &Value| value.as_str().map(str::trim).filter(|t| !t.is_empty()).map(str::to_owned);
@@ -510,7 +511,12 @@ impl Packages {
         self.db.keep_blob(&package.id, &digest, size, Some(media_type), &digest.object_key(), now).await?;
         self.db.set_checksums(&digest, &sums).await?;
         self.db
-            .put_file(&package.id, &row.id, &NewFile { name: file.to_owned(), digest: digest.to_string(), size, media_type: Some(media_type.to_owned()) }, now)
+            .put_file(
+                &package.id,
+                &row.id,
+                &NewFile { name: file.to_owned(), digest: digest.to_string(), size, media_type: Some(media_type.to_owned()) },
+                now,
+            )
             .await?;
         self.db.measure(&package.workspace).await?;
 
@@ -531,7 +537,14 @@ impl Packages {
     /// The POM arrived: it is the version's record. Its description is
     /// the package's when it is the highest release, and a new artifact
     /// whose POM names its source on g1t is linked to that repository.
-    async fn maven_pom(&self, package: &PackageRow, row: &VersionRow, digest: &Digest, pom: &maven::Pom, viewer: Option<&User>) -> Result<()> {
+    async fn maven_pom(
+        &self,
+        package: &PackageRow,
+        row: &VersionRow,
+        digest: &Digest,
+        pom: &maven::Pom,
+        viewer: Option<&User>,
+    ) -> Result<()> {
         let now = now_ms();
         let version = row.version.as_str();
         let mut metadata = row.meta();
@@ -556,11 +569,13 @@ impl Packages {
         }
         if package.repo_id.is_none()
             && versions.len() == 1
-            && let Some((owner, repo)) = pom.source.as_ref().and_then(|source| npm::repository_of(&Value::String(source.clone()), &self.host))
+            && let Some((owner, repo)) =
+                pom.source.as_ref().and_then(|source| npm::repository_of(&Value::String(source.clone()), &self.host))
             && owner == package.workspace
             && let Some(repo) = self.repo_by_name(&package.workspace, &repo).await?
         {
-            let mut linked = TargetOf::unmade(&package.workspace, &package.name, Some((repo.id.clone(), repo.name.clone(), repo.is_private)));
+            let mut linked =
+                TargetOf::unmade(&package.workspace, &package.name, Some((repo.id.clone(), repo.name.clone(), repo.is_private)));
             if self.decide(viewer, &mut linked, Action::Push).await?.allowed {
                 let visibility = if repo.is_private { "private" } else { "public" };
                 self.db.set_link(&package.id, Some((&repo.id, &repo.name)), visibility, now).await?;
@@ -602,7 +617,8 @@ impl Packages {
                 ..self.event_of(package)
             };
             self.announce("package.published", package, event, caller).await;
-            self.audit(caller, "package.publish", package, Some(&format!("{}/{}@{}", package.workspace, package.name, row.version)), None).await;
+            self.audit(caller, "package.publish", package, Some(&format!("{}/{}@{}", package.workspace, package.name, row.version)), None)
+                .await;
         }
         Ok(())
     }
@@ -651,14 +667,20 @@ impl Packages {
     /// makes its own, so it is taken from anyone who may upload and let go.
     /// The artifact's own (not a SNAPSHOT's, nor its checksum) ends a
     /// deploy, and publishes what it brought.
-    async fn maven_metadata_upload(&self, request: &mut Request, workspace: &str, path: &MavenPath, viewer: Option<&User>) -> Result<Response> {
+    async fn maven_metadata_upload(
+        &self,
+        request: &mut Request,
+        workspace: &str,
+        path: &MavenPath,
+        viewer: Option<&User>,
+    ) -> Result<Response> {
         if let Err(refused) = self.maven_body(request).await? {
             return Ok(refused);
         }
         let found = match path {
-            MavenPath::ArtifactMetadata { group, artifact, .. } | MavenPath::VersionMetadata { group, artifact, .. } | MavenPath::File { group, artifact, .. } => {
-                self.maven_package(workspace, &maven::package_name(group, artifact)).await?
-            }
+            MavenPath::ArtifactMetadata { group, artifact, .. }
+            | MavenPath::VersionMetadata { group, artifact, .. }
+            | MavenPath::File { group, artifact, .. } => self.maven_package(workspace, &maven::package_name(group, artifact)).await?,
             MavenPath::GroupMetadata { .. } => None,
         };
         let mut target = match &found {

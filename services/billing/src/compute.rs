@@ -29,8 +29,8 @@
 
 use futures_util::future::{try_join, try_join4};
 use g1t_contracts::billing::{
-    BillingAccount, ComputeKind, ConfirmSpikeArgs, Entitlements, EntitlementsArgs, LimitState, PaidBy, PlanKind, Reservation,
-    ReserveArgs, SettleArgs, Spike, UNLIMITED_MICROS, UsageAlert, RESERVATION_HOURS,
+    BillingAccount, ComputeKind, ConfirmSpikeArgs, Entitlements, EntitlementsArgs, LimitState, PaidBy, PlanKind, RESERVATION_HOURS,
+    Reservation, ReserveArgs, SettleArgs, Spike, UNLIMITED_MICROS, UsageAlert,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, new_id};
@@ -83,11 +83,7 @@ pub(crate) enum Short {
 /// overshot; a free workspace may use its last bit of trial, and what the
 /// run costs past it is g1t's.
 pub(crate) fn place(room: &Room, held: i64, estimate: i64, whole: bool) -> std::result::Result<(PaidBy, i64), Short> {
-    let sources = [
-        (PaidBy::Credit, room.credit.max(0)),
-        (PaidBy::Trial, room.trial.max(0)),
-        (PaidBy::Oss, room.oss.max(0)),
-    ];
+    let sources = [(PaidBy::Credit, room.credit.max(0)), (PaidBy::Trial, room.trial.max(0)), (PaidBy::Oss, room.oss.max(0))];
     let pools: i64 = sources.iter().map(|(_, room)| room).sum();
     let remaining = match room.on_demand {
         None => i64::MAX,
@@ -259,17 +255,20 @@ impl Billing {
         let pace = async { if watched { self.pace(workspace).await.map(Some) } else { Ok(None) } };
         let (latest, pace) = try_join(self.latest_spike(workspace), pace).await?;
         if let Some(spike) = &latest
-            && (spike.status == "open" || spike.status == "stopped") {
-                return Ok((latest.clone(), latest));
-            }
+            && (spike.status == "open" || spike.status == "stopped")
+        {
+            return Ok((latest.clone(), latest));
+        }
         let Some(pace) = pace else {
             return Ok((None, latest));
         };
         let now = rfc3339(now_ms());
         if let Some(spike) = &latest
-            && spike.status == "continued" && still_continued(spike.until.as_deref(), &now, spike.hour_micros, pace.last_hour) {
-                return Ok((None, latest));
-            }
+            && spike.status == "continued"
+            && still_continued(spike.until.as_deref(), &now, spike.hour_micros, pace.last_hour)
+        {
+            return Ok((None, latest));
+        }
         if !is_spike(pace.last_hour, pace.usual_hour, self.plans.spike_factor, self.plans.spike_floor_micros) {
             return Ok((None, latest));
         }
@@ -280,7 +279,13 @@ impl Billing {
                  SELECT ?1, ?2, 'open', ?3, ?4, ?5
                  WHERE NOT EXISTS (SELECT 1 FROM spikes WHERE workspace = ?2 AND status = 'open')",
             )
-            .bind(&[id.as_str().into(), workspace.into(), (pace.last_hour as f64).into(), (pace.usual_hour as f64).into(), now.as_str().into()])?
+            .bind(&[
+                id.as_str().into(),
+                workspace.into(),
+                (pace.last_hour as f64).into(),
+                (pace.usual_hour as f64).into(),
+                now.as_str().into(),
+            ])?
             .run()
             .await?;
         let spike = self.latest_spike(workspace).await?;
@@ -303,13 +308,7 @@ impl Billing {
 
 /// The alerts reached, from a limit already worked out, whether the
 /// workspace has the plan, and what of its included usage it has used.
-fn alerts_from(
-    workspace: &str,
-    limit: &g1t_contracts::billing::Limit,
-    has_plan: bool,
-    used: i64,
-    included: i64,
-) -> Vec<UsageAlert> {
+fn alerts_from(workspace: &str, limit: &g1t_contracts::billing::Limit, has_plan: bool, used: i64, included: i64) -> Vec<UsageAlert> {
     let mut alerts = vec![];
     if has_plan && limit.trust != g1t_contracts::billing::Trust::Internal {
         let level = alert_level(used, included);
@@ -509,11 +508,9 @@ impl Billing {
                     };
                 Ok::<_, worker::Error>((enrollment, limited))
             };
-            let ((limit, (enrollment, limited)), early) = try_join(
-                try_join(self.limit_with(&workspace, &account, plan), limit),
-                self.pause_before_limit(&workspace, &account, plan),
-            )
-            .await?;
+            let ((limit, (enrollment, limited)), early) =
+                try_join(try_join(self.limit_with(&workspace, &account, plan), limit), self.pause_before_limit(&workspace, &account, plan))
+                    .await?;
             let pause = match early {
                 Ok(paused) => paused,
                 Err(latest) => self.pause_at_limit(&workspace, plan, limited.then_some(&limit), latest).await?,
@@ -537,15 +534,17 @@ impl Billing {
             };
             Ok::<_, worker::Error>((checked, grant))
         };
-        let counts = try_join4(
-            self.private_storage(&workspace),
-            self.oss_paid(&workspace, &month),
-            self.held(&account.workspaces),
-            async { if has_plan { self.allowance_used("plan_credit", &workspace, &month).await } else { Ok(0) } },
-        );
+        let counts =
+            try_join4(self.private_storage(&workspace), self.oss_paid(&workspace, &month), self.held(&account.workspaces), async {
+                if has_plan { self.allowance_used("plan_credit", &workspace, &month).await } else { Ok(0) }
+            });
         let more = try_join(self.allowance_used("build_seconds", &workspace, &month), self.git_operations_this_month(&workspace));
-        let ((limit, (paused, spike, _), enrollment), (verified, grant), (stored, oss, held, included_used), (build_seconds, git_operations)) =
-            try_join4(standing, trial, counts, more).await?;
+        let (
+            (limit, (paused, spike, _), enrollment),
+            (verified, grant),
+            (stored, oss, held, included_used),
+            (build_seconds, git_operations),
+        ) = try_join4(standing, trial, counts, more).await?;
         let trial_left = grant.as_ref().map_or(0, |g| left(g.granted_micros, g.used_micros));
         let first_month = limit.first_month;
         let (max_agents, max_minutes) = caps(plan, first_month, trial_left > 0, account.allowances.max_concurrent_agents);
@@ -836,7 +835,11 @@ impl Billing {
             let month = credits::month_of(&rfc3339(now_ms()));
             let repo = format!("{}/{}", a.repo.namespace, a.repo.name).to_lowercase();
             let pool = left(self.plans.oss_pool_micros, self.allowance_used("oss_pool", "", &month).await?);
-            let detail = if pool > 0 { format!(" for {repo} (its share is {})", dollars(self.oss_repo_cap(workspace).await?)) } else { String::new() };
+            let detail = if pool > 0 {
+                format!(" for {repo} (its share is {})", dollars(self.oss_repo_cap(workspace).await?))
+            } else {
+                String::new()
+            };
             if trial.as_ref().is_none_or(|g| g.used_micros >= g.granted_micros) {
                 return Ok(refusal(FailureCode::OssPoolEmpty, workspace, a.kind, &detail));
             }
@@ -865,11 +868,7 @@ impl Billing {
     /// Clears reservations long settled or lapsed.
     pub(crate) async fn sweep_reservations(&self) -> Result<()> {
         let week_ago = rfc3339(now_ms() - 7 * 24 * 60 * 60 * 1000);
-        self.db
-            .prepare("DELETE FROM reservations WHERE expires_at < ?1")
-            .bind(&[week_ago.into()])?
-            .run()
-            .await?;
+        self.db.prepare("DELETE FROM reservations WHERE expires_at < ?1").bind(&[week_ago.into()])?.run().await?;
         Ok(())
     }
 
@@ -899,7 +898,11 @@ impl Billing {
         self.audit(
             &account.id,
             "spike",
-            &format!("{workspace}: {} after {} in an hour", if a.keep_going { "kept going" } else { "stopped" }, dollars(spike.hour_micros)),
+            &format!(
+                "{workspace}: {} after {} in an hour",
+                if a.keep_going { "kept going" } else { "stopped" },
+                dollars(spike.hour_micros)
+            ),
             &a.actor.username,
         )
         .await?;
@@ -930,7 +933,16 @@ impl Billing {
                 dollars(spike.average_micros)
             );
             let link = format!("https://g1t.sh/{workspace}/-/settings/billing");
-            if crate::limits::notify(identity, workspace, &format!("g1t: spending on {workspace} spiked, so new work is paused"), &intro, "Keep going or stop", &link).await {
+            if crate::limits::notify(
+                identity,
+                workspace,
+                &format!("g1t: spending on {workspace} spiked, so new work is paused"),
+                &intro,
+                "Keep going or stop",
+                &link,
+            )
+            .await
+            {
                 self.db
                     .prepare("UPDATE spikes SET told_at = ? WHERE id = ?")
                     .bind(&[rfc3339(now_ms()).into(), spike.id.as_str().into()])?
@@ -987,7 +999,13 @@ pub(crate) fn paid_by_text(paid_by: PaidBy) -> &'static str {
 mod tests {
     use super::*;
 
-    fn limit(trust: g1t_contracts::billing::Trust, spent: i64, spend_limit: Option<i64>, exposure: i64, ceiling: Option<i64>) -> g1t_contracts::billing::Limit {
+    fn limit(
+        trust: g1t_contracts::billing::Trust,
+        spent: i64,
+        spend_limit: Option<i64>,
+        exposure: i64,
+        ceiling: Option<i64>,
+    ) -> g1t_contracts::billing::Limit {
         g1t_contracts::billing::Limit {
             workspace: "acme".into(),
             account: "acc_acme".into(),

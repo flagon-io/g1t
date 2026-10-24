@@ -14,8 +14,8 @@ pub const MAX_NAME: usize = 64;
 /// Names Windows keeps for devices: a crate named so could not be checked
 /// out of a git index, and cargo refuses them too.
 const RESERVED: [&str; 22] = [
-    "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3",
-    "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+    "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4",
+    "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
 ];
 
 /// Checks crates.io's rules for a crate name: ASCII letters, digits, `-`
@@ -71,15 +71,28 @@ pub enum CargoRoute {
     /// `index/config.json`.
     Config,
     /// `index/<path>`: a crate's index file.
-    Index { name: String },
+    Index {
+        name: String,
+    },
     /// `api/v1/crates/new`.
     Publish,
     /// `api/v1/crates?q=`: `cargo search`.
     Search,
-    Yank { name: String, version: String },
-    Unyank { name: String, version: String },
-    Download { name: String, version: String },
-    Owners { name: String },
+    Yank {
+        name: String,
+        version: String,
+    },
+    Unyank {
+        name: String,
+        version: String,
+    },
+    Download {
+        name: String,
+        version: String,
+    },
+    Owners {
+        name: String,
+    },
 }
 
 /// The workspace and endpoint a path is. Names are checked; versions are not.
@@ -152,9 +165,7 @@ pub fn without_build(version: &str) -> &str {
 /// Whether a feature's list uses the syntax only newer cargo reads
 /// (`dep:name`, `name?/feature`), so it belongs in `features2`.
 fn new_syntax(values: &Value) -> bool {
-    values
-        .as_array()
-        .is_some_and(|values| values.iter().filter_map(Value::as_str).any(|v| v.starts_with("dep:") || v.contains("?/")))
+    values.as_array().is_some_and(|values| values.iter().filter_map(Value::as_str).any(|v| v.starts_with("dep:") || v.contains("?/")))
 }
 
 /// A dependency as the index lists it, from how `cargo publish` sends it:
@@ -396,7 +407,8 @@ mod tests {
 
     #[test]
     fn a_crate_without_new_feature_syntax_is_index_version_1() {
-        let entry = index_entry(&json!({ "name": "a", "vers": "0.1.0", "deps": [], "features": { "x": ["a/b"] }, "links": "z" }), "00").unwrap();
+        let entry =
+            index_entry(&json!({ "name": "a", "vers": "0.1.0", "deps": [], "features": { "x": ["a/b"] }, "links": "z" }), "00").unwrap();
         assert!(entry.get("v").is_none());
         assert!(entry.get("features2").is_none());
         assert_eq!(entry["links"], "z");

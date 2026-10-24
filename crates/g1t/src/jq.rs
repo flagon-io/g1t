@@ -24,36 +24,19 @@ fn first<E: std::fmt::Debug>(errors: &[E]) -> String {
 /// Runs `filter` over `input` and returns each output.
 pub fn run(filter: &str, input: &Value) -> Result<Vec<Value>> {
     let code = format!("{PRELUDE}{filter}");
-    let program = File {
-        code: code.as_str(),
-        path: (),
-    };
-    let defs = jaq_core::defs()
-        .chain(jaq_std::defs())
-        .chain(jaq_json::defs());
-    let funs = jaq_core::funs()
-        .chain(jaq_std::funs())
-        .chain(jaq_json::funs());
+    let program = File { code: code.as_str(), path: () };
+    let defs = jaq_core::defs().chain(jaq_std::defs()).chain(jaq_json::defs());
+    let funs = jaq_core::funs().chain(jaq_std::funs()).chain(jaq_json::funs());
     let loader = Loader::new(defs);
     let arena = Arena::default();
-    let modules = loader.load(&arena, program).map_err(|errors| {
-        Error::usage(format!(
-            "--jq `{filter}` does not parse: {}",
-            first(&errors)
-        ))
-    })?;
+    let modules =
+        loader.load(&arena, program).map_err(|errors| Error::usage(format!("--jq `{filter}` does not parse: {}", first(&errors))))?;
     let filter_c = Compiler::default()
         .with_funs(funs)
         .compile(modules)
-        .map_err(|errors| {
-            Error::usage(format!(
-                "--jq `{filter}` does not compile: {}",
-                first(&errors)
-            ))
-        })?;
+        .map_err(|errors| Error::usage(format!("--jq `{filter}` does not compile: {}", first(&errors))))?;
     let text = serde_json::to_vec(input).expect("json");
-    let input =
-        jaq_json::read::parse_single(&text).map_err(|e| Error::failed(format!("--jq: {e:?}")))?;
+    let input = jaq_json::read::parse_single(&text).map_err(|e| Error::failed(format!("--jq: {e:?}")))?;
     let ctx = Ctx::<data::JustLut<Val>>::new(&filter_c.lut, Vars::new([]));
     let mut out = Vec::new();
     for result in filter_c.id.run((ctx, input)).map(unwrap_valr) {
@@ -88,14 +71,8 @@ mod tests {
         assert_eq!(line(&json!("b")), "b");
         assert_eq!(line(&json!({ "a": 1 })), r#"{"a":1}"#);
         let row = json!(["a\tb", 2, null, "say \"hi\""]);
-        assert_eq!(
-            run("@tsv", &row).unwrap(),
-            vec![json!("a\\tb\t2\t\tsay \"hi\"")]
-        );
-        assert_eq!(
-            run("@csv", &row).unwrap(),
-            vec![json!("\"a\tb\",2,,\"say \"\"hi\"\"\"")]
-        );
+        assert_eq!(run("@tsv", &row).unwrap(), vec![json!("a\\tb\t2\t\tsay \"hi\"")]);
+        assert_eq!(run("@csv", &row).unwrap(), vec![json!("\"a\tb\",2,,\"say \"\"hi\"\"\"")]);
     }
 
     #[test]

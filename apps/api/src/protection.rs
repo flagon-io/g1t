@@ -133,26 +133,66 @@ impl ProtectionOp {
 
     pub fn description(self) -> &'static str {
         match self {
-            ProtectionOp::UpdateEnvironment => "Create an environment's protection rules, or change them; fields left out stay as they are. A job that names the environment with `environment:` waits, once its needs are done, until the rules let it through, and only then gets the environment's secrets. reviewers: up to 6, each {\"type\": \"User\" or \"Team\", \"name\": a username or a team's slug} (id is read as the name too); a job waits until one of them approves it. prevent_self_review: whoever started the run may not approve it. wait_timer: minutes each job waits, 0 to 43200. deployment_branch_policy: null lets every branch deploy; {\"protected_branches\": true} only branches the repository's rules protect (the default branch included); {\"custom_branch_policies\": true} only the branches and tags in branch_policies, each {\"name\": a pattern such as release/*, \"type\": \"branch\" or \"tag\"}. can_admins_bypass (true unless you say): admins may approve without being reviewers, which also skips the wait. The environment's name is up to 40 letters, digits, - and _, matched without regard to case. Needs the Admin role. Returns the environment with its protection_rules.",
-            ProtectionOp::DeleteEnvironment => "Delete an environment's protection rules: its jobs run without waiting from then on. Its secrets, variables and deployments stay. Needs the Admin role.",
-            ProtectionOp::GetPendingDeployments => "The environments whose protection rules hold a run's jobs, this attempt: each with the environment's name, state (waiting, approved or rejected), wait_timer and wait_until (when its timer lets its jobs start), its reviewers, the jobs it holds, who reviewed it and their comment, and current_user_can_approve. Needs the Read role.",
-            ProtectionOp::ReviewPendingDeployments => "Approve or reject the jobs a run's environments hold. environment_names names them (every waiting one if left out; environment_ids is read as names too); state is approved or rejected; comment is kept with the review. Only one of the environment's reviewers may, or an admin when can_admins_bypass is on, which also skips the wait timer; with prevent_self_review, not whoever started the run. A rejected environment's jobs fail. A workflow job's own token cannot review. Returns the pending deployments as they stand.",
-            ProtectionOp::ApproveWorkflowRun => "Let a run of a pull request from outside start: it waits as action_required, by the repository's approval policy (get_fork_pr_approval), until someone with the Write role approves it. A workflow job's own token cannot approve. Returns the run.",
-            ProtectionOp::GetWorkflowPermissions => "What a job's G1T_TOKEN (GITHUB_TOKEN) may do when its workflow and job write no `permissions:`: default_workflow_permissions is read (contents and packages read) or write (every permission). Unless the repository chose (default_chosen), a repository made before restricted tokens has write and a newer one its workspace's default; it is never more than the workspace's max_workflow_permissions. can_approve_pull_request_reviews says whether its jobs may open and approve pull requests (off unless chosen, and only where the workspace allows it). Needs the Read role.",
-            ProtectionOp::SetWorkflowPermissions => "Set default_workflow_permissions to read, write (refused where the workspace's maximum is read) or inherit (back to the workspace's default, or write for a repository made before restricted tokens), and can_approve_pull_request_reviews, \"Allow g1t Actions to create and approve pull requests\" (refused where the workspace does not allow it). Workflows that write `permissions:` get what they write either way, and a pull request's run from outside gets read-only. Needs the Admin role.",
-            ProtectionOp::GetForkPrApproval => "Which pull requests' runs wait for someone with the Write role to approve them before anything runs (approve_workflow_run): approval_policy is first_time_contributors (a pull request from someone outside the workspace who has not had one merged here), outside_contributors (the default: also everyone outside who cannot push here) or all_external_contributors (everyone outside the workspace, outside collaborators included). Members never wait, nor does g1t's own work. Needs the Read role.",
-            ProtectionOp::SetForkPrApproval => "Set approval_policy: first_time_contributors, outside_contributors or all_external_contributors. Needs the Admin role.",
-            ProtectionOp::GetActionsAccess => "Which other repositories' workflows may use this private repository's actions (uses: owner/repo@ref) and reusable workflows (jobs.<id>.uses: owner/repo/.g1t/workflows/build.yml@ref): access_level is none (the default: only this repository) or organization (private repositories in the same workspace). A public repository's actions and workflows are anyone's, whatever this says, and a public repository's workflows never use a private one's. Needs the Read role.",
-            ProtectionOp::SetActionsAccess => "Set access_level: none, or organization to let the workspace's other private repositories use this repository's actions and reusable workflows (user is read as organization). Needs the Admin role.",
-            ProtectionOp::GetActionsPermissions => "Whether a repository's workflows run at all: enabled is on for a repository and off for a fork until someone chooses (enabled_chosen says whether anyone has), so a fork never runs the workflows it copied until they are turned on. While it is off, no push, pull request, schedule, dispatch, repository_dispatch, merge queue or re-run starts a run; its workflows stay listed. allowed_actions is always all. Needs the Read role.",
-            ProtectionOp::SetActionsPermissions => "Turn a repository's workflows on or off (enabled). Off, nothing starts a run, and a dispatch or re-run is refused with \"Actions is turned off for owner/name\"; runs already going finish. Turning it on runs nothing by itself: the next event does. Needs the Admin role; a workflow job's own token cannot.",
-            ProtectionOp::GetWorkspaceWorkflowPermissions => "A workspace's policy for its repositories' job tokens: default_workflow_permissions (read, the default, or write) is what a repository made from now on gets until it chooses; max_workflow_permissions (write, the default, or read) is the most any repository's default may be, so read holds every repository to read-only; can_approve_pull_request_reviews (off by default) lets its repositories allow jobs to open and approve pull requests. Members only.",
-            ProtectionOp::SetWorkspaceWorkflowPermissions => "Change a workspace's default_workflow_permissions, max_workflow_permissions and can_approve_pull_request_reviews; fields left out stay as they are. A maximum of read makes the default read too. Owners only.",
-            ProtectionOp::ListWorkspaceManagedWorkflows => "The workflows a workspace's owners added to its repositories, g1t's required workflows: each runs in every repository it targets as that repository's own workflow (its token, its secrets, its checks), under the path managed/<name>.yml, from a copy of its source file taken when it was saved. Each has name, path, workflow_name (its `name:`), source (owner/repo/path@ref), source_sha (the commit it was copied at), source_private, mode, repositories, visibility, content (the copy that runs) and when and by whom it was last saved. Owners only.",
-            ProtectionOp::CreateWorkspaceManagedWorkflow => "Add a workflow to a workspace's repositories. name (lowercase letters, digits and hyphens) makes its path managed/<name>.yml. source is a workflow file in one of the workspace's repositories, owner/repo/.g1t/workflows/file.yml@ref; g1t copies it at the commit ref names, and the copy runs until it is copied again (update_workspace_managed_workflow with refresh). mode is required (a repository's workflow of the same `name:` is set aside, and no one in the repository can turn it off, so its check can be required by a ruleset) or default (a repository's own workflow of the same name runs in its place, and the repository's admins can turn it off). repositories lists names and patterns (* matches any characters, ! excludes), read in order, the last match deciding; empty or left out is every repository. visibility is all (the default), public or private. A source in a private repository runs in private repositories only, so visibility must be private. Owners only. Returns the workflow.",
-            ProtectionOp::UpdateWorkspaceManagedWorkflow => "Change a workflow a workspace manages: its source, mode, repositories or visibility; fields left out stay as they are. Giving source, or refresh: true, copies the source again at the commit its ref names now. Owners only. Returns the workflow.",
-            ProtectionOp::DeleteWorkspaceManagedWorkflow => "Take a workflow out of every repository of the workspace. Its runs stay. Owners only.",
-            ProtectionOp::CreateRepositoryDispatch => "Start the default branch's workflows that run `on: repository_dispatch` for event_type (those listing it under types, or with none). client_payload, a JSON object of at most 10 properties and 64 KB, is github.event.client_payload; github.event.action is event_type. A workflow job's own token may send one: with workflow_dispatch, it is how one workflow starts another. Needs the Write role (code:write). Returns how many runs started.",
+            ProtectionOp::UpdateEnvironment => {
+                "Create an environment's protection rules, or change them; fields left out stay as they are. A job that names the environment with `environment:` waits, once its needs are done, until the rules let it through, and only then gets the environment's secrets. reviewers: up to 6, each {\"type\": \"User\" or \"Team\", \"name\": a username or a team's slug} (id is read as the name too); a job waits until one of them approves it. prevent_self_review: whoever started the run may not approve it. wait_timer: minutes each job waits, 0 to 43200. deployment_branch_policy: null lets every branch deploy; {\"protected_branches\": true} only branches the repository's rules protect (the default branch included); {\"custom_branch_policies\": true} only the branches and tags in branch_policies, each {\"name\": a pattern such as release/*, \"type\": \"branch\" or \"tag\"}. can_admins_bypass (true unless you say): admins may approve without being reviewers, which also skips the wait. The environment's name is up to 40 letters, digits, - and _, matched without regard to case. Needs the Admin role. Returns the environment with its protection_rules."
+            }
+            ProtectionOp::DeleteEnvironment => {
+                "Delete an environment's protection rules: its jobs run without waiting from then on. Its secrets, variables and deployments stay. Needs the Admin role."
+            }
+            ProtectionOp::GetPendingDeployments => {
+                "The environments whose protection rules hold a run's jobs, this attempt: each with the environment's name, state (waiting, approved or rejected), wait_timer and wait_until (when its timer lets its jobs start), its reviewers, the jobs it holds, who reviewed it and their comment, and current_user_can_approve. Needs the Read role."
+            }
+            ProtectionOp::ReviewPendingDeployments => {
+                "Approve or reject the jobs a run's environments hold. environment_names names them (every waiting one if left out; environment_ids is read as names too); state is approved or rejected; comment is kept with the review. Only one of the environment's reviewers may, or an admin when can_admins_bypass is on, which also skips the wait timer; with prevent_self_review, not whoever started the run. A rejected environment's jobs fail. A workflow job's own token cannot review. Returns the pending deployments as they stand."
+            }
+            ProtectionOp::ApproveWorkflowRun => {
+                "Let a run of a pull request from outside start: it waits as action_required, by the repository's approval policy (get_fork_pr_approval), until someone with the Write role approves it. A workflow job's own token cannot approve. Returns the run."
+            }
+            ProtectionOp::GetWorkflowPermissions => {
+                "What a job's G1T_TOKEN (GITHUB_TOKEN) may do when its workflow and job write no `permissions:`: default_workflow_permissions is read (contents and packages read) or write (every permission). Unless the repository chose (default_chosen), a repository made before restricted tokens has write and a newer one its workspace's default; it is never more than the workspace's max_workflow_permissions. can_approve_pull_request_reviews says whether its jobs may open and approve pull requests (off unless chosen, and only where the workspace allows it). Needs the Read role."
+            }
+            ProtectionOp::SetWorkflowPermissions => {
+                "Set default_workflow_permissions to read, write (refused where the workspace's maximum is read) or inherit (back to the workspace's default, or write for a repository made before restricted tokens), and can_approve_pull_request_reviews, \"Allow g1t Actions to create and approve pull requests\" (refused where the workspace does not allow it). Workflows that write `permissions:` get what they write either way, and a pull request's run from outside gets read-only. Needs the Admin role."
+            }
+            ProtectionOp::GetForkPrApproval => {
+                "Which pull requests' runs wait for someone with the Write role to approve them before anything runs (approve_workflow_run): approval_policy is first_time_contributors (a pull request from someone outside the workspace who has not had one merged here), outside_contributors (the default: also everyone outside who cannot push here) or all_external_contributors (everyone outside the workspace, outside collaborators included). Members never wait, nor does g1t's own work. Needs the Read role."
+            }
+            ProtectionOp::SetForkPrApproval => {
+                "Set approval_policy: first_time_contributors, outside_contributors or all_external_contributors. Needs the Admin role."
+            }
+            ProtectionOp::GetActionsAccess => {
+                "Which other repositories' workflows may use this private repository's actions (uses: owner/repo@ref) and reusable workflows (jobs.<id>.uses: owner/repo/.g1t/workflows/build.yml@ref): access_level is none (the default: only this repository) or organization (private repositories in the same workspace). A public repository's actions and workflows are anyone's, whatever this says, and a public repository's workflows never use a private one's. Needs the Read role."
+            }
+            ProtectionOp::SetActionsAccess => {
+                "Set access_level: none, or organization to let the workspace's other private repositories use this repository's actions and reusable workflows (user is read as organization). Needs the Admin role."
+            }
+            ProtectionOp::GetActionsPermissions => {
+                "Whether a repository's workflows run at all: enabled is on for a repository and off for a fork until someone chooses (enabled_chosen says whether anyone has), so a fork never runs the workflows it copied until they are turned on. While it is off, no push, pull request, schedule, dispatch, repository_dispatch, merge queue or re-run starts a run; its workflows stay listed. allowed_actions is always all. Needs the Read role."
+            }
+            ProtectionOp::SetActionsPermissions => {
+                "Turn a repository's workflows on or off (enabled). Off, nothing starts a run, and a dispatch or re-run is refused with \"Actions is turned off for owner/name\"; runs already going finish. Turning it on runs nothing by itself: the next event does. Needs the Admin role; a workflow job's own token cannot."
+            }
+            ProtectionOp::GetWorkspaceWorkflowPermissions => {
+                "A workspace's policy for its repositories' job tokens: default_workflow_permissions (read, the default, or write) is what a repository made from now on gets until it chooses; max_workflow_permissions (write, the default, or read) is the most any repository's default may be, so read holds every repository to read-only; can_approve_pull_request_reviews (off by default) lets its repositories allow jobs to open and approve pull requests. Members only."
+            }
+            ProtectionOp::SetWorkspaceWorkflowPermissions => {
+                "Change a workspace's default_workflow_permissions, max_workflow_permissions and can_approve_pull_request_reviews; fields left out stay as they are. A maximum of read makes the default read too. Owners only."
+            }
+            ProtectionOp::ListWorkspaceManagedWorkflows => {
+                "The workflows a workspace's owners added to its repositories, g1t's required workflows: each runs in every repository it targets as that repository's own workflow (its token, its secrets, its checks), under the path managed/<name>.yml, from a copy of its source file taken when it was saved. Each has name, path, workflow_name (its `name:`), source (owner/repo/path@ref), source_sha (the commit it was copied at), source_private, mode, repositories, visibility, content (the copy that runs) and when and by whom it was last saved. Owners only."
+            }
+            ProtectionOp::CreateWorkspaceManagedWorkflow => {
+                "Add a workflow to a workspace's repositories. name (lowercase letters, digits and hyphens) makes its path managed/<name>.yml. source is a workflow file in one of the workspace's repositories, owner/repo/.g1t/workflows/file.yml@ref; g1t copies it at the commit ref names, and the copy runs until it is copied again (update_workspace_managed_workflow with refresh). mode is required (a repository's workflow of the same `name:` is set aside, and no one in the repository can turn it off, so its check can be required by a ruleset) or default (a repository's own workflow of the same name runs in its place, and the repository's admins can turn it off). repositories lists names and patterns (* matches any characters, ! excludes), read in order, the last match deciding; empty or left out is every repository. visibility is all (the default), public or private. A source in a private repository runs in private repositories only, so visibility must be private. Owners only. Returns the workflow."
+            }
+            ProtectionOp::UpdateWorkspaceManagedWorkflow => {
+                "Change a workflow a workspace manages: its source, mode, repositories or visibility; fields left out stay as they are. Giving source, or refresh: true, copies the source again at the commit its ref names now. Owners only. Returns the workflow."
+            }
+            ProtectionOp::DeleteWorkspaceManagedWorkflow => {
+                "Take a workflow out of every repository of the workspace. Its runs stay. Owners only."
+            }
+            ProtectionOp::CreateRepositoryDispatch => {
+                "Start the default branch's workflows that run `on: repository_dispatch` for event_type (those listing it under types, or with none). client_payload, a JSON object of at most 10 properties and 64 KB, is github.event.client_payload; github.event.action is event_type. A workflow job's own token may send one: with workflow_dispatch, it is how one workflow starts another. Needs the Write role (code:write). Returns how many runs started."
+            }
         }
     }
 
@@ -254,7 +294,9 @@ impl ProtectionOp {
                 }),
                 &["repo"],
             ),
-            ProtectionOp::GetWorkspaceWorkflowPermissions | ProtectionOp::ListWorkspaceManagedWorkflows => (json!({ "workspace": workspace }), &["workspace"]),
+            ProtectionOp::GetWorkspaceWorkflowPermissions | ProtectionOp::ListWorkspaceManagedWorkflows => {
+                (json!({ "workspace": workspace }), &["workspace"])
+            }
             ProtectionOp::CreateWorkspaceManagedWorkflow => (
                 json!({
                     "workspace": workspace,
@@ -278,7 +320,9 @@ impl ProtectionOp {
                 }),
                 &["workspace", "workflow"],
             ),
-            ProtectionOp::DeleteWorkspaceManagedWorkflow => (json!({ "workspace": workspace, "workflow": managed_name() }), &["workspace", "workflow"]),
+            ProtectionOp::DeleteWorkspaceManagedWorkflow => {
+                (json!({ "workspace": workspace, "workflow": managed_name() }), &["workspace", "workflow"])
+            }
             ProtectionOp::SetWorkspaceWorkflowPermissions => (
                 json!({
                     "workspace": workspace,
@@ -348,13 +392,21 @@ fn managed_view(workflow: &Value) -> Value {
 }
 
 /// A workspace's managed workflows: listed, added, changed and removed.
-async fn run_managed(op: ProtectionOp, actions: &worker::Fetcher, viewer: &Viewer, actor: g1t_contracts::User, workspace: String, input: &Value) -> Result<Outcome<Value>> {
+async fn run_managed(
+    op: ProtectionOp,
+    actions: &worker::Fetcher,
+    viewer: &Viewer,
+    actor: g1t_contracts::User,
+    workspace: String,
+    input: &Value,
+) -> Result<Outcome<Value>> {
     let strings = |key: &str| -> Option<Vec<String>> {
         input.get(key).and_then(Value::as_array).map(|items| items.iter().filter_map(Value::as_str).map(str::to_owned).collect())
     };
     Ok(match op {
         ProtectionOp::ListWorkspaceManagedWorkflows => {
-            let listed: Outcome<Vec<Value>> = g1t_kit::call(actions, "workspace_managed_workflows", &json!({ "viewer": viewer, "workspace": workspace })).await?;
+            let listed: Outcome<Vec<Value>> =
+                g1t_kit::call(actions, "workspace_managed_workflows", &json!({ "viewer": viewer, "workspace": workspace })).await?;
             map(listed, |list| json!({ "total_count": list.len(), "managed_workflows": list.iter().map(managed_view).collect::<Vec<_>>() }))
         }
         ProtectionOp::CreateWorkspaceManagedWorkflow | ProtectionOp::UpdateWorkspaceManagedWorkflow => {
@@ -416,7 +468,10 @@ fn flag(input: &Value, key: &str) -> Option<bool> {
 pub(crate) fn environment_change(input: &Value) -> std::result::Result<Map<String, Value>, String> {
     let mut out = Map::new();
     if let Some(minutes) = input.get("wait_timer").filter(|v| !v.is_null()) {
-        let minutes = minutes.as_u64().or_else(|| minutes.as_str().and_then(|s| s.trim().parse().ok())).ok_or("wait_timer is a number of minutes.")?;
+        let minutes = minutes
+            .as_u64()
+            .or_else(|| minutes.as_str().and_then(|s| s.trim().parse().ok()))
+            .ok_or("wait_timer is a number of minutes.")?;
         out.insert("waitMinutes".into(), minutes.into());
     }
     if let Some(value) = flag(input, "prevent_self_review") {
@@ -434,7 +489,10 @@ pub(crate) fn environment_change(input: &Value) -> std::result::Result<Map<Strin
             let mut reviewers = Vec::new();
             for reviewer in given {
                 let kind = reviewer["type"].as_str().unwrap_or("User").to_ascii_lowercase();
-                let name = text(reviewer, "name").or_else(|| text(reviewer, "id")).or_else(|| text(reviewer, "login")).or_else(|| text(reviewer, "slug"));
+                let name = text(reviewer, "name")
+                    .or_else(|| text(reviewer, "id"))
+                    .or_else(|| text(reviewer, "login"))
+                    .or_else(|| text(reviewer, "slug"));
                 let Some(name) = name else { return Err("Each reviewer has a name: a username or a team's slug.".to_owned()) };
                 reviewers.push(json!({ "type": kind, "name": name }));
             }
@@ -451,7 +509,9 @@ pub(crate) fn environment_change(input: &Value) -> std::result::Result<Map<Strin
             let protected = flag(policy, "protected_branches") == Some(true);
             let custom = flag(policy, "custom_branch_policies") == Some(true);
             let chosen = match (protected, custom) {
-                (true, true) => return Err("deployment_branch_policy is protected_branches or custom_branch_policies, not both.".to_owned()),
+                (true, true) => {
+                    return Err("deployment_branch_policy is protected_branches or custom_branch_policies, not both.".to_owned());
+                }
                 (true, false) => "protected",
                 (false, true) => "selected",
                 (false, false) => "all",
@@ -549,7 +609,13 @@ fn map<T>(outcome: Outcome<T>, view: impl FnOnce(T) -> Value) -> Outcome<Value> 
 /// The protection rules of the environments `listed` (the deployments
 /// service's answer to `list_environments` or `get_environment`) added to
 /// it, and environments with rules but no deployments yet added to a list.
-pub(crate) async fn with_protection(services: &Services, viewer: &Viewer, input: &Value, listed: Outcome<Value>, one: Option<&str>) -> Result<Outcome<Value>> {
+pub(crate) async fn with_protection(
+    services: &Services,
+    viewer: &Viewer,
+    input: &Value,
+    listed: Outcome<Value>,
+    one: Option<&str>,
+) -> Result<Outcome<Value>> {
     let Some(repo) = repo_path(input) else { return Ok(listed) };
     let mut args = json!({ "viewer": viewer, "repo": repo });
     if let Some(name) = one {
@@ -560,7 +626,8 @@ pub(crate) async fn with_protection(services: &Services, viewer: &Viewer, input:
         Outcome::Ok(rules) => rules,
         Outcome::Fail(_) => return Ok(listed),
     };
-    let protection = |name: &str| rules.iter().find(|env| env["name"].as_str().is_some_and(|n| n.eq_ignore_ascii_case(name))).map(environment_view);
+    let protection =
+        |name: &str| rules.iter().find(|env| env["name"].as_str().is_some_and(|n| n.eq_ignore_ascii_case(name))).map(environment_view);
     let add = |env: &mut Value| {
         if let Some(view) = env["name"].as_str().and_then(protection) {
             for key in ["protection_rules", "deployment_branch_policy", "branch_policies", "can_admins_bypass"] {
@@ -659,14 +726,17 @@ pub async fn run(op: ProtectionOp, services: &Services, viewer: &Viewer, input: 
             map(removed, |removed| json!({ "deleted": removed }))
         }
         ProtectionOp::GetPendingDeployments => {
-            let pending: Outcome<Vec<Value>> = g1t_kit::call(actions, "pending_deployments", &json!({ "viewer": viewer, "repo": repo, "id": id })).await?;
+            let pending: Outcome<Vec<Value>> =
+                g1t_kit::call(actions, "pending_deployments", &json!({ "viewer": viewer, "repo": repo, "id": id })).await?;
             map(pending, |list| Value::Array(list.iter().map(pending_view).collect()))
         }
         ProtectionOp::ReviewPendingDeployments => {
             let names: Vec<String> = ["environment_names", "environments", "environment_ids"]
                 .iter()
                 .find_map(|key| input[*key].as_array())
-                .map(|list| list.iter().filter_map(|v| v.as_str().map(str::to_owned).or_else(|| v.as_u64().map(|n| n.to_string()))).collect())
+                .map(|list| {
+                    list.iter().filter_map(|v| v.as_str().map(str::to_owned).or_else(|| v.as_u64().map(|n| n.to_string()))).collect()
+                })
                 .unwrap_or_default();
             let reviewed: Outcome<Vec<Value>> = g1t_kit::call(
                 actions,
@@ -683,7 +753,9 @@ pub async fn run(op: ProtectionOp, services: &Services, viewer: &Viewer, input: 
             .await?;
             map(reviewed, |list| Value::Array(list.iter().map(pending_view).collect()))
         }
-        ProtectionOp::ApproveWorkflowRun => g1t_kit::call(actions, "approve_run", &json!({ "actor": actor(), "repo": repo, "id": id })).await?,
+        ProtectionOp::ApproveWorkflowRun => {
+            g1t_kit::call(actions, "approve_run", &json!({ "actor": actor(), "repo": repo, "id": id })).await?
+        }
         ProtectionOp::GetWorkflowPermissions | ProtectionOp::SetWorkflowPermissions => {
             let settings: Outcome<Value> = if op == ProtectionOp::GetWorkflowPermissions {
                 g1t_kit::call(actions, "actions_settings", &json!({ "viewer": viewer, "repo": repo })).await?
@@ -800,7 +872,10 @@ mod tests {
         assert_eq!(cleared["branchPolicy"], "all");
         assert_eq!(cleared["reviewers"], json!([]));
         assert!(!environment_change(&json!({})).unwrap().contains_key("waitMinutes"));
-        assert!(environment_change(&json!({ "deployment_branch_policy": { "protected_branches": true, "custom_branch_policies": true } })).is_err());
+        assert!(
+            environment_change(&json!({ "deployment_branch_policy": { "protected_branches": true, "custom_branch_policies": true } }))
+                .is_err()
+        );
     }
 
     #[test]
