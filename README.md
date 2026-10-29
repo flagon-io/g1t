@@ -1,5 +1,13 @@
 # g1t
 
+> **g1t has shut down.** The experiment is over. Until November 30, 2026,
+> g1t.sh serves `git clone` and `git fetch` and nothing else: pushes are
+> refused, and the site, API, MCP server, workflows, security scans,
+> version updates, packages and g1t.page deployments are gone. After that,
+> g1t and everything on it is deleted. What runs now is
+> [apps/sunset](apps/sunset/src/index.ts) in front of the repos and
+> identity services. The code below stays here, MIT-licensed, as it was.
+
 **Git tracks changes. g1t coordinates change.**
 
 g1t is a git platform built for teams whose code is written by people and
