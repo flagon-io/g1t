@@ -1,0 +1,27 @@
+// g1t after its shutdown: the one Worker on g1t.sh and the hostnames the
+// other units had. It replaces the site (apps/web), deployed under its name.
+// Clones go to g1t-repos, which keeps g1t-identity for private ones; nothing
+// else of g1t is deployed. Deploy with `npx wrangler deploy` in this folder.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "g1t",
+  "account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+  "main": "./src/index.ts",
+  "compatibility_date": "2026-09-26",
+  "routes": [
+    { "pattern": "g1t.sh", "custom_domain": true },
+    { "pattern": "api.g1t.sh", "custom_domain": true },
+    { "pattern": "mcp.g1t.sh", "custom_domain": true },
+    { "pattern": "docs.g1t.sh", "custom_domain": true },
+    { "pattern": "status.g1t.sh", "custom_domain": true },
+    { "pattern": "g1t.page", "custom_domain": true }
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
+  "services": [{ "binding": "REPOS", "service": "g1t-repos" }],
+  "ratelimits": [
+    { "name": "GIT_ANONYMOUS_LIMIT", "namespace_id": "4205", "simple": { "limit": 120, "period": 60 } },
+    { "name": "GIT_SIGNED_LIMIT", "namespace_id": "4206", "simple": { "limit": 1200, "period": 60 } }
+  ],
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 }
+}

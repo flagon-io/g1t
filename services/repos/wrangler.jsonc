@@ -44,26 +44,14 @@
   // and a manifest of each chain (src/backups.rs). Made by
   // `npx wrangler r2 bucket create g1t-backups`.
   "r2_buckets": [
-    { "binding": "GIT_PACKS", "bucket_name": "g1t-git-packs" },
-    { "binding": "BACKUPS", "bucket_name": "g1t-backups" }
+    { "binding": "GIT_PACKS", "bucket_name": "g1t-git-packs" }
   ],
+  // Since g1t shut down (2026-10-28) repos serves clones and fetches alone:
+  // the services it called on pushes are gone, and EVENTS, which it must
+  // have bound, names the shutdown Worker (apps/sunset).
   "services": [
     { "binding": "IDENTITY", "service": "g1t-identity" },
-    { "binding": "EVENTS", "service": "g1t-events" },
-    // Push protection asks which secrets were allowed, and records the rest.
-    { "binding": "SECURITY", "service": "g1t-security" },
-    // Whether a workspace far past its free git operations is on the
-    // plan (src/git_ops.rs); asked only then. And a staff release of a
-    // storage hold is written to sudo's audit log (`admin_log`,
-    // src/storage_holds.rs).
-    { "binding": "BILLING", "service": "g1t-billing" },
-    // Rulesets: which hold for a push or another change to a branch or
-    // tag, and where how they judged it is kept (src/rules.rs).
-    { "binding": "WORK", "service": "g1t-work" },
-    // The git edge (src/git_edge.rs): clones and fetches of every
-    // repository, answered by real git in the runner's GitEdge
-    // containers, with Artifacts as before whenever it cannot.
-    { "binding": "RUNNER", "service": "g1t-runner" }
+    { "binding": "EVENTS", "service": "g1t" }
   ],
   // A free workspace past this many git operations in a month is slowed
   // to this many an hour, never charged (src/git_ops.rs). It is billing's
@@ -125,7 +113,7 @@
     // Artifacts; `-owner/name` entries, separated by commas, leave those
     // repositories out (`on, -acme/rocket`). For an incident, prefer the
     // platform pause's `git_edge` level in sudo: the same, with no deploy.
-    "GIT_EDGE": "on"
+    "GIT_EDGE": "off"
   },
   // Every hour, deleted repositories whose 30 days to be restored have
   // passed are purged, their git data with them (src/lifecycle.rs), and
@@ -135,12 +123,9 @@
   // not confirmed is sent again (src/storage_holds.rs). At 02:53 UTC, the repositories whose refs moved since
   // their last backup are queued for one (src/backups.rs, BACKUP_CRON);
   // the runner's sweep starts them a few at a time.
-  "triggers": { "crons": ["23 * * * *", "53 2 * * *"] },
+  "triggers": { "crons": [] },
   // A workspace renamed moves its repositories to the new slug; one
   // deleted purges the repositories it left in Recently deleted.
-  "queues": {
-    "consumers": [{ "queue": "g1t-events-repos", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
-  },
   // What an anonymous clone can cost a repository's owner (src/limits.rs):
   // packs written to GIT_PACKS, and anonymous fetches the git store
   // answers, each per repository. Ids and limits: RATE_LIMITS in

@@ -9,7 +9,7 @@
   "main": "build/index.js",
   // Purging deleted workspaces and accounts once their restore window
   // passes (src/lib.rs `scheduled`).
-  "triggers": { "crons": ["*/15 * * * *"] },
+  "triggers": { "crons": [] },
   "build": { "command": "node ../../scripts/build-rust-worker.mjs" },
   // Reached only through service bindings.
   "workers_dev": false,
@@ -25,20 +25,8 @@
   // Uploaded avatars, keyed by the SHA-256 of their bytes. Only this
   // service writes them; the site reads them to serve /avatars/<hash>.
   "kv_namespaces": [{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }],
-  // Renaming a workspace publishes workspace.renamed, so every service
-  // moves what it keeps under the old slug.
-  "services": [
-    { "binding": "EVENTS", "service": "g1t-events" },
-    { "binding": "CHAT", "service": "g1t-chat" },
-    { "binding": "NOTIFY", "service": "g1t-notify" },
-    { "binding": "ARTIFACTS", "service": "g1t-artifacts" },
-    // Deleting a workspace counts what goes with it, and has billing
-    // settle it first; staff restores and purges are recorded in sudo's
-    // audit log, which billing keeps (src/deletion.rs).
-    { "binding": "REPOS", "service": "g1t-repos" },
-    { "binding": "PROJECTS", "service": "g1t-projects" },
-    { "binding": "BILLING", "service": "g1t-billing" }
-  ],
+  // Since g1t shut down (2026-10-28) identity only checks git credentials for repos.
+  "services": [{ "binding": "REPOS", "service": "g1t-repos" }],
   // Signing in with GitHub (src/github.rs), through g1t's GitHub App.
   // Its client ID is public. Secrets: GITHUB_APP_CLIENT_SECRET, the app's
   // client secret, and IDENTITY_KEY, 64 hex characters, which seals the
